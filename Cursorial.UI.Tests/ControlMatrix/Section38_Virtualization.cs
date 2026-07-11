@@ -4,7 +4,7 @@ using System.ComponentModel;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -174,7 +174,7 @@ public sealed class Section38_Virtualization
     [Fact] // VV0.8: keep-alive — UnrealizeRange skips a keyboard-focused container
     public void VV0_8_KeepAlive_SkipsFocusedContainer()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 14) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 14) });
         var lb = new ListBox();
         var gen = lb.ItemContainerGenerator;
         gen.EnableVirtualization();
@@ -426,7 +426,7 @@ public sealed class Section38_Virtualization
     [Fact] // VV0.19: re-realizing a band across a kept-alive interior hole reports only the new instances (no double-adopt)
     public void VV0_19_RealizeAcrossKeepAliveHole()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 14) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 14) });
         var lb = new ListBox();
         var gen = lb.ItemContainerGenerator;
         gen.EnableVirtualization();
@@ -477,7 +477,7 @@ public sealed class Section38_Virtualization
     [Fact] // VV0.21: a virtualizing generator under the eager ItemsPresenter no-ops structural events (no crash)
     public void VV0_21_RealItemsPresenter_Virtualizing_NoCrash()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var lb = new ListBox();
         lb.ItemContainerGenerator.EnableVirtualization();
         var src = new ObservableCollection<string>(Enumerable.Range(0, 20).Select(i => $"i{i}"));

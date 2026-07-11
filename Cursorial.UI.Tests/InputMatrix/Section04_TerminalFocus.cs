@@ -1,8 +1,8 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -15,10 +15,10 @@ namespace Cursorial.Tests.UI.InputMatrix;
 /// </summary>
 public class Section04_TerminalFocus
 {
-    private static (UITestHost Host, List<string> Log, Probe Root, Probe A, Btn B, Probe C, InputDispatcher Dispatcher)
+    private static (UIHeadlessHost Host, List<string> Log, Probe Root, Probe A, Btn B, Probe C, InputDispatcher Dispatcher)
         CreateCluster(bool focusB = true)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var a = new Probe("A", log, 4, 2);

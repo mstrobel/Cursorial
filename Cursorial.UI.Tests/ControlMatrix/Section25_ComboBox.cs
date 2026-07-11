@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // only while open — they live on the Popup surface); picking one (click or Enter) commits + closes.
 public sealed class Section25_ComboBox
 {
-    private static (UITestHost Host, ComboBox Box) Show()
+    private static (UIHeadlessHost Host, ComboBox Box) Show()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var box = new ComboBox
         {
             ItemsSource = new[] { "alpha", "beta", "gamma" },
@@ -161,7 +161,7 @@ public sealed class Section25_ComboBox
            // re-templates the face.
     public void C12_ItemTemplate_TemplatesFace_SelectionBoxItemStaysTheItem()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         using var _ = host;
         var template = new DataTemplate { Content = new FuncTemplateContent(_ => new TextBlock("MARK")) };
         var box = new ComboBox

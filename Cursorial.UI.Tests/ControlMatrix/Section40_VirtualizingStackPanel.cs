@@ -4,7 +4,7 @@ using System.Text;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -18,9 +18,9 @@ public sealed class Section40_VirtualizingStackPanel
 {
     private const int Rows = 12;
 
-    private static (UITestHost Host, ListBox List) MakeVirtual(int count, int rows = Rows)
+    private static (UIHeadlessHost Host, ListBox List) MakeVirtual(int count, int rows = Rows)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
@@ -61,7 +61,7 @@ public sealed class Section40_VirtualizingStackPanel
         return null;
     }
 
-    private static string Screen(UITestHost host, int rows = Rows)
+    private static string Screen(UIHeadlessHost host, int rows = Rows)
     {
         var sb = new StringBuilder();
         for (var r = 0; r < rows; r++)
@@ -171,9 +171,9 @@ public sealed class Section40_VirtualizingStackPanel
 
     // ── audit-driven regression rows (V2 adversarial review) ──────────────────────────────────────────
 
-    private static (UITestHost Host, ListBox List) MakeVirtualItems(object[] items, int rows = Rows)
+    private static (UIHeadlessHost Host, ListBox List) MakeVirtualItems(object[] items, int rows = Rows)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
@@ -205,7 +205,7 @@ public sealed class Section40_VirtualizingStackPanel
     public void VV2_12_StructuralChange_ReconcilesWindow()
     {
         var src = new ObservableCollection<string>(Enumerable.Range(0, 1000).Select(i => $"item{i:0000}"));
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var list = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),

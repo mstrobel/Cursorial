@@ -3,8 +3,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -16,8 +16,8 @@ public sealed class BackstageTests
 {
     private const int H = 14;
 
-    private static UITestHost NewHost(int w = 48, int h = H) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 48, int h = H) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     private static BackstageItem Dest(string header, string detail, bool selectable = true)
         => new() { Header = header, Content = detail, IsSelectable = selectable };
@@ -30,7 +30,7 @@ public sealed class BackstageTests
         return bs;
     }
 
-    private static string AllRows(UITestHost host) =>
+    private static string AllRows(UIHeadlessHost host) =>
         string.Join("\n", Enumerable.Range(0, H).Select(host.GetRowText));
 
     private static BackstageItem Container(Backstage bs, int index) =>

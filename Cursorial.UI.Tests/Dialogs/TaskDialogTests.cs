@@ -8,7 +8,7 @@ using Cursorial.Input;
 using Cursorial.Terminal;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Dialogs;
 
@@ -31,18 +31,18 @@ public sealed class TaskDialogTests
 {
     /// <summary>The §5.1 capability matrix for rendering/input suites.</summary>
     public static TheoryData<string> CapabilityPresets =>
-        new() { nameof(TestCapabilities.KittyTruecolor), nameof(TestCapabilities.Ansi16Legacy) };
+        new() { nameof(HeadlessCapabilities.KittyTruecolor), nameof(HeadlessCapabilities.Ansi16Legacy) };
 
     private static TerminalCapabilities Resolve(string preset) => preset switch
     {
-        nameof(TestCapabilities.KittyTruecolor) => TestCapabilities.KittyTruecolor,
-        nameof(TestCapabilities.Ansi16Legacy) => TestCapabilities.Ansi16Legacy,
+        nameof(HeadlessCapabilities.KittyTruecolor) => HeadlessCapabilities.KittyTruecolor,
+        nameof(HeadlessCapabilities.Ansi16Legacy) => HeadlessCapabilities.Ansi16Legacy,
         _ => throw new ArgumentOutOfRangeException(nameof(preset)),
     };
 
-    private static UITestHost CreateHostWithRoot(string capabilityPreset)
+    private static UIHeadlessHost CreateHostWithRoot(string capabilityPreset)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             Capabilities = Resolve(capabilityPreset),
         });
@@ -52,7 +52,7 @@ public sealed class TaskDialogTests
     }
 
     /// <summary>The composited screen as one string, for containment assertions.</summary>
-    private static string ScreenText(UITestHost host)
+    private static string ScreenText(UIHeadlessHost host)
     {
         var text = new StringBuilder();
 
@@ -63,7 +63,7 @@ public sealed class TaskDialogTests
     }
 
     /// <summary>Pumps the host idle, then waits out the dialog task's pure (non-UI) mapping tail.</summary>
-    private static TResult Complete<TResult>(UITestHost host, Task<TResult> task)
+    private static TResult Complete<TResult>(UIHeadlessHost host, Task<TResult> task)
     {
         Assert.True(host.RunUntilIdle());
         Assert.True(task.Wait(TimeSpan.FromSeconds(5)), "the dialog task did not complete");
@@ -195,7 +195,7 @@ public sealed class TaskDialogTests
     [Fact]
     public void VerificationCheckbox_ToggledState_RidesBackOnResult()
     {
-        using var host = CreateHostWithRoot(nameof(TestCapabilities.KittyTruecolor));
+        using var host = CreateHostWithRoot(nameof(HeadlessCapabilities.KittyTruecolor));
 
         var task = TaskDialog.ShowAsync(host.Application,
                                         new TaskDialogRequest("Delete the workspace?")
@@ -262,7 +262,7 @@ public sealed class TaskDialogTests
     [Fact]
     public void ExpandedInformation_Toggle_GrowsAndShrinksDialog()
     {
-        using var host = CreateHostWithRoot(nameof(TestCapabilities.KittyTruecolor));
+        using var host = CreateHostWithRoot(nameof(HeadlessCapabilities.KittyTruecolor));
 
         var task = TaskDialog.ShowAsync(host.Application,
                                         new TaskDialogRequest("Something happened.")

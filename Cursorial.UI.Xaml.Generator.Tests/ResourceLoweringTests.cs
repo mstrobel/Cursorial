@@ -1,7 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -47,7 +47,7 @@ namespace GenApp { public partial class DynView : StackPanel { public DynView() 
         var brush = new SolidColorBrush(Color.FromRgb(0x30, 0x50, 0xc0));
         view.Resources["Accent"] = brush;
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(view);
 
         Assert.Same(brush, button.Foreground);

@@ -3,7 +3,7 @@
 
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -19,9 +19,9 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowSizeToContentTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot(int columns = 60, int rows = 20)
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot(int columns = 60, int rows = 20)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(columns, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(columns, rows) });
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);
@@ -52,7 +52,7 @@ public sealed class WindowSizeToContentTests
                };
     }
 
-    private static bool FrameContains(UITestHost host, string text)
+    private static bool FrameContains(UIHeadlessHost host, string text)
     {
         for (var row = 0; row < host.FrameBuffer.Rows; row++)
         {

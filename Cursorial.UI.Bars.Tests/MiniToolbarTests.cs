@@ -5,7 +5,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -13,10 +13,10 @@ namespace Cursorial.Tests.UI.Bars;
 // target (parallels ContextMenu, but horizontal, and it wins the right-click by marking the event handled).
 public sealed class MiniToolbarTests
 {
-    private static UITestHost NewHost(int w = 40, int h = 12) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 40, int h = 12) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
-    private static (UITestHost Host, StackPanel Root, Border Target, MiniToolbar Strip) Build()
+    private static (UIHeadlessHost Host, StackPanel Root, Border Target, MiniToolbar Strip) Build()
     {
         var host = NewHost();
         var strip = new MiniToolbar();

@@ -2,7 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -13,10 +13,10 @@ public sealed class SuperTipTests
 {
     private const int H = 8;
 
-    private static UITestHost NewHost(int w = 48, int h = H) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 48, int h = H) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
-    private static string AllRows(UITestHost host) =>
+    private static string AllRows(UIHeadlessHost host) =>
         string.Join("\n", Enumerable.Range(0, H).Select(host.GetRowText));
 
     [Fact] // a SuperTip renders its title, accelerator, and description (shown directly here; a ToolTip hosts it live)

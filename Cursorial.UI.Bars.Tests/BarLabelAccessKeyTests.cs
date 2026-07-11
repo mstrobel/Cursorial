@@ -4,8 +4,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -28,7 +28,7 @@ public sealed class BarLabelAccessKeyTests
 
     // Activate a folded mnemonic through the manager — a fresh Alt-down opens the cue window before the char
     // (a bare char with Alt held would trip the manager's stale-Alt inference). Mirrors Section19/Section12.
-    private static void ActivateAccessKey(UITestHost host, char mnemonic)
+    private static void ActivateAccessKey(UIHeadlessHost host, char mnemonic)
     {
         var dispatcher = host.Application.InputDispatcher;
         dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.Alt));
@@ -36,7 +36,7 @@ public sealed class BarLabelAccessKeyTests
         host.RunUntilIdle();
     }
 
-    private sealed record Harness(UITestHost Host, Button Editor, BarLabel Label, BarButton Cut, Toolbar Toolbar)
+    private sealed record Harness(UIHeadlessHost Host, Button Editor, BarLabel Label, BarButton Cut, Toolbar Toolbar)
     {
         public FocusManager Focus => Host.Application.FocusManager;
     }
@@ -44,10 +44,10 @@ public sealed class BarLabelAccessKeyTests
     // A "_Edit:" caption titling [Cut][Copy], with an editor below the bar as the pre-bar focus origin.
     private static Harness Build()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(48, 6),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
 
         var label = new BarLabel { Content = "_Edit:" };
@@ -97,10 +97,10 @@ public sealed class BarLabelAccessKeyTests
     [Fact] // ND18: two captions sharing a mnemonic form a multi-match — the manager owns cycling, the label never forwards
     public void Mnemonic_MultiMatch_DoesNotForward()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(48, 6),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         using var _ = host;
 
@@ -128,10 +128,10 @@ public sealed class BarLabelAccessKeyTests
     [Fact] // a TRAILING label (nothing focusable to its right) is a no-op — not a Cycle-wrap to the leftmost control
     public void TrailingMnemonic_DoesNotWrapToLeftmost()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(48, 6),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         using var _ = host;
 

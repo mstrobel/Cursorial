@@ -6,7 +6,7 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -30,9 +30,9 @@ public class Section14_Perf
         protected override Size MeasureOverride(Size availableSize) => new(columns, rows);
     }
 
-    private static (UITestHost Host, RigidElement A, RigidElement B) CreateRigidTree()
+    private static (UIHeadlessHost Host, RigidElement A, RigidElement B) CreateRigidTree()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var a = new RigidElement(10, 4);
         var b = new RigidElement(10, 4);
@@ -160,7 +160,7 @@ public class Section14_Perf
     [Fact]
     public void N198_KeyDispatch_TenDeepRoute_WithTextInputSynthesis_ZeroBytes()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new RigidElement(80, 24);
         var node = root;
         for (var i = 0; i < 9; i++)
@@ -219,7 +219,7 @@ public class Section14_Perf
     public void N200_Probe4_MotionStorm_CIGate()
     {
         // The probe-1-shaped dashboard tree: ~300 rigid leaves on an 80×24 canvas.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Canvas();
         for (var row = 0; row < 10; row++)
         {
@@ -275,7 +275,7 @@ public class Section14_Perf
     [Fact]
     public void N201_OneTimeCosts_BoundedNotZero_SecondDispatchAllocatesNothing()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new RigidElement(80, 24);
         var leaf = new RigidElement(10, 4) { Focusable = true };
         root.AddChild(leaf);

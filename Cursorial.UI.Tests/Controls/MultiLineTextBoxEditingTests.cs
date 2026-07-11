@@ -3,7 +3,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -12,13 +12,13 @@ namespace Cursorial.Tests.UI.Controls;
 // AcceptsReturn/AcceptsTab gates, multi-line pointer hit-testing, and selection across a line break.
 public sealed class MultiLineTextBoxEditingTests
 {
-    private static (UITestHost Host, TextBox Box) Shown(
+    private static (UIHeadlessHost Host, TextBox Box) Shown(
         Action<TextBox> configure, int width = 16, int? height = 6, bool focus = true)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 12),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         var box = new TextBox
         {
@@ -167,10 +167,10 @@ public sealed class MultiLineTextBoxEditingTests
     [Fact] // with AcceptsTab off, Tab moves focus instead of inserting (WPF default)
     public void Tab_MovesFocus_WhenNotAcceptsTab()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 12),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         using var _ = host;
         var first = new TextBox { Text = "ab", AcceptsReturn = true, Width = 12, Height = 3 };

@@ -2,8 +2,8 @@ using Cursorial.Input;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -18,11 +18,11 @@ public sealed class Section12_CheckRadio
 {
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static UITestHost Show(UIElement root, TerminalCapabilities? caps = null)
+    private static UIHeadlessHost Show(UIElement root, TerminalCapabilities? caps = null)
     {
         var host = caps is { } c
-            ? UITestHost.Create(new UITestHostOptions { Capabilities = c })
-            : UITestHost.Create();
+            ? UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = c })
+            : UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -39,7 +39,7 @@ public sealed class Section12_CheckRadio
         var cb = new CheckBox { Content = "Opt", IsThreeState = true };
         cb.IsChecked = state switch { true => true, "ind" => null, _ => false };
 
-        using var host = Show(cb, TestCapabilities.KittyTruecolor);
+        using var host = Show(cb, HeadlessCapabilities.KittyTruecolor);
         var row = host.GetRowText(0);
 
         Assert.StartsWith(glyph, row);   // the themed glyph (ASCII default, defense-free)
@@ -50,7 +50,7 @@ public sealed class Section12_CheckRadio
     public void C208_CheckBoxAsciiGlyphsEverywhere()
     {
         var cb = new CheckBox { Content = "X" };
-        using var host = Show(cb, TestCapabilities.Ansi16Legacy);
+        using var host = Show(cb, HeadlessCapabilities.Ansi16Legacy);
         Assert.StartsWith("[ ]", host.GetRowText(0)); // ASCII, zero ambiguous-width risk
 
         cb.IsChecked = true;

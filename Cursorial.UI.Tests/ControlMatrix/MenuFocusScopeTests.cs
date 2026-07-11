@@ -4,8 +4,8 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -28,7 +28,7 @@ public sealed class MenuFocusScopeTests
     // A menu bar (row 0) above a focusable editor (row 1). The menu has File → [New → [Doc, Sheet], Save]. The editor
     // is the pre-menu origin. Activation auto-focuses the first tab stop (the menu's File); tests pin focus to the
     // editor first so the menu is not keyboard-active until they enter it.
-    private sealed record Harness(UITestHost Host, StackPanel Root, Button Editor, Menu Menu,
+    private sealed record Harness(UIHeadlessHost Host, StackPanel Root, Button Editor, Menu Menu,
                                   MenuItem File, MenuItem New, MenuItem Save, MenuItem Doc, Cmd SaveCmd)
     {
         public FocusManager Focus => Host.Application.FocusManager;
@@ -36,7 +36,7 @@ public sealed class MenuFocusScopeTests
 
     private static Harness Build()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
 
         var doc = new MenuItem { Header = "Doc" };
         var sheet = new MenuItem { Header = "Sheet" };
@@ -120,7 +120,7 @@ public sealed class MenuFocusScopeTests
         Assert.Same(h.Editor, h.Focus.FocusedElement);
     }
 
-    private static void Click(UITestHost host, UIElement element)
+    private static void Click(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToScreen(0, 0);
         host.SendClick(origin.Column + 1, origin.Row);
@@ -282,14 +282,14 @@ public sealed class MenuFocusScopeTests
     public void TwoEsc_FirstClearsCueKeepsFocus_SecondReturnsToOrigin()
     {
         // Access-key caps so the sticky-cue Alt-tap machinery is live (the gate: DistinguishesKeyUpDown && ReportsRepeats).
-        var caps = TestCapabilities.KittyTruecolor with
+        var caps = HeadlessCapabilities.KittyTruecolor with
         {
-            Input = TestCapabilities.KittyTruecolor.Input with
+            Input = HeadlessCapabilities.KittyTruecolor.Input with
             {
-                Keyboard = TestCapabilities.KittyTruecolor.Input.Keyboard with { DistinguishesKeyUpDown = true, ReportsRepeats = true },
+                Keyboard = HeadlessCapabilities.KittyTruecolor.Input.Keyboard with { DistinguishesKeyUpDown = true, ReportsRepeats = true },
             },
         };
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16), Capabilities = caps });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16), Capabilities = caps });
         using var _ = host;
 
         var file = new MenuItem { Header = "_File" };
@@ -397,7 +397,7 @@ public sealed class MenuFocusScopeTests
     [Fact] // hover-gate POSITIVE: when the menu IS keyboard-active, hovering a sibling header DOES move focus to it
     public void HoverGate_FocusesSiblingWhenMenuKeyboardActive()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         using var _ = host;
 
         var file = new MenuItem { Header = "_File" };

@@ -5,7 +5,7 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -26,10 +26,10 @@ public sealed class ClipboardReadTests
         }
     };
 
-    private static UITestHost NewHost(bool canRead = true)
+    private static UIHeadlessHost NewHost(bool canRead = true)
     {
-        var caps = canRead ? WithClipboardRead(TestCapabilities.KittyTruecolor) : TestCapabilities.KittyTruecolor;
-        var host = UITestHost.Create(new UITestHostOptions
+        var caps = canRead ? WithClipboardRead(HeadlessCapabilities.KittyTruecolor) : HeadlessCapabilities.KittyTruecolor;
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(40, 10),
             Capabilities = caps,
@@ -40,7 +40,7 @@ public sealed class ClipboardReadTests
         return host;
     }
 
-    private static void Reply(UITestHost host, ReadOnlySpan<byte> bytes)
+    private static void Reply(UIHeadlessHost host, ReadOnlySpan<byte> bytes)
     {
         host.SendBytes(bytes);
         host.DrainParsedInputAsync().GetAwaiter().GetResult(); // blocking — stays on the UI thread

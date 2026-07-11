@@ -1,7 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
@@ -25,7 +25,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // A stored ResourceReference is chased to its target value (one hop).
     public void StoredAlias_ChasesToTarget()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[ThemeKeys.SurfaceBrush] = Vbrush; // a concrete target in the chain
@@ -37,7 +37,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // An app override of the ALIAS KEY itself wins over the alias indirection (the per-control override).
     public void AliasKeyOverride_Wins()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[Alias] = new ResourceReference(ThemeKeys.SurfaceBrush);
@@ -50,7 +50,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // An override of the alias TARGET cascades through the alias (resolve re-chases from the element).
     public void AliasTargetOverride_CascadesThroughAlias()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[Alias] = new ResourceReference(ThemeKeys.SurfaceBrush);
@@ -63,7 +63,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // A multi-hop alias chain resolves (A → B → concrete).
     public void MultiHopChain_Resolves()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[ThemeKeys.SurfaceBrush] = Vbrush;
@@ -76,7 +76,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // A self-referential alias is bounded (no infinite loop): a miss + the Cycle diagnostic.
     public void CyclicAlias_BoundedAndDiagnosed()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[Alias] = new ResourceReference(Alias); // points at itself
@@ -101,7 +101,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // A live DynamicResource on a property, through an alias, re-resolves on a variant flip (the cascade).
     public void AliasedSubscription_FollowsVariantFlip()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.RequestedThemeBase = ThemeBase.Dark;
@@ -123,7 +123,7 @@ public sealed class Section42_ResourceAlias
     [Fact] // CA7 — the BuiltIn per-control key (ButtonBackgroundNormal) is a live alias of the SurfaceBrush role token.
     public void BuiltInPerControlKey_AliasesRoleToken()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.RequestedThemeBase = ThemeBase.Dark;

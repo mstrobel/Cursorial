@@ -3,7 +3,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -18,10 +18,10 @@ public sealed class WindowOpacityTests
     [Fact]
     public void WindowOpacity_AppliedOnce_NotDoubledViaSurface()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(20, 10),
-            Capabilities = TestCapabilities.KittyTruecolor
+            Capabilities = HeadlessCapabilities.KittyTruecolor
         });
         using var _ = host;
 

@@ -2,7 +2,7 @@
 #pragma warning disable xUnit1031
 
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -43,7 +43,7 @@ public sealed class PrefixedTypeRefEndToEndTests
     {
         _ = XamlPrefixTarget.MarkerProperty;
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // The TargetType binds the custom `t:` namespace; the unqualified `Marker` Setter then resolves against
         // that resolved target type. Pre-#22, TargetType="t:XamlPrefixTarget" resolved verbatim against the
@@ -67,7 +67,7 @@ public sealed class PrefixedTypeRefEndToEndTests
     {
         _ = XamlPrefixTarget.MarkerProperty;
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // The Selector's `t|XamlPrefixTarget` binds the custom `t` namespace from the document table; the Setter's
         // owner-qualified `t:XamlPrefixTarget.Marker` resolves via the captured ns (the attached/styled member).
@@ -94,7 +94,7 @@ public sealed class PrefixedTypeRefEndToEndTests
     {
         _ = XamlPrefixTarget.MarkerProperty;
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var style = Loader.Load<Style>(
             "<Style" + Ns + TestClrNs + " Selector=\":is(t|XamlPrefixTarget)\">" +

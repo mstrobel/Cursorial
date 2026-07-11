@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -12,12 +12,12 @@ namespace Cursorial.Tests.UI.Bars;
 // clears, and multi-surface sync with a bind-time snap (two bar toggles bound to one command / one shared parameter).
 public sealed class BarToggleButtonCheckableCommandTests
 {
-    private static (UITestHost Host, T Control) Show<T>(Func<T> create) where T : UIElement
+    private static (UIHeadlessHost Host, T Control) Show<T>(Func<T> create) where T : UIElement
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(40, 4),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         var control = create();
         host.ShowRoot(control);

@@ -1,7 +1,7 @@
 using Cursorial.Tests.UI.InputMatrix;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Input;
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.Input;
 /// </summary>
 public class FocusManagerFindNextTests
 {
-    private static (UITestHost Host, FocusManager Focus, Probe Label, Btn F1, Btn F2) CreateForm()
+    private static (UIHeadlessHost Host, FocusManager Focus, Probe Label, Btn F1, Btn F2) CreateForm()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -63,7 +63,7 @@ public class FocusManagerFindNextTests
     [Fact]
     public void FindNext_EntryResolvesOnceContainers()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var label = new Probe("Label", log);
@@ -81,7 +81,7 @@ public class FocusManagerFindNextTests
     [Fact]
     public void FindNext_NothingReachable_ReturnsNull()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var label = new Probe("Label", log);
@@ -94,7 +94,7 @@ public class FocusManagerFindNextTests
     [Fact] // the directional overload routes through NextDirectional (geometry), distinct from the tab-order default
     public void FindNext_DirectionalRight_ReturnsRightwardNeighbor_AndNullMatchesTabForm()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var b1 = new Button { Content = "B1", Width = 6, Height = 1 };
         var b2 = new Button { Content = "B2", Width = 6, Height = 1 };
         var b3 = new Button { Content = "B3", Width = 6, Height = 1 };
@@ -114,7 +114,7 @@ public class FocusManagerFindNextTests
     [Fact] // the fork: with NO DirectionalNavigation container the directional form returns null where tab finds a stop
     public void FindNext_DirectionalRight_NoContainer_ReturnsNull_WhileTabFindsStop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var b1 = new Button { Content = "B1", Width = 6, Height = 1 };
         var b2 = new Button { Content = "B2", Width = 6, Height = 1 };
         var row = new StackPanel { Orientation = Orientation.Horizontal }; // DirectionalNavigation defaults to None

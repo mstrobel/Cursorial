@@ -3,7 +3,7 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -16,9 +16,9 @@ public class SliderTests
 {
     private const int Length = 20; // travel = Length - 1 = 19
 
-    private static (UITestHost Host, Slider Slider, Thumb Thumb) Make(Orientation orientation = Orientation.Horizontal, double value = 0)
+    private static (UIHeadlessHost Host, Slider Slider, Thumb Thumb) Make(Orientation orientation = Orientation.Horizontal, double value = 0)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
         var slider = new Slider
         {
             Orientation = orientation,

@@ -3,7 +3,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -12,10 +12,10 @@ namespace Cursorial.Tests.UI.Bars;
 // wire so the inherited behavior works on the bar variant.
 public sealed class BarComboBoxTests
 {
-    private static UITestHost NewHost(int w = 30, int h = 10) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 30, int h = 10) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
-    private static BarComboBox Show(UITestHost host, out BarComboBox combo)
+    private static BarComboBox Show(UIHeadlessHost host, out BarComboBox combo)
     {
         combo = new BarComboBox
         {

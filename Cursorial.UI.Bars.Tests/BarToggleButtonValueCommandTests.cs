@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -15,11 +15,11 @@ namespace Cursorial.Tests.UI.Bars;
 // no cross-talk — and the FB-27 Handled/Override context gate composes on the same parameters unchanged.
 public sealed class BarToggleButtonValueCommandTests
 {
-    private static UITestHost NewHost() =>
-        UITestHost.Create(new UITestHostOptions
+    private static UIHeadlessHost NewHost() =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(40, 4),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
 
     // The shared radio state: Model is "the caret column's current alignment"; Gated is the FB-27 context gate
@@ -46,7 +46,7 @@ public sealed class BarToggleButtonValueCommandTests
             });
     }
 
-    private static (UITestHost Host, AlignModel Model, BarCommand Command, BarToggleButton[] Buttons, ValueCommandParameter<string>[] Parameters) ShowRadioSet()
+    private static (UIHeadlessHost Host, AlignModel Model, BarCommand Command, BarToggleButton[] Buttons, ValueCommandParameter<string>[] Parameters) ShowRadioSet()
     {
         var host = NewHost();
         var model = new AlignModel();

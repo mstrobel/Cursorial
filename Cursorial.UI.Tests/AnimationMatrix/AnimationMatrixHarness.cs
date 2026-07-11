@@ -2,14 +2,14 @@ using Cursorial.Animation;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.AnimationMatrix;
 
 /// <summary>
 /// Shared harness for the animation-matrix sections (design doc §9). A minimal animatable element with
 /// two independent <see cref="double"/> properties plus a property-change hook (for the reentrancy rows),
-/// driven through <see cref="UITestHost"/> on a deterministic fake clock.
+/// driven through <see cref="UIHeadlessHost"/> on a deterministic fake clock.
 /// </summary>
 internal sealed class Animatable : UIElement
 {
@@ -64,9 +64,9 @@ internal static class Anim
     public static TimeSpan Ms(int ms) => TimeSpan.FromMilliseconds(ms);
 
     /// <summary>A shown host with one <see cref="Animatable"/> in a <see cref="StackPanel"/> root, run to idle.</summary>
-    public static (UITestHost Host, StackPanel Root, Animatable A) Shown()
+    public static (UIHeadlessHost Host, StackPanel Root, Animatable A) Shown()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         var a = new Animatable();
         var root = new StackPanel();
         root.Children.Add(a);
@@ -75,5 +75,5 @@ internal static class Anim
         return (host, root, a);
     }
 
-    public static AnimationScheduler Scheduler(this UITestHost host) => host.Application.AnimationScheduler;
+    public static AnimationScheduler Scheduler(this UIHeadlessHost host) => host.Application.AnimationScheduler;
 }

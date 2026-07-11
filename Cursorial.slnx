@@ -87,7 +87,6 @@
     <Project Path="Cursorial.Core.Tests/Cursorial.Core.Tests.csproj" />
     <Project Path="Cursorial.Drawing.Tests/Cursorial.Drawing.Tests.csproj" />
     <Project Path="Cursorial.Rendering.Tests/Cursorial.Rendering.Tests.csproj" />
-    <Project Path="Cursorial.UI.Hosting.Headless/Cursorial.UI.Hosting.Headless.csproj" />
     <Project Path="Cursorial.UI.Bars.Tests/Cursorial.UI.Bars.Tests.csproj" />
     <Project Path="Cursorial.UI.Tests/Cursorial.UI.Tests.csproj" />
     <Project Path="Cursorial.UI.Xaml.Tests/Cursorial.UI.Xaml.Tests.csproj" />
@@ -106,5 +105,6 @@
   <Project Path="Cursorial.UI/Cursorial.UI.csproj" />
   <Project Path="Cursorial.UI.Bars/Cursorial.UI.Bars.csproj" />
   <Project Path="Cursorial.UI.Dialogs/Cursorial.UI.Dialogs.csproj" />
+  <Project Path="Cursorial.UI.Hosting.Headless/Cursorial.UI.Hosting.Headless.csproj" />
   <Project Path="Cursorial.UI.Themes/Cursorial.UI.Themes.csproj" />
 </Solution>

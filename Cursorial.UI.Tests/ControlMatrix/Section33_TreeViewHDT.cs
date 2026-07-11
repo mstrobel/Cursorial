@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -47,7 +47,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.1: a data ItemsSource + an HDT ItemTemplate generates TreeViewItem containers with Header + children
     public void C20_1_HdtViaItemTemplate()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var tree = new TreeView { ItemTemplate = Hdt(), ItemsSource = roots, Width = 20, Height = 10 };
         host.ShowRoot(tree);
@@ -63,7 +63,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.2: the hierarchy recurses — a root's container has child containers for its data children
     public void C20_2_Recurses()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var tree = new TreeView { ItemTemplate = Hdt(), ItemsSource = roots, Width = 20, Height = 10 };
         host.ShowRoot(tree);
@@ -77,7 +77,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.3: an HDT registered in resources keyed by DataType (no ItemTemplate) also drives the hierarchy
     public void C20_3_HdtViaResources()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var tree = new TreeView { Width = 20, Height = 10 };
         tree.Resources[new DataTemplateKey(typeof(Node))] = Hdt(); // register the by-type template BEFORE the items realize
@@ -94,7 +94,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.4: the container's HeaderTemplate is wired to the HDT (so the header renders through it)
     public void C20_4_HeaderTemplateWired()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var hdt = Hdt();
         var tree = new TreeView { ItemTemplate = hdt, ItemsSource = roots, Width = 20, Height = 10 };
@@ -106,7 +106,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.5: a live add to a node's children collection materializes a new child container
     public void C20_5_LiveChildAdd()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var tree = new TreeView { ItemTemplate = Hdt(), ItemsSource = roots, Width = 20, Height = 10 };
         host.ShowRoot(tree);
@@ -124,7 +124,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.6: selection over HDT-generated containers resolves to the data item
     public void C20_6_SelectionResolvesDataItem()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var roots = Sample();
         var tree = new TreeView { ItemTemplate = Hdt(), ItemsSource = roots, Width = 20, Height = 10 };
         host.ShowRoot(tree);
@@ -140,7 +140,7 @@ public sealed class Section33_TreeViewHDT
     [Fact] // C20.7: a cyclic data graph does NOT StackOverflow — the recursion stops where a data item repeats an ancestor
     public void C20_7_CyclicGraphDoesNotOverflow()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var a = new Node("a");
         var b = new Node("b");
         a.Children.Add(b);

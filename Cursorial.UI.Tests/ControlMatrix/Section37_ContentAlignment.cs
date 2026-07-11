@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,7 +15,7 @@ public sealed class Section37_ContentAlignment
 {
     private static int ContentColumn(HorizontalAlignment align)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 3) });
         host.ShowRoot(new Button
         {
             Content = "Hi",
@@ -39,7 +39,7 @@ public sealed class Section37_ContentAlignment
 
     private static int ContentRow(VerticalAlignment align)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 8) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(14, 8) });
         host.ShowRoot(new Button
         {
             Content = "Hi",
@@ -76,7 +76,7 @@ public sealed class Section37_ContentAlignment
     [Fact] // C26.4: a live HorizontalContentAlignment change re-positions the content (the presenter's observer tracks it)
     public void C26_4_LiveChangeRepositions()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 3) });
         var btn = new Button
         {
             Content = "Hi",

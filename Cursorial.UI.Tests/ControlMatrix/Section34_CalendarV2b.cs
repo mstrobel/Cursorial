@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Calendar = Cursorial.UI.Controls.Calendar; // disambiguate from System.Globalization.Calendar
 
@@ -21,9 +21,9 @@ public sealed class Section34_CalendarV2b
     private static readonly DateOnly Jun1 = new(2026, 6, 1);
     private static readonly DateOnly Jun18 = new(2026, 6, 18);
 
-    private static (UITestHost Host, Calendar Cal) Show()
+    private static (UIHeadlessHost Host, Calendar Cal) Show()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 16) });
         var cal = new Calendar
         {
             Today = Jun18,
@@ -39,7 +39,7 @@ public sealed class Section34_CalendarV2b
 
     // A Release-mode button (the cells + header + prev/next) clicks only when IsPointerOver is true at mouse-up, so
     // hover (the frame-loop UpdateHover) before pressing — the established Section10/Section27 pattern.
-    private static void ClickAt(UITestHost host, (int Column, int Row) p)
+    private static void ClickAt(UIHeadlessHost host, (int Column, int Row) p)
     {
         host.SendMouseMove(p.Column, p.Row);
         host.RunFrame();
@@ -249,7 +249,7 @@ public sealed class Section34_CalendarV2b
     [Fact] // C21.13: a DatePicker resets its hosted Calendar to Month mode each time the drop-down opens (WPF parity)
     public void C21_13_DatePickerResetsToMonthOnOpen()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 16) });
         using var _ = host;
         var picker = new DatePicker
         {

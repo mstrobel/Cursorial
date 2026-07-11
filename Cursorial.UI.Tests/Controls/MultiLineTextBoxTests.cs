@@ -2,7 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -10,12 +10,12 @@ namespace Cursorial.Tests.UI.Controls;
 // the field height, and the caret row drives vertical scroll. (Editing — Up/Down/Enter/etc. — is Phase 3.)
 public sealed class MultiLineTextBoxTests
 {
-    private static (UITestHost Host, TextBox Box) Shown(Action<TextBox> configure, int width = 16, int? height = 4)
+    private static (UIHeadlessHost Host, TextBox Box) Shown(Action<TextBox> configure, int width = 16, int? height = 4)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 10),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         var box = new TextBox
         {

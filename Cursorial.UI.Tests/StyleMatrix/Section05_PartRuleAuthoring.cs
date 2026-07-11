@@ -1,6 +1,6 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -41,9 +41,9 @@ public class Section05_PartRuleAuthoring
         return theme;
     }
 
-    private static Widget ShowPartHost(Style theme, out UITestHost host)
+    private static Widget ShowPartHost(Style theme, out UIHeadlessHost host)
     {
-        host = UITestHost.Create();
+        host = UIHeadlessHost.Create();
         var button = new Button { Theme = theme }; // the Theme override wins the effective control theme (CD13)
         host.ShowRoot(button);
         host.RunFrame();

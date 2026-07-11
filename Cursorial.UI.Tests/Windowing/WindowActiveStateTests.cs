@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Style = Cursorial.UI.Style; // disambiguate from the Cursorial.Output.Style SGR record
 
@@ -21,9 +21,9 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowActiveStateTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot()
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         host.ShowRoot(new StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);

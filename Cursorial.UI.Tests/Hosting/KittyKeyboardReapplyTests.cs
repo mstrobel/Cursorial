@@ -3,7 +3,7 @@
 #pragma warning disable xUnit1031
 
 using Cursorial.Tests.UI.LayoutMatrix;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -19,7 +19,7 @@ public sealed class KittyKeyboardReapplyTests
     [Fact]
     public void Startup_OnAltScreen_ReAppliesScreenLocalOptInsExactlyOnce()
     {
-        using var host = UITestHost.Create(); // UseAlternateScreen defaults true; KittyTruecolor caps
+        using var host = UIHeadlessHost.Create(); // UseAlternateScreen defaults true; KittyTruecolor caps
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 
@@ -31,7 +31,7 @@ public sealed class KittyKeyboardReapplyTests
     public void Startup_NoAltScreen_DoesNotReApply()
     {
         // No alt-screen entry ⇒ negotiation's main-screen push is still active ⇒ nothing to re-apply.
-        using var host = UITestHost.Create(new UITestHostOptions { UseAlternateScreen = false });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { UseAlternateScreen = false });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 

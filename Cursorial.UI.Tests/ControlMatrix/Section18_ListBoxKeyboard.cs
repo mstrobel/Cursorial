@@ -4,8 +4,8 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -14,9 +14,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // Control-matrix P9 §C5 — ListBox keyboard navigation (P9.3b: arrows/Home/End/Space/Enter + the focus-row cue).
 public sealed class Section18_ListBoxKeyboard
 {
-    private static (UITestHost Host, ListBox List) Show(SelectionMode mode = SelectionMode.Single)
+    private static (UIHeadlessHost Host, ListBox List) Show(SelectionMode mode = SelectionMode.Single)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 10) });
         var lb = new ListBox { SelectionMode = mode, ItemsSource = new[] { "a", "b", "c", "d" } };
         host.ShowRoot(lb);
         host.RunUntilIdle();
@@ -25,7 +25,7 @@ public sealed class Section18_ListBoxKeyboard
 
     private static ListBoxItem Item(ListBox lb, int index) => (ListBoxItem)lb.ItemContainerGenerator.ContainerFromIndex(index)!;
 
-    private static void FocusItem(UITestHost host, ListBox lb, int index)
+    private static void FocusItem(UIHeadlessHost host, ListBox lb, int index)
     {
         Item(lb, index).Focus();
         host.RunUntilIdle();
@@ -217,7 +217,7 @@ public sealed class Section18_ListBoxKeyboard
     public void C5_15_RemoveBeforeCursor_NoSkip()
     {
         var source = new ObservableCollection<string> { "a", "b", "c", "d" };
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 10) });
         using var _ = host;
         var lb = new ListBox { ItemsSource = source };
         host.ShowRoot(lb);
@@ -236,7 +236,7 @@ public sealed class Section18_ListBoxKeyboard
     public void C5_16_InsertBeforeCursor_NoStall()
     {
         var source = new ObservableCollection<string> { "a", "b", "c" };
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 10) });
         using var _ = host;
         var lb = new ListBox { ItemsSource = source };
         host.ShowRoot(lb);
@@ -258,9 +258,9 @@ public sealed class Section18_ListBoxKeyboard
     // in the bubble route) leaves the keys unhandled. The ListBox moves the SELECTION, and a GotFocus →
     // EnsureVisible brings the focused item into view (focus-follows-scroll). Before the fix the ScrollViewer
     // ate the keys and scrolled the extent to the bottom before the selection ever moved (the reported bug).
-    private static (UITestHost Host, ListBox List, ScrollViewer Scroll) ShowOverflow(int count = 50, int rows = 10)
+    private static (UIHeadlessHost Host, ListBox List, ScrollViewer Scroll) ShowOverflow(int count = 50, int rows = 10)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox { ItemsSource = Enumerable.Range(0, count).Select(i => $"item{i:000}").ToArray() };
         host.ShowRoot(lb);
         host.RunUntilIdle();
@@ -387,9 +387,9 @@ public sealed class Section18_ListBoxKeyboard
     // ───────────────────────────── items host as a focus scope (P1 / ND33) ─────────────────────────────
 
     // A focusable sibling above the list, so Tab can cross INTO the list from outside it.
-    private static (UITestHost Host, Button Outer, ListBox List) ShowWithOuter(SelectionMode mode = SelectionMode.Single)
+    private static (UIHeadlessHost Host, Button Outer, ListBox List) ShowWithOuter(SelectionMode mode = SelectionMode.Single)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var outer = new Button { Content = "Outer" };
         var lb = new ListBox { SelectionMode = mode, ItemsSource = new[] { "a", "b", "c", "d" } };
         var root = new StackPanel { Orientation = Orientation.Vertical };

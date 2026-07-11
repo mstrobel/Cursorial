@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -25,7 +25,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.10 (#107): a standalone ScrollViewer sources its line/page step from a content-assisted host, not a fixed cell.
     public void VV1_10_ContentAssistedLineStep()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { LineStepSize = 7, Extent = new Size(5, 400) };
         var sv = new ScrollViewer { Content = stub, Focusable = true };
         host.ShowRoot(sv);
@@ -45,7 +45,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.2: the SCP injects itself as the host's ScrollOwner on adopt, clears it on a content swap
     public void VV1_2_HostDiscovery_ScrollOwnerLifetime()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var a = new StubScrollHost();
         var b = new StubScrollHost();
         var sv = new ScrollViewer { Content = a };
@@ -63,7 +63,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.3: OFF-path — plain content runs the legacy path (Extent == content desired, no host engaged)
     public void VV1_3_OffPath_Legacy()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var content = new FixedSizeElement { Desired = new Size(5, 100) };
         var sv = new ScrollViewer { Content = content };
         host.ShowRoot(sv);
@@ -75,7 +75,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.4: host-active measure — content measured at the viewport (not MaxScrollExtent); Extent == GetExtent
     public void VV1_4_HostMeasure_ViewportConstraint()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 400) };
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -90,7 +90,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.4b: under a host, the panel's measure constraint is clamped FINITE even with an unbounded parent
     public void VV1_4b_HostMeasure_UnboundedParentClamped()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 400) };
         // A vertical StackPanel measures its child at unbounded height — the SCP must still hand the panel a finite
         // constraint (never int.MaxValue), exactly as the legacy path substitutes MaxScrollExtent.
@@ -105,7 +105,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.5: the legacy 32K cap is LIFTED under a host (up to the Rect ceiling) + the offset reaches the tail
     public void VV1_5_CapLifted_UnderHost()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 60_000) }; // > MaxScrollExtent (32K), ≤ LayoutMath.MaxExtent
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -122,7 +122,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.5b: a host extent far past the old 16-bit ceiling is published uncapped (the Int32-Rect cap is ~1.07B)
     public void VV1_5b_HostExtent_PastOldCeiling()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 200_000) }; // well past the old ushort ceiling (65 535)
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -135,7 +135,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.6: host-active arrange hands the host its viewport before its next measure
     public void VV1_6_SetViewport_HandOff()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 400) };
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -148,7 +148,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.7: InvalidateScrollExtent re-publishes the extent + re-coerces the offset
     public void VV1_7_InvalidateScrollExtent()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 400) };
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -169,13 +169,13 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.8: ItemsPresenter forwards the host contract to its panel (IsScrollClient false when not a host)
     public void VV1_8_ItemsPresenter_Forwards()
     {
-        using var offHost = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var offHost = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var eager = new ListBox { ItemsSource = new[] { "a", "b", "c" } }; // default StackPanel — not a host
         offHost.ShowRoot(eager);
         offHost.RunUntilIdle();
         Assert.False(((IScrollContentHost)eager.ItemsHost!).IsScrollClient);
 
-        using var onHost = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var onHost = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         StubLogicalPanel? panel = null;
         var virt = new ListBox
         {
@@ -193,7 +193,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.8b: an ItemsPanel host→host swap wires the new panel and disowns the old (no stale back-channel — Finding B)
     public void VV1_8b_PanelSwap_DisownsOld()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         StubLogicalPanel? first = null;
         StubLogicalPanel? second = null;
         var lb = new ListBox
@@ -215,7 +215,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.7b: InvalidateScrollExtent marks measure dirty so a GROWN extent re-publishes even with no offset change
     public void VV1_7b_InvalidateScrollExtent_GrowsWithoutOffsetChange()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var stub = new StubScrollHost { Extent = new Size(5, 400) };
         var sv = new ScrollViewer { Content = stub };
         host.ShowRoot(sv);
@@ -234,7 +234,7 @@ public sealed class Section39_ScrollHost
     [Fact] // VV1.9: the X174-analog OFF-path drift gate — a ScrollViewer over plain content renders + scrolls unperturbed
     public void VV1_9_OffPath_DriftGate()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(16, 6) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(16, 6) });
         var content = new StackPanel();
         for (var i = 0; i < 30; i++)
             content.Children.Add(new TextBlock { Text = $"row{i:00}" });

@@ -9,7 +9,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Xunit.Abstractions;
 
@@ -20,7 +20,7 @@ namespace Cursorial.Tests.UI.Gallery;
 // (the manual harness still gets exercised on every run).
 public sealed class GallerySmokeTests(ITestOutputHelper output)
 {
-    private static string Screen(UITestHost host, int rows)
+    private static string Screen(UIHeadlessHost host, int rows)
     {
         var sb = new StringBuilder();
         for (var r = 0; r < rows; r++)
@@ -52,7 +52,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     [Fact] // the shell loads from embedded XAML, binds to the ShellViewModel, and the first page (ScrollViewer) resolves
     public void Shell_LoadsFromXaml_RendersFirstPage()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
 
         UIElement root = null!;
         var ex = Record.Exception(() =>
@@ -80,7 +80,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     [Fact] // selecting a different page VM swaps the ContentControl's view via the implicit DataTemplate (the MVVM nav proof)
     public void Shell_Navigation_SwapsPageViaImplicitDataTemplate()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -105,7 +105,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // auto-fills the BarButton labels from their BarCommands, and the Always item forces the overflow chevron
     public void BarsPage_RendersToolbar_WithOverflowChevron()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -150,7 +150,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // tab switch by click swaps the band
     public void RibbonPage_RendersRibbon_AndSwitchesTabs()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -180,7 +180,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     [Fact] // the GalleryRibbon self-populates the QAT from the RibbonViewModel, and a described command auto-provisions a SuperTip
     public void RibbonPage_QuickAccessAndSuperTips_AreWired()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -202,10 +202,10 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // badge overlay, and a tab letter drills into that tab's band — the live wiring, gated by the KittyTruecolor preset.
     public void RibbonPage_KeyTips_ArmOnAltAndDrill()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(80, 24),
-            Capabilities = TestCapabilities.KittyTruecolor, // satisfies the ND23 AltHeld gate
+            Capabilities = HeadlessCapabilities.KittyTruecolor, // satisfies the ND23 AltHeld gate
         });
         var controller = host.Application.EnableKeyTips(); // the same call Program.cs makes
 
@@ -253,7 +253,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     [Fact] // two-way bindings on the Inputs page round-trip VM <-> control (typing into the bound TextBox updates the VM)
     public void InputsPage_TwoWayBinding_RoundTrips()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -277,7 +277,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // x:Reference) AND the field's own Ctrl+Z all drive the multi-line TextBox's history
     public void InputsPage_Journal_UndoRedo()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var root = GalleryApp.BuildRoot(host.Application);
         host.ShowRoot(root);
         host.RunUntilIdle();
@@ -320,7 +320,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
            // The viewport height (24) is a whole number of 4-row tiles, so the vertical offsets are exact (4, then 0).
     public void Chessboard_SnapsScrollToWholeTiles()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var board = new Chessboard();
         var sv = new ScrollViewer
         {

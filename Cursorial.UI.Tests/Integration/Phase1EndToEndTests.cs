@@ -10,15 +10,15 @@ using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 
 using CellStyle = Cursorial.Output.Style;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
 /// Phase 1 integration: the design doc §14 P1 exit criteria proven end-to-end through
-/// <see cref="UITestHost"/> — every assertion crosses the full spine (frame loop → layout →
+/// <see cref="UIHeadlessHost"/> — every assertion crosses the full spine (frame loop → layout →
 /// render zones → compositor → retained buffer → FrameRenderer delta bytes), not a subsystem
 /// harness. Covers: the static panel-tree showcase with cell + byte assertions, the
 /// AffectsComposite re-emit-without-re-raster invariant (invariant 3), banded scrolling across a
@@ -117,7 +117,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void StaticPanelTree_CellAssertions_GlyphsAndStylesAtCoordinates()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var (root, opacityGroup, _) = BuildShowcaseTree();
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
@@ -170,7 +170,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void StaticPanelTree_ByteStability_SecondFrameEmitsNothing()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var (root, _, _) = BuildShowcaseTree();
         host.ShowRoot(root);
 
@@ -189,7 +189,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void RenderOffsetChange_ReEmitsBytes_WithoutAnyReRaster()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var root = new Host();
         var probe = new Probe(6, 2)
         {
@@ -254,7 +254,7 @@ public sealed class Phase1EndToEndTests
         Assert.True(TextBlock.MarkupProperty.GetEffects(typeof(TextBlock)).HasFlag(PropertyEffects.AffectsRender));
         Assert.True(TextBlock.TextWrappingProperty.GetEffects(typeof(TextBlock)).HasFlag(PropertyEffects.AffectsRender));
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Host();
         // An explicit size pins the arranged bounds, so a text swap can never change the measured
         // footprint — the bug's exact condition.
@@ -297,7 +297,7 @@ public sealed class Phase1EndToEndTests
         // 20×10 viewport, 40 content rows ⇒ K = max(10, 8) = 10, band = min(40, 10 + 2·10) = 30
         // rows anchored at 0. Offsets 1…10 stay in-band; offset 11 re-anchors (|11 − 0| > 10) to
         // bandStart = clamp(11 − 10, 0, 40 − 30) = 1.
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Rendering.Size(20, 10),
             CaptureFrameBytes = true
@@ -367,7 +367,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void ResizeMidRun_FullRelayout_SameFrame_CellsCorrectAtTheNewSize()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition()); // 1*
         grid.ColumnDefinitions.Add(new ColumnDefinition()); // 1*
@@ -406,7 +406,7 @@ public sealed class Phase1EndToEndTests
     [Fact]
     public void Caret_PublishedInScrolledContent_BufferCursorLandsAtTheTransformedPosition()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Rendering.Size(20, 10) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Rendering.Size(20, 10) });
         var root = new Host();
         var presenter = new ScrollContentPresenter();
         var stack = new StackPanel();

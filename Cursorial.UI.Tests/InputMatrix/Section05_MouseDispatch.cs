@@ -1,6 +1,6 @@
 using Cursorial.Input;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -58,7 +58,7 @@ public class Section05_MouseDispatch
     [Fact]
     public void N060_ZIndex_CompositeOrderWinner_ByDelegation()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var x = new Probe("X", log, 10, 4) { ZIndex = 1 };

@@ -3,8 +3,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -16,8 +16,8 @@ public sealed class RibbonCollapsedNavTests
 {
     private const int H = 10;
 
-    private static UITestHost NewHost(int w = 90) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, H), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 90) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, H), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     private static BarButton Btn(string content) => new() { Content = content };
 
@@ -37,7 +37,7 @@ public sealed class RibbonCollapsedNavTests
         return tab;
     }
 
-    private static FocusManager Focus(UITestHost host) => host.Application.FocusManager;
+    private static FocusManager Focus(UIHeadlessHost host) => host.Application.FocusManager;
 
     [Fact] // One Down on a collapsed group's [name ▾] opener OPENS the flyout AND enters its first control (FocusContentOnOpen).
     public void Collapsed_Down_OpensAndEntersFlyout()

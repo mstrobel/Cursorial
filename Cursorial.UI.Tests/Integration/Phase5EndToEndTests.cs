@@ -10,7 +10,7 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using Style = Cursorial.UI.Style;
@@ -19,7 +19,7 @@ namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
 /// Phase 5 integration: the design doc §14 P5 exit criteria proven end-to-end through
-/// <see cref="UITestHost"/> — every scenario crosses the full P5 spine (resource chain →
+/// <see cref="UIHeadlessHost"/> — every scenario crosses the full P5 spine (resource chain →
 /// control-theme template apply + part wiring → S8 control behavior → styling/binding → layout/render
 /// → composited cells), not an engine harness. Covers:
 /// <list type="bullet">
@@ -45,10 +45,10 @@ public sealed class Phase5EndToEndTests
 {
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static UITestHost Create(TerminalCapabilities? caps = null)
+    private static UIHeadlessHost Create(TerminalCapabilities? caps = null)
         => caps is { } c
-            ? UITestHost.Create(new UITestHostOptions { Capabilities = c })
-            : UITestHost.Create();
+            ? UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = c })
+            : UIHeadlessHost.Create();
 
     private static MouseEvent MouseDown(int column, int row, int clickCount = 1) => new()
     {
@@ -126,8 +126,8 @@ public sealed class Phase5EndToEndTests
     [InlineData(true)]  // Ansi16Legacy — RGB quantizes
     public void ThemedTree_RendersAcrossThemeVariantTiers_ColorQuantizesAndGlyphSwapsPerTier(bool legacy)
     {
-        var caps = legacy ? TestCapabilities.Ansi16Legacy : TestCapabilities.KittyTruecolor;
-        using var host = UITestHost.Create(new UITestHostOptions { Capabilities = caps, CaptureFrameBytes = true });
+        var caps = legacy ? HeadlessCapabilities.Ansi16Legacy : HeadlessCapabilities.KittyTruecolor;
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = caps, CaptureFrameBytes = true });
 
         var stack = new StackPanel { Spacing = 0, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         var button = new Button
@@ -617,7 +617,7 @@ public sealed class Phase5EndToEndTests
 
     // ───────────────────────────── shared finders ─────────────────────────────
 
-    private static Cell FindCell(UITestHost host, Func<Cell, bool> predicate, int rows)
+    private static Cell FindCell(UIHeadlessHost host, Func<Cell, bool> predicate, int rows)
     {
         for (var r = 0; r < rows; r++)
             for (var c = 0; c < host.FrameBuffer.Columns; c++)
@@ -629,7 +629,7 @@ public sealed class Phase5EndToEndTests
         return default;
     }
 
-    private static string[] ReadRows(UITestHost host, int rows)
+    private static string[] ReadRows(UIHeadlessHost host, int rows)
     {
         var result = new string[rows];
         for (var r = 0; r < rows; r++)

@@ -3,7 +3,7 @@ using Cursorial.Animation;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
@@ -52,7 +52,7 @@ public sealed class DebugDiagnosticsTests
     [Fact] // §9.6: an animation whose target never enters the tree warns after the leak threshold
     public void NeverAttachedTarget_WarnsAsLeak()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         host.ShowRoot(new StackPanel());
         host.RunUntilIdle();

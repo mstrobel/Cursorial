@@ -4,8 +4,8 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -15,17 +15,17 @@ namespace Cursorial.Tests.UI.Bars;
 // focus for navigation and only Escape returns. "editor"/"other" are focusable Buttons standing in for content.
 public sealed class ToolbarFocusTests
 {
-    private sealed record Harness(UITestHost Host, Button Editor, Button Other, BarButton Cut, BarButton Copy, Toolbar Toolbar)
+    private sealed record Harness(UIHeadlessHost Host, Button Editor, Button Other, BarButton Cut, BarButton Copy, Toolbar Toolbar)
     {
         public FocusManager Focus => Host.Application.FocusManager;
     }
 
     private static Harness Build()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(40, 6),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
 
         var cut = new BarButton { Content = "Cut" };
@@ -192,10 +192,10 @@ public sealed class ToolbarFocusTests
            // the scope that actually held focus, not the surface root's (stale) memory.
     public void NestedFocusScope_PointerInvoke_ReturnsToTheItemItCameFrom()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(40, 12),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         using var _ = host;
 
@@ -235,10 +235,10 @@ public sealed class ToolbarFocusTests
            // to the original CONTENT, not the intermediate bar (MarkReturnableEntry chains the return scope through it).
     public void TwoToolbars_PointerInvokeInSecond_ReturnsToContent_NotFirstBar()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(48, 8),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         using var _ = host;
 

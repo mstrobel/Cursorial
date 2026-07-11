@@ -3,8 +3,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 using Keys = Cursorial.Input.Key;
 
@@ -40,9 +40,9 @@ public class Section08_FocusCore
     private static bool HasState(Probe probe, InteractionState state) => (probe.InteractionStateInternal & state) != 0;
 
     /// <summary>Shown chain <c>Root → A(Btn), B(Btn)</c> with the activation auto-focus cleared and the log empty.</summary>
-    private static (UITestHost Host, List<string> Log, Probe Root, Btn A, Btn B, FocusManager Focus) CreatePair()
+    private static (UIHeadlessHost Host, List<string> Log, Probe Root, Btn A, Btn B, FocusManager Focus) CreatePair()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Btn("A", log);
@@ -59,7 +59,7 @@ public class Section08_FocusCore
     [Fact]
     public void N095_DefaultFocusableFalse_FocusRefused()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var probe = new Probe("P", log);
@@ -93,7 +93,7 @@ public class Section08_FocusCore
     [Fact]
     public void N097_DetachedElement_FocusRefused()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         host.ShowRoot(root);
@@ -349,7 +349,7 @@ public class Section08_FocusCore
     [Fact]
     public void N109_FocusedElementDetached_RepairsToNearestFocusableAncestor()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Btn("A", log); // the focusable ancestor
@@ -372,7 +372,7 @@ public class Section08_FocusCore
     [Fact]
     public void N110_NoFocusableAncestor_RepairsToScopeRootFirstTabStop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var pane = new Probe("P", log);
@@ -393,7 +393,7 @@ public class Section08_FocusCore
     [Fact]
     public void N111_NothingFocusableRemains_FocusCleared_KeysFallBackToRoot()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var b = new Btn("B", log);
@@ -411,9 +411,9 @@ public class Section08_FocusCore
     }
 
     /// <summary>Builds the N112 nested-scope tree: <c>Root(scope) → { A(Btn), Pane(scope) → Btn }</c>, shown.</summary>
-    private static (UITestHost Host, Probe Root, Btn A, Probe Pane, Btn Inner) CreateNestedScopeTree()
+    private static (UIHeadlessHost Host, Probe Root, Btn A, Probe Pane, Btn Inner) CreateNestedScopeTree()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Btn("A", log);
@@ -476,7 +476,7 @@ public class Section08_FocusCore
     [Fact]
     public void N115_ShowRoot_Activates_InitialFocusFirstTabStop_RestoreMethod()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -495,7 +495,7 @@ public class Section08_FocusCore
         Assert.True(HasState(f1, InteractionState.FocusVisible)); // Restore always sets
 
         // Zero focusables: no focus; keys still target the root.
-        using var host2 = UITestHost.Create();
+        using var host2 = UIHeadlessHost.Create();
         var log2 = new List<string>();
         var root2 = new Probe("Root", log2);
         root2.AddChild(new Probe("P", log2));
@@ -527,7 +527,7 @@ public class Section08_FocusCore
     [Fact]
     public void N117_IsFocusScope_DefaultFalse_WindowRootTrue_Settable()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Probe("A", log);
@@ -552,7 +552,7 @@ public class Section08_FocusCore
     {
         // Root → panel → leaf(Btn focused); other(Btn) a sibling under Root — the repair target
         // (no focusable ancestor exists, so repair falls to the scope root's first tab stop).
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var panel = new Probe("Panel", log);
@@ -610,7 +610,7 @@ public class Section08_FocusCore
     {
         // Focus on a deep leaf; its focusable parent and grandparent live INSIDE the removed
         // subtree (would be valid repair targets mid-walk); `outside` is the only valid target.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var subtreeRoot = new Btn("Grand", log);   // focusable grandparent (doomed)
@@ -706,7 +706,7 @@ public class Section08_FocusCore
         // BEFORE the first layout pass) finds no first tab stop and PARKS the activation (ND33). The
         // spine's post-layout retry (CompletePendingActivationFocus) re-runs the first-tab-stop search
         // once the subtree is built and focuses the first button with method = Restore.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         var border = new Border { Padding = new Margins(1) };
@@ -740,7 +740,7 @@ public class Section08_FocusCore
            // the ring on a pointer-invoked return while keyboard/access-key kept it.
     public void RetainedReturn_RestoresWithFocusVisible_EvenAfterPointerEntry()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var outer = new Btn("Outer", log);

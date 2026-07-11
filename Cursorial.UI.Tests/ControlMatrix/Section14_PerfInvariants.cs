@@ -5,7 +5,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -19,9 +19,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 /// </summary>
 public sealed class Section14_PerfInvariants
 {
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;

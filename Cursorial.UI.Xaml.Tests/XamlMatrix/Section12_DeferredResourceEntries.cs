@@ -1,4 +1,5 @@
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -81,7 +82,7 @@ public sealed class Section12_DeferredResourceEntries : LoaderTestBase
     [Fact] // X146
     public void X146_DeferredEntryInfo_AfterRealization()
     {
-        using var host = Cursorial.UI.Testing.UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var dict = (ResourceDictionary)LoadRaw(
             $"<ResourceDictionary{Pre}><TestBrush x:Key=\"A\" Color=\"Red\"/></ResourceDictionary>");
         _ = dict["A"]; // realize at the host's variant

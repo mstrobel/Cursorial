@@ -1,6 +1,6 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -30,9 +30,9 @@ public sealed class Section07_ContentPresenter
         }
     }
 
-    private static UITestHost Attach(UIElement root)
+    private static UIHeadlessHost Attach(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -141,7 +141,7 @@ public sealed class Section07_ContentPresenter
         };
         cp = new ContentPresenter { Content = new object(), ContentTemplate = template };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(cp);
         host.RunFrame(); // must not stack-overflow — the guard caps re-entry
         Assert.IsType<TextBlock>(cp.Child);

@@ -1,7 +1,7 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -24,7 +24,7 @@ public class Section10_NameScope
     [Fact]
     public void B121_ElementName_ResolvesViaScope_PathAgainstNamedElement()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var a = new BindWidget();
         var b = new BindWidget { Num = 17 };
@@ -47,7 +47,7 @@ public class Section10_NameScope
     [Fact]
     public void B122_ElementName_NotAttached_ParksThenResolvesOnAttach()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var b = new BindWidget { Num = 5 };
         root.Children.Add(b);
@@ -73,7 +73,7 @@ public class Section10_NameScope
     [Fact]
     public void B123_ElementName_NeverRegistered_TracesAfterAttach()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var a = new BindWidget();
         root.Children.Add(a);
@@ -179,7 +179,7 @@ public class Section10_NameScope
     [Fact]
     public void B129_ElementName_InsideTemplateInstance_FindsSiblingPart()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var rootPanel = new StackPanel();
         var ctrl = new BindWidget();
         rootPanel.Children.Add(ctrl);
@@ -211,7 +211,7 @@ public class Section10_NameScope
         // The expression re-resolves on the ANCHOR's detach/attach events (WPF — ElementName follows
         // the anchor's tree life, not the named element's). When the anchor leaves the scope that
         // resolved the name, re-resolution finds the name gone ⇒ no stale push.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var scoped = new StackPanel(); // carries the scope registering "editor"
         var a = new BindWidget();

@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 
-namespace Cursorial.UI.Testing;
+namespace Cursorial.UI.Hosting.Headless;
 
 /// <summary>
 /// The headless <see cref="ITerminalHost"/> (design doc §10.10): scripted capabilities over an

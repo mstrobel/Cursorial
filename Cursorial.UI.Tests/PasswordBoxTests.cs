@@ -4,7 +4,7 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -17,17 +17,17 @@ public class PasswordBoxTests
 {
     private static TerminalCapabilities WithClipboard()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         return caps with { Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } } };
     }
 
-    private static (UITestHost Host, PasswordBox Box) Shown(string password = "", int width = 12, bool focus = true,
+    private static (UIHeadlessHost Host, PasswordBox Box) Shown(string password = "", int width = 12, bool focus = true,
                                                             TerminalCapabilities? capabilities = null)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 4),
-            Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
+            Capabilities = capabilities ?? HeadlessCapabilities.KittyTruecolor,
             CaptureFrameBytes = true,
         });
         var box = new PasswordBox
@@ -47,7 +47,7 @@ public class PasswordBoxTests
 
     // The TextBox chrome pads content by one column (Border Padding 1,0); masked content has no internal spaces,
     // so trimming both ends isolates the rendered glyphs cleanly.
-    private static string Row0(UITestHost host) => host.GetRowText(0).Trim();
+    private static string Row0(UIHeadlessHost host) => host.GetRowText(0).Trim();
 
     [Fact]
     public void Masks_EachCharacter_WithTheMaskGlyph_NotThePlaintext()
@@ -135,7 +135,7 @@ public class PasswordBoxTests
            // bubbles to ancestors (an app KeyBinding may still claim it) — and neither mutates the password.
     public void CopyCutChords_BubblePastTheControl_Unconsumed()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 4) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 4) });
         using var _ = host;
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         var box = new PasswordBox { Password = "secret", Width = 12, Height = 1 };
@@ -220,7 +220,7 @@ public class PasswordBoxTests
         return false;
     }
 
-    private static byte[] CollectFrames(UITestHost host, int frames = 4)
+    private static byte[] CollectFrames(UIHeadlessHost host, int frames = 4)
     {
         var all = new List<byte>();
         for (var i = 0; i < frames; i++)

@@ -8,12 +8,12 @@ using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
-/// The P2.6 signed-margin batch (matrix LD19), proven end-to-end through <see cref="UITestHost"/>:
+/// The P2.6 signed-margin batch (matrix LD19), proven end-to-end through <see cref="UIHeadlessHost"/>:
 /// the <c>UIPanelsDemo</c> sidebar pull-up — a label with <c>Margin = (0, −1, 0, 0)</c> inside a
 /// <c>Spacing = 1</c> StackPanel pulls itself onto the spacing row beneath its predecessor (and
 /// everything below moves up one row). Matrix §13 covers the unit-level rows; this test crosses
@@ -36,7 +36,7 @@ public sealed class SignedMarginIntegrationTests
         sidebar.Children.Add(pulled);
         sidebar.Children.Add(next);
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(sidebar);
         Assert.True(host.RunUntilIdle());
 

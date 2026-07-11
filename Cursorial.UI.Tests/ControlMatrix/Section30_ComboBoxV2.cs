@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,9 +15,9 @@ public sealed class Section30_ComboBoxV2
 {
     private static readonly string[] Fruits = { "apple", "banana", "cherry" };
 
-    private static (UITestHost Host, ComboBox Box) Show(bool editable = true)
+    private static (UIHeadlessHost Host, ComboBox Box) Show(bool editable = true)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(28, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
         var box = new ComboBox
         {
             ItemsSource = Fruits,
@@ -178,7 +178,7 @@ public sealed class Section30_ComboBoxV2
     [Fact] // C17.11: a model selection-drop (removing the selected item) does NOT wipe the user's uncommitted free text
     public void C17_11_ModelDropPreservesFreeText()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(28, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
         using var _ = host;
         var items = new System.Collections.ObjectModel.ObservableCollection<string> { "apple", "banana", "cherry" };
         var box = new ComboBox { ItemsSource = items, IsEditable = true, Width = 16 };
@@ -254,7 +254,7 @@ public sealed class Section30_ComboBoxV2
     [Fact] // C17.16: when items are ComboBoxItems, the face shows the item's CONTENT, never the live container
     public void C17_16_ComboBoxItemFaceUnwrapsToContent()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(28, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
         using var _ = host;
         var apple = new ComboBoxItem { Content = "apple" };
         var box = new ComboBox
@@ -284,7 +284,7 @@ public sealed class Section30_ComboBoxV2
     [Fact] // C17.17: the unwrapped face still tracks selection changes, and the live container survives an open
     public void C17_17_ComboBoxItemFaceTracksSelectionAndDropDownRenders()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(28, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
         using var _ = host;
         var apple = new ComboBoxItem { Content = "apple" };
         var banana = new ComboBoxItem { Content = "banana" };
@@ -318,7 +318,7 @@ public sealed class Section30_ComboBoxV2
     [Fact] // C17.18: editable mode with ComboBoxItems — the face text is the item's content, not the container type name
     public void C17_18_EditableFaceTextUnwrapsComboBoxItem()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(28, 12) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(28, 12) });
         using var _ = host;
         var apple = new ComboBoxItem { Content = "apple" };
         var box = new ComboBox { IsEditable = true, Width = 16 };
@@ -334,7 +334,7 @@ public sealed class Section30_ComboBoxV2
         Assert.Equal("apple", box.EditableTextBoxPart!.Text);
     }
 
-    private static bool AnyRowContains(UITestHost host, string text)
+    private static bool AnyRowContains(UIHeadlessHost host, string text)
     {
         for (var r = 0; r < 12; r++)
             if (host.GetRowText(r).Contains(text, StringComparison.Ordinal))

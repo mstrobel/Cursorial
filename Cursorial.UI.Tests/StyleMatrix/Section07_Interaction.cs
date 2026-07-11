@@ -1,5 +1,5 @@
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -13,7 +13,7 @@ public class Section07_Interaction
     [Fact]
     public void S108_StylingEngine_IsTheProductionObserver_SlotStaysAssignable()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         Assert.Same(host.Application.StyleEngineInternal, host.Application.InteractionStateObserver); // SD22
 
@@ -25,7 +25,7 @@ public class Section07_Interaction
     [Fact]
     public void S109_MoveDrivenFlip_RendersInTheSameFrame()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Cursorial.UI.Controls.StackPanel();
         var a = new Widget(4, 1) { PaintP = true };
         root.Children.Add(a);
@@ -121,7 +121,7 @@ public class Section07_Interaction
         // A non-Pane root: the §0.2 default tree's StackPanel root would itself match
         // 'Pane:focus-within' as the move's common ancestor (focus-within correctly persists
         // there), which is not the diverging-chain behavior this row pins.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Card();
         var paneA = new Cursorial.UI.Controls.StackPanel();
         var paneB = new Cursorial.UI.Controls.StackPanel();

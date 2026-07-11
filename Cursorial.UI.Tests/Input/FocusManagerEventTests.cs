@@ -1,5 +1,5 @@
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Input;
 
@@ -11,7 +11,7 @@ public sealed class FocusManagerEventTests
     [Fact]
     public void FocusedElementChanged_FiresExactlyOncePerChange()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var a = new Button { Content = "A", Width = 4, Height = 1 };
         var b = new Button { Content = "B", Width = 4, Height = 1 };
         var root = new StackPanel { Orientation = Orientation.Vertical };
@@ -39,7 +39,7 @@ public sealed class FocusManagerEventTests
     [Fact] // a no-op re-focus of the already-focused element raises nothing
     public void FocusedElementChanged_SameElement_DoesNotRaise()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var a = new Button { Content = "A", Width = 4, Height = 1 };
         var root = new StackPanel { Orientation = Orientation.Vertical };
         root.Children.Add(a);

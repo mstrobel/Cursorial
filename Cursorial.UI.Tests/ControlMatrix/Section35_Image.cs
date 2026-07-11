@@ -2,7 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -22,7 +22,7 @@ public sealed class Section35_Image
 
     // Step frames (the diff renderer emits a fragment only on the frame it first paints it — a later clean frame
     // would not), returning true if any frame's bytes carry the Kitty graphics APC introducer. Requires CaptureFrameBytes.
-    private static bool RenderEmitsKittyApc(UITestHost host, int maxFrames = 8)
+    private static bool RenderEmitsKittyApc(UIHeadlessHost host, int maxFrames = 8)
     {
         for (var i = 0; i < maxFrames; i++)
         {
@@ -34,8 +34,8 @@ public sealed class Section35_Image
         return false;
     }
 
-    private static UITestHost KittyHost() =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12), Capabilities = TestCapabilities.KittyGraphics, CaptureFrameBytes = true });
+    private static UIHeadlessHost KittyHost() =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12), Capabilities = HeadlessCapabilities.KittyGraphics, CaptureFrameBytes = true });
 
     [Fact] // C23.1: an ImagePresenter with a Source under Kitty graphics measures to the image's natural cell size
     public void C23_1_MeasuresToNaturalSize()
@@ -72,7 +72,7 @@ public sealed class Section35_Image
     [Fact] // C23.3: a Source but NO graphics protocol (Ansi16Legacy) ⇒ the placeholder shows (image can't render)
     public void C23_3_NoGraphicsShowsPlaceholder()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12), Capabilities = TestCapabilities.Ansi16Legacy, CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12), Capabilities = HeadlessCapabilities.Ansi16Legacy, CaptureFrameBytes = true });
         var presenter = new ImagePresenter { Source = Img(), PlaceholderContent = "no image" };
         host.ShowRoot(presenter);
         host.RunUntilIdle();
@@ -259,10 +259,10 @@ public sealed class Section35_Image
     [Fact] // C23.14 (audit): a capability flip (renegotiation) re-evaluates — placeholder → image without stale state
     public async Task C23_14_CapabilityFlipReevaluates()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(24, 12),
-            Capabilities = TestCapabilities.Ansi16Legacy, // start with NO graphics
+            Capabilities = HeadlessCapabilities.Ansi16Legacy, // start with NO graphics
             CaptureFrameBytes = true,
         });
         var presenter = new ImagePresenter
@@ -277,7 +277,7 @@ public sealed class Section35_Image
         Assert.False(presenter.IsImageVisible);
         Assert.Equal(Visibility.Visible, presenter.PlaceholderPresenter.Visibility);
 
-        host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.KittyGraphics); // graphics arrive
+        host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.KittyGraphics); // graphics arrive
         await host.Application.RenegotiateAsync();
 
         // The caps flip re-evaluates on the next layout pass (CapabilitiesChanged → InvalidateMeasure); step frames.

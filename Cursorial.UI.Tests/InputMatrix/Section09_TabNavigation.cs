@@ -2,8 +2,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -28,9 +28,9 @@ public class Section09_TabNavigation
     private static bool HasState(Probe probe, InteractionState state) => (probe.InteractionStateInternal & state) != 0;
 
     /// <summary>The §9 Tab tree: <c>Root → F1, F2, F3</c> (Btns, document order), shown — activation focuses F1.</summary>
-    private static (UITestHost Host, List<string> Log, Probe Root, Btn F1, Btn F2, Btn F3) CreateTabTree()
+    private static (UIHeadlessHost Host, List<string> Log, Probe Root, Btn F1, Btn F2, Btn F3) CreateTabTree()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -170,7 +170,7 @@ public class Section09_TabNavigation
     [Fact]
     public void N125_TabNavigationNone_ExcludesDescendants()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -196,7 +196,7 @@ public class Section09_TabNavigation
     [Fact]
     public void N126_InnerCycleContainer_TrapsTab()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -218,9 +218,9 @@ public class Section09_TabNavigation
     }
 
     /// <summary>The ND16 tree: <c>Root → F1, L(Once) → G1, G2, F3</c>, shown (activation focuses F1).</summary>
-    private static (UITestHost Host, Probe L, Btn F1, Btn G1, Btn G2, Btn F3) CreateOnceTree()
+    private static (UIHeadlessHost Host, Probe L, Btn F1, Btn G1, Btn G2, Btn F3) CreateOnceTree()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -283,7 +283,7 @@ public class Section09_TabNavigation
     [Fact]
     public void N130_NoOtherCandidate_FocusUnmoved_Unhandled()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -303,10 +303,10 @@ public class Section09_TabNavigation
     /// The directional grid: a Canvas-shaped container (<paramref name="mode"/>) holding 2×1 Btns —
     /// Center (10,5), Left (4,5), Right (16,5), Up (10,2), Down (10,8) — laid out (one frame).
     /// </summary>
-    private static (UITestHost Host, Btn Center, Btn Left, Btn Right, Btn Up, Btn Down) CreateGrid(
+    private static (UIHeadlessHost Host, Btn Center, Btn Left, Btn Right, Btn Up, Btn Down) CreateGrid(
         DirectionalNavigationMode mode)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var container = new CanvasProbe("Grid", log, 40, 20);
@@ -350,7 +350,7 @@ public class Section09_TabNavigation
     [Fact]
     public void N132_Scoring_RowAlignedBeatsNearerButOffset()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var container = new CanvasProbe("Grid", log, 40, 20);
@@ -377,7 +377,7 @@ public class Section09_TabNavigation
            // ribbon-stack regression: both scored gap 0, and the row-0 twin won on document order)
     public void N132a_Scoring_SameRowBeatsTouchingRow()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var container = new CanvasProbe("Grid", log, 40, 20);
@@ -441,9 +441,9 @@ public class Section09_TabNavigation
     // ───────────────────────────── generalized scope entry (ND33) ─────────────────────────────
 
     /// <summary>The ND33 tree: <c>Root → F1, S(IsFocusScope[, Once]) → G1, G2, F3</c>, shown (activation focuses F1).</summary>
-    private static (UITestHost Host, Probe S, Btn F1, Btn G1, Btn G2, Btn F3) CreateScopeTree(bool once)
+    private static (UIHeadlessHost Host, Probe S, Btn F1, Btn G1, Btn G2, Btn F3) CreateScopeTree(bool once)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -490,7 +490,7 @@ public class Section09_TabNavigation
     [Fact] // N216 — an intra-scope move is NOT redirected to memory (the trap-prevention gate)
     public void N216_IntraScopeMove_NotRedirectedToMemory()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var f1 = new Btn("F1", log);
@@ -532,7 +532,7 @@ public class Section09_TabNavigation
     [Fact] // N218 — an outward Tab move into an ENCLOSING scope's own member is NOT trapped back inside (audit fix)
     public void N218_OutwardTab_NotTrappedInNestedScope()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Probe("A", log);
@@ -565,7 +565,7 @@ public class Section09_TabNavigation
     [Fact] // N219 — the same outward move under directional navigation reaches the enclosing scope's member
     public void N219_OutwardDirectional_NotTrappedInNestedScope()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var a = new CanvasProbe("A", log, 80, 24);
@@ -609,7 +609,7 @@ public class Section09_TabNavigation
     [Fact] // N221 — a non-stop marker (Label) inside a scope forwards to the next document-order stop, not scope memory
     public void N221_MarkerInsideScope_FindNext_NotRedirectedToMemory()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var s = new Probe("S", log);

@@ -3,8 +3,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -19,9 +19,9 @@ public sealed class Section10_ButtonBase
 {
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -67,7 +67,7 @@ public sealed class Section10_ButtonBase
 
     // Establishes pointer-over on the target cell (the hover that precedes a real click), applied via
     // the frame loop's UpdateHover. Use before a MouseDown so IsPointerOver is true at up time.
-    private static void HoverOver(UITestHost host, int column, int row)
+    private static void HoverOver(UIHeadlessHost host, int column, int row)
     {
         host.SendMouseMove(column, row);
         host.RunFrame();

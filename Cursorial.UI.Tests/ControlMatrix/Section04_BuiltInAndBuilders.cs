@@ -1,7 +1,7 @@
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using DrawingMedia = Cursorial.Drawing.Media;
@@ -84,7 +84,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C108
     public void C108_ResourceBrushResolver_ResourceAndInlineShareNamespace()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[ThemeKeys.AccentBrush] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -97,7 +97,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C109
     public void C109_ResourceBrushResolver_UnknownReturnsNull()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         var resolver = ResourceBrushResolver.Create(tree.Leaf);
@@ -109,7 +109,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C110 — per-control override: shadow a Type key at app scope
     public void C110_PerControlOverride_AppScopeTypeKeyWins()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
 
@@ -121,7 +121,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C111 — wholesale override: app.Theme participates before BuiltIn; BuiltIn backstops omitted keys
     public void C111_WholesaleOverride_ThemeHopBeforeBuiltIn()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
 
@@ -141,7 +141,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C98 — a Type-keyed control theme arms at ControlTheme(0)
     public void C98_ControlTheme_ArmsAtControlThemeLayer()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -159,7 +159,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C99 — shadowing a palette key re-skins a BuiltIn control with zero template work (R2 landed)
     public void C99_PaletteKeyShadow_ReSkin()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyTruecolor });
         var button = new Button { Content = "OK", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         host.ShowRoot(button);
         host.RunFrame();
@@ -181,7 +181,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C100 — a populated app.Theme.Styles arms matched selector styles at Theme(2) (R2/B13)
     public void C100_AppThemeStyles_ArmAtThemeLayer()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -203,7 +203,7 @@ public sealed class Section04_BuiltInAndBuilders
         var brush1 = new DrawingMedia.SolidColorBrush(Color.FromRgb(10, 20, 30));
         var brush2 = new DrawingMedia.SolidColorBrush(Color.FromRgb(40, 50, 60));
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
 
@@ -230,7 +230,7 @@ public sealed class Section04_BuiltInAndBuilders
     {
         var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(7, 8, 9));
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
 
@@ -253,7 +253,7 @@ public sealed class Section04_BuiltInAndBuilders
     {
         var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(1, 2, 3));
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
 
@@ -278,7 +278,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C101 — a populated Styles on a non-theme (element) dictionary is ignored in v1 (only app.Theme.Styles is consumed)
     public void C101_ElementResourcesStyles_Ignored()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel { Name = "Root" };
         var button = new Button { Content = "OK" };
         root.Children.Add(button);
@@ -302,7 +302,7 @@ public sealed class Section04_BuiltInAndBuilders
     {
         var themeBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(99, 0, 0));
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         button.Classes.Add("primary");
         host.ShowRoot(button);
@@ -324,7 +324,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C100f — END-TO-END (the #19 shape): a theme rule's TextElement.TextAttributes setter reaches a focused button
     public void C100f_ThemeRule_TextAttributesReachesElement()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // A panel root so its child Button is the first tab stop (auto-focused on activation).
         var root = new StackPanel { Name = "Root" };
@@ -358,7 +358,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C103 — control-theme nearest-scope ordering: a nearer chain scope's Type-keyed theme wins (both at ControlTheme(0))
     public void C103_ControlTheme_NearestScopeWins()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel { Name = "Root" };
         var button = new Button { Content = "OK" };
         root.Children.Add(button);

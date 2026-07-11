@@ -3,7 +3,7 @@
 
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -17,15 +17,15 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowInputTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot()
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);
     }
 
-    private static Window At(UITestHost host, int left, int top)
+    private static Window At(UIHeadlessHost host, int left, int top)
     {
         return host.NewWindow(
             windowStartupLocation: WindowStartupLocation.Manual,

@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Integration;
 
@@ -23,7 +23,7 @@ public sealed class CaretFocusIndicatorTests
     [Fact]
     public void Caret_PublishesWhenShown_ClearsWhenHidden_DefaultsToBlinkingUnderline()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         // Left/Top-pin so the zero-size caret sits at the origin (default Stretch would center it).
         var caret = new Caret { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         host.ShowRoot(new Border { Child = caret });
@@ -47,7 +47,7 @@ public sealed class CaretFocusIndicatorTests
     [Fact]
     public void Caret_ShapeOverride_IsPublished()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var caret = new Caret { CaretShape = CursorShape.SteadyBar, IsCaretShown = true };
         host.ShowRoot(new Border { Child = caret });
         Assert.True(host.RunUntilIdle());
@@ -59,7 +59,7 @@ public sealed class CaretFocusIndicatorTests
     [Fact]
     public void CheckBox_KeyboardFocus_ShowsCaretInBox_AndClearsWhenFocusMovesAway()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var check = new CheckBox { Content = "Enable" };
         var button = new Button { Content = "OK" };
         var stack = new StackPanel();
@@ -89,7 +89,7 @@ public sealed class CaretFocusIndicatorTests
         // Pointer focus is NOT focus-visible, so the box caret stays hidden (the indicator is for
         // keyboard navigation). A second control exists so activation auto-focus does not land the
         // keyboard caret on the CheckBox before the click.
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 4) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 4) });
         var button = new Button { Content = "OK" };
         var check = new CheckBox { Content = "Enable" };
         var stack = new StackPanel();

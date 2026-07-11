@@ -6,8 +6,8 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -20,9 +20,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 /// </summary>
 public sealed class Section09_TextBorderAccessKey
 {
-    private static UITestHost Attach(UIElement root)
+    private static UIHeadlessHost Attach(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -90,7 +90,7 @@ public sealed class Section09_TextBorderAccessKey
     public void C165_ResourceVersionBumpInvalidatesCache()
     {
         var tb = new TextBlock { Markup = "[brush=K]Hi[/brush]" };
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.Application.Resources["K"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00));
         host.ShowRoot(tb);
         host.RunFrame();
@@ -108,7 +108,7 @@ public sealed class Section09_TextBorderAccessKey
     public void C166_CapsChangeInvalidatesCache()
     {
         var tb = new TextBlock("Hi");
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(tb);
         host.RunFrame();
         Assert.Equal("H", host.GetCell(0, 0).Grapheme);
@@ -162,7 +162,7 @@ public sealed class Section09_TextBorderAccessKey
     {
         var child = new TextBlock("ab"); // 2×1
         var decorator = new Decorator { Child = child };
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(decorator);
         decorator.Measure(new Size(80, 24));
 
@@ -179,7 +179,7 @@ public sealed class Section09_TextBorderAccessKey
             Padding = new Margins(1, 1, 1, 1),
             BorderPen = Pens.Light
         };
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(border);
         border.Measure(new Size(80, 24));
 
@@ -418,7 +418,7 @@ public sealed class Section09_TextBorderAccessKey
         // Ansi16Legacy has KeyboardCapabilities.None → the gate is false → AccessKeyMode.AlwaysVisible
         // (requirement 6's fallback: the cue bit is stamped on the root permanently at startup). The
         // theme rule must then underline the mnemonic with NO Alt press.
-        var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
         var button = new Button { Content = "_OK" }; // folds to AccessText("OK", 'O', 0) → AccessTextPresenter
         host.ShowRoot(button);
         host.RunFrame();
@@ -442,7 +442,7 @@ public sealed class Section09_TextBorderAccessKey
     {
         // KittyTruecolor reports key up/down + repeats → the gate is true → AccessKeyMode.AltHeld: no
         // cue at rest, the cue (and thus the underline) appears on Alt-down and reverts on Alt-up.
-        using var host = UITestHost.Create(); // KittyTruecolor default
+        using var host = UIHeadlessHost.Create(); // KittyTruecolor default
         var button = new Button { Content = "_OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -483,7 +483,7 @@ public sealed class Section09_TextBorderAccessKey
     [Fact] // C182b — terminal focus-out clears the cue and the underline (ND24 ①).
     public void C182b_AccessKeyCue_TerminalFocusOut_ClearsUnderline()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "_OK" };
         host.ShowRoot(button);
         host.RunFrame();

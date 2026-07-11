@@ -5,7 +5,7 @@ using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Configuration;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Configuration;
 
@@ -17,11 +17,11 @@ public sealed class UserOptionsSessionTests
 {
     private const string AppId = "session-test-app";
 
-    private static UITestHost CreateHost(TempConfigRoot root)
+    private static UIHeadlessHost CreateHost(TempConfigRoot root)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
             ConfigureBuilder = builder => builder.WithUserConfiguration(new UserConfigurationOptions
             {
                 ApplicationId = AppId,

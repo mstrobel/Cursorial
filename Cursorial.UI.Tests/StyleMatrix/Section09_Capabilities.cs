@@ -3,7 +3,7 @@
 
 using Cursorial.Output;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -35,7 +35,7 @@ public class Section09_Capabilities
     [Fact]
     public void S141_Ansi16Host_ExactlyTierEmojiAndUnicode()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
 
         // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04).
         Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode"], tree.Root.Classes.ToArray());
@@ -48,15 +48,15 @@ public class Section09_Capabilities
     [InlineData(ColorDepth.Truecolor, "caps-truecolor")]
     public void S142_ExactlyOneColorTierClass_PerDepth(ColorDepth depth, string expected)
     {
-        var capabilities = TestCapabilities.KittyTruecolor with
+        var capabilities = HeadlessCapabilities.KittyTruecolor with
         {
-            Output = TestCapabilities.KittyTruecolor.Output with
+            Output = HeadlessCapabilities.KittyTruecolor.Output with
             {
-                Color = TestCapabilities.KittyTruecolor.Output.Color with { Depth = depth }
+                Color = HeadlessCapabilities.KittyTruecolor.Output.Color with { Depth = depth }
             }
         };
 
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = capabilities });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = capabilities });
 
         var tiers = tree.Root.Classes
             .Where(static name => name is "caps-truecolor" or "caps-ansi256" or "caps-ansi16" or "caps-nocolor")
@@ -76,7 +76,7 @@ public class Section09_Capabilities
             Assert.Equal(5, kitty.A.GetValue(Widget.P)); // active under the Kitty tier
         }
 
-        using (var legacy = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy }, show: false))
+        using (var legacy = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy }, show: false))
         {
             legacy.App.Styles.Add(R(".caps-truecolor Widget", (Widget.P, 5)));
             legacy.Host.ShowRoot(legacy.Root);
@@ -102,7 +102,7 @@ public class Section09_Capabilities
         tree.Host.ShowRoot(tree.Root);
         Assert.Equal(5, tree.A.GetValue(Widget.P));
 
-        tree.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.Ansi16Legacy);
+        tree.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.Ansi16Legacy);
         await tree.App.RenegotiateAsync();
 
         // Same tick: classes swapped + tier-gated rules re-matched, before any frame ran.

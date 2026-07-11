@@ -9,7 +9,7 @@ using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -23,7 +23,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void StaticPanelTree_RendersHeadlessly_CellAndByteAssertions()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var panel = new StackPanel();
         panel.Children.Add(new Probe(6, 1) { FillGlyph = "A", HorizontalAlignment = HorizontalAlignment.Left });
         panel.Children.Add(new Probe(6, 1) { FillGlyph = "B", HorizontalAlignment = HorizontalAlignment.Left });
@@ -51,7 +51,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void RunUntilIdle_ReachesIdle_AndReportsWork()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new Probe(4, 1));
         Assert.False(host.Application.IsIdle); // layout + render pending
 
@@ -66,7 +66,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void RunFrames_EarlyExitsOnShutdown()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.Shutdown();
         Assert.Equal(0, host.RunFrames(5));
     }
@@ -74,7 +74,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void Caret_PublishedState_ReachesBufferCursor()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var panel = new StackPanel();
         var editor = new Probe(10, 1);
         panel.Children.Add(new Probe(10, 1));
@@ -109,7 +109,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void SendBytes_ParserPath_DeliversKeyEvents()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var dispatched = new List<InputEvent>();
         host.Application.InputDispatchTarget = new CollectingTarget(dispatched);
 
@@ -125,7 +125,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void SendBytes_LoneEsc_CommitsOnlyAfterFakeClockCrossesAmbiguityWindow()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var dispatched = new List<InputEvent>();
         host.Application.InputDispatchTarget = new CollectingTarget(dispatched);
 
@@ -145,7 +145,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void SendInput_DefaultTimestamp_StampedFromFakeClock()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var dispatched = new List<InputEvent>();
         host.Application.InputDispatchTarget = new CollectingTarget(dispatched);
         host.Time.Advance(TimeSpan.FromSeconds(5));
@@ -165,7 +165,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void RootElement_Swap_DetachesOldAndRendersNew()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var first = new Probe(4, 1) { FillGlyph = "1" };
         host.ShowRoot(first);
         Assert.True(host.RunUntilIdle());
@@ -183,17 +183,17 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void SupportsAltKeyTracking_FollowsUndecoratedSnapshot()
     {
-        using var kitty = UITestHost.Create();
+        using var kitty = UIHeadlessHost.Create();
         Assert.True(kitty.Application.SupportsAltKeyTracking); // Kitty: up/down + repeats
 
-        using var legacy = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        using var legacy = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
         Assert.False(legacy.Application.SupportsAltKeyTracking);
     }
 
     [Fact]
     public void EffectiveInputCapabilities_ReflectClickDecoration()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         // The default pipeline applies click-count synthesis (S3 contract defaults).
         Assert.True(host.Application.EffectiveInputCapabilities.Mouse.SynthesizesClickCounts);
         Assert.False(host.Application.EffectiveInputCapabilities.Mouse.SynthesizesClicks);
@@ -204,13 +204,13 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void TwoParallelHosts_OnDifferentThreads_NeverCrossWire()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "A" });
         Assert.True(host.RunUntilIdle());
 
         var otherThreadOk = WorkerThread.Run(() =>
         {
-            using var other = UITestHost.Create();
+            using var other = UIHeadlessHost.Create();
             other.ShowRoot(new Probe(4, 1) { FillGlyph = "B" });
             return other.RunUntilIdle() && other.GetRowText(0).StartsWith("BBBB", StringComparison.Ordinal);
         });
@@ -223,7 +223,7 @@ public sealed class UITestHostRenderingTests
     [Fact]
     public void CleanFrame_AllocatesNothing()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var panel = new StackPanel();
         panel.Children.Add(new Probe(6, 1) { FillGlyph = "A" });
         panel.Children.Add(new Probe(6, 1) { FillGlyph = "B" });

@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -17,9 +17,9 @@ public sealed class Section27_Calendar
     private static readonly DateOnly Jun1 = new(2026, 6, 1);
     private static readonly DateOnly Jun18 = new(2026, 6, 18); // the pinned "today"
 
-    private static (UITestHost Host, Calendar Cal) Show()
+    private static (UIHeadlessHost Host, Calendar Cal) Show()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 16) });
         var cal = new Calendar
         {
             Today = Jun18,
@@ -35,7 +35,7 @@ public sealed class Section27_Calendar
 
     // A Release-mode button (the day cells + prev/next) clicks only when IsPointerOver is true at mouse-up, so hover
     // the cell (the frame-loop UpdateHover) before pressing — the established Section10 pattern.
-    private static void ClickAt(UITestHost host, (int Column, int Row) p)
+    private static void ClickAt(UIHeadlessHost host, (int Column, int Row) p)
     {
         host.SendMouseMove(p.Column, p.Row);
         host.RunFrame();

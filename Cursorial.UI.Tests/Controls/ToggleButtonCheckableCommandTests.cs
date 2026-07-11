@@ -2,7 +2,7 @@ using System.Windows.Input;
 
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.Controls;
 // Handled clears.
 public sealed class ToggleButtonCheckableCommandTests
 {
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;

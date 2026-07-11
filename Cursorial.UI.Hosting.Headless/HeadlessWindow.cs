@@ -1,8 +1,8 @@
-namespace Cursorial.UI.Testing;
+namespace Cursorial.UI.Hosting.Headless;
 
-public class TestWindow : Window
+public class HeadlessWindow : Window
 {
-    public TestWindow(UITestHost host)
+    public HeadlessWindow(UIHeadlessHost host)
     {
         if (host.Options.DisableInactiveWindowTransitions)
             Transition.SetTransitions(this, null);

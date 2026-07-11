@@ -4,8 +4,8 @@ using Cursorial.Output;
 using Cursorial.Terminal;
 using Cursorial.Tests.UI.InputMatrix;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Input;
 
@@ -14,7 +14,7 @@ namespace Cursorial.Tests.UI.Input;
 /// resolution riding the hover/capture machinery in S3, equality-gated OSC 22 emission through
 /// S6's <c>QueueControlSequence</c>, the <c>OutputProtocolCapabilities.MouseCursorShape</c>
 /// capability gate, and the teardown / renegotiation resets — asserted on the wire bytes under
-/// the <see cref="TestCapabilities"/> presets.
+/// the <see cref="HeadlessCapabilities"/> presets.
 /// </summary>
 public class MouseCursorTests
 {
@@ -62,7 +62,7 @@ public class MouseCursorTests
     /// </summary>
     private sealed class CursorHost : IDisposable
     {
-        private CursorHost(UITestHost host, CanvasProbe root, CanvasProbe left, Probe right, Probe leaf)
+        private CursorHost(UIHeadlessHost host, CanvasProbe root, CanvasProbe left, Probe right, Probe leaf)
         {
             Host = host;
             Root = root;
@@ -71,7 +71,7 @@ public class MouseCursorTests
             Leaf = leaf;
         }
 
-        public UITestHost Host { get; }
+        public UIHeadlessHost Host { get; }
 
         public CanvasProbe Root { get; }
 
@@ -85,9 +85,9 @@ public class MouseCursorTests
 
         public static CursorHost Create(TerminalCapabilities? capabilities = null)
         {
-            var host = UITestHost.Create(new UITestHostOptions
+            var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
             {
-                Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
+                Capabilities = capabilities ?? HeadlessCapabilities.KittyTruecolor,
                 CaptureFrameBytes = true
             });
 
@@ -298,7 +298,7 @@ public class MouseCursorTests
     [Fact]
     public void Unsupported_ZeroBytes_AndNoTracking()
     {
-        using var fixture = CursorHost.Create(TestCapabilities.NoMouseCursorShape);
+        using var fixture = CursorHost.Create(HeadlessCapabilities.NoMouseCursorShape);
         fixture.Left.Cursor = MouseCursorShape.Pointer;
         fixture.Right.Cursor = MouseCursorShape.Text;
 
@@ -330,7 +330,7 @@ public class MouseCursorTests
     [Fact]
     public void Teardown_EmitsNothing_WhenUnsupported()
     {
-        var fixture = CursorHost.Create(TestCapabilities.NoMouseCursorShape);
+        var fixture = CursorHost.Create(HeadlessCapabilities.NoMouseCursorShape);
         fixture.Left.Cursor = MouseCursorShape.Pointer;
         fixture.MoveAndPump(13, 7);
 
@@ -349,7 +349,7 @@ public class MouseCursorTests
         fixture.Right.Cursor = MouseCursorShape.Text;
         fixture.MoveAndPump(13, 7); // a shape is active on the wire
 
-        fixture.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.NoMouseCursorShape);
+        fixture.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.NoMouseCursorShape);
         await fixture.Host.Application.RenegotiateAsync();
 
         // Exactly 1 OSC 22 sequence in this frame, and it is the reset: the renegotiate path wrote
@@ -368,11 +368,11 @@ public class MouseCursorTests
     [Fact]
     public async Task Renegotiate_GateGain_ReEmitsTheActiveShape_WithoutNewMotion()
     {
-        using var fixture = CursorHost.Create(TestCapabilities.NoMouseCursorShape);
+        using var fixture = CursorHost.Create(HeadlessCapabilities.NoMouseCursorShape);
         fixture.Left.Cursor = MouseCursorShape.Pointer;
         fixture.MoveAndPump(13, 7); // chain is live; nothing emitted (gate off)
 
-        fixture.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.KittyTruecolor);
+        fixture.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.KittyTruecolor);
         await fixture.Host.Application.RenegotiateAsync();
         var bytes = fixture.Pump();
 

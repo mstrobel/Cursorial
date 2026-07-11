@@ -1,6 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -61,7 +61,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
     {
         // The producer re-resolves on attach against the runtime chain (the part isn't parented at load),
         // so attach the tree and pump a frame, then assert it resolved at LocalValue (XD7 — no sentinel).
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var border = Load<UIControls.Border>(
             "<Border><Border.Resources><TestBrush x:Key=\"A\" Color=\"Red\"/></Border.Resources>" +
             "<Button Background=\"{DynamicResource A}\"/></Border>");
@@ -92,7 +92,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
     {
         // {x:Static ThemeKeys.SurfaceBrush} resolves to the const "Theme.SurfaceBrush" at instantiate;
         // the DynamicResource then keys off that — the real demo scenario.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var border = Load<UIControls.Border>(
             "<Border><Border.Resources><TestBrush x:Key=\"Theme.SurfaceBrush\" Color=\"Red\"/></Border.Resources>" +
             "<Button Background=\"{DynamicResource {x:Static ThemeKeys.SurfaceBrush}}\"/></Border>");
@@ -246,7 +246,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
     {
         // DynamicResource installs a producer at LocalValue; the stored value is never a ResourceReference
         // sentinel (the §4.11-rejected pattern, XD7).
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var border = Load<UIControls.Border>(
             "<Border><Border.Resources><TestBrush x:Key=\"A\" Color=\"Red\"/></Border.Resources>" +
             "<Button Background=\"{DynamicResource A}\"/></Border>");

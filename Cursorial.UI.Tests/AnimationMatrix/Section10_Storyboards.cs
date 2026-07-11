@@ -2,7 +2,7 @@ using Cursorial.Animation;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
@@ -14,9 +14,9 @@ namespace Cursorial.Tests.UI.AnimationMatrix;
 public sealed class Section10_Storyboards
 {
     // A shown host whose root IS the scope (an Animatable), so a TargetName-less track targets it directly.
-    private static (UITestHost Host, Animatable Scope) ShowScope()
+    private static (UIHeadlessHost Host, Animatable Scope) ShowScope()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         var scope = new Animatable();
         var root = new StackPanel();
         root.Children.Add(scope);
@@ -61,7 +61,7 @@ public sealed class Section10_Storyboards
     [Fact] // N103: a TargetName track resolves the named element via FindName and targets it
     public void TargetName_ResolvesNamedElement()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var named = new Animatable();
         var root = new StackPanel();
@@ -244,7 +244,7 @@ public sealed class Section10_Storyboards
     [Fact] // N112: two scopes ⇒ independent instances; stopping one leaves the other running
     public void TwoScopes_Independent()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var a = new Animatable();
         var b = new Animatable();
@@ -271,7 +271,7 @@ public sealed class Section10_Storyboards
     [Fact] // N113: detaching the scope retracts every scoped child; no Completed; idle drops (A0's N97 realized)
     public void DetachScope_RetractsAll()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var scope = new Animatable();
         var root = new StackPanel();

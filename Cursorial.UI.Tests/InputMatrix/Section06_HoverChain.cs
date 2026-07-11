@@ -1,8 +1,8 @@
 using Cursorial.Input;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -170,7 +170,7 @@ public class Section06_HoverChain
     [Fact]
     public void N079_ScrollOffsetChange_UpdateHoverTracksCompositeSlide()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var presenter = new ScrollContentPresenter { Width = 20, Height = 5, CanScrollVertically = true };
@@ -310,7 +310,7 @@ public class Section06_HoverChain
         var hoverChanges = 0;
         fixture.Dispatcher.HoverChanged += (_, _) => hoverChanges++;
 
-        fixture.Dispatcher.OnCapabilitiesChanged(TestCapabilities.NoMotion);
+        fixture.Dispatcher.OnCapabilitiesChanged(HeadlessCapabilities.NoMotion);
 
         // The ordinary diff: MouseLeave deepest-first, PointerOver off everywhere, one HoverChanged.
         Assert.Equal(["D.OnMouseLeave", "A.OnMouseLeave", "Root.OnMouseLeave"], fixture.Log);
@@ -322,7 +322,7 @@ public class Section06_HoverChain
         // The driver is forgotten: even a motion-capable RE-renegotiation re-hovers nothing until
         // fresh motion arrives (the stale position must not silently rebuild the chain).
         fixture.Log.Clear();
-        fixture.Dispatcher.OnCapabilitiesChanged(TestCapabilities.KittyTruecolor);
+        fixture.Dispatcher.OnCapabilitiesChanged(HeadlessCapabilities.KittyTruecolor);
         fixture.Dispatcher.UpdateHover();
         fixture.Host.RunFrame();
         Assert.DoesNotContain(fixture.Log, static entry => entry.Contains("MouseEnter"));

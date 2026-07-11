@@ -1,6 +1,6 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -12,9 +12,9 @@ namespace Cursorial.Tests.UI.InputMatrix;
 /// </summary>
 public class Section13_Timers
 {
-    private static UITestHost CreateHost()
+    private static UIHeadlessHost CreateHost()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(new Canvas());
         host.RunFrame(); // settle — Clock.Now frozen at 0
         return host;

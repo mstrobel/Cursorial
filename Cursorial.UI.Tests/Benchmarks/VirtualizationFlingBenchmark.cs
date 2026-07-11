@@ -3,7 +3,7 @@ using System.Diagnostics;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Xunit.Abstractions;
 
@@ -26,9 +26,9 @@ public class VirtualizationFlingBenchmark(ITestOutputHelper output)
     private const int Repetitions = 5;
     private const int FlingSteps = 60; // offset waypoints across the extent per measured fling frame-set
 
-    private static (UITestHost Host, ListBox List, ScrollViewer Scroll) CreateList()
+    private static (UIHeadlessHost Host, ListBox List, ScrollViewer Scroll) CreateList()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 24) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 24) });
         var lb = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),

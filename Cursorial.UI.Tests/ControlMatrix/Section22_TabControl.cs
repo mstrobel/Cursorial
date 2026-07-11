@@ -2,8 +2,8 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // the headers, the content host shows the selected tab's content; click + keyboard select; the first tab auto-selects.
 public sealed class Section22_TabControl
 {
-    private static (UITestHost Host, TabControl Tabs, TabItem A, TabItem B, TabItem C) ThreeTabs()
+    private static (UIHeadlessHost Host, TabControl Tabs, TabItem A, TabItem B, TabItem C) ThreeTabs()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         var a = new TabItem { Header = "A", Content = "bodyA" };
         var b = new TabItem { Header = "B", Content = "bodyB" };
         var c = new TabItem { Header = "C", Content = "bodyC" };
@@ -28,7 +28,7 @@ public sealed class Section22_TabControl
         return (host, tabs, a, b, c);
     }
 
-    private static void Click(UITestHost host, UIElement element)
+    private static void Click(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToWindow(0, 0);
         host.SendClick(origin.Column + 1, origin.Row);
@@ -38,7 +38,7 @@ public sealed class Section22_TabControl
     [Fact] // C9.1: containers are TabItems; a TabItem is its own container, a data item is wrapped
     public void C9_1_Containers()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         var own = new TabItem { Header = "A", Content = "bodyA" };
         var tabs = new TabControl();
         tabs.Items.Add(own);
@@ -219,7 +219,7 @@ public sealed class Section22_TabControl
     [Fact] // C9.13: UIElement (non-string) content switches between tabs without double-hosting (single visual parent)
     public void C9_13_UIElementContentSwitches()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         using var _ = host;
         var bodyA = new Border { Child = new TextBlock { Text = "A-body" } };
         var bodyB = new Border { Child = new TextBlock { Text = "B-body" } };
@@ -247,7 +247,7 @@ public sealed class Section22_TabControl
     [Fact] // C9.14: keyboard navigation on an empty TabControl is a safe no-op (the count==0 guard; no DivideByZero on Ctrl+Page)
     public void C9_14_EmptyTabControlKeyboardNoOp()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         using var _ = host;
         var tabs = new TabControl { Focusable = true }; // no items
         host.ShowRoot(tabs);
@@ -282,7 +282,7 @@ public sealed class Section22_TabControl
            // (which would steal focus on re-activation). Same guard protects ComboBox.
     public void C9_16_ProgrammaticSelect_DoesNotCorruptEnclosingScopeMemory()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 16) });
         using var _ = host;
         var lead = new Button { Content = "Lead" };
         var tabs = new TabControl();
@@ -310,9 +310,9 @@ public sealed class Section22_TabControl
     // ── IsSelectable: a focusable-but-not-selectable command tab (the "never the selected tab" contract on a plain
     //    TabControl — the model, not just the input gates, must enforce it) ──────────────────────────────────────────
 
-    private static (UITestHost Host, TabControl Tabs, TabItem Cmd, TabItem A, TabItem B) CommandTab()
+    private static (UIHeadlessHost Host, TabControl Tabs, TabItem Cmd, TabItem A, TabItem B) CommandTab()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         var cmd = new TabItem { Header = "Cmd", Content = "bodyCmd", IsSelectable = false }; // index 0, non-selectable
         var a = new TabItem { Header = "A", Content = "bodyA" };
         var b = new TabItem { Header = "B", Content = "bodyB" };
@@ -383,7 +383,7 @@ public sealed class Section22_TabControl
     [Fact] // C9.NS5: a TabControl whose tabs are ALL non-selectable selects nothing (no band) — the degenerate case
     public void C9_NS5_AllNonSelectableSelectsNothing()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(48, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(48, 16) });
         using var _h = host;
         var tabs = new TabControl();
         tabs.Items.Add(new TabItem { Header = "X", Content = "bodyX", IsSelectable = false });

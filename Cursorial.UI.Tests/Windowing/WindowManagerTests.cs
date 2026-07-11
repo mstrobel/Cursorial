@@ -3,7 +3,7 @@
 
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -21,7 +21,7 @@ public sealed class WindowManagerTests
     [Fact] // ShowRoot installs one chrome-less root surface wrapping the root's RenderTree
     public void ShowRoot_InstallsSingleChromelessRootSurface()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
         var root = new UIControls.StackPanel();
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
@@ -41,7 +41,7 @@ public sealed class WindowManagerTests
     [Fact] // a viewport resize re-fits the root surface (and the next frame stays clean)
     public void ViewportResize_RefitsRootSurface()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
 
@@ -54,7 +54,7 @@ public sealed class WindowManagerTests
     [Fact] // clearing the root tears the surface down (scenes back to the pool)
     public void ClearingRoot_RemovesTheSurface()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
         Assert.Single(host.Application.WindowManager!.Surfaces);

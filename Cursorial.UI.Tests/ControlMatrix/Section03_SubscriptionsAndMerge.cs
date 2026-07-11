@@ -1,7 +1,7 @@
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
@@ -22,7 +22,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C59
     public void C59_MergedType_CarriesBothSurfaces()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
 
         _ = app.Resources;
@@ -41,7 +41,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C60
     public void C60_ResourcesReplace_FansCatchAll()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -56,7 +56,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C61
     public void C61_AppResourcesBeatTheme()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[K] = "app";
@@ -68,7 +68,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C62
     public void C62_NearerScopeShadowsApp()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[K] = "app";
@@ -86,14 +86,14 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C63
     public void C63_Startup_DerivesVariant()
     {
-        using var host = UITestHost.Create(); // Kitty preset: bg #1E1E2E (dark), Truecolor
+        using var host = UIHeadlessHost.Create(); // Kitty preset: bg #1E1E2E (dark), Truecolor
         Assert.Equal(new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor), host.Application.ActualThemeVariant);
     }
 
     [Fact] // C64
     public async Task C64_Renegotiate_FlipsBase_OrderPinned_NoDictionaryChange()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -116,7 +116,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C65
     public void C65_RequestedThemeBase_OverridesDerived_OnlyResources()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -135,7 +135,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C66
     public void C66_RequestedColorTier_Override_ResourcesAndClass()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -149,7 +149,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C67
     public void C67_ClearRequested_RederivesFromTerminal()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -168,7 +168,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C68
     public async Task C68_RenegotiateNoMaterialChange_Idempotent()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -177,7 +177,7 @@ public sealed class Section03_SubscriptionsAndMerge
         app.ActualThemeVariantChanged += (_, _) => fired = true;
         app.ResourcesChanged += (_, _) => fired = true;
 
-        host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.KittyTruecolor); // same caps
+        host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.KittyTruecolor); // same caps
         await app.RenegotiateAsync();
 
         Assert.False(fired);
@@ -188,7 +188,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C69
     public void C69_ColorClass_FollowsEffectiveTier()
     {
-        using var host = UITestHost.Create(); // negotiated Truecolor
+        using var host = UIHeadlessHost.Create(); // negotiated Truecolor
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -201,7 +201,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C70
     public void C70_NonColorClasses_StayNegotiated()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -218,7 +218,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C71 — a caps-ansi16-classed style reassigns a glyph resource; resources + styles agree
     public void C71_PreviewAnsi16_ResourcesAndStylesAgree()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -236,7 +236,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C72 — the re-stamp rides ActualThemeVariantChanged
     public void C72_ClassRestamp_RidesVariantChanged()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -258,7 +258,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C73
     public void C73_SetResourceReference_ProducerAtLocalValue()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -271,7 +271,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C74
     public void C74_KeyedPulse_ReResolvesInPlace()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -285,7 +285,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C75
     public void C75_LaterSetValue_EvictsProducer_NoZombie()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -303,7 +303,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C76
     public void C76_ClearValue_DetachesProducer()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -317,7 +317,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C77
     public void C77_MissingKey_PromotesLowerSource()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
 
@@ -328,7 +328,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C78
     public void C78_MissingThenAppears_ReResolves()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         tree.Leaf.SetResourceReference(Probe.P, K);
@@ -342,7 +342,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C79
     public void C79_NearerScopeShadow_ScopeContainmentReResolves()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.Application.Resources[K] = Vbrush; // leaf resolves to the app value
         host.ShowRoot(tree.Root);
@@ -357,7 +357,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C80
     public void C80_SiblingOutsideScope_NotReResolved()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.Application.Resources[K] = Vbrush;
         var sibling = new Probe();
@@ -375,7 +375,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C81
     public void C81_PauseResume_AtMostOneReResolve()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -401,7 +401,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C82 — snapshot/tombstone: mid-sweep Subscribe/Dispose is safe
     public void C82_MidSweepReArm_SnapshotTombstone()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -421,7 +421,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C83 — a listener mutating resources during a sweep drains to a fixpoint
     public void C83_ReentrantResourceMutation_DrainsToFixpoint()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         tree.Root.Res["B"] = "b0";
@@ -440,7 +440,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C84
     public void C84_Detach_UnregistersNodes_ReattachReResolves()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -457,7 +457,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C85 — DEBUG leak tracker: zero live nodes at root teardown
     public void C85_RootTeardown_ZeroLiveNodes()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);
@@ -473,7 +473,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C89
     public void C89_GetResourceVersion_BumpsOnEveryPulse()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
@@ -497,7 +497,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C86 — SubscribeControlTheme: one handle owns the ThemeProperty observer + the chain registry node; theme resolves to the BuiltIn Type-keyed theme (CD13)
     public void C86_SubscribeControlTheme_OneHandle_ResolvesBuiltInThemeAndWatchesChain()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -524,7 +524,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C87 — explicit Control.Theme set re-arms (the override wins; ThemeProperty drives re-templating) (CD13)
     public void C87_ExplicitThemeSet_OverrideWins_ReArms()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -546,7 +546,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C88 — variant flip: control theme re-resolves to the SAME Style instance (keyed per Type, not per variant) → identity short-circuit → no re-templating (CD15)
     public void C88_VariantFlip_SameThemeInstance_NoReTemplating()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
         host.ShowRoot(button);
         host.RunFrame();
@@ -564,7 +564,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C90 — TextBlock cache re-parses on a KEYED resource pulse (the key includes ver(this)); no ResourceDictionary.Changed subscription (CD16)
     public void C90_TextBlockCache_ReParsesOnKeyedPulse()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         // The brush lives on the root's element scope so a keyed pulse on it sweeps that root's registry.
         var root = new StackPanel { Name = "Root" };
         root.Resources["Brush.Accent"] = Vbrush;
@@ -595,7 +595,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C91 — variant flip bumps ver synchronously on the pulse
     public void C91_VariantFlip_BumpsVersionSynchronously()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
@@ -612,7 +612,7 @@ public sealed class Section03_SubscriptionsAndMerge
     [Fact] // C92 — registration root = where the logical chain tops out
     public void C92_RegistrationRoot_LogicalChainTop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = Vbrush;
         host.ShowRoot(tree.Root);

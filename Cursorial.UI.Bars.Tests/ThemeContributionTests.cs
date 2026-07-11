@@ -4,7 +4,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using Style = Cursorial.UI.Style;
@@ -53,8 +53,8 @@ public sealed class ThemeContributionTests
         ThemeContributions.Register(contribution);
     }
 
-    private static UITestHost NewHost() =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(16, 4), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost() =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(16, 4), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     [Fact] // THE CLOSED GAP: a contributed control theme's DynamicResource reference to a contributed brush resolves.
     public void ContributedBrush_ReferencedByContributedControlTheme_Resolves()

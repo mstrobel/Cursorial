@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // Control-matrix P9 §C4 — ListBox / Selector / ListBoxItem (P9.3a: selection core — mouse + model wiring + theme).
 public sealed class Section17_ListBox
 {
-    private static (UITestHost Host, ListBox List) Show(ListBox list)
+    private static (UIHeadlessHost Host, ListBox List) Show(ListBox list)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 10) });
         host.ShowRoot(list);
         host.RunUntilIdle();
         return (host, list);

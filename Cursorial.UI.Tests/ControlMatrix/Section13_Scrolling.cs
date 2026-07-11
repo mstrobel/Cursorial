@@ -3,7 +3,7 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -18,9 +18,9 @@ public sealed class Section13_Scrolling
 {
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -522,7 +522,7 @@ public sealed class Section13_Scrolling
     }
 
     // Dispatches a Press-mode click on a button by its window position (down = click for ClickMode.Press).
-    private static void ClickButton(UITestHost host, UIElement button)
+    private static void ClickButton(UIHeadlessHost host, UIElement button)
     {
         var (col, row) = button.TranslateToWindow(0, 0);
         var dispatcher = host.Application.InputDispatcher;

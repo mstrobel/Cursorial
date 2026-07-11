@@ -3,8 +3,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -16,17 +16,17 @@ namespace Cursorial.Tests.UI.Bars;
 // makes the shared dropdown CONTENT presenter the barrier — an ancestor of every item for both controls.
 public sealed class DropDownFocusReturnTests
 {
-    private sealed record Harness(UITestHost Host, Button Editor, Toolbar Toolbar, BarDropDownButton Opener, BarButton Item)
+    private sealed record Harness(UIHeadlessHost Host, Button Editor, Toolbar Toolbar, BarDropDownButton Opener, BarButton Item)
     {
         public FocusManager Focus => Host.Application.FocusManager;
     }
 
     private static Harness Build(BarDropDownButton opener)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(48, 8),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
 
         var item = new BarButton { Content = "Paste Special" };
@@ -114,10 +114,10 @@ public sealed class DropDownFocusReturnTests
            // through no light-dismiss path, was unaffected). Fixed by sparing the hit popup's whole ancestor chain.
     public void OverflowedDropDown_ItemPointerInvoke_FiresCommand()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(60, 12),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
 
         var invoked = 0;

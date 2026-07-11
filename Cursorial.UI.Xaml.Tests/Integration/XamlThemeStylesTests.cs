@@ -4,7 +4,7 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 using Cursorial.UI.Xaml;
@@ -90,7 +90,7 @@ public sealed class XamlThemeStylesTests
     [Fact] // The XAML caps-unicode glyph style is genuinely CONSUMED + OVERRIDES BuiltIn (a unique glyph wins).
     public void XamlThemeStyles_OverrideBuiltIn_CapsUnicodeGlyph()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(8, 1) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(8, 1) });
 
         // A custom theme whose .caps-unicode CheckBox rule sets a UNIQUE checked mark "(!)" (not BuiltIn's "[✓]"),
         // authored through the same FillStyles + GlyphSetCarrier string-converter path Styles.xaml uses.
@@ -128,7 +128,7 @@ public sealed class XamlThemeStylesTests
 
     private static (string Glyph, Color Fg, Color Bg, TextAttributes Attrs)[] RenderCaps(bool xaml, bool checkBoxCase)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(12, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(12, 3) });
         if (xaml)
             host.Application.Theme = CursorialDefaultTheme.LoadTheme();
 

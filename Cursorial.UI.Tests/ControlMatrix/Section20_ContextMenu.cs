@@ -6,8 +6,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable UnusedTupleComponentInReturnValue
 // ReSharper disable InconsistentNaming
@@ -19,7 +19,7 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // ContextMenu host, the attached MenuProperty, and the dispatcher's router-default open/dismiss.
 public sealed class Section20_ContextMenu
 {
-    private static UITestHost Host() => UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+    private static UIHeadlessHost Host() => UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
 
     private sealed class TestCommand : ICommand
     {
@@ -31,7 +31,7 @@ public sealed class Section20_ContextMenu
     }
 
     // A root element bearing a ContextMenu, sized to fill the host so a click anywhere hits it.
-    private static (UITestHost Host, Border Owner, ContextMenu Menu) RootWithMenu(ContextMenu menu)
+    private static (UIHeadlessHost Host, Border Owner, ContextMenu Menu) RootWithMenu(ContextMenu menu)
     {
         var host = Host();
         var owner = new Border { Width = 30, Height = 10 };
@@ -41,7 +41,7 @@ public sealed class Section20_ContextMenu
         return (host, owner, menu);
     }
 
-    private static int Popups(UITestHost host) => host.Application.WindowManager!.Popups.Count;
+    private static int Popups(UIHeadlessHost host) => host.Application.WindowManager!.Popups.Count;
 
     [Fact] // C7.1: a ContextMenu generates MenuItem containers; a MenuItem item is its own container
     public void C7_1_Containers()

@@ -4,7 +4,7 @@
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -20,9 +20,9 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowActivationFocusTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot()
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         host.ShowRoot(new UIControls.StackPanel());
         host.RunUntilIdle();
         return (host, host.Application.WindowManager!);
@@ -130,7 +130,7 @@ public sealed class WindowActivationFocusTests
            // captures the live focused element so re-activation is exact.
     public void DeactivateReactivate_RestoresNestedScopeFocus_NotStaleRootMemory()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         using var scope = host;
 
         var list = new UIControls.ListBox { ItemsSource = new[] { "a", "b", "c" }, Width = 20, Height = 6 };

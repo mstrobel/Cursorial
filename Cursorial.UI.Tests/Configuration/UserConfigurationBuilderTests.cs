@@ -1,7 +1,7 @@
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Configuration;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
@@ -16,10 +16,10 @@ public sealed class UserConfigurationBuilderTests
 {
     private const string AppId = "builder-test-app";
 
-    private static UITestHostOptions Configured(TempConfigRoot root, string appId = AppId, Cursorial.Terminal.TerminalCapabilities? capabilities = null)
+    private static UIHeadlessHostOptions Configured(TempConfigRoot root, string appId = AppId, Cursorial.Terminal.TerminalCapabilities? capabilities = null)
         => new()
         {
-            Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
+            Capabilities = capabilities ?? HeadlessCapabilities.KittyTruecolor,
             ConfigureBuilder = builder => builder.WithUserConfiguration(new UserConfigurationOptions
             {
                 ApplicationId = appId,
@@ -166,7 +166,7 @@ public sealed class UserConfigurationBuilderTests
             }
             """);
 
-        using var tree = ShowTree(Configured(root, capabilities: TestCapabilities.KittyGraphics));
+        using var tree = ShowTree(Configured(root, capabilities: HeadlessCapabilities.KittyGraphics));
 
         Assert.DoesNotContain("caps-images", tree.Root.Classes);
         Assert.False(tree.App.EffectiveCapabilities.Output.Graphics.KittyGraphics);

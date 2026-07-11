@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -17,13 +17,13 @@ public sealed class Section44_VirtualizationVariableHeight
     private const int Rows = 12;
 
     // Items whose container measures to a varying number of rows: item i is a TextBlock with linesFn(i) lines.
-    private static (UITestHost Host, ListBox List) MakeVar(int count, Func<int, int> linesFn, int rows = Rows)
+    private static (UIHeadlessHost Host, ListBox List) MakeVar(int count, Func<int, int> linesFn, int rows = Rows)
     {
         var items = Enumerable.Range(0, count)
             .Select(i => (object) new TextBlock { Text = MultiLine(i, linesFn(i)) })
             .ToArray();
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),
@@ -44,7 +44,7 @@ public sealed class Section44_VirtualizationVariableHeight
     // the layout engine emits these, DEBUG-only, when the 16-pass fixpoint is exceeded; it never throws, and an
     // abandoned non-converged layout still reports idle, so a bool-only check can't see a crawl). Returns whether the
     // pump reached idle within the frame budget AND the collected cycle diagnostics.
-    private static (bool Idle, List<LayoutDiagnosticEvent> Cycles) PumpCollectingCycles(UITestHost host, int maxFrames = 8)
+    private static (bool Idle, List<LayoutDiagnosticEvent> Cycles) PumpCollectingCycles(UIHeadlessHost host, int maxFrames = 8)
     {
         var cycles = new List<LayoutDiagnosticEvent>();
         void OnDiag(LayoutDiagnosticEvent e)
@@ -203,7 +203,7 @@ public sealed class Section44_VirtualizationVariableHeight
     [Fact] // VV4.8: a realistic heterogeneous list converges under the LayoutManager fixpoint (no LayoutCycle diagnostic).
     public void VV4_8_Convergence_NoLayoutCycle()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, Rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, Rows) });
         using var _ = host;
         var lb = new ListBox
         {
@@ -231,7 +231,7 @@ public sealed class Section44_VirtualizationVariableHeight
         // Items 1500-1699 are 6-row blocks among 1-row items — a density contrast that, re-derived from the
         // band-perturbed global estimate each pass, crawled the window past the fixpoint (the audit repro). The
         // session expand-only window must keep it bounded.
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, Rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, Rows) });
         using var _ = host;
         var lb = new ListBox
         {
@@ -281,7 +281,7 @@ public sealed class Section44_VirtualizationVariableHeight
     {
         // Every 3rd item is empty (measures 0 rows); without flooring the never-measured fallback at 1, Estimate→<1
         // collapses the prefix and the window realizes far too much. The floor keeps the realized window band-sized.
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, Rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, Rows) });
         using var _ = host;
         var lb = new ListBox
         {
@@ -359,7 +359,7 @@ public sealed class Section44_VirtualizationVariableHeight
         var src = new ObservableCollection<object>(
             Enumerable.Range(0, 400).Select(i => (object) new TextBlock { Text = MultiLine(i, i == 30 ? 4 : 1) }));
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, Rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, Rows) });
         using var _ = host;
         var lb = new ListBox
         {

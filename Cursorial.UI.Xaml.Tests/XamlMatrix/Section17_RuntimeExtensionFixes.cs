@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -114,7 +114,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // {Binding ElementName=x} resolves the named element's property once the tree is shown
     public void Binding_ElementName_ResolvesNamedElement()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = Load<UIControls.StackPanel>(
             "<StackPanel>" +
             "<TextBox x:Name=\"src\" Text=\"hello\"/>" +
@@ -129,7 +129,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // {Binding Source={x:Reference x}} resolves the named element as the binding source
     public void Binding_SourceXReference_ResolvesNamedElement()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = Load<UIControls.StackPanel>(
             "<StackPanel>" +
             "<TextBox x:Name=\"src\" Text=\"world\"/>" +
@@ -144,7 +144,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // {Binding ElementName=…} resolves a FORWARD reference (the named element appears after the binding)
     public void Binding_ElementName_ResolvesForwardReference()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = Load<UIControls.StackPanel>(
             "<StackPanel>" +
             "<TextBlock x:Name=\"dst\" Text=\"{Binding Text, ElementName=src}\"/>" + // binding precedes the named element
@@ -159,7 +159,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // ElementName resolves inside a DataTemplate (against that template instance's own name scope)
     public void Binding_ElementName_ResolvesInsideDataTemplate()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 8) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 8) });
         var root = Load<UIControls.ContentControl>(
             "<ContentControl Content=\"d\">" +
             "<ContentControl.ContentTemplate><DataTemplate>" +
@@ -179,7 +179,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // {x:Reference} inside a DataTemplate resolves against the template instance scope (forward, inside)
     public void Binding_SourceXReference_ResolvesInsideDataTemplate()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 8) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 8) });
         var root = Load<UIControls.ContentControl>(
             "<ContentControl Content=\"d\">" +
             "<ContentControl.ContentTemplate><DataTemplate>" +
@@ -195,7 +195,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.Equal(2, RowsContaining(host, 8, "tmplref"));
     }
 
-    private static int RowsContaining(UITestHost host, int rows, string text)
+    private static int RowsContaining(UIHeadlessHost host, int rows, string text)
     {
         var count = 0;
         for (var r = 0; r < rows; r++)
@@ -219,7 +219,7 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
     [Fact] // a Classes="…"-assigned class drives a .class style selector end-to-end
     public void Classes_DrivesClassSelectorStyle()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = Load<UIControls.StackPanel>(
             "<StackPanel>" +
             "<StackPanel.Styles><Style Selector=\".accent\" TargetType=\"Button\"><Setter Property=\"Width\" Value=\"42\"/></Style></StackPanel.Styles>" +

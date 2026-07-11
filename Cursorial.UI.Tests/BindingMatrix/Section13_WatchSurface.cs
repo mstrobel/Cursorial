@@ -1,6 +1,7 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -151,7 +152,7 @@ public class Section13_WatchSurface
     [Fact]
     public void B167_Watch_VmFlipMidInputDrain_ParticipatesSameFrame()
     {
-        using var host = Cursorial.UI.Testing.UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new BindWidget();
         var vm = new Vm { IsDirty = false };
         root.DataContext = vm;

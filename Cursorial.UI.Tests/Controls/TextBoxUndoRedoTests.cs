@@ -4,7 +4,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -13,13 +13,13 @@ namespace Cursorial.Tests.UI.Controls;
 // chords, the two-way-binding echo (the design-review blocker), PasswordBox security, and read-only gating.
 public sealed class TextBoxUndoRedoTests
 {
-    private static (UITestHost Host, T Box) Shown<T>(Action<T>? configure = null, bool focus = true)
+    private static (UIHeadlessHost Host, T Box) Shown<T>(Action<T>? configure = null, bool focus = true)
         where T : TextBox, new()
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 8),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
         });
         var box = new T
         {
@@ -40,7 +40,7 @@ public sealed class TextBoxUndoRedoTests
         return (host, box);
     }
 
-    private static (UITestHost Host, TextBox Box) Shown(Action<TextBox>? configure = null, bool focus = true)
+    private static (UIHeadlessHost Host, TextBox Box) Shown(Action<TextBox>? configure = null, bool focus = true)
         => Shown<TextBox>(configure, focus);
 
     // ───────────────────────────── core undo / redo ─────────────────────────────

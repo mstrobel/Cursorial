@@ -9,7 +9,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
@@ -17,7 +17,7 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 /// <summary>
 /// Phase-6 (Fork C) end-to-end coverage: declarative UI loaded from a XAML <em>string</em> through the
 /// full <see cref="XamlLoader"/> and run on the real <see cref="UIApplication"/> frame loop via
-/// <see cref="UITestHost"/>. These are the §14 P6 exit criteria — the live proof that the runtime loader
+/// <see cref="UIHeadlessHost"/>. These are the §14 P6 exit criteria — the live proof that the runtime loader
 /// produces widget trees that render, bind, resolve resources, expand templates, fold access keys, and
 /// report parse errors with correct positions. Every scenario crosses the loader → object graph →
 /// layout/render → composited cells chain (not a parse-only harness).
@@ -51,7 +51,7 @@ public sealed class Phase6XamlEndToEndTests
     [Fact]
     public void ThemedTree_FromXaml_RendersAndBindingsResourcesResolveLive()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var vm = new DemoVm { Caption = "Hello", Accent = "go" };
 
         var root = Loader.Load<StackPanel>(
@@ -133,7 +133,7 @@ public sealed class Phase6XamlEndToEndTests
     [Fact]
     public void ResourceDictionary_FromXaml_MergedAndThemed_DynamicResourceConsumerUpdatesOnThemeFlip()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.RequestedThemeBase = ThemeBase.Dark; // deterministic regardless of negotiated luminance
         host.RunFrame();
 
@@ -198,7 +198,7 @@ public sealed class Phase6XamlEndToEndTests
     [Fact]
     public void ControlTemplate_FromXaml_ExpandsPerTarget_IndependentNameScopes_DetachRetracts()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var dict = (ResourceDictionary)Loader.Load(
             "<ResourceDictionary" + Ns + ">" +
@@ -253,7 +253,7 @@ public sealed class Phase6XamlEndToEndTests
     [Fact]
     public void AccessKeyFold_FromXaml_ContentUnderscore_FoldsAndAltActivates()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var border = Loader.Load<Border>(
             "<Border" + Ns + " HorizontalAlignment=\"Left\" VerticalAlignment=\"Top\">" +
@@ -328,7 +328,7 @@ public sealed class Phase6XamlEndToEndTests
 
     // ───────────────────────────── fixtures ─────────────────────────────
 
-    private static string[] ReadRows(UITestHost host, int rows)
+    private static string[] ReadRows(UIHeadlessHost host, int rows)
     {
         var result = new string[rows];
         for (var r = 0; r < rows; r++)

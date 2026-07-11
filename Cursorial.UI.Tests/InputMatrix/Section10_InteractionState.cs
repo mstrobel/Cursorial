@@ -1,6 +1,6 @@
 using Cursorial.Input.Events;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -12,9 +12,9 @@ namespace Cursorial.Tests.UI.InputMatrix;
 /// </summary>
 public class Section10_InteractionState
 {
-    private static (UITestHost Host, List<string> Log, Probe Root, Btn A, Btn B, StateSink Sink) CreateHost()
+    private static (UIHeadlessHost Host, List<string> Log, Probe Root, Btn A, Btn B, StateSink Sink) CreateHost()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Btn("A", log);
@@ -223,7 +223,7 @@ public class Section10_InteractionState
     [Fact]
     public void N146_IsEnabledCoreFlip_DisabledStatePushed_OneNotification()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var btn = new CommandBtn("B", log);

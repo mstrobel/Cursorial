@@ -3,7 +3,7 @@ using System.Text;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI;
 /// </summary>
 public class ExpanderTests
 {
-    private static (UITestHost Host, Expander Exp) Make(bool expanded = false)
+    private static (UIHeadlessHost Host, Expander Exp) Make(bool expanded = false)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 10) });
         var exp = new Expander
         {
             Header = "Details", Content = "Body text", IsExpanded = expanded,
@@ -28,7 +28,7 @@ public class ExpanderTests
 
     private static T Part<T>(Control e, string name) where T : UIElement => (T)e.TemplateInstance!.NameScope.Find(name)!;
 
-    private static string Screen(UITestHost host, int rows = 10)
+    private static string Screen(UIHeadlessHost host, int rows = 10)
     {
         var sb = new StringBuilder();
         for (var r = 0; r < rows; r++)

@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -22,11 +22,11 @@ namespace Cursorial.Tests.UI.Bars;
 // exactly as before (no default parameter is provisioned — T isn't inferrable, and the parameter is never touched).
 public sealed class BarComboBoxValueCommandTests
 {
-    private static UITestHost NewHost(int w = 30, int h = 12) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 30, int h = 12) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     // Locate a rendered text on screen (column, row) — the click target the popup actually shows.
-    private static (int Column, int Row) FindOnScreen(UITestHost host, string text, int height = 12)
+    private static (int Column, int Row) FindOnScreen(UIHeadlessHost host, string text, int height = 12)
     {
         for (var row = 0; row < height; row++)
         {
@@ -73,7 +73,7 @@ public sealed class BarComboBoxValueCommandTests
             });
     }
 
-    private static (UITestHost Host, SizeModel Model, ValueCommandParameter<string> Parameter, BarGallery Gallery) ShowGallery()
+    private static (UIHeadlessHost Host, SizeModel Model, ValueCommandParameter<string> Parameter, BarGallery Gallery) ShowGallery()
     {
         var host = NewHost();
         var model = new SizeModel();

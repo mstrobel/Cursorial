@@ -5,7 +5,7 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Input;
 
@@ -25,9 +25,9 @@ public class MouseMoveAllocationTests
         protected override Size MeasureOverride(Size availableSize) => new(columns, rows);
     }
 
-    private static (UITestHost Host, RigidElement A, RigidElement B) CreateTree()
+    private static (UIHeadlessHost Host, RigidElement A, RigidElement B) CreateTree()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var a = new RigidElement(10, 4);
         var b = new RigidElement(10, 4);

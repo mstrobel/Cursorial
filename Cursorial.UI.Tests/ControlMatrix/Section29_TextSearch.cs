@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -70,7 +70,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.6: ListBox type-ahead selects the matching item
     public void C16_6_ListBox()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var list = new ListBox { Width = 20, Height = 8, ItemsSource = Fruits };
         host.ShowRoot(list);
         host.RunUntilIdle();
@@ -97,7 +97,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.7: ComboBox type-ahead (closed) selects without opening
     public void C16_7_ComboBox()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var box = new ComboBox { Width = 14, ItemsSource = new[] { "alpha", "beta", "gamma" } };
         host.ShowRoot(box);
         host.RunUntilIdle();
@@ -113,7 +113,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.8: TreeView type-ahead selects a matching top-level node (matched against its Header)
     public void C16_8_TreeView()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var tree = new TreeView { Width = 20, Height = 8 };
         tree.Items.Add(new TreeViewItem { Header = "apple" });
         tree.Items.Add(new TreeViewItem { Header = "banana" });
@@ -131,7 +131,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.9: TextPath matches against an item property; a plain ItemsControl never engages (no swallow)
     public void C16_9_TextPathAndOptIn()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var people = new[] { new Person("Ada"), new Person("Grace"), new Person("Alan") };
         var list = new ListBox { Width = 20, Height = 8, ItemsSource = people };
         TextSearch.SetTextPath(list, nameof(Person.Name));
@@ -165,7 +165,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.11: ComboBox open type-ahead moves keyboard focus to the matched item (the :focus-visible cue tracks it)
     public void C16_11_ComboBoxOpenFocusesMatch()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var box = new ComboBox { Width = 14, ItemsSource = new[] { "alpha", "beta", "gamma" } };
         host.ShowRoot(box);
         host.RunUntilIdle();
@@ -182,7 +182,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.12: leaving the control resets the type-ahead buffer (a fresh keystroke re-searches)
     public void C16_12_FocusLossResetsBuffer()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var list = new ListBox { Width = 20, Height = 6, ItemsSource = Fruits };
         var other = new Button { Content = "x" };
         var panel = new StackPanel();
@@ -210,7 +210,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.13: TreeView type-ahead with a nested selection anchors at the top-level ancestor (not index 0)
     public void C16_13_TreeViewNestedAnchor()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 10) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 10) });
         var carrot = new TreeViewItem { Header = "carrot" };
         var car = new TreeViewItem { Header = "car", IsExpanded = true };
         car.Items.Add(carrot);
@@ -236,7 +236,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.14: ListBox type-ahead over ListBoxItem containers matches the item's Content, not "ListBoxItem"
     public void C16_14_ListBox_OwnContainerItems_MatchContent()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var list = new ListBox { Width = 20, Height = 8 };
         list.Items.Add(new ListBoxItem { Content = "apple" });
         list.Items.Add(new ListBoxItem { Content = "banana" });
@@ -254,7 +254,7 @@ public sealed class Section29_TextSearch
     [Fact] // C16.15: ComboBox (closed) type-ahead over ComboBoxItem containers matches the item's Content
     public void C16_15_ComboBox_OwnContainerItems_MatchContent()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12) });
         var box = new ComboBox { Width = 14 };
         box.Items.Add(new ComboBoxItem { Content = "alpha" });
         box.Items.Add(new ComboBoxItem { Content = "beta" });

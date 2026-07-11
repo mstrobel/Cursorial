@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.StyleMatrix;
 
@@ -161,11 +161,11 @@ public static class StyleMatrixFixture
     /// <summary>
     /// The §0.2 default tree on a fresh host: <c>Root</c> (StackPanel) → <c>paneA</c> (StackPanel)
     /// → leaves <c>a</c>, <c>b</c> (Widgets); <c>paneB</c> → <c>c</c>. Shown via
-    /// <see cref="UITestHost.ShowRoot"/>; the caller owns disposal of the returned host.
+    /// <see cref="UIHeadlessHost.ShowRoot"/>; the caller owns disposal of the returned host.
     /// </summary>
-    public static StyleTree ShowTree(UITestHostOptions? options = null, bool show = true)
+    public static StyleTree ShowTree(UIHeadlessHostOptions? options = null, bool show = true)
     {
-        var host = UITestHost.Create(options);
+        var host = UIHeadlessHost.Create(options);
         var tree = new StyleTree
         {
             Host = host,
@@ -192,7 +192,7 @@ public static class StyleMatrixFixture
     /// <summary>The default fixture tree plus its host (disposes the host).</summary>
     public sealed class StyleTree : IDisposable
     {
-        public required UITestHost Host { get; init; }
+        public required UIHeadlessHost Host { get; init; }
         public required StackPanel Root { get; init; }
         public required StackPanel PaneA { get; init; }
         public required StackPanel PaneB { get; init; }

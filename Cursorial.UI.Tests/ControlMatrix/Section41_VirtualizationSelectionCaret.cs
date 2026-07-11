@@ -3,7 +3,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,9 +15,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // realize-then-focus is the V3b follow-on.
 public sealed class Section41_VirtualizationSelectionCaret
 {
-    private static (UITestHost Host, ListBox List) MakeVirtual(int count, int rows = 12)
+    private static (UIHeadlessHost Host, ListBox List) MakeVirtual(int count, int rows = 12)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, rows) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, rows) });
         var lb = new ListBox
         {
             ItemsPanel = new ItemsPanelTemplate(_ => new VirtualizingStackPanel()),

@@ -2,8 +2,8 @@ using Cursorial.Input.Events;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -56,7 +56,7 @@ public class Section11_LostFocusTrigger
     [Fact]
     public void B133_TerminalFocusOut_EditCommitPulse_Flushes_FocusRetained()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var w = new BindWidget { Focusable = true };
         var vm = new Vm { Name = "a" };

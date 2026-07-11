@@ -6,7 +6,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 
@@ -118,7 +118,7 @@ public sealed class XamlPaletteValidationTests
     // target cell's fill (or ink) moved to the override — proving the overlay's setter referenced THAT key.
     private static void AssertOverlayKeyDrivesControl(string perControlKey, UIControls.Control control, string target, bool fill)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 4) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
         host.Application.Theme = CursorialDefaultTheme.LoadTheme();
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         host.ShowRoot(control);
@@ -145,7 +145,7 @@ public sealed class XamlPaletteValidationTests
 
     private static (string Glyph, Color Fg, Color Bg)[] RenderButton(bool xaml, ThemeBase @base, ColorDepth tier)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(14, 3) });
         if (xaml)
             host.Application.Theme = CursorialDefaultTheme.LoadTheme();
         host.Application.RequestedThemeBase = @base;

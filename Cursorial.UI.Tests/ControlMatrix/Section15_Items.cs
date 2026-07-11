@@ -6,7 +6,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Style = Cursorial.UI.Style;
 
@@ -17,9 +17,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // Control-matrix P9 §C2 — the ItemsControl pipeline (ItemContainerGenerator / ItemsPresenter / punch-43).
 public sealed class Section15_Items
 {
-    private static (UITestHost Host, T Control) Show<T>(T control) where T : UIElement
+    private static (UIHeadlessHost Host, T Control) Show<T>(T control) where T : UIElement
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 10) });
         host.ShowRoot(control);
         host.RunUntilIdle();
         return (host, control);
@@ -259,7 +259,7 @@ public sealed class Section15_Items
     // which still composes underneath it on properties the Explicit style leaves alone.
     public void ItemContainerStyle_ExplicitLayer_BeatsTypeSelector_TypeStillComposes()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 10) });
         using var _ = host;
         host.Application.Styles.Add(new Style(Selectors.OfType<ContentPresenter>())
             .Set(UIElement.MinWidthProperty, 5)    // contested with the Explicit ItemContainerStyle
@@ -353,7 +353,7 @@ public sealed class Section15_Items
     [Trait("Category", "Benchmark")]
     public void StaticItemsTree_IdleFrameAddsNoAllocation()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 10) });
         using var _ = host;
         var ic = new ItemsControl { ItemsSource = new[] { "a", "b", "c", "d" } };
         host.ShowRoot(ic);
@@ -447,7 +447,7 @@ public sealed class Section15_Items
         var ic = new ItemsControl { ItemsSource = new[] { "a", "b" } };
         var wrap = new StackPanel();
         wrap.Children.Add(ic);
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 10) });
         using var _ = host;
         host.ShowRoot(wrap);
         host.RunUntilIdle();
@@ -541,7 +541,7 @@ public sealed class Section15_Items
     {
         var lb = new ListBox { ItemsSource = new[] { "a", "b", "c", "d" } };
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 10) });
         host.Application.Styles.Add(new Style(Selectors.OfType<ListBoxItem>().PseudoClass("alternate"))
             .Set(Control.BackgroundProperty, Brushes.Magenta));
         host.ShowRoot(lb);

@@ -2,7 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -14,10 +14,10 @@ namespace Cursorial.Tests.UI.Bars;
 // natural (row-band) width, cached across band moves, so a popup-parked item's zero live width can't corrupt it.
 public sealed class ToolbarOverflowDockedTests
 {
-    private static UITestHost NewHost(int width, int height = 10) => UITestHost.Create(new UITestHostOptions
+    private static UIHeadlessHost NewHost(int width, int height = 10) => UIHeadlessHost.Create(new UIHeadlessHostOptions
     {
         InitialSize = new Size(width, height),
-        Capabilities = TestCapabilities.KittyTruecolor,
+        Capabilities = HeadlessCapabilities.KittyTruecolor,
     });
 
     // Build the gallery's Bars-page shape: a Toolbar docked Top (Margin 2,1) over a filling body, so the toolbar

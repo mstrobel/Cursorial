@@ -5,8 +5,8 @@ using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -15,8 +15,8 @@ namespace Cursorial.Tests.UI.Bars;
 // the content; the opener is a retaining focus-scope barrier so a pointer-open never trips a Toolbar's auto-return.
 public sealed class BarDropDownButtonTests
 {
-    private static UITestHost NewHost(int w = 30, int h = 8) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 30, int h = 8) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     private static StackPanel DropContent(out Button firstItem)
     {
@@ -27,7 +27,7 @@ public sealed class BarDropDownButtonTests
         return panel;
     }
 
-    private static void ClickAt(UITestHost host, UIElement element)
+    private static void ClickAt(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToScreen(0, 0);
         host.SendMouseMove(origin.Column + 1, origin.Row); // hover (arms the release-click gate)

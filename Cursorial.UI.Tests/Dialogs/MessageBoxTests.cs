@@ -8,7 +8,7 @@ using Cursorial.Input;
 using Cursorial.Terminal;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Dialogs;
 
@@ -30,19 +30,19 @@ public sealed class MessageBoxTests
 {
     /// <summary>The §5.1 capability matrix for rendering/input suites.</summary>
     public static TheoryData<string> CapabilityPresets =>
-        new() { nameof(TestCapabilities.KittyTruecolor), nameof(TestCapabilities.Ansi16Legacy) };
+        new() { nameof(HeadlessCapabilities.KittyTruecolor), nameof(HeadlessCapabilities.Ansi16Legacy) };
 
     /// <summary>Resolves the two §5.1 preset names carried through theory data to their capabilities.</summary>
     private static TerminalCapabilities Resolve(string preset) => preset switch
     {
-        nameof(TestCapabilities.KittyTruecolor) => TestCapabilities.KittyTruecolor,
-        nameof(TestCapabilities.Ansi16Legacy) => TestCapabilities.Ansi16Legacy,
+        nameof(HeadlessCapabilities.KittyTruecolor) => HeadlessCapabilities.KittyTruecolor,
+        nameof(HeadlessCapabilities.Ansi16Legacy) => HeadlessCapabilities.Ansi16Legacy,
         _ => throw new ArgumentOutOfRangeException(nameof(preset)),
     };
 
-    private static UITestHost CreateHostWithRoot(string capabilityPreset)
+    private static UIHeadlessHost CreateHostWithRoot(string capabilityPreset)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             Capabilities = Resolve(capabilityPreset),
         });
@@ -52,7 +52,7 @@ public sealed class MessageBoxTests
     }
 
     /// <summary>The composited screen as one string, for containment assertions.</summary>
-    private static string ScreenText(UITestHost host)
+    private static string ScreenText(UIHeadlessHost host)
     {
         var text = new StringBuilder();
 
@@ -67,7 +67,7 @@ public sealed class MessageBoxTests
     /// continuation with no UI-thread affinity (the test thread carries no ambient
     /// UISynchronizationContext outside frames), so the bounded Wait cannot deadlock.
     /// </summary>
-    private static TResult Complete<TResult>(UITestHost host, Task<TResult> task)
+    private static TResult Complete<TResult>(UIHeadlessHost host, Task<TResult> task)
     {
         Assert.True(host.RunUntilIdle());
         Assert.True(task.Wait(TimeSpan.FromSeconds(5)), "the dialog task did not complete");
@@ -213,7 +213,7 @@ public sealed class MessageBoxTests
     [Fact]
     public async Task Show_WithInvalidButtonArguments_Throws()
     {
-        using var host = CreateHostWithRoot(nameof(TestCapabilities.KittyTruecolor));
+        using var host = CreateHostWithRoot(nameof(HeadlessCapabilities.KittyTruecolor));
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => MessageBox.ShowAsync(host.Application, "?", buttons: MessageBoxButton.None));

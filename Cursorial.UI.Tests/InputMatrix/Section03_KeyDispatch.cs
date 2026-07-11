@@ -1,7 +1,7 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -311,7 +311,7 @@ public class Section03_KeyDispatch
     {
         // TextBox-style: the focused element handles arrows in step 4; the directional tail
         // (step 6) must never see them — handled wins (doc §7.5).
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var container = new CanvasProbe("Grid", log, 40, 20);

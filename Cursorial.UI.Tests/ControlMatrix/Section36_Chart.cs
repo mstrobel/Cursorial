@@ -5,7 +5,7 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -23,8 +23,8 @@ public sealed class Section36_Chart
             context.Set(area.Column, area.Row, "X", default);
     }
 
-    private static UITestHost Host(TerminalCapabilities? caps = null) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 12), Capabilities = caps ?? TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost Host(TerminalCapabilities? caps = null) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 12), Capabilities = caps ?? HeadlessCapabilities.KittyTruecolor });
 
     [Fact] // C24.1: a ChartPresenter with a Source renders the chart (its draw reaches the cells); placeholder collapsed
     public void C24_1_RendersChart()
@@ -65,7 +65,7 @@ public sealed class Section36_Chart
     [Fact] // C24.4: NO capability gate — a chart renders even on a terminal with no graphics protocol
     public void C24_4_NoCapabilityGate()
     {
-        using var host = Host(TestCapabilities.Ansi16Legacy); // no graphics protocol at all
+        using var host = Host(HeadlessCapabilities.Ansi16Legacy); // no graphics protocol at all
         var presenter = new ChartPresenter { Source = new StubChart() };
         host.ShowRoot(presenter);
         host.RunUntilIdle();

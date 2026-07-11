@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using Style = Cursorial.UI.Style;
@@ -24,9 +24,9 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowChromeTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot()
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);

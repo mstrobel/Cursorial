@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -12,9 +12,9 @@ namespace Cursorial.Tests.UI;
 /// </summary>
 public class StatusBarTests
 {
-    private static (UITestHost Host, StatusBar Bar) Make(params object[] items)
+    private static (UIHeadlessHost Host, StatusBar Bar) Make(params object[] items)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 3) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 3) });
         var bar = new StatusBar { VerticalAlignment = VerticalAlignment.Top, ItemsSource = items };
         host.ShowRoot(bar);
         host.RunUntilIdle();

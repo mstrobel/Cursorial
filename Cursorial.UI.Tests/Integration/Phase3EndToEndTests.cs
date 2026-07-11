@@ -2,7 +2,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Style = Cursorial.UI.Style;
 
@@ -10,14 +10,14 @@ namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
 /// Phase 3 integration: the design doc §14 P3 exit criteria proven end-to-end through
-/// <see cref="UITestHost"/> — every scenario crosses the full spine (input drain → hover/focus
+/// <see cref="UIHeadlessHost"/> — every scenario crosses the full spine (input drain → hover/focus
 /// interaction-state flips → the styling engine's reconcile → store arbitration → layout/render →
 /// composited cells), not an engine harness. Covers: (a) a styled tree (app + scoped channels,
 /// classes, <c>:pointerover</c>/<c>:focus</c>) rendering with cell assertions, (b) the invariant-3
 /// proof — a hover restyle re-rasters only the hovered element's zone, (c) retraction promoting
 /// the runner-up rule inside the store (one notification, never a set-back through default),
 /// (d) the template barrier with a manually-stamped <c>TemplatedParent</c>, (e) capability classes
-/// flipping styling across <see cref="TestCapabilities"/> presets, (f) the
+/// flipping styling across <see cref="HeadlessCapabilities"/> presets, (f) the
 /// <see cref="StyleDiagnostics.Explain"/> acceptance literal for a three-layer contest, and
 /// (g) <c>Styles</c> mutation hot-reload with cookie-stable survivors (SD21).
 /// </summary>
@@ -115,7 +115,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void StyledTree_AppAndScopedChannels_ClassesAndInteractionPseudoClasses_RenderToCells()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var sidebar = new StackPanel();
         var card1 = new Card(focusable: true);
@@ -181,7 +181,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void HoverRestyle_ReRastersOnlyTheHoveredZone_AllOtherSceneVersionsFrozen()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var cardA = new Card { IsRenderBoundary = true };
         var cardB = new Card { IsRenderBoundary = true };
@@ -236,7 +236,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void HoverOff_RetractionPromotesTheRunnerUpRule_SingleStoreNotification_NeverASetBack()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card();
         root.Children.Add(card);
@@ -275,7 +275,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void TemplateBarrier_StampedPart_SkipsPlainRules_TemplateCombinatorAndExplicitStyleApply()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var shell = new Shell();
         var part = new Card();
@@ -324,7 +324,7 @@ public sealed class Phase3EndToEndTests
     {
         var richFill = Color.FromRgb(120, 200, 255);
 
-        using (var kitty = UITestHost.Create()) // KittyTruecolor default
+        using (var kitty = UIHeadlessHost.Create()) // KittyTruecolor default
         {
             var root = new StackPanel();
             var card = new Card();
@@ -339,7 +339,7 @@ public sealed class Phase3EndToEndTests
             Assert.Contains(StyleDiagnostics.MatchedRules(card), static rule => rule.SelectorText == ".caps-truecolor Card");
         }
 
-        using (var legacy = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy }))
+        using (var legacy = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy }))
         {
             var root = new StackPanel();
             var card = new Card();
@@ -366,7 +366,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void Explain_ThreeLayerContest_ExactOneLinePerContributorDerivation()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var pane = new StackPanel();
         var card = new Card();
@@ -410,7 +410,7 @@ public sealed class Phase3EndToEndTests
     [Fact]
     public void StylesMutationHotReload_SurvivorFramesAndCookiesStable_AcrossReMatches()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card();
         card.Classes.Add("hot");

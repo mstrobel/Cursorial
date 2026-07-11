@@ -7,7 +7,7 @@ using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -20,15 +20,15 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowResizeMoveTests
 {
-    private static (UITestHost Host, WindowManager Wm) ShownRoot(bool captureBytes = false)
+    private static (UIHeadlessHost Host, WindowManager Wm) ShownRoot(bool captureBytes = false)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20), CaptureFrameBytes = captureBytes });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20), CaptureFrameBytes = captureBytes });
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
         return (host, host.Application.WindowManager!);
     }
 
-    private static Window At(UITestHost host, int left, int top, int width = 20, int height = 8)
+    private static Window At(UIHeadlessHost host, int left, int top, int width = 20, int height = 8)
     {
         return host.NewWindow(
             windowStartupLocation: WindowStartupLocation.Manual,
@@ -49,7 +49,7 @@ public sealed class WindowResizeMoveTests
                                                                                                                          Timestamp = default // SendInput stamps the fake clock
                                                                                                                      };
 
-    private static void Drag(UITestHost host, (int Col, int Row) from, (int Col, int Row) to)
+    private static void Drag(UIHeadlessHost host, (int Col, int Row) from, (int Col, int Row) to)
     {
         host.SendInput(Mouse(MouseEventKind.ButtonDown, from.Col, from.Row, MouseButton.Left, MouseButtons.None));
         host.SendInput(Mouse(MouseEventKind.Drag, to.Col, to.Row, MouseButton.None, MouseButtons.Left));
@@ -158,7 +158,7 @@ public sealed class WindowResizeMoveTests
     [Fact] // a topology mutation requested during layout is deferred to the next frame's drain (§8.8)
     public void DeferredTopology_ShowDuringLayout_AppliesNextFrame()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         using var hostScope = host;
         var wm = host.Application.WindowManager!;
 
@@ -342,7 +342,7 @@ public sealed class WindowResizeMoveTests
         var desktop = Color.FromRgb(10, 20, 30);
         var windowFill = Color.FromRgb(200, 100, 50);
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         using var hostScope = host;
         host.ShowRoot(new UIControls.Border { Background = new SolidColorBrush(desktop) });
         Assert.True(host.RunUntilIdle());

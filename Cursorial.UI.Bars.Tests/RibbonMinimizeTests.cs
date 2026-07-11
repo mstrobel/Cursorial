@@ -3,8 +3,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -16,10 +16,10 @@ public sealed class RibbonMinimizeTests
 {
     private const int H = 12;
 
-    private static UITestHost NewHost(int w = 64, int h = H) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 64, int h = H) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
-    private static string AllRows(UITestHost host) =>
+    private static string AllRows(UIHeadlessHost host) =>
         string.Join("\n", Enumerable.Range(0, H).Select(host.GetRowText));
 
     private static Ribbon NewRibbon()
@@ -163,7 +163,7 @@ public sealed class RibbonMinimizeTests
         }
     }
 
-    private static void ClickAt(UITestHost host, CellPosition origin)
+    private static void ClickAt(UIHeadlessHost host, CellPosition origin)
     {
         host.SendMouseMove(origin.Column, origin.Row);
         host.RunFrame();

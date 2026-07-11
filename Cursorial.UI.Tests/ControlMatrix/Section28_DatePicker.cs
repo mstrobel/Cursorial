@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,9 +15,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // standalone Calendar (§C14). The field-click toggle reuses Popup.KeepOpenOnAnchorPress (cf. ComboBox).
 public sealed class Section28_DatePicker
 {
-    private static (UITestHost Host, DatePicker Picker) Show()
+    private static (UIHeadlessHost Host, DatePicker Picker) Show()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         var picker = new DatePicker
         {
             DisplayDate = new DateOnly(2026, 6, 1),

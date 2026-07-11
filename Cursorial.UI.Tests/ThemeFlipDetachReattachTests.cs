@@ -2,7 +2,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 // ReSharper disable InconsistentNaming
@@ -28,9 +28,9 @@ public sealed class ThemeFlipDetachReattachTests
     [Fact]
     public void BaseFlip_WhileTabContentDetached_ReattachRefreshesInheritedForeground()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
             InitialSize = new Size(40, 12),
         });
         host.Application.RequestedThemeBase = ThemeBase.Dark;
@@ -71,9 +71,9 @@ public sealed class ThemeFlipDetachReattachTests
            // re-realizes fresh on switch-back) — the path the Control.ExpandTemplate reuse guard does NOT cover.
     public void BaseFlip_WhileDataTemplatedTabContentDetached_ReattachRefreshesForeground()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
             InitialSize = new Size(40, 12),
         });
         host.Application.RequestedThemeBase = ThemeBase.Dark;
@@ -111,7 +111,7 @@ public sealed class ThemeFlipDetachReattachTests
 
     private sealed class PayloadVm { public string Name { get; init; } = ""; }
 
-    private static Color ForegroundOf(UITestHost host, string text)
+    private static Color ForegroundOf(UIHeadlessHost host, string text)
     {
         var first = text[0];
         for (var r = 0; r < host.FrameBuffer.Rows; r++)

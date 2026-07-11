@@ -7,28 +7,30 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.ControlMatrix;
+
+#pragma warning disable xUnit1031
 
 // Control-matrix P9 §C11 — TextBox (P9.6): a single-line editable field. The caret is the real terminal
 // cursor (BlinkingBar) published by the TextPresenter; caret offsets pin to grapheme-cluster boundaries;
 // Text is two-way with per-change source push; Copy/Cut route through the OSC 52 clipboard service.
 public sealed class Section24_TextBox
 {
-    private static (UITestHost Host, TextBox Box) Shown(string text = "", int width = 12, bool focus = true,
+    private static (UIHeadlessHost Host, TextBox Box) Shown(string text = "", int width = 12, bool focus = true,
                                                         TerminalCapabilities? capabilities = null)
     {
-        var options = new UITestHostOptions
+        var options = new UIHeadlessHostOptions
         {
             InitialSize = new Size(30, 4),
-            Capabilities = capabilities ?? TestCapabilities.KittyTruecolor,
+            Capabilities = capabilities ?? HeadlessCapabilities.KittyTruecolor,
             CaptureFrameBytes = true
         };
 
-        var host = UITestHost.Create(options);
+        var host = UIHeadlessHost.Create(options);
         var box = new TextBox
         {
             Text = text,
@@ -422,7 +424,7 @@ public sealed class Section24_TextBox
     [Fact] // C11.21: Copy with a selection writes OSC 52 when the terminal supports clipboard writes
     public void C11_21_CopyWritesOsc52()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
             Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
@@ -453,7 +455,7 @@ public sealed class Section24_TextBox
     [Fact] // C11.23: Cut copies then deletes the selection
     public void C11_23_Cut()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
             Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
@@ -473,7 +475,7 @@ public sealed class Section24_TextBox
     [Fact] // C11.23a: Ctrl+V kicks the OSC 52 read; the terminal's reply inserts at the caret (FromPaste path)
     public void C11_23a_PasteReadsOsc52()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         var withRead = caps with
         {
             Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardRead = true } }
@@ -498,7 +500,7 @@ public sealed class Section24_TextBox
            // (OSC 52 has no request id, so a fan-out reply would otherwise duplicate the paste into the model)
     public void C11_23c_PasteWhileInFlight_InsertsOnce()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         var withRead = caps with
         {
             Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardRead = true } }
@@ -552,7 +554,7 @@ public sealed class Section24_TextBox
     [Fact] // C11.25: Shift+Delete cuts a selection; with no selection it is not consumed (bubbles, like Ctrl+X)
     public void C11_25_ShiftDeleteCut()
     {
-        var caps = TestCapabilities.KittyTruecolor;
+        var caps = HeadlessCapabilities.KittyTruecolor;
         var withClipboard = caps with
         {
             Output = caps.Output with { Protocol = caps.Output.Protocol with { ClipboardWrite = true } }
@@ -609,7 +611,7 @@ public sealed class Section24_TextBox
     // Runs frames after a gesture and concatenates their emitted bytes. LastFrameBytes is per-frame and
     // CaptureFrame drains the sink each frame, so a multi-frame settle would otherwise lose the one frame
     // that carried an out-of-band control sequence (the OSC 52 clipboard write).
-    private static byte[] CollectFrames(UITestHost host, int frames = 4)
+    private static byte[] CollectFrames(UIHeadlessHost host, int frames = 4)
     {
         var all = new List<byte>();
         for (var i = 0; i < frames; i++)
@@ -640,3 +642,4 @@ public sealed class Section24_TextBox
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 }
+#pragma warning restore xUnit1031

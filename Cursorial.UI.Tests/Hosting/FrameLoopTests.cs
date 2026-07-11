@@ -9,8 +9,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -24,7 +24,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void PhaseOrder_IsNormative()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         var log = new List<string>();
         var probe = new SeamProbe(log);
@@ -47,7 +47,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void InputEvents_ReachDispatchTarget_InArrivalOrder()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var probe = new SeamProbe([]);
         host.Application.InputDispatchTarget = probe;
 
@@ -65,7 +65,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void ResizeAndDeviceResponse_NeverReachDispatchTarget()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var probe = new SeamProbe([]);
         host.Application.InputDispatchTarget = probe;
 
@@ -88,7 +88,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void DeviceResponseSink_Unregisters()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var count = 0;
         var registration = host.Application.RegisterDeviceResponseSink(_ => count++);
 
@@ -105,7 +105,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void UnhandledCtrlC_TriggersShutdown()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.SendKey(Key.Character, KeyModifiers.Control, "c");
         host.RunFrame();
 
@@ -115,7 +115,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void HandledCtrlC_DoesNotShutDown()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.InputDispatchTarget = new SeamProbe([]) { DispatchResult = InputDispatchResult.DispatchedHandled };
 
         host.SendKey(Key.Character, KeyModifiers.Control, "c");
@@ -127,7 +127,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void QueueControlSequence_EmitsAfterDelta_ForcesFlushOnEmptyDelta()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
         host.RunFrame();
@@ -144,7 +144,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void RequestRender_ForcesAFrame_CleanTreeEmitsNothing()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 
@@ -160,7 +160,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void RequestFullRedraw_IdleApp_ReEmitsEverything_WithoutReRaster()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var probe = new Probe(4, 1) { FillGlyph = "X" };
         host.ShowRoot(probe);
         Assert.True(host.RunUntilIdle());
@@ -188,7 +188,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void RequestFullRedraw_CrossThread_MarshalsToUiThread_AndRedraws()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
         host.RunFrame();
@@ -210,7 +210,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void CtrlL_OnAppRoot_TriggersFullRedraw()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
         host.RunFrame();
@@ -229,7 +229,7 @@ public sealed class FrameLoopTests
     {
         // A focused window's key route ends at ITS surface root — the chord must be installed
         // per active root, or Ctrl+L dies the moment a dialog opens.
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 
@@ -251,7 +251,7 @@ public sealed class FrameLoopTests
     {
         // Window switching re-activates the same roots repeatedly; the redraw binding must not
         // accumulate (EnsureRedrawBinding adds exactly one per root, ever).
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 
@@ -290,7 +290,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void InvalidateVisual_ReRasters_AndEmits()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var probe = new Probe(4, 1) { FillGlyph = "X" };
         host.ShowRoot(probe);
         Assert.True(host.RunUntilIdle());
@@ -308,7 +308,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void CompositeOnlyChange_TriggersRenderWithoutReRaster()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var probe = new Probe(4, 1) { FillGlyph = "X", Opacity = 0.5 }; // sub-1 opacity ⇒ own boundary
         var hostPanel = new Host();
         hostPanel.Add(probe);
@@ -328,7 +328,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void StreamEnd_ShutsDownLoop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Terminal.CompleteInput(); // EOF — the "terminal closed" path
 
         // The pump observes EOF asynchronously; spin a few frames on the wall clock.
@@ -344,7 +344,7 @@ public sealed class FrameLoopTests
     [Fact]
     public void CurrentFrameTime_AdvancesWithFakeClock()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.RunFrame();
         var first = host.Application.CurrentFrameTime;
 

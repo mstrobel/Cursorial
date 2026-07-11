@@ -4,7 +4,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -29,7 +29,7 @@ public sealed class AttachedSetterEndToEndTests
     [Fact] // X64a (attached) + X64c (owner-qualified plain)
     public void DottedSetterProperty_ResolvesOwner_AndAppliesThroughStore()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // A TargetType="Button" style whose Setters are an ATTACHED property (Grid.Row) and an owner-
         // qualified plain property (Control.Foreground) — both DOTTED, so they resolve the OWNER (Grid /
@@ -62,7 +62,7 @@ public sealed class AttachedSetterEndToEndTests
     {
         _ = XamlPhase2Attached.MarkerProperty; // force the attached registration (the type's static ctor)
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // `t:` maps (clr-namespace) to the TEST namespace — outside Cursorial.UI. The Setter owner
         // `t:XamlPhase2Attached.Marker` therefore resolves ONLY if the prefix's namespace, captured at the

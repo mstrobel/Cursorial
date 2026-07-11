@@ -2,8 +2,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -18,9 +18,9 @@ public sealed class Section11_RepeatToggle
 {
     // ───────────────────────────── helpers ─────────────────────────────
 
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -43,7 +43,7 @@ public sealed class Section11_RepeatToggle
         Timestamp = DateTimeOffset.UnixEpoch
     };
 
-    private static void HoverOver(UITestHost host, int column, int row)
+    private static void HoverOver(UIHeadlessHost host, int column, int row)
     {
         host.SendMouseMove(column, row);
         host.RunFrame();

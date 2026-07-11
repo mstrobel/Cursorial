@@ -4,8 +4,8 @@
 using System.Text;
 
 using Cursorial.Rendering;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
@@ -77,7 +77,7 @@ public sealed class ThemeXamlPhase1Tests
     {
         var theme = (Cursorial.UI.ResourceDictionary)new XamlLoader().Load(ButtonThemeXaml, Source);
 
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(14, 3) });
         host.Application.Theme = theme;
 
         var button = new UIControls.Button { Content = "OK" };
@@ -101,7 +101,7 @@ public sealed class ThemeXamlPhase1Tests
 
     private static string[] RenderRestingButton(Cursorial.UI.ResourceDictionary theme)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(14, 3) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(14, 3) });
         host.Application.Theme = theme;
         host.ShowRoot(new UIControls.Button { Content = "OK" });
         Assert.True(host.RunUntilIdle());
@@ -120,7 +120,7 @@ public sealed class ThemeXamlPhase1Tests
         return rows;
     }
 
-    private static Cell FindCell(UITestHost host, char first)
+    private static Cell FindCell(UIHeadlessHost host, char first)
     {
         for (var r = 0; r < host.FrameBuffer.Rows; r++)
         {

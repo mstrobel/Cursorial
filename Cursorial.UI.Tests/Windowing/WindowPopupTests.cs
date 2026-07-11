@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -22,12 +22,12 @@ namespace Cursorial.Tests.UI.Windowing;
 /// </summary>
 public sealed class WindowPopupTests
 {
-    private static UITestHost NewHost() =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+    private static UIHeadlessHost NewHost() =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
 
     /// <summary>A root with a small placement-target button and a Popup wired to it (the popup is a logical
     /// child of the root panel so Escape routes back; the child is a focusable button so we can focus into it).</summary>
-    private static (UITestHost Host, WindowManager Wm, Popup Popup, UIControls.Button Target, UIControls.Button Inner) Setup(bool staysOpen = false)
+    private static (UIHeadlessHost Host, WindowManager Wm, Popup Popup, UIControls.Button Target, UIControls.Button Inner) Setup(bool staysOpen = false)
     {
         var host = NewHost();
         var target = new UIControls.Button { Width = 10, Height = 1, Content = "open" };
@@ -236,7 +236,7 @@ public sealed class WindowPopupTests
         var desktop = Color.FromRgb(10, 20, 30);
         var popupFill = Color.FromRgb(200, 100, 50);
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 20) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         using var _ = host;
         var target = new UIControls.Button { Width = 10, Height = 1, Content = "t" };
         host.ShowRoot(new UIControls.Border { Background = new SolidColorBrush(desktop), Child = target });

@@ -5,7 +5,7 @@ using Cursorial.Output;            // ColorDepth
 using Cursorial.Rendering;         // Size, Margins
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;         // ThemeBase
 
 using Style = Cursorial.UI.Style;
@@ -80,7 +80,7 @@ public sealed class P9ControlCompositionTests
     [Fact]
     public void P9Controls_ComposedTogether_RenderAndReskinAcrossTiers()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(60, 24) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 24) });
 
         // A page striping rule so the ListBox exercises the :alternate pseudo-class under the composition.
         host.Application.Styles.Add(new Style(Selectors.OfType<ListBoxItem>().PseudoClass("alternate"))

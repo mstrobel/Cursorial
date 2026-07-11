@@ -2,7 +2,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,11 +15,11 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 public sealed class Section26_TreeView
 {
     // a (expanded?) ─ a1 (expanded?) ─ a1x ; a ─ a2 ; b   — built from own-container TreeViewItems.
-    private sealed record Tree(UITestHost Host, TreeView View, TreeViewItem A, TreeViewItem A1, TreeViewItem A1x, TreeViewItem A2, TreeViewItem B);
+    private sealed record Tree(UIHeadlessHost Host, TreeView View, TreeViewItem A, TreeViewItem A1, TreeViewItem A1x, TreeViewItem A2, TreeViewItem B);
 
     private static Tree Show(bool expandA = false, bool expandA1 = false)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 14) });
 
         var a1x = new TreeViewItem { Header = "A.1.x" };
         var a1 = new TreeViewItem { Header = "A.1", IsExpanded = expandA1 };
@@ -47,7 +47,7 @@ public sealed class Section26_TreeView
     [Fact] // regression: focusing an expanded node whose subtree overflows the viewport keeps the header visible
     public void ExpandedNodeTallerThanViewport_WhenFocused_KeepsHeaderVisible()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 14) });
 
         var view = new TreeView
         {
@@ -290,7 +290,7 @@ public sealed class Section26_TreeView
     [Fact] // C13.11: IsSelected set BEFORE attach folds into the tree on realization; a later select clears it (single)
     public void C13_11_PresetSelectionFoldsIn()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 14) });
         using var _ = host;
 
         var a = new TreeViewItem { Header = "A", IsSelected = true }; // selected before being parented under the tree
@@ -330,7 +330,7 @@ public sealed class Section26_TreeView
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────
 
     // Click the header text (2 cells in, past the twisty) — selects the node.
-    private static void ClickHeader(UITestHost host, TreeViewItem item)
+    private static void ClickHeader(UIHeadlessHost host, TreeViewItem item)
     {
         var p = item.TranslateToWindow(2, 0);
         host.SendClick(p.Column, p.Row);
@@ -338,7 +338,7 @@ public sealed class Section26_TreeView
     }
 
     // Click the twisty glyph (column 0) — toggles expansion.
-    private static void ClickTwisty(UITestHost host, TreeViewItem item)
+    private static void ClickTwisty(UIHeadlessHost host, TreeViewItem item)
     {
         var p = item.TranslateToWindow(0, 0);
         host.SendClick(p.Column, p.Row);

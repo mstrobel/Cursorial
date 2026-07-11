@@ -7,7 +7,7 @@ using Cursorial.Rendering;
 
 using Microsoft.Extensions.Time.Testing;
 
-namespace Cursorial.UI.Testing;
+namespace Cursorial.UI.Hosting.Headless;
 
 /// <summary>
 /// The headless test harness (design doc §10.10) — every subsystem's integration substrate and the
@@ -17,13 +17,13 @@ namespace Cursorial.UI.Testing;
 /// ownership transfer); frames run only when stepped. Single-thread-affine — parallel hosts never
 /// cross-wire (<see cref="UIApplication.Current"/> is thread-local).
 /// </summary>
-public sealed class UITestHost : IAsyncDisposable, IDisposable
+public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
 {
     private readonly SyntheticTerminalHost _terminal;
     private byte[] _lastFrameBytes = [];
     private bool _disposed;
 
-    private UITestHost(UITestHostOptions options, SyntheticTerminalHost terminal, FakeTimeProvider time, UIApplication application)
+    private UIHeadlessHost(UIHeadlessHostOptions options, SyntheticTerminalHost terminal, FakeTimeProvider time, UIApplication application)
     {
         Options = options;
         _terminal = terminal;
@@ -35,9 +35,9 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
     /// Creates and starts a headless application synchronously: no probes, no TTY, no negotiation.
     /// Set <see cref="UIApplication.RootElement"/> (or call <see cref="ShowRoot"/>) and step frames.
     /// </summary>
-    public static UITestHost Create(UITestHostOptions? options = null)
+    public static UIHeadlessHost Create(UIHeadlessHostOptions? options = null)
     {
-        options ??= new UITestHostOptions();
+        options ??= new UIHeadlessHostOptions();
         var time = new FakeTimeProvider();
         var terminal = new SyntheticTerminalHost(options.Capabilities, options.InitialSize, time);
         var builder = UIApplication.CreateBuilder()
@@ -46,7 +46,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
             .UseAlternateScreen(options.UseAlternateScreen);
         options.ConfigureBuilder?.Invoke(builder);
         var application = builder.Build();
-        var host = new UITestHost(options, terminal, time, application);
+        var host = new UIHeadlessHost(options, terminal, time, application);
         application.StartHeadless();
         terminal.DrainOutput(); // discard the UI-mode entry bytes — LastFrameBytes is per-frame
         return host;
@@ -71,14 +71,14 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
     public CellBuffer FrameBuffer => Application.FrameBufferInternal
                                      ?? throw new InvalidOperationException("The application has not started.");
 
-    /// <summary>The wire bytes the last <see cref="RunFrame"/> emitted (when <see cref="UITestHostOptions.CaptureFrameBytes"/>).</summary>
+    /// <summary>The wire bytes the last <see cref="RunFrame"/> emitted (when <see cref="UIHeadlessHostOptions.CaptureFrameBytes"/>).</summary>
     public ReadOnlyMemory<byte> LastFrameBytes => _lastFrameBytes;
 
     /// <summary>The canonical-teardown byte sequence, available after <see cref="DisposeAsync"/>.</summary>
     public ReadOnlyMemory<byte> TeardownBytes => _terminal.FinalOutput;
 
     /// <summary>Encapsulates configuration options for the UI test host.</summary>
-    public UITestHostOptions Options { get; }
+    public UIHeadlessHostOptions Options { get; }
 
     /// <summary>
     /// Sets the root element tree — the P1 stand-in for <c>ShowWindow</c> (S4's window plumbing
@@ -132,7 +132,7 @@ public sealed class UITestHost : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Advances <see cref="Time"/> in <see cref="UITestHostOptions.FrameInterval"/> steps with one
+    /// Advances <see cref="Time"/> in <see cref="UIHeadlessHostOptions.FrameInterval"/> steps with one
     /// <see cref="RunFrame"/> per step; a non-multiple remainder is applied as one final partial
     /// step with a closing frame.
     /// </summary>

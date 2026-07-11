@@ -8,7 +8,7 @@ using System.Text;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -22,7 +22,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void Teardown_EmitsCanonicalByteOrder()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(new Probe(4, 1) { FillGlyph = "X" });
         Assert.True(host.RunUntilIdle());
 
@@ -43,7 +43,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void Teardown_NoAltScreen_FallsBackToClear()
     {
-        var host = UITestHost.Create(new UITestHostOptions { UseAlternateScreen = false });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { UseAlternateScreen = false });
         host.ShowRoot(new Probe(4, 1));
         Assert.True(host.RunUntilIdle());
 
@@ -57,7 +57,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void Dispose_IsIdempotent()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.Dispose();
         host.Dispose();
         host.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -66,7 +66,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void Teardown_CancelsQueuedInvokeAsync_WithoutRunning()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var ran = false;
         var task = host.Application.Dispatcher.InvokeAsync(() => ran = true);
 
@@ -81,7 +81,7 @@ public sealed class TeardownAndExceptionTests
     {
         // The full production path over a synthetic host: real dedicated UI thread, ownership
         // hand-off, park/wake, Shutdown(exitCode), canonical teardown. Real wall clock.
-        var terminal = new SyntheticTerminalHost(TestCapabilities.KittyTruecolor, new Size(80, 24));
+        var terminal = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(80, 24));
         var app = UIApplication.CreateBuilder()
             .WithTerminalHost(terminal, disposeWithApp: true)
             .Build();
@@ -116,7 +116,7 @@ public sealed class TeardownAndExceptionTests
         // The hand-off overload: the root is constructed on the Build thread (capturing the
         // dispatcher per ledger A25), ownership transfers to the loop thread, and the loop touches
         // the element without tripping the DEBUG affinity asserts.
-        var terminal = new SyntheticTerminalHost(TestCapabilities.KittyTruecolor, new Size(80, 24));
+        var terminal = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(80, 24));
         var app = UIApplication.CreateBuilder()
             .WithTerminalHost(terminal, disposeWithApp: true)
             .Build();
@@ -138,7 +138,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void ProductionRunAsync_IsSingleUse()
     {
-        var terminal = new SyntheticTerminalHost(TestCapabilities.KittyTruecolor, new Size(80, 24));
+        var terminal = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(80, 24));
         var app = UIApplication.CreateBuilder().WithTerminalHost(terminal, disposeWithApp: true).Build();
         var run = app.RunAsync(() => new Probe(1, 1));
 
@@ -153,7 +153,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void HandledException_InMeasure_ContinuesRunning()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var seen = 0;
         host.Application.DispatcherUnhandledException += (_, e) => { seen++; e.Handled = true; };
 
@@ -169,7 +169,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void UnhandledException_IsFatal_RethrownFromFrame_TerminalStillRestored()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var bomb = new Probe(4, 1) { MeasureResult = _ => throw new InvalidOperationException("fatal bomb") };
         host.ShowRoot(bomb);
 
@@ -183,7 +183,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void HandledDrawException_KeepsRunning_AndEmitsConservatively()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var seen = 0;
         host.Application.DispatcherUnhandledException += (_, e) => { seen++; e.Handled = true; };
 
@@ -205,7 +205,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void UnhandledDrawException_IsFatal()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var bomb = new Probe(4, 1) { OnRender = (_, _) => throw new InvalidOperationException("fatal draw") };
         host.ShowRoot(bomb);
 
@@ -216,7 +216,7 @@ public sealed class TeardownAndExceptionTests
     [Fact]
     public void HandlerThrowing_IsFatalAggregate_NoReRaise()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var raises = 0;
         host.Application.DispatcherUnhandledException += (_, _) =>
         {
@@ -241,7 +241,7 @@ public sealed class TeardownAndExceptionTests
            // a handler that marks Handled swallows it and the loop is unaffected (the fire-and-forget happy path).
     public void ReportUnhandledException_Handled_FunnelsImmediately_AndKeepsRunning()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         Exception? funneled = null;
         host.Application.DispatcherUnhandledException += (_, e) => { funneled = e.Exception; e.Handled = true; };
 
@@ -256,7 +256,7 @@ public sealed class TeardownAndExceptionTests
     [Fact] // An unhandled report takes the same fatal path as an in-loop fault: recorded fatal, shutdown begun.
     public void ReportUnhandledException_Unhandled_RecordsFatal_AndBeginsShutdown()
     {
-        var host = UITestHost.Create(); // NOT `using`: the fatal path is torn down explicitly, like the sibling fatal tests
+        var host = UIHeadlessHost.Create(); // NOT `using`: the fatal path is torn down explicitly, like the sibling fatal tests
 
         // No DispatcherUnhandledException handler ⇒ the fault is left unhandled.
         host.Application.ReportUnhandledException(new InvalidOperationException("fatal fire-and-forget"));
@@ -272,7 +272,7 @@ public sealed class TeardownAndExceptionTests
            // concurrently — so nothing funnels until the loop pumps, and it then runs ON the dispatcher thread.
     public void ReportUnhandledException_OffThread_IsMarshaledOntoTheDispatcher()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var uiThreadId = Environment.CurrentManagedThreadId; // the test thread owns the dispatcher
         var seen = 0;
         var handlerThreadId = 0;

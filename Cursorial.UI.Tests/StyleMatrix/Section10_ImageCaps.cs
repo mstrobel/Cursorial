@@ -1,5 +1,5 @@
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -17,9 +17,9 @@ public class Section10_ImageCaps
     [Fact] // C22.1: any graphics protocol stamps caps-images
     public void C22_1_AnyGraphicsStampsImages()
     {
-        foreach (var caps in new[] { TestCapabilities.KittyGraphics, TestCapabilities.SixelGraphics, TestCapabilities.ITerm2Graphics })
+        foreach (var caps in new[] { HeadlessCapabilities.KittyGraphics, HeadlessCapabilities.SixelGraphics, HeadlessCapabilities.ITerm2Graphics })
         {
-            using var tree = ShowTree(new UITestHostOptions { Capabilities = caps });
+            using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = caps });
             Assert.Contains("caps-images", tree.Root.Classes);
         }
     }
@@ -27,14 +27,14 @@ public class Section10_ImageCaps
     [Fact] // C22.2: no graphics protocol ⇒ no caps-images
     public void C22_2_NoGraphicsNoImages()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
         Assert.DoesNotContain("caps-images", tree.Root.Classes);
     }
 
     [Fact] // C22.3: Kitty graphics ⇒ caps-image-occlusion
     public void C22_3_KittyGraphicsOcclusion()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics });
         Assert.Contains("caps-images", tree.Root.Classes);
         Assert.Contains("caps-image-occlusion", tree.Root.Classes);
     }
@@ -42,7 +42,7 @@ public class Section10_ImageCaps
     [Fact] // C22.4: Sixel only ⇒ caps-images but NOT caps-image-occlusion
     public void C22_4_SixelNoOcclusion()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.SixelGraphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.SixelGraphics });
         Assert.Contains("caps-images", tree.Root.Classes);
         Assert.DoesNotContain("caps-image-occlusion", tree.Root.Classes);
     }
@@ -50,7 +50,7 @@ public class Section10_ImageCaps
     [Fact] // C22.5: iTerm2 inline images ⇒ caps-images but NOT caps-image-occlusion (excluded for now)
     public void C22_5_ITerm2NoOcclusion()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.ITerm2Graphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.ITerm2Graphics });
         Assert.Contains("caps-images", tree.Root.Classes);
         Assert.DoesNotContain("caps-image-occlusion", tree.Root.Classes);
     }
@@ -58,7 +58,7 @@ public class Section10_ImageCaps
     [Fact] // C22.6: caps-nerdfont is never auto-stamped (no probe)
     public void C22_6_NerdFontNotAutoStamped()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics });
         Assert.DoesNotContain("caps-nerdfont", tree.Root.Classes);
     }
 
@@ -78,14 +78,14 @@ public class Section10_ImageCaps
     [Fact] // C22.8: renegotiation drops the negotiated graphics classes but keeps the app-state Nerd-Font opt-in
     public async Task C22_8_RenegotiationKeepsNerdFontDropsGraphics()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics }, show: false);
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics }, show: false);
         tree.Host.ShowRoot(tree.Root);
         tree.App.NerdFontAvailable = true;
         Assert.Contains("caps-images", tree.Root.Classes);
         Assert.Contains("caps-image-occlusion", tree.Root.Classes);
         Assert.Contains("caps-nerdfont", tree.Root.Classes);
 
-        tree.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.Ansi16Legacy);
+        tree.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.Ansi16Legacy);
         await tree.App.RenegotiateAsync();
 
         Assert.DoesNotContain("caps-images", tree.Root.Classes);          // new snapshot has no graphics
@@ -98,7 +98,7 @@ public class Section10_ImageCaps
     [Fact] // C22.9: caps-image-occlusion is an ordinary matchable selector class
     public void C22_9_OcclusionClassIsMatchable()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics }, show: false);
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics }, show: false);
         tree.App.Styles.Add(R(".caps-image-occlusion Widget", (Widget.P, 7)));
         tree.Host.ShowRoot(tree.Root);
 

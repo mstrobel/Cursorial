@@ -10,14 +10,14 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
 /// Phase 2 integration: the design doc §14 P2 exit criteria proven end-to-end through
-/// <see cref="UITestHost"/> — every scenario enters through the harness input surface
+/// <see cref="UIHeadlessHost"/> — every scenario enters through the harness input surface
 /// (<c>SendKey</c>/<c>SendInput</c>/<c>SendBytes</c>) and crosses the full spine (frame loop
 /// input drain → <c>InputDispatcher.ProcessEvent</c> → routing/focus/hover/capture → render →
 /// Phase-6 <c>UpdateHover</c>), not a dispatcher harness. Covers: (a) tab cycling + scope memory +
@@ -129,7 +129,7 @@ public sealed class Phase2EndToEndTests
     [Fact]
     public void TabCycle_OnceScopeMemory_WindowActivationRestore_RoundTrip()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var left = new FocusLeaf("L");
         var scope = new StackPanel();
@@ -218,7 +218,7 @@ public sealed class Phase2EndToEndTests
     [Fact]
     public void HoverUnderScroll_WheelChangesOffset_HoverRetargetsWithoutMouseMotion()
     {
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(20, 10)
         });
@@ -291,7 +291,7 @@ public sealed class Phase2EndToEndTests
     [Fact]
     public void Capture_DragOutsideBounds_KeepsRoutingToCaptor_ReleaseRestoresHitRouting()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var captor = new Leaf(10, 4);
         var other = new Leaf(10, 4);
@@ -367,7 +367,7 @@ public sealed class Phase2EndToEndTests
     [Fact]
     public void KeyBinding_CtrlS_FiresFromBothWireEncodings()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Canvas();
         root.Children.Add(new Leaf(10, 2));
 
@@ -400,7 +400,7 @@ public sealed class Phase2EndToEndTests
     [Fact]
     public void TerminalFocusOut_PressedCleared_EditCommitFires_FocusRetained_AltCueCleared()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var button = new PressableButton();
         Canvas.SetLeft(button, 10);
@@ -461,7 +461,7 @@ public sealed class Phase2EndToEndTests
     public void AccessKeyGate_KittyAltToggle_LegacyPermanentCues()
     {
         // Kitty preset: DistinguishesKeyUpDown ∧ ReportsRepeats ⇒ AltHeld.
-        using (var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor }))
+        using (var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyTruecolor }))
         {
             var root = new Canvas();
             root.Children.Add(new Leaf(10, 2));
@@ -491,7 +491,7 @@ public sealed class Phase2EndToEndTests
 
         // Legacy preset: no key-up/repeat truth and no Win32 input mode ⇒ AlwaysVisible, cue
         // permanently on from the capability fan-out.
-        using (var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy }))
+        using (var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy }))
         {
             var root = new Canvas();
             root.Children.Add(new Leaf(10, 2));

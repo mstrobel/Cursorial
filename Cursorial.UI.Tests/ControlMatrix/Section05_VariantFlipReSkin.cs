@@ -3,8 +3,8 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
 // ReSharper disable InconsistentNaming
@@ -21,13 +21,13 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 /// resting border to inspect. The button family's resting spine is Foreground = <c>TextBrush</c> on a
 /// Background = <c>SurfaceBrush</c> fill; <c>:focus</c> is REVERSE-VIDEO (Background = <c>TextBrush</c>,
 /// Foreground = <c>WindowBackground</c>). A root-level Button is not auto-focused by
-/// <see cref="UITestHost.ShowRoot"/>, so it renders the resting spine directly; the focus look is reached
+/// <see cref="UIHeadlessHost.ShowRoot"/>, so it renders the resting spine directly; the focus look is reached
 /// by an explicit <see cref="UIElement.Focus"/>.
 /// </summary>
 public sealed class Section05_VariantFlipReSkin
 {
-    private static UITestHost TruecolorHost()
-        => UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost TruecolorHost()
+        => UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     // The cell-faithful BuiltIn palette ink/fill the rows pin (design doc §11.8a; Tokyo Night). Resting
     // spine: Foreground = TextBrush, Background = SurfaceBrush. Focus = reverse-video (Background = TextBrush,
@@ -250,9 +250,9 @@ public sealed class Section05_VariantFlipReSkin
         // picked palette index emits a palette SGR. The two byte streams differ, so the pixels change.
         // Each asserted frame is a flip-INDUCED re-emit (the resting frame is emitted during RunUntilIdle,
         // so a steady-state frame would be empty — the flips force the relevant cells back onto the wire).
-        using var host = UITestHost.Create(new UITestHostOptions
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
             CaptureFrameBytes = true
         });
         host.Application.RequestedThemeBase = ThemeBase.Dark;
@@ -407,15 +407,15 @@ public sealed class Section05_VariantFlipReSkin
         => haystack.Span.IndexOf(needle) >= 0;
 
     // The foreground of the cell carrying the first char of text (the content ink).
-    private static Color FindForeground(UITestHost host, string text)
+    private static Color FindForeground(UIHeadlessHost host, string text)
         => CellOf(host, text).Style.Foreground;
 
     // The background fill of the cell carrying the first char of text (the cell-faithful spine has no border;
     // a control's extent is its fill, so the content cell's background IS the resting/state fill).
-    private static Color FillColor(UITestHost host, string text)
+    private static Color FillColor(UIHeadlessHost host, string text)
         => CellOf(host, text).Style.Background;
 
-    private static Cell CellOf(UITestHost host, string text)
+    private static Cell CellOf(UIHeadlessHost host, string text)
     {
         var first = text[0];
         for (var r = 0; r < host.FrameBuffer.Rows; r++)

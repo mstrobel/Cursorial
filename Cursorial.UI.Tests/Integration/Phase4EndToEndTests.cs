@@ -8,7 +8,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Style = Cursorial.UI.Style;
 
@@ -16,7 +16,7 @@ namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
 /// Phase 4 integration: the design doc §14 P4 exit criteria proven end-to-end through
-/// <see cref="UITestHost"/> — every scenario crosses the full spine (binding install → source
+/// <see cref="UIHeadlessHost"/> — every scenario crosses the full spine (binding install → source
 /// notification → the property store → styling/layout/render → composited cells), not an engine
 /// harness. Covers: (a) an MVVM TwoWay round trip against an INPC viewmodel (VM change → cell, target
 /// write → VM through <see cref="UIObject.SetCurrentValue{T}"/> with the binding preserved), (b) the
@@ -185,7 +185,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void MvvmTwoWayRoundTrip_Inpc_VmChangeRendersToCells_TargetWriteFlowsBack_BindingPreserved()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card();
         var vm = new CardVm { Title = "hello" };
@@ -231,7 +231,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void MvvmTwoWayRoundTrip_PropertyNameChangedLadder_NoInpc_RoundTripsThroughConventionEvent()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card();
         var vm = new PocoVm { Title = "poco" };
@@ -273,7 +273,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void DataContextInheritance_ParentSwap_ReTargetsChildBindings_RenderedTruth()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();      // carries the inherited DataContext
         var card = new Card();            // no own DataContext — inherits root's
         root.Children.Add(card);
@@ -312,7 +312,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void ElementNameAndFindAncestor_ResolveThroughTreeAndScope_RenderedTruth()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var source = new Card { Label = "src" };  // the named element ElementName resolves to
         var byName = new Card();                   // binds Label ← ElementName source.Label
@@ -356,7 +356,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void WhenDrivenStyling_VmBoolFlipsRuleActivation_StyledEffectiveValueAndCells()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card();
         var vm = new CardVm { Highlighted = false };
@@ -400,7 +400,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void TeardownSweep_DetachedSubtree_BoundToLongLivedVm_NoSurvivingSubscriptions()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var subtree = new StackPanel();
         var cardOne = new Card();
@@ -452,7 +452,7 @@ public sealed class Phase4EndToEndTests
     [Fact]
     public void LostFocusTrigger_TerminalFocusOut_EditCommitPulseFlushes_FocusRetained_NoLostFocusEvent()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var card = new Card(focusable: true);
         var vm = new CardVm { Title = "a" };

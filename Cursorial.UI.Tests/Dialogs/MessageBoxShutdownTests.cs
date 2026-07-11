@@ -2,7 +2,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Dialogs;
 
@@ -51,7 +51,7 @@ public sealed class MessageBoxShutdownTests
     [Fact]
     public async Task ShowAsync_AfterDispatcherShutdown_ReturnsNoneInsteadOfThrowing()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(new TextBlock { Text = "stub" });
         Assert.True(host.RunUntilIdle());
 
@@ -67,7 +67,7 @@ public sealed class MessageBoxShutdownTests
     [Fact]
     public async Task TaskDialogService_AfterDispatcherShutdown_ReportsDismissed()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(new TextBlock { Text = "stub" });
         Assert.True(host.RunUntilIdle());
 
@@ -92,7 +92,7 @@ public sealed class MessageBoxShutdownTests
         // the MARSHALED path (the teardown race), so this must keep surfacing ShowDialogAsync's
         // "No window manager is available" InvalidOperationException instead of silently
         // reporting a dismissal.
-        var host = new SyntheticTerminalHost(TestCapabilities.KittyTruecolor, new Size(80, 24));
+        var host = new SyntheticTerminalHost(HeadlessCapabilities.KittyTruecolor, new Size(80, 24));
         var application = UIApplication.CreateBuilder()
                                        .WithTerminalHost(host, disposeWithApp: true)
                                        .Build();

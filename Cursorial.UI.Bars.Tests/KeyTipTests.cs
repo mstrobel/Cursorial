@@ -6,8 +6,8 @@ using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Bars.Input;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -16,18 +16,18 @@ namespace Cursorial.Tests.UI.Bars;
 // Driven headlessly through UITestHost on the KittyTruecolor preset (which satisfies the ND23 AltHeld gate).
 public sealed class KeyTipTests
 {
-    private static UITestHost NewHost(TerminalCapabilities caps, int w = 80, int h = 14) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = caps });
+    private static UIHeadlessHost NewHost(TerminalCapabilities caps, int w = 80, int h = 14) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = caps });
 
     private static KeyEvent Key_(Key key, KeyModifiers modifiers = KeyModifiers.None, string? text = null,
                                  KeyEventKind kind = KeyEventKind.Down)
         => new() { Key = key, Modifiers = modifiers, Kind = kind, Text = (text ?? string.Empty).AsMemory(), Timestamp = DateTimeOffset.UnixEpoch };
 
     // Alt down → the cue turns on → the controller enters (in AltHeld mode).
-    private static void AltDown(UITestHost host) => host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.Alt));
+    private static void AltDown(UIHeadlessHost host) => host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.Alt));
 
     // A drill/activate letter while Alt is held (Alt+letter is the drill gesture).
-    private static void TypeKeyTip(UITestHost host, char c)
+    private static void TypeKeyTip(UIHeadlessHost host, char c)
         => host.Application.InputDispatcher.ProcessEvent(Key_(Key.Character, KeyModifiers.Alt, c.ToString()));
 
     // Home(H)[Font(F): Bold(B), Italic(T)]  Insert(I)[Tables(A): Table(E)] — deliberately collision-free letters.
@@ -57,7 +57,7 @@ public sealed class KeyTipTests
     [Fact] // Gate: KittyTruecolor satisfies the ND23 AltHeld gate — Alt-down arms KeyTips.
     public void Gate_KittyTruecolor_AltArmsKeyTips()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -74,7 +74,7 @@ public sealed class KeyTipTests
     [Fact] // Gate: a preset that fails the AltHeld gate (no Kitty keyboard) → KeyTips never arms.
     public void Gate_LegacyPreset_NeverArms()
     {
-        using var host = NewHost(TestCapabilities.Ansi16Legacy);
+        using var host = NewHost(HeadlessCapabilities.Ansi16Legacy);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -88,7 +88,7 @@ public sealed class KeyTipTests
     [Fact] // Full ribbon drill: Alt → tab letter (selects + L1) → group letter (L2) → control letter (activates + exits).
     public void Ribbon_MultiLevelDrill_ActivatesLeaf()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, table) = NewRibbon();
         var clicked = false;
@@ -115,7 +115,7 @@ public sealed class KeyTipTests
     [Fact] // The File tab activates Backstage instead of drilling.
     public void Ribbon_FileTab_RaisesBackstage()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -141,7 +141,7 @@ public sealed class KeyTipTests
     [Fact] // Toolbar single level: Alt → a control letter activates it, no tab step.
     public void Toolbar_SingleLevel_ActivatesControl()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var cut = new BarButton { Content = "Xut" };   // 'X' distinct
@@ -164,7 +164,7 @@ public sealed class KeyTipTests
     [Fact] // Esc backs out one level; at the top it exits.
     public void Esc_PopsLevel_ThenExits()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -187,7 +187,7 @@ public sealed class KeyTipTests
     [Fact] // A non-matching letter bonks: the char is consumed (never leaks to a focused TextBox) and the overlay stays.
     public void Bonk_ConsumesChar_NoLeak()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var box = new TextBox();
@@ -208,7 +208,7 @@ public sealed class KeyTipTests
     [Fact] // A global gesture survives while KeyTips is active (a Ctrl chord falls through PreProcessInput).
     public void GlobalGesture_SurvivesWhileActive()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var (ribbon, _, _) = NewRibbon();
@@ -229,7 +229,7 @@ public sealed class KeyTipTests
            // slide moves the tabs; the badges must follow via TranslateToScreen's scroll-offset walk).
     public void Badges_TrackTarget_WhenRibbonScrolls()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor, w: 80, h: 12);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 80, h: 12);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
 
@@ -266,7 +266,7 @@ public sealed class KeyTipTests
     [Fact] // A target scrolled OFF the top of the viewport hides its badge (never stranded at the screen edge).
     public void Badge_HidesWhenTargetScrollsOffViewport()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor, w: 80, h: 8);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor, w: 80, h: 8);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
 
@@ -295,7 +295,7 @@ public sealed class KeyTipTests
            // (the popped-to level's typed prefix must be cleared, else every later letter bonks — the level bricks).
     public void EscBack_ThenReDrillSibling_Works()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -319,7 +319,7 @@ public sealed class KeyTipTests
            // wire carries the Alt bit (Alt+Esc), so the stale-Alt inference never fires; the overlay must still exit.
     public void EscAtTop_WithAltHeld_Exits()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -338,7 +338,7 @@ public sealed class KeyTipTests
            // gives up it re-shows the root level, and a sibling with content is still drillable.
     public void DrillEmptyTab_RecoversAndReDrills()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -369,7 +369,7 @@ public sealed class KeyTipTests
            // the QAT digit badges); digits are excluded from first-letter derivation.
     public void DigitLeadingHeader_DerivesNoDigitBadge()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
 
         var tab = new RibbonTab { Header = "3D Tools" };
@@ -381,7 +381,7 @@ public sealed class KeyTipTests
            // letter and, having no arranged position, land at the ribbon origin over the first tab (the reported bug).
     public void CollapsedTab_GetsNoBadge()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -410,7 +410,7 @@ public sealed class KeyTipTests
     [Fact] // QAT digit badges are activatable via the NUMPAD too (keyboard-first users), not only the number row.
     public void NumpadDigit_ActivatesDigitBadge()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var one = new BarButton { Content = "first" };
@@ -436,7 +436,7 @@ public sealed class KeyTipTests
            // window opened over the ribbon occludes the badges instead of the badges bleeding on top of it.
     public void Overlay_SitsAboveRoot_BelowWindows()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
         var (ribbon, _, _) = NewRibbon();
         host.ShowRoot(ribbon);
@@ -469,7 +469,7 @@ public sealed class KeyTipTests
            // rather than a stranded badge at the ribbon origin (the reported 'S'-for-Settings in the top-left corner).
     public void OverflowedControl_HasNoVisibleBadge()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var visible = new BarButton { Content = "Xut" };       // 'X' — stays in the row
@@ -494,7 +494,7 @@ public sealed class KeyTipTests
            // is not eaten by the sticky-cue consume (otherwise it takes two Escs to close a just-opened Backstage).
     public void ActivationInStickyMode_DoesNotEatNextEscape()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var cut = new BarButton { Content = "Xut" };
@@ -526,7 +526,7 @@ public sealed class KeyTipTests
     [Fact] // The KeyTip hop sequence for a ribbon BAND control is Alt → tab → group → control (for SuperTips).
     public void HopSequence_RibbonBandControl_IsTabGroupControl()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
         var (ribbon, bold, _) = NewRibbon(); // Home(H) → Font(F) → Bold(B)
         host.ShowRoot(ribbon);
@@ -538,7 +538,7 @@ public sealed class KeyTipTests
     [Fact] // A flat toolbar control's hop sequence is Alt → control.
     public void HopSequence_ToolbarControl_IsAltPlusControl()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
         var cut = new BarButton { Content = "Xut" };
         var toolbar = new Toolbar();
@@ -552,7 +552,7 @@ public sealed class KeyTipTests
     [Fact] // No hop sequence when KeyTips isn't enabled on the app (the hint would be misleading).
     public void HopSequence_Null_WhenKeyTipsDisabled()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor); // note: EnableKeyTips NOT called
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor); // note: EnableKeyTips NOT called
         var (ribbon, bold, _) = NewRibbon();
         host.ShowRoot(ribbon);
         host.RunUntilIdle();
@@ -564,7 +564,7 @@ public sealed class KeyTipTests
            // its own hop sequence at show time.
     public void SuperTip_ProvisionedWithAnchor_ComputesHops()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -585,7 +585,7 @@ public sealed class KeyTipTests
     [Fact] // Audit: a DISABLED bar control gets no hop hint — the overlay never badges it, so the hop would lie.
     public void HopSequence_Null_ForDisabledControl()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -605,7 +605,7 @@ public sealed class KeyTipTests
     [Fact] // Audit: a control whose badge was DROPPED by a same-letter collision gets no hop; the survivor keeps it.
     public void HopSequence_CollisionDropped_NullForLoser_SurvivorKeeps()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         _ = host.Application.EnableKeyTips();
 
         var ribbon = new Ribbon();
@@ -627,7 +627,7 @@ public sealed class KeyTipTests
     [Fact] // Multi-char keytips: typing the shared prefix dims the matched letters + keeps only the viable badges.
     public void MatchedPrefix_MultiChar_FiltersToViable()
     {
-        using var host = NewHost(TestCapabilities.KittyTruecolor);
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
         var controller = host.Application.EnableKeyTips();
 
         var fp = new BarButton { Content = "one" };

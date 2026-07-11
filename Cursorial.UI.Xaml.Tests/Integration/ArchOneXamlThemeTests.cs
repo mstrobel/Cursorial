@@ -5,8 +5,8 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 
@@ -124,7 +124,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the Label DEFAULT THEME renders its caption — without a theme, ContentControl has no presenter → blank (gap fix)
     public void Label_DefaultTheme_RendersItsContent()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(12, 2) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(12, 2) });
         host.ShowRoot(new UIControls.Label { Content = "Hi" });
         Assert.True(host.RunUntilIdle());
         Assert.Equal("H", host.GetCell(0, 0).Grapheme);
@@ -156,9 +156,9 @@ public sealed class ArchOneXamlThemeTests
     // These exercise the themes the inline byte-identity theory can't reach: they render on popup surfaces or switch
     // content. The parse+presence check (AllP9ControlThemes_…) proves they LOAD; these prove they WORK at runtime.
 
-    private static int Popups(UITestHost host) => host.Application.WindowManager!.Popups.Count;
+    private static int Popups(UIHeadlessHost host) => host.Application.WindowManager!.Popups.Count;
 
-    private static bool RenderContains(UITestHost host, string text, int cols, int rows)
+    private static bool RenderContains(UIHeadlessHost host, string text, int cols, int rows)
     {
         for (var r = 0; r < rows; r++)
         {
@@ -172,7 +172,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML TabControl theme renders the selected tab's content (PART_ContentHost) and switches it live
     public void XamlTabControlTheme_RendersSelectedContent_AndSwitches()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 6) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var tabs = new UIControls.TabControl { Width = 20, Height = 6 };
@@ -193,7 +193,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML Menu/MenuItem theme hosts a submenu on a popup surface (the XAML MenuItem template's PART_Popup)
     public void XamlMenuTheme_OpensSubmenuPopup()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 12) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var file = new UIControls.MenuItem { Header = "File" };
@@ -212,7 +212,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML ContextMenu theme opens its popup-rooted vertical menu under the overlay
     public void XamlContextMenuTheme_OpensPopup()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 12) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var owner = new UIControls.Border { Width = 20, Height = 6 };
@@ -231,7 +231,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML ToolTip theme shows on the hit-transparent popup after the hover delay
     public void XamlToolTipTheme_ShowsOnHover()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 12) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 12) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var element = new UIControls.Border { Width = 16, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
@@ -306,7 +306,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML DatePicker theme drops a Calendar onto a popup surface (PART_Popup → PART_Calendar)
     public void XamlDatePickerTheme_OpensCalendarPopup()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 14) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 14) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var dp = new UIControls.DatePicker { DisplayDate = new DateOnly(2026, 6, 1), Width = 14 };
@@ -322,7 +322,7 @@ public sealed class ArchOneXamlThemeTests
     [Fact] // the XAML ComboBox theme opens its drop-down on a popup surface (PART_Popup) showing the items
     public void XamlComboBoxTheme_OpensDropDownPopup()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 10) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 10) });
         host.Application.Theme = CursorialDefaultTheme.LoadControls();
 
         var combo = new UIControls.ComboBox { ItemsSource = new[] { "Alpha", "Beta" }, SelectedIndex = 0, Width = 14 };
@@ -359,7 +359,7 @@ public sealed class ArchOneXamlThemeTests
     private static /*(string Glyph, Color Fg, Color Bg)*/string[] CaptureCells(
         bool xaml, bool focus, int cols, int rows, Func<UIControls.Control> factory)
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(cols, rows) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(cols, rows) });
         if (xaml)
             host.Application.Theme = CursorialDefaultTheme.LoadControls();
 

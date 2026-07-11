@@ -5,8 +5,8 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 using Cursorial.UI.Themes;
 
 namespace Cursorial.Tests.UI.Bars;
@@ -15,8 +15,8 @@ namespace Cursorial.Tests.UI.Bars;
 // bar controls a Toolbar hosts, bound to the SAME BarCommands. P2 core: docked, single-density render + commands.
 public sealed class RibbonTests
 {
-    private static UITestHost NewHost(int w = 64, int h = 10) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 64, int h = 10) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     private static RibbonGroup Group(string header, params UIElement[] items)
     {
@@ -54,7 +54,7 @@ public sealed class RibbonTests
         Assert.Equal(clipRow, fntRow); // same row ⇒ names share the band's bottom baseline
     }
 
-    private static int RowContaining(UITestHost host, string text)
+    private static int RowContaining(UIHeadlessHost host, string text)
     {
         for (var r = 0; r < 10; r++)
             if (host.GetRowText(r).Contains(text))
@@ -716,7 +716,7 @@ public sealed class RibbonTests
     }
 
     // The column of the first occurrence of `needle` on `row` (the strip is row 0; bands are on lower rows).
-    private static int ColumnOf(UITestHost host, int row, string needle)
+    private static int ColumnOf(UIHeadlessHost host, int row, string needle)
         => host.GetRowText(row).IndexOf(needle, StringComparison.Ordinal);
 
     [Fact] // a shown-inactive contextual tab renders in purple ink (--ctx) — distinct from a normal tab's dim ink

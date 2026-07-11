@@ -4,7 +4,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -17,10 +17,10 @@ public class GridSplitterTests
 {
     // A 3-column grid [left | splitter(1) | right] exactly filling a `width`-wide host; the splitter resizes the
     // outer two columns (PreviousAndNext). Returns the grid + splitter for driving the drag.
-    private static (UITestHost Host, Grid Grid, GridSplitter Splitter) MakeColumns(
+    private static (UIHeadlessHost Host, Grid Grid, GridSplitter Splitter) MakeColumns(
         int width = 21, int left = 10, int right = 10, int rightMin = 0, int rightMax = LayoutMathUnbounded)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(width, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(width, 6) });
         var grid = new Grid
         {
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
@@ -47,7 +47,7 @@ public class GridSplitterTests
         Modifiers = KeyModifiers.None, Timestamp = default,
     };
 
-    private static void Drag(UITestHost host, GridSplitter splitter, int dx, int dy)
+    private static void Drag(UIHeadlessHost host, GridSplitter splitter, int dx, int dy)
     {
         var (col, row) = splitter.TranslateToWindow(0, 0);
         host.SendInput(Mouse(MouseEventKind.ButtonDown, col, row, MouseButton.Left, MouseButtons.None));
@@ -100,7 +100,7 @@ public class GridSplitterTests
     [Fact]
     public void RowDrag_RedistributesRows()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(8, 21) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(8, 21) });
         using var _ = host;
         var grid = new Grid
         {
@@ -126,7 +126,7 @@ public class GridSplitterTests
     [Fact]
     public void StarColumns_StayStar_RatioReflectsTheDrag()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(21, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(21, 6) });
         using var _ = host;
         var grid = new Grid
         {
@@ -173,7 +173,7 @@ public class GridSplitterTests
         using (hostC)
             Assert.Equal(MouseCursorShape.ColResize, splitterC.Cursor);
 
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(8, 21) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(8, 21) });
         using var _ = host;
         var grid = new Grid { Width = 8, Height = 21, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         grid.RowDefinitions.Add(new RowDefinition(GridLength.FromCells(10)));
@@ -191,7 +191,7 @@ public class GridSplitterTests
     [Fact]
     public void NotInAGrid_DragIsHarmlessNoOp()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(10, 4) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(10, 4) });
         using var _ = host;
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         var splitter = new GridSplitter { ResizeDirection = GridResizeDirection.Columns, Width = 4, Height = 2 };
@@ -205,7 +205,7 @@ public class GridSplitterTests
     [Fact] // the PreviousAndNext pair at column 0 has no "previous" (prevIndex -1) — the resolve aborts, drag no-ops
     public void EdgeIndex_NoPreviousColumn_DragIsNoOp()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(21, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(21, 6) });
         using var _ = host;
         var grid = new Grid { Width = 21, Height = 6, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.FromCells(10)));
@@ -226,7 +226,7 @@ public class GridSplitterTests
     [Fact] // CurrentAndNext: the splitter's OWN column + the next one (the edge-docked idiom)
     public void CurrentAndNext_ResizesOwnAndNext()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(20, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
         using var _ = host;
         var grid = new Grid { Width = 20, Height = 6, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.FromCells(8)));
@@ -246,7 +246,7 @@ public class GridSplitterTests
     [Fact] // ResizeDirection.Auto with no alignment resolves to Columns for a tall-thin splitter (aspect tiebreak)
     public void AutoDirection_TallThinSplitter_ResolvesToColumns()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(21, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(21, 6) });
         using var _ = host;
         var grid = new Grid { Width = 21, Height = 6, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.FromCells(10)));

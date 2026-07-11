@@ -1,6 +1,6 @@
 using Cursorial.Output;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
@@ -178,7 +178,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C44
     public void C44_NearestLogicalAncestorWins()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.MidA.Res[K] = "A";
         tree.Root.Res[K] = "B";
@@ -190,7 +190,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C45
     public void C45_FoundAtApplicationResources()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         host.Application.Resources[K] = "app";
@@ -201,7 +201,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C46
     public void C46_FoundAtApplicationTheme()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
         var theme = new ResourceDictionary { [K] = "theme" };
@@ -213,7 +213,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C47
     public void C47_FoundInBuiltIn_FinalHop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
 
@@ -224,7 +224,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C48
     public void C48_Miss_FindThrows_TryReturnsFalse()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         host.ShowRoot(tree.Root);
 
@@ -239,7 +239,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C49 — template-part chain: template-Resources hop slots in, then continue up the templated parent's logical chain (CD11)
     public void C49_TemplatePartChain_TemplateResourceHopThenTemplatedParentAncestors()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         // K lives in the template's sealed Resources; K2 on the control's logical ancestor (the panel).
         Cursorial.UI.Controls.Border? part = null;
@@ -272,7 +272,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C50 — DataTemplate-own Resources are excluded from the chain in v1
     public void C50_DataTemplateOwnResources_ExcludedFromChain()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         // A "data root" with a normal logical parent and null TemplatedParent — its own Resources are
         // on the chain (it is a normal logical node); the v1 cut is the DATA root being skipped only
         // for DataTemplate-generated content. The proxy here: a normal child's own resources ARE
@@ -286,7 +286,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C51
     public void C51_HasResourcesFalseNodes_Skipped()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.Root.Res[K] = "root"; // midA has no resources
         host.ShowRoot(tree.Root);
@@ -298,7 +298,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C52 — variant overloads
     public void C52_VariantOverloads()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         var sub = new ResourceDictionary { [K] = "darkAnsi256" };
         tree.MidA.Res.ThemeDictionaries[new ThemeVariantKey(ThemeBase.Dark, ColorDepth.Ansi256)] = sub;
@@ -326,7 +326,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C54 — detached leaf: app/BuiltIn hops still resolve; GetResourceVersion == 0
     public void C54_DetachedLeaf_AppTailResolves_VersionZero()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.Resources[K] = "app";
         var leaf = new Probe();
 
@@ -339,7 +339,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C55 — move across roots re-resolves from the new logical position
     public void C55_MoveAcrossRoots_ReResolves()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var rootA = new Probe { Name = "RootA" };
         rootA.Res[K] = "A";
         var leaf = new Probe();
@@ -361,7 +361,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C56 — deferred entry mid-chain realizes during the walk
     public void C56_DeferredEntryMidChain_RealizesDuringWalk()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         var entry = new CountingDeferred(_ => Vbrush);
         tree.Root.Res.SetDeferred(K, entry);
@@ -376,7 +376,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C57 — roots do not chain to each other
     public void C57_RootsDoNotChain()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var rootA = new Probe { Name = "RootA" };
         rootA.Res[K] = "A";
         host.ShowRoot(rootA);
@@ -392,7 +392,7 @@ public sealed class Section02_VariantsAndChain
     [Fact] // C58 — Trace/Explain shape (R3 acceptance; data shape pinned now)
     public void C58_TraceExplain_OneLinePerHop()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var tree = BuildTree();
         tree.MidA.Res[K] = "hit";
         host.ShowRoot(tree.Root);

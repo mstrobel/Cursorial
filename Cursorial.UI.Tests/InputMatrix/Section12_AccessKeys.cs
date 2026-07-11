@@ -3,8 +3,8 @@ using Cursorial.Input.Events;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -14,14 +14,14 @@ namespace Cursorial.Tests.UI.InputMatrix;
 /// Input matrix §12 — <see cref="AccessKeyManager"/> core: the capability gate, Alt brackets,
 /// chord-flash, registry, scopes, cycling, the menu-mode entries, and the access-key proxy
 /// (N166–N189, N222–N226). AltHeld-mode
-/// rows use the default KittyCaps; legacy rows <see cref="TestCapabilities.Ansi16Legacy"/>.
+/// rows use the default KittyCaps; legacy rows <see cref="HeadlessCapabilities.Ansi16Legacy"/>.
 /// </summary>
 public class Section12_AccessKeys
 {
-    private static (UITestHost Host, List<string> Log, CanvasProbe Root, AccessKeyManager Ak, InputDispatcher Dispatcher)
+    private static (UIHeadlessHost Host, List<string> Log, CanvasProbe Root, AccessKeyManager Ak, InputDispatcher Dispatcher)
         CreateHost(TerminalCapabilities? capabilities = null)
     {
-        var host = UITestHost.Create(capabilities is null ? null : new UITestHostOptions { Capabilities = capabilities });
+        var host = UIHeadlessHost.Create(capabilities is null ? null : new UIHeadlessHostOptions { Capabilities = capabilities });
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         host.ShowRoot(root);
@@ -30,16 +30,16 @@ public class Section12_AccessKeys
     }
 
     private static TerminalCapabilities Caps(bool upDown, bool repeats, bool win32)
-        => TestCapabilities.KittyTruecolor with
+        => HeadlessCapabilities.KittyTruecolor with
         {
-            Input = TestCapabilities.KittyTruecolor.Input with
+            Input = HeadlessCapabilities.KittyTruecolor.Input with
             {
-                Keyboard = TestCapabilities.KittyTruecolor.Input.Keyboard with
+                Keyboard = HeadlessCapabilities.KittyTruecolor.Input.Keyboard with
                 {
                     DistinguishesKeyUpDown = upDown,
                     ReportsRepeats = repeats
                 },
-                Protocol = TestCapabilities.KittyTruecolor.Input.Protocol with { Win32InputMode = win32 }
+                Protocol = HeadlessCapabilities.KittyTruecolor.Input.Protocol with { Win32InputMode = win32 }
             }
         };
 
@@ -89,7 +89,7 @@ public class Section12_AccessKeys
     {
         // Host level: the fan-out passes the NEGOTIATED session snapshot — a LegacyCaps host is
         // AlwaysVisible regardless of what a pipeline decorator might claim.
-        var (host, _, _, ak, _) = CreateHost(TestCapabilities.Ansi16Legacy);
+        var (host, _, _, ak, _) = CreateHost(HeadlessCapabilities.Ansi16Legacy);
         using var _host = host;
         Assert.Equal(AccessKeyMode.AlwaysVisible, ak.Mode);
 
@@ -115,7 +115,7 @@ public class Section12_AccessKeys
         AltDown(dispatcher); // cue on, side bit set
         Assert.True(ak.IsCueActive);
 
-        ak.OnCapabilitiesChanged(TestCapabilities.KittyTruecolor); // renegotiation, same caps
+        ak.OnCapabilitiesChanged(HeadlessCapabilities.KittyTruecolor); // renegotiation, same caps
 
         Assert.Equal(AccessKeyMode.AltHeld, ak.Mode);
         Assert.False(ak.IsCueActive);
@@ -134,13 +134,13 @@ public class Section12_AccessKeys
         var (host, _, root, ak, _) = CreateHost();
         using var _host = host;
 
-        ak.OnCapabilitiesChanged(TestCapabilities.Ansi16Legacy);
+        ak.OnCapabilitiesChanged(HeadlessCapabilities.Ansi16Legacy);
 
         Assert.Equal(AccessKeyMode.AlwaysVisible, ak.Mode);
         Assert.True(ak.IsCueActive);
         Assert.True(HasCue(root)); // permanently visible (requirement 6 fallback)
 
-        ak.OnCapabilitiesChanged(TestCapabilities.KittyTruecolor);
+        ak.OnCapabilitiesChanged(HeadlessCapabilities.KittyTruecolor);
 
         Assert.Equal(AccessKeyMode.AltHeld, ak.Mode);
         Assert.False(ak.IsCueActive); // pending real Alt
@@ -367,7 +367,7 @@ public class Section12_AccessKeys
     [Fact]
     public void N181_LegacyChordActivation_NoBracketEverObserved()
     {
-        var (host, log, root, ak, dispatcher) = CreateHost(TestCapabilities.Ansi16Legacy);
+        var (host, log, root, ak, dispatcher) = CreateHost(HeadlessCapabilities.Ansi16Legacy);
         using var _host = host;
         var target = new AkTarget("T", log);
         root.Place(target, 5, 5);

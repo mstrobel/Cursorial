@@ -3,7 +3,7 @@ using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using Style = Cursorial.UI.Style;
 
@@ -33,7 +33,7 @@ public sealed class TemplateLanePrecedenceTests
             Template = new ControlTemplate(_ => part = new Border { Background = TemplateBrush }),
         };
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(shell);
         host.RunFrame(); // ApplyTemplate → ControlTemplate.Instantiate (the scope) builds the part
 
@@ -57,7 +57,7 @@ public sealed class TemplateLanePrecedenceTests
             }),
         };
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(shell);
         host.RunFrame();
 
@@ -81,7 +81,7 @@ public sealed class TemplateLanePrecedenceTests
             }),
         };
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.Resources["TemplateLaneBrush"] = resourceBrush;
         host.ShowRoot(shell);
         host.RunFrame();
@@ -106,7 +106,7 @@ public sealed class TemplateLanePrecedenceTests
         var style = new Style(Selectors.OfType<Shell>().Template().OfType<Border>())
             .Set(Border.BackgroundProperty, StyleBrush);
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.Application.Styles.Add(style);
         host.ShowRoot(shell);
         host.RunFrame();

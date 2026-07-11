@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,9 +15,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // value when it doesn't parse; the drop button still opens the Calendar to pick visually.
 public sealed class Section32_DatePickerEditable
 {
-    private static (UITestHost Host, DatePicker Picker) Show(bool editable = true)
+    private static (UIHeadlessHost Host, DatePicker Picker) Show(bool editable = true)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 16) });
         var picker = new DatePicker
         {
             IsEditable = editable,
@@ -101,7 +101,7 @@ public sealed class Section32_DatePickerEditable
     [Fact] // C19.6: leaving the field commits the typed date
     public void C19_6_LostFocusCommits()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 16) });
         using var _ = host;
         var dp = new DatePicker { IsEditable = true, DisplayDate = new DateOnly(2026, 6, 1), Width = 18 };
         var other = new Button { Content = "x" };

@@ -1,8 +1,8 @@
 using Cursorial.Input;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
@@ -76,7 +76,7 @@ public sealed class XamlFocusActivationTests
     [Fact]
     public void XamlLoadedTree_AutoFocusesFirstControl_IsTabNavigable_AndRoutesKeysToRoot()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var root = Loader.Load<DockPanel>(Doc, source: null);
 
@@ -115,7 +115,7 @@ public sealed class XamlFocusActivationTests
     {
         // The hand-built equivalent proves the fix is layer-correct (activation timing), not loader-local:
         // the identical nesting auto-focuses the first control on the first idle frame too.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var root = HandBuilt();
         host.ShowRoot(root);
@@ -135,7 +135,7 @@ public sealed class XamlFocusActivationTests
     {
         // If the application moves focus explicitly before the parked activation resolves, the post-layout
         // retry must NOT clobber it — the retry only fills EMPTY focus, never overrides a real one.
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
 
         var root = Loader.Load<DockPanel>(Doc, source: null);
         host.Application.RootElement = root; // activation parks here (pre-layout, nothing reachable yet)

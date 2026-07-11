@@ -3,7 +3,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.ControlMatrix;
 
@@ -34,7 +34,7 @@ public static class ControlMatrixFixture
     /// <summary>Builds a capability snapshot from a preset, optionally overriding background + depth (the §0.2 <c>caps(...)</c>/<c>bg(...)</c> helper).</summary>
     public static TerminalCapabilities Caps(Color? background = null, ColorDepth? depth = null, TerminalCapabilities? preset = null)
     {
-        var caps = preset ?? TestCapabilities.KittyTruecolor;
+        var caps = preset ?? HeadlessCapabilities.KittyTruecolor;
         var color = caps.Output.Color;
         if (background is not null)
             color = color with { DefaultBackground = background };

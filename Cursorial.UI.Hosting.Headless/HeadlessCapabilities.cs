@@ -3,14 +3,14 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Terminal;
 
-namespace Cursorial.UI.Testing;
+namespace Cursorial.UI.Hosting.Headless;
 
 /// <summary>
-/// Scripted capability presets for <see cref="UITestHostOptions.Capabilities"/> (design doc
+/// Scripted capability presets for <see cref="UIHeadlessHostOptions.Capabilities"/> (design doc
 /// §10.10): no probes, no negotiation — these snapshots stand in for what a real
 /// <c>VtTerminalNegotiator</c> would have realized.
 /// </summary>
-public static class TestCapabilities
+public static class HeadlessCapabilities
 {
     /// <summary>
     /// A modern Kitty-class terminal: verified truecolor, full styling, alt screen, cursor

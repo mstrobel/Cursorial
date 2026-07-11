@@ -4,7 +4,7 @@
 #pragma warning disable xUnit1031
 
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -221,9 +221,9 @@ public sealed class UIDispatcherTests
         Assert.False(dispatcher.WaitForWake(TimeSpan.FromMilliseconds(1)));
     }
 
-    private static UITestHost CreateHost(out UIApplication app)
+    private static UIHeadlessHost CreateHost(out UIApplication app)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         app = host.Application;
         return host;
     }

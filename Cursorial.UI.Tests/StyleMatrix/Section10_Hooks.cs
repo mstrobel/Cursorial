@@ -1,6 +1,6 @@
 using Cursorial.Terminal;
 using Cursorial.UI;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -80,7 +80,7 @@ public class Section10_Hooks
     [Fact]
     public void S150_InputDrivenFlip_AppliedWithinTheSameFrame_VisibleToLayoutAndRender()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Widget(80, 24) { PaintP = true };
         host.Application.Styles.Add(R("Widget:pointerover", (Widget.P, 9)));
         host.ShowRoot(root);

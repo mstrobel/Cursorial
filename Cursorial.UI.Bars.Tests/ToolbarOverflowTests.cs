@@ -4,8 +4,8 @@ using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -15,10 +15,10 @@ namespace Cursorial.Tests.UI.Bars;
 // membership is asserted via the public VisualParent/LogicalParent (row = ToolbarOverflowPanel, overflow = StackPanel).
 public sealed class ToolbarOverflowTests
 {
-    private static UITestHost NewHost(int width, int height = 6) => UITestHost.Create(new UITestHostOptions
+    private static UIHeadlessHost NewHost(int width, int height = 6) => UIHeadlessHost.Create(new UIHeadlessHostOptions
     {
         InitialSize = new Size(width, height),
-        Capabilities = TestCapabilities.KittyTruecolor,
+        Capabilities = HeadlessCapabilities.KittyTruecolor,
     });
 
     // A toolbar that STRETCHES to the host width (so overflow tracks the available space — a Left-aligned toolbar

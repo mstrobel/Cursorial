@@ -1,7 +1,7 @@
 using Cursorial.Tests.UI.StyleMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
@@ -39,20 +39,20 @@ public sealed class CapabilityOverrideTests
     {
         var (capabilities, expectedClass) = axis switch
         {
-            "MouseMotion" => (detected ? TestCapabilities.KittyTruecolor : TestCapabilities.NoMotion, "caps-motion"),
+            "MouseMotion" => (detected ? HeadlessCapabilities.KittyTruecolor : HeadlessCapabilities.NoMotion, "caps-motion"),
             _             => (detected
-                                  ? TestCapabilities.KittyTruecolor
-                                  : TestCapabilities.KittyTruecolor with
+                                  ? HeadlessCapabilities.KittyTruecolor
+                                  : HeadlessCapabilities.KittyTruecolor with
                                     {
-                                        Input = TestCapabilities.KittyTruecolor.Input with
+                                        Input = HeadlessCapabilities.KittyTruecolor.Input with
                                         {
-                                            Protocol = TestCapabilities.KittyTruecolor.Input.Protocol with { KittyKeyboardProtocol = false },
+                                            Protocol = HeadlessCapabilities.KittyTruecolor.Input.Protocol with { KittyKeyboardProtocol = false },
                                         },
                                     },
                               "caps-kitty-keyboard"),
         };
 
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = capabilities });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = capabilities });
 
         tree.App.CapabilityOverrides = axis switch
         {
@@ -90,7 +90,7 @@ public sealed class CapabilityOverrideTests
     [Fact]
     public void OverrideMatrix_ForcingANegotiatedProtocolOff_WithdrawsTheImageClasses()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics });
 
         Assert.Contains("caps-images", tree.Root.Classes);
         Assert.Contains("caps-image-occlusion", tree.Root.Classes);
@@ -105,7 +105,7 @@ public sealed class CapabilityOverrideTests
     [Fact]
     public void ResettingToNone_RestoresTheNegotiatedStamping()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.NoMotion });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.NoMotion });
 
         tree.App.CapabilityOverrides = new CapabilityOverrides { MouseMotion = CapabilityOverride.ForceOn };
         Assert.Contains("caps-motion", tree.Root.Classes);
@@ -119,7 +119,7 @@ public sealed class CapabilityOverrideTests
     [Fact]
     public void EffectiveCapabilities_AgreesWithTheStampedClasses_WhileCapabilitiesKeepsNegotiatedTruth()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.KittyGraphics });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyGraphics });
 
         tree.App.CapabilityOverrides = new CapabilityOverrides
         {
@@ -192,7 +192,7 @@ public sealed class CapabilityOverrideTests
     [Fact]
     public async Task Overrides_SurviveRenegotiation_FoldedOverTheFreshSnapshot()
     {
-        using var tree = ShowTree(new UITestHostOptions { Capabilities = TestCapabilities.Ansi16Legacy });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
 
         tree.App.CapabilityOverrides = new CapabilityOverrides
         {
@@ -201,7 +201,7 @@ public sealed class CapabilityOverrideTests
         };
         Assert.Contains("caps-images", tree.Root.Classes);
 
-        tree.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.KittyTruecolor);
+        tree.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.KittyTruecolor);
         await tree.App.RenegotiateAsync();
 
         // The fresh fan-out restamped from the NEW snapshot — with the overrides still folded in:
@@ -241,7 +241,7 @@ public sealed class CapabilityOverrideTests
         using var tree = ShowTree();
         tree.App.EmojiAvailable = false; // the non-default state is now the opt-out
 
-        tree.Host.Terminal.ScriptRenegotiatedCapabilities(TestCapabilities.Ansi16Legacy);
+        tree.Host.Terminal.ScriptRenegotiatedCapabilities(HeadlessCapabilities.Ansi16Legacy);
         await tree.App.RenegotiateAsync();
 
         Assert.DoesNotContain("caps-emoji", tree.Root.Classes); // app state, not a negotiated capability
@@ -264,7 +264,7 @@ public sealed class CapabilityOverrideTests
     [Fact]
     public void ImagePresenter_ForcedOffImages_CollapsesToPlaceholder_Live()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.ITerm2Graphics });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.ITerm2Graphics });
         var presenter = new ImagePresenter
         {
             Source = new Cursorial.Rendering.Imaging.ImageData(new byte[] { 1, 2, 3 }, Cursorial.Rendering.Imaging.ImageFormat.Jpeg),

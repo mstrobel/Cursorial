@@ -4,8 +4,8 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 using Xunit.Abstractions;
 
@@ -103,7 +103,7 @@ public class Section13_Perf(ITestOutputHelper output)
     [Fact]
     public void S176_PseudoFlipRestyle_ReRastersOnlyTheAffectedZone()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new StackPanel();
         var zoneA = new Widget(10, 2) { PaintP = true, IsRenderBoundary = true };
         var zoneB = new Widget(10, 2) { PaintP = true, IsRenderBoundary = true };
@@ -149,7 +149,7 @@ public class Section13_Perf(ITestOutputHelper output)
         const int sweepsPerRepetition = 25; // 5,000 Move dispatches per measured repetition
         const int repetitions = 5;
 
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var leaves = new StormLeaf[300];
         for (var row = 0; row < 10; row++)
@@ -263,7 +263,7 @@ public class Section13_Perf(ITestOutputHelper output)
     [Fact]
     public void S178_ColdAttach_300Elements_Under20RuleAppStyles_BoundedAndInsideTheStartupTier()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var app = host.Application;
         for (var i = 0; i < 10; i++)
         {

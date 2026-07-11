@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -18,9 +18,9 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 public sealed class Section23_ProgressBar
 {
     // A ProgressBar pinned top-left at a known size so Render cells land at a predictable origin.
-    private static (UITestHost Host, ProgressBar Bar) Shown(double value, double max = 100, int width = 10, bool indeterminate = false)
+    private static (UIHeadlessHost Host, ProgressBar Bar) Shown(double value, double max = 100, int width = 10, bool indeterminate = false)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 6) });
         var bar = new ProgressBar
         {
             Maximum = max,
@@ -129,7 +129,7 @@ public sealed class Section23_ProgressBar
     [Fact] // C10.9: the indeterminate marquee renders a visible ~width/3 sweep block (distinct fill vs track cells)
     public void C10_9_IndeterminateBlockRenders()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 6) });
         using var _ = host;
         var bar = new ProgressBar
         {
@@ -152,7 +152,7 @@ public sealed class Section23_ProgressBar
     [Fact] // C10.10 (P2A): IsIndeterminate runs a perpetual marquee advancing IndeterminatePhase; turning it off stops + resets it
     public void C10_10_MarqueeAnimatesAndStops()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(24, 6) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(24, 6) });
         using var _ = host;
         var bar = new ProgressBar
         {

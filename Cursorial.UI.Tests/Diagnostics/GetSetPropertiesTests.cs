@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Diagnostics;
 
@@ -13,7 +13,7 @@ public sealed class GetSetPropertiesTests
     [Fact] // includes a local value AND a themed (ControlTheme-layer) contribution; excludes never-set properties
     public void GetSetProperties_IncludesLocalAndStyledContributions()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 6) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 6) });
         var button = new Button { Width = 10 }; // Width is a local value; the control theme contributes Background/Template
         host.ShowRoot(button);
         host.RunUntilIdle();
@@ -28,7 +28,7 @@ public sealed class GetSetPropertiesTests
     [Fact] // a fresh element with no contributions reports nothing
     public void GetSetProperties_Empty_WithoutContributions()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var border = new Border(); // never attached, never written
         host.ShowRoot(new StackPanel());
         host.RunUntilIdle();
@@ -39,7 +39,7 @@ public sealed class GetSetPropertiesTests
     [Fact] // a cleared property leaves a retained (EffectivePriority == Unset) store entry that is EXCLUDED (M115)
     public void GetSetProperties_ExcludesClearedEntry()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(30, 6) });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(30, 6) });
         var button = new Button { Width = 10 };
         host.ShowRoot(button);
         host.RunUntilIdle();

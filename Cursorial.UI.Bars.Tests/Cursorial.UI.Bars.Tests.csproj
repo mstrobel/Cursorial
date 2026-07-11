@@ -21,7 +21,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Testing\Cursorial.UI.Testing.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Hosting.Headless\Cursorial.UI.Hosting.Headless.csproj" />
     </ItemGroup>
 
 </Project>

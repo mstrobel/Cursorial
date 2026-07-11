@@ -3,7 +3,7 @@ using Cursorial.Rendering.Imaging;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -17,13 +17,13 @@ public sealed class IconTests
     private static readonly byte[] OnePixelPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
 
-    private static UITestHost Host(TerminalCapabilities? caps = null) => UITestHost.Create(new UITestHostOptions
+    private static UIHeadlessHost Host(TerminalCapabilities? caps = null) => UIHeadlessHost.Create(new UIHeadlessHostOptions
     {
         InitialSize = new Size(20, 4),
-        Capabilities = caps ?? TestCapabilities.KittyTruecolor, // base Kitty: truecolor, NO graphics protocol
+        Capabilities = caps ?? HeadlessCapabilities.KittyTruecolor, // base Kitty: truecolor, NO graphics protocol
     });
 
-    private static Icon Show(UITestHost host, Action<Icon> configure, bool nerdFont = false)
+    private static Icon Show(UIHeadlessHost host, Action<Icon> configure, bool nerdFont = false)
     {
         host.Application.NerdFontAvailable = nerdFont; // set before attach so the first resolve sees it
         var icon = new Icon { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
@@ -58,7 +58,7 @@ public sealed class IconTests
     [Fact] // an image + a graphics protocol → the image tier is selected (above the Unicode floor)
     public void Image_WhenGraphicsSupported()
     {
-        using var host = Host(TestCapabilities.KittyGraphics);
+        using var host = Host(HeadlessCapabilities.KittyGraphics);
         var icon = Show(host, i => { i.Image = new ImageData(OnePixelPng, ImageFormat.Png); i.Text = "T"; });
 
         Assert.Equal(IconTier.Image, icon.Tier);
@@ -77,7 +77,7 @@ public sealed class IconTests
     [Fact] // preference order: Nerd Font outranks the image tier when a glyph is provided
     public void Glyph_OutranksImage()
     {
-        using var host = Host(TestCapabilities.KittyGraphics);
+        using var host = Host(HeadlessCapabilities.KittyGraphics);
         var icon = Show(host, i => { i.Glyph = "G"; i.Image = new ImageData(OnePixelPng, ImageFormat.Png); i.Text = "T"; }, nerdFont: true);
 
         Assert.Equal(IconTier.Glyph, icon.Tier);
@@ -87,7 +87,7 @@ public sealed class IconTests
     [Fact] // no glyph provided + Nerd Font on + graphics → skip the (empty) glyph tier, use the image
     public void NoGlyph_UsesImage_EvenWithNerdFont()
     {
-        using var host = Host(TestCapabilities.KittyGraphics);
+        using var host = Host(HeadlessCapabilities.KittyGraphics);
         var icon = Show(host, i => { i.Image = new ImageData(OnePixelPng, ImageFormat.Png); i.Text = "T"; }, nerdFont: true);
 
         Assert.Equal(IconTier.Image, icon.Tier);

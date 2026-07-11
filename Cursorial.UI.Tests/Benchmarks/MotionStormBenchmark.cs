@@ -5,8 +5,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 using Xunit.Abstractions;
 
@@ -103,10 +103,10 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     /// The probe-1-shaped dashboard tree: 300 hover-reactive 2×2 leaves (30 × 10) on an 80×24
     /// canvas, plus the 200-position row-3 sweep crossing a leaf boundary every other cell.
     /// </summary>
-    private static (UITestHost Host, HoverReactiveLeaf[] Leaves, MouseEvent[] Sweep) CreateStorm(
+    private static (UIHeadlessHost Host, HoverReactiveLeaf[] Leaves, MouseEvent[] Sweep) CreateStorm(
         Func<HoverReactiveLeaf>? leafFactory = null, Action<UIApplication>? beforeShow = null)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var root = new Canvas();
         var leaves = new HoverReactiveLeaf[300];
         for (var row = 0; row < 10; row++)
@@ -355,7 +355,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     {
         // A wide host so 300 default-themed buttons (each ~4×3 cells with the border) fit in a grid and
         // the top button band lines up under the sweep row.
-        var host = UITestHost.Create(new UITestHostOptions { Capabilities = TestCapabilities.KittyTruecolor, InitialSize = new Size(160, 40) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.KittyTruecolor, InitialSize = new Size(160, 40) });
         using var _ = host;
 
         // 300 contiguous 2×2 buttons (30 × 10) on the canvas — the sweep over the top band crosses a

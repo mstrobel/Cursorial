@@ -6,7 +6,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
 // ReSharper disable InconsistentNaming
@@ -33,9 +33,9 @@ public sealed class Section43_StyleGuideReconcile
     private static readonly Color Faint = Color.FromHex("#414868");     // --faint
     private static readonly Color Green = Color.FromHex("#63c792");     // --green
 
-    private static UITestHost DarkHost(int w = 40, int h = 12)
+    private static UIHeadlessHost DarkHost(int w = 40, int h = 12)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         return host;
     }

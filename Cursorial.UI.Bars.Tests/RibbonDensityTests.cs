@@ -3,7 +3,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -14,10 +14,10 @@ public sealed class RibbonDensityTests
 {
     private const int H = 10;
 
-    private static UITestHost NewHost(int w) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, H), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, H), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
-    private static string AllRows(UITestHost host) => string.Join("\n", Enumerable.Range(0, H).Select(host.GetRowText));
+    private static string AllRows(UIHeadlessHost host) => string.Join("\n", Enumerable.Range(0, H).Select(host.GetRowText));
 
     private static BarButton LargeIcon(string content, string icon)
     {

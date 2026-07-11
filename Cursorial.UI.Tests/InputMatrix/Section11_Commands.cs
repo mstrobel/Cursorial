@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.UI;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
 
 namespace Cursorial.Tests.UI.InputMatrix;
@@ -308,7 +309,7 @@ public class Section11_Commands
     [Fact]
     public void N164_CanExecuteChanged_FlipsEffectiveEnabledAndDisabledState_BothDirections()
     {
-        using var host = Cursorial.UI.Testing.UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var btn = new CommandBtn("B", log);

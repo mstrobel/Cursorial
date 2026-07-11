@@ -5,7 +5,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI;
 
@@ -16,9 +16,9 @@ namespace Cursorial.Tests.UI;
 /// </summary>
 public class ThumbTests
 {
-    private static (UITestHost Host, Thumb Thumb) Make()
+    private static (UIHeadlessHost Host, Thumb Thumb) Make()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(80, 24) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
         var thumb = new Thumb { Background = new SolidColorBrush(Color.FromRgb(80, 80, 80)) }; // hit-opaque + visible
         host.ShowRoot(thumb);
         host.RunUntilIdle();
@@ -36,19 +36,19 @@ public class ThumbTests
         Timestamp = default,
     };
 
-    private static void Down(UITestHost h, int c, int r)
+    private static void Down(UIHeadlessHost h, int c, int r)
     {
         h.SendInput(Mouse(MouseEventKind.ButtonDown, c, r, MouseButton.Left, MouseButtons.None));
         h.RunUntilIdle();
     }
 
-    private static void Move(UITestHost h, int c, int r)
+    private static void Move(UIHeadlessHost h, int c, int r)
     {
         h.SendInput(Mouse(MouseEventKind.Move, c, r, MouseButton.None, MouseButtons.Left));
         h.RunUntilIdle();
     }
 
-    private static void Up(UITestHost h, int c, int r)
+    private static void Up(UIHeadlessHost h, int c, int r)
     {
         h.SendInput(Mouse(MouseEventKind.ButtonUp, c, r, MouseButton.Left, MouseButtons.None));
         h.RunUntilIdle();

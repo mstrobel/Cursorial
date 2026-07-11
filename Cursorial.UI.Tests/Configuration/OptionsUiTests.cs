@@ -7,7 +7,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Configuration;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Configuration;
 
@@ -20,15 +20,15 @@ public sealed class OptionsUiTests
 {
     private const string AppId = "options-ui-app";
 
-    private static UITestHost CreateHost(
+    private static UIHeadlessHost CreateHost(
         TempConfigRoot root,
         bool showWizard = false,
         bool forceWizard = false)
     {
-        var host = UITestHost.Create(new UITestHostOptions
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             InitialSize = new Size(90, 30),
-            Capabilities = TestCapabilities.KittyTruecolor,
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
             ConfigureBuilder = builder => builder.WithUserConfiguration(new UserConfigurationOptions
             {
                 ApplicationId = AppId,
@@ -43,7 +43,7 @@ public sealed class OptionsUiTests
         return host;
     }
 
-    private static UserOptionsDialog? OpenDialog(UITestHost host)
+    private static UserOptionsDialog? OpenDialog(UIHeadlessHost host)
     {
         host.SendKey(Key.Character, KeyModifiers.Control | KeyModifiers.Alt, "O");
         Assert.True(host.RunUntilIdle());

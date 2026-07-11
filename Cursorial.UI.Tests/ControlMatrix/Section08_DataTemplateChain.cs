@@ -1,6 +1,6 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -27,9 +27,9 @@ public sealed class Section08_DataTemplateChain
         Content = new FuncTemplateContent(_ => new TextBlock(marker))
     };
 
-    private static UITestHost Attach(UIElement root)
+    private static UIHeadlessHost Attach(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -53,7 +53,7 @@ public sealed class Section08_DataTemplateChain
     public void C154_ImplicitDataTemplateKeyWalkFromAppResources()
     {
         var cp = new ContentPresenter { Content = new Vm { Name = "x" } };
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.Application.Resources[new DataTemplateKey(typeof(Vm))] = VmTemplate("implicit");
         host.ShowRoot(cp);
         host.RunFrame();
@@ -93,7 +93,7 @@ public sealed class Section08_DataTemplateChain
     public void C156_BaseClassProbeFirstHitWins()
     {
         var cp = new ContentPresenter { Content = new DerivedVm { Name = "x" } };
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         // Only a Vm template exists; the runtime type DerivedVm probes, then base Vm — finds the Vm one.
         host.Application.Resources[new DataTemplateKey(typeof(Vm))] = VmTemplate("base");
         host.ShowRoot(cp);

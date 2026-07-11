@@ -2,7 +2,7 @@ using System.Windows.Input;
 
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -15,9 +15,9 @@ namespace Cursorial.Tests.UI.Controls;
 // CanExecuteChanged re-queries EVERY bound control with ITS parameter — no cross-talk between the set's members.
 public sealed class ToggleButtonValueCommandTests
 {
-    private static UITestHost Show(UIElement root)
+    private static UIHeadlessHost Show(UIElement root)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(root);
         host.RunFrame();
         return host;
@@ -53,7 +53,7 @@ public sealed class ToggleButtonValueCommandTests
         public void Raise() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static (UITestHost Host, AlignCommand Command, ToggleButton[] Buttons, ValueCommandParameter<string>[] Parameters) ShowRadioSet()
+    private static (UIHeadlessHost Host, AlignCommand Command, ToggleButton[] Buttons, ValueCommandParameter<string>[] Parameters) ShowRadioSet()
     {
         var command = new AlignCommand();
         var parameters = new[]

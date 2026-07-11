@@ -5,8 +5,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 // ReSharper disable InconsistentNaming
 
@@ -15,10 +15,10 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 // Control-matrix P9 §C6 — Menu / MenuItem / Separator (P9.4a: structural core — mouse open/invoke + theme).
 public sealed class Section19_Menu
 {
-    private static UITestHost Host() => UITestHost.Create(new UITestHostOptions { InitialSize = new Size(36, 14) });
+    private static UIHeadlessHost Host() => UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(36, 14) });
 
     // Click an element at its on-screen position (works for bar items and items inside an open popup surface).
-    private static void Click(UITestHost host, UIElement element)
+    private static void Click(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToScreen(0, 0);
         host.SendClick(origin.Column + 1, origin.Row);
@@ -297,7 +297,7 @@ public sealed class Section19_Menu
 
     // Activate a folded mnemonic through the manager. A fresh Alt-down precedes each char so the cue window
     // is open (a bare char with Alt held would trip the manager's stale-Alt inference and close it).
-    private static void ActivateAccessKey(UITestHost host, char mnemonic)
+    private static void ActivateAccessKey(UIHeadlessHost host, char mnemonic)
     {
         var dispatcher = host.Application.InputDispatcher;
         dispatcher.ProcessEvent(KeyEvt(Key.LeftAlt, KeyModifiers.Alt));                          // Alt down → cue up
@@ -725,7 +725,7 @@ public sealed class Section19_Menu
         Assert.True(Sub(file, 0).IsFocused);
     }
 
-    private static void Hover(UITestHost host, UIElement element)
+    private static void Hover(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToScreen(0, 0);
         host.SendMouseMove(origin.Column + 1, origin.Row);

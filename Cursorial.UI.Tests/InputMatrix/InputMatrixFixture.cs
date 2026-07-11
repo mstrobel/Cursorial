@@ -3,8 +3,8 @@ using Cursorial.Input.Events;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Input;
-using Cursorial.UI.Testing;
 
 namespace Cursorial.Tests.UI.InputMatrix;
 
@@ -279,7 +279,7 @@ public class CanvasProbe : Probe
 /// </summary>
 public sealed class MouseHost : IDisposable
 {
-    private MouseHost(UITestHost host, List<string> log, CanvasProbe root, CanvasProbe a, Probe b, Probe d)
+    private MouseHost(UIHeadlessHost host, List<string> log, CanvasProbe root, CanvasProbe a, Probe b, Probe d)
     {
         Host = host;
         Log = log;
@@ -289,7 +289,7 @@ public sealed class MouseHost : IDisposable
         D = d;
     }
 
-    public UITestHost Host { get; }
+    public UIHeadlessHost Host { get; }
 
     public List<string> Log { get; }
 
@@ -308,7 +308,7 @@ public sealed class MouseHost : IDisposable
 
     public static MouseHost Create(bool show = true)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new CanvasProbe("Root", log, 80, 24);
         var a = new CanvasProbe("A", log, 10, 4);
@@ -367,13 +367,13 @@ public sealed class MouseHost : IDisposable
 }
 
 /// <summary>
-/// The shared host fixture: a <see cref="UITestHost"/> with the default chain
+/// The shared host fixture: a <see cref="UIHeadlessHost"/> with the default chain
 /// <c>Root → A → B</c> (B a focusable <see cref="Btn"/>) shown as the application root, plus
 /// device-event factories stamped on the fake clock.
 /// </summary>
 public sealed class InputHost : IDisposable
 {
-    private InputHost(UITestHost host, List<string> log, Probe root, Probe a, Btn b)
+    private InputHost(UIHeadlessHost host, List<string> log, Probe root, Probe a, Btn b)
     {
         Host = host;
         Log = log;
@@ -382,7 +382,7 @@ public sealed class InputHost : IDisposable
         B = b;
     }
 
-    public UITestHost Host { get; }
+    public UIHeadlessHost Host { get; }
 
     public List<string> Log { get; }
 
@@ -402,7 +402,7 @@ public sealed class InputHost : IDisposable
     /// </summary>
     public static InputHost CreateChain(bool show = true)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Probe("A", log);
@@ -421,7 +421,7 @@ public sealed class InputHost : IDisposable
     /// <summary>Creates a host with no root ever shown (N22/N71 setups).</summary>
     public static InputHost CreateUnshown()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         var log = new List<string>();
         var root = new Probe("Root", log);
         var a = new Probe("A", log);

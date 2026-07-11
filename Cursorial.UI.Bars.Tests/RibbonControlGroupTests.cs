@@ -5,7 +5,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -18,8 +18,8 @@ public sealed class RibbonControlGroupTests
 {
     private const int H = 12;
 
-    private static UITestHost NewHost(int w = 100) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, H), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 100) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, H), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     private static BarButton Btn(string content, string? icon = null) => new() { Content = content, Icon = icon };
 

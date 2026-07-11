@@ -6,7 +6,7 @@
 using Cursorial.Rendering.Text;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -19,7 +19,7 @@ public sealed class ResizePipelineTests
     [Fact]
     public void Resize_RebuildsBuffer_RelaysOut_AndRepaints_SameFrame()
     {
-        using var host = UITestHost.Create(new UITestHostOptions { CaptureFrameBytes = true });
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { CaptureFrameBytes = true });
         var probe = new Fit(200, 200) { FillGlyph = "X" }; // fills whatever it is given
         host.ShowRoot(probe);
         Assert.True(host.RunUntilIdle());
@@ -45,7 +45,7 @@ public sealed class ResizePipelineTests
            // provisional viewport measure — the Backstage-description-not-wrapping bug.)
     public void Resize_Shrink_ReWrapsSubtreeAgainstNewConstraint()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var text = new TextBlock { Text = "one two three four five six seven eight", TextWrapping = WrapMode.WordWrap };
         var root = new StackPanel { Orientation = Orientation.Vertical };
         root.Children.Add(text);
@@ -63,7 +63,7 @@ public sealed class ResizePipelineTests
     [Fact]
     public void ResizeStorm_CoalescesToLastWins()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var probe = new Fit(200, 200);
         host.ShowRoot(probe);
         Assert.True(host.RunUntilIdle());
@@ -82,7 +82,7 @@ public sealed class ResizePipelineTests
     [Fact]
     public void ZeroSizedResize_IsIgnored()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new Fit(200, 200));
         Assert.True(host.RunUntilIdle());
 
@@ -95,7 +95,7 @@ public sealed class ResizePipelineTests
     [Fact]
     public void NotifyResized_InjectsSynthesizedResize()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         host.ShowRoot(new Fit(200, 200));
         Assert.True(host.RunUntilIdle());
 
@@ -108,7 +108,7 @@ public sealed class ResizePipelineTests
     [Fact]
     public void Resize_ShrinkThenRestore_ContentSurvives()
     {
-        using var host = UITestHost.Create();
+        using var host = UIHeadlessHost.Create();
         var probe = new Fit(200, 200) { FillGlyph = "Z" };
         host.ShowRoot(probe);
         Assert.True(host.RunUntilIdle());

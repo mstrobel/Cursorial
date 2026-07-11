@@ -4,7 +4,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -17,9 +17,9 @@ public sealed class Section21_ToolTip
     private static readonly TimeSpan Delay = TimeSpan.FromMilliseconds(500);
 
     // A centered Tip-bearing Border (fixed-size → centered in the 40×16 host; hittable via its Background).
-    private static (UITestHost Host, Border Tip) RootWithTip(object tip)
+    private static (UIHeadlessHost Host, Border Tip) RootWithTip(object tip)
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         var element = new Border { Width = 20, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
         ToolTipService.SetTip(element, tip);
         host.ShowRoot(element);
@@ -27,23 +27,23 @@ public sealed class Section21_ToolTip
         return (host, element);
     }
 
-    private static int Popups(UITestHost host) => host.Application.WindowManager!.Popups.Count;
+    private static int Popups(UIHeadlessHost host) => host.Application.WindowManager!.Popups.Count;
 
-    private static void Hover(UITestHost host, UIElement element)
+    private static void Hover(UIHeadlessHost host, UIElement element)
     {
         var origin = element.TranslateToWindow(0, 0);
         host.SendMouseMove(origin.Column + 1, origin.Row + 1); // inside the element
         host.RunFrame();
     }
 
-    private static void MoveAway(UITestHost host)
+    private static void MoveAway(UIHeadlessHost host)
     {
         host.SendMouseMove(0, 0); // the far corner, off the centered element
         host.RunFrame();
     }
 
     // Hovers the element and lets the open delay elapse → the tooltip is shown.
-    private static void Show(UITestHost host, UIElement element)
+    private static void Show(UIHeadlessHost host, UIElement element)
     {
         Hover(host, element);
         host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
@@ -200,7 +200,7 @@ public sealed class Section21_ToolTip
     [Fact] // C8.12: a custom InitialDelay is honored (shorter than the default)
     public void C8_12_CustomDelayHonored()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         using var _ = host;
         var element = new Border { Width = 20, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
         ToolTipService.SetTip(element, "hello");
@@ -230,7 +230,7 @@ public sealed class Section21_ToolTip
     [Fact] // C8.14: with nested tip-bearing elements, the innermost wins (the popup anchors to it)
     public void C8_14_InnermostTipWins()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         using var _ = host;
         var inner = new Border { Background = new SolidColorBrush(Color.FromRgb(60, 60, 60)) }; // fills outer, hittable
         ToolTipService.SetTip(inner, "inner");
@@ -247,7 +247,7 @@ public sealed class Section21_ToolTip
     [Fact] // C8.15: entering a no-tip child of the tip element does NOT reset the open timer (intra-element move)
     public void C8_15_IntraElementMoveDoesNotResetTimer()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         using var _ = host;
         var child = new Border // a no-tip child pinned top-left, smaller than the parent (leaves bare parent area)
         {
@@ -297,7 +297,7 @@ public sealed class Section21_ToolTip
     [Fact] // C8.17: one controller per application — two tip-bearing elements never stack duplicate tooltips
     public void C8_17_OneControllerPerApp()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 16) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
         using var _ = host;
         var a = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
         var b = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)) };

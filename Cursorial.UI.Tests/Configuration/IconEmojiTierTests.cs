@@ -3,7 +3,7 @@ using Cursorial.Rendering.Imaging;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Configuration;
 
@@ -17,13 +17,13 @@ public sealed class IconEmojiTierTests
     private static readonly byte[] OnePixelPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
 
-    private static UITestHost Host(TerminalCapabilities? caps = null) => UITestHost.Create(new UITestHostOptions
+    private static UIHeadlessHost Host(TerminalCapabilities? caps = null) => UIHeadlessHost.Create(new UIHeadlessHostOptions
     {
         InitialSize = new Size(20, 4),
-        Capabilities = caps ?? TestCapabilities.KittyTruecolor, // base Kitty: truecolor, NO graphics protocol
+        Capabilities = caps ?? HeadlessCapabilities.KittyTruecolor, // base Kitty: truecolor, NO graphics protocol
     });
 
-    private static Icon Show(UITestHost host, Action<Icon> configure, bool nerdFont = false, bool? emoji = null)
+    private static Icon Show(UIHeadlessHost host, Action<Icon> configure, bool nerdFont = false, bool? emoji = null)
     {
         host.Application.NerdFontAvailable = nerdFont;
         if (emoji is { } value)
@@ -59,7 +59,7 @@ public sealed class IconEmojiTierTests
     [Fact] // ladder order: a carriable image outranks the emoji tier
     public void Image_OutranksEmoji()
     {
-        using var host = Host(TestCapabilities.KittyGraphics);
+        using var host = Host(HeadlessCapabilities.KittyGraphics);
         var icon = Show(host, i => { i.Image = new ImageData(OnePixelPng, ImageFormat.Png); i.Emoji = "📁"; i.Text = "T"; });
 
         Assert.Equal(IconTier.Image, icon.Tier);
@@ -128,7 +128,7 @@ public sealed class IconEmojiTierTests
     [Fact] // the ladder honors the FB-5 seam: forcing images off drops an image-tier icon to emoji, live
     public void ForcedOffImages_FallToEmojiTier_Live()
     {
-        using var host = Host(TestCapabilities.KittyGraphics);
+        using var host = Host(HeadlessCapabilities.KittyGraphics);
         var icon = Show(host, i => { i.Image = new ImageData(OnePixelPng, ImageFormat.Png); i.Emoji = "📁"; i.Text = "T"; });
         Assert.Equal(IconTier.Image, icon.Tier);
 

@@ -4,7 +4,7 @@ using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -17,8 +17,8 @@ namespace Cursorial.Tests.UI.Bars;
 // dry-run session probe never lies.
 public sealed class BarCommandTests
 {
-    private static UITestHost NewHost(int w = 30, int h = 12) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 30, int h = 12) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     // A raw BCL ICommand that CANNOT raise CanExecuteChanged (the event is a black hole) — the worst-case inner.
     private sealed class RawCommand : ICommand

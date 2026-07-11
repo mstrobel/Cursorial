@@ -1,7 +1,7 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -10,7 +10,7 @@ namespace Cursorial.Tests.UI.ControlMatrix;
 /// <summary>
 /// §6 — Control base + ControlTemplate + TemplateInstance + parts (C0; rows C118–C140). One test per
 /// row, namespace per the §17 contract. Builds run on the calling (UI) thread via
-/// <see cref="UITestHost"/>; template-only rows attach a control under a host root and step a frame.
+/// <see cref="UIHeadlessHost"/>; template-only rows attach a control under a host root and step a frame.
 /// </summary>
 public sealed class Section06_ControlTemplates
 {
@@ -60,9 +60,9 @@ public sealed class Section06_ControlTemplates
         return border;
     });
 
-    private static UITestHost AttachControl(Control control)
+    private static UIHeadlessHost AttachControl(Control control)
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         host.RunFrame();
         return host;
@@ -148,7 +148,7 @@ public sealed class Section06_ControlTemplates
             Template = new ControlTemplate(_ => alien)
         };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         Assert.Throws<InvalidOperationException>(host.RunFrame);
     }
@@ -159,7 +159,7 @@ public sealed class Section06_ControlTemplates
         var template = new ControlTemplate(_ => new Border()) { TargetType = typeof(Button) };
         var control = new TargetTypedControl { Template = template };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         Assert.Throws<InvalidOperationException>(host.RunFrame);
     }
@@ -235,7 +235,7 @@ public sealed class Section06_ControlTemplates
             })
         };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         var ex = Assert.Throws<InvalidOperationException>(host.RunFrame);
         Assert.Contains("PART_T", ex.Message);
@@ -251,7 +251,7 @@ public sealed class Section06_ControlTemplates
             Template = new ControlTemplate(_ => new Border()) // PART_T omitted
         };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         var ex = Assert.Throws<InvalidOperationException>(host.RunFrame);
         Assert.Contains("PART_T", ex.Message);
@@ -283,7 +283,7 @@ public sealed class Section06_ControlTemplates
             })
         };
 
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
         host.ShowRoot(control);
         Assert.Throws<InvalidOperationException>(host.RunFrame);
         Assert.False(applyRan);                   // OnApplyTemplate never ran (throw before step 6)
@@ -417,7 +417,7 @@ public sealed class Section06_ControlTemplates
     [Fact] // C138
     public void C138_BarrierSkipsNonTemplateRulesForParts()
     {
-        var host = UITestHost.Create();
+        var host = UIHeadlessHost.Create();
 
         var template = new ControlTemplate(ctx =>
         {

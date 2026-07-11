@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
@@ -13,9 +13,9 @@ namespace Cursorial.Tests.UI.AnimationMatrix;
 // Activation is driven by a public CSS class flip (structural ⇒ re-matched synchronously, SD12).
 public sealed class Section11_EdgeActions
 {
-    private static (UITestHost Host, Animatable Element) ShowStylable()
+    private static (UIHeadlessHost Host, Animatable Element) ShowStylable()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         var element = new Animatable();
         var root = new StackPanel();
         root.Children.Add(element);
@@ -197,7 +197,7 @@ public sealed class Section11_EdgeActions
     [Fact] // N129: detaching the scope while an edge-ignited storyboard runs retracts it; no Completed
     public void DetachScope_EdgeIgnited_Retracts()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var element = new Animatable();
         var root = new StackPanel();

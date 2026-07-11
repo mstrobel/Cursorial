@@ -1,7 +1,7 @@
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 using static Cursorial.Tests.UI.AnimationMatrix.Anim;
 
@@ -12,9 +12,9 @@ namespace Cursorial.Tests.UI.AnimationMatrix;
 // Animation-matrix §16 (Transitions — implicit animations over the winning-base observer) — N141–N153.
 public sealed class Section16_Transitions
 {
-    private static (UITestHost Host, StackPanel Root, Animatable Element) Show()
+    private static (UIHeadlessHost Host, StackPanel Root, Animatable Element) Show()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         var element = new Animatable();
         var root = new StackPanel();
         root.Children.Add(element);
@@ -72,7 +72,7 @@ public sealed class Section16_Transitions
     [Fact] // N142: transitions armed before the first arrange are parked — the initial style application does NOT fade
     public void InitialApplication_Parked_NoTransition()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var element = new Animatable();
         var root = new StackPanel();
@@ -245,7 +245,7 @@ public sealed class Section16_Transitions
     //       initial application that arrives when later made Visible must not transition.
     public void ArmedWhileCollapsed_DoesNotTransitionInitialApplication()
     {
-        var host = UITestHost.Create(new UITestHostOptions { InitialSize = new Size(40, 10) });
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
         using var _ = host;
         var element = new Animatable { Visibility = Visibility.Collapsed };
         ArmDouble(element);

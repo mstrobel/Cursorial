@@ -3,7 +3,7 @@ using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
-using Cursorial.UI.Testing;
+using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Bars;
 
@@ -11,8 +11,8 @@ namespace Cursorial.Tests.UI.Bars;
 // ComboBox's (selection/drop-down); these smoke tests confirm the bar face renders + the grid drop-down realizes.
 public sealed class BarGalleryTests
 {
-    private static UITestHost NewHost(int w = 30, int h = 12) =>
-        UITestHost.Create(new UITestHostOptions { InitialSize = new Size(w, h), Capabilities = TestCapabilities.KittyTruecolor });
+    private static UIHeadlessHost NewHost(int w = 30, int h = 12) =>
+        UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(w, h), Capabilities = HeadlessCapabilities.KittyTruecolor });
 
     [Fact] // the bar face shows the selection; the drop-down opens and realizes its grid cells
     public void BarGallery_RendersFace_AndOpensGrid()

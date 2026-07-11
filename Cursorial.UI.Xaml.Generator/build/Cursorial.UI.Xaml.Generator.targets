@@ -17,6 +17,20 @@
     below tolerates a legacy explicit <CursorialXaml Include> duplicating the default glob.
   -->
 
+  <!--
+    Default items: every .xaml under the project root is a <CursorialXaml> unless the project
+    opted out or already declared it. Evaluated HERE (bottom import, after the csproj body) so
+    Exclude="@(CursorialXaml)" sees explicitly declared items and yields to them — projects add
+    an explicit <CursorialXaml Include="**/*.xaml"/> purely so IDE project models display the
+    build action (import-declared custom items never show), and the glob must not double them.
+    Visible=true is for IDEs that do honor it on import-declared items.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultCursorialXamlItems)' == 'true'">
+    <CursorialXaml Include="**/*.xaml"
+                   Exclude="@(CursorialXaml);$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)"
+                   Visible="true" />
+  </ItemGroup>
+
   <ItemGroup>
     <AdditionalFiles Include="@(CursorialXaml->Distinct())" SourceItemType="CursorialXaml" />
   </ItemGroup>

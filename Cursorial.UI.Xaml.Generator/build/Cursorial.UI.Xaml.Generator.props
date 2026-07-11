@@ -29,12 +29,10 @@
     <EnableDefaultCursorialXamlItems Condition="'$(EnableDefaultCursorialXamlItems)' == ''">true</EnableDefaultCursorialXamlItems>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(EnableDefaultCursorialXamlItems)' == 'true'">
-    <!-- Visible=true: items declared in IMPORTED files are hidden from the IDE's project tree
-         by default (only SDK implicit globs are special-cased) — without it the file vanishes
-         from the explorer once nothing else statically claims it. -->
-    <CursorialXaml Include="**/*.xaml" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" Visible="true" />
-  </ItemGroup>
+  <!-- The default-items GLOB lives in the paired .targets, not here: the bottom import
+       evaluates after the consumer's csproj body, so the glob can self-exclude explicitly
+       declared <CursorialXaml> items (declared for IDE build-action display) instead of
+       duplicating them — duplicate claims render as duplicate files in the IDE tree. -->
 
   <!--
     WS-X5.5 — the full-lowering opt-in. Set <CursorialXamlLowering>full</CursorialXamlLowering> to compile each

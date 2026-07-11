@@ -24,6 +24,9 @@ namespace Cursorial.UI;
 /// </remarks>
 public static class PseudoClassMapping
 {
+    /// <summary>One registered property → pseudo-class mapping, as seen by tooling.</summary>
+    public readonly record struct PseudoClassMappingInfo(Type OwnerType, UIProperty Property, IReadOnlyList<string> PseudoClasses);
+
     private static readonly Lock RegistryLock = new();
     private static Dictionary<int, Mapping[]> _byPropertyId = [];
     private static volatile bool _anyRegistered;
@@ -44,7 +47,7 @@ public static class PseudoClassMapping
 
         var interned = ValidateName(pseudoClass);
 
-        Add(new ClassifyMapping<bool>(typeof(TOwner), property, value => value ? interned : null));
+        Add(new ClassifyMapping<bool>(typeof(TOwner), property, [interned], value => value ? interned : null));
     }
 
     /// <summary>
@@ -64,10 +67,29 @@ public static class PseudoClassMapping
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(classify);
 
-        foreach (var pseudoClass in pseudoClasses)
-            ValidateName(pseudoClass);
+        var vocabulary = new string[pseudoClasses.Length];
+        for (var i = 0; i < pseudoClasses.Length; i++)
+            vocabulary[i] = ValidateName(pseudoClasses[i]);
 
-        Add(new ClassifyMapping<TValue>(typeof(TOwner), property, classify));
+        Add(new ClassifyMapping<TValue>(typeof(TOwner), property, vocabulary, classify));
+    }
+
+    /// <summary>
+    /// A snapshot of every registered mapping — the read-only tooling surface (selector
+    /// completion and quick documentation in the designer). Same copy-on-write read the change
+    /// pipeline uses; no lock.
+    /// </summary>
+    public static IReadOnlyList<PseudoClassMappingInfo> Snapshot()
+    {
+        var byPropertyId = _byPropertyId;
+        var result = new List<PseudoClassMappingInfo>();
+        foreach (var mappings in byPropertyId.Values)
+        {
+            foreach (var mapping in mappings)
+                result.Add(new PseudoClassMappingInfo(mapping.OwnerType, mapping.Property, mapping.PseudoClasses));
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -140,19 +162,24 @@ public static class PseudoClassMapping
         return string.Intern(pseudoClass);
     }
 
-    private abstract class Mapping(Type ownerType, UIProperty property)
+    private abstract class Mapping(Type ownerType, UIProperty property, string[] pseudoClasses)
     {
         internal Type OwnerType { get; } = ownerType;
+
+        internal UIProperty Property { get; } = property;
 
         internal int PropertyId { get; } = property.Id;
 
         internal string PropertyName { get; } = property.Name;
 
+        /// <summary>The fixed class vocabulary the mapping toggles (tooling snapshot).</summary>
+        internal string[] PseudoClasses { get; } = pseudoClasses;
+
         internal abstract void Apply(UIElement element, in UIPropertyChangedEventArgs args);
     }
 
-    private sealed class ClassifyMapping<TValue>(Type ownerType, UIProperty property, Func<TValue, string?> classify)
-        : Mapping(ownerType, property)
+    private sealed class ClassifyMapping<TValue>(Type ownerType, UIProperty property, string[] pseudoClasses, Func<TValue, string?> classify)
+        : Mapping(ownerType, property, pseudoClasses)
     {
         internal override void Apply(UIElement element, in UIPropertyChangedEventArgs args)
         {

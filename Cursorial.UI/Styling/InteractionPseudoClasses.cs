@@ -10,7 +10,7 @@ namespace Cursorial.UI;
 /// <c>SetInteractionState</c> and are rejected by <see cref="PseudoClassSet.Set"/> (ledger B9 /
 /// SD11) and by <see cref="ClassSet"/> (all <c>':'</c>-prefixed names are).
 /// </summary>
-internal static class InteractionPseudoClasses
+public static class InteractionPseudoClasses
 {
     private static readonly FrozenDictionary<string, InteractionState> ByName
         = new Dictionary<string, InteractionState>(StringComparer.Ordinal)
@@ -30,8 +30,11 @@ internal static class InteractionPseudoClasses
         = ByName.ToDictionary(o => o.Value, o => o.Key)
                 .ToFrozenDictionary();
 
+    /// <summary>Every interaction-backed <c>':'</c>-prefixed pseudo-class name (tooling: selector completion).</summary>
+    public static IReadOnlyList<string> Names => ByName.Keys;
+
     /// <summary>Maps a <c>':'</c>-prefixed pseudo-class name to its interaction bit, when one backs it.</summary>
-    internal static bool TryGetState(string pseudoClass, out InteractionState state)
+    public static bool TryGetState(string pseudoClass, out InteractionState state)
         => ByName.TryGetValue(pseudoClass, out state);
 
     /// <summary>Maps an interaction bit to its <c>':'</c>-prefixed pseudo-class name, when it backs one.</summary>

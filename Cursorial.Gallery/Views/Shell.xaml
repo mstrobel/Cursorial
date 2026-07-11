@@ -46,7 +46,7 @@
                 </StackPanel>
               </Border>
               <Border Grid.Column="1" Padding="2,1" Title="Message Boxes">
-                <StackPanel Spacing="1" Orientation="Vertical" Children="{DynamicResource }">
+                <StackPanel Spacing="1" Orientation="Vertical">
                   <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
                 </StackPanel>
               </Border>
@@ -656,4 +656,13 @@
        ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
     <ContentControl Content="{Binding SelectedPage}" 
                     ClipToBounds="True" />
+  <DockPanel.Styles>
+    <Style Selector=":is(ButtonBase)">
+      <Style.Children>
+        <Style Selector="^:pointerover /template/ Border">
+          
+        </Style>
+      </Style.Children>
+    </Style>
+  </DockPanel.Styles>
 </DockPanel>

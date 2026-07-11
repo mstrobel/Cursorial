@@ -28,9 +28,22 @@
     (LogicalName, Link) flows from the CursorialXaml item, so an explicit LogicalName is honored and a plain
     local file keeps its default RootNamespace.<path> manifest name. Authors write <CursorialXaml> once.
   -->
-  <ItemGroup Condition="'$(CursorialXamlEmbedResources)' == 'true'">
-    <EmbeddedResource Include="@(CursorialXaml->Distinct())" />
-  </ItemGroup>
+  <!--
+    The embed copies are created INSIDE a target (AssignTargetPaths is where resource items get
+    their paths, so BeforeTargets it), not at static evaluation: the IDE's project model reads
+    static items, and a statically-declared EmbeddedResource copy makes Rider display the file's
+    build action as EmbeddedResource instead of CursorialXaml — which both misleads and re-arms
+    R#'s build-action-keyed XAML analysis. Real builds still embed; design-time models never see
+    the copies. (The AdditionalFiles mapping above must stay static — the in-IDE compiler needs
+    it for live generator output.)
+  -->
+  <Target Name="CursorialXamlEmbedResources"
+          BeforeTargets="AssignTargetPaths"
+          Condition="'$(CursorialXamlEmbedResources)' == 'true'">
+    <ItemGroup>
+      <EmbeddedResource Include="@(CursorialXaml->Distinct())" />
+    </ItemGroup>
+  </Target>
 
   <!--
     WS-X4.7 — strict AOT. Default CursorialXamlStrictAot to true under PublishAot / PublishTrimmed. This is in the

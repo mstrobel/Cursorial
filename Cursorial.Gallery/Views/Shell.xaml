@@ -1,4 +1,4 @@
-<DockPanel xmlns="https://cursorial.dev/ui"
+<Window xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
            xmlns:d="https://cursorial.dev/xaml/design"
            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -10,15 +10,15 @@
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
            d:DataContext="vm:ShellViewModel">
-    <DockPanel.InputBindings>
+    <UIElement.InputBindings>
       <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
       <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />
       <KeyBinding Gesture="Alt+Q" Command="{Binding Quit}" />
       <KeyBinding Gesture="Esc"   Command="{Binding Quit}" CommandParameter="True" />
-    </DockPanel.InputBindings>
+    </UIElement.InputBindings>
 
     <!-- Implicit DataTemplates: the ContentControl resolves the selected page view-model's type to its view. -->
-    <DockPanel.Resources>
+    <Window.Resources>
 
         <DataTemplate DataType="vm:DialogsViewModel">
           <DockPanel>
@@ -604,7 +604,7 @@
         </DockPanel>
       </DataTemplate>
 
-    </DockPanel.Resources>
+    </Window.Resources>
 
     <!-- Title bar -->
     <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}" Padding="1,0">
@@ -649,4 +649,4 @@
          ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
     <ContentControl Content="{Binding SelectedPage}" ClipToBounds="True"/>
 
-</DockPanel>
+</Window>

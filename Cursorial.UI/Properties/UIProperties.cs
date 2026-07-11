@@ -37,6 +37,14 @@ public static class UIProperties
     }
 
     /// <summary>
+    /// Every registered inheriting property — the set that MIGHT carry an inherited value on any
+    /// element (retrieving an inherited value is easy; knowing which properties to ask was not).
+    /// Backed by the registry's cached inheriting set, the same one the reparent diff enumerates.
+    /// Narrow per-instance with <see cref="UIObject.GetValueSource"/>.
+    /// </summary>
+    public static IReadOnlyList<UIProperty> Inheriting => UIPropertyRegistry.InheritingProperties;
+
+    /// <summary>
     /// The property registered under <paramref name="name"/> for <paramref name="ownerType"/> or
     /// the nearest base type with a registration, or <see langword="null"/>.
     /// </summary>

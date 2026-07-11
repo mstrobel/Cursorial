@@ -41,6 +41,19 @@ public class UIPropertiesTests
     }
 
     [Fact]
+    public void Inheriting_exposes_the_registrys_inheriting_set()
+    {
+        // The InspectorDemo snag, verbatim: knowing WHICH properties might carry inherited
+        // values. TextElement.Foreground-style properties register with Inherits and must
+        // appear; per-instance narrowing composes with GetValueSource.
+        _ = UIElement.VisibilityProperty;
+
+        var inheriting = UIProperties.Inheriting;
+        Assert.NotEmpty(inheriting);
+        Assert.All(inheriting, p => Assert.True(p.Inherits));
+    }
+
+    [Fact]
     public void Find_resolves_through_base_types()
     {
         _ = UIElement.VisibilityProperty;

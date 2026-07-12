@@ -75,6 +75,19 @@ internal static class CodeBehindEmitter
         return (document.RootClassName, named);
     }
 
+    /// <summary>The fully qualified base type from the document's root element, or null when unresolved.</summary>
+    internal static string? RootBaseType(XamlDocument document)
+    {
+        var objects = document.Objects;
+        if (objects.Length == 0)
+            return null;
+
+        ref readonly var root = ref objects[0];
+        return root.TypeId >= 0 && document.ResolvedTypes[root.TypeId]?.ClrType is RoslynXamlType { Symbol: INamedTypeSymbol symbol }
+            ? symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            : null;
+    }
+
     /// <summary>
     /// Emits the code-behind partial for an <c>x:Class</c> document, or <see langword="null"/> when there is
     /// no <c>x:Class</c> (a class-less document has no code-behind to extend).
@@ -104,7 +117,13 @@ internal static class CodeBehindEmitter
             sb.AppendLine("{");
         }
 
-        sb.AppendLine($"{indent}partial class {className}");
+        // The GENERATED half declares the base type from the document's root element, so the
+        // hand-written half needs no base list at all — changing the root element in XAML is a
+        // one-place edit. A code-behind that still declares a base is fine while it AGREES
+        // (partial base lists must match, CS0263), which turns a root/code-behind mismatch into
+        // a compile error instead of a silent split identity.
+        var rootBase = RootBaseType(document);
+        sb.AppendLine($"{indent}partial class {className}{(rootBase is null ? string.Empty : $" : {rootBase}")}");
         sb.AppendLine($"{indent}{{");
 
         // Typed x:Name fields. `default!` (the value is always assigned by InitializeComponent before any read) —

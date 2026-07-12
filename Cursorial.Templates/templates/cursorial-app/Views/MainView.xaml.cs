@@ -1,12 +1,11 @@
-using Cursorial.UI.Controls;
-
 namespace CursorialApp.Views;
 
 /// <summary>
-/// The shell view. <c>InitializeComponent</c> and the typed <c>CountButton</c> field are
-/// generated from MainView.xaml by the Cursorial XAML source generator.
+/// The shell view. <c>InitializeComponent</c>, the typed <c>CountButton</c> field, and the
+/// base type (the XAML root element) are generated from MainView.xaml by the Cursorial XAML
+/// source generator — changing the root element needs no edit here.
 /// </summary>
-public partial class MainView : DockPanel
+public partial class MainView
 {
     private int _count;
 

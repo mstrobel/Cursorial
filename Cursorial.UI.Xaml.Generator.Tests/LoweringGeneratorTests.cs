@@ -24,6 +24,22 @@ public class LoweringGeneratorTests
                   .Select(t => t.ToString())
                   .Single(s => s.Contains("auto-generated") && s.Contains("partial class " + className));
 
+    [Fact] // the generated half declares the base type in strict mode too — same one-place-edit
+    public void Strict_EmitsRootElementAsBaseType() // contract as the X4 code-behind path
+    {
+        var xaml = $"<StackPanel {Ns} x:Class=\"GenApp.BaseView\"><Button x:Name=\"Ok\"/></StackPanel>";
+        // The code-behind deliberately declares NO base list — the generated half owns it.
+        const string codeBehind = @"
+namespace GenApp
+{
+    public partial class BaseView { public BaseView() => InitializeComponent(); }
+}";
+
+        var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("BaseView.xaml", xaml));
+        Assert.Empty(diagnostics);
+        Assert.Contains("partial class BaseView : global::Cursorial.UI.Controls.StackPanel", GeneratedView(compilation, "BaseView"));
+    }
+
     [Fact] // the opt-in lowers to straight-line C#, the tree compiles + instantiates, and a binding resolves live
     public void LoweringOptIn_GeneratesStraightLineView_BindsLive()
     {

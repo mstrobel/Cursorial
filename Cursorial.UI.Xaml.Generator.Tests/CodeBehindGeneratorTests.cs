@@ -37,6 +37,13 @@ public class CodeBehindGeneratorTests
         Assert.Contains("this.Ok = (global::Cursorial.UI.Controls.Button)", src);
     }
 
+    [Fact] // the GENERATED half declares the base type from the root element — the hand-written
+    public void EmitsRootElementAsBaseType() // half needs no base list (one-place root edits)
+    {
+        var src = OnlySource(("View.xaml", $"<StackPanel {Ns} x:Class=\"App.View\"><Button/></StackPanel>"));
+        Assert.Contains("partial class View : global::Cursorial.UI.Controls.StackPanel", src);
+    }
+
     [Fact] // a class-less document gets the marker, not a code-behind partial
     public void NoXClass_EmitsMarker_NotPartial()
     {

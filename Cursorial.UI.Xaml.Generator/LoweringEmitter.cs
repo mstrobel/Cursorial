@@ -85,7 +85,11 @@ internal static class LoweringEmitter
         }
 
         string ci = ns is null ? string.Empty : "    ";
-        sb.AppendLine($"{ci}partial class {className}");
+        // The generated half declares the base type from the document's root element — same
+        // contract as CodeBehindEmitter (the X4-v1 path), so the two pipelines can't drift and
+        // a hand-written base list is optional in BOTH modes.
+        var rootBase = CodeBehindEmitter.RootBaseType(document);
+        sb.AppendLine($"{ci}partial class {className}{(rootBase is null ? string.Empty : $" : {rootBase}")}");
         sb.AppendLine($"{ci}{{");
         // The array-aware field type (T[] for an <x:Array>) + a value-type-safe `default!` initializer — shared with
         // CodeBehindEmitter (the X4-v1 path) so the two code-behind pipelines can't drift (CS0029/CS0037 otherwise).

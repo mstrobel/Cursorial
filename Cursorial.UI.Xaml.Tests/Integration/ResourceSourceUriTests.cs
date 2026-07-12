@@ -79,6 +79,34 @@ public sealed class ResourceSourceUriTests
         Assert.Equal("embedded://Other/Theme.xaml", requested?.OriginalString);
     }
 
+    [Fact] // the design-time seam: LoadComponent re-sources the baked document from the hook
+    public void LiveXamlSource_OverridesTheBakedDocument()
+    {
+        var loader = new XamlLoader();
+        var baked = loader.Parse(
+            "<StackPanel" + Ns + "><TextBlock Text=\"baked\"/></StackPanel>",
+            new Uri("cursorial://App/Views/V.xaml"));
+
+        var previous = XamlModule.LiveXamlSource;
+        try
+        {
+            XamlModule.LiveXamlSource = uri =>
+                uri.OriginalString.Contains("V.xaml", StringComparison.Ordinal)
+                    ? "<StackPanel" + Ns + "><TextBlock Text=\"live\"/></StackPanel>"
+                    : null;
+
+            var component = new Cursorial.UI.Controls.StackPanel();
+            loader.LoadComponent(component, baked);
+
+            var text = Assert.IsType<Cursorial.UI.Controls.TextBlock>(component.Children[0]);
+            Assert.Equal("live", text.Text);
+        }
+        finally
+        {
+            XamlModule.LiveXamlSource = previous;
+        }
+    }
+
     private sealed class RecordingProvider(Func<Uri, string?> resolve) : IXamlResourceProvider
     {
         public bool TryGetXaml(Uri uri, out string? xaml)

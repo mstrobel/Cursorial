@@ -19,6 +19,23 @@ public static class XamlModule
     /// </summary>
     public static IXamlResourceProvider ResourceProvider { get; set; } = new EmbeddedXamlResourceProvider();
 
+    /// <summary>
+    /// Design-time seam: when set, <see cref="XamlLoader.LoadComponent(object, XamlDocument, XamlLoadContext?)"/>
+    /// re-sources a component's BAKED document from this hook (keyed by the document's source URI)
+    /// before building — a designer previews the XAML the user is editing, not what the last build
+    /// embedded into <c>InitializeComponent</c>. Return <see langword="null"/> for "no override".
+    /// The default (<see langword="null"/>) costs a null check at runtime and nothing more.
+    /// </summary>
+    public static Func<Uri, string?>? LiveXamlSource { get; set; }
+
+    /// <summary>
+    /// The loader live-sourced documents parse with (default: the component's own). A designer
+    /// sets a reflection-backed loader here: live edits routinely reference types and members the
+    /// consuming assembly's GENERATED (closed-set) provider never saw at compile time — exactly
+    /// the edits a preview exists to show.
+    /// </summary>
+    public static XamlLoader? LiveXamlLoader { get; set; }
+
     // C-9: the library deliberately installs ResourceDictionary.LoadCallback at module load so a
     // ResourceDictionary.Source resolves the instant Cursorial.UI.Xaml is referenced (the P5 guard
     // throws until then). This is the sanctioned advanced use of [ModuleInitializer].

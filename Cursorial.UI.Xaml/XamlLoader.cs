@@ -128,6 +128,19 @@ public sealed class XamlLoader
     {
         ArgumentNullException.ThrowIfNull(component);
         ArgumentNullException.ThrowIfNull(document);
+
+        // Design-time live source (X-designer): a hooked host swaps the baked document for the
+        // freshly parsed on-disk text, so edits to an x:Class view's XAML reflect in a preview
+        // without a rebuild. Parse errors surface exactly like a failed baked document would.
+        if (XamlModule.LiveXamlSource is { } live
+            && (context?.Source ?? document.SourceUri) is { } liveUri
+            && live(liveUri) is { } liveText)
+        {
+            // Parse with the designer's loader when one is installed: live edits reference types
+            // the consuming assembly's closed-set provider never saw at compile time.
+            document = (XamlModule.LiveXamlLoader ?? this).Parse(liveText, liveUri);
+        }
+
         ThrowIfDocumentFailed(document);
 
         var builder = new XamlObjectGraphBuilder(

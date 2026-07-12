@@ -143,6 +143,44 @@ public sealed class Section13_Scrolling
         Assert.True(sv.HorizontalOffset > 0); // Shift+wheel scrolls horizontally
     }
 
+    [Fact] // C223b (added 2026-07-12 — the regression pin for the reversed horizontal wheel)
+    public void C223b_HorizontalWheel_DirectionMatchesDelta()
+    {
+        // WheelDeltaY and WheelDeltaX use the Windows MIXED convention: positive-Y = up (toward the
+        // START), positive-X = RIGHT (toward the END). The vertical lane's negation therefore must
+        // NOT be applied to the X lane — doing so shipped a reversed horizontal wheel once; this row
+        // pins all four directions so the sign can't silently re-invert.
+        var sv = new ScrollViewer
+        {
+            Width = 20,
+            Height = 10,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,
+            Content = new Block(200, 5)
+        };
+        using var host = Show(sv);
+        var dispatcher = host.Application.InputDispatcher;
+
+        dispatcher.ProcessEvent(Wheel(5, 5, deltaY: 0, deltaX: +120)); // wheel RIGHT
+        host.RunFrame();
+        Assert.Equal(3, sv.HorizontalOffset); // positive X = right = offset increases
+
+        dispatcher.ProcessEvent(Wheel(5, 5, deltaY: 0, deltaX: +120));
+        host.RunFrame();
+        Assert.Equal(6, sv.HorizontalOffset);
+
+        dispatcher.ProcessEvent(Wheel(5, 5, deltaY: 0, deltaX: -120)); // wheel LEFT
+        host.RunFrame();
+        Assert.Equal(3, sv.HorizontalOffset);
+
+        // Shift+wheel maps through deltaX := -WheelDeltaY (WPF/Avalonia/browser parity):
+        // wheel-UP = left (C223 pins the wheel-down = right direction).
+        dispatcher.ProcessEvent(Wheel(5, 5, deltaY: +120, modifiers: KeyModifiers.Shift));
+        host.RunFrame();
+        Assert.Equal(0, sv.HorizontalOffset);
+    }
+
     [Fact] // C224
     public void C224_WheelAtExtreme_Bubbles()
     {

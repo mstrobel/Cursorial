@@ -1528,14 +1528,19 @@ internal static class ControlThemes
     {
         var dock = new DockPanel();
 
-        var bar = new ScrollBar { Orientation = Orientation.Vertical };
-        ctx.RegisterName("PART_VerticalScrollBar", bar);
-        DockPanel.SetDock(bar, Dock.Right);
+        var vBar = new ScrollBar { Orientation = Orientation.Vertical };
+        ctx.RegisterName("PART_VerticalScrollBar", vBar);
+        DockPanel.SetDock(vBar, Dock.Right);
+
+        var hBar = new ScrollBar { Orientation = Orientation.Horizontal };
+        ctx.RegisterName("PART_HorizontalScrollBar", hBar);
+        DockPanel.SetDock(hBar, Dock.Bottom);
 
         var presenter = new ScrollContentPresenter();
         ctx.RegisterName("PART_ScrollContentPresenter", presenter);
 
-        dock.Children.Add(bar);
+        dock.Children.Add(vBar);
+        dock.Children.Add(hBar);
         dock.Children.Add(presenter); // fills the remaining space
         return dock;
     });

@@ -45,8 +45,9 @@ Twenty-four projects:
   `CursorialTheme.BuiltIn` backstop.
 - `Cursorial.Shared` — netstandard2.0 markup-metadata attributes (`[ContentProperty]`, `[XmlnsDefinition]`, …) shared
   by the loader and the generator.
-- `Cursorial.UI.Testing` — the headless test harness (`UITestHost` + `SyntheticTerminalHost` + capability presets);
-  the integration substrate for every UI subsystem — no test needs a TTY.
+- `Cursorial.UI.Hosting.Headless` — the headless host (`UIHeadlessHost` + `SyntheticTerminalHost` + capability
+  presets); the integration substrate for every UI subsystem — no test needs a TTY. Published since v0.4.0
+  (it also powers the Rider designer's preview host).
 - `Cursorial.Core.Tests`, `Cursorial.Rendering.Tests`, `Cursorial.Drawing.Tests`, `Cursorial.Animation.Tests`,
   `Cursorial.UI.Tests`, `Cursorial.UI.Xaml.Tests`, `Cursorial.UI.Xaml.Generator.Tests`, `Cursorial.UI.Bars.Tests` — xUnit.
 - `Cursorial.Demo` — interactive REPL for hands-on verification. `dotnet run --project Cursorial.Demo` opens a prompt
@@ -135,13 +136,14 @@ results are recorded under the doc's §14 phase table.
   (sync-context uninstall → job cancellation → pump stop → renderer close → cursor/SGR/alt-screen restore → host
   dispose; runs on crash paths), the exception funnel (`DispatcherUnhandledException` + `IUserCodeGuard` passed into
   the draw path). Clean frames are zero-allocation (asserted).
-- **`Cursorial.UI.Testing`** — `UITestHost` (calling thread is the UI thread; manual `RunFrame`/`RunUntilIdle`/
-  `AdvanceTime` stepping on a `FakeTimeProvider`; `SendKey/SendText/SendClick/SendResize/SendInput` direct injection;
-  `SendBytes` through a real `VtInputDevice` on the fake clock; cell/row/byte assertions; teardown-byte capture),
-  `UITestHostOptions`, `TestCapabilities` presets (`KittyTruecolor`/`Ansi16Legacy`/`NoMotion`/`NoMouseCursorShape`).
+- **`Cursorial.UI.Hosting.Headless`** — `UIHeadlessHost` (calling thread is the UI thread; manual `RunFrame`/
+  `RunUntilIdle`/`AdvanceTime` stepping on a `FakeTimeProvider`; `SendKey/SendText/SendClick/SendResize/SendInput`
+  direct injection; `SendBytes` through a real `VtInputDevice` on the fake clock; cell/row/byte assertions;
+  teardown-byte capture), `UIHeadlessHostOptions`, `HeadlessCapabilities` presets
+  (`KittyTruecolor`/`Ansi16Legacy`/`NoMotion`/`NoMouseCursorShape`).
 
 The doc §14 P1 exit criteria are proven end-to-end in `Cursorial.UI.Tests/Integration/Phase1EndToEndTests.cs`
-(UITestHost through the full spine: static panel-tree cell+byte assertions, the AffectsComposite
+(UIHeadlessHost through the full spine: static panel-tree cell+byte assertions, the AffectsComposite
 re-emit-without-re-raster invariant via `Scene.RasterVersion`, banded scroll across a re-anchor edge, mid-run
 resize, the caret transform leg) and live in the `uipanels` demo (whose key handling now rides S3's public routed
 events — the P1 `InternalsVisibleTo("Cursorial.Demo")` stopgap is removed).
@@ -221,7 +223,7 @@ paths) and the probe-4 motion-storm CI gate (`[Trait("Category","Benchmark")]`).
 writing `InteractionState.Pressed` per enter/leave with an installed observer + `HoverChanged` subscriber —
 Release numbers ~2.7 µs/Move at exactly 0 B steady-state, 0.55–0.58 ms for a 200-event frame against the 33 ms
 budget, recorded in the design doc's "Probe 4 / motion-storm results" blockquote) and
-`Cursorial.UI.Tests/Integration/Phase2EndToEndTests.cs` (end-to-end through `UITestHost`: Tab cycling +
+`Cursorial.UI.Tests/Integration/Phase2EndToEndTests.cs` (end-to-end through `UIHeadlessHost`: Tab cycling +
 `Once`-scope memory + window-activation restore, hover re-target under wheel-driven scroll with no mouse motion,
 capture across an out-of-bounds drag, one `KeyBinding` fired from both Ctrl+S wire encodings, the terminal
 focus-out cluster, and the access-key gate verdicts under the `TestCapabilities` presets). The `uipanels` demo is

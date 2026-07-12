@@ -261,6 +261,7 @@
   <ControlTemplate x:Key="ScrollViewerTemplate">
     <DockPanel>
       <ScrollBar x:Name="PART_VerticalScrollBar" Orientation="Vertical" DockPanel.Dock="Right"/>
+      <ScrollBar x:Name="PART_HorizontalScrollBar" Orientation="Horizontal" DockPanel.Dock="Bottom"/>
       <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"/>
     </DockPanel>
   </ControlTemplate>

@@ -5,6 +5,8 @@
              mc:Ignorable="d"
              x:Class="CursorialApp.Views.CursorialView">
 
-    <TextBlock Text="CursorialView"/>
+    <StackPanel>
+        <TextBlock Text="CursorialView"/>
+    </StackPanel>
 
 </UserControl>

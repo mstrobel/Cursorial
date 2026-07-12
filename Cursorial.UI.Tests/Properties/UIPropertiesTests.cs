@@ -22,7 +22,23 @@ public class UIPropertiesTests
         Assert.Contains(properties, p => p.Name == "Content");
         Assert.Contains(properties, p => p.Name == "Visibility"); // inherited from UIElement
         Assert.DoesNotContain(properties, p => p is { Name: "Row", IsAttached: true });
-        Assert.All(properties, p => Assert.False(p.IsAttached));
+    }
+
+    [Fact]
+    public void ForType_surfaces_attached_properties_added_as_owners()
+    {
+        // TextBlock.Foreground is TextElement.Foreground (attached) AddOwnered onto TextBlock —
+        // a plain member there. The attached DECLARATION alone surfaces nowhere: Grid does not
+        // report Row as a member of itself (it is a property of Grid's children).
+        _ = TextBlock.ForegroundProperty;
+        _ = Control.BackgroundProperty;
+        _ = Grid.RowProperty;
+
+        Assert.Contains(UIProperties.ForType(typeof(TextBlock)), p => p.Name == "Foreground");
+        Assert.Contains(UIProperties.ForType(typeof(Button)), p => p.Name == "Foreground");  // via Control
+        Assert.Contains(UIProperties.ForType(typeof(Button)), p => p.Name == "Background");  // via Control
+        Assert.DoesNotContain(UIProperties.ForType(typeof(Grid)), p => p.Name == "Row");
+        Assert.DoesNotContain(UIProperties.ForType(typeof(TextBlock)), p => p.Name == "Row");
     }
 
     [Fact]

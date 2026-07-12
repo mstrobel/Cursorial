@@ -20,8 +20,11 @@ public static class UIProperties
     public static IReadOnlyList<UIProperty> All => UIPropertyRegistry.Snapshot();
 
     /// <summary>
-    /// The non-attached properties applicable to <paramref name="type"/>: everything registered
-    /// (declared or via <c>AddOwner</c>) on the type or any of its base types.
+    /// The properties addressable as plain members on <paramref name="type"/>: everything
+    /// registered (declared or via <c>AddOwner</c>) on the type or any of its base types.
+    /// Attached declarations are excluded, but an attached property <c>AddOwner</c>ed onto the
+    /// type (or a base) counts — <c>TextBlock.Foreground</c> is a member of TextBlock even
+    /// though it is backed by the attached <c>TextElement.Foreground</c>.
     /// </summary>
     public static IReadOnlyList<UIProperty> ForType(Type type)
     {

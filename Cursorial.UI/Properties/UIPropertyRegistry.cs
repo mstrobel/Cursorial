@@ -98,7 +98,13 @@ internal static class UIPropertyRegistry
             var applicable = new HashSet<UIProperty>();
             foreach (var ((owner, _), property) in ByOwnerAndName)
             {
-                if (!property.IsAttached && owner.IsAssignableFrom(type))
+                if (!owner.IsAssignableFrom(type))
+                    continue;
+
+                // Attached DECLARATIONS stay out (Grid.Row is a property of Grid's children, not
+                // of Grid) — but an AddOwner onto an element type surfaces the property as a plain
+                // member there (TextBlock.Foreground over the attached TextElement.Foreground).
+                if (!property.IsAttached || owner != property.OwnerType)
                     applicable.Add(property);
             }
 

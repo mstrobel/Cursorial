@@ -2,7 +2,8 @@
 
     <!--
         The `dotnet new` template package: `cursorial-app` (a runnable terminal UI app with a
-        XAML shell view) and `cursorial-view` (an x:Class view + code-behind pair). Content
+        XAML shell view), `cursorial-view` (an x:Class view + code-behind pair), and
+        `cursorial-usercontrol` (a composable UserControl + code-behind pair). Content
         only — no assembly. Template PackageReference versions pin the repo's current release
         and move with it; the templates and the packages ship together.
     -->

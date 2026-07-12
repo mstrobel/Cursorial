@@ -42,6 +42,7 @@ internal static class ControlThemes
         dict[typeof(Button)] = ButtonTheme();
         dict[typeof(Label)] = LabelTheme();
         dict[typeof(ContentControl)] = ContentControlTheme();
+        dict[typeof(UserControl)] = UserControlTheme();
         dict[typeof(RepeatButton)] = RepeatButtonTheme();
         dict[typeof(ToggleButton)] = ToggleButtonTheme();
         dict[typeof(CheckBox)] = ToggleGlyphTheme<CheckBox>("Theme.CheckBox", ThemeKeys.CheckBoxGlyphs, ThemeKeys.ToggleGlyphChecked, ThemeKeys.ToggleGlyphIndeterminate);
@@ -168,6 +169,12 @@ internal static class ControlThemes
 
     private static Style ContentControlTheme()
         => new Style { Key = "Theme.ContentControl" }
+            .Set(Control.TemplateProperty, ContentControlTemplate());
+
+    // UserControl shares the neutral presenter; derived x:Class views reach it through the
+    // ControlThemeKey pin (UserControl overrides the exact-key lookup to typeof(UserControl)).
+    private static Style UserControlTheme()
+        => new Style { Key = "Theme.UserControl" }
             .Set(Control.TemplateProperty, ContentControlTemplate());
 
     // ───────────────────────────── ItemsControl ─────────────────────────────

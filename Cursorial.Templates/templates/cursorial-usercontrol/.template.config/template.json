@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Mike Strobel",
+  "classifications": ["TUI", "Cursorial"],
+  "identity": "Cursorial.UserControl.CSharp",
+  "name": "Cursorial user control",
+  "description": "A composable Cursorial UserControl with its code-behind pair — the reusable-view building block. The generator supplies InitializeComponent and typed x:Name fields; no csproj edits needed.",
+  "shortName": "cursorial-usercontrol",
+  "sourceName": "CursorialUserControl",
+  "tags": {
+    "language": "C#",
+    "type": "item"
+  },
+  "symbols": {
+    "namespace": {
+      "type": "parameter",
+      "datatype": "string",
+      "description": "Namespace for the control (also used in x:Class).",
+      "defaultValue": "MyApp.Views",
+      "replaces": "CursorialApp.Views"
+    }
+  }
+}

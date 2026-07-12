@@ -1,0 +1,7 @@
+<UserControl xmlns="https://cursorial.dev/ui"
+             xmlns:x="https://cursorial.dev/xaml"
+             x:Class="CursorialApp.Views.CursorialUserControl">
+
+    <TextBlock Text="CursorialUserControl"/>
+
+</UserControl>

@@ -36,8 +36,7 @@ dotnet add package Cursorial.Core
 
 > Every layer above is published on NuGet. `Cursorial.Core` is approaching stable; the layers on top of it are
 > **pre-release** — usable today (the `Cursorial.Demo` REPL and `Cursorial.Gallery` app drive them end-to-end), but
-> expect breaking changes as their surfaces settle. `Cursorial.UI.Testing` is a test-only harness and is not
-> published. Feedback very welcome.
+> expect breaking changes as their surfaces settle. Feedback very welcome.
 
 ## A taste
 
@@ -235,8 +234,9 @@ return await app.RunAsync(() =>
   (Alt-overlay accelerator badges) and SuperTips — all bound to one shared `BarCommand` set (define once, surface
   anywhere).
 
-`Cursorial.UI.Testing` provides a headless `UITestHost` (a synthetic terminal on a fake clock) so the whole
-framework — layout, input, rendering — is unit-testable without a TTY.
+`Cursorial.UI.Hosting.Headless` provides a headless `UIHeadlessHost` (a synthetic terminal on a fake clock) so
+the whole framework — layout, input, rendering — runs without a TTY: unit tests, snapshot harnesses, and design
+tooling (the Rider designer's preview host runs on it).
 
 ---
 
@@ -282,7 +282,9 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Xaml` | The net10.0 runtime XAML loader (markup extensions, resources, templates). |
 | `Cursorial.UI.Xaml.Generator` | The Roslyn source generator (compiled bindings, code-behind, AOT-clean provider). |
 | `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
-| `Cursorial.UI.Testing` | Headless `UITestHost` + synthetic terminal for testing UI without a TTY. *Not published — test-only.* |
+| `Cursorial.UI.Dialogs` | `MessageBox`, `TaskDialog` (command links, verification, progress), and the dialog service seam. |
+| `Cursorial.UI.Hosting.Headless` | Headless `UIHeadlessHost` + synthetic terminal: run the framework without a TTY (tests, snapshots, design tooling). |
+| `Cursorial.Templates` | `dotnet new` templates: `cursorial-app`, `cursorial-view`, `cursorial-usercontrol`. |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |
 | `Cursorial.Demo` | Interactive REPL that drives every layer end-to-end (see below). |
 | `Cursorial.Demo.XamlAot` / `.XamlAotStrict` | NativeAOT publish demos — the reflection loader, and the reflection-free build on the generated metadata provider (the AOT-clean exit gate). |

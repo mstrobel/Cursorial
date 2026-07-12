@@ -153,4 +153,44 @@ public sealed class Section05_ResourceDiagnostics
         host.RunUntilIdle();
         Assert.Null(ResourceDiagnostics.GetResourceKey(listBox, Control.BackgroundProperty));
     }
+
+    private sealed class Shell : ContentControl;
+
+    [Fact] // audit fix 2026-07-12: an active conditional rule piercing a Template-lane reference is NOT resource-backed
+    public void GetResourceKey_TriggerRulePiercesTemplateResource_ReturnsNull_ThenKeyOnRetraction()
+    {
+        var constant = new Cursorial.Drawing.Media.SolidColorBrush(Cursorial.Output.Color.FromRgb(90, 0, 0));
+
+        using var host = UIHeadlessHost.Create();
+        Cursorial.UI.Controls.Border? part = null;
+        var shell = new Shell
+        {
+            Template = new ControlTemplate(_ =>
+            {
+                part = new Cursorial.UI.Controls.Border();
+                part.SetResourceReference(Control.BackgroundProperty, K); // the Template-lane reference
+                return part;
+            }),
+        };
+        host.Application.Resources[K] = Vbrush;
+        host.Application.Styles.Add(
+            new Style(Selectors.OfType<Shell>().Class("alert").Template().OfType<Cursorial.UI.Controls.Border>())
+                .Set(Control.BackgroundProperty, constant)); // conditional ⇒ StyleTrigger — pierces Template while active
+        host.ShowRoot(shell);
+        host.RunFrame();
+
+        // Resting: the Template-lane reference owns the winning base — the hook names its key.
+        Assert.Equal(K, ResourceDiagnostics.GetResourceKey(part!, Control.BackgroundProperty));
+
+        shell.Classes.Add("alert");
+        host.RunFrame();
+        Assert.Same(constant, part!.GetValue(Control.BackgroundProperty));
+        // Pierced: the effective value is the trigger rule's CONSTANT — the live subscription must
+        // not make the hook claim the red hover came from the theme key (the provenance-lie gate).
+        Assert.Null(ResourceDiagnostics.GetResourceKey(part, Control.BackgroundProperty));
+
+        shell.Classes.Remove("alert");
+        host.RunFrame();
+        Assert.Equal(K, ResourceDiagnostics.GetResourceKey(part, Control.BackgroundProperty)); // clean retraction
+    }
 }

@@ -10,7 +10,7 @@ namespace Cursorial.UI;
 /// source. Free-standing entries (<c>UIObject.Bind</c>) contribute at
 /// <see cref="BindingPriority.LocalValue"/> only (A6); frame-hosted entries
 /// (<c>UIObject.BindInFrame</c>) contribute at their host frame's <see cref="StyleSortKey"/> inside
-/// the single Style slot (A5).
+/// the frame's style slot (<see cref="ValueFrame.Priority"/> — StyleTrigger or Style; A5).
 /// </summary>
 /// <remarks>
 /// <b>Lifecycle.</b> <see cref="Dispose"/> is idempotent and legal re-entrantly from within
@@ -38,7 +38,7 @@ public abstract class BindingEntryBase : IDisposable, IValueEntry
         SourceKind = priority switch
         {
             BindingPriority.Template => ValueSourceKind.TemplateBinding,
-            BindingPriority.Style => ValueSourceKind.StyleSetter,
+            BindingPriority.Style or BindingPriority.StyleTrigger => ValueSourceKind.StyleSetter,
             _ => ValueSourceKind.Local,
         };
     }
@@ -57,7 +57,8 @@ public abstract class BindingEntryBase : IDisposable, IValueEntry
     /// <summary>
     /// The priority lane the entry contributes at: <see cref="BindingPriority.LocalValue"/> or
     /// <see cref="BindingPriority.Template"/> for free-standing entries (A6 — Template when installed
-    /// inside the template-instantiation scope, §20/PD24), <see cref="BindingPriority.Style"/> for
+    /// inside the template-instantiation scope, §20/PD24), the host frame's slot
+    /// (<see cref="BindingPriority.StyleTrigger"/> or <see cref="BindingPriority.Style"/>) for
     /// frame-hosted ones (A5).
     /// </summary>
     public BindingPriority Priority { get; }

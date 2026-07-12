@@ -185,11 +185,13 @@ public abstract class UIObject : IInheritanceNode
     /// The raw (pre-coercion) local-lane value — WPF's <c>ReadLocalValue</c>: what local authorship
     /// asked for before the coercer ran (PD6), or <see cref="UIProperty.UnsetValue"/> when no local
     /// contribution exists. Style/Template/Inherited/Default contributions never surface here; the
-    /// effective-value mouths never return the sentinel (M14 governs those mouths only). A
-    /// <c>SetCurrentValue</c> graft stores as local (M118) and reports here — consistent with
-    /// <see cref="IsSet"/>/<see cref="GetValueSource"/>, a pinned DEV from WPF (where
-    /// <c>SetCurrentValue</c> is invisible to <c>ReadLocalValue</c>). Direct properties report their
-    /// current value (field semantics — always local, M220 parity). Boxed; cold path.
+    /// effective-value mouths never return the sentinel (M14 governs those mouths only). The M118
+    /// <c>SetCurrentValue</c> graft is local for STORAGE only and does <b>not</b> report here
+    /// (M264c as amended 2026-07-12 — WPF parity: <c>SetCurrentValue</c> is invisible to
+    /// <c>ReadLocalValue</c>, consistent with <see cref="GetValueSource"/> reporting the underlying
+    /// source; a real <c>SetValue</c> that <c>SetCurrentValue</c> later overwrote still reports its
+    /// latest raw write). Direct properties report their current value (field semantics — always
+    /// local, M220 parity). Boxed; cold path.
     /// </summary>
     public object? ReadLocalValue(UIProperty property)
     {
@@ -199,7 +201,7 @@ public abstract class UIObject : IInheritanceNode
         if (property.IsDirect)
             return property.GetValueUntyped(this);
 
-        return _store?.TryGetEntry(property.Id) is { HasLocal: true } entry
+        return _store?.TryGetEntry(property.Id) is { HasLocal: true, LocalIsCurrentValueOnly: false } entry
             ? entry.GetRawLocalBoxedValue()
             : UIProperty.UnsetValue;
     }
@@ -207,14 +209,14 @@ public abstract class UIObject : IInheritanceNode
     /// <summary>
     /// The typed raw-local read — <see cref="ReadLocalValue"/> without the box or the sentinel:
     /// <see langword="true"/> with the raw (pre-coercion) local value when a local contribution
-    /// exists, else <see langword="false"/> with <c>default</c>.
+    /// exists (the M118 graft excluded, M264c), else <see langword="false"/> with <c>default</c>.
     /// </summary>
     public bool TryReadLocalValue<T>(StyledProperty<T> property, out T rawValue)
     {
         ArgumentNullException.ThrowIfNull(property);
         VerifyAccess();
 
-        if (_store?.TryGetEntry(property.Id) is EffectiveValue<T> { HasLocal: true } entry)
+        if (_store?.TryGetEntry(property.Id) is EffectiveValue<T> { HasLocal: true, LocalIsCurrentValueOnly: false } entry)
         {
             rawValue = entry.RawLocalValue;
             return true;
@@ -248,7 +250,12 @@ public abstract class UIObject : IInheritanceNode
     /// excluded from <see cref="ValueSource"/> equality — PD23). Direct properties always report
     /// <see cref="BindingPriority.LocalValue"/> (field semantics, no ladder — matrix M220);
     /// <see cref="BindingPriority.Unset"/> is never reported; entry-less inheriting properties with
-    /// a contributing ancestor report <see cref="BindingPriority.Inherited"/>.
+    /// a contributing ancestor report <see cref="BindingPriority.Inherited"/>. The M118
+    /// <c>SetCurrentValue</c> graft (stored as local, no real local write) reports the UNDERLYING
+    /// source it overlays — <see cref="BindingPriority.Inherited"/>/<see cref="BindingPriority.Default"/>
+    /// with <c>IsCurrentValue = true</c>, never <see cref="BindingPriority.LocalValue"/> (M118 as
+    /// amended 2026-07-12, WPF parity): <c>Kind == Default/Inherited</c> stays a sound "not set
+    /// deliberately — safe to replace" test.
     /// </summary>
     public ValueSource GetValueSource(UIProperty property)
     {
@@ -262,6 +269,31 @@ public abstract class UIObject : IInheritanceNode
 
         if (entry is { EffectivePriority: not BindingPriority.Unset })
         {
+            // The M118 pure graft: SetCurrentValue over Default/Inherited stores as local, but the
+            // PROVENANCE is the source it overlays (amended 2026-07-12; ReadLocalValue's M264c twin).
+            if (entry is { BasePriority: BindingPriority.LocalValue, LocalIsCurrentValueOnly: true })
+            {
+                var underlyingInherited = property.Inherits && FindInheritedEntry(property.Id, out _) is not null;
+                var underlyingLane = underlyingInherited ? BindingPriority.Inherited : BindingPriority.Default;
+
+                // The +cur signal while the graft wins is the graft's EXISTENCE, not the shared
+                // entry bit: an animation episode over the graft clears the bit (M129/M130) while
+                // the graft survives underneath and resurfaces — reporting the bit would present
+                // the still-effective SetCurrentValue value as an untouched default, breaking the
+                // "safe to replace" test this branch exists for (M118c, audit fix 2026-07-12).
+                // While animated, the bit correctly describes the ANIMATED effective's overwrite.
+                return new ValueSource(
+                           entry.HasAnimatedValue ? BindingPriority.Animation : underlyingLane,
+                           entry.HasAnimatedValue ? entry.IsCurrentValue : true)
+                       {
+                           BasePriority = underlyingLane,
+                           IsCoerced = entry.IsCoerced,
+                           Kind = entry.HasAnimatedValue
+                               ? ValueSourceKind.Animation
+                               : underlyingInherited ? ValueSourceKind.Inherited : ValueSourceKind.Default
+                       };
+            }
+
             var basePriority = entry.BasePriority != BindingPriority.Unset
                                    ? entry.BasePriority
                                    : property.Inherits && FindInheritedEntry(property.Id, out _) is not null
@@ -283,11 +315,17 @@ public abstract class UIObject : IInheritanceNode
 
     /// <summary>
     /// The per-property value-stack enumeration for serialization / DevTools (design doc §2.1
-    /// "frame/local enumeration for tooling"; matrix M264). Rows strongest-first: the animation
-    /// contribution (current animated effective), the <em>raw</em> local value, every frame entry
-    /// (sort-keyed, inactive frames included and flagged), and the inherited provenance with its
-    /// contributing ancestor. Direct properties yield a single
-    /// <see cref="BindingPriority.LocalValue"/> row (field semantics). Cold path — values box.
+    /// "frame/local enumeration for tooling"; matrix M264/M298). Rows strongest-first in ladder
+    /// order: the animation contribution (current animated effective), the <em>raw</em> local value,
+    /// every <see cref="BindingPriority.StyleTrigger"/> frame entry, the raw template value, every
+    /// resting <see cref="BindingPriority.Style"/> frame entry (frames sort-keyed within their slot,
+    /// inactive frames included and flagged), and the inherited provenance with its contributing
+    /// ancestor. Direct properties yield a single <see cref="BindingPriority.LocalValue"/> row
+    /// (field semantics). This is the STORAGE stack, not the provenance surface: a pure
+    /// <c>SetCurrentValue</c> graft renders as its <see cref="BindingPriority.LocalValue"/> storage
+    /// rung here even though <see cref="GetValueSource"/> reports the underlying source and
+    /// <see cref="ReadLocalValue"/> hides it (PD27) — pair rows with <see cref="GetValueSource"/>
+    /// for provenance. Cold path — values box.
     /// </summary>
     public IReadOnlyList<PropertyValueDiagnostic> GetValueDiagnostics(UIProperty property)
     {
@@ -310,10 +348,12 @@ public abstract class UIObject : IInheritanceNode
         if (entry is { HasLocal: true })
             results.Add(new PropertyValueDiagnostic(BindingPriority.LocalValue, entry.GetRawLocalBoxedValue(), HasValue: true));
 
-        _store?.AppendStyleDiagnostics(property, results);
+        _store?.AppendStyleDiagnostics(property, results, BindingPriority.StyleTrigger);
 
         if (entry is { HasTemplate: true })
             results.Add(new PropertyValueDiagnostic(BindingPriority.Template, entry.GetRawTemplateBoxedValue(), HasValue: true));
+
+        _store?.AppendStyleDiagnostics(property, results, BindingPriority.Style);
 
         if (property.Inherits && FindInheritedEntry(property.Id, out var source) is {} inherited)
             results.Add(new PropertyValueDiagnostic(
@@ -340,8 +380,12 @@ public abstract class UIObject : IInheritanceNode
         return result;
     }
 
-    /// <summary>The resource key the winning style/theme DynamicResource setter feeds <paramref name="property"/>, or <see langword="null"/> (the W3 resource-provenance seam; the instance-<c>SetResourceReference</c> half is on <c>UIElement</c>).</summary>
-    internal object? GetWinningStyleResourceKey(UIProperty property) => _store?.ResolveWinningStyleResourceKey(property.Id);
+    /// <summary>The resource key the winning DynamicResource setter in the <paramref name="tier"/> style slot
+    /// (<see cref="BindingPriority.StyleTrigger"/> or <see cref="BindingPriority.Style"/> — the caller passes the
+    /// winning base lane) feeds <paramref name="property"/>, or <see langword="null"/> (the W3 resource-provenance
+    /// seam; the instance-<c>SetResourceReference</c> half is on <c>UIElement</c>).</summary>
+    internal object? GetWinningStyleResourceKey(UIProperty property, BindingPriority tier)
+        => _store?.ResolveWinningStyleResourceKey(property.Id, tier);
 
     internal object? GetValueBoxed<T>(StyledProperty<T> property)
     {
@@ -429,8 +473,13 @@ public abstract class UIObject : IInheritanceNode
     /// <summary>
     /// Removes the local value and evicts local-priority binding entries (A9: <c>ClearValue</c> is
     /// the binding kill; <c>SetValue</c> never kills). Promotion reports the new winning lane
-    /// (PD10) — Style, then Inherited, then Default; with no local contribution it is a silent
-    /// no-op (M21).
+    /// (PD10) — StyleTrigger, then Template, then Style, then Inherited, then Default. Also strips
+    /// a <c>SetCurrentValue</c> <c>+cur</c> overlay riding a producer lane, restoring the lane's
+    /// source value (M125 as amended 2026-07-12 — "ClearValue undoes SetCurrentValue" is universal
+    /// for un-animated state; under an ACTIVE animation the overlay rode the animated effective and
+    /// is left to the lane's own clobber rules — the next push, M129, or handle disposal, M130 —
+    /// keeping the <c>+cur</c> bit truthful, M125d). With no local contribution and no overlay it
+    /// is a silent no-op (M21).
     /// </summary>
     public void ClearValue(UIProperty property)
     {
@@ -452,7 +501,8 @@ public abstract class UIObject : IInheritanceNode
     /// <summary>
     /// Removes the local value and evicts local-priority binding entries (A9: <c>ClearValue</c> is
     /// the binding kill; <c>SetValue</c> never kills). Promotion reports the new winning lane
-    /// (PD10) — Style, then Inherited, then Default; with no local contribution it is a silent
+    /// (PD10); a <c>SetCurrentValue</c> <c>+cur</c> overlay riding a producer lane is stripped
+    /// (M125 as amended 2026-07-12); with no local contribution and no overlay it is a silent
     /// no-op (M21).
     /// </summary>
     public void ClearValue<T>(UIPropertyKey<T> key)
@@ -559,8 +609,9 @@ public abstract class UIObject : IInheritanceNode
 
     /// <summary>
     /// Installs a binding producer entry hosted by <paramref name="hostFrame"/> (ledger A5): the
-    /// entry contributes at the frame's <see cref="StyleSortKey"/> inside the single Style slot —
-    /// full within-slot citizenship — and is evicted (firing
+    /// entry contributes at the frame's <see cref="StyleSortKey"/> inside the frame's style slot
+    /// (<see cref="ValueFrame.Priority"/> — StyleTrigger for a conditional rule's frame, Style for a
+    /// resting one; full within-slot citizenship) and is evicted (firing
     /// <see cref="IValueEvictionListener.OnEvicted"/>) when the frame is removed. The host frame
     /// must already be installed on this object.
     /// </summary>
@@ -575,7 +626,7 @@ public abstract class UIObject : IInheritanceNode
         if (_store is null || !ReferenceEquals(hostFrame.Store, _store))
             throw new ArgumentException("The host frame is not installed on this object (matrix M166).", nameof(hostFrame));
 
-        var entry = new BindingEntry<T>(this, property, BindingPriority.Style, hostFrame, listener);
+        var entry = new BindingEntry<T>(this, property, hostFrame.Priority, hostFrame, listener);
         hostFrame.AddHostedEntry(entry);
         return entry; // installs valueless (A8) — no recompute until the first push
     }
@@ -585,7 +636,7 @@ public abstract class UIObject : IInheritanceNode
     {
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(hostFrame);
-        return property.CreateEntry(this, BindingPriority.Style, hostFrame, listener);
+        return property.CreateEntry(this, hostFrame.Priority, hostFrame, listener);
     }
 
     /// <summary>
@@ -1028,12 +1079,18 @@ public abstract class UIObject : IInheritanceNode
             }
 
             // Eager-notify (A3/A4): descendants' new lane is Inherited while this node (or one
-            // above) still contributes, Default once nothing does — i.e. exactly when this
-            // change's own lane is Default (M108/M109).
+            // above) still contributes, Default once nothing does. Historically "contributes" was
+            // equivalent to "this change's own lane is not Default" (M108/M109) — the PD27 graft
+            // broke the equivalence: its origin notification carries the underlying Default lane
+            // while its storage CONTRIBUTES (descendants read the grafted value and report
+            // Inherited). Test contribution directly (M127b, audit fix 2026-07-12).
             if (property.Inherits && _inheritanceChildren is not null && property is StyledProperty<T> styled)
             {
-                NotifyInheritanceChildren(styled, oldValue, newValue,
-                                          priority == BindingPriority.Default ? BindingPriority.Default : BindingPriority.Inherited);
+                var descendantLane = priority == BindingPriority.Default &&
+                                     _store?.TryGetEntry(property.Id) is not { EffectivePriority: not BindingPriority.Unset }
+                    ? BindingPriority.Default
+                    : BindingPriority.Inherited;
+                NotifyInheritanceChildren(styled, oldValue, newValue, descendantLane);
             }
         }
         finally
@@ -1108,15 +1165,16 @@ public abstract class UIObject : IInheritanceNode
         {
             case BindingPriority.Animation:
             case BindingPriority.LocalValue:
-            case BindingPriority.Style:
+            case BindingPriority.StyleTrigger:
             case BindingPriority.Template:
+            case BindingPriority.Style:
             case BindingPriority.Inherited:
             case BindingPriority.Default:
                 return;
 
             default:
                 throw new ArgumentException(
-                    $"maxPriority must be a resolvable lane (Animation, LocalValue, Style, Template, Inherited, or Default — PD16); got {maxPriority}.",
+                    $"maxPriority must be a resolvable lane (Animation, LocalValue, StyleTrigger, Template, Style, Inherited, or Default — PD16); got {maxPriority}.",
                     nameof(maxPriority));
         }
     }

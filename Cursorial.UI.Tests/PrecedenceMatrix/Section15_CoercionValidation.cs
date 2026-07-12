@@ -251,7 +251,9 @@ public class Section15_CoercionValidation
         viaSet.SetValue(Pc, 250);
 
         Assert.Equal(viaSet.GetValue(Pc), viaSetCurrent.GetValue(Pc));
-        probeCurrent.AssertSingleNotify(0, 100, BindingPriority.LocalValue);
+        // Coercion parity holds; the notification LANE differs by design — the graft replaces the
+        // Default lane (M118 amended 2026-07-12, A11), the real write IS the local lane.
+        probeCurrent.AssertSingleNotify(0, 100, BindingPriority.Default);
         probeSet.AssertSingleNotify(0, 100, BindingPriority.LocalValue);
     }
 }

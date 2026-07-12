@@ -73,7 +73,12 @@ internal sealed class StyleRuleFrame : ValueFrame
     internal StyleRuleFrame(
         UIElement? owner, CompiledRule rule, StyleSortKey sortKey, StyleLayer layer, object? scopeOwner,
         bool isActive = false)
-        : base(sortKey, isActive)
+        // The activator split (§0.3, 2026-07-12): a conditional rule (any pseudo-class/.class/When)
+        // arbitrates at StyleTrigger — above the Template lane, so state looks pierce template-authored
+        // part values while active; a resting structural rule arbitrates at Style — below it, so a
+        // template author's literals/TemplateBindings are the part's resting truth. Derived from the
+        // rule's SHAPE, so re-matches classify identically (the ApplyMatchDiff survivor contract).
+        : base(sortKey, isActive, rule.IsConditional ? BindingPriority.StyleTrigger : BindingPriority.Style)
     {
         Owner = owner;
         Rule = rule;

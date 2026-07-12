@@ -233,18 +233,22 @@
     <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
   </ControlTemplate>
 
+  <!-- The arrows author their bare faces as part literals (Template + Padding="0") — the parts' resting
+       truth under the amended lattice (§20, 2026-07-12); Padding="0" also aligns this overlay with the
+       Default twin, which previously carried a workaround rule IndigoDusk lacked (the arrows here wore
+       the RepeatButton theme's 1,0 padding — the pre-amendment inconsistency). -->
   <ControlTemplate x:Key="ScrollBarTemplateVertical">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
+      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollBarTemplateHorizontal">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
+      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
   </ControlTemplate>

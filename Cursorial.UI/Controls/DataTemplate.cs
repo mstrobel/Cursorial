@@ -36,13 +36,18 @@ public class DataTemplate
         var scope = new NameScopeDictionary();
         var context = new TemplateBuildContext(templatedParent: null, scope);
 
-        // §20/PD24: values authored inside the data-template content route to the Template lane so app
-        // styles override them (data-template content is app-styleable, CD18). The DataContext write
-        // below stays OUTSIDE the scope — it is the real data, not a template default.
-        UIElement root;
-        // using (TemplateInstantiationScope.Enter())
-            root = Content.Build(context)
-                ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
+        // Values authored inside data-template content land at LOCAL priority — the template-
+        // instantiation scope is deliberately NOT opened here (PD24 as amended 2026-07-12; matches
+        // Avalonia, which gives DataTemplate content no TemplatedParent and plain local values). A
+        // DataTemplate is authoring-equivalent to hand-writing the same element tree at the use
+        // site: it is reusable APP CONTENT, not a control's swappable skin, so its explicit
+        // property setters deserve the same local precedence they would have written inline. The
+        // re-skinning story that justifies the Template lane for ControlTemplate (parts must yield
+        // to conditional rules yet resist resting ones) does not apply — there is no "part
+        // contract" here, and app styles address this content directly (CD18's barrier exemption:
+        // TemplatedParent stays null, so the template barrier never engages).
+        var root = Content.Build(context)
+            ?? throw new InvalidOperationException("The DataTemplate's ITemplateContent produced a null root element.");
 
         NameScope.SetNameScope(root, scope);
         root.DataContext = data;

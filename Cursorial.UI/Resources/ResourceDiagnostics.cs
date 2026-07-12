@@ -52,16 +52,24 @@ public static class ResourceDiagnostics
         ArgumentNullException.ThrowIfNull(property);
         element.VerifyAccess();
 
-        // An instance SetResourceReference/{DynamicResource} wins at the Local/Template lane — check it first.
-        if (element.FindInstanceResourceKey(property) is { } instanceKey)
-            return instanceKey;
+        var basePriority = element.GetValueSource(property).BasePriority;
 
-        // Else a style/theme {DynamicResource} setter — but ONLY when the Style lane actually owns the effective
-        // value. A LocalValue (or Template) literal masking a resource-backed style setter is NOT resource-backed:
-        // the winning value is the literal, so report no key (else this would lie about provenance). Gate on the
-        // winning BASE lane so an animation holding a resource-backed style value still reports its key.
-        return element.GetValueSource(property).BasePriority == BindingPriority.Style
-            ? element.GetWinningStyleResourceKey(property)
+        // An instance SetResourceReference/{DynamicResource} produces at LocalValue (document-level) or
+        // Template (in-template) — report its key only while ITS OWN lane owns the winning base (audit fix
+        // 2026-07-12): under the amended lattice an active conditional rule pierces a Template-lane
+        // reference (and any stronger lane masks either), making the effective value not-resource-backed
+        // even though the subscription stays live. Gate on the BASE lane so an animation holding a
+        // resource-backed value still reports its key.
+        if (element.FindInstanceResourceKey(property) is { } instance && instance.Priority == basePriority)
+            return instance.Key;
+
+        // Else a style/theme {DynamicResource} setter — but ONLY when a style slot actually owns the effective
+        // value (either lane: a conditional rule at StyleTrigger or a resting rule at Style). A LocalValue (or
+        // Template) literal masking a resource-backed style setter is NOT resource-backed: the winning value is
+        // the literal, so report no key (else this would lie about provenance). Pass the winning lane down so
+        // the key comes from the slot that won, not a masked rule in the other slot.
+        return basePriority is BindingPriority.Style or BindingPriority.StyleTrigger
+            ? element.GetWinningStyleResourceKey(property, basePriority)
             : null;
     }
 

@@ -465,10 +465,10 @@ public class ScrollViewer : ContentControl
 
         if (horizontal)
         {
-            var deltaX = e.WheelDeltaX != 0 ? e.WheelDeltaX : e.WheelDeltaY;
+            var deltaX = e.WheelDeltaX != 0 ? e.WheelDeltaX : -e.WheelDeltaY;
             var lines = deltaX / 120 * notchLines;
 
-            if (TryScrollHorizontally(-lines))
+            if (TryScrollHorizontally(lines))
                 e.Handled = true;
 
             return;

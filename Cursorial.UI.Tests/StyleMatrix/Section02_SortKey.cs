@@ -236,17 +236,26 @@ public class Section02_SortKey
     }
 
     [Fact]
-    public void S038_ExplicitBeatsScoped_AtAnySpecificity()
+    public void S038_ExplicitBeatsRestingScoped_ButAConditionalScopedRulePierces()
     {
+        // Amended for the activator split (§0.3, 2026-07-12). Within the RESTING slot the layer law
+        // is unchanged: Explicit(5) outranks any Scoped specificity built from resting simples
+        // (types/#names). But a CLASS-gated scoped rule is conditional ⇒ the StyleTrigger slot,
+        // which beats every resting rule — explicit styles included (slot beats key; the Avalonia
+        // consequence the amendment accepted). The unconditional per-element override is SetValue.
         using var tree = ShowTree(show: false);
-        tree.A.Classes.Add("a");
-        tree.A.Classes.Add("b");
-        tree.A.Classes.Add("c");
         tree.A.Name = "save";
-        tree.PaneA.Styles.Add(R("Widget.a.b.c#save", (Widget.P, 1)));
+        tree.PaneA.Styles.Add(R("Widget#save", (Widget.P, 1))); // resting (names=1, no class/pseudo/When)
         tree.A.Style = Explicit((Widget.P, 9));
         tree.Host.ShowRoot(tree.Root);
 
-        Assert.Equal(9, tree.A.GetValue(Widget.P)); // Explicit(5) outranks any Scoped specificity
+        Assert.Equal(9, tree.A.GetValue(Widget.P)); // Explicit(5) outranks resting Scoped specificity
+
+        tree.PaneA.Styles.Add(R("Widget.a", (Widget.P, 3))); // conditional — armed, inactive (no class yet)
+        Assert.Equal(9, tree.A.GetValue(Widget.P));
+
+        tree.A.Classes.Add("a"); // activates ⇒ StyleTrigger beats the resting Explicit
+        Assert.Equal(3, tree.A.GetValue(Widget.P));
+        Assert.Equal(BindingPriority.StyleTrigger, tree.A.GetValueSource(Widget.P).Priority);
     }
 }

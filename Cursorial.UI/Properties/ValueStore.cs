@@ -141,7 +141,16 @@ internal sealed class ValueStore
             return; // equal-value lane flip: silent, but the source updated (PD9, M101) — un-animated, old effective == old base
 
         entry.BoxedValue = null;
-        NotifyOrDefer(entry, metadata, oldValue, coerced, BindingPriority.LocalValue);
+
+        // A11 under the amended M118 (2026-07-12): a pure SetCurrentValue graft REPLACES the
+        // Default/Inherited value it overlays, so the notification carries that underlying lane —
+        // LocalValue never surfaces for a graft (GetValueSource's provenance twin). A real local
+        // write (or SetCurrentValue over one) still notifies at LocalValue.
+        var notifyLane = BindingPriority.LocalValue;
+        if (entry.LocalIsCurrentValueOnly)
+            GetUnsetFallback(property, metadata, out notifyLane);
+
+        NotifyOrDefer(entry, metadata, oldValue, coerced, notifyLane);
     }
 
     /// <summary>
@@ -270,9 +279,12 @@ internal sealed class ValueStore
     /// <summary>
     /// The lane-probing read (PD16): <c>Animation</c> ⇒ the full effective; <c>LocalValue</c> ⇒ the
     /// winning base (so <c>GetBaseValue</c> sees a <c>SetCurrentValue</c> overwrite, M121);
-    /// <c>Style</c> ⇒ the strongest style contribution (skipping Animation and Local);
-    /// <c>Inherited</c> ⇒ the walk-up result. Every probe except <c>Default</c> falls through the
-    /// rest of the ladder — inherited, then the metadata default (M114/M259–M261).
+    /// <c>StyleTrigger</c> ⇒ the strongest contribution at or below the conditional style slot
+    /// (skipping Animation and Local); <c>Template</c> ⇒ at or below the template lane;
+    /// <c>Style</c> ⇒ the strongest resting-slot contribution (deliberately skipping the stronger
+    /// Template lane — §0.3, 2026-07-12); <c>Inherited</c> ⇒ the walk-up result. Every probe except
+    /// <c>Default</c> falls through the rest of the ladder — inherited, then the metadata default
+    /// (M114/M259–M261).
     /// </summary>
     public T GetValueAtMaxPriority<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, BindingPriority maxPriority)
     {
@@ -290,21 +302,31 @@ internal sealed class ValueStore
                     return entry.BaseValue;
                 break;
 
-            case BindingPriority.Style:
-                if (entry is { BasePriority: BindingPriority.Style })
-                    return entry.BaseValue; // the maintained style base (a +cur overwrite included)
-                if (TryResolveStyleValue(property, out var styleValue, out _))
-                    return metadata.Coerce is {} coerce ? coerce(Owner, styleValue) : styleValue;
-                break;
+            case BindingPriority.StyleTrigger:
+                // Skips Animation/Local; the strongest considered is the conditional style slot,
+                // then everything weaker cascades (§0.3, 2026-07-12 ladder).
+                if (entry is { BasePriority: BindingPriority.StyleTrigger })
+                    return entry.BaseValue; // the maintained trigger base (a +cur overwrite included)
+                if (TryResolveStyleValue(property, BindingPriority.StyleTrigger, out var triggerValue, out _))
+                    return metadata.Coerce is {} triggerCoerce ? triggerCoerce(Owner, triggerValue) : triggerValue;
+                goto case BindingPriority.Template;
 
             case BindingPriority.Template:
-                // Skips Animation/Local/Style (all stronger); the strongest considered is Template
-                // and weaker. The maintained template base when it wins (a +cur overwrite included),
-                // else the stored coerced template value when masked, else fall through.
+                // The maintained template base when it wins (a +cur overwrite included), else the
+                // stored coerced template value when masked, else the resting-style cascade.
                 if (entry is { BasePriority: BindingPriority.Template })
                     return entry.BaseValue;
                 if (entry is { HasTemplate: true })
                     return entry.TemplateValue;
+                goto case BindingPriority.Style;
+
+            case BindingPriority.Style:
+                // The resting structural slot — WEAKER than Template under the amended ladder, so a
+                // Style-capped probe deliberately skips the Template lane (it is stronger).
+                if (entry is { BasePriority: BindingPriority.Style })
+                    return entry.BaseValue; // the maintained resting base (a +cur overwrite included)
+                if (TryResolveStyleValue(property, BindingPriority.Style, out var styleValue, out _))
+                    return metadata.Coerce is {} coerce ? coerce(Owner, styleValue) : styleValue;
                 break;
         }
 
@@ -368,9 +390,9 @@ internal sealed class ValueStore
         var newBaseIsCoerced = false;
         object? contributor = null;
 
-        // The SetCurrentValue no-contribution graft (M118) is local-for-storage only: a style
-        // producer arriving replaces the overlay (A11; style matrix S100), so a graft does not
-        // short-circuit the style resolution the way a real local write does.
+        // The SetCurrentValue no-contribution graft (M118) is local-for-storage only: a producer
+        // arriving replaces the overlay (A11; style matrix S100), so a graft does not short-circuit
+        // producer resolution the way a real local write does.
         var graftLocal = entry is { HasLocal: true, LocalIsCurrentValueOnly: true };
 
         if (entry is { HasLocal: true } && !graftLocal)
@@ -379,41 +401,42 @@ internal sealed class ValueStore
             newBaseValue = entry.BaseValue; // the stored coerced local (never re-derived on reads)
             newBaseIsCoerced = entry.BaseIsCoerced;
         }
-        else if (TryResolveStyleValue(property, out var styleRaw, out contributor))
+        else if (TryResolveStyleValue(property, BindingPriority.StyleTrigger, out var triggerRaw, out contributor))
         {
-            newBasePriority = BindingPriority.Style;
-            newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, styleRaw) : styleRaw;
-            newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(styleRaw, newBaseValue);
+            // The CONDITIONAL style slot (§0.3, 2026-07-12): active pseudo-class/.class/When-gated
+            // rules — above Template, so state looks pierce template-authored part values.
+            newBasePriority = BindingPriority.StyleTrigger;
+            newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, triggerRaw) : triggerRaw;
+            newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(triggerRaw, newBaseValue);
 
             if (graftLocal)
-            {
-                // The graft evaporates — the producer it stood in for has arrived.
-                entry!.HasLocal = false;
-                entry.LocalValueFromEntry = false;
-                entry.LocalIsCurrentValueOnly = false;
-                entry.RawLocalValue = default!;
-            }
+                EvaporateGraft(entry!); // the producer the graft stood in for has arrived (S100/A11)
         }
         else if (entry is { HasTemplate: true })
         {
-            // The Template lane (§20, PD24): one rung below Style, above Inherited. Stored coerced
-            // (never re-derived on reads), the structural twin of the local branch.
+            // The Template lane (§20, PD24 as amended 2026-07-12): below StyleTrigger, ABOVE resting
+            // Style — a template author's literals/TemplateBindings are the part's resting truth.
+            // Stored coerced (never re-derived on reads), the structural twin of the local branch.
             newBasePriority = BindingPriority.Template;
             newBaseValue = entry.TemplateValue;
             newBaseIsCoerced = entry.TemplateIsCoerced;
 
             if (graftLocal)
-            {
-                // The SCV graft yields to a Template producer too, not only a Style one (PD24, M287).
-                entry.HasLocal = false;
-                entry.LocalValueFromEntry = false;
-                entry.LocalIsCurrentValueOnly = false;
-                entry.RawLocalValue = default!;
-            }
+                EvaporateGraft(entry); // the SCV graft yields to a Template producer too (M287)
+        }
+        else if (TryResolveStyleValue(property, BindingPriority.Style, out var styleRaw, out contributor))
+        {
+            // The RESTING style slot: purely structural rules — below Template.
+            newBasePriority = BindingPriority.Style;
+            newBaseValue = metadata.Coerce is {} coerce ? coerce(Owner, styleRaw) : styleRaw;
+            newBaseIsCoerced = metadata.Coerce is not null && !comparer.Equals(styleRaw, newBaseValue);
+
+            if (graftLocal)
+                EvaporateGraft(entry!);
         }
         else if (graftLocal)
         {
-            // No style/template producer: the graft keeps holding the local lane (M118 storage semantics).
+            // No producer at all: the graft keeps holding the local lane (M118 storage semantics).
             newBasePriority = BindingPriority.LocalValue;
             newBaseValue = entry!.BaseValue;
             newBaseIsCoerced = entry.BaseIsCoerced;
@@ -494,6 +517,16 @@ internal sealed class ValueStore
 
         lane = BindingPriority.Default;
         return metadata.DefaultValue;
+    }
+
+    /// <summary>Removes the M118 SetCurrentValue graft from the local slot — a producer (StyleTrigger /
+    /// Template / Style) has arrived and replaces the overlay it stood in for (S100/A11/M287).</summary>
+    private static void EvaporateGraft<T>(EffectiveValue<T> entry)
+    {
+        entry.HasLocal = false;
+        entry.LocalValueFromEntry = false;
+        entry.LocalIsCurrentValueOnly = false;
+        entry.RawLocalValue = default!;
     }
 
     // ───────────────────────────── animation lane ─────────────────────────────
@@ -835,15 +868,19 @@ internal sealed class ValueStore
     }
 
     /// <summary>
-    /// Appends one diagnostics row per frame entry for <paramref name="property"/> — declared and
-    /// hosted, active frames or not — strongest-first in arbitration order (matrix M264; the
-    /// DevTools/serialization surface). Cold path; values box through the untyped entry bridge.
+    /// Appends one diagnostics row per frame entry in the <paramref name="tier"/> style slot for
+    /// <paramref name="property"/> — declared and hosted, active frames or not — strongest-first in
+    /// within-slot arbitration order (matrix M264/M298; the DevTools/serialization surface). The
+    /// caller composes the cross-slot order (trigger rows, then the Template row, then resting
+    /// rows). Cold path; values box through the untyped entry bridge.
     /// </summary>
-    public void AppendStyleDiagnostics(UIProperty property, List<PropertyValueDiagnostic> results)
+    public void AppendStyleDiagnostics(UIProperty property, List<PropertyValueDiagnostic> results, BindingPriority tier)
     {
         for (var i = _frameCount - 1; i >= 0; i--)
         {
             var frame = _frames[i];
+            if (frame.Priority != tier)
+                continue;
 
             if (frame.HostedEntries is {} hosted)
             {
@@ -851,7 +888,7 @@ internal sealed class ValueStore
                 {
                     if (hosted[j].Property.Id == property.Id)
                         results.Add(new PropertyValueDiagnostic(
-                            BindingPriority.Style, property.GetEntryValueBoxed(hosted[j]), hosted[j].HasValue,
+                            frame.Priority, property.GetEntryValueBoxed(hosted[j]), hosted[j].HasValue,
                             frame.SortKey, frame.IsActive));
                 }
             }
@@ -861,26 +898,34 @@ internal sealed class ValueStore
                 var entry = frame.GetEntry(j);
                 if (entry.Property.Id == property.Id)
                     results.Add(new PropertyValueDiagnostic(
-                        BindingPriority.Style, property.GetEntryValueBoxed(entry), entry.HasValue,
+                        frame.Priority, property.GetEntryValueBoxed(entry), entry.HasValue,
                         frame.SortKey, frame.IsActive));
             }
         }
     }
 
     /// <summary>
-    /// Appends the property's <b>active</b> style contributors in arbitration order — strongest
-    /// frame first (largest sort key; equal keys later-added), within a frame hosted entries before
-    /// declared ones, later indices first — the <c>StyleDiagnostics.Explain</c> surface (style
-    /// matrix SD13: Explain renders active contributors only; armed-inactive frames belong to
-    /// <c>MatchedRules</c>). Valueless (A8) entries are included — the renderer prints
-    /// <c>(unset)</c>. Cold path.
+    /// Appends the property's <b>active</b> style contributors in arbitration order — every
+    /// <see cref="BindingPriority.StyleTrigger"/> frame before every <see cref="BindingPriority.Style"/>
+    /// one (the slot beats the key), within each slot strongest frame first (largest sort key; equal
+    /// keys later-added), within a frame hosted entries before declared ones, later indices first —
+    /// the <c>StyleDiagnostics.Explain</c> surface (style matrix SD13: Explain renders active
+    /// contributors only; armed-inactive frames belong to <c>MatchedRules</c>). Valueless (A8)
+    /// entries are included — the renderer prints <c>(unset)</c>. Cold path.
     /// </summary>
     public void AppendActiveStyleContributors(UIProperty property, List<(ValueFrame Frame, IValueEntry Entry)> results)
+    {
+        AppendActiveStyleContributors(property, results, BindingPriority.StyleTrigger);
+        AppendActiveStyleContributors(property, results, BindingPriority.Style);
+    }
+
+    private void AppendActiveStyleContributors(
+        UIProperty property, List<(ValueFrame Frame, IValueEntry Entry)> results, BindingPriority tier)
     {
         for (var i = _frameCount - 1; i >= 0; i--)
         {
             var frame = _frames[i];
-            if (!frame.IsActive)
+            if (!frame.IsActive || frame.Priority != tier)
                 continue;
 
             if (frame.HostedEntries is {} hosted)
@@ -914,21 +959,23 @@ internal sealed class ValueStore
         BindingPriority.Template => entry.TemplateValueFromEntry
             ? entry.TemplateEntry?.SourceKind ?? ValueSourceKind.TemplateBinding
             : ValueSourceKind.TemplateLiteral,
-        BindingPriority.Style => ResolveWinningStyleKind(entry.PropertyUntyped.Id),
+        BindingPriority.StyleTrigger => ResolveWinningStyleKind(entry.PropertyUntyped.Id, BindingPriority.StyleTrigger),
+        BindingPriority.Style => ResolveWinningStyleKind(entry.PropertyUntyped.Id, BindingPriority.Style),
         _ => ValueSourceKind.Default,
     };
 
     /// <summary>
-    /// The kind of the winning active style contribution for <paramref name="propertyId"/> — the same
-    /// strongest-first scan as <see cref="TryResolveStyleValue{T}"/>: <see cref="ValueSourceKind.StyleWhen"/>
-    /// when the winning frame is a conditional rule, else <see cref="ValueSourceKind.StyleSetter"/>.
+    /// The kind of the winning active contribution in the <paramref name="tier"/> style slot for
+    /// <paramref name="propertyId"/> — the same strongest-first scan as
+    /// <see cref="TryResolveStyleValue{T}"/>: <see cref="ValueSourceKind.StyleWhen"/> when the winning
+    /// frame is a <c>When</c>-guarded rule, else <see cref="ValueSourceKind.StyleSetter"/>.
     /// </summary>
-    private ValueSourceKind ResolveWinningStyleKind(int propertyId)
+    private ValueSourceKind ResolveWinningStyleKind(int propertyId, BindingPriority tier)
     {
         for (var i = _frameCount - 1; i >= 0; i--)
         {
             var frame = _frames[i];
-            if (!frame.IsActive)
+            if (!frame.IsActive || frame.Priority != tier)
                 continue;
 
             if (frame.HostedEntries is {} hosted)
@@ -952,16 +999,17 @@ internal sealed class ValueStore
     }
 
     /// <summary>
-    /// The resource key the winning active style contribution for <paramref name="propertyId"/> resolved
-    /// through (a DynamicResource setter), or <see langword="null"/> when the winner is a constant setter
-    /// (the W3 resource-provenance seam). Same strongest-first scan as <see cref="ResolveWinningStyleKind"/>.
+    /// The resource key the winning active contribution in the <paramref name="tier"/> style slot for
+    /// <paramref name="propertyId"/> resolved through (a DynamicResource setter), or <see langword="null"/>
+    /// when the winner is a constant setter (the W3 resource-provenance seam). Same strongest-first scan
+    /// as <see cref="ResolveWinningStyleKind"/>.
     /// </summary>
-    internal object? ResolveWinningStyleResourceKey(int propertyId)
+    internal object? ResolveWinningStyleResourceKey(int propertyId, BindingPriority tier)
     {
         for (var i = _frameCount - 1; i >= 0; i--)
         {
             var frame = _frames[i];
-            if (!frame.IsActive)
+            if (!frame.IsActive || frame.Priority != tier)
                 continue;
 
             if (frame.HostedEntries is {} hosted)
@@ -985,18 +1033,20 @@ internal sealed class ValueStore
     }
 
     /// <summary>
-    /// Resolves the strongest active style contribution: frames strongest-first (largest sort key;
-    /// equal keys later-added), within a frame hosted entries beat declared ones and later indices
-    /// beat earlier (install/document order); valueless entries are skipped wholesale (A8 unset
-    /// promotion, M41). Returns the <em>raw</em> value — coercion is the caller's.
+    /// Resolves the strongest active style contribution in the <paramref name="tier"/> slot
+    /// (<see cref="BindingPriority.StyleTrigger"/> or <see cref="BindingPriority.Style"/> — the
+    /// activator split, §0.3 2026-07-12): frames strongest-first (largest sort key; equal keys
+    /// later-added), within a frame hosted entries beat declared ones and later indices beat earlier
+    /// (install/document order); valueless entries are skipped wholesale (A8 unset promotion, M41).
+    /// Returns the <em>raw</em> value — coercion is the caller's.
     /// </summary>
-    private bool TryResolveStyleValue<T>(StyledProperty<T> property, out T value, out object? contributor)
+    private bool TryResolveStyleValue<T>(StyledProperty<T> property, BindingPriority tier, out T value, out object? contributor)
     {
         var propertyId = property.Id;
         for (var i = _frameCount - 1; i >= 0; i--)
         {
             var frame = _frames[i];
-            if (!frame.IsActive)
+            if (!frame.IsActive || frame.Priority != tier)
                 continue;
 
             if (frame.HostedEntries is {} hosted)

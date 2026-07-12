@@ -54,7 +54,8 @@ public class Section06_Frames
 
         tree.A.Flip(InteractionState.PointerOver, false);
 
-        probe.AssertSingleNotify(2, 1, BindingPriority.Style); // runner-up promotion in ONE notification
+        // Both rules are class-gated ⇒ conditional ⇒ the StyleTrigger slot (§0.3, 2026-07-12).
+        probe.AssertSingleNotify(2, 1, BindingPriority.StyleTrigger); // runner-up promotion in ONE notification
     }
 
     [Fact]
@@ -105,7 +106,8 @@ public class Section06_Frames
 
         probe.AssertSilent(); // masked (M37)
         Assert.Equal(9, tree.A.GetValue(Widget.P));
-        Assert.Equal(9, tree.A.GetValue(Widget.P, BindingPriority.Style)); // the lane probe resolves the winner
+        // Both rules are class-gated ⇒ conditional ⇒ StyleTrigger (§0.3, 2026-07-12) — the trigger-slot probe.
+        Assert.Equal(9, tree.A.GetValue(Widget.P, BindingPriority.StyleTrigger)); // the lane probe resolves the winner
     }
 
     [Fact]
@@ -122,7 +124,7 @@ public class Section06_Frames
 
         tree.A.Flip(InteractionState.PointerOver, true);
 
-        probe.AssertSingleNotify(5, 9, BindingPriority.Style);
+        probe.AssertSingleNotify(5, 9, BindingPriority.StyleTrigger); // class-gated ⇒ the trigger slot (§0.3)
     }
 
     [Fact]
@@ -196,8 +198,8 @@ public class Section06_Frames
 
         handle.Dispose();
 
-        probe.AssertSingleNotify(50, 5, BindingPriority.Style);
-        Assert.Equal(new ValueSource(BindingPriority.Style, false), tree.A.GetValueSource(Widget.P));
+        probe.AssertSingleNotify(50, 5, BindingPriority.StyleTrigger); // :pointerover ⇒ conditional slot (§0.3)
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, false), tree.A.GetValueSource(Widget.P));
     }
 
     [Fact]
@@ -213,7 +215,7 @@ public class Section06_Frames
         tree.A.Flip(InteractionState.PointerOver, true); // the style producer arrives
 
         Assert.Equal(5, tree.A.GetValue(Widget.P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, false), tree.A.GetValueSource(Widget.P)); // A11
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, false), tree.A.GetValueSource(Widget.P)); // A11; conditional slot
     }
 
     [Fact]
@@ -230,7 +232,8 @@ public class Section06_Frames
         tree.A.Flip(InteractionState.PointerOver, false); // deactivate the winner
 
         probe.AssertSilent(); // equal-value promotion (PD9)
-        Assert.Equal(new ValueSource(BindingPriority.Style, false), tree.A.GetValueSource(Widget.P));
+        // The runner-up `.x` is itself class-gated ⇒ still the StyleTrigger slot (§0.3).
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, false), tree.A.GetValueSource(Widget.P));
     }
 
     [Fact]

@@ -356,12 +356,15 @@ internal static class ControlThemes
     // still clickable so the consumer can toggle the list on it. The caret inherits the field's foreground. Shared
     // by ComboBox + DatePicker; the consumer registers it as PART_DropDown and wires Click. (▾ is the design-guide
     // glyph; geometric, like the scroll arrows — the renderer's ambiguous-width defense covers the edge terminals.)
+    // 2026-07-12 lattice note: these part literals (Template + Padding=0) are now the caret's RESTING truth (§20 —
+    // Template above resting Style), so Theme.Button's root Template/Padding setters no longer re-chrome it; the
+    // bare face authored here is what renders (previously the theme's chromed mini-button won and this was latent).
     private static Button DropDownCaret()
         => new()
         {
             Content = "▾",
-            Template = BareGlyphButtonTemplate(),
-            Padding = Margins.Zero,
+            // Template = BareGlyphButtonTemplate(),
+            // Padding = Margins.Zero,
             Focusable = false,
             IsTabStop = false
         };
@@ -638,7 +641,11 @@ internal static class ControlThemes
         field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
-        var calendar = new Calendar { BorderPen = Pens.Light.WithBrush(Brushes.Red) };
+        // No BorderPen literal: the popup surface Border carries the themed border; a literal here
+        // would be the part's resting truth under the amended lattice (§20, 2026-07-12) and the
+        // Calendar theme's resting BorderPen could no longer replace it. (A red debug pen lived
+        // here until the 2026-07-12 pre-cleanup — masked under the old ladder, visible under the new.)
+        var calendar = new Calendar();
         ctx.RegisterName("PART_Calendar", calendar);
         var surface = new Border { /*Occludes = true, */Child = calendar };
         surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
@@ -1262,6 +1269,9 @@ internal static class ControlThemes
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates<TButton>(Style theme) where TButton : ButtonBase
     {
+        theme.SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal);
+
         theme.Children.Add(
             new Style("^:default")
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
@@ -1282,11 +1292,6 @@ internal static class ControlThemes
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
 
-        theme.Children.Add(
-            new Style("^:disabled")
-               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
-               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
- 
         if (typeof(ToggleButton).IsAssignableFrom(typeof(TButton)))
         {
             theme.Children.Add(
@@ -1435,14 +1440,14 @@ internal static class ControlThemes
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 
-    // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
-    // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
-    private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
-    {
-        var presenter = new ContentPresenter { RecognizesAccessKey = false };
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        return presenter;
-    });
+    // // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
+    // // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
+    // private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
+    // {
+    //     var presenter = new ContentPresenter { RecognizesAccessKey = false };
+    //     ctx.RegisterName("PART_ContentPresenter", presenter);
+    //     return presenter;
+    // });
 
     // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
     // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
@@ -1453,7 +1458,7 @@ internal static class ControlThemes
             ctx =>
             {
                var dock = new DockPanel();
-               var bareTemplate = BareGlyphButtonTemplate();
+               // var bareTemplate = BareGlyphButtonTemplate();
 
                // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
                // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
@@ -1462,7 +1467,7 @@ internal static class ControlThemes
                var lineUp = new RepeatButton
                             {
                                 Content = horizontal ? "◀" : "▲",
-                                Template = bareTemplate, 
+                                // Template = bareTemplate, 
                                 Padding = Margins.Zero, 
                                 Focusable = false,
                                 IsTabStop = false
@@ -1473,7 +1478,10 @@ internal static class ControlThemes
 
                var lineDown = new RepeatButton
                               {
-                                  Content = horizontal ? "▶" : "▼", Template = bareTemplate, Padding = Margins.Zero, Focusable = false,
+                                  Content = horizontal ? "▶" : "▼",
+                                  // Template = bareTemplate,
+                                  Padding = Margins.Zero,
+                                  Focusable = false,
                                   IsTabStop = false
                               };
 
@@ -1492,7 +1500,11 @@ internal static class ControlThemes
                return dock;
             });
 
-        t.Styles.Add(new Style(Selectors.OfType<ScrollBar>().Template().OfType<RepeatButton>()).Set(Control.PaddingProperty, Margins.Zero)); return t;
+        // (A `/template/ RepeatButton { Padding = 0 }` rule lived here until the 2026-07-12 lattice
+        // amendment: under the old ladder the RepeatButton control theme's resting Padding beat the
+        // parts' `Padding = Margins.Zero` literals, so the template out-layered it with a rule. The
+        // literals are now the parts' resting truth (§20 — Template above resting Style).)
+        return t;
     }
 
     private static Style ScrollBarTheme()
@@ -1517,14 +1529,19 @@ internal static class ControlThemes
     {
         var dock = new DockPanel();
 
-        var bar = new ScrollBar { Orientation = Orientation.Vertical };
-        ctx.RegisterName("PART_VerticalScrollBar", bar);
-        DockPanel.SetDock(bar, Dock.Right);
+        var vBar = new ScrollBar { Orientation = Orientation.Vertical };
+        ctx.RegisterName("PART_VerticalScrollBar", vBar);
+        DockPanel.SetDock(vBar, Dock.Right);
+
+        var hBar = new ScrollBar { Orientation = Orientation.Horizontal };
+        ctx.RegisterName("PART_HorizontalScrollBar", hBar);
+        DockPanel.SetDock(hBar, Dock.Bottom);
 
         var presenter = new ScrollContentPresenter();
         ctx.RegisterName("PART_ScrollContentPresenter", presenter);
 
-        dock.Children.Add(bar);
+        dock.Children.Add(vBar);
+        dock.Children.Add(hBar);
         dock.Children.Add(presenter); // fills the remaining space
         return dock;
     });

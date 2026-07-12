@@ -93,11 +93,17 @@ the property system, element-level layout enums (`Visibility`, the alignments), 
 
 **Phase 0 complete** (doc §14): the Fork A property engine — `UIProperty`/`StyledProperty<T>`/`AttachedProperty<T>`/
 `DirectProperty<TOwner,T>`/`UIPropertyKey<T>` registration + per-type frozen metadata, two-lane `PropertyEffects`,
-`UIObject` + `ValueStore` (effective/base split, priority frames at `BindingPriority` Animation > LocalValue > Style >
-Template > Inherited > Default — the **Template lane** (wire 150) landed 2026-06-16 for values a control/data template
-authors on its parts (literal `SetValue`/`{TemplateBinding}`/`SetResourceReference`, reached only via
-`TemplateInstantiationScope`), one rung below Style so a page/theme Style overrides a template default (precedence-matrix
-§20/PD24; `ValueSource.Kind`/`ValueSourceKind` carries the within-lane provenance, PD25) — store-owned
+`UIObject` + `ValueStore` (effective/base split, priority frames at `BindingPriority` Animation > LocalValue >
+StyleTrigger > Template > Style > Inherited > Default — **the completed Avalonia lattice, 2026-07-12** (precedence-matrix
+PD26): a CONDITIONAL rule (any `.class`/`:pseudo`/`When` — `classLike > 0`) arbitrates at `StyleTrigger(50)`, a purely
+structural rule at resting `Style(100)`, the slot beating the sort key (an active conditional rule pierces any resting
+rule, layer regardless); the **Template lane** (wire 75, was 150) carries values a CONTROL template authors on its parts
+(literal `SetValue`/`{TemplateBinding}`/`SetResourceReference`, reached only via `TemplateInstantiationScope` —
+`DataTemplate.Build` stays LocalValue, PD24') BETWEEN the slots: state looks pierce it, resting rules cannot (the part's
+resting truth; re-skin via the control's own properties or conditional rules). `SetCurrentValue` provenance is WPF-parity
+(PD27): the no-producer graft reports the underlying `Default`/`Inherited` source `+cur` (never LocalValue), is invisible
+to `ReadLocalValue`, and `ClearValue` undoes SCV universally — including stripping a `+cur` overlay off a producer lane.
+(`ValueSource.Kind`/`ValueSourceKind` carries the within-lane provenance, PD25) — store-owned
 retraction/promotion), `SetCurrentValue`, copied-value change carriers, typed/untyped observers
 (incl. the winning-base observer), `BindingEntry<T>`/`BindInFrame`/`AnimatedValueHandle<T>` producer seams,
 lazy-read/eager-notify inheritance over `IInheritanceNode`, untyped XAML lane + box interning + `GetValueSource`

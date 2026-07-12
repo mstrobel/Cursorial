@@ -16,14 +16,19 @@ namespace Cursorial.UI;
 /// <summary>
 /// One armed rule on an element, as reported by <see cref="StyleDiagnostics.MatchedRules"/>
 /// (design doc §3.9): the flattened canonical selector text (<c>(explicit)</c> for selector-less
-/// explicit styles), the channel layer, the packed sort key, and whether the rule is currently
-/// active (armed-but-inactive rules are listed — activation is a flip, not a re-match).
+/// explicit styles), the channel layer, the packed sort key, whether the rule is currently
+/// active (armed-but-inactive rules are listed — activation is a flip, not a re-match), and the
+/// style SLOT the rule arbitrates in (<see cref="BindingPriority.StyleTrigger"/> for conditional
+/// rules, <see cref="BindingPriority.Style"/> for resting ones — PD26; the slot beats the key).
 /// </summary>
 /// <param name="SelectorText">The flattened canonical selector, or <c>(explicit)</c>.</param>
 /// <param name="Layer">The channel layer the arming scope assigned.</param>
 /// <param name="Key">The full packed <see cref="StyleSortKey"/>.</param>
 /// <param name="IsActive">Whether the rule's frame currently contributes values.</param>
-public readonly record struct MatchedRuleInfo(string SelectorText, StyleLayer Layer, StyleSortKey Key, bool IsActive);
+/// <param name="Priority">The style slot (StyleTrigger or Style) the rule's frame arbitrates in.</param>
+public readonly record struct MatchedRuleInfo(
+    string SelectorText, StyleLayer Layer, StyleSortKey Key, bool IsActive,
+    BindingPriority Priority = BindingPriority.Style);
 
 
 public readonly record struct StyleExplanation(
@@ -76,11 +81,11 @@ public static class StyleDiagnostics
 
         var builder = new StringBuilder();
         var source = element.GetValueSource(property);
-        var styleWins = source.Priority == BindingPriority.Style;
+        var styleWins = source.Priority is BindingPriority.Style or BindingPriority.StyleTrigger;
 
         if (!styleWins)
         {
-            // The stronger-lane line: the effective value did not come from the Style slot.
+            // The stronger-lane line: the effective value came from neither style slot.
             builder.Append(property.Name).Append(" = ")
                    .Append(FormatValue(property.GetValueUntyped(element)))
                    .Append(" <- ").Append(source.Priority);
@@ -128,13 +133,13 @@ public static class StyleDiagnostics
 
         var targetDescription = DescribeTarget(element, property);
         var source = element.GetValueSource(property);
-        var styleWins = source.Priority == BindingPriority.Style;
-        
+        var styleWins = source.Priority is BindingPriority.Style or BindingPriority.StyleTrigger;
+
         object? value = null;
 
         if (!styleWins)
         {
-            // The stronger-lane line: the effective value did not come from the Style slot.
+            // The stronger-lane line: the effective value came from neither style slot.
             value = property.GetValueUntyped(element);
         }
 
@@ -242,7 +247,9 @@ public static class StyleDiagnostics
         => BindingRegistry.DescribeTarget(target, property);
 
     /// <summary>
-    /// The element's armed rules, strongest-first (larger keys first; equal keys in arm order).
+    /// The element's armed rules, strongest-first in ARBITRATION order (PD26, 2026-07-12): every
+    /// <see cref="BindingPriority.StyleTrigger"/> rule before every resting <see cref="BindingPriority.Style"/>
+    /// one (the slot beats the key), within each slot larger keys first (equal keys in arm order).
     /// Empty for detached elements, elements nothing matched, and barrier-skipped template parts
     /// (except their <c>/template/</c>-matched and explicit entries).
     /// </summary>
@@ -258,11 +265,14 @@ public static class StyleDiagnostics
         {
             results.Add(new MatchedRuleInfo(
                             frame.Rule.SelectorText.Length == 0 ? "(explicit)" : frame.Rule.SelectorText,
-                            frame.Layer, frame.SortKey, frame.IsActive));
+                            frame.Layer, frame.SortKey, frame.IsActive, frame.Priority));
         }
 
-        // Strongest first; OrderByDescending is a stable sort, so equal keys keep arm order (cold path).
-        return results.OrderByDescending(static info => info.Key.Packed).ToArray();
+        // Arbitration order: slot first (trigger before resting — ordering, not magnitude, is the
+        // enum contract), then strongest key; both sorts are stable, so equal keys keep arm order.
+        return results.OrderBy(static info => info.Priority)
+                      .ThenByDescending(static info => info.Key.Packed)
+                      .ToArray();
     }
 }
 

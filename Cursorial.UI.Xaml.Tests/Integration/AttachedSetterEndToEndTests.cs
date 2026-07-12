@@ -41,8 +41,11 @@ public sealed class AttachedSetterEndToEndTests
             "</Style>");
         host.Application.Styles.Add(style);
 
+        // Focusable=false keeps the button un-focused: BuiltIn's `^:focus` reverse-video rule is
+        // CONDITIONAL (StyleTrigger, §0.3 2026-07-12) and would pierce the resting App rule under
+        // the activator split — this test pins dotted-setter RESOLUTION, not the lattice.
         var grid = new UIControls.Grid();
-        var button = new UIControls.Button { Content = "OK" };
+        var button = new UIControls.Button { Content = "OK", Focusable = false };
         grid.Children.Add(button);
         host.ShowRoot(grid);
         Assert.True(host.RunUntilIdle());
@@ -52,7 +55,7 @@ public sealed class AttachedSetterEndToEndTests
         Assert.Equal(2, UIControls.Grid.GetRow(button));
 
         // The owner-qualified Control.Foreground resolved the shared ForegroundProperty and applied #ff8800
-        // (App layer beats the control theme's resting TextBrush).
+        // (App layer beats the control theme's resting TextBrush within the resting slot).
         var brush = Assert.IsType<SolidColorBrush>(button.Foreground);
         Assert.Equal(Color.FromRgb(0xFF, 0x88, 0x00), brush.Color);
     }

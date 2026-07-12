@@ -183,18 +183,23 @@ public class ToggleButton : ButtonBase
 
         base.OnCommandStateChanged();
 
-        var checkedSourceIsDefault = GetValueSource(IsCheckedProperty).Kind == ValueSourceKind.Default;
+        // "Untouched" is Default WITHOUT the +cur bit (M118 as amended 2026-07-12): a SetCurrentValue
+        // graft — including our own line-211 graft and the Bars sync's reflect — now reports the
+        // underlying Default source WITH IsCurrentValue, so Kind alone no longer distinguishes it.
+        var checkedSourceIsDefault =
+            GetValueSource(IsCheckedProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false };
 
         // Per-control default (FB-27 point 4): allocate ONLY when nothing has provided a checked source yet — the
-        // IsChecked base value is still at its Default source. A Bars-layer override reflects a command-SHARED
-        // parameter into the base value BEFORE calling base (its sync-before-base inversion), which makes the
-        // source non-Default, so this skips the default and the shared parameter (on CommandParameter) governs.
+        // IsChecked base value is still at its untouched Default source. A Bars-layer override reflects a
+        // command-SHARED parameter into the base value BEFORE calling base (its sync-before-base inversion), which
+        // makes the source non-untouched, so this skips the default and the shared parameter (on CommandParameter)
+        // governs.
         if (_defaultCheckableParameter is null && checkedSourceIsDefault)
         {
             _defaultCheckableParameter = new CheckableCommandParameter(GetBaseValue(IsCheckedProperty));
 
             // Enable coercion of the default checkable parameter (coercion will not run with Default value source).
-            if (GetValueSource(CommandParameterProperty).Kind == ValueSourceKind.Default)
+            if (GetValueSource(CommandParameterProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false })
                 SetCurrentValue(CommandParameterProperty, _defaultCheckableParameter);
 
             CoerceValue(CommandParameterProperty);

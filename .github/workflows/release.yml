@@ -1,8 +1,9 @@
 # Release workflow — fires on a `v*` tag push and publishes every packable Cursorial project to
 # nuget.org (all <IsPackable>true</IsPackable> projects: Cursorial.Core, .Rendering, .Drawing,
-# .Animation, .Shared, .UI, .UI.Xaml, .UI.Xaml.Frontend, .UI.Xaml.Generator, .UI.Bars). Tests,
-# demos, and the deliberately-unpackaged projects (Cursorial.UI.Testing, Cursorial.UI.Themes) are
-# skipped. Every package shares the tag-derived version.
+# .Animation, .Shared, .UI, .UI.Xaml, .UI.Xaml.Frontend, .UI.Xaml.Generator, .UI.Bars,
+# .UI.Dialogs, .UI.Hosting.Headless, and the Cursorial.Templates dotnet-new package). Tests,
+# demos, and the deliberately-unpackaged Cursorial.UI.Themes are skipped. Every package shares
+# the tag-derived version.
 #
 # Auth: NuGet.org Trusted Publishing (OIDC). No long-lived API key is stored in the repo.
 # The workflow exchanges a GitHub-issued OIDC token for a short-lived NuGet API key via the
@@ -93,9 +94,9 @@ jobs:
       - name: Pack
         # Packs the whole solution: every project that opts in with <IsPackable>true</IsPackable>
         # (Cursorial.Core / .Rendering / .Drawing / .Animation / .Shared / .UI / .UI.Xaml /
-        # .UI.Xaml.Frontend / .UI.Xaml.Generator / .UI.Bars). Tests, demos, and the deliberately
-        # unpackaged projects (Cursorial.UI.Testing, Cursorial.UI.Themes) default IsPackable=false
-        # and are skipped. All packages share the tag-derived version.
+        # .UI.Xaml.Frontend / .UI.Xaml.Generator / .UI.Bars / .UI.Dialogs / .UI.Hosting.Headless /
+        # Cursorial.Templates). Tests, demos, and the deliberately unpackaged Cursorial.UI.Themes
+        # are skipped. All packages share the tag-derived version.
         #
         # BuildProjectReferences=false: the Generator packs the Frontend DLL as a bundled analyzer asset via a
         # target that resolves its ProjectReference (DependsOnTargets=ResolveReferences). Under `--no-build`

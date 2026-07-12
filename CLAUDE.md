@@ -399,7 +399,7 @@ loader.
   `ContentControl.GetAccessText()` folds on demand (the three-identical-producers rule — loader fold ≡
   `AccessText.Parse`).
 - **P6 integration** — `Cursorial.UI.Xaml.Tests/Integration/Phase6XamlEndToEndTests` proves the §14 exit criteria
-  end-to-end through `UITestHost`/the real frame loop: (a) a themed `StackPanel`/`Grid` of Buttons + CheckBoxes + a
+  end-to-end through `UIHeadlessHost`/the real frame loop: (a) a themed `StackPanel`/`Grid` of Buttons + CheckBoxes + a
   `{Binding}` ScrollViewer + `{StaticResource}` brushes + a `{TemplateBinding}` `ControlTemplate` renders (cell
   assertions) and the bindings/resources resolve live (incl. a VM-update re-render); (b) a `ResourceDictionary` with
   `MergedDictionaries` + `ThemeDictionaries` + `{DynamicResource}` consumers updating on a theme-base flip; (c) a
@@ -545,7 +545,7 @@ The closeout ran as seven workstreams (W1–W7):
 - **W5 — the ARCH-1 XAML theme overlay** (`Cursorial.UI.Themes.Xaml`) — every BuiltIn control theme re-authored in
   embedded `.xaml`, loaded via `CursorialXamlTheme.LoadControls()`, layered over the code-first BuiltIn (which
   stays the chain backstop). The inline controls render byte-identically to BuiltIn; the popup-rooted ones
-  (Menu/ContextMenu/ToolTip/TabControl) are proven at runtime through `UITestHost`.
+  (Menu/ContextMenu/ToolTip/TabControl) are proven at runtime through `UIHeadlessHost`.
 - **W6 — control-gallery demo + composition test** — `Cursorial.Demo`'s gallery + `P9ControlCompositionTests`
   (every P9 control in one tree, re-skinning across every color tier + a dark/light flip). A default `Label`
   control theme was added (a bare `ContentControl` has no presenter → renders blank without one).
@@ -574,7 +574,7 @@ backstop): an **animated indeterminate
 flat model; recursive-indent template, visible-tree keyboard nav, §C13); **`Calendar`/`CalendarDayButton`** (a
 month-view picker building its 7×7 grid in code, culture-ordered, §C14); **`DatePicker`** (a date field dropping a
 `Calendar` popup — the calendar variant; the standalone `Calendar` is the inline variant, §C15). Each was
-adversarially audited (each finding refutation-verified through `UITestHost`): the audits found and fixed **3 (Tree)
+adversarially audited (each finding refutation-verified through `UIHeadlessHost`): the audits found and fixed **3 (Tree)
 + 7 (Calendar) + 3 (DatePicker)** real bugs the green tests missed — see the matrix `CD-P2C-1`/`CD-P2D-1`/`CD-P2E-1`
 audit notes. The control-gallery demo gained `T_ree` and `_Date` tabs.
 

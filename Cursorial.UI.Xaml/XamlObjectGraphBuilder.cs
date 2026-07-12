@@ -1112,14 +1112,32 @@ internal sealed class XamlObjectGraphBuilder
 
     private void SetResourceSource(ResourceDictionary dict, in MemberRecord member, int line, int column)
     {
-        string raw = member.Kind == XamlValueKind.Text ? _doc.Strings[member.ValueIndex]
-            : member.Kind == XamlValueKind.Folded ? _doc.Constants[member.ValueIndex]?.ToString() ?? string.Empty
-            : string.Empty;
-        if (raw.Length == 0)
+        // A folded constant that is ALREADY a Uri is used as-is: its OriginalString still carries
+        // the author's casing, which round-tripping through ToString() (canonical, lowercased
+        // authority) would destroy — and the authority names an assembly, not a DNS host.
+        var uri = member.Kind switch
+        {
+            XamlValueKind.Text when _doc.Strings[member.ValueIndex] is { Length: > 0 } text
+                => new Uri(text, UriKind.RelativeOrAbsolute),
+            XamlValueKind.Folded when _doc.Constants[member.ValueIndex] is Uri folded
+                => folded,
+            XamlValueKind.Folded when _doc.Constants[member.ValueIndex]?.ToString() is { Length: > 0 } folded
+                => new Uri(folded, UriKind.RelativeOrAbsolute),
+            _ => null,
+        };
+        if (uri is null)
             return;
         try
         {
-            dict.Source = new Uri(raw, UriKind.RelativeOrAbsolute);
+            // A relative reference ("Resources.xaml", "../Theme/Base.xaml") resolves against the
+            // CONTAINING document's URI — cursorial://, embedded://, and file:// alike — so linked
+            // dictionaries move with their documents instead of baking machine paths. Composition
+            // goes through XamlUriUtil so the authority keeps its ORIGINAL casing (System.Uri
+            // lowercases hosts; ours name assemblies).
+            if (!uri.IsAbsoluteUri && (_source ?? _doc.SourceUri) is { IsAbsoluteUri: true } baseUri)
+                uri = XamlUriUtil.ResolveRelative(baseUri, uri.OriginalString);
+
+            dict.Source = uri;
         }
         catch (InvalidOperationException ex)
         {

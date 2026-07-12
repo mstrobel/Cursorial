@@ -126,6 +126,48 @@ internal sealed class MetadataProviderEmitter
         if (builtins.Count > 0)
             EmitNamespaceSwitch(sb, Intrinsics, builtins);
 
+        // clr-namespace:/using: URIs (an app's own views, sibling assemblies): the same types the
+        // Roslyn resolver already admitted into the closed set, matched by their CLR namespace —
+        // without this the generated provider knows less than the compile that produced it
+        // (CUR2002 at runtime for a document the build had verified, the Cursorial.Samples bug).
+        sb.AppendLine("            if (DecodeClrNamespace(xmlNamespace) is { } clrNamespace)");
+        sb.AppendLine("                return TryGetClrNamespaceType(clrNamespace, localName);");
+        sb.AppendLine();
+        sb.AppendLine($"            return {Frontend}.XamlTypeResolution.NotFound();");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+
+        EmitClrNamespaceSwitch(sb, types);
+
+        sb.AppendLine("        private static string? DecodeClrNamespace(string xmlNamespace)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            if (xmlNamespace.StartsWith(\"using:\", global::System.StringComparison.Ordinal))");
+        sb.AppendLine("                return xmlNamespace.Substring(6);");
+        sb.AppendLine("            if (!xmlNamespace.StartsWith(\"clr-namespace:\", global::System.StringComparison.Ordinal))");
+        sb.AppendLine("                return null;");
+        sb.AppendLine("            var body = xmlNamespace.Substring(14);");
+        sb.AppendLine("            var semi = body.IndexOf(';');");
+        sb.AppendLine("            return (semi < 0 ? body : body.Substring(0, semi)).Trim();");
+        sb.AppendLine("        }");
+        sb.AppendLine();
+    }
+
+    private void EmitClrNamespaceSwitch(StringBuilder sb, List<INamedTypeSymbol> types)
+    {
+        sb.AppendLine($"        private static {Frontend}.XamlTypeResolution TryGetClrNamespaceType(string clrNamespace, string localName)");
+        sb.AppendLine("        {");
+        foreach (var group in types.GroupBy(t => t.ContainingNamespace.ToDisplayString(), System.StringComparer.Ordinal)
+                                   .OrderBy(g => g.Key, System.StringComparer.Ordinal))
+        {
+            sb.AppendLine($"            if (string.Equals(clrNamespace, \"{group.Key}\", global::System.StringComparison.Ordinal))");
+            sb.AppendLine("                return localName switch");
+            sb.AppendLine("                {");
+            foreach (var type in group.GroupBy(t => t.Name, System.StringComparer.Ordinal).Select(g => g.First()))
+                sb.AppendLine($"                    \"{type.Name}\" => {Frontend}.XamlTypeResolution.Resolved({FieldName(type)}),");
+            sb.AppendLine($"                    _ => {Frontend}.XamlTypeResolution.NotFound(),");
+            sb.AppendLine("                };");
+        }
+
         sb.AppendLine($"            return {Frontend}.XamlTypeResolution.NotFound();");
         sb.AppendLine("        }");
         sb.AppendLine();
@@ -231,6 +273,13 @@ internal sealed class MetadataProviderEmitter
 
         foreach (var member in members)
             sb.AppendLine("                " + EmitMember(type, member) + ",");
+
+        // Style.TargetType is SYNTHETIC (a Style matches via Selector; TargetType is the parse-time
+        // Setter-resolution hint, matrix X139) — special-cased in the reflection provider AND the
+        // Roslyn resolver; the emitted provider must carry the same rung or a runtime-loaded
+        // dictionary that authored TargetType dies with CUR2102 under the generated default.
+        if (type.ToDisplayString() == "Cursorial.UI.Style")
+            sb.AppendLine($"                [\"TargetType\"] = new {Frontend}.XamlMember(\"TargetType\", typeof(global::System.Type)),");
 
         sb.AppendLine("            };");
         // A ResourceDictionary is filled via Add(key, value) with object keys (matrix XD10/C-8).

@@ -52,8 +52,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Build-time validated by the generator; embedded for runtime by the consumer .targets. Manifest
-             name stays <RootNamespace>.<dotted path>, e.g. Cursorial.UI.Themes.Xaml.Themes.Controls.xaml. -->
+        <!-- Build-time validated by the generator; embedded for runtime by the consumer .targets. The embed
+             target pins the manifest name to the dotted relative path (the cursorial:// scheme's lookup),
+             e.g. Themes.Default.Controls.xaml. -->
         <CursorialXaml Include="Themes\*.xaml" />
         <CursorialXaml Include="Themes\Default\*.xaml" />
         <CursorialXaml Include="Themes\IndigoDusk\*.xaml" />

@@ -37,11 +37,65 @@ public class CodeBehindGeneratorTests
         Assert.Contains("this.Ok = (global::Cursorial.UI.Controls.Button)", src);
     }
 
+    [Fact] // a same-assembly view referenced via clr-namespace: instantiates at RUNTIME through the
+    public void ClrNamespaceElements_ResolveThroughTheGeneratedProvider() // generated provider (the Cursorial.Samples bug)
+    {
+        var childXaml = $"<StackPanel {Ns} x:Class=\"GenApp.Views.ChildView\"><TextBlock Text=\"child\"/></StackPanel>";
+        var mainXaml = $"<StackPanel {Ns} xmlns:v=\"clr-namespace:GenApp.Views;assembly=GeneratorTestAssembly\"" +
+                       " x:Class=\"GenApp.Views.MainView\"><v:ChildView/></StackPanel>";
+        const string codeBehind = @"
+namespace GenApp.Views
+{
+    public partial class ChildView { public ChildView() => InitializeComponent(); }
+    public partial class MainView { public MainView() => InitializeComponent(); }
+}";
+
+        var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(
+            codeBehind, ("Views/ChildView.xaml", childXaml), ("Views/MainView.xaml", mainXaml));
+        Assert.DoesNotContain(diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+
+        // The compile resolved v:ChildView through the Roslyn resolver; the RUNTIME parse must
+        // resolve it through the emitted provider (it used to answer only the default namespace).
+        var assembly = GeneratorHarness.EmitAndLoad(compilation);
+        var main = (Cursorial.UI.Controls.StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.Views.MainView")!)!;
+        var child = Assert.IsAssignableFrom<Cursorial.UI.Controls.StackPanel>(main.Children[0]);
+        Assert.Equal("GenApp.Views.ChildView", child.GetType().FullName);
+    }
+
+    [Fact] // a runtime-loaded Style authored with TargetType resolves under the generated provider
+    public void StyleTargetType_ResolvesThroughTheGeneratedProvider() // (synthetic-member parity with reflection)
+    {
+        var xaml = $"<StackPanel {Ns} x:Class=\"GenApp.StyledView\">" +
+                   "<StackPanel.Resources><ResourceDictionary>" +
+                   "<Style x:Key=\"S\" Selector=\"Button\" TargetType=\"Button\"><Setter Property=\"Content\" Value=\"styled\"/></Style>" +
+                   "</ResourceDictionary></StackPanel.Resources>" +
+                   "<Button/></StackPanel>";
+        const string codeBehind = @"
+namespace GenApp
+{
+    public partial class StyledView { public StyledView() => InitializeComponent(); }
+}";
+
+        var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, ("StyledView.xaml", xaml));
+        Assert.DoesNotContain(diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation);
+        var view = (Cursorial.UI.Controls.StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.StyledView")!)!;
+        Assert.IsType<Cursorial.UI.Style>(view.Resources["S"]);
+    }
+
     [Fact] // the GENERATED half declares the base type from the root element — the hand-written
     public void EmitsRootElementAsBaseType() // half needs no base list (one-place root edits)
     {
         var src = OnlySource(("View.xaml", $"<StackPanel {Ns} x:Class=\"App.View\"><Button/></StackPanel>"));
         Assert.Contains("partial class View : global::Cursorial.UI.Controls.StackPanel", src);
+    }
+
+    [Fact] // the baked document identity is the machine-independent embedded-resource URI, never a build path
+    public void ParsesWithCursorialSourceUri()
+    {
+        var src = OnlySource(("View.xaml", $"<StackPanel {Ns} x:Class=\"App.View\"><Button/></StackPanel>"));
+        Assert.Contains("cursorial://GeneratorTestAssembly/View.xaml", src);
     }
 
     [Fact] // a class-less document gets the marker, not a code-behind partial

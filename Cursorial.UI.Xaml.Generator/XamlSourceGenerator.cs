@@ -200,7 +200,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         // reflection-free C# (no runtime loader). Any member the lowering can't yet emit is surfaced as a
         // CURG3001 build warning at its .xaml position, so an opted-in build never silently drops a member.
         if (loweringFull && !hasSyntaxError &&
-            LoweringEmitter.Emit(document, input.Path, input.RelativePath, new XamlSymbolResolver(compilation)) is { } lowered)
+            LoweringEmitter.Emit(document, input.Path, input.RelativePath, new XamlSymbolResolver(compilation), compilation.AssemblyName) is { } lowered)
         {
             foreach (var note in lowered.Unlowered)
                 spc.ReportDiagnostic(Diagnostic.Create(LoweringGap, LocationFor(input, note.Line, note.Column), note.Message));
@@ -215,7 +215,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
         // WS-X4.6 — a document with an x:Class and valid syntax gets the typed-field + InitializeComponent
         // partial. (A syntax error leaves the node graph unreliable, so fall back to the marker.)
-        if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path, input.RelativePath) is {} codeBehind)
+        if (!hasSyntaxError && CodeBehindEmitter.Emit(document, input.Text, input.Path, input.RelativePath, compilation.AssemblyName) is {} codeBehind)
         {
             spc.AddSource(hint, SourceText.From(codeBehind, Encoding.UTF8));
             return;

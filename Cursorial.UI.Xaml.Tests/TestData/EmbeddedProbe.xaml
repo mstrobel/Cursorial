@@ -1,0 +1,3 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml">
+    <x:String x:Key="Probe">embedded-hit</x:String>
+</ResourceDictionary>

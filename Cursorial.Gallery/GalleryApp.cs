@@ -16,8 +16,9 @@ namespace Cursorial.Gallery;
 /// </summary>
 public static class GalleryApp
 {
-    // Default MSBuild logical name for Views/Shell.xaml under RootNamespace Cursorial.Gallery.
-    private const string ShellResource = "Cursorial.Gallery.Views.Shell.xaml";
+    // The generator's embed target pins manifest names to the dotted relative path (the
+    // cursorial:// scheme's lookup): Views/Shell.xaml → Views.Shell.xaml.
+    private const string ShellResource = "Views.Shell.xaml";
 
     private static int _registered;
 

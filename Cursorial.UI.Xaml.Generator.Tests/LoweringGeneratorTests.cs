@@ -27,7 +27,12 @@ public class LoweringGeneratorTests
     [Fact] // the generated half declares the base type in strict mode too — same one-place-edit
     public void Strict_EmitsRootElementAsBaseType() // contract as the X4 code-behind path
     {
-        var xaml = $"<StackPanel {Ns} x:Class=\"GenApp.BaseView\"><Button x:Name=\"Ok\"/></StackPanel>";
+        // The template preamble rides along: the strict pipeline must skip the ignorable design
+        // attributes rather than lowering them.
+        var xaml = $"<StackPanel {Ns} xmlns:d=\"https://cursorial.dev/xaml/design\"" +
+                   " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"" +
+                   " mc:Ignorable=\"d\" d:DesignWidth=\"40\"" +
+                   " x:Class=\"GenApp.BaseView\"><Button x:Name=\"Ok\"/></StackPanel>";
         // The code-behind deliberately declares NO base list — the generated half owns it.
         const string codeBehind = @"
 namespace GenApp

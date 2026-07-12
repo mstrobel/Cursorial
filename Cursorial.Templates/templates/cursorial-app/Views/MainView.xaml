@@ -1,5 +1,8 @@
 <DockPanel xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
+           xmlns:d="https://cursorial.dev/xaml/design"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+           mc:Ignorable="d"
            x:Class="CursorialApp.Views.MainView">
 
     <TextBlock DockPanel.Dock="Bottom" Text=" Esc quits"/>

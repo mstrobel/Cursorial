@@ -363,8 +363,8 @@ internal static class ControlThemes
         => new()
         {
             Content = "▾",
-            Template = BareGlyphButtonTemplate(),
-            Padding = Margins.Zero,
+            // Template = BareGlyphButtonTemplate(),
+            // Padding = Margins.Zero,
             Focusable = false,
             IsTabStop = false
         };
@@ -1269,6 +1269,9 @@ internal static class ControlThemes
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates<TButton>(Style theme) where TButton : ButtonBase
     {
+        theme.SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
+             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal);
+
         theme.Children.Add(
             new Style("^:default")
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
@@ -1289,11 +1292,6 @@ internal static class ControlThemes
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
 
-        theme.Children.Add(
-            new Style("^:disabled")
-               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
-               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
- 
         if (typeof(ToggleButton).IsAssignableFrom(typeof(TButton)))
         {
             theme.Children.Add(
@@ -1442,14 +1440,14 @@ internal static class ControlThemes
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 
-    // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
-    // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
-    private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
-    {
-        var presenter = new ContentPresenter { RecognizesAccessKey = false };
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        return presenter;
-    });
+    // // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
+    // // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
+    // private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
+    // {
+    //     var presenter = new ContentPresenter { RecognizesAccessKey = false };
+    //     ctx.RegisterName("PART_ContentPresenter", presenter);
+    //     return presenter;
+    // });
 
     // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
     // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
@@ -1460,7 +1458,7 @@ internal static class ControlThemes
             ctx =>
             {
                var dock = new DockPanel();
-               var bareTemplate = BareGlyphButtonTemplate();
+               // var bareTemplate = BareGlyphButtonTemplate();
 
                // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
                // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
@@ -1469,7 +1467,7 @@ internal static class ControlThemes
                var lineUp = new RepeatButton
                             {
                                 Content = horizontal ? "◀" : "▲",
-                                Template = bareTemplate, 
+                                // Template = bareTemplate, 
                                 Padding = Margins.Zero, 
                                 Focusable = false,
                                 IsTabStop = false
@@ -1480,7 +1478,10 @@ internal static class ControlThemes
 
                var lineDown = new RepeatButton
                               {
-                                  Content = horizontal ? "▶" : "▼", Template = bareTemplate, Padding = Margins.Zero, Focusable = false,
+                                  Content = horizontal ? "▶" : "▼",
+                                  // Template = bareTemplate,
+                                  Padding = Margins.Zero,
+                                  Focusable = false,
                                   IsTabStop = false
                               };
 

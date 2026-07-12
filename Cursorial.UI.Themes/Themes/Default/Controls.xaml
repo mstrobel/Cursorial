@@ -48,8 +48,13 @@
     <Style.Children>
       <!-- Ordered hover -> focus -> pressed -> disabled -> default (document order breaks pseudo-class ties,
            matching AddButtonStates + the :default the code-first ButtonTheme appends). -->
+      <Style Selector="^:default" TargetType="Button">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+      </Style>
       <Style Selector="^:pointerover" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundHover}}"/>
       </Style>
       <Style Selector="^:focus, ^:focus-visible" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundFocus}}"/>
@@ -62,10 +67,6 @@
       <Style Selector="^:disabled" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundDisabled}}"/>
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDisabled}}"/>
-      </Style>
-      <Style Selector="^:default" TargetType="Button">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
       </Style>
     </Style.Children>
   </Style>
@@ -230,13 +231,15 @@
     </Style.Children>
   </Style>
 
-  <!-- ScrollBar / ScrollViewer (design doc §12.7). The ScrollBar docks borderless arrow RepeatButtons to the
+<!--
+  &lt;!&ndash; ScrollBar / ScrollViewer (design doc §12.7). The ScrollBar docks borderless arrow RepeatButtons to the
        ends of its long axis with the Track filling the rest; the line buttons drop out of Tab (Focusable/
        IsTabStop false). The ScrollViewer docks a vertical ScrollBar right of its banded SCP. The declarative
-       twin of ControlThemes.ScrollBarTheme()/ScrollViewerTheme(). -->
+       twin of ControlThemes.ScrollBarTheme()/ScrollViewerTheme(). &ndash;&gt;
   <ControlTemplate x:Key="BareGlyphButtonTemplate">
     <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
   </ControlTemplate>
+-->
 
   <!-- The arrows author their bare faces as part literals (Template + Padding="0") — the parts' resting
        truth under the amended lattice (§20, 2026-07-12: Template above resting Style), so the RepeatButton
@@ -244,16 +247,20 @@
        RepeatButton { Padding=0 }` workaround rule lived here while resting styles beat template literals.) -->
   <ControlTemplate x:Key="ScrollBarTemplateVertical">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
+      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
+      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
+      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
       <Track x:Name="PART_Track"/>
     </DockPanel>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollBarTemplateHorizontal">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
+      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
+      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
+      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
       <Track x:Name="PART_Track"/>
     </DockPanel>
   </ControlTemplate>
@@ -834,7 +841,8 @@
       <Border Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
-          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Focusable="False" IsTabStop="False"/>
+          <!--Template="{StaticResource BareGlyphButtonTemplate}" Padding="0"-->
           <Grid>
             <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"
                               Margin="1,0"/>
@@ -926,7 +934,8 @@
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
-          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False"/>
+          <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Focusable="False" IsTabStop="False"/>
+          <!--Template="{StaticResource BareGlyphButtonTemplate}" Padding="0"-->
           <Grid>
             <TextBlock x:Name="PART_DisplayText"/>
             <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Placeholder="{TemplateBinding Watermark}"/>

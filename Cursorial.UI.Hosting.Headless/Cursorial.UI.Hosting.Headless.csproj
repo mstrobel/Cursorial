@@ -13,7 +13,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI.Hosting.Headless</PackageId>
-        <Version>0.3.2</Version>
+        <Version>0.4.0</Version>
         <Description>Headless hosting for Cursorial.UI — the full framework pipeline (layout, styling, animation, composition) driven frame-by-frame on a synthetic terminal with no TTY: deterministic virtual time, synthetic input, and direct CellBuffer access. The substrate for UI tests and out-of-process tooling such as designers and previewers.</Description>
         <PackageTags>terminal;tui;ui;headless;testing;previewer;crossplatform</PackageTags>
     </PropertyGroup>

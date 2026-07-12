@@ -34,7 +34,7 @@
     <PropertyGroup>
         <IsPackable>false</IsPackable>
         <PackageId>Cursorial.UI.Themes</PackageId>
-        <Version>0.3.2</Version>
+        <Version>0.4.0</Version>
         <Description>The data-shipped XAML theme overlay for Cursorial.UI — the built-in control themes authored declaratively in XAML (Default and IndigoDusk variants), lowered to reflection-free builders at build time and layered over the code-first backstop through UIApplication.Theme.</Description>
         <PackageTags>terminal;tui;ui;theme;xaml;dark;light;crossplatform</PackageTags>
     </PropertyGroup>

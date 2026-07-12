@@ -10,7 +10,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI</PackageId>
-        <Version>0.3.2</Version>
+        <Version>0.4.0</Version>
         <Description>A WPF/Avalonia-style UI framework for the terminal — a dependency-property system, an element tree with measure/arrange layout, retained render zones, routed input and focus, CSS-like styling, data binding (incl. compiled bindings), resources and theming, windowing, storyboards and transitions, and a full control catalog. Built on Cursorial.Drawing.</Description>
         <PackageTags>terminal;tui;ui;framework;wpf;avalonia;mvvm;controls;databinding;crossplatform</PackageTags>
     </PropertyGroup>

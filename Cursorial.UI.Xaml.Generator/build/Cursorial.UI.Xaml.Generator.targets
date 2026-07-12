@@ -54,7 +54,16 @@
           BeforeTargets="AssignTargetPaths"
           Condition="'$(CursorialXamlEmbedResources)' == 'true'">
     <ItemGroup>
-      <EmbeddedResource Include="@(CursorialXaml->Distinct())" />
+      <EmbeddedResource Include="@(CursorialXaml->Distinct())">
+        <!--
+          Pin the manifest name to the DOTTED RELATIVE PATH (Views/Res.xaml → Views.Res.xaml) —
+          the exact name the runtime's EmbeddedXamlResourceProvider computes for the path half of
+          cursorial://<assembly>/<path> (the assembly is named by the URI host, so it is not
+          repeated in the resource name). The SDK's DEFAULT naming prefixes RootNamespace, which
+          silently diverges from URI-based lookups. An explicit LogicalName still wins.
+        -->
+        <LogicalName Condition="'%(CursorialXaml.LogicalName)' == ''">$([System.String]::Copy('%(CursorialXaml.Identity)').Replace('\', '.').Replace('/', '.'))</LogicalName>
+      </EmbeddedResource>
     </ItemGroup>
   </Target>
 

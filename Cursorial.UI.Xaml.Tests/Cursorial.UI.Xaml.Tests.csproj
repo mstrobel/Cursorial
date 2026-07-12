@@ -20,6 +20,13 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Named exactly as the generator's embed target would (AssemblyName.dotted-path) — the
+             fixture behind the cursorial://-scheme provider tests. -->
+        <EmbeddedResource Include="TestData\EmbeddedProbe.xaml"
+                          LogicalName="TestData.EmbeddedProbe.xaml" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />

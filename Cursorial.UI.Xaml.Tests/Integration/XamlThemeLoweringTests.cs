@@ -26,9 +26,9 @@ namespace Cursorial.Tests.UI.Xaml.Integration;
 public class XamlThemeLoweringTests
 {
     [Theory]
-    [InlineData("Controls", "Cursorial.UI.Themes.Themes.Default.Controls.xaml")]
-    [InlineData("Palette", "Cursorial.UI.Themes.Themes.Default.Palette.xaml")]
-    [InlineData("Styles", "Cursorial.UI.Themes.Themes.Default.Styles.xaml")]
+    [InlineData("Controls", "Themes.Default.Controls.xaml")]
+    [InlineData("Palette", "Themes.Default.Palette.xaml")]
+    [InlineData("Styles", "Themes.Default.Styles.xaml")]
     public void LoweredBuilder_StructurallyMatches_ReflectiveLoad(string name, string resource)
     {
         var lowered = name switch

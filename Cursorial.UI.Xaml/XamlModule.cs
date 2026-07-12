@@ -19,6 +19,23 @@ public static class XamlModule
     /// </summary>
     public static IXamlResourceProvider ResourceProvider { get; set; } = new EmbeddedXamlResourceProvider();
 
+    /// <summary>
+    /// Design-time seam: when set, <see cref="XamlLoader.LoadComponent(object, XamlDocument, XamlLoadContext?)"/>
+    /// re-sources a component's BAKED document from this hook (keyed by the document's source URI)
+    /// before building — a designer previews the XAML the user is editing, not what the last build
+    /// embedded into <c>InitializeComponent</c>. Return <see langword="null"/> for "no override".
+    /// The default (<see langword="null"/>) costs a null check at runtime and nothing more.
+    /// </summary>
+    public static Func<Uri, string?>? LiveXamlSource { get; set; }
+
+    /// <summary>
+    /// The loader live-sourced documents parse with (default: the component's own). A designer
+    /// sets a reflection-backed loader here: live edits routinely reference types and members the
+    /// consuming assembly's GENERATED (closed-set) provider never saw at compile time — exactly
+    /// the edits a preview exists to show.
+    /// </summary>
+    public static XamlLoader? LiveXamlLoader { get; set; }
+
     // C-9: the library deliberately installs ResourceDictionary.LoadCallback at module load so a
     // ResourceDictionary.Source resolves the instant Cursorial.UI.Xaml is referenced (the P5 guard
     // throws until then). This is the sanctioned advanced use of [ModuleInitializer].
@@ -85,7 +102,8 @@ public interface IXamlResourceProvider
 
 /// <summary>
 /// The default <see cref="IXamlResourceProvider"/>: resolves <c>cursorial://&lt;assembly&gt;/&lt;path&gt;</c>
-/// to an embedded manifest resource named <c>&lt;assembly&gt;.&lt;dotted-path&gt;</c>.
+/// (alias: <c>embedded://</c>) to an embedded manifest resource named <c>&lt;dotted-path&gt;</c> —
+/// the name the generator's embed target pins via <c>LogicalName</c>.
 /// </summary>
 public sealed class EmbeddedXamlResourceProvider : IXamlResourceProvider
 {
@@ -94,17 +112,30 @@ public sealed class EmbeddedXamlResourceProvider : IXamlResourceProvider
     public bool TryGetXaml(Uri uri, out string? xaml)
     {
         xaml = null;
-        if (!string.Equals(uri.Scheme, "cursorial", StringComparison.OrdinalIgnoreCase))
+        // Relative URIs have no scheme/host to resolve against (and .Scheme would throw) — the
+        // loader resolves relatives against the containing document before this is ever asked.
+        if (!uri.IsAbsoluteUri)
             return false;
+        if (!string.Equals(uri.Scheme, "cursorial", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(uri.Scheme, "embedded", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
 
-        string assemblyName = uri.Host;
+        // System.Uri canonicalizes the authority to LOWERCASE (RFC host rules) — fine for hosts,
+        // wrong for assembly simple names on case-sensitive file systems (Assembly.Load probes
+        // by file name on Linux). Read the authority from the original string when possible.
+        string assemblyName = XamlUriUtil.OriginalAuthority(uri) ?? uri.Host;
         string path = uri.AbsolutePath.TrimStart('/');
 
         var assembly = ResolveAssembly(assemblyName);
         if (assembly is null)
             return false;
 
-        string resourceName = $"{assembly.GetName().Name}.{path.Replace('/', '.')}";
+        // The manifest name is the DOTTED RELATIVE PATH alone (the generator's embed target pins
+        // LogicalName to exactly this) — the assembly is already named by the URI host, so
+        // prefixing it into every resource name would be redundant and RootNamespace-sensitive.
+        string resourceName = path.Replace('/', '.');
         using var stream = assembly.GetManifestResourceStream(resourceName);
         if (stream is null)
             return false;

@@ -204,6 +204,19 @@ public abstract class UIProperty
     /// </summary>
     internal abstract object? GetDefaultValueUntyped(Type forType);
 
+    /// <summary>
+    /// The resolved metadata <see cref="PropertyMetadata{T}.DefaultResourceKey"/> for
+    /// <paramref name="forType"/>, or <see langword="null"/> — the theme-reactive default's key,
+    /// exposed for tooling/inspectors (provenance display).
+    /// </summary>
+    public object? GetDefaultResourceKey(Type forType)
+    {
+        ArgumentNullException.ThrowIfNull(forType);
+        return GetDefaultResourceKeyUntyped(forType);
+    }
+
+    internal virtual object? GetDefaultResourceKeyUntyped(Type forType) => null;
+
     // ─────────────────── untyped→typed bridge (A16 spirit; no reflection) ───────────────────
     //
     // The untyped UIObject mouths dispatch through these virtuals; StyledProperty<T> and

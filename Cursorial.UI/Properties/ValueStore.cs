@@ -264,7 +264,7 @@ internal sealed class ValueStore
             return entry.GetEffectiveBoxedValue();
         if (property.Inherits && Owner.FindInheritedEntry(property.Id, out _) is {} inherited)
             return inherited.GetEffectiveBoxedValue(); // interning rides the ancestor's entry
-        return property.GetMetadata(Owner.GetType()).BoxedDefault;
+        return Owner.ResolveDefaultValueBoxed(property, property.GetMetadata(Owner.GetType()));
     }
 
     /// <summary>
@@ -314,7 +314,7 @@ internal sealed class ValueStore
             return inherited.Value; // ancestor's effective — inherited reads skip re-coercion (M190)
         }
 
-        return metadata.DefaultValue;
+        return Owner.ResolveDefaultValue(property, metadata);
     }
 
     private EffectiveValue<T> GetOrCreateEntry<T>(StyledProperty<T> property)

@@ -36,6 +36,18 @@ public abstract partial class UIElement : IResourceHost
     // unregisters them in O(own subscriptions) and re-attach re-resolves each (CD16, design doc §11.6).
     private List<IResourceSubscriber>? _resourceSubscribers;
 
+    // Property ids whose DEFAULT-tier read resolved through a DefaultResourceKey here — the
+    // theme catch-all repaints exactly these readers (a handful of ids at most; UI-thread affine).
+    private int[] _themedDefaultReads = [];
+
+    internal void MarkThemedDefaultRead(int propertyId)
+    {
+        if (Array.IndexOf(_themedDefaultReads, propertyId) < 0)
+            _themedDefaultReads = [.. _themedDefaultReads, propertyId];
+    }
+
+    internal bool HasThemedDefaultRead(int propertyId) => Array.IndexOf(_themedDefaultReads, propertyId) >= 0;
+
     internal void RegisterResourceSubscriber(IResourceSubscriber subscriber)
         => (_resourceSubscribers ??= []).Add(subscriber);
 

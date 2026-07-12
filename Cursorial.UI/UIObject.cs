@@ -92,7 +92,41 @@ public abstract class UIObject : IInheritanceNode
         if (property.Inherits && FindInheritedEntry(property.Id, out _) is EffectiveValue<T> inherited)
             return inherited.Value;
 
-        return property.GetMetadata(GetType()).DefaultValue;
+        return ResolveDefaultValue(property, property.GetMetadata(GetType()));
+    }
+
+    /// <summary>
+    /// The <see cref="BindingPriority.Default"/>-tier value: the metadata default, unless the
+    /// metadata carries a <see cref="PropertyMetadata{T}.DefaultResourceKey"/> and this object is a
+    /// <see cref="UIElement"/> whose resource chain resolves it (the theme-reactive default). A lazy
+    /// read — no store entry, no subscription — so it is beaten by every real lane (inheritance
+    /// included) by construction and is always current with the active theme. Keyed reads are
+    /// RECORDED on the element: the theme catch-all repaints exactly the recorded readers
+    /// (invariant 3 — an element that never read the themed default must not re-raster).
+    /// </summary>
+    internal T ResolveDefaultValue<T>(StyledProperty<T> property, PropertyMetadata<T> metadata)
+    {
+        if (metadata.DefaultResourceKey is { } key && this is UIElement element)
+        {
+            element.MarkThemedDefaultRead(property.Id);
+            if (element.TryFindResource(key, out var resolved) && resolved is T typed)
+                return typed;
+        }
+
+        return metadata.DefaultValue;
+    }
+
+    /// <summary>Boxed twin of <see cref="ResolveDefaultValue{T}"/> for the untyped read lane.</summary>
+    internal object? ResolveDefaultValueBoxed<T>(StyledProperty<T> property, PropertyMetadata<T> metadata)
+    {
+        if (metadata.DefaultResourceKey is { } key && this is UIElement element)
+        {
+            element.MarkThemedDefaultRead(property.Id);
+            if (element.TryFindResource(key, out var resolved) && resolved is T)
+                return resolved; // already a box (or a reference) — no re-boxing needed
+        }
+
+        return metadata.BoxedDefault;
     }
 
     /// <summary>
@@ -117,7 +151,7 @@ public abstract class UIObject : IInheritanceNode
             return inherited.Value;
         }
 
-        return metadata.DefaultValue;
+        return ResolveDefaultValue(property, metadata);
     }
 
     /// <summary>
@@ -317,7 +351,7 @@ public abstract class UIObject : IInheritanceNode
         if (property.Inherits && FindInheritedEntry(property.Id, out _) is {} inherited)
             return inherited.GetEffectiveBoxedValue();
 
-        return property.GetMetadata(GetType()).BoxedDefault;
+        return ResolveDefaultValueBoxed(property, property.GetMetadata(GetType()));
     }
 
     // ───────────────────────────── write surface ─────────────────────────────

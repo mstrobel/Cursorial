@@ -233,6 +233,8 @@ public sealed partial class UIApplication : IResourceHost
     /// <summary>Routes an element-scoped <see cref="ResourceDictionary"/> mutation to its root's registry (design doc §11.6).</summary>
     internal void OnResourceDictionaryChanged(UIElement scope, ResourceDictionary dictionary, ResourcesChangedEventArgs e)
     {
+        InvalidateDefaultTierConsumers(scope);
+
         var root = ResourceServices.LogicalRoot(scope);
         if (!_registries.TryGetValue(root, out var registry))
             return; // no subscribers under this root yet
@@ -241,6 +243,55 @@ public sealed partial class UIApplication : IResourceHost
             registry.PulseKeyed(scope, key);
         else
             registry.PulseCatchAll(scope);
+    }
+
+    /// <summary>
+    /// Re-renders elements sitting at the default tier of a theme-reactive default
+    /// (<see cref="PropertyMetadata{T}.DefaultResourceKey"/>): they have no store entry and no
+    /// resource subscription, so the pulse machinery cannot reach them — the lazy default read is
+    /// always CURRENT, this walk only makes the change visible. Runs on resource catch-alls
+    /// (theme/base/tier flips, dictionary swaps) — rare events that repaint most of the tree anyway.
+    /// Roots are the subscription-registry keys: any themed tree subscribes somewhere, so the walk
+    /// covers every live root in practice.
+    /// </summary>
+    private void InvalidateDefaultTierConsumers(UIElement? scope)
+    {
+        var properties = UIPropertyRegistry.DefaultResourceKeyedProperties;
+        if (properties.Length == 0)
+            return;
+
+        if (scope is not null)
+        {
+            InvalidateDefaultTierConsumersUnder(scope, properties);
+            return;
+        }
+
+        foreach (var (root, _) in _registries.ToArray())
+            InvalidateDefaultTierConsumersUnder(root, properties);
+    }
+
+    private static void InvalidateDefaultTierConsumersUnder(UIElement element, UIProperty[] properties)
+    {
+        foreach (var property in properties)
+        {
+            // Only elements that actually READ the themed default re-raster (invariant 3): a
+            // sibling whose look never touched it stays frozen across the flip.
+            if (!element.HasThemedDefaultRead(property.Id))
+                continue;
+            if (element.GetValueSource(property).Priority != BindingPriority.Default)
+                continue;
+
+            var effects = property.GetEffects(element.GetType());
+            if ((effects & PropertyEffects.AffectsMeasure) != 0)
+                element.InvalidateMeasure();
+            if ((effects & PropertyEffects.AffectsArrange) != 0)
+                element.InvalidateArrange();
+            if ((effects & PropertyEffects.AffectsRender) != 0 || effects == PropertyEffects.None)
+                element.InvalidateVisual();
+        }
+
+        for (var i = 0; i < element.VisualChildrenCount; i++)
+            InvalidateDefaultTierConsumersUnder(element.GetVisualChild(i), properties);
     }
 
     private void OnApplicationResourcesChanged(object? sender, ResourcesChangedEventArgs e)
@@ -286,6 +337,8 @@ public sealed partial class UIApplication : IResourceHost
     {
         foreach (var registry in _registries.Values.ToArray()) // snapshot — a pulse may mutate _registries
             registry.PulseCatchAll(pulsingScope: null);
+
+        InvalidateDefaultTierConsumers(scope: null);
 
         ResourcesChanged?.Invoke(this, new ResourcesChangedEventArgs(ResourceChangeKind.CatchAll, null));
 

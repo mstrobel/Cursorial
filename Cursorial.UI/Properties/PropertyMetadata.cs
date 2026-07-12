@@ -55,6 +55,18 @@ public sealed record PropertyMetadata<T>(
     /// </summary>
     public bool? ParsesAccessKeyLiterals { get; init; }
 
+    /// <summary>
+    /// A resource key the <see cref="BindingPriority.Default"/> tier resolves through the element's
+    /// resource chain (design: the theme-reactive metadata default). When set, an effective-value
+    /// read that reaches the default tier on a <c>UIElement</c> looks the key up first and falls
+    /// back to <see cref="DefaultValue"/> when the key is unresolvable (or the element is outside a
+    /// resource chain). Every REAL contribution — inherited values included — beats it by
+    /// construction, which is the whole point: a bare <c>TextBlock</c> reads the theme's text brush,
+    /// while one inside a template or under a foreground-setting ancestor keeps the inherited value.
+    /// <see langword="null"/> falls through to the base metadata during merge (nearest non-null wins).
+    /// </summary>
+    public object? DefaultResourceKey { get; init; }
+
     private object? _boxedDefault;
 
     /// <summary>The change-detection comparer, defaulting to <see cref="EqualityComparer{T}.Default"/>.</summary>

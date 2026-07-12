@@ -46,6 +46,26 @@ internal static class UIPropertyRegistry
     /// Registers an additional owner type for an existing property (the <c>AddOwner</c> path).
     /// Throws <see cref="ArgumentException"/> when the owner already has a property of that name.
     /// </summary>
+    private static volatile UIProperty[] _defaultResourceKeyed = [];
+
+    /// <summary>
+    /// Records that <paramref name="property"/> carries a <c>DefaultResourceKey</c> in at least one
+    /// metadata (registration or override). The theme/resource catch-all pulse walks this set to
+    /// re-render elements sitting at the default tier — those have no store entry and therefore no
+    /// resource subscription of their own.
+    /// </summary>
+    internal static void RegisterDefaultResourceKeyed(UIProperty property)
+    {
+        lock (Gate)
+        {
+            if (Array.IndexOf(_defaultResourceKeyed, property) < 0)
+                _defaultResourceKeyed = [.. _defaultResourceKeyed, property];
+        }
+    }
+
+    /// <summary>Every property with a theme-reactive default, snapshot (safe to iterate lock-free).</summary>
+    internal static UIProperty[] DefaultResourceKeyedProperties => _defaultResourceKeyed;
+
     internal static void AddOwner(UIProperty property, Type ownerType)
     {
         ArgumentNullException.ThrowIfNull(ownerType);

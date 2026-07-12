@@ -39,6 +39,8 @@ public class StyledProperty<T> : UIProperty
     {
         ArgumentNullException.ThrowIfNull(metadata);
         _registeredMetadata = metadata;
+        if (metadata.DefaultResourceKey is not null)
+            UIPropertyRegistry.RegisterDefaultResourceKeyed(this);
     }
 
     /// <summary>
@@ -81,6 +83,8 @@ public class StyledProperty<T> : UIProperty
     public void OverrideMetadata<TOwner>(PropertyMetadata<T> metadata) where TOwner : UIObject
     {
         ArgumentNullException.ThrowIfNull(metadata);
+        if (metadata.DefaultResourceKey is not null)
+            UIPropertyRegistry.RegisterDefaultResourceKeyed(this);
         var forType = typeof(TOwner);
 
         foreach (var touched in _resolved.Keys)
@@ -120,6 +124,8 @@ public class StyledProperty<T> : UIProperty
     }
 
     internal override object? GetDefaultValueUntyped(Type forType) => GetMetadata(forType).DefaultValue;
+
+    internal override object? GetDefaultResourceKeyUntyped(Type forType) => GetMetadata(forType).DefaultResourceKey;
 
     internal override bool AreValuesEqualUntyped(Type forType, object? a, object? b)
     {
@@ -214,6 +220,7 @@ public class StyledProperty<T> : UIProperty
         (PropertyChangedCallback<T>?)Delegate.Combine(baseMetadata.Changed, overrideMetadata.Changed), // chains base-first
         overrideMetadata.Comparer ?? baseMetadata.Comparer)
     {
-        ParsesAccessKeyLiterals = overrideMetadata.ParsesAccessKeyLiterals ?? baseMetadata.ParsesAccessKeyLiterals
+        ParsesAccessKeyLiterals = overrideMetadata.ParsesAccessKeyLiterals ?? baseMetadata.ParsesAccessKeyLiterals,
+        DefaultResourceKey = overrideMetadata.DefaultResourceKey ?? baseMetadata.DefaultResourceKey,
     };
 }

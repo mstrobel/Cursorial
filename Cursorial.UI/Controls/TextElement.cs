@@ -13,9 +13,18 @@ public abstract class TextElement
 {
     private TextElement() => throw new InvalidOperationException($"Class '{nameof(TextElement)}' is not instantiatable.");
 
-    /// <summary>The inherited text foreground brush (<c>Inherits | AffectsRender</c>).</summary>
+    /// <summary>
+    /// The inherited text foreground brush (<c>Inherits | AffectsRender</c>). Defaults through the
+    /// theme's <see cref="Themes.ThemeKeys.TextBrush"/> (a theme-reactive default): a bare text
+    /// element is legible with zero ambient setup — a design-surface root, a UserControl previewed
+    /// alone — while ANY real contribution, an inherited value from a window or template included,
+    /// beats it by lane arithmetic.
+    /// </summary>
     public static readonly AttachedProperty<IBrush?> ForegroundProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("Foreground", inherits: true, defaultValue: Brushes.Default);
+        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>(
+            "Foreground",
+            new PropertyMetadata<IBrush?>(Brushes.Default) { DefaultResourceKey = Themes.ThemeKeys.TextBrush },
+            inherits: true);
 
     /// <summary>The inherited text attributes (bold/italic/underline/…) (<c>Inherits | AffectsRender</c>).</summary>
     public static readonly AttachedProperty<TextAttributes> TextAttributesProperty =

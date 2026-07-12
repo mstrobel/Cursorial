@@ -180,6 +180,16 @@ public sealed class PrefixedTypeRefEndToEndTests
         Assert.Contains("XamlPrefixTarget", names);
         Assert.DoesNotContain("Button", names); // scoped to the URI's namespace, not the default map
     }
+
+    [Fact] // The intrinsics URI enumerates the XAML2009 built-ins — the set ResolveType accepts by name.
+    public void KnownTypeNames_EnumerateIntrinsicBuiltIns()
+    {
+        var names = XamlSchemaContext.Default.GetKnownTypeNames("https://cursorial.dev/xaml");
+
+        Assert.Contains("String", names);
+        Assert.Contains("Int32", names);
+        Assert.Contains("TimeSpan", names);
+    }
 }
 
 /// <summary>A test-only <see cref="UIElement"/> that lives OUTSIDE the Cursorial.UI namespaces — the probe for

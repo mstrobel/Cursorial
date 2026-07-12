@@ -206,9 +206,20 @@ public sealed class XamlSchemaContext
     /// its content text (<c>&lt;x:Int32&gt;5&lt;/x:Int32&gt;</c>, XD28).</summary>
     public static bool IsBuiltInType(Type type) => BuiltInClrTypes.Contains(type);
 
+    private static readonly string[] BuiltInTypeNames =
+    [
+        "Object", "Boolean", "Byte", "SByte", "Char", "Decimal", "Single", "Double",
+        "Int16", "Int32", "Int64", "UInt16", "UInt32", "UInt64", "String", "TimeSpan", "Uri",
+    ];
+
     /// <summary>The known XAML-visible type names in an xmlns URI (Levenshtein did-you-mean source).</summary>
     public string[] GetKnownTypeNames(string xmlNamespace)
     {
+        // The intrinsics namespace carries the XAML2009 built-ins (x:String, x:Int32, …) —
+        // resolved by name in ResolveType; enumerable here for did-you-mean and completion.
+        if (string.Equals(xmlNamespace, IntrinsicsNamespace, StringComparison.Ordinal))
+            return (string[])BuiltInTypeNames.Clone();
+
         var clrNamespaces = (IReadOnlyList<string>)SnapshotNamespaces(xmlNamespace);
         var assemblies = AllAssemblies();
         if (clrNamespaces.Count == 0)

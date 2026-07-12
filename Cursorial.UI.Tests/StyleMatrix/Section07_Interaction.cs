@@ -73,7 +73,7 @@ public class Section07_Interaction
             tree.A.Flip(InteractionState.FocusVisible, true);
         }
 
-        probe.AssertSingleNotify(0, 5, BindingPriority.Style); // the combined delta, one pass
+        probe.AssertSingleNotify(0, 5, BindingPriority.StyleTrigger); // the combined delta, one pass; conditional slot (§0.3)
     }
 
     [Theory]
@@ -230,7 +230,7 @@ public class Section07_Interaction
         var probe = StyleProbe<int>.Attach(tree.A, Widget.P);
 
         Assert.True(tree.A.SetPseudo(":open", true));
-        probe.AssertSingleNotify(0, 5, BindingPriority.Style);
+        probe.AssertSingleNotify(0, 5, BindingPriority.StyleTrigger); // custom pseudo ⇒ conditional slot (§0.3)
 
         Assert.False(tree.A.SetPseudo(":open", true)); // no-change — restyle-free
         probe.AssertSilent();

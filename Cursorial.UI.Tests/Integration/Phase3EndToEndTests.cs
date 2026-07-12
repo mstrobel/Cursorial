@@ -250,13 +250,15 @@ public sealed class Phase3EndToEndTests
 
         var probe = Probe<int>.Attach(card, Card.InkProperty);
 
-        // Hover ON: one activation delivery, runner-up → winner.
+        // Hover ON: one activation delivery, runner-up → winner. The :pointerover rule is
+        // conditional ⇒ it arbitrates (and reports) at StyleTrigger (§0.3, 2026-07-12).
         host.SendMouseMove(2, 0);
         host.RunFrame();
-        Assert.Equal([(3, 9, BindingPriority.Style)], probe.Deliveries);
+        Assert.Equal([(3, 9, BindingPriority.StyleTrigger)], probe.Deliveries);
         probe.Deliveries.Clear();
 
-        // Hover OFF: ONE delivery, winner → runner-up, still the Style lane — the promotion.
+        // Hover OFF: ONE delivery, winner → runner-up, at the promoted lane — the resting type
+        // rule lives in the Style slot (PD10 reports the NEW winning lane).
         host.SendMouseMove(50, 10);
         host.RunFrame();
         Assert.Equal([(9, 3, BindingPriority.Style)], probe.Deliveries);
@@ -359,9 +361,12 @@ public sealed class Phase3EndToEndTests
 
     /// <summary>
     /// The §14 P3 acceptance surface: <see cref="StyleDiagnostics.Explain"/> renders the FULL
-    /// sort-key derivation, one line per contributor, strongest first, for a three-layer contest
-    /// (Explicit beats Scoped beats App — layer beats specificity). Literals pinned bit-for-bit
-    /// (SD13).
+    /// sort-key derivation, one line per contributor, strongest first, for a three-layer contest.
+    /// Amended for the activator split (§0.3, 2026-07-12): the class-gated Scoped rule is
+    /// CONDITIONAL ⇒ the StyleTrigger slot, which beats every resting rule regardless of layer or
+    /// sort key (slot beats key) — it renders first and wins over the resting Explicit; within the
+    /// resting slot, Explicit still beats App (layer beats specificity). Literals pinned
+    /// bit-for-bit (SD13).
     /// </summary>
     [Fact]
     public void Explain_ThreeLayerContest_ExactOneLinePerContributorDerivation()
@@ -374,24 +379,24 @@ public sealed class Phase3EndToEndTests
         pane.Children.Add(card);
         root.Children.Add(pane);
 
-        host.Application.Styles.Add(R("Card", (Card.InkProperty, 3)));   // App(3), order 0
-        pane.Styles.Add(R("Card.accent", (Card.InkProperty, 5)));        // Scoped(4), owner depth 1
+        host.Application.Styles.Add(R("Card", (Card.InkProperty, 3)));   // App(3), order 0 — resting
+        pane.Styles.Add(R("Card.accent", (Card.InkProperty, 5)));        // Scoped(4), owner depth 1 — CONDITIONAL
         var explicitStyle = new Style();
         explicitStyle.Setters.Add(new Setter(Card.InkProperty, 9));
-        card.Style = explicitStyle;                                      // Explicit(5)
+        card.Style = explicitStyle;                                      // Explicit(5) — resting
 
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
-        Assert.Equal(9, card.GetValue(Card.InkProperty));
+        Assert.Equal(5, card.GetValue(Card.InkProperty)); // the conditional rule pierces both resting layers
 
         var lines = StyleDiagnostics.Explain(card, Card.InkProperty).Split('\n');
 
         Assert.Equal(3, lines.Length);
         Assert.Equal(
-            "Ink = 9 <- Explicit(5) \"(explicit)\" names=0 classLike=0 types=0 depth=0 order=0 key=0xA000000000000000 -- winning",
+            "Ink = 5 <- Scoped(4) \"Card.accent\" names=0 classLike=1 types=1 depth=1 order=0 key=0x8000080808000000 -- winning",
             lines[0]);
         Assert.Equal(
-            "Ink = 5 <- Scoped(4) \"Card.accent\" names=0 classLike=1 types=1 depth=1 order=0 key=0x8000080808000000 -- shadowed",
+            "Ink = 9 <- Explicit(5) \"(explicit)\" names=0 classLike=0 types=0 depth=0 order=0 key=0xA000000000000000 -- shadowed",
             lines[1]);
         Assert.Equal(
             "Ink = 3 <- App(3) \"Card\" names=0 classLike=0 types=1 depth=0 order=0 key=0x6000000800000000 -- shadowed",
@@ -432,9 +437,10 @@ public sealed class Phase3EndToEndTests
         Assert.Equal(3, card.GetValue(Card.InkProperty));
 
         // Matching add (stronger): one promotion; the survivor keeps the SAME frame instance.
+        // `Card.hot` is class-gated ⇒ conditional ⇒ the StyleTrigger slot (§0.3, 2026-07-12).
         var hotStyle = R("Card.hot", (Card.InkProperty, 7));
         host.Application.Styles.Add(hotStyle);
-        Assert.Equal([(3, 7, BindingPriority.Style)], probe.Deliveries);
+        Assert.Equal([(3, 7, BindingPriority.StyleTrigger)], probe.Deliveries);
         probe.Deliveries.Clear();
         Assert.Equal(2, card.StyleStateInternal!.Frames.Length);
         Assert.Contains(frameBefore, card.StyleStateInternal!.Frames);

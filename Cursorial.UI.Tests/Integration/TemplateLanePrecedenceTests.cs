@@ -10,11 +10,12 @@ using Style = Cursorial.UI.Style;
 namespace Cursorial.Tests.UI.Integration;
 
 /// <summary>
-/// End-to-end proof of the Template lane (precedence-matrix §20 / PD24) through the <em>real</em>
-/// <see cref="ControlTemplate"/> machinery: a value a template authors on a part (a literal, a
-/// <c>{TemplateBinding}</c>) lands at <see cref="BindingPriority.Template"/> — one rung below Style —
-/// so an applied Style overrides it. This is the regression guard for the reported bug ("a Style on
-/// the close button's Background never applied unless the template Background binding was removed").
+/// End-to-end proof of the Template lane (precedence-matrix §20 / PD24 as amended 2026-07-12)
+/// through the <em>real</em> <see cref="ControlTemplate"/> machinery: a value a template authors on
+/// a part (a literal, a <c>{TemplateBinding}</c>) lands at <see cref="BindingPriority.Template"/> —
+/// below the conditional <see cref="BindingPriority.StyleTrigger"/> slot but ABOVE resting
+/// <see cref="BindingPriority.Style"/>. A resting page rule cannot wreck template wiring; a
+/// conditional (pseudo-class/.class/When-gated) rule pierces while active and retracts cleanly.
 /// </summary>
 public sealed class TemplateLanePrecedenceTests
 {
@@ -93,8 +94,8 @@ public sealed class TemplateLanePrecedenceTests
         Assert.Equal(ValueSourceKind.TemplateResource, source.Kind);
     }
 
-    [Fact] // the reported repro: a Style crossing the template barrier overrides a part's template literal
-    public void Style_OverridesTemplateLiteral_OnPart()
+    [Fact] // re-pinned 2026-07-12: a RESTING /template/ rule no longer overrides a part's template literal
+    public void RestingStyle_DoesNotOverrideTemplateLiteral_OnPart()
     {
         Border? part = null;
         var shell = new Shell
@@ -102,7 +103,8 @@ public sealed class TemplateLanePrecedenceTests
             Template = new ControlTemplate(_ => part = new Border { Background = TemplateBrush }),
         };
 
-        // The page Style: a Border that is a template child of a Shell (the sanctioned /template/ crossing).
+        // The resting page rule: a Border that is a template child of a Shell (the sanctioned
+        // /template/ crossing) — purely structural, so it arbitrates BELOW the Template lane.
         var style = new Style(Selectors.OfType<Shell>().Template().OfType<Border>())
             .Set(Border.BackgroundProperty, StyleBrush);
 
@@ -112,9 +114,43 @@ public sealed class TemplateLanePrecedenceTests
         host.RunFrame();
 
         Assert.NotNull(part);
-        // The fix: Style (the page rule) beats Template (the part's literal). Before the lane existed
-        // the literal sat at LocalValue and the Style could not win — the reported bug.
-        Assert.Equal(BindingPriority.Style, part!.GetValueSource(Border.BackgroundProperty).Priority);
-        Assert.Same(StyleBrush, part.Background);
+        // The completed lattice (§0.3, 2026-07-12): the template literal is the part's resting
+        // truth — the resting rule is masked. Re-skinning at rest styles the CONTROL's property
+        // (the {TemplateBinding} forwarding spine) or uses a conditional rule (the test below).
+        Assert.Equal(BindingPriority.Template, part!.GetValueSource(Border.BackgroundProperty).Priority);
+        Assert.Same(TemplateBrush, part.Background);
+    }
+
+    [Fact] // the trigger direction: a CLASS-gated /template/ rule pierces the literal while active
+    public void ConditionalStyle_OverridesTemplateLiteral_OnPart_WhileActive()
+    {
+        Border? part = null;
+        var shell = new Shell
+        {
+            Template = new ControlTemplate(_ => part = new Border { Background = TemplateBrush }),
+        };
+
+        // Class-gated ⇒ conditional ⇒ the StyleTrigger slot (§0.3): pierces the Template lane while
+        // the class is present and retracts cleanly back to the literal when it leaves.
+        var style = new Style(Selectors.OfType<Shell>().Class("alert").Template().OfType<Border>())
+            .Set(Border.BackgroundProperty, StyleBrush);
+
+        using var host = UIHeadlessHost.Create();
+        host.Application.Styles.Add(style);
+        host.ShowRoot(shell);
+        host.RunFrame();
+
+        Assert.NotNull(part);
+        Assert.Same(TemplateBrush, part!.Background); // resting: the literal holds
+
+        shell.Classes.Add("alert");
+        host.RunFrame();
+        Assert.Same(StyleBrush, part.Background); // active: the conditional rule pierces
+        Assert.Equal(BindingPriority.StyleTrigger, part.GetValueSource(Border.BackgroundProperty).Priority);
+
+        shell.Classes.Remove("alert");
+        host.RunFrame();
+        Assert.Same(TemplateBrush, part.Background); // clean retraction to the literal
+        Assert.Equal(BindingPriority.Template, part.GetValueSource(Border.BackgroundProperty).Priority);
     }
 }

@@ -238,30 +238,24 @@
     <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
   </ControlTemplate>
 
+  <!-- The arrows author their bare faces as part literals (Template + Padding="0") — the parts' resting
+       truth under the amended lattice (§20, 2026-07-12: Template above resting Style), so the RepeatButton
+       control theme's Padding/Template root setters cannot re-chrome them. (A `ScrollBar /template/
+       RepeatButton { Padding=0 }` workaround rule lived here while resting styles beat template literals.) -->
   <ControlTemplate x:Key="ScrollBarTemplateVertical">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="▲" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
+      <RepeatButton x:Name="PART_LineDownButton" Content="▼" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
-    <ControlTemplate.Styles>
-      <Style Selector="ScrollBar /template/ RepeatButton">
-        <Setter Property="Control.Padding" Value="0"/>
-      </Style>
-    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollBarTemplateHorizontal">
     <DockPanel>
-      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
-      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
+      <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
+      <RepeatButton x:Name="PART_LineDownButton" Content="▶" Template="{StaticResource BareGlyphButtonTemplate}" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
       <Track x:Name="PART_Track"/>
     </DockPanel>
-    <ControlTemplate.Styles>
-      <Style Selector="ScrollBar /template/ RepeatButton">
-        <Setter Property="Control.Padding" Value="0"/>
-      </Style>
-    </ControlTemplate.Styles>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollViewerTemplate">

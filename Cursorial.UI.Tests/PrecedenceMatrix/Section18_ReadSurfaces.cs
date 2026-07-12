@@ -130,14 +130,24 @@ public class Section18_ReadSurfaces
         Assert.False(leaf.TryReadLocalValue(Pi, out _));
     }
 
-    [Fact] // M264c — the SCV no-contribution graft stores as local (M118) and reports here (DEV from WPF)
-    public void M264c_ReadLocalValue_SeesTheSetCurrentValueGraft()
+    [Fact] // M264c amended 2026-07-12 — the SCV graft is local for STORAGE only; ReadLocalValue hides it (WPF parity)
+    public void M264c_ReadLocalValue_GraftInvisible_RealLocalStillReports()
     {
         var host = new Host();
-        host.SetCurrentValue(P, 4);
+        host.SetCurrentValue(P, 4); // the M118 no-contribution graft
 
-        Assert.Equal(4, host.ReadLocalValue(P)); // consistent with IsSet/GetValueSource Local+cur
-        Assert.True(host.TryReadLocalValue(P, out var raw));
+        // Invisible: no local AUTHORSHIP exists — consistent with GetValueSource reporting the
+        // underlying source (+cur), so "was this set deliberately?" has one answer everywhere.
+        Assert.Same(UIProperty.UnsetValue, host.ReadLocalValue(P));
+        Assert.False(host.TryReadLocalValue(P, out _));
+
+        // A real SetValue is local authorship; an SCV over it overwrites the raw slot (M119) and
+        // ReadLocalValue keeps reporting the latest raw write.
+        var authored = new Host();
+        authored.SetValue(P, 3);
+        authored.SetCurrentValue(P, 4);
+        Assert.Equal(4, authored.ReadLocalValue(P));
+        Assert.True(authored.TryReadLocalValue(P, out var raw));
         Assert.Equal(4, raw);
     }
 

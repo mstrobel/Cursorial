@@ -277,8 +277,23 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
 
         if (!HasLocal)
         {
-            if (evicted is null)
-                return; // no local contribution at all — no-op, silent (M21, M125, M162)
+            // M125 amended (2026-07-12, PD27): ClearValue also strips a +cur overlay riding a
+            // producer lane (SetCurrentValue over StyleTrigger/Template/Style — the M288 family),
+            // so "ClearValue undoes SetCurrentValue" is universal. Clearing the bit FIRST defeats
+            // the M120 maintained-overwrite gate; the re-evaluation then re-derives the lane from
+            // its stored source value (the M122 clobber shape). The strip is INDEPENDENT of a
+            // co-evicted valueless local entry (M125e — audit fix: the overlay and the entry are
+            // separate residues of separate operations). Under an ACTIVE animation the overlay
+            // rode the ANIMATED effective (M131) and only the animation can re-produce its value —
+            // ClearValue leaves it to the lane's own clobber rules (the next push, M129, or handle
+            // disposal, M130), keeping the +cur bit TRUTHFUL instead of recording an undo that
+            // never happened (a Holding animation has no next push) — M125d as re-pinned.
+            var strippedOverlay = IsCurrentValue && !HasAnimatedValue;
+            if (strippedOverlay)
+                IsCurrentValue = false;
+
+            if (evicted is null && !strippedOverlay)
+                return; // no local contribution, no strippable overlay — no-op, silent (M21, M162)
         }
         else
         {
@@ -318,7 +333,14 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
         Value = coerced;
         IsCoerced = BaseIsCoerced;
         BoxedValue = null;
-        store.NotifyOrDefer(this, metadata, oldValue, coerced, EffectivePriority); // current effective lane (M233)
+
+        // PD27: a pure SetCurrentValue graft never surfaces LocalValue — a re-coercion on the graft
+        // notifies at the underlying lane, like the graft's own writes (M133b, audit fix 2026-07-12).
+        var lane = EffectivePriority;
+        if (LocalIsCurrentValueOnly)
+            store.GetUnsetFallback(Property, metadata, out lane);
+
+        store.NotifyOrDefer(this, metadata, oldValue, coerced, lane); // else the current effective lane (M233)
     }
 
     /// <inheritdoc/>

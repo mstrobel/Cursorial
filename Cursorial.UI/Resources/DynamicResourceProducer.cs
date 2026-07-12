@@ -11,8 +11,10 @@ internal interface IResourceSubscriber
     /// <summary>Unregisters the registry node (element detach).</summary>
     void OnElementDetached();
 
-    /// <summary>The (property, resource key) this subscriber feeds — the resource-provenance diagnostic seam (W3); null for a non-property-bound subscriber.</summary>
-    (UIProperty Property, object Key)? ResourceProvenance { get; }
+    /// <summary>The (property, resource key, producer lane) this subscriber feeds — the resource-provenance
+    /// diagnostic seam (W3; the lane lets the consumer gate on the reference actually OWNING the winning
+    /// base — audit fix 2026-07-12); null for a non-property-bound subscriber.</summary>
+    (UIProperty Property, object Key, BindingPriority Priority)? ResourceProvenance { get; }
 }
 
 /// <summary>
@@ -113,6 +115,8 @@ internal sealed class DynamicResourceProducer<T> : IResourceChangeListener, IVal
 
     public void OnElementDetached() => _subscription.Dispose();
 
-    // The resource-provenance seam (W3): which key this producer feeds which property.
-    public (UIProperty Property, object Key)? ResourceProvenance => (_property, _key);
+    // The resource-provenance seam (W3): which key this producer feeds which property, at which lane
+    // (LocalValue document-level, Template in-template — captured at install). Null once evicted.
+    public (UIProperty Property, object Key, BindingPriority Priority)? ResourceProvenance
+        => _entry is { } entry ? (_property, _key, entry.Priority) : null;
 }

@@ -54,16 +54,17 @@ public abstract partial class UIElement : IResourceHost
     internal void UnregisterResourceSubscriber(IResourceSubscriber subscriber)
         => _resourceSubscribers?.Remove(subscriber);
 
-    /// <summary>The resource key an instance <c>SetResourceReference</c>/<c>{DynamicResource}</c> feeds
-    /// <paramref name="property"/>, or <see langword="null"/> (the W3 resource-provenance seam).</summary>
-    internal object? FindInstanceResourceKey(UIProperty property)
+    /// <summary>The resource key + producer lane an instance <c>SetResourceReference</c>/<c>{DynamicResource}</c>
+    /// feeds <paramref name="property"/>, or <see langword="null"/> (the W3 resource-provenance seam; the lane
+    /// lets <c>ResourceDiagnostics.GetResourceKey</c> gate on the reference actually owning the winning base).</summary>
+    internal (object Key, BindingPriority Priority)? FindInstanceResourceKey(UIProperty property)
     {
         if (_resourceSubscribers is {} subscribers)
         {
             foreach (var subscriber in subscribers)
             {
                 if (subscriber.ResourceProvenance is {} provenance && ReferenceEquals(provenance.Property, property))
-                    return provenance.Key;
+                    return (provenance.Key, provenance.Priority);
             }
         }
 

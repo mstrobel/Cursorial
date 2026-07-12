@@ -58,7 +58,7 @@ public class Section14_When
 
         Assert.True(Assert.Single(StyleDiagnostics.MatchedRules(tree.A)).IsActive);
         Assert.Equal(5, tree.A.GetValue(Widget.P));
-        probe.AssertSingleNotify(0, 5, BindingPriority.Style);
+        probe.AssertSingleNotify(0, 5, BindingPriority.StyleTrigger); // When-guarded ⇒ conditional slot (§0.3)
     }
 
     [Fact]

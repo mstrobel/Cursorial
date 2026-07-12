@@ -6,10 +6,16 @@ using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 namespace Cursorial.Tests.UI.PrecedenceMatrix;
 
 /// <summary>
-/// Matrix §20 — the Template lane (M270–M298, PD24/PD25). The Template lane sits one rung below Style
-/// and one above Inherited; it is reached only through the ambient template-instantiation scope, which
-/// reroutes a literal <c>SetValue</c> (<c>T(v)</c> here) and a free-standing template binding entry
-/// (<c>Bind(P, Template)</c>) to the lane. M296 (ValueSourceKind) lives with the Phase-2 provenance work.
+/// Matrix §20 — the Template lane (M270–M301, PD24 as amended 2026-07-12). Under the completed
+/// Avalonia lattice the Template lane sits one rung below <see cref="BindingPriority.StyleTrigger"/>
+/// (the conditional style slot — pseudo-class/.class/When-gated rules pierce template-authored part
+/// values while active) and one ABOVE resting <see cref="BindingPriority.Style"/> (a template
+/// author's literals and TemplateBinding plumbing are the part's resting truth — a broad structural
+/// rule cannot wreck a template's internal wiring). It is reached only through the ambient
+/// template-instantiation scope, which reroutes a literal <c>SetValue</c> (<c>T(v)</c> here) and a
+/// free-standing template binding entry (<c>Bind(P, Template)</c>) to the lane. The 2026-06-16
+/// half-adoption (ALL styles above Template) is recorded in the §20 history. M296 (ValueSourceKind)
+/// lives with the Phase-2 provenance work.
 /// </summary>
 public class Section20_TemplateLane
 {
@@ -83,28 +89,34 @@ public class Section20_TemplateLane
         Assert.True(host.IsSet(P));
     }
 
-    // ───────────── 20.2 The stronger lanes mask Template ─────────────
+    // ───────────── 20.2 The stronger lanes mask Template (and Template masks resting Style) ─────────────
 
-    [Fact]
-    public void M274_StyleOverTemplate_TheFix()
+    [Fact] // amended 2026-07-12 (the activator split): only a CONDITIONAL rule overrides Template
+    public void M274_TriggerOverTemplate_RestingStyleDoesNot()
     {
         var host = new RecordingHost();
         T(host, P, 5);
         var probe = Probe<int>.Attach(host, P);
 
-        host.AddFrame(new TestValueFrame(K1).With(P, 9)); // a Style overrides the template default
+        host.AddFrame(new TestValueFrame(K1).With(P, 3)); // a RESTING rule cannot wreck template wiring
+
+        probe.AssertSilent();
+        Assert.Equal(5, host.GetValue(P));
+        Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), host.GetValueSource(P));
+
+        host.AddFrame(new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 9)); // conditional pierces
 
         Assert.Equal(9, host.GetValue(P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, IsCurrentValue: false), host.GetValueSource(P));
-        probe.AssertSingleNotify(5, 9, BindingPriority.Style);
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, IsCurrentValue: false), host.GetValueSource(P));
+        probe.AssertSingleNotify(5, 9, BindingPriority.StyleTrigger);
     }
 
     [Fact]
-    public void M275_StyleOverTemplate_Withdraw_TemplateResurfaces()
+    public void M275_TriggerOverTemplate_Withdraw_TemplateResurfaces()
     {
         var host = new RecordingHost();
         T(host, P, 5);
-        var frame = new TestValueFrame(K1).With(P, 9);
+        var frame = new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 9);
         host.AddFrame(frame);
         var probe = Probe<int>.Attach(host, P);
 
@@ -116,18 +128,39 @@ public class Section20_TemplateLane
     }
 
     [Fact]
-    public void M276_StyleOverTemplate_MaskedTemplateWrite_Silent()
+    public void M276_TriggerOverTemplate_MaskedTemplateWrite_Silent()
     {
         var host = new RecordingHost();
         T(host, P, 5);
-        host.AddFrame(new TestValueFrame(K1).With(P, 9));
+        host.AddFrame(new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 9));
         var probe = Probe<int>.Attach(host, P);
 
-        T(host, P, 6); // re-emit the template value while masked by Style
+        T(host, P, 6); // re-emit the template value while masked by the conditional rule
 
         probe.AssertSilent();
         Assert.Equal(9, host.GetValue(P));
         Assert.Equal(6, host.GetValue(P, BindingPriority.Template)); // the masked template value updated underneath
+    }
+
+    [Fact] // M276b — the inverse mask: Template over resting Style (§0.3, 2026-07-12)
+    public void M276b_TemplateOverRestingStyle_MaskedStyleWrite_Silent()
+    {
+        var host = new RecordingHost();
+        var frame = new TestValueFrame(K1).With(P, 3); // resting
+        host.AddFrame(frame);
+        T(host, P, 5); // Template arrives OVER the resting rule
+        Assert.Equal(5, host.GetValue(P));
+        var probe = Probe<int>.Attach(host, P);
+
+        frame.SetEntryValue(P, 4); // re-emit the resting value while masked by Template
+
+        probe.AssertSilent();
+        Assert.Equal(5, host.GetValue(P));
+        Assert.Equal(4, host.GetValue(P, BindingPriority.Style)); // the masked resting value updated underneath
+
+        host.RemoveFrame(frame); // withdrawing the MASKED rung is silent — Template still wins
+        probe.AssertSilent();
+        Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), host.GetValueSource(P));
     }
 
     [Fact]
@@ -180,10 +213,14 @@ public class Section20_TemplateLane
         probe.AssertSingleNotify(9, 5, BindingPriority.Template);
     }
 
-    // ───────────── 20.3 Full six-rung ladder ─────────────
+    // ───────────── 20.3 Full seven-rung ladder (§0.3, 2026-07-12) ─────────────
 
-    /// <summary>The §20 full-ladder stack on <c>Pi</c>: root.L(2); leaf TE(4), F(k1){5}, L(7), H(9).</summary>
-    private static (RecordingHost Root, RecordingHost Leaf, TestValueFrame Frame,
+    /// <summary>
+    /// The §20 full-ladder stack on <c>Pi</c>: root.L(2); leaf resting F(k1){3}, TE(4), trigger
+    /// F(k1){6}, L(7), H(9) — one contribution per rung of the completed lattice
+    /// (Animation &gt; Local &gt; StyleTrigger &gt; Template &gt; Style &gt; Inherited &gt; Default).
+    /// </summary>
+    private static (RecordingHost Root, RecordingHost Leaf, TestValueFrame RestingFrame, TestValueFrame TriggerFrame,
                     BindingEntry<int> Template, AnimatedValueHandle<int> Handle) BuildLadder()
     {
         var root = new RecordingHost();
@@ -191,109 +228,132 @@ public class Section20_TemplateLane
         leaf.SetInheritanceParent(root);
         root.SetValue(Pi, 2);
 
+        var restingFrame = new TestValueFrame(K1).With(Pi, 3);
+        leaf.AddFrame(restingFrame);
         var te = leaf.Bind(Pi, BindingPriority.Template);
         te.SetValue(4);
-        var frame = new TestValueFrame(K1).With(Pi, 5);
-        leaf.AddFrame(frame);
+        var triggerFrame = new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(Pi, 6);
+        leaf.AddFrame(triggerFrame);
         leaf.SetValue(Pi, 7);
         var handle = leaf.BeginAnimation(Pi);
         handle.SetValue(9);
-        return (root, leaf, frame, te, handle);
+        return (root, leaf, restingFrame, triggerFrame, te, handle);
     }
 
     [Fact]
-    public void M280_FullLadder_PeelTopDown_FivePromotions()
+    public void M280_FullLadder_PeelTopDown_SixPromotions()
     {
-        var (root, leaf, frame, te, handle) = BuildLadder();
+        var (root, leaf, restingFrame, triggerFrame, te, handle) = BuildLadder();
         Assert.Equal(9, leaf.GetValue(Pi));
         var probe = InheritedProbe<int>.Attach(leaf, Pi);
 
-        handle.Dispose();      // → Local(7)
-        leaf.ClearValue(Pi);   // → Style(5)
-        leaf.RemoveFrame(frame); // → Template(4)
-        te.SetUnset();         // → Inherited(2)
-        root.ClearValue(Pi);   // → Default(0), propagated
+        handle.Dispose();              // → Local(7)
+        leaf.ClearValue(Pi);           // → StyleTrigger(6)
+        leaf.RemoveFrame(triggerFrame); // → Template(4)
+        te.SetUnset();                 // → Style(3)
+        leaf.RemoveFrame(restingFrame); // → Inherited(2)
+        root.ClearValue(Pi);           // → Default(0), propagated
 
         (int, int, BindingPriority)[] expected =
         [
             (9, 7, BindingPriority.LocalValue),
-            (7, 5, BindingPriority.Style),
-            (5, 4, BindingPriority.Template),
-            (4, 2, BindingPriority.Inherited),
+            (7, 6, BindingPriority.StyleTrigger),
+            (6, 4, BindingPriority.Template),
+            (4, 3, BindingPriority.Style),
+            (3, 2, BindingPriority.Inherited),
             (2, 0, BindingPriority.Default),
         ];
         Assert.Equal(expected, probe.Typed);
         Assert.Equal(expected.Select(e => ((object?)e.Item1, (object?)e.Item2, e.Item3)), probe.Untyped);
-        Assert.Equal(expected[..4], probe.OrdinaryVirtual); // first four are leaf-local (origin-site)
-        Assert.Equal(expected[4..], probe.Inherited);        // root.CV is propagated (PD22)
+        Assert.Equal(expected[..5], probe.OrdinaryVirtual); // first five are leaf-local (origin-site)
+        Assert.Equal(expected[5..], probe.Inherited);        // root.CV is propagated (PD22)
         Assert.Equal(0, leaf.GetValue(Pi));
     }
 
     [Theory]
     [InlineData(BindingPriority.Animation, 9)]
     [InlineData(BindingPriority.LocalValue, 7)]
-    [InlineData(BindingPriority.Style, 5)]
+    [InlineData(BindingPriority.StyleTrigger, 6)]
     [InlineData(BindingPriority.Template, 4)]
+    [InlineData(BindingPriority.Style, 3)] // the Style-capped probe deliberately skips the stronger Template lane (PD16)
     [InlineData(BindingPriority.Inherited, 2)]
     [InlineData(BindingPriority.Default, 0)]
     public void M281_FullLadder_MaxPriorityProbes(BindingPriority maxPriority, int expected)
     {
-        var (_, leaf, _, _, _) = BuildLadder();
+        var (_, leaf, _, _, _, _) = BuildLadder();
         Assert.Equal(expected, leaf.GetValue(Pi, maxPriority));
     }
 
     [Fact]
     public void M282_FullLadder_BaseTracksStrongestSubAnimationLane()
     {
-        var (root, leaf, frame, te, _) = BuildLadder();
+        var (root, leaf, restingFrame, triggerFrame, te, _) = BuildLadder();
 
         Assert.Equal(7, leaf.GetBaseValue(Pi));
         leaf.ClearValue(Pi);
-        Assert.Equal(5, leaf.GetBaseValue(Pi));
-        leaf.RemoveFrame(frame);
+        Assert.Equal(6, leaf.GetBaseValue(Pi));
+        leaf.RemoveFrame(triggerFrame);
         Assert.Equal(4, leaf.GetBaseValue(Pi));
         te.SetUnset();
+        Assert.Equal(3, leaf.GetBaseValue(Pi));
+        leaf.RemoveFrame(restingFrame);
         Assert.Equal(2, leaf.GetBaseValue(Pi));
         root.ClearValue(Pi);
         Assert.Equal(0, leaf.GetBaseValue(Pi));
     }
 
-    [Fact]
-    public void M283_ApplyBelowApply_StyleStillBeatsTemplate()
+    [Fact] // amended 2026-07-12: below a Local winner the masked order is Trigger > Template > resting Style
+    public void M283_ApplyBelowApply_TriggerBeatsTemplateBeatsRestingStyle()
     {
         var host = new RecordingHost();
         host.SetValue(P, 7);              // Local wins
         T(host, P, 5);                    // Template — masked, silent
-        host.AddFrame(new TestValueFrame(K1).With(P, 3)); // Style — masked, silent
+        host.AddFrame(new TestValueFrame(K1).With(P, 3)); // resting Style — masked, silent
+        var trigger = new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 8);
+        host.AddFrame(trigger);           // conditional — masked, silent
         var probe = Probe<int>.Attach(host, P);
 
         Assert.Equal(7, host.GetValue(P));
-        Assert.Equal(3, host.GetValue(P, BindingPriority.Style));
+        Assert.Equal(8, host.GetValue(P, BindingPriority.StyleTrigger));
         Assert.Equal(5, host.GetValue(P, BindingPriority.Template));
+        Assert.Equal(3, host.GetValue(P, BindingPriority.Style));
 
-        host.ClearValue(P); // Local withdraws: Style (3) beats Template (5)
-        Assert.Equal(3, host.GetValue(P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, IsCurrentValue: false), host.GetValueSource(P));
-        probe.AssertSingleNotify(7, 3, BindingPriority.Style);
+        host.ClearValue(P); // Local withdraws: the trigger (8) beats Template (5) beats resting (3)
+        Assert.Equal(8, host.GetValue(P));
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, IsCurrentValue: false), host.GetValueSource(P));
+        probe.AssertSingleNotify(7, 8, BindingPriority.StyleTrigger);
+
+        host.RemoveFrame(trigger); // the trigger withdraws: Template (5) beats the resting rule (3)
+        Assert.Equal(5, host.GetValue(P));
+        Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), host.GetValueSource(P));
+        probe.AssertSingleNotify(8, 5, BindingPriority.Template);
     }
 
     // ───────────── 20.4 Theme-forwarding invariant + the reported repro ─────────────
 
-    [Fact]
-    public void M284_ThemeForward_PageStyleOverridesForwardedValue()
+    [Fact] // re-pinned 2026-07-12 (M284): the forwarded value IS the part's resting truth; only activation pierces
+    public void M284_ThemeForward_RestingPageStyleDoesNotOverride_ActivatedDoes()
     {
-        // A part carries a {TemplateBinding} forwarding the control's (style-set) value at Template;
-        // a page Style targeting the part overrides it.
+        // A part carries a {TemplateBinding} forwarding the control's (style-set) value at Template.
+        // A RESTING page rule targeting the part does NOT override it — re-skinning at rest flows
+        // through the CONTROL's own properties (which resting styles CAN set) via the forwarding
+        // spine. An ACTIVATED (conditional) page rule still pierces while active.
         var part = new RecordingHost();
         var forward = part.Bind(P, BindingPriority.Template); // the TemplateBinding's lane
         forward.SetValue(5);                                  // the forwarded theme value
         var probe = Probe<int>.Attach(part, P);
 
-        part.AddFrame(new TestValueFrame(K1).With(P, 9));     // the page Style
+        part.AddFrame(new TestValueFrame(K1).With(P, 3));     // the resting page rule — masked, silent
+
+        probe.AssertSilent();
+        Assert.Equal(5, part.GetValue(P));
+        Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), part.GetValueSource(P));
+
+        part.AddFrame(new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 9)); // the activated rule
 
         Assert.Equal(9, part.GetValue(P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, IsCurrentValue: false), part.GetValueSource(P));
-        probe.AssertSingleNotify(5, 9, BindingPriority.Style);
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, IsCurrentValue: false), part.GetValueSource(P));
+        probe.AssertSingleNotify(5, 9, BindingPriority.StyleTrigger);
     }
 
     [Fact]
@@ -307,21 +367,37 @@ public class Section20_TemplateLane
         Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), part.GetValueSource(P));
     }
 
-    [Fact]
-    public void M286_CloseButtonRepro_StyleOverridesTemplateLiteral()
+    [Fact] // re-pinned 2026-07-12 (M286): the close-button repro under the completed lattice
+    public void M286_CloseButtonRepro_TemplateLiteralResistsRestingStyle_ConditionalPierces()
     {
-        // The reported bug: a template literal on a part (Background=Transparent) stayed at LocalValue
-        // and a Style on the part could not override it. Now the literal lands at Template and the
-        // Style wins.
+        // The ORIGINAL repro (a part literal stuck at LocalValue, unstylable) drove the 2026-06-16
+        // half-adoption that put ALL styles above Template — which made template literals useless
+        // in the other direction (any broad resting rule wrecked template wiring). The completed
+        // lattice re-pins the repro: the literal (e.g., Background=Transparent) IS the part's
+        // resting truth, so a resting page rule does NOT override it; a state rule
+        // (:pointerover/.class/When — conditional ⇒ StyleTrigger) pierces while active and
+        // retracts cleanly back to the literal.
         var btn = new RecordingHost();
         T(btn, P, 5); // the template literal (e.g., Background=Transparent)
         var probe = Probe<int>.Attach(btn, P);
 
-        btn.AddFrame(new TestValueFrame(K1).With(P, 9)); // the window/page Style
+        btn.AddFrame(new TestValueFrame(K1).With(P, 3)); // the window/page RESTING rule — masked
 
+        probe.AssertSilent();
+        Assert.Equal(5, btn.GetValue(P));
+
+        var hover = new TestValueFrame(K1, isActive: false, priority: BindingPriority.StyleTrigger).With(P, 9);
+        btn.AddFrame(hover); // the :pointerover rule, armed but inactive
+        probe.AssertSilent();
+
+        hover.Activate(); // hover ON: the conditional rule pierces the literal
         Assert.Equal(9, btn.GetValue(P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, IsCurrentValue: false), btn.GetValueSource(P));
-        probe.AssertSingleNotify(5, 9, BindingPriority.Style);
+        probe.AssertSingleNotify(5, 9, BindingPriority.StyleTrigger);
+
+        hover.Deactivate(); // hover OFF: clean retraction back to the literal
+        Assert.Equal(5, btn.GetValue(P));
+        Assert.Equal(new ValueSource(BindingPriority.Template, IsCurrentValue: false), btn.GetValueSource(P));
+        probe.AssertSingleNotify(9, 5, BindingPriority.Template);
     }
 
     // ───────────── 20.5 SetCurrentValue × Template ─────────────
@@ -410,11 +486,13 @@ public class Section20_TemplateLane
         host.SetCurrentValue(P, 6);
         var probe = Probe<int>.Attach(host, P);
 
-        host.AddFrame(new TestValueFrame(K1).With(P, 9)); // Style supersedes the Template overwrite
+        // The stronger style lane is the CONDITIONAL slot (a resting rule sits BELOW Template
+        // under the amended ladder and would leave the overwrite in place).
+        host.AddFrame(new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(P, 9));
 
         Assert.Equal(9, host.GetValue(P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, IsCurrentValue: false), host.GetValueSource(P));
-        probe.AssertSingleNotify(6, 9, BindingPriority.Style);
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, IsCurrentValue: false), host.GetValueSource(P));
+        probe.AssertSingleNotify(6, 9, BindingPriority.StyleTrigger);
     }
 
     [Fact]
@@ -537,17 +615,18 @@ public class Section20_TemplateLane
         Assert.True(host.IsSet(P)); // PD11 extended: auto-aliasing yields to template-provided values
     }
 
-    [Fact]
-    public void M298_Diagnostics_TemplateRow_OrderedBetweenStyleAndInherited()
+    [Fact] // amended 2026-07-12 (M298): the Template row sits between the trigger and resting style rows
+    public void M298_Diagnostics_TemplateRow_OrderedBetweenTriggerAndRestingStyle()
     {
         var (root, _, leaf) = Chain();
         root.SetValue(Pi, 2);                                 // inherited provenance
-        leaf.AddFrame(new TestValueFrame(K1).With(Pi, 5));    // Style frame (wins)
+        leaf.AddFrame(new TestValueFrame(K1).With(Pi, 3));    // resting frame (masked)
+        leaf.AddFrame(new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(Pi, 5)); // trigger frame (wins)
         T(leaf, Pi, 4);                                       // Template contribution (masked)
 
         var diagnostics = leaf.GetValueDiagnostics(Pi);
         Assert.Equal(
-            [BindingPriority.Style, BindingPriority.Template, BindingPriority.Inherited],
+            [BindingPriority.StyleTrigger, BindingPriority.Template, BindingPriority.Style, BindingPriority.Inherited],
             diagnostics.Select(d => d.Priority));
 
         var templateRow = diagnostics.Single(d => d.Priority == BindingPriority.Template);
@@ -615,17 +694,18 @@ public class Section20_TemplateLane
     }
 
     [Fact]
-    public void M301_Template_CoerceValue_MaskedByStyle_Silent_ThenResurfaces()
+    public void M301_Template_CoerceValue_MaskedByTrigger_Silent_ThenResurfaces()
     {
         var host = new RecordingHost();
         T(host, Pcd, 250);                                  // Template: ceiling 100 ⇒ 100
-        var frame = new TestValueFrame(K1).With(Pcd, 9);    // Style masks the template ⇒ eff=9
+        // Only a CONDITIONAL rule masks the template lane under the amended ladder (§0.3).
+        var frame = new TestValueFrame(K1, priority: BindingPriority.StyleTrigger).With(Pcd, 9);
         host.AddFrame(frame);
         Assert.Equal(9, host.GetValue(Pcd));
         var probe = Probe<int>.Attach(host, Pcd);
 
         host.SetValue(Pmax, 300);
-        host.CoerceValue(Pcd); // re-coerces the MASKED template (raw 250) silently — Style still wins
+        host.CoerceValue(Pcd); // re-coerces the MASKED template (raw 250) silently — the trigger still wins
 
         probe.AssertSilent();
         Assert.Equal(9, host.GetValue(Pcd));

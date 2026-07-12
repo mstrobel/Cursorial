@@ -3,11 +3,12 @@
 namespace Cursorial.UI;
 
 /// <summary>
-/// A removable group of property contributions in the single <see cref="BindingPriority.Style"/>
-/// slot (design doc §2.4) — the styling/template contribution unit. Fork B subclasses it as the
-/// thin per-element activation shim over a shared immutable setter list; the store sorts installed
-/// frames by <see cref="SortKey"/> (larger = stronger; equal keys: later-added wins) and arbitrates.
-/// It never evaluates selectors.
+/// A removable group of property contributions in one of the two style slots —
+/// <see cref="BindingPriority.StyleTrigger"/> for conditional rules, <see cref="BindingPriority.Style"/>
+/// for resting ones (design doc §2.4; §0.3 as amended 2026-07-12) — the styling/template contribution
+/// unit. Fork B subclasses it as the thin per-element activation shim over a shared immutable setter
+/// list; the store sorts installed frames by <see cref="SortKey"/> (larger = stronger; equal keys:
+/// later-added wins) within each slot and arbitrates. It never evaluates selectors.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,14 +32,31 @@ public abstract class ValueFrame
     private List<BindingEntryBase>? _hostedEntries;
 
     /// <summary>Creates a frame at <paramref name="sortKey"/>, optionally starting inactive.</summary>
-    protected ValueFrame(StyleSortKey sortKey, bool isActive = true)
+    /// <param name="sortKey">The within-slot ordering key.</param>
+    /// <param name="isActive">Whether the frame starts active.</param>
+    /// <param name="priority">The style slot the frame arbitrates in — <see cref="BindingPriority.StyleTrigger"/>
+    /// for conditional rules (any pseudo-class/class/When condition), <see cref="BindingPriority.Style"/> (the
+    /// default) for resting structural rules. No other value is legal for a frame.</param>
+    protected ValueFrame(StyleSortKey sortKey, bool isActive = true, BindingPriority priority = BindingPriority.Style)
     {
+        if (priority is not (BindingPriority.Style or BindingPriority.StyleTrigger))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(priority), priority, "A ValueFrame arbitrates at StyleTrigger or Style only.");
+        }
+
         SortKey = sortKey;
         IsActive = isActive;
+        Priority = priority;
     }
 
     /// <summary>The within-slot ordering key (opaque to the store; larger sorts stronger).</summary>
     public StyleSortKey SortKey { get; }
+
+    /// <summary>The style slot this frame arbitrates in (<see cref="BindingPriority.StyleTrigger"/> or
+    /// <see cref="BindingPriority.Style"/>) — fixed at construction; conditional-ness is a property of the
+    /// rule's SHAPE, identical on every element and every re-match.</summary>
+    public BindingPriority Priority { get; }
 
     /// <summary>Whether the frame's contributions currently participate in arbitration.</summary>
     public bool IsActive { get; private set; }

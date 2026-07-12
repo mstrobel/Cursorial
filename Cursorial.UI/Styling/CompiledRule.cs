@@ -165,6 +165,22 @@ internal sealed class CompiledRule
            || SubjectCustomPseudoClasses.Length > 0
            || AncestorStateCompounds.Length > 0;
 
+    /// <summary>
+    /// Whether the rule is CONDITIONAL — it carries an activation condition of any kind: a
+    /// pseudo-class or <c>.class</c> simple on any compound, or a <c>When</c> data-condition.
+    /// Conditional rules arm at <see cref="BindingPriority.StyleTrigger"/> (above the Template lane);
+    /// purely structural rules (types / <c>#name</c>s / combinators only) arm at
+    /// <see cref="BindingPriority.Style"/> (below it) — the Avalonia activator split, completed
+    /// 2026-07-12. <see cref="ClassLike"/> is exactly this predicate: <c>CountSpecificity</c> buckets
+    /// every Class + PseudoClass simple across ALL compounds into classLike, and
+    /// <c>Style.EmitRules</c> folds the <c>When</c> count in (SD5) — conditional-ness IS class-like
+    /// specificity being non-zero. Classes count as conditions (not just pseudo-classes) because they
+    /// toggle at runtime — the <c>.obscured</c> modal overlay and <c>.caps-*</c> capability rules
+    /// depend on piercing template-authored values — matching Avalonia ("style class, pseudo class …
+    /// are conditional; name and type selectors are not").
+    /// </summary>
+    internal bool IsConditional => ClassLike > 0;
+
     /// <inheritdoc/>
     public override string ToString() => $"rule {RuleIndex} \"{SelectorText}\" of {OwnerStyle}";
 }

@@ -356,6 +356,9 @@ internal static class ControlThemes
     // still clickable so the consumer can toggle the list on it. The caret inherits the field's foreground. Shared
     // by ComboBox + DatePicker; the consumer registers it as PART_DropDown and wires Click. (▾ is the design-guide
     // glyph; geometric, like the scroll arrows — the renderer's ambiguous-width defense covers the edge terminals.)
+    // 2026-07-12 lattice note: these part literals (Template + Padding=0) are now the caret's RESTING truth (§20 —
+    // Template above resting Style), so Theme.Button's root Template/Padding setters no longer re-chrome it; the
+    // bare face authored here is what renders (previously the theme's chromed mini-button won and this was latent).
     private static Button DropDownCaret()
         => new()
         {
@@ -638,7 +641,11 @@ internal static class ControlThemes
         field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
-        var calendar = new Calendar { BorderPen = Pens.Light.WithBrush(Brushes.Red) };
+        // No BorderPen literal: the popup surface Border carries the themed border; a literal here
+        // would be the part's resting truth under the amended lattice (§20, 2026-07-12) and the
+        // Calendar theme's resting BorderPen could no longer replace it. (A red debug pen lived
+        // here until the 2026-07-12 pre-cleanup — masked under the old ladder, visible under the new.)
+        var calendar = new Calendar();
         ctx.RegisterName("PART_Calendar", calendar);
         var surface = new Border { /*Occludes = true, */Child = calendar };
         surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
@@ -1492,7 +1499,11 @@ internal static class ControlThemes
                return dock;
             });
 
-        t.Styles.Add(new Style(Selectors.OfType<ScrollBar>().Template().OfType<RepeatButton>()).Set(Control.PaddingProperty, Margins.Zero)); return t;
+        // (A `/template/ RepeatButton { Padding = 0 }` rule lived here until the 2026-07-12 lattice
+        // amendment: under the old ladder the RepeatButton control theme's resting Padding beat the
+        // parts' `Padding = Margins.Zero` literals, so the template out-layered it with a rule. The
+        // literals are now the parts' resting truth (§20 — Template above resting Style).)
+        return t;
     }
 
     private static Style ScrollBarTheme()

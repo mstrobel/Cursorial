@@ -16,8 +16,17 @@ public sealed class TestValueFrame : ValueFrame
     private readonly List<IValueEntry> _entries = [];
     private readonly bool _isConditional;
 
-    public TestValueFrame(ulong sortKey, bool isActive = true, bool isConditional = false)
-        : base(new StyleSortKey(sortKey), isActive)
+    /// <summary>
+    /// <paramref name="isConditional"/> models a <c>When</c>-guarded rule: it drives the
+    /// <see cref="ValueSourceKind.StyleWhen"/> provenance (M296) AND defaults the frame into the
+    /// <see cref="BindingPriority.StyleTrigger"/> slot (the real engine's activator split — a
+    /// When-guarded rule is conditional by shape). <paramref name="priority"/> overrides the slot
+    /// explicitly — <c>StyleTrigger</c> without <c>isConditional</c> models a pseudo-class/.class
+    /// rule (conditional slot, <c>StyleSetter</c> kind).
+    /// </summary>
+    public TestValueFrame(ulong sortKey, bool isActive = true, bool isConditional = false, BindingPriority? priority = null)
+        : base(new StyleSortKey(sortKey), isActive,
+               priority ?? (isConditional ? BindingPriority.StyleTrigger : BindingPriority.Style))
     {
         _isConditional = isConditional;
     }

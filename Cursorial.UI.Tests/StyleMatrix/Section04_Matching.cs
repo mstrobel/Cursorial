@@ -246,7 +246,7 @@ public class Section04_Matching
         var active = Assert.Single(StyleDiagnostics.MatchedRules(tree.A));
         Assert.True(active.IsActive);
         Assert.Equal(5, tree.A.GetValue(Widget.P));
-        Assert.Equal(new ValueSource(BindingPriority.Style, false), tree.A.GetValueSource(Widget.P));
+        Assert.Equal(new ValueSource(BindingPriority.StyleTrigger, false), tree.A.GetValueSource(Widget.P)); // conditional slot (§0.3)
     }
 
     [Fact]
@@ -259,7 +259,7 @@ public class Section04_Matching
 
         tree.A.Classes.Add("primary"); // the arm trigger
 
-        probe.AssertSingleNotify(0, 5, BindingPriority.Style); // one notify, no inactive flicker (SD18)
+        probe.AssertSingleNotify(0, 5, BindingPriority.StyleTrigger); // one notify, no inactive flicker (SD18); conditional slot
         Assert.Equal(5, tree.A.GetValue(Widget.P));
     }
 
@@ -392,14 +392,21 @@ public class Section04_Matching
         tree.App.Styles.Add(R("#a, .b", (Widget.P, 7)));
 
         var armed = StyleDiagnostics.MatchedRules(tree.A);
-        Assert.Equal(2, armed.Count); // each member is its own rule with its own key
+        Assert.Equal(2, armed.Count); // each member is its own rule with its own key — AND its own slot (PD26)
         Assert.All(armed, static info => Assert.True(info.IsActive));
-        Assert.Equal(1, armed[0].Key.Names);     // strongest first: the #a member
-        Assert.Equal(0, armed[0].Key.ClassLike);
-        Assert.Equal(0, armed[1].Key.Names);
-        Assert.Equal(1, armed[1].Key.ClassLike);
+        // Arbitration order is slot-first: the `.b` member is CONDITIONAL ⇒ StyleTrigger, listed
+        // before the resting `#a` member despite the weaker key (the slot beats the key).
+        Assert.Equal(0, armed[0].Key.Names);
+        Assert.Equal(1, armed[0].Key.ClassLike);
+        Assert.Equal(BindingPriority.StyleTrigger, armed[0].Priority);
+        Assert.Equal(1, armed[1].Key.Names);
+        Assert.Equal(0, armed[1].Key.ClassLike);
+        Assert.Equal(BindingPriority.Style, armed[1].Priority);
 
         Assert.Equal(7, tree.A.GetValue(Widget.P));
-        probe.AssertSingleNotify(0, 7, BindingPriority.Style); // the weaker member's activation is masked-silent (M37)
+        // ONE notify: the first-armed member (#a, resting) applies at Style; the trigger member's
+        // arrival is an equal-value promotion — silent, source flips to StyleTrigger (PD9).
+        probe.AssertSingleNotify(0, 7, BindingPriority.Style);
+        Assert.Equal(BindingPriority.StyleTrigger, tree.A.GetValueSource(Widget.P).Priority);
     }
 }

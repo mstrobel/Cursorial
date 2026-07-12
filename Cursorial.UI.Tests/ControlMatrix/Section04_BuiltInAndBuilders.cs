@@ -300,17 +300,25 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C102 — layer beats specificity: a LESS-specific App(3) rule beats a MORE-specific Theme(2) rule
     public void C102_LayerBeatsSpecificity_AppBeatsTheme()
     {
+        // Amended for the activator split (§0.3, 2026-07-12): the layer law holds WITHIN the resting
+        // slot, so the theme rule here is specificity-boosted with a resting simple (#name), not a
+        // class — a class-gated theme rule would be conditional (StyleTrigger) and pierce the resting
+        // app rule (the accepted cross-slot consequence, pinned below).
         var themeBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(99, 0, 0));
 
         using var host = UIHeadlessHost.Create();
-        var button = new Button { Content = "OK" };
-        button.Classes.Add("primary");
+        var button = new Button { Content = "OK", Name = "ok" };
         host.ShowRoot(button);
 
-        // A MORE-specific theme rule (Button.primary, classLike=1) at Theme(2) competes with a LESS-specific
-        // app rule (Button, classLike=0) at App(3). Layer beats specificity (C102): the app rule wins.
+        // A MORE-specific resting theme rule (Button#ok, names=1) at Theme(2) competes with a
+        // LESS-specific resting app rule (Button) at App(3). Layer beats specificity: the app rule wins.
+        var conditionalBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(0, 99, 0));
         var theme = CursorialTheme.CreateDefault();
-        theme.Styles = [new Style("Button.primary").Set(Control.BackgroundProperty, themeBrush)];
+        theme.Styles =
+        [
+            new Style("Button#ok").Set(Control.BackgroundProperty, themeBrush),
+            new Style("Button.primary").Set(Control.BackgroundProperty, conditionalBrush),
+        ];
         host.Application.Theme = theme;
         host.Application.Styles.Add(new Style("Button").Set(Control.BackgroundProperty, Vbrush));
         host.RunFrame();
@@ -319,6 +327,21 @@ public sealed class Section04_BuiltInAndBuilders
         Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
         Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.App, IsActive: true });
         Assert.Same(Vbrush, button.Background);
+
+        // The cross-slot consequence: a CLASS-gated theme rule is conditional ⇒ StyleTrigger, which
+        // beats the resting app rule despite the weaker layer (the Avalonia lattice — activation
+        // trumps rest, wherever each rule lives).
+        button.Classes.Add("primary");
+        host.RunFrame();
+
+        Assert.Same(conditionalBrush, button.Background);
+        Assert.Equal(BindingPriority.StyleTrigger, button.GetValueSource(Control.BackgroundProperty).Priority);
+
+        // MatchedRules renders ARBITRATION order (audit fix 2026-07-12): the winning trigger rule
+        // lists first despite its weaker layer/key — the slot beats the key, and the row carries it.
+        var rules = StyleDiagnostics.MatchedRules(button);
+        Assert.Equal("Button.primary", rules[0].SelectorText);
+        Assert.Equal(BindingPriority.StyleTrigger, rules[0].Priority);
     }
 
     [Fact] // C100f — END-TO-END (the #19 shape): a theme rule's TextElement.TextAttributes setter reaches a focused button

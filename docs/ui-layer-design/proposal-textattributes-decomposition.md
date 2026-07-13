@@ -1,8 +1,8 @@
 # Proposal: Per-Axis Text-Attribute Properties (the `TextAttributes` Decomposition)
 
-**Status: PROPOSAL — awaiting the four owner decisions in §8.** Produced 2026-07-13 by the panel
-process recorded in §9; the adversarial judgment lives in
-`judgment-textattributes-decomposition.md`. Nothing here is implemented.
+**Status: PROPOSAL — Q1/Q2/Q4 decided 2026-07-13 (§8); Q3 carries a recommendation awaiting
+owner confirmation.** Produced 2026-07-13 by the panel process recorded in §9; the adversarial
+judgment lives in `judgment-textattributes-decomposition.md`. Nothing here is implemented.
 
 ---
 
@@ -203,6 +203,15 @@ strikethrough, and the rest now inherit straight through. The blast radius shrin
 to the two the cue actually speaks about; use italic/underline as the example of what's fixed, not
 weight.
 
+**Why reverse-video is a NoColor-tier idiom (owner-supplied ground truth, 2026-07-13):** at
+color tiers a non-occluding face fills through the glyph-transparent `PaintRectangle` tint, which
+deliberately drops attributes on glyphless cells (`Border.cs:151-162` — an attribute-bearing face
+needs `FillOpaque` to composite onto the WHOLE face) — so a color-tier Inverse cue inverts only
+the label's cells, not the face's whitespace. NoColor forces opaque fills, which is exactly why
+whole-face reverse-video works there and why color-tier emphasis is (correctly) faked with brush
+swaps instead. Theme authors: do not re-attempt color-tier Inverse cues; that is what the brush
+half of the cue model is for.
+
 **Pair coherence** (no proposal had this; the judge added it): a theme test walks every tier
 dictionary asserting **both** cue keys are present — the pair-coherence lint all three proposals'
 self-critiques asked for, at test-time cost instead of engine cost.
@@ -254,12 +263,12 @@ render pipeline never needs a subtraction channel. Content-baked markup flags (`
 `FormattedText` runs) remain un-strippable from properties — a scoping rule (markup is inner-scope
 content; content wins), same as today, pinned as a residual in §7.
 
-**No silent drops (judge-mandated):** the formatted-text seam carries flags only —
-`RenderContext.DrawFormattedText(…, TextAttributes baseAttributes)`, verified. Until the seam is
-widened, an `Underline` *shape* has nowhere to go on the main text path. Owner question 2 picks
-the v1 posture; whichever wins, `Underline="Curly"` either renders Curly or fails visibly (a v1
-`Validate` rejecting non-`Single` shapes with a message naming the deferral) — never renders
-`Single` silently.
+**No silent drops — resolved (Q2, decided 2026-07-13):** the formatted-text seam carries flags
+only today (`RenderContext.DrawFormattedText(…, TextAttributes baseAttributes)`, verified), so the
+`DrawFormattedText`/`RenderContext` base-style widening (underline shape carried alongside the
+flags into `DrawFormattedCore`'s merge) **ships in the same phase as the property** (§5 P2):
+`Underline="Curly"` renders Curly from day one. The rejected alternative (presence-only v1 behind
+a `Validate` gate) is recorded here only so the silent-drop failure mode stays named.
 
 ### 3.2 Perf accounting (corrected per the judgment)
 
@@ -377,7 +386,8 @@ byte-identical — the test pins that and documents the lane change for future t
 - **Drift reconciliation rider:** since all four theme files are open anyway, the XAML phase
   reconciles the recorded code-first↔XAML drift: the pseudo-class set mismatch (`:pressed` vs
   `:pointerover`), IndigoDusk's missing selection rule *(IndigoDusk is WIP/not-shipping — apply
-  opportunistically, not as a gate)*, and the commented-out accent setters (owner question 4).
+  opportunistically, not as a gate)*, and DELETING the commented-out accent `:focus-visible`
+  setters (Q4, decided 2026-07-13 — see §8 for the recorded reason).
 - **Tests.** Updated mechanically: ControlMatrix Section09 (22 refs), Section05 (8), Section04
   (7, incl. C100f's retraction assert → per-axis default), XamlThemeStylesTests (6), Bars (2).
   New rows: per-axis inheritance walk; cancel-inherited-flag through each lane; the §2.2
@@ -401,10 +411,12 @@ byte-identical — the test pins that and documents the lane change for future t
 1. **P1 — Compose seam (pure refactor).** `ResolvedTextAttributes` + `ComposeAttributes`
    (legacy-aggregate-only fold); re-point the four renderers. **Byte-identical rendering**;
    existing tests pin it. Every later phase has a stable seam and a small diff.
-2. **P2 — Properties + semantics + the batched walk.** Register the per-axis properties +
-   `TextWeight`; fold becomes `perAxis | legacy`; the batched single-pass walk lands WITH its
-   naive-equivalence property test and micro-benchmark; new matrix rows (inheritance, cancel,
-   lattice walks, exclusivity) prove the store semantics before any theme moves.
+2. **P2 — Properties + semantics + the batched walk + the underline seam.** Register the
+   per-axis properties + `TextWeight`; fold becomes `perAxis | legacy`; the batched single-pass
+   walk lands WITH its naive-equivalence property test and micro-benchmark; the
+   `DrawFormattedText`/`RenderContext` base-style widening lands so the underline SHAPE renders
+   from day one (Q2); new matrix rows (inheritance, cancel, lattice walks, exclusivity) prove the
+   store semantics before any theme moves.
 3. **P3 — Code-first theme migration.** Cue-resource pair into ThemeKeys + tier dictionaries;
    rewrite 6 literal + 12 resource rules (core/Bars/Dialogs); 3 imperative writers; delete the
    TemplateBinding with its parity test; **implement the P9.3b Inverse+Bold ListBox focus cue in
@@ -468,24 +480,39 @@ arbitrate axes — give it axes.
 
 ---
 
-## 8. Open questions — owner decisions required before P1
+## 8. Owner decisions (record of 2026-07-13)
 
-1. **`TextWeight` vs `FontWeight` naming.** The judge recommends `TextWeight` (no WPF
-   muscle-memory trap — `FontWeight="SemiBold"`/`"600"` fails here; continuity with the `:680`
-   pin's "no font types" rationale). `FontWeight` buys instant recognizability at the cost of
-   first-use surprise. Both defensible; pick one.
-2. **Underline v1 scope.** (a) Presence-only semantics now — `UnderlineStyle?` property with a v1
-   `Validate` rejecting non-`Single` shapes (visible deferral, zero new plumbing), the seam
-   widening later; or (b) fund the `DrawFormattedText`/`RenderContext` base-style widening in the
-   same phase the property ships, so `Underline="Curly"` renders Curly from day one. Don't ship
-   the silent drop. (`UnderlineBrushProperty` stays demand-gated in either case.)
-3. **Do Blink/Concealed/Overline register as inheriting?** Uniformity says yes; the verified
-   reparent tax (+2 chain walks per property per reparent) says they're the first demotion
-   candidates. Decide the P3 measurement gate now: what regression number (gallery page swap /
-   items realization) forces demotion or funds §2.9 push-down.
-4. **The commented-out XAML accent `:focus-visible` setters** — delete (match current live
-   behavior; accent cues stay code-first-only) or revive via the split cue resources (the XAML
-   twins gain the resource indirection they currently lack). Theming-parity policy, not design.
+1. **`TextWeight` vs `FontWeight` naming — DECIDED: `TextWeight`.** No WPF muscle-memory trap
+   (`FontWeight="SemiBold"`/`"600"` would fail here); continuity with the `:680` pin's "no font
+   types" rationale — the deviated name signals the deviated domain.
+2. **Underline v1 scope — DECIDED: full `DrawFormattedText` support.** The base-style widening
+   (underline shape through the formatted-text seam) ships in the same phase as the property
+   (§3.1, §5 P2); no deferred-semantics property, no silent drop. `UnderlineBrushProperty` stays
+   demand-gated.
+3. **Do Blink/Concealed/Overline register as inheriting? — RECOMMENDED (awaiting confirmation):
+   inherit, uniformly, with a demotion gate.** The decisive argument is the content boundary, not
+   template plumbing: a `TemplateBinding` forward sets the value ON a template part, and a
+   non-inheriting property stops there — it cannot reach text inside APP CONTENT hosted by a
+   `ContentPresenter`, so ambient subtree uses (`Concealed` on a container to redact everything
+   inside it) become inexpressible; non-inheritance makes these leaf-only properties, a semantic
+   reduction. Costs: the batched walk makes three never-set axes ≈ three extra presence-probes
+   per ancestor inside ONE traversal (noise); the real tax is the reparent diff, which is
+   per-structural-change and measured at P3. Asymmetry favors starting uniform: demoting later is
+   a one-flag change justified by a number; promoting later silently changes app behavior.
+   **Gate: >5% wall-clock regression on the reparent-heavy benchmarks (gallery page swap,
+   100-item ListBox realization) vs the pre-decomposition baseline ⇒ demote the three exotics to
+   non-inheriting first; still over ⇒ fund §2.9 push-down** (which erases the tax for every
+   inherited property at once).
+4. **The commented-out XAML accent `:focus-visible` setters — DECIDED: delete, with the real
+   reason recorded.** They were an experiment in a color-tier Inverse focus cue, parked because
+   at color tiers the non-occluding face's glyph-transparent tint drops attributes on glyphless
+   cells (`Border.cs:151-162`) — Inverse inverted only the label's cells, not the face's
+   whitespace — so the look was faked with brush swaps instead, which is the CORRECT color-tier
+   idiom (whole-face Inverse would require `Occludes=true`, changing compositing semantics).
+   Reviving via the split cue pair would be a no-op at color tiers (`InteractiveCueInverse=false`
+   there) and redundant at NoColor (the live `.caps-nocolor` button-family rules already apply
+   Inverse, and NoColor's forced-opaque fill is what makes it whole-face there). See §2.3's
+   ground-truth note.
 
 ---
 

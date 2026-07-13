@@ -41,6 +41,16 @@ internal sealed class MarkupExtensionNode
     /// <summary>The extension type name as written (e.g. <c>Binding</c>, <c>x:Static</c>, <c>StaticResource</c>).</summary>
     public string Name { get; }
 
+    /// <summary>
+    /// The xmlns URI the extension NAME's prefix bound to in the live reader scope, stamped by the
+    /// parser (the one mutation on this otherwise-immutable node). The loader re-resolves extension
+    /// types at BUILD time (X2), long after the reader scope is gone — without this a prefixed
+    /// project extension (<c>{v:EnumItemsSource …}</c>) could only be probed in the DEFAULT UI
+    /// namespace and was unresolvable at load while resolving fine at parse. Null on hand-built
+    /// nodes; consumers fall back to the default UI namespace.
+    /// </summary>
+    public string? ResolvedNamespace { get; internal set; }
+
     /// <summary>The positional arguments in source order.</summary>
     public IReadOnlyList<MarkupExtensionArgumentValue> PositionalArguments { get; }
 

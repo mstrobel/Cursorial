@@ -1104,6 +1104,33 @@ internal sealed class XamlParser
         // A custom extension name may be prefix-qualified (my:FooExtension); bind the prefix from the live
         // reader scope and try the conventional "Extension" suffix. Reports CUR2002 on a miss (X53).
         _ = ResolveQualifiedType(node.Name, appendExtensionSuffix: true, node.Line, node.Column, report: true);
+        StampResolvedNamespaces(node);
+    }
+
+    /// <summary>
+    /// Stamps <paramref name="node"/> (and its nested extension arguments) with the xmlns URI each
+    /// extension NAME binds to in the LIVE reader scope — the loader re-resolves extension types at
+    /// build time (X2), when the scope is long gone (see <see cref="MarkupExtensionNode.ResolvedNamespace"/>).
+    /// Nested nodes are stamped quietly (their diagnostics stay where they always surfaced).
+    /// </summary>
+    private void StampResolvedNamespaces(MarkupExtensionNode node)
+    {
+        string name = node.Name;
+        int colon = name.IndexOf(':');
+        string prefix = colon > 0 ? name.Substring(0, colon) : string.Empty;
+        node.ResolvedNamespace = _reader.LookupNamespace(prefix) is { Length: > 0 } bound ? bound : XmlnsNamespaces.CursorialUi;
+
+        foreach (var argument in node.PositionalArguments)
+        {
+            if (argument.IsNested)
+                StampResolvedNamespaces(argument.Nested!);
+        }
+
+        foreach (var named in node.NamedArguments)
+        {
+            if (named.Value.IsNested)
+                StampResolvedNamespaces(named.Value.Nested!);
+        }
     }
 
     // ── Element body parsing (content + property elements + collections) ──────────────────────────

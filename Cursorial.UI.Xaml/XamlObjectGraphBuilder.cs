@@ -1625,13 +1625,19 @@ internal sealed class XamlObjectGraphBuilder
         if (colon >= 0)
             name = name.Substring(colon + 1);
 
+        // The xmlns the extension name's prefix bound to at PARSE (the parser stamps it — the reader
+        // scope is long gone here). Without it a prefixed project extension ({v:EnumItemsSource …})
+        // could only be probed in the default UI namespace and was unresolvable at load while
+        // resolving fine at parse. Hand-built nodes (no stamp) keep the default-UI fallback.
+        var xmlNamespace = node.ResolvedNamespace ?? XamlSchemaContext.CursorialUiNamespace;
+
         // Resolve in markup-extension position: prefer the WPF "Extension"-suffixed type so a `{Foo}` whose suffixed
         // twin `FooExtension` exists binds the extension even when a same-named non-extension type (e.g. an `Icon`
         // CONTROL alongside `IconExtension`) is also addressable. Fall back to the bare name for extensions authored
         // without the suffix; a bare name resolving to a non-MarkupExtension surfaces a clear diagnostic in ActivateCustomExtension.
-        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name + "Extension");
+        var resolution = _options.MetadataProvider.TryGetType(xmlNamespace, name + "Extension");
         if (!resolution.IsResolved)
-            resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, name);
+            resolution = _options.MetadataProvider.TryGetType(xmlNamespace, name);
         if (resolution.IsResolved)
             return resolution.Type!;
 

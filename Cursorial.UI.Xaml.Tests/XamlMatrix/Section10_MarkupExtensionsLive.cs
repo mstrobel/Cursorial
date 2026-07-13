@@ -288,6 +288,20 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
 
         Assert.Equal("extension:x", border.GetValue(UIElement.DataContextProperty));
     }
+
+    [Fact] // X53b (2026-07-13) — a PREFIX-qualified extension in a namespace the default UI xmlns
+    // does NOT map ({v:EnumItemsSource …} in a user project) must resolve at LOAD, not just at
+    // parse: the parser stamps the bound xmlns on the node and the builder probes THAT namespace
+    // (it used to hardcode the default UI namespace — parse clean, load CUR2002).
+    public void X53b_PrefixedExtension_ResolvesAtLoad_ThroughItsOwnNamespace()
+    {
+        var border = (UIControls.Border)LoadRaw(
+            "<Border xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:q=\"clr-namespace:Cursorial.Tests.UI.Xaml.UnmappedExtensions;assembly=Cursorial.UI.Xaml.Tests\" " +
+            "DataContext=\"{q:Quirk Text='x'}\"/>");
+
+        Assert.Equal("quirk:x", border.GetValue(UIElement.DataContextProperty));
+    }
 }
 
 /// <summary>A NON-extension sister deliberately named like the extension below (X53 amendment):

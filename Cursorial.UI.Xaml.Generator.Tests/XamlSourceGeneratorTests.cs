@@ -129,6 +129,86 @@ public class XamlSourceGeneratorTests
         Assert.Contains("typeof(global::Cursorial.UI.Data.Binding)", src);
     }
 
+
+    [Fact] // a PROJECT-LOCAL extension ({v:EnumItemsSource EnumType={x:Type JunctionMode}}) must bake
+    // BOTH the prefixed extension type and the nested x:Type argument (the Cursorial.Samples shape).
+    public void Generator_BakesPrefixedProjectExtensions_AndNestedTypeArguments()
+    {
+        var result = GeneratorHarness.Run(
+            [
+                ("Tools.xaml",
+                 "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+                 "xmlns:v=\"clr-namespace:Test.Ext;assembly=GeneratorTestAssembly\">" +
+                 "<Border DataContext=\"{v:Probe EnumType={x:Type JunctionMode}}\"/></StackPanel>"),
+            ],
+            sources:
+            [
+                """
+                namespace Test.Ext
+                {
+                    public sealed class ProbeExtension : Cursorial.UI.Xaml.MarkupExtension
+                    {
+                        public System.Type? EnumType { get; set; }
+                        public override object ProvideValue(System.IServiceProvider serviceProvider) => EnumType!;
+                    }
+                }
+                """,
+            ]);
+
+        var provider = result.Results.SelectMany(r => r.GeneratedSources)
+            .Single(s => s.HintName.Contains("__GeneratedXamlMetadata"));
+        var src = provider.SourceText.ToString();
+
+        Assert.Contains("typeof(global::Test.Ext.ProbeExtension)", src);
+        Assert.Contains("typeof(global::Cursorial.Drawing.Media.JunctionMode)", src);
+    }
+
+
+    [Fact] // the EXACT Cursorial.Samples ToolsPane shape, including its malformed root tag (the root
+    // closes at Width="10"> and a stray d:DesignHeight="40" is left as TEXT) — the sweeps and the
+    // provider emission must survive a document that is mid-edit broken.
+    public void Generator_BakesExtensions_DespiteMalformedSiblingMarkup()
+    {
+        var result = GeneratorHarness.Run(
+            [
+                ("ToolsPane.xaml",
+                 "<UserControl xmlns=\"https://cursorial.dev/ui\"\n" +
+                 "             xmlns:x=\"https://cursorial.dev/xaml\"\n" +
+                 "             xmlns:d=\"https://cursorial.dev/xaml/design\"\n" +
+                 "             xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"\n" +
+                 "             xmlns:v=\"clr-namespace:Test.Views;assembly=GeneratorTestAssembly\"\n" +
+                 "             mc:Ignorable=\"d\"\n" +
+                 "             x:Class=\"Test.Views.ToolsPane\"\n" +
+                 "             Width=\"10\">\n" +
+                 "             d:DesignHeight=\"40\"\n" +
+                 "  <Grid>\n" +
+                 "    <Border DataContext=\"{v:EnumItemsSource EnumType={x:Type JunctionMode}}\"/>\n" +
+                 "  </Grid>\n" +
+                 "</UserControl>"),
+            ],
+            sources:
+            [
+                "namespace Test.Views { public partial class ToolsPane { } }",
+                """
+                namespace Test.Views
+                {
+                    public sealed class EnumItemsSourceExtension : Cursorial.UI.Xaml.MarkupExtension
+                    {
+                        public System.Type? EnumType { get; set; }
+                        public override object ProvideValue(System.IServiceProvider serviceProvider) => EnumType!;
+                    }
+                }
+                """,
+            ]);
+
+        var provider = result.Results.SelectMany(r => r.GeneratedSources)
+            .Single(s => s.HintName.Contains("__GeneratedXamlMetadata"));
+        var src = provider.SourceText.ToString();
+
+        Assert.Contains("typeof(global::Test.Views.EnumItemsSourceExtension)", src);
+        Assert.Contains("typeof(global::Cursorial.Drawing.Media.JunctionMode)", src);
+    }
+
     [Fact] // an unknown element type surfaces CUR2002 (type-not-found)
     public void Generator_ReportsUnknownType_AsRoslynDiagnostic()
     {

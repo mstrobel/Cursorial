@@ -22,6 +22,20 @@ public sealed class XamlLoader
     private readonly XamlLoaderOptions _options;
     private readonly ConcurrentDictionary<Uri, XamlDocument> _documentCache = new();
 
+    // The loader whose instantiation is currently on this thread's stack. Nested loads a document
+    // triggers through PROCESS-GLOBAL seams — a ResourceDictionary.Source setter routes through
+    // ResourceDictionary.LoadCallback, which has no loader context (Cursorial.UI cannot reference the
+    // loader) — resolve through this, so the whole document tree stays bound to ONE loader/provider
+    // (a generated code-behind's closed set covers its merged dictionaries too; falling back to Shared
+    // would re-read the ambient default mid-tree). Thread-static + save/restore: instantiation is
+    // UI-thread-affine and loads nest (a merged dictionary's own Source).
+    [ThreadStatic]
+    private static XamlLoader? _current;
+
+    /// <summary>The loader instantiating on this thread's stack, or null (see <see cref="XamlModule"/>'s
+    /// <c>ResourceDictionary.Source</c> resolver, its consumer).</summary>
+    internal static XamlLoader? Current => _current;
+
     /// <summary>The process-wide default-options loader.</summary>
     public static XamlLoader Shared { get; } = new();
 
@@ -78,7 +92,17 @@ public sealed class XamlLoader
         ThrowIfDocumentFailed(document);
 
         var builder = new XamlObjectGraphBuilder(document, _options, context?.Source ?? document.SourceUri, context?.AmbientResources);
-        return builder.Build(context?.RootInstance);
+
+        var previous = _current;
+        _current = this;
+        try
+        {
+            return builder.Build(context?.RootInstance);
+        }
+        finally
+        {
+            _current = previous;
+        }
     }
 
     /// <summary>Instantiates a parsed document, casting the root to <typeparamref name="T"/>.</summary>
@@ -145,7 +169,17 @@ public sealed class XamlLoader
 
         var builder = new XamlObjectGraphBuilder(
             document, _options, context?.Source ?? document.SourceUri, context?.AmbientResources);
-        builder.Build(component);
+
+        var previous = _current;
+        _current = this;
+        try
+        {
+            builder.Build(component);
+        }
+        finally
+        {
+            _current = previous;
+        }
     }
 
     /// <summary>Populates <paramref name="component"/> from the XAML at <paramref name="sourceXaml"/> + URI (the explicit-URI overload, XD17).</summary>

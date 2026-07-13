@@ -59,6 +59,45 @@ public sealed class Section11_ResourceDictionaries : LoaderTestBase
         Assert.IsType<TestBrush>(dict["Accent"]);
     }
 
+    [Fact] // X131 (amended 2026-07-12) — a nested Source= load binds to the loader ALREADY instantiating
+    // on the thread (XamlLoader.Current), not the ambient default: the whole tree resolves through one
+    // provider. Under strict trimming that is the generated closed-set provider the code-behind bound
+    // explicitly; falling back to Shared would re-read the ambient default mid-tree.
+    public void X131_Source_UsesTriggeringLoader_NotSharedDefault()
+    {
+        using var _ = LoadCallbackScope.WithProvider(new InMemoryProvider(
+            ("cursorial://Cursorial.UI.Xaml.Tests/Themes/Inner.xaml",
+             $"<ResourceDictionary{Pre}><TestBrush x:Key=\"Accent\" Color=\"Red\"/></ResourceDictionary>")));
+
+        var recording = new RecordingProvider(ReflectionXamlMetadata.Instance);
+        var loader = new XamlLoader(new XamlLoaderOptions { MetadataProvider = recording });
+
+        // The OUTER document never mentions TestBrush — only the nested one does. Seeing it on the
+        // recording provider proves the nested parse ran through the triggering loader.
+        var dict = (ResourceDictionary)loader.Load(
+            $"<ResourceDictionary{Pre} Source=\"cursorial://Cursorial.UI.Xaml.Tests/Themes/Inner.xaml\"/>");
+
+        Assert.IsType<TestBrush>(dict["Accent"]);
+        Assert.Contains("TestBrush", recording.RequestedTypeNames);
+    }
+
+    private sealed class RecordingProvider(IXamlTypeMetadataProvider inner) : IXamlTypeMetadataProvider
+    {
+        public List<string> RequestedTypeNames { get; } = [];
+
+        public XamlTypeResolution TryGetType(string xmlNamespace, string localName)
+        {
+            RequestedTypeNames.Add(localName);
+            return inner.TryGetType(xmlNamespace, localName);
+        }
+
+        public string[] GetClrNamespaces(string xmlNamespace) => inner.GetClrNamespaces(xmlNamespace);
+
+        public string[] GetKnownTypeNames(string xmlNamespace) => inner.GetKnownTypeNames(xmlNamespace);
+
+        public string[] GetKnownMemberNames(IXamlType type) => inner.GetKnownMemberNames(type);
+    }
+
     [Fact] // X132
     public void X132_ModuleInit_InstallsLoadCallback()
     {

@@ -80,7 +80,12 @@ public static class XamlModule
             throw new InvalidOperationException(
                 $"No XAML resource was found for '{uri}' (the registered XamlModule.ResourceProvider returned nothing).");
 
-        var root = XamlLoader.Shared.Load(xaml, uri);
+        // Prefer the loader whose instantiation triggered this Source resolution (the LoadCallback seam
+        // erases loader context — Cursorial.UI cannot reference the loader), so a document's merged
+        // dictionaries load through the SAME loader/provider as the document itself — under strict
+        // trimming that is the generated closed-set provider its InitializeComponent bound explicitly.
+        // Shared (the ambient default) serves only loads user code initiates outside any loader.
+        var root = (XamlLoader.Current ?? XamlLoader.Shared).Load(xaml, uri);
         if (root is ResourceDictionary dictionary)
             return dictionary;
 

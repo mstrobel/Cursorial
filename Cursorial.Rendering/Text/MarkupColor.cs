@@ -24,12 +24,18 @@ public static class MarkupColor
 
     /// <summary>Try to parse a color token (#hex, palette index 0–255, or a named color). Case-insensitive
     /// for names; returns false (and <paramref name="color"/> = default) for an unrecognized token.</summary>
-    public static bool TryParse(string? value, out Color color)
+    public static bool TryParse(string? value, out Color color) => TryParse(value, out color, out _);
+
+    /// <summary>Try to parse a color token (#hex, palette index 0–255, or a named color). Case-insensitive
+    /// for names; returns false (and <paramref name="color"/> = default) for an unrecognized token.</summary>
+    public static bool TryParse(string? value, out Color color, out Exception? error)
     {
         color = default;
+        error = null;
+
         if (string.IsNullOrEmpty(value)) return false;
 
-        if (value.StartsWith('#')) return TryParseHex(value.AsSpan(1), out color);
+        if (value.StartsWith('#')) return Color.TryParseHex(value.AsSpan(1), out color, out error);
 
         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
         {
@@ -43,44 +49,13 @@ public static class MarkupColor
             color = Color.FromPalette(palette);
             return true;
         }
+
         return false;
     }
 
     /// <summary>Parse a color token, throwing <see cref="FormatException"/> on an unrecognized one.</summary>
     public static Color Parse(string value) =>
-        TryParse(value, out var color)
+        TryParse(value, out var color, out var error)
             ? color
-            : throw new FormatException($"Unrecognized color '{value}'. Use a name, palette index 0–255, or #rgb / #rrggbb hex.");
-
-    private static bool TryParseHex(ReadOnlySpan<char> hex, out Color color)
-    {
-        color = default;
-        switch (hex.Length)
-        {
-            case 3:
-                if (!TryHexDigit(hex[0], out int r3) || !TryHexDigit(hex[1], out int g3) || !TryHexDigit(hex[2], out int b3)) return false;
-                color = Color.FromRgb((byte) (r3 * 17), (byte) (g3 * 17), (byte) (b3 * 17));
-                return true;
-            case 6:
-                if (!TryHexDigit(hex[0], out int r1) || !TryHexDigit(hex[1], out int r0) ||
-                    !TryHexDigit(hex[2], out int g1) || !TryHexDigit(hex[3], out int g0) ||
-                    !TryHexDigit(hex[4], out int b1) || !TryHexDigit(hex[5], out int b0)) return false;
-                color = Color.FromRgb((byte) ((r1 << 4) | r0), (byte) ((g1 << 4) | g0), (byte) ((b1 << 4) | b0));
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static bool TryHexDigit(char c, out int value)
-    {
-        value = c switch
-        {
-            >= '0' and <= '9' => c - '0',
-            >= 'a' and <= 'f' => c - 'a' + 10,
-            >= 'A' and <= 'F' => c - 'A' + 10,
-            _                 => -1,
-        };
-        return value >= 0;
-    }
+            : throw new FormatException($"Unrecognized color '{value}'. Use a name, palette index 0–255, or #rgb / #rrggbb hex.", error);
 }

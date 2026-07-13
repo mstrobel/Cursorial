@@ -104,31 +104,61 @@ public readonly record struct Color
     /// <summary>Construct a 24-bit truecolor value from a hex code.</summary>
     public static Color FromHex(in ReadOnlySpan<char> hexCode)
     {
+        return TryParseHex(hexCode, out Color color, out Exception? error) ? color : throw error!;
+    }
+
+    /// <summary>Construct a 24-bit truecolor value from a hex code.</summary>
+    public static bool TryParseHex(in ReadOnlySpan<char> hexCode, out Color color, out Exception? error)
+    {
+        color = default;
+        error = null;
+
         var span = hexCode;
         
         // Remove leading '#' if present
         if (span.Length > 0 && span[0] == '#')
             span = span[1..];
-        
-        // Support 3-digit (#RGB) and 6-digit (#RRGGBB) hex codes
-        if (span.Length == 3)
+
+        try
         {
-            // Convert 3-digit format to 6-digit by doubling each digit
-            byte r = (byte)(ParseHexDigit(span[0]) * 17);
-            byte g = (byte)(ParseHexDigit(span[1]) * 17);
-            byte b = (byte)(ParseHexDigit(span[2]) * 17);
-            return FromRgb(r, g, b);
+            // Support 3-digit (#RGB) and 6-digit (#RRGGBB) hex codes
+            if (span.Length == 3)
+            {
+                // Convert 3-digit format to 6-digit by doubling each digit
+                byte r = (byte) (ParseHexDigit(span[0]) * 17);
+                byte g = (byte) (ParseHexDigit(span[1]) * 17);
+                byte b = (byte) (ParseHexDigit(span[2]) * 17);
+                color = FromRgb(r, g, b);
+                return true;
+            }
+
+            if (span.Length == 6)
+            {
+                byte r = (byte) ((ParseHexDigit(span[0]) << 4) | ParseHexDigit(span[1]));
+                byte g = (byte) ((ParseHexDigit(span[2]) << 4) | ParseHexDigit(span[3]));
+                byte b = (byte) ((ParseHexDigit(span[4]) << 4) | ParseHexDigit(span[5]));
+                color = FromRgb(r, g, b);
+                return true;
+            }
+
+            if (span.Length == 8)
+            {
+                byte r = (byte) ((ParseHexDigit(span[0]) << 4) | ParseHexDigit(span[1]));
+                byte g = (byte) ((ParseHexDigit(span[2]) << 4) | ParseHexDigit(span[3]));
+                byte b = (byte) ((ParseHexDigit(span[4]) << 4) | ParseHexDigit(span[5]));
+                byte a = (byte) ((ParseHexDigit(span[6]) << 4) | ParseHexDigit(span[7]));
+                color = FromRgba(r, g, b, a);
+                return true;
+            }
+        }
+        catch (FormatException inner)
+        {
+            error = inner;
+            return false;
         }
 
-        if (span.Length == 6)
-        {
-            byte r = (byte)((ParseHexDigit(span[0]) << 4) | ParseHexDigit(span[1]));
-            byte g = (byte)((ParseHexDigit(span[2]) << 4) | ParseHexDigit(span[3]));
-            byte b = (byte)((ParseHexDigit(span[4]) << 4) | ParseHexDigit(span[5]));
-            return FromRgb(r, g, b);
-        }
-
-        throw new ArgumentException($"Invalid hex code format. Expected 3 or 6 hex digits, got {span.Length}.", nameof(hexCode));
+        error = new FormatException($"Invalid hex code format. Expected #RGB, #RRGGBB, or #RRGGBBAA, but got '{span}'.");
+        return false;
 
         static int ParseHexDigit(char c)
         {
@@ -138,7 +168,7 @@ public readonly record struct Color
                 return c - 'a' + 10;
             if (c is >= 'A' and <= 'F')
                 return c - 'A' + 10;
-            throw new ArgumentException($"Invalid hex digit: '{c}'");
+            throw new FormatException($"Invalid hex digit: '{c}'");
         }
     }
 

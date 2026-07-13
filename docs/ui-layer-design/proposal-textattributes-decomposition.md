@@ -1,8 +1,9 @@
 # Proposal: Per-Axis Text-Attribute Properties (the `TextAttributes` Decomposition)
 
-**Status: PROPOSAL — Q1/Q2/Q4 decided 2026-07-13 (§8); Q3 carries a recommendation awaiting
-owner confirmation.** Produced 2026-07-13 by the panel process recorded in §9; the adversarial
-judgment lives in `judgment-textattributes-decomposition.md`. Nothing here is implemented.
+**Status: PROPOSAL — all four owner decisions recorded (§8); ready to schedule.** Produced
+2026-07-13 by the panel process recorded in §9, then re-cut the same day to the owner-directed
+**non-inheriting** flow model (§9 notes the redirect); the adversarial judgment lives in
+`judgment-textattributes-decomposition.md`. Nothing here is implemented.
 
 ---
 
@@ -13,12 +14,11 @@ already a problem because it groups several display characteristics together; yo
 Bold? Well, better hope Inverse wasn't already there for a good reason."*
 
 `TextElement.TextAttributesProperty` packs nine independent axes (Bold, Faint, Italic, Underline,
-Blink, Inverse, Hidden, Strikethrough, Overline) into one inherited attached property. The value
-store arbitrates **whole values per property** — the model the completed lattice (PD26/PD27) was
-just built against, and the correct one — so producers that care about *different axes* are forced
-to fight: a theme's `:focus-visible → Inverse` rule and an app's `Bold` rule cannot coexist; the
-winner's whole value replaces the loser's, and inheritance shadowing (nearest whole-value
-contributor) clobbers at the same granularity. Meanwhile every layer BELOW the property is already
+Blink, Inverse, Hidden, Strikethrough, Overline) into one attached property. The value store
+arbitrates **whole values per property** — the model the completed lattice (PD26/PD27) was just
+built against, and the correct one — so producers that care about *different axes* are forced to
+fight: a theme's `:focus-visible → Inverse` rule and an app's `Bold` rule cannot coexist; the
+winner's whole value replaces the loser's. Meanwhile every layer BELOW the property is already
 decomposed: SGR sets and resets each attribute independently (1/2/3/4/5/7/8/9/53, resets
 22/23/24/25/27/28/29/55 — `SgrEncoder.cs:147-197`), `StyleQuantizer` drops attributes one at a
 time, the cell `Style` is a bitset, and the Drawing markup tier composes per-flag. The UI property
@@ -26,24 +26,31 @@ is the only aggregation point in the stack.
 
 **The thesis: the store is not the bug — the granularity is.** Give each axis its own
 `UIProperty` and the existing machinery *is* per-flag composition: two producers on different axes
-never meet in arbitration; "turn off an inherited flag" is an ordinary `false` contribution that
-shadows exactly one axis; `ClearValue` restores inheritance; conditional rules pierce template
-values per axis exactly as PD26 intends. **Zero new engine machinery.** `Output.TextAttributes`
-(shipped Core; the wire/cell vocabulary) is untouched — renderers fold the per-axis effective
-values back into the bitset at paint.
+never meet in arbitration; conditional rules pierce template values per axis exactly as PD26
+intends. **Zero new engine machinery.** `Output.TextAttributes` (shipped Core; the wire/cell
+vocabulary) is untouched — renderers fold the per-axis effective values back into the bitset at
+paint.
 
-All three independently-authored panel proposals converged on this structure; the judgment
-(§9) rated the convergence itself as strong evidence. What follows is the synthesis: the winning
-proposal's architecture with the judge's mandated fixes and grafts applied.
+**The flow model (owner decision ③): the axes are NON-inheriting and flow like `Background`, not
+like `Foreground`.** Usage leans virtually exclusively to element-level application, and the
+interactive-cue model already rides the control-property → `TemplateBinding` spine for its brush
+half — the attribute half now rides the same spine, so the NoColor cue (`Inverse`) and the
+color-tier cue (brush swap) flow through ONE mechanism, completing the one-vocabulary-per-tier
+principle (§2.3). This deletes the proposal's riskiest engineering outright: no inheritance walks,
+no read amplification, no reparent-diff participation, no §2.9 pressure (§3.2).
+
+All three independently-authored panel proposals converged on per-axis decomposition with
+paint-time folding; the judgment rated the convergence itself as strong evidence. The panel
+assumed inherited axes; the owner redirected the flow model after reviewing usage — §9 records
+both.
 
 ---
 
 ## 1. Property surface
 
 All properties live on `TextElement` (namespace `Cursorial.UI.Controls`), registered as
-`AttachedProperty<T>` with `inherits: true` and `AffectsRender` on the **global effects lane** —
-mechanically identical to today's `TextAttributesProperty` (`TextElement.cs:30-38`; inherited
-attached properties fan to arbitrary descendant types, so per-owner-type effects don't work). No
+**non-inheriting** `AttachedProperty<T>` with `AffectsRender` on the **global effects lane**
+(attached to arbitrary host types, so per-owner-type effects registration doesn't apply). No
 `AddOwner` in v1 (parity with today; the control-matrix C119 claim of AddOwner'ing is pre-existing
 doc/code drift — fixed in docs, not by adding code).
 
@@ -58,7 +65,7 @@ public enum TextWeight : byte { Normal = 0, Faint, Bold }
 | `TextWeightProperty` | `TextWeight` | `Normal` | Bold→1, Faint→2, Normal→neither (reset 22) | the axis of WPF `FontWeight` / CSS `font-weight`, not the type (§8 Q1) |
 | `ItalicProperty` | `bool` | `false` | 3 / 23 | WPF `FontStyle` minus the inexpressible `Oblique` |
 | `UnderlineProperty` | `UnderlineStyle?` | `null` | 4 / 4:n / 24 | presence + shape unified; `null` = no underline (§8 Q2) |
-| `UnderlineBrushProperty` | `IBrush?` | `null` | 58 / 59 | CSS `text-decoration-color`; **phase-late, demand-gated** (§8 Q2) |
+| `UnderlineBrushProperty` | `IBrush?` | `null` | 58 / 59 | CSS `text-decoration-color`; **phase-late, demand-gated** |
 | `StrikethroughProperty` | `bool` | `false` | 9 / 29 | CSS `line-through` |
 | `OverlineProperty` | `bool` | `false` | 53 / 55 | CSS `overline` |
 | `InverseProperty` | `bool` | `false` | 7 / 27 | terminal-native — the reverse-video theming axis |
@@ -86,19 +93,16 @@ Design arguments per row:
   0`, no `None` — adding one would renumber a shipped enum; a parallel UI-side enum was rejected
   as an unenforced cross-layer invariant), and the XAML converter ladder already unwraps
   `Nullable<T>` (`XamlConverters.cs:70,81` — verified), so `TextElement.Underline="Curly"` parses
-  today and `{x:Null}` clears. Color stays separate: it is a separate wire channel (58/59), a
-  different type (brush, tier-quantized), and legitimately restyled without knowing shape (the
-  mnemonic indicator, `AccessTextPresenter.cs:111`, today hardcoded). **v1 scope is owner
-  question 2** — the formatted-text seam is flags-only today, and this proposal refuses to ship a
-  property whose values silently drop (§3.1).
+  today and `{x:Null}` clears. Color stays separate: a separate wire channel (58/59), a different
+  type (brush, tier-quantized), legitimately restyled without knowing shape.
 - **`Concealed`, not `Hidden`.** `Visibility.Hidden` already means something else in this
   framework; ANSI's own word is "conceal". The one property whose name deviates from its enum
   member — the mapping is one documented line in the fold.
 - **The exotics (Blink, Concealed, Overline) get real properties.** Losslessness: during migration
   the fold ORs `perAxis ∪ legacyAggregate`, and every legacy flag needs a per-axis home or the
   bridge is partial; post-migration, "every SGR attribute is reachable through the styled spine"
-  is a clean claim for a terminal-first library. Whether they *inherit* is owner question 3 (they
-  are the marginal cost drivers in the reparent diff).
+  is a clean claim for a terminal-first library. Under the non-inheriting cut they carry no
+  walk/reparent cost at all — the old demotion question (panel Q3) is moot.
 - **No `DefaultResourceKey` on any of them** (contrast `ForegroundProperty`). The defaults are
   semantic zeros — correct at every theme and tier; tier polymorphism belongs in rules and the cue
   resources (§2.3). The machinery stays available (e.g. a future hyperlink theme giving
@@ -111,57 +115,65 @@ Design arguments per row:
 
 ## 2. Semantics
 
-### 2.1 Per-axis inheritance, including "turn OFF an inherited flag" — zero new machinery
+### 2.1 The flow model: element-level values + the forwarding spine
 
-Shadowing in the store is **presence-based** (`EffectivePriority != Unset` is a contribution —
-`UIObject.cs:89, :767`), which is exactly the tri-state the aggregate design lacked:
+Three delivery paths, all existing idioms — this is exactly how `Background` reaches a button's
+face today:
 
-- **Add a flag under an inherited look.** Ancestor holds `Inverse=true` (say
-  `.caps-nocolor ListBoxItem:selected`); a descendant TextBlock gets `TextWeight=Bold` from an app
-  rule. Different property ids → different store slots → the `Inverse` read walks to the ancestor,
-  the `TextWeight` read stops at the local frame. Fold: `Inverse|Bold`. **The motivating bug is
-  structurally impossible.**
-- **Remove a flag under an inherited look.** `ListBoxItem:selected TextBlock.badge
-  { TextElement.Inverse = false }` — that `false` is a real contribution; the badge's read takes
-  it and never walks, while every other axis inherits untouched. `false` ≠ unset: `false` shadows,
-  `ClearValue` restores inheritance — the same distinction the store already makes for every
-  property. No tri-state type (`bool?` was considered and rejected — `null` would duplicate what
-  retraction/`ClearValue` already mean), no masks, no merge frames.
-- **Retraction** is the existing cookie-batch path: rule deactivates → frame removed → the read
-  falls back to the inherited value. Store-owned promotion, conformance-kit covered.
+1. **Element-level (the common case).** The value is set (by rule, resource, or code) on the
+   element that renders it — a `TextBlock`'s own `TextWeight=Bold`, a Border's own `Inverse`.
+   Reads are own-entry-or-default; nothing flows.
+2. **Template parts: `TemplateBinding` forwards.** A control-level value (where theme rules land —
+   `.caps-nocolor Button:focus → Inverse=true` targets the *Button*) reaches the parts that
+   consume it through live per-axis TemplateBindings authored in the template — the brush idiom,
+   verbatim: the face Border forwards `Inverse` for its fill; a title-bearing part forwards the
+   axes its title renders. Forwards land on the Template lane (75), so a conditional rule
+   targeting the part still pierces them (PD26), and a control-value change re-pushes through the
+   forward exactly as brush forwards re-push today.
+3. **Framework-generated presentation leaves: presenter forwards.** `ContentPresenter` (and the
+   `AccessTextPresenter` path) forwards the `TextElement` axes from the templated parent onto the
+   presentation elements **it generates itself** — the string-content `TextBlock`, the access-text
+   leaf. **`DataTemplate`-built content is never touched**: app content is app-styleable (the
+   PD24′ principle) and receives no ambient attributes — an app styles its own item-template text
+   directly (`ListBoxItem:selected TextBlock { … }` descendant rules match app content; the
+   template barrier only guards template parts).
 
-This unblocks two recorded theme deferrals: the TreeView NoColor selection rule
-(`CursorialThemeStyles.cs:104-106` excludes TreeViewItem *because* inherited Inverse leaks into
-nested children — a child-scoped `Inverse=false` cancel becomes safe, since it no longer also
-strips disabled-Faint), and the P9.3b Inverse+Bold ListBox focus cue (`ControlThemes.cs:271`),
-which becomes two composable setters — and the live proof-of-fix (§5 P3).
+Composition across producers is per-axis and needs no flow at all: the theme's `Inverse` frame and
+the app's `TextWeight` frame arbitrate on the *same control* in *different store slots* — the
+motivating bug is structurally impossible. "Turn off" is now trivial: there is no ambient flow to
+cancel; within one element the lattice arbitrates `false` vs `true` contributions like any other
+property.
 
-One honest non-fix: decomposition does not stop inheritance *flowing*; it adds the surgical
-countermeasure (per-axis cancel) that whole-value shadowing made too destructive to use.
+Two recorded problems dissolve outright under this cut: the **TreeView NoColor selection leak**
+(`CursorialThemeStyles.cs:104-106` deferred the rule *because* inherited Inverse bled into nested
+items — with no inheritance there is no bleed; the row's face and generated header text invert via
+forwards, nested items are untouched), and the **P9.3b Inverse+Bold ListBox focus cue**
+(`ControlThemes.cs:271`) becomes two composable setters — the live proof-of-fix (§5 P3).
 
 ### 2.2 Interaction with the completed lattice — worked arbitration
 
 Setup: NoColor tier. Theme conditional rule `.caps-nocolor Button:focus → Inverse=true`
 (classLike > 0 ⇒ **StyleTrigger, 50**). App resting rule `Button.title → TextWeight=Bold`
-(structural ⇒ **Style, 100**). Content TextBlock below.
+(structural ⇒ **Style, 100**). Both target the **Button** — arbitration happens in exactly one
+place, per axis.
 
 1. Focus lands; the StyleEngine activates the theme rule → one frame at StyleTrigger on the Button
    for `InverseProperty`. The app's `TextWeightProperty` frame rests at Style on the same Button.
    **Different properties — no arbitration between them ever occurs.** (Today: two frames on ONE
    property; StyleTrigger beats Style; the focused button reads `Inverse` and Bold vanishes — the
    reported bug, verbatim.)
-2. The TextBlock renders: `Inverse` walks to the Button's StyleTrigger value (`true`);
-   `TextWeight` walks to the Style value (`Bold`). Fold: `Inverse|Bold`. Both cues render.
+2. Delivery: the face Border's `Inverse` forward re-pushes `true` → the fill inverts; the label
+   leaf (presenter forward) re-pushes both axes → the text renders `Inverse|Bold`. Both cues
+   compose.
 3. App cancels the theme's inverse for one quiet button: `Button.quiet:focus → Inverse=false`.
    Both rules are conditional (same slot); the packed sort key arbitrates within the slot — the
-   `[layer]` field is the top bits and App > Theme, so the app's `false` wins. PD26 untouched.
-4. If the cue were a **template-part value** instead (Template lane, 75), a conditional
-   `Inverse=false` (StyleTrigger, 50) pierces it — an active state look beating a part's resting
-   truth, the lattice's design intent, now available per axis. A SuperTip title's template-lane
-   Bold (`CursorialBarsTheme.cs:1080`) coexists with any conditional Inverse rule (different
-   property) and yields to a conditional `TextWeight` rule (same axis) — WPF-parity behavior.
-5. Blur: retraction removes the `Inverse` frame; `TextWeight` never moves — **no re-arbitration
-   even occurs for the axes whose frame stacks didn't change.**
+   `[layer]` field is the top bits and App > Theme, so the app's `false` wins **on the control**,
+   and the forwards carry whatever won. PD26 untouched.
+4. A conditional rule targeting a *part* still pierces that part's forwarded value (StyleTrigger
+   50 over Template 75) — per axis, the lattice's design intent.
+5. Blur: retraction removes the `Inverse` frame on the control; the forwards re-push the resting
+   value; `TextWeight` never moves — **no re-arbitration even occurs for the axes whose frame
+   stacks didn't change.**
 
 `SetCurrentValue`/PD27, `BindingOperations.Watch`, `When` conditions: the new properties get all
 of it for free — they are ordinary registered properties.
@@ -194,15 +206,6 @@ tier-descent trick is a property of the `ThemeDictionaries` lookup, not the valu
 unchanged. The `(Dark|Light, Ansi16) = Faint` oddity is preserved verbatim and becomes *legible*
 in the table for designers to revisit.
 
-**Honest parity note (tempered per the judgment):** at color tiers these rules today contribute a
-whole-value `None` at StyleTrigger while active — shadowing **all nine** inherited axes on every
-focused control. After the split they contribute `Inverse=false` + `Weight=Normal` at StyleTrigger
-while active: the cue rule still *owns the two cue axes* during focus (an app's ambient Bold still
-yields to the cue's `Normal` while focused — the known residual, §7), but italic, underline,
-strikethrough, and the rest now inherit straight through. The blast radius shrinks from nine axes
-to the two the cue actually speaks about; use italic/underline as the example of what's fixed, not
-weight.
-
 **Why reverse-video is a NoColor-tier idiom (owner-supplied ground truth, 2026-07-13):** at
 color tiers a non-occluding face fills through the glyph-transparent `PaintRectangle` tint, which
 deliberately drops attributes on glyphless cells (`Border.cs:151-162` — an attribute-bearing face
@@ -216,19 +219,31 @@ attribute-based focus cue composes with them as "invert whatever brushes happen 
 derived color, not a designed one — so focus+hover and focus+pressed render incoherently. At
 NoColor, brushes collapse and EVERY cue is an attribute, so the vocabulary stays uniform there
 too. The cue-pair tier tables encode this principle (Inverse fires only where brushes cannot
-speak); theme authors: do not mix cue vocabularies within a tier.
+speak); theme authors: do not mix cue vocabularies within a tier. Under the non-inheriting cut the
+two cue halves also share one *delivery* mechanism — control property → forwards — completing the
+symmetry.
+
+**Honest parity note:** at color tiers the cue rules today contribute a whole-value `None` at
+StyleTrigger while active — shadowing **all nine** axes on every focused control. After the split
+they contribute `Inverse=false` + `Weight=Normal` at StyleTrigger while active: the cue rule still
+*owns the two cue axes* during focus (an app's Bold on the same control still yields to the cue's
+`Normal` while focused — the known residual, §7), but every other axis is untouched.
 
 **Pair coherence** (no proposal had this; the judge added it): a theme test walks every tier
 dictionary asserting **both** cue keys are present — the pair-coherence lint all three proposals'
 self-critiques asked for, at test-time cost instead of engine cost.
 
+**`DefaultResourceKey`:** assigned to none of the new properties at v1 (§1); documented as
+available.
+
 ---
 
-## 3. Composition — the fold, and honest perf accounting
+## 3. Composition — the fold, and the (now short) perf story
 
 ### 3.1 The fold
 
-One composition point replaces the four renderers' `GetTextAttributes` reads:
+One composition point replaces the four renderers' `GetTextAttributes` reads — reading the
+element's **own** effective values:
 
 ```csharp
 /// <summary>Paint-time resolution of the per-axis properties into the Drawing tier's vocabulary.</summary>
@@ -239,82 +254,67 @@ public readonly record struct ResolvedTextAttributes(
     public bool Inverse => (Flags & TextAttributes.Inverse) != 0;
 }
 
-public static ResolvedTextAttributes ComposeAttributes(UIElement element) { /* §5 P1/P2 */ }
+public static ResolvedTextAttributes ComposeAttributes(UIElement element) { /* nine own-value reads */ }
 ```
 
 Point edits per renderer (the complete reader set, per the scout inventory):
 
 - **TextBlock** (`:118`) — the fold's `Flags` as `baseAttributes`; the pinned C166b/C166c contract
-  (merge at paint, never in the `FormattedText` cache key) is untouched — the fold happens exactly
-  where the single read happened.
+  (merge at paint, never in the `FormattedText` cache key) is untouched. **The underline seam
+  widening (Q2)** carries `UnderlineShape` alongside the flags through
+  `RenderContext.DrawFormattedText` → `DrawFormattedCore`, so `Underline="Curly"` renders Curly
+  from day one — the flags-only seam (verified) is widened in the same phase the property ships;
+  no silently-dropped values.
 - **Border** (`:145-165`) — the fill decision reads `GetInverse(this)` directly (a *cleaner*
   statement of the deliberate Inverse-only fill asymmetry than today's flag pluck); the
-  `PanelTitle` takes the full fold; the NoColor force-opaque branch is untouched.
-- **AccessTextPresenter** (`:86-118`) — base = fold; mnemonic cell = `KeyAttributes | base` plus
-  the existing hardcoded underline shape/color (until/unless `UnderlineBrushProperty` ships).
-- **ToggleGlyph** (`ControlThemes.cs:1950-1990`) — fold on the glyph cells; NoColor disabled-Faint
-  parity preserved.
-- **TextPresenter** — *newly able* to participate (today TextBox content ignores the inherited
-  spine entirely — a recorded gap); optional follow-on, not gating. Its placeholder-Faint and
-  NoColor-selection-Inverse cell bakes stay (leaf visuals, no producer fight).
+  `PanelTitle` takes the full fold; the NoColor force-opaque branch is untouched. The face's value
+  arrives via the template's `Inverse` forward.
+- **AccessTextPresenter** (`:86-118`) — base = fold of its own (forwarded) values; mnemonic cell =
+  `KeyAttributes | base` plus the existing hardcoded underline shape/color (until/unless
+  `UnderlineBrushProperty` ships).
+- **ToggleGlyph** (`ControlThemes.cs:1950-1990`) — fold on the glyph cells (forwarded axes);
+  NoColor disabled-Faint parity preserved.
+- **TextPresenter** — *newly able* to participate via a TextBox-template forward (today TextBox
+  content ignores the attribute spine entirely — a recorded gap); optional follow-on, not gating.
 
-Downstream of the fold, **nothing changes**: `RenderContext.DrawFormattedText(…, baseAttributes)`
-→ `DrawingContext.DrawFormattedCore`'s OR merge (`:913-915`), `Pen.Attributes`,
-`PanelTitle.Attributes`, `DecoratedFont`, `SgrEncoder`, `StyleQuantizer` all keep consuming
-`Output.TextAttributes` — which keeps every lower-layer suite decomposition-neutral by
-construction.
+**The forwarding spine** (the §2.1 flow model's delivery half, all landing in framework/theme
+code):
 
-**The paint-merge OR stays OR.** Per-axis *removal* happens upstream at the property level, so the
-render pipeline never needs a subtraction channel. Content-baked markup flags (`[b]` in cached
+- `ContentPresenter` forwards the `TextElement` axes from its templated parent onto the
+  presentation elements it **generates** (string→`TextBlock`, the access-text leaf) — never onto
+  `DataTemplate`-built content.
+- Control templates forward the axes their parts consume (`part.SetBinding(TextElement
+  .InverseProperty, new TemplateBinding(TextElement.InverseProperty))`, inside the template build
+  → Template lane). The button family forwards `Inverse` to the face Border; the label path gets
+  the cue axes via the presenter forward. The existing aggregate forward at `ControlThemes.cs:100`
+  becomes these per-axis forwards (§4.2).
+
+Downstream of the fold, **nothing changes**: `DrawingContext.DrawFormattedCore`'s OR merge
+(`:913-915`), `Pen.Attributes`, `PanelTitle.Attributes`, `DecoratedFont`, `SgrEncoder`,
+`StyleQuantizer` all keep consuming `Output.TextAttributes` — every lower-layer suite is
+decomposition-neutral by construction.
+
+**The paint-merge OR stays OR.** Per-axis *removal* happens at the property level; the render
+pipeline never needs a subtraction channel. Content-baked markup flags (`[b]` in cached
 `FormattedText` runs) remain un-strippable from properties — a scoping rule (markup is inner-scope
 content; content wins), same as today, pinned as a residual in §7.
 
-**No silent drops — resolved (Q2, decided 2026-07-13):** the formatted-text seam carries flags
-only today (`RenderContext.DrawFormattedText(…, TextAttributes baseAttributes)`, verified), so the
-`DrawFormattedText`/`RenderContext` base-style widening (underline shape carried alongside the
-flags into `DrawFormattedCore`'s merge) **ships in the same phase as the property** (§5 P2):
-`Underline="Curly"` renders Curly from day one. The rejected alternative (presence-only v1 behind
-a `Validate` gate) is recorded here only so the silent-drop failure mode stays named.
+### 3.2 Perf accounting — mostly deleted by the flow-model decision
 
-### 3.2 Perf accounting (corrected per the judgment)
+The panel's heaviest engineering existed to pay for inheritance; the non-inheriting cut removes
+the bill:
 
-**The read path, honestly.** There is **no** "never contributed anywhere" fast path: when an
-element has no own entry, `GetValue` unconditionally walks the parent chain probing every
-ancestor's store (`UIObject.cs:92, :763-776`) — a never-set inheriting property is the *most*
-expensive read, walking to the root before falling to default. Naively, nine properties ≈ 9 × D
-store probes per text-element render (D = tree depth, 10–20 in real apps). Text elements render
-per dirty zone, not per frame, and the probes are null-check + small-map lookups — but the design
-treats the amplification as a first-class constraint, not a footnote:
-
-- **The batched single-pass walk** ships in the same phase as the properties (§5 P2): the fold
-  walks the `IInheritanceNode` chain **once**, carrying a bitmask of unresolved axes, probing each
-  node for the remaining ids, stopping when the mask empties or the root is reached. One chain
-  traversal, k probes per node (k shrinking as axes resolve). Needs one small `internal` read-only
-  helper on `UIObject`/`ValueStore` ("does this object contribute property P, with what effective
-  value") — an accessor over machinery `FindInheritedEntry` already has, not a new lane or cache.
-- **The equivalence gate**: a property test asserting the batched walk ≡ nine naive `GetValue`
-  calls across the store-state matrix (own entries, animated lanes, shadowing ancestors, unset),
-  plus a `ComposeAttributes` micro-benchmark beside `StoreSpikeBenchmark`, both landing WITH the
-  walk — not after the migration.
-- **A cached composite is deliberately NOT built** (it needs per-axis invalidation hooks — new
-  machinery — to save time the benchmark must first prove is being lost).
-
-**The reparent tax.** `SetInheritanceParent` diffs *every* registered inheriting property over the
-old and new chains — two walks each, even when both sides are empty (`UIObject.cs:726-729,
-:790-794`). +8 registrations is a real multiplicative cost on tree churn (template application,
-items realization, window open). The design doc already names the cure (§2.9 push-down shared
-boxes, deliberately unbuilt); this proposal is the first real pressure on that deferral. §5 P3
-takes reparent-heavy measurements (gallery page swap, items-host realization); owner question 3
-sets the gate number that would force either demoting the exotics to non-inheriting or funding
-§2.9.
-
-**Store footprint.** A plain TextBlock: zero entries today, zero after. A NoColor-focused button:
-one StyleTrigger frame → two (Inverse + Weight); the template Border *loses* its Template-lane
-entry (§4.2). Net wash. Fold allocation: zero (typed bool/enum reads, bit-ORs).
-
-**Change fan-out.** Nine properties ride the existing global-`AffectsRender` eager fan-out; a
-focus flip that changed one property now changes one or two. Every rule in the theme inventory
-sets one or two axes; the motion-storm gates don't read these properties and re-assert unchanged.
+- **Reads:** own-entry probe or metadata default — no ancestor walks, no read amplification, no
+  batched single-pass walk, no equivalence gate. (The panel-era hazard is recorded for history:
+  never-set *inheriting* properties walk to the root per read, `UIObject.cs:92, :763-776`; these
+  properties never walk at all.)
+- **Reparenting:** non-inheriting properties do not participate in `SetInheritanceParent`'s
+  per-property chain diffs — zero marginal reparent cost, no demotion gate, no new §2.9 pressure.
+- **Forward cost:** one Template-lane entry per consumed axis per part instance — bounded by what
+  templates author, the same order as the brush forwards controls already carry. The presenter
+  forward adds the same per generated leaf.
+- **The fold:** nine local reads + bit-ORs, zero allocation. One `StoreSpikeBenchmark` fold row
+  lands for hygiene; the motion-storm gates don't read these properties and re-assert unchanged.
 
 ---
 
@@ -335,29 +335,28 @@ every consumer is in-repo; Gallery has *zero* references).
 - **Computed read-only aggregate — rejected.** Breaks the TemplateBinding writer and the three
   imperative writers anyway, and keeps two vocabularies alive forever.
 - **The `SetTextAttributes` expansion helper — rejected (judge-mandated).** Writing all nine axes
-  as LocalValue frames is a nine-frame clobber footgun — shadowing every inherited axis, the exact
-  pathology being killed, with no single `ClearValue` to undo it. The aggregate *name* dies with
-  the property. (`Output.TextAttributes` the enum lives on: wire type, `Style`/`Pen`/`PanelTitle`/
-  markup currency, `KeyAttributesProperty` type, and the fold's return vocabulary. Its
-  `TextAttributesConverter` survives for those uses; its false "pipe-separated" comment gets fixed
-  in passing.)
+  as LocalValue frames is a nine-frame clobber footgun with no single `ClearValue` to undo it. The
+  aggregate *name* dies with the property. (`Output.TextAttributes` the enum lives on: wire type,
+  `Style`/`Pen`/`PanelTitle`/markup currency, `KeyAttributesProperty` type, and the fold's return
+  vocabulary. Its `TextAttributesConverter` survives for those uses; its false "pipe-separated"
+  comment gets fixed in passing.)
 
-### 4.2 The `ControlThemes.cs:100` TemplateBinding: delete it (unanimous)
+### 4.2 The `ControlThemes.cs:100` TemplateBinding: from one aggregate forward to per-axis forwards
 
-The button face's Border self-forwards the aggregate via TemplateBinding — redundant under an
-inheriting property (the templated parent is the part's ancestor; Bars' `BarItemTemplate` already
-relies on pure inheritance for the same job). The arbitration delta is real and gets a **pinned
-lane-change parity test**: today the part holds a Template-lane (75) frame that resting
-part-targeted rules cannot pierce; after deletion the value arrives via the Inherited lane, which
-any part rule beats. No in-repo rule targets a part's text attributes, so rendering is
-byte-identical — the test pins that and documents the lane change for future template authors.
+Under the non-inheriting cut the forward is not deleted (the panel's inherited-flow assumption) —
+it becomes the *pattern*: the button face's Border forwards `Inverse`; other templates forward the
+axes their parts consume. Forwards are template-authored (Template lane), so conditional
+part-targeted rules pierce them (PD26) and resting part rules cannot — the part's resting truth is
+what the template wired, exactly the lattice's contract for brushes. A parity test pins the button
+family's cue delivery end-to-end (control rule → forward → face fill + label text) at NoColor and
+a color tier.
 
 ### 4.3 Site-by-site (from the scout inventory; complete worklist in the inventory itself)
 
 ```csharp
 // (1) code-first literal — CapsNoColorInteractiveInverse (CursorialThemeStyles.cs:82)
 .Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)   // before
-.Set(TextElement.InverseProperty, true)                            // after
+.Set(TextElement.InverseProperty, true)                            // after   (rule shape unchanged)
 
 // (2) CapsNoColorDisabledFaint (:96)
 .Set(TextElement.TextAttributesProperty, TextAttributes.Faint)     // before
@@ -377,8 +376,15 @@ byte-identical — the test pins that and documents the lane change for future t
 <Setter Property="TextElement.TextWeight" Value="Faint"/>        <!-- after -->
 ```
 
+- **Templates gain the per-axis forwards** their parts consume (button family: `Inverse` to the
+  face Border; ToggleGlyph's host template: the cue axes; TabItem header per the selection rule) —
+  the §4.2 pattern, replacing the single aggregate forward.
+- **`ContentPresenter` gains the generated-leaf forward** (framework code, §3.1) — the one
+  genuinely NEW mechanism in the migration, and it is a targeted application of the existing
+  binding machinery, not engine work.
 - **Imperative writers (3):** `TaskDialog.cs:136`, `FirstRunWizard.cs:111` →
-  `SetTextWeight(el, TextWeight.Bold)` (LocalValue, as today); `CursorialBarsTheme.cs:1080` the
+  `SetTextWeight(el, TextWeight.Bold)` (LocalValue, as today — both already target the text
+  element itself, i.e. element-level, confirming the flow model); `CursorialBarsTheme.cs:1080` the
   same inside its template scope (Template lane, unchanged mechanics).
 - **XAML converter + generator: zero new code.** `TextWeight` rides the generic enum path;
   `UnderlineStyle?` rides the existing `Nullable<T>` unwrap; bools ride the bool converter; all
@@ -393,22 +399,24 @@ byte-identical — the test pins that and documents the lane change for future t
   reconciles the recorded code-first↔XAML drift: the pseudo-class set mismatch (`:pressed` vs
   `:pointerover`), IndigoDusk's missing selection rule *(IndigoDusk is WIP/not-shipping — apply
   opportunistically, not as a gate)*, and DELETING the commented-out accent `:focus-visible`
-  setters (Q4, decided 2026-07-13 — see §8 for the recorded reason).
+  setters (Q4 — see §8 for the recorded reasons).
 - **Tests.** Updated mechanically: ControlMatrix Section09 (22 refs), Section05 (8), Section04
-  (7, incl. C100f's retraction assert → per-axis default), XamlThemeStylesTests (6), Bars (2).
-  New rows: per-axis inheritance walk; cancel-inherited-flag through each lane; the §2.2
-  conditional-over-resting and conditional-over-template walks; weight-axis exclusivity; the
-  tier-resource pair per tier + pair-coherence; TemplateBinding-deletion parity; batched-walk
-  equivalence. Lower-layer suites (SgrEncoder 18, Style 12, Quantizer 9, RichTextBuilder 9):
-  untouched by construction.
+  (7, incl. C100f — its theme-rule-reaches-the-label behavior re-pins against the forward chain
+  instead of inheritance), XamlThemeStylesTests (6), Bars (2). New rows: per-axis arbitration on
+  one control (compose + same-axis contest); forward delivery (control rule → part fill + label
+  text); presenter forwards generated leaves ONLY (a DataTemplate-content TextBlock receives
+  nothing — the §7 scoping rule, pinned); conditional part rule pierces a forwarded value;
+  weight-axis exclusivity; the tier-resource pair per tier + pair-coherence; underline shape
+  end-to-end through the widened seam. Lower-layer suites: untouched by construction.
 - **Docs.** `ui-layer-design.md:680` — recorded as a **refinement, not a reversal**: the pin's
   rationale stands (refuse WPF's font-object model, `FontWeight` struct, and the 100–900 numeric
   lie; no font converters); what changes is only the *aggregation*, and the deviated names signal
   the deviated domain. Also: `:2374` API map; control-matrix C119 (fixing the pre-existing
   AddOwner drift) + C166b/c re-wording; a precedence-matrix companion note ("per-axis text
   properties are the granularity companion to PD26"); CLAUDE.md status blurb; a new pinned
-  decision recording the decomposition, the `TextWeight` fold, the cue-resource split, the
-  TemplateBinding drop, and the §7 residuals.
+  decision recording the decomposition, the `TextWeight` fold, the **non-inheriting
+  flows-like-Background model**, the cue-resource split, the forwarding spine, and the §7
+  residuals.
 
 ---
 
@@ -417,19 +425,21 @@ byte-identical — the test pins that and documents the lane change for future t
 1. **P1 — Compose seam (pure refactor).** `ResolvedTextAttributes` + `ComposeAttributes`
    (legacy-aggregate-only fold); re-point the four renderers. **Byte-identical rendering**;
    existing tests pin it. Every later phase has a stable seam and a small diff.
-2. **P2 — Properties + semantics + the batched walk + the underline seam.** Register the
-   per-axis properties + `TextWeight`; fold becomes `perAxis | legacy`; the batched single-pass
-   walk lands WITH its naive-equivalence property test and micro-benchmark; the
+2. **P2 — Properties + semantics + the underline seam + presenter forwards.** Register the
+   non-inheriting per-axis properties + `TextWeight`; fold becomes `perAxis | legacy`; the
    `DrawFormattedText`/`RenderContext` base-style widening lands so the underline SHAPE renders
-   from day one (Q2); new matrix rows (inheritance, cancel, lattice walks, exclusivity) prove the
-   store semantics before any theme moves.
+   from day one (Q2); `ContentPresenter`'s generated-leaf forward lands with its
+   app-content-untouched row; new matrix rows (per-axis arbitration, forwards, piercing,
+   exclusivity) prove the semantics before any theme moves. The `StoreSpikeBenchmark` fold row
+   lands here.
 3. **P3 — Code-first theme migration.** Cue-resource pair into ThemeKeys + tier dictionaries;
-   rewrite 6 literal + 12 resource rules (core/Bars/Dialogs); 3 imperative writers; delete the
-   TemplateBinding with its parity test; **implement the P9.3b Inverse+Bold ListBox focus cue in
-   the Gallery canary as the composability exit proof** (the motivating scenario, live and
-   hands-on-testable). Reparent/paint measurements taken here against the Q3 gate.
+   rewrite 6 literal + 12 resource rules (core/Bars/Dialogs); per-axis template forwards replace
+   the aggregate forward (with the §4.2 parity test); 3 imperative writers; **implement the P9.3b
+   Inverse+Bold ListBox focus cue in the Gallery canary as the composability exit proof** (the
+   motivating scenario, live and hands-on-testable).
 4. **P4 — XAML surface.** Rewrite Default (and opportunistically IndigoDusk) `Styles.xaml` +
-   drift reconciliation; XamlThemeStylesTests; the generator drift-gate row.
+   drift reconciliation (incl. the Q4 deletion); XamlThemeStylesTests; the generator drift-gate
+   row.
 5. **P5 — Retirement.** Delete `TextAttributesProperty` + accessors + the bridge OR; converter
    comment fix; doc/matrix amendments land in full.
 
@@ -455,8 +465,8 @@ wins" identity is a load-bearing assumption of roughly six store features:
 4. compiled bindings' typed zero-box push + box interning (value-in/value-out per lane);
 5. the `ValueFrame` conformance kit and both freshly-completed normative matrices (a merge lane is
    a second arbitration model needing its own rows and a re-audit of every lane interaction);
-6. inheritance (inherit the fold and the nearest-contributor contract breaks; inherit the patch
-   chain and eager fan-out carries non-value state).
+6. inheritance/flow (moot under the non-inheriting cut, but the panel-era analysis stands: either
+   fold direction broke a store contract).
 
 And after all that, the paint-time OR over markup-baked runs *still* can't subtract — the merge
 lane fixes store arbitration only, same as decomposition. **Tally: ~6 core store features and both
@@ -470,19 +480,23 @@ arbitrate axes — give it axes.
 
 1. **The inert-`false` conditional-slot wart.** At color tiers the cue rules contribute
    `Inverse=false` + `Weight=Normal` at StyleTrigger while active — so an app rule wanting
-   `Inverse=true` or `Bold` on a *focused* control at Style priority still loses to a theme
+   `Inverse=true` or `Bold` **on the same control** at Style priority still loses to a theme
    contribution that means "nothing," exactly as today (CD8 floor parity). Decomposition narrows
    the clobber to the cue axes but does not eliminate resource-driven inert contributions; a real
    fix (tier-scoped rule arming, or "unset" resource sentinels the engine treats as
-   no-contribution) is new machinery this proposal explicitly declines. A wart is preserved to
-   preserve the machinery budget.
-2. **The markup-bake OR residue.** A property-level `false` cannot strip a flag baked into a
-   markup run (`[b]` content vs `TextWeight=Normal` ambience — content wins; the
+   no-contribution) is new machinery this proposal explicitly declines.
+2. **The markup-bake OR residue.** A property-level `false`/`Normal` cannot strip a flag baked
+   into a markup run (`[b]` content vs `TextWeight=Normal` — content wins; the
    `Style.AddAttributes` OR at `DrawingContext.cs:913` has no subtraction channel). Same behavior
-   as today; documented as a scoping rule. A user who learns "set it false to turn it off" will
-   find markup text exempt — the doc for the properties says so explicitly.
-3. **The TextPresenter gap.** TextBox content ignores the inherited attribute spine today and
-   still will until the optional follow-on lands. Recorded, not entrenched.
+   as today; documented as a scoping rule.
+3. **App content receives no ambient attributes (the flow-model scoping rule, Q3).** Text nested
+   inside a custom `DataTemplate` gets neither inherited nor forwarded attribute values — the
+   row face and framework-generated leaves carry the cue; app item-template text is styled by the
+   app (descendant rules reach app content freely). This is the consciously-accepted trade of the
+   non-inheriting cut; the presenter forwards deliberately stop at generated leaves so app-authored
+   values are never clobbered.
+4. **The TextPresenter gap.** TextBox content ignores the attribute spine today and still will
+   until the optional template-forward follow-on lands. Recorded, not entrenched.
 
 ---
 
@@ -495,33 +509,26 @@ arbitrate axes — give it axes.
    (underline shape through the formatted-text seam) ships in the same phase as the property
    (§3.1, §5 P2); no deferred-semantics property, no silent drop. `UnderlineBrushProperty` stays
    demand-gated.
-3. **Do Blink/Concealed/Overline register as inheriting? — RECOMMENDED (awaiting confirmation):
-   inherit, uniformly, with a demotion gate.** The decisive argument is the content boundary, not
-   template plumbing: a `TemplateBinding` forward sets the value ON a template part, and a
-   non-inheriting property stops there — it cannot reach text inside APP CONTENT hosted by a
-   `ContentPresenter`, so ambient subtree uses (`Concealed` on a container to redact everything
-   inside it) become inexpressible; non-inheritance makes these leaf-only properties, a semantic
-   reduction. Costs: the batched walk makes three never-set axes ≈ three extra presence-probes
-   per ancestor inside ONE traversal (noise); the real tax is the reparent diff, which is
-   per-structural-change and measured at P3. Asymmetry favors starting uniform: demoting later is
-   a one-flag change justified by a number; promoting later silently changes app behavior.
-   **Gate: >5% wall-clock regression on the reparent-heavy benchmarks (gallery page swap,
-   100-item ListBox realization) vs the pre-decomposition baseline ⇒ demote the three exotics to
-   non-inheriting first; still over ⇒ fund §2.9 push-down** (which erases the tax for every
-   inherited property at once).
+3. **Flow model — DECIDED: all nine NON-inheriting ("flows like `Background`").** Usage leans
+   virtually exclusively to element-level application; control-level cues reach their consumers
+   through the existing forwarding idioms (per-axis `TemplateBinding`s on parts;
+   `ContentPresenter` forwarding onto the presentation leaves it generates — never onto
+   `DataTemplate` content). This deletes the panel's entire inheritance perf apparatus (walks,
+   batched fold, reparent gate, §2.9 pressure) and unifies the cue model's delivery with its brush
+   half. Accepted trades, recorded in §7.3: app item-template text gets no ambient attributes
+   (styled directly instead), and templates carry the per-axis forwards their parts consume. The
+   panel's uniform-INHERITING recommendation and its demotion-gate machinery are superseded; kept
+   in the judgment doc for the record.
 4. **The commented-out XAML accent `:focus-visible` setters — DECIDED: delete, with the real
-   reason recorded.** They were an experiment in a color-tier Inverse focus cue, parked because
-   at color tiers the non-occluding face's glyph-transparent tint drops attributes on glyphless
-   cells (`Border.cs:151-162`) — Inverse inverted only the label's cells, not the face's
-   whitespace — so the look was faked with brush swaps instead, which is the CORRECT color-tier
-   idiom (whole-face Inverse would require `Occludes=true`, changing compositing semantics).
-   Reviving via the split cue pair would be a no-op at color tiers (`InteractiveCueInverse=false`
-   there) and redundant at NoColor (the live `.caps-nocolor` button-family rules already apply
-   Inverse, and NoColor's forced-opaque fill is what makes it whole-face there). A second,
-   independent reason holds even where the tint mechanics don't bite: color-tier sibling states
-   (`:pointerover`/`:pressed`) cue through brush swaps, and an attribute cue composing over
-   swapped brushes yields derived, undesigned colors — one cue vocabulary per tier. See §2.3's
-   ground-truth note.
+   reasons recorded.** (a) Mechanical: at color tiers the non-occluding face's glyph-transparent
+   tint drops attributes on glyphless cells (`Border.cs:151-162`) — Inverse inverted only the
+   label's cells, so the look was faked with brush swaps, the correct color-tier idiom (whole-face
+   Inverse would require `Occludes=true`). (b) Principled, and decisive even where (a) doesn't
+   bite: color-tier sibling states (`:pointerover`/`:pressed`) cue through brush swaps, and an
+   attribute cue composing over swapped brushes yields derived, undesigned colors — **one cue
+   vocabulary per tier.** Reviving via the split cue pair would be a no-op at color tiers
+   (`InteractiveCueInverse=false` there) and redundant at NoColor (the live `.caps-nocolor`
+   button-family rules already apply Inverse). See §2.3's ground-truth note.
 
 ---
 
@@ -534,8 +541,13 @@ CLAUDE.md's project list); three independently-authored proposals (WPF-kinship d
 uniform terminal-native booleans, keep-the-group-with-merge-semantics); and an adversarial
 judgment (`judgment-textattributes-decomposition.md`) that verified the proposals' load-bearing
 claims against the code — including falsifying one perf claim ("never-contributed properties
-resolve without walking") that this document's §3.2 corrects. All three proposals independently
-converged on per-axis decomposition with paint-time folding; this synthesis adopts the
-highest-scored proposal's architecture with the judgment's mandated fixes and cross-proposal
-grafts applied. The full proposal texts were session-scoped working artifacts; the judgment is
-archived because it records *why* each trim was chosen and what each alternative got right.
+resolve without walking") that shaped the panel-era design. All three proposals independently
+converged on per-axis decomposition with paint-time folding.
+
+**The owner redirect (same day):** the panel uniformly assumed the axes inherit (matching today's
+aggregate); on review the owner observed that real usage is virtually exclusively element-level
+and directed the **non-inheriting** flow model this document now records (§0/§2.1/§8 Q3) — which
+deleted the panel's heaviest engineering (the batched inheritance walk, its equivalence gate, and
+the reparent demotion gate) in exchange for the forwarding spine and the §7.3 scoping rule. The
+judgment doc retains the panel-era analysis, including the inheritance-cost verification that
+still documents why inheriting-by-default would have been expensive.

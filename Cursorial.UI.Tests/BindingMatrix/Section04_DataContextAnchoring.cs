@@ -89,6 +89,30 @@ public class Section04_DataContextAnchoring
         Assert.Same(s1, a.DataContext);
     }
 
+    [Fact] // B041a — the OTHER late-arrival order: parented, but the parent's DataContext arrives after
+    // install (the loader's construction order — children built and bound BEFORE the parent's context
+    // flows; a designer d:DataContext or a late VM assignment). The parent-DataContext observer must be
+    // installed on the FAILED resolve too — tree events fire at parenting time and never again, so the
+    // observer is the only wake-up signal. (The Cursorial.Samples Layers-pane bug: every XAML-authored
+    // DataContext="{Binding …}" re-scope parked permanently.)
+    public void B041a_DataContextAsTarget_ParentContextArrivesLate_WakesOnArrival()
+    {
+        var s1 = new Vm { Name = "s1" };
+        var root = new BindWidget();
+        var a = new BindWidget();
+        root.AddChild(a);
+
+        // Install while the PARENT's DataContext is still null: parks SourceMissing.
+        var expr = a.SetBinding(UIElement.DataContextProperty, new Binding("Sub"));
+        Assert.Equal(BindingStatus.SourceMissing, expr.Status);
+        Assert.Null(a.DataContext);
+
+        // The parent's context arrives late — the parked binding must wake and re-scope.
+        root.DataContext = new Vm { Sub = s1 };
+        Assert.Equal(BindingStatus.Active, expr.Status);
+        Assert.Same(s1, a.DataContext);
+    }
+
     [Fact]
     public void B045_DataContextPathSegment_ResolvesViaUIPropertyLane()
     {

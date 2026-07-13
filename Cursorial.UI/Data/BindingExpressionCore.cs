@@ -315,6 +315,18 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
         var resolved = ResolveRoot(out var newRoot, out var failure);
 
+        // Re-install the parent-DataContext observer on the (possibly new) logical parent — on FAILURE
+        // too. The common park is "parent exists, its DataContext hasn't arrived yet" (the loader builds
+        // children and installs their bindings BEFORE the parent's context flows; a d:DataContext or a
+        // late VM assignment arrives after attach), and this observer IS the wake-up signal: tree events
+        // fire at parenting time and never again. Installing it only on success parked every
+        // DataContext="{Binding …}" re-scope permanently (BD2).
+        if (_anchorKind == AnchorKind.ParentDataContext && _anchorElement?.LogicalParent is {} anchorParent)
+        {
+            _anchorObserverToken = anchorParent.AddObserver(
+                DataContextSupport.DataContextProperty, new AnchorObserver(this));
+        }
+
         if (!resolved)
         {
             DisposeLaneSpecific();
@@ -329,13 +341,6 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
             ProduceUnsetOrFallback();
             return;
-        }
-
-        // Re-install the parent-DataContext observer on the (possibly new) logical parent.
-        if (_anchorKind == AnchorKind.ParentDataContext && _anchorElement?.LogicalParent is {} parent)
-        {
-            _anchorObserverToken = parent.AddObserver(
-                DataContextSupport.DataContextProperty, new AnchorObserver(this));
         }
 
         _root = newRoot;
@@ -381,6 +386,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 }
 
                 root = logicalParent.GetValue(DataContextSupport.DataContextProperty);
+                if (root is null) failure = BindingFailureKind.SourceMissing;
                 return root is not null;
 
             case AnchorKind.Self:

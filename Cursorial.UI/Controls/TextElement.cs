@@ -4,6 +4,22 @@ using Cursorial.Output;
 namespace Cursorial.UI.Controls;
 
 /// <summary>
+/// The paint-time resolution of the <see cref="TextElement"/> attribute properties into the Drawing
+/// tier's vocabulary (proposal-textattributes-decomposition §3.1): the folded flag bitset (including
+/// the <see cref="TextAttributes.Underline"/> presence bit) plus the underline shape, meaningful only
+/// while the presence bit is set. Renderers obtain one per <c>Render</c> call via
+/// <see cref="TextElement.ComposeAttributes"/> — the single meeting point of the per-axis properties
+/// and <see cref="TextAttributes"/>.
+/// </summary>
+/// <param name="Flags">The folded bitset (the wire/cell vocabulary — <c>Output.TextAttributes</c>).</param>
+/// <param name="UnderlineShape">The underline shape; meaningful only when <paramref name="Flags"/> carries <see cref="TextAttributes.Underline"/>.</param>
+public readonly record struct ResolvedTextAttributes(TextAttributes Flags, UnderlineStyle UnderlineShape)
+{
+    /// <summary>Whether the folded flags carry <see cref="TextAttributes.Inverse"/> (the Border fill's one-flag read).</summary>
+    public bool Inverse => (Flags & TextAttributes.Inverse) != 0;
+}
+
+/// <summary>
 /// The inherited text-attribute spine (design doc §12.1): attached properties <c>AddOwner</c>'d onto
 /// <see cref="Control"/> and <see cref="TextBlock"/> so foreground brush and text attributes flow
 /// down the logical tree. Setting <see cref="ForegroundProperty"/> high in the tree colors every
@@ -64,5 +80,18 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(TextAttributesProperty, value);
+    }
+
+    /// <summary>
+    /// The paint-time fold (proposal-textattributes-decomposition §3.1): resolves the element's
+    /// effective text-attribute properties into the Drawing tier's vocabulary. The single
+    /// composition point every text-bearing renderer reads — one call per <c>Render</c>. P1 folds
+    /// the legacy aggregate only; the per-axis properties join at P2 (<c>perAxis | legacy</c>
+    /// during the migration bridge) and the aggregate term is deleted at P5.
+    /// </summary>
+    public static ResolvedTextAttributes ComposeAttributes(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return new ResolvedTextAttributes(element.GetValue(TextAttributesProperty), UnderlineStyle.Single);
     }
 }

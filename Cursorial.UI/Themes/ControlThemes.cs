@@ -1965,10 +1965,10 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
 
         var glyph = Glyphs.ForChecked(CheckedState);
         var foreground = GlyphForeground ?? Owner?.Foreground;
-        // The glyph honors the inherited TextElement.TextAttributes (None for an ordinary control), so a
+        // The glyph honors the effective TextElement attributes (None for an ordinary control), so a
         // NoColor disabled check/radio dims with Faint to match its (Faint) content text — the whole control
         // reads as disabled, not just its label (review #1 follow-up).
-        var attrs = TextElement.GetTextAttributes(this);
+        var attrs = TextElement.ComposeAttributes(this).Flags;
 
         // Bracket-neutral colored mark (gallery idiom): the box "[ ]" / "( )" paints in the inherited
         // foreground while the inner mark (✓ / ▪ / ●) takes its state color — but only when a mark color

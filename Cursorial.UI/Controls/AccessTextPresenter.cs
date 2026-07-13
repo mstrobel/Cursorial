@@ -80,10 +80,10 @@ public sealed class AccessTextPresenter : UIElement
         if (string.IsNullOrEmpty(label.Text) || context.Bounds.IsEmpty)
             return;
 
-        // The inherited TextElement.TextAttributes ride the content text, so a NoColor reverse-video state
+        // The effective TextElement attributes ride the content text, so a NoColor reverse-video state
         // (Inverse) carries onto the glyph cells too — matching the Border fill, for a uniform reversed face
         // (the caps-nocolor theme layer). None by default ⇒ no change for ordinary content.
-        var inherited = TextElement.GetTextAttributes(this);
+        var inherited = TextElement.ComposeAttributes(this).Flags;
         var baseTextStyle = new CellStyle().WithAttributes(inherited);
 
         var foreground = Foreground;

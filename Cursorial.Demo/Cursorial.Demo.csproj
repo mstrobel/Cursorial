@@ -16,7 +16,7 @@
              trim mode keeps non-opted-in assemblies (the Cursorial framework + this demo) whole; only the BCL
              is trimmed. Larger binary, but the reflection-based demo runs. (The trim-clean route is the X4
              generated provider / X5 lowering, not this reflection build.) -->
-        <TrimMode>partial</TrimMode>
+        <TrimMode>none</TrimMode>
     </PropertyGroup>
 
     <ItemGroup>

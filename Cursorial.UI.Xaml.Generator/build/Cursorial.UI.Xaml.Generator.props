@@ -45,10 +45,11 @@
 
   <!--
     The generated metadata provider is advertised via [assembly: XamlMetadataProvider] — pull metadata only.
-    The loader's lazy default consults the ENTRY assembly's attribute, so an app's provider becomes the
-    process default automatically while a library's attribute stays inert (its provider only covers the
-    library's own closed type set). Nothing installs at load time, so no opt-out is needed (the retired
-    CursorialXamlInstallProvider property is ignored if set).
+    Generated code-behinds bind it explicitly; the loader's lazy DEFAULT consults the ENTRY assembly's
+    attribute only when the reflection provider is disabled for trimming/AOT (with reflection available,
+    ambient loads stay open-world reflection), and a library's attribute stays inert (its provider only
+    covers the library's own closed type set). Nothing installs at load time, so no opt-out is needed
+    (the retired CursorialXamlInstallProvider property is ignored if set).
   -->
 
   <!--

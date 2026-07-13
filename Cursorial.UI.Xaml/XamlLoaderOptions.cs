@@ -18,21 +18,26 @@ public sealed class XamlLoaderOptions
     private static IXamlTypeMetadataProvider? _default;
 
     /// <summary>
-    /// The process-wide default metadata provider new <see cref="XamlLoaderOptions"/> adopt. Resolved lazily
-    /// by PULL: the first read consults the ENTRY assembly's <c>[assembly: XamlMetadataProvider]</c> (which
-    /// the X4 generator emits), so an app's generated, trim/AOT-clean provider becomes the default without
-    /// any explicit opt-in — while merely LOADING an assembly can never repoint the default (the previous
-    /// generated <c>[ModuleInitializer]</c> push-install hijacked any host that loaded a user assembly, e.g.
-    /// a designer or test runner). Without an entry-assembly attribute it falls back to
-    /// <see cref="ReflectionXamlMetadata.Instance"/> — UNLESS the reflection provider is disabled for
-    /// trimming/AOT (the <c>Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported</c> feature switch), in
-    /// which case a fallback read throws (set the default explicitly, or make the entry assembly's provider
-    /// discoverable). Setting <see langword="null"/> restores lazy resolution.
+    /// The process-wide default metadata provider new <see cref="XamlLoaderOptions"/> adopt. Resolved
+    /// lazily: while the reflection provider is available (the
+    /// <c>Cursorial.UI.Xaml.ReflectionMetadataProvider.IsSupported</c> feature switch, on by default) the
+    /// default is <see cref="ReflectionXamlMetadata.Instance"/> — ambient loads stay OPEN-WORLD, so user
+    /// code can parse loose XAML naming any loaded type. (Generated loads never read this: each
+    /// code-behind binds its own generated provider explicitly, and nested loads follow the
+    /// thread-current loader.) When the switch is OFF (trimming/AOT), the first read pull-discovers the
+    /// ENTRY assembly's <c>[assembly: XamlMetadataProvider]</c> (which the X4 generator emits), so the
+    /// app's generated, trim/AOT-clean provider serves ambient loads of closed-set text; without a
+    /// discoverable provider the read throws with guidance (set the default explicitly). Merely LOADING
+    /// an assembly can never repoint the default (the previous generated <c>[ModuleInitializer]</c>
+    /// push-install hijacked any host that loaded a user assembly, e.g. a designer or test runner).
+    /// Setting <see langword="null"/> restores lazy resolution.
     /// </summary>
     public static IXamlTypeMetadataProvider DefaultMetadataProvider
     {
-        get => _default ??= TryDiscoverMetadataProvider(System.Reflection.Assembly.GetEntryAssembly())
-                            ?? ReflectionMetadataProviderFallback();
+        get => _default ??= IsReflectionMetadataProviderSupported
+                                ? ReflectionXamlMetadata.Instance
+                                : TryDiscoverMetadataProvider(System.Reflection.Assembly.GetEntryAssembly()) ??
+                                  ReflectionMetadataProviderFallback();
         set => _default = value;
     }
 
@@ -42,8 +47,8 @@ public sealed class XamlLoaderOptions
     /// one (the generated shape), else a parameterless construction. Returns null when
     /// <paramref name="assembly"/> is null or carries no attribute; throws when the advertised type is not
     /// an <see cref="IXamlTypeMetadataProvider"/>. <see cref="DefaultMetadataProvider"/> uses this against
-    /// the entry assembly; a host loading foreign assemblies (designer, test runner) can call it to adopt a
-    /// specific assembly's provider deliberately. Trim/AOT-safe by construction: the attribute's
+    /// the entry assembly when the reflection provider is disabled for trimming/AOT; a host loading foreign
+    /// assemblies (designer, test runner) can call it to adopt a specific assembly's provider deliberately. Trim/AOT-safe by construction: the attribute's
     /// <c>[DynamicallyAccessedMembers]</c> annotation keeps any advertised type's <c>Instance</c> field and
     /// constructors, so the reflection below always finds them.
     /// </summary>

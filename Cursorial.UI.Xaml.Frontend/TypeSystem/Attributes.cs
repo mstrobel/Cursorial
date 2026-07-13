@@ -12,9 +12,11 @@ namespace Cursorial.UI.Xaml;
 /// <summary>
 /// Advertises an assembly's <see cref="IXamlTypeMetadataProvider"/> for trim/AOT-clean loading — pure
 /// PULL metadata (matrix X186 as amended): the loader's lazy default consults the ENTRY assembly's
-/// attribute (<c>XamlLoaderOptions.DefaultMetadataProvider</c>), and hosts adopt a specific assembly's
-/// provider via <c>XamlLoaderOptions.TryDiscoverMetadataProvider</c>. Nothing registers at load time, so
-/// loading an assembly never repoints another host's default. The X4 generator emits one per compilation.
+/// attribute (<c>XamlLoaderOptions.DefaultMetadataProvider</c>) when the reflection provider is disabled
+/// for trimming/AOT (reflection stays the open-world ambient default otherwise), and hosts adopt a
+/// specific assembly's provider via <c>XamlLoaderOptions.TryDiscoverMetadataProvider</c>. Nothing
+/// registers at load time, so loading an assembly never repoints another host's default. The X4
+/// generator emits one per compilation.
 /// </summary>
 /// <remarks>
 /// The <see cref="DynamicallyAccessedMembersAttribute"/> annotation makes discovery trim-safe by

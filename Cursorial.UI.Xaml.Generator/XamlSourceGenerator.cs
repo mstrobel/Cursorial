@@ -23,7 +23,8 @@ namespace Cursorial.UI.Xaml.Generator;
 /// location.</item>
 /// <item>WS-X4.5 — one generated <c>IXamlTypeMetadataProvider</c> per compilation (over the union closed
 /// type set), advertised via <c>[assembly: XamlMetadataProvider]</c> for the loader's entry-assembly
-/// pull discovery (the AOT-clean default; loading an assembly never mutates process state).</item>
+/// pull discovery under trimming/AOT (with reflection available, ambient loads stay open-world;
+/// loading an assembly never mutates process state).</item>
 /// <item>WS-X4.6 — for each <c>x:Class</c> document, the code-behind partial: typed <c>x:Name</c> fields +
 /// <c>InitializeComponent</c>.</item>
 /// </list>
@@ -100,10 +101,12 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             Emit(spc, pair.Left.Left.Left, pair.Left.Left.Right, pair.Left.Right, pair.Right));
 
         // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
-        // file's closed type set, advertised via [assembly: XamlMetadataProvider]. The loader's lazy default
-        // pull-discovers the ENTRY assembly's attribute, so an app's XAML loads (incl. each code-behind's
-        // cached parse) run reflection-free while a library's attribute stays inert — no [ModuleInitializer],
-        // so loading an assembly never hijacks a host's default (the designer/test-host bug).
+        // file's closed type set, advertised via [assembly: XamlMetadataProvider]. Each generated
+        // code-behind binds this provider EXPLICITLY (its loads never consult the ambient default); the
+        // loader's lazy default pull-discovers the ENTRY assembly's attribute only when the reflection
+        // provider is disabled (trimming/AOT — reflection stays the open-world ambient default otherwise),
+        // and a library's attribute stays inert — no [ModuleInitializer], so loading an assembly never
+        // hijacks a host's default (the designer/test-host bug).
         var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider);
         context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left, pair.Right));
     }

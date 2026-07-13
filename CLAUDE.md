@@ -625,9 +625,11 @@ audit notes. The control-gallery demo gained `T_ree` and `_Date` tabs.
     line/col (X4.4). A coverage audit over a representative theme-style document asserts zero CUR2 false
     positives on valid XAML.
   - **`MetadataProviderEmitter` (X4.5)** emits one generated `IXamlTypeMetadataProvider` per compilation over the
-    union closed type set, advertised via `[assembly: XamlMetadataProvider]` — PULL metadata: the lazy
-    `XamlLoaderOptions.DefaultMetadataProvider` discovers the ENTRY assembly's attribute (AOT-clean), so loading
-    an assembly never repoints a host's default (no `[ModuleInitializer]` — the push-install variant hijacked
+    union closed type set, advertised via `[assembly: XamlMetadataProvider]` — PULL metadata: generated
+    code-behinds bind it explicitly, and the lazy `XamlLoaderOptions.DefaultMetadataProvider` discovers the
+    ENTRY assembly's attribute only when the reflection provider is feature-switched off for trimming/AOT
+    (with reflection available, ambient loads stay open-world so loose-XAML parsing works). Loading an
+    assembly never repoints a host's default (no `[ModuleInitializer]` — the push-install variant hijacked
     designer/test hosts). The **dual-run drift gate** (matrix X174 / the P10 exit) loads it and
     asserts a real control tree (incl. an attached `Grid.Row`) renders **byte-identically** to
     `ReflectionXamlMetadata` — zero drift. The converter is an emitted runtime `XamlConverters.For(typeof(...))`

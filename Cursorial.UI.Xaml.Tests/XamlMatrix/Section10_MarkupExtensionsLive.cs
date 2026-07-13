@@ -274,4 +274,32 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         Assert.Equal("G", icon.Glyph);
         Assert.Equal("T", icon.Text);
     }
+
+    [Fact] // X53 (amended 2026-07-13) — extension position probes the "Extension"-SUFFIXED form
+    // FIRST (WPF parity): a same-named NON-extension sister (Icon beside IconExtension) must never
+    // shadow the extension. ShadowedExtension.ProvideValue is observably distinct from a
+    // constructed Shadowed instance, so this pins the probe order, not just the result type.
+    public void X53a_ExtensionSuffix_ProbedFirst_SisterClassCannotShadow()
+    {
+        var border = (UIControls.Border)LoadRaw(
+            "<Border xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:t=\"clr-namespace:Cursorial.Tests.UI.Xaml.XamlMatrix;assembly=Cursorial.UI.Xaml.Tests\" " +
+            "DataContext=\"{t:Shadowed Text='x'}\"/>");
+
+        Assert.Equal("extension:x", border.GetValue(UIElement.DataContextProperty));
+    }
+}
+
+/// <summary>A NON-extension sister deliberately named like the extension below (X53 amendment):
+/// <c>{t:Shadowed …}</c> must resolve to <see cref="ShadowedExtension"/>, never construct this.</summary>
+public sealed class Shadowed
+{
+    public string? Text { get; set; }
+}
+
+public sealed class ShadowedExtension : MarkupExtension
+{
+    public string? Text { get; set; }
+
+    public override object ProvideValue(IServiceProvider serviceProvider) => $"extension:{Text}";
 }

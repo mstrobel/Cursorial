@@ -13,6 +13,26 @@ public class ClosedTypeSetTests
 {
     private const string Ui = "https://cursorial.dev/ui";
 
+    [Fact] // markup-extension names in attribute position never reach the RECORDING parse (an
+    // unresolved element type never descends into attribute values), so a text sweep collects them
+    // RAW; the provider emission then resolves suffix-first, parser-parity ({Icon} → IconExtension,
+    // never the sister Icon control — see Generator_BakesMarkupExtensions_SuffixFirst).
+    public void Collects_MarkupExtensionNames_FromAttributeValues()
+    {
+        const string xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "  <Border DataContext=\"{Icon Text='01'}\" Width=\"{Binding W}\"/>" +
+            "</StackPanel>";
+
+        var names = ClosedTypeSet.CollectMarkupExtensionNames(xaml)
+            .Where(n => n.Namespace == Ui)
+            .Select(n => n.LocalName)
+            .ToHashSet();
+
+        Assert.Contains("Icon", names);    // raw — resolution maps it to IconExtension
+        Assert.Contains("Binding", names); // raw — no BindingExtension exists; bare fallback bakes Binding
+    }
+
     [Fact]
     public void Collects_NestedElementNames()
     {

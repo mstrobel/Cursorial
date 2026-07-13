@@ -127,6 +127,42 @@ internal static class ClosedTypeSet
     }
 
     /// <summary>
+    /// The markup-extension NAMES a document uses in extension position (<c>{Icon …}</c>, <c>{my:Foo …}</c>) —
+    /// raw, WITHOUT the "Extension" suffix. The recording parse cannot see these (an unresolved element type
+    /// never reaches attribute-value extension parsing), so they are swept textually. The consumer must resolve
+    /// them exactly like the parser probes at runtime: the "Extension"-suffixed form FIRST, the bare name as the
+    /// fallback — so an extension's sister class (<c>Icon</c> beside <c>IconExtension</c>) is never baked from
+    /// an extension usage. Over-collection ("{Binding" inside prose, intrinsics) resolves-or-drops.
+    /// </summary>
+    public static IReadOnlyList<(string Namespace, string LocalName)> CollectMarkupExtensionNames(string xaml)
+    {
+        var text = Regex.Replace(xaml, "<!--.*?-->", " ", RegexOptions.Singleline);
+
+        var map = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(text, "xmlns(?::([A-Za-z_][\\w.-]*))?\\s*=\\s*\\\"([^\\\"]*)\\\""))
+            map[m.Groups[1].Success ? m.Groups[1].Value : string.Empty] = m.Groups[2].Value;
+
+        var seen = new HashSet<(string, string)>();
+        var names = new List<(string Namespace, string LocalName)>();
+
+        // Every "{Name" opener — "{}" (the escape) and "{{" never name an extension.
+        foreach (Match m in Regex.Matches(text, "\\{\\s*([A-Za-z_][\\w:.]*)"))
+        {
+            var reference = m.Groups[1].Value;
+            var colon = reference.IndexOf(':');
+            var prefix = colon > 0 ? reference.Substring(0, colon) : string.Empty;
+            var local = colon > 0 ? reference.Substring(colon + 1) : reference;
+            if (local.Length == 0 || local.Contains('.') || !map.TryGetValue(prefix, out var ns))
+                continue;
+
+            if (seen.Add((ns, local)))
+                names.Add((ns, local));
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// The distinct <c>{x:Static Type.Member}</c> member-path tokens a document references (a text scan, robust
     /// to parse failures + nesting — <c>{Binding …, Converter={x:Static C.D}}</c> yields <c>C.D</c>). The
     /// generated provider bakes a <c>TryResolveStatic</c> switch over these. Over-collection (a path inside a

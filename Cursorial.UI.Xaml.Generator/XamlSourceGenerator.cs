@@ -133,10 +133,25 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
                 names.Add(name);
         }
 
+        // Markup-extension names resolve with PARSER parity — the "Extension"-suffixed form first,
+        // the bare name as the fallback — so {Icon …} bakes IconExtension and never its sister
+        // class, while {Binding} (no BindingExtension exists) still bakes Binding.
+        var extensionTypes = new List<INamedTypeSymbol>();
+        foreach (var input in inputs)
+        {
+            foreach (var (ns, local) in ClosedTypeSet.CollectMarkupExtensionNames(input.Text))
+            {
+                var symbol = resolver.Resolve(ns, local + "Extension", out _) ?? resolver.Resolve(ns, local, out _);
+                if (symbol is not null)
+                    extensionTypes.Add(symbol);
+            }
+        }
+
         var types = names
             .Select(n => resolver.Resolve(n.Namespace, n.LocalName, out _))
             .Where(static t => t is not null)
             .Cast<INamedTypeSymbol>()
+            .Concat(extensionTypes)
             .Distinct(SymbolEqualityComparer.Default)
             .Cast<INamedTypeSymbol>()
             .ToList();

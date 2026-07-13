@@ -65,7 +65,7 @@ public sealed class KitchenSinkDriftTests
                 <RowDefinition Height="*"/>
               </Grid.RowDefinitions>
               <WrapPanel Grid.Row="0" Orientation="Horizontal">
-                <Border Width="2" Height="1" Background="palette(3)"/>
+                <Border Width="2" Height="1" Background="palette(3)" DataContext="{Icon Text='K'}"/>
                 <Border Width="2" Height="1" Background="{StaticResource AccentBrush}"/>
                 <Label Content="_Go:" Target="{x:Reference SinkList}"/>
               </WrapPanel>
@@ -113,10 +113,23 @@ public sealed class KitchenSinkDriftTests
                 names.Add(name);
         }
 
+        // Extension names resolve suffix-first, parser parity — exactly as production EmitProvider does.
+        var extensionTypes = new List<INamedTypeSymbol>();
+        foreach (var text in documents)
+        {
+            foreach (var (ns, local) in ClosedTypeSet.CollectMarkupExtensionNames(text))
+            {
+                var symbol = resolver.Resolve(ns, local + "Extension", out _) ?? resolver.Resolve(ns, local, out _);
+                if (symbol is not null)
+                    extensionTypes.Add(symbol);
+            }
+        }
+
         var types = names
             .Select(n => resolver.Resolve(n.Namespace, n.LocalName, out _))
             .Where(static t => t is not null)
             .Cast<INamedTypeSymbol>()
+            .Concat(extensionTypes)
             .Distinct(SymbolEqualityComparer.Default)
             .Cast<INamedTypeSymbol>()
             .ToList();

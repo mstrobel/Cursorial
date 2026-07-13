@@ -111,6 +111,24 @@ public class XamlSourceGeneratorTests
         Assert.Contains("Width", provider.SourceText.ToString());
     }
 
+    [Fact] // {Icon Text='…'} bakes IconExtension into the closed set — suffix-first, parser parity —
+    // and never the sister Icon CONTROL (the extension-usage must not drag in a same-named type);
+    // {Binding} has no BindingExtension, so the bare fallback bakes Binding.
+    public void Generator_BakesMarkupExtensions_SuffixFirst()
+    {
+        var result = GeneratorHarness.Run(("Sink.xaml",
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<Border DataContext=\"{Icon Text='01'}\" Width=\"{Binding W}\"/></StackPanel>"));
+
+        var provider = result.Results.SelectMany(r => r.GeneratedSources)
+            .Single(s => s.HintName.Contains("__GeneratedXamlMetadata"));
+        var src = provider.SourceText.ToString();
+
+        Assert.Contains("typeof(global::Cursorial.UI.Xaml.Markup.IconExtension)", src);
+        Assert.DoesNotContain("typeof(global::Cursorial.UI.Controls.Icon)", src);
+        Assert.Contains("typeof(global::Cursorial.UI.Data.Binding)", src);
+    }
+
     [Fact] // an unknown element type surfaces CUR2002 (type-not-found)
     public void Generator_ReportsUnknownType_AsRoslynDiagnostic()
     {

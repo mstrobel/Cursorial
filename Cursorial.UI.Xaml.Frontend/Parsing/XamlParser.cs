@@ -1692,10 +1692,22 @@ internal sealed class XamlParser
 
         string ns = _reader.LookupNamespace(prefix) is { Length: > 0 } bound ? bound : XmlnsNamespaces.CursorialUi;
 
-        var resolution = ResolveTypeQuiet(ns, name);
-
-        if (resolution is { IsResolved: false, IsAmbiguous: false } && appendExtensionSuffix)
+        // Extension position probes the "Extension"-SUFFIXED form FIRST (WPF parity): {Icon …}
+        // must mean IconExtension even when a non-extension type named Icon exists in the same
+        // xmlns — the suffix convention exists precisely so a sister class cannot shadow the
+        // extension. The bare name is the fallback for extensions named without the suffix
+        // (Binding, StaticResource). A suffixed AMBIGUITY is a real answer (reported), not a miss.
+        XamlTypeResolution resolution;
+        if (appendExtensionSuffix)
+        {
             resolution = ResolveTypeQuiet(ns, name + "Extension");
+            if (resolution is { IsResolved: false, IsAmbiguous: false })
+                resolution = ResolveTypeQuiet(ns, name);
+        }
+        else
+        {
+            resolution = ResolveTypeQuiet(ns, name);
+        }
 
         if (!resolution.IsResolved && report)
         {

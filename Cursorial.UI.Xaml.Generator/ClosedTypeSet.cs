@@ -87,6 +87,13 @@ internal static class ClosedTypeSet
         foreach (Match m in Regex.Matches(text, "\\bAncestorType\\s*=\\s*([A-Za-z_][\\w:.]*)"))
             Add(m.Groups[1].Value);
 
+        // d:DataContext="vm:Type" — the design-time data-context TYPE reference (any design prefix; the
+        // sweep is prefix-blind and over-collection resolves-or-drops). Without this, a type referenced
+        // ONLY as a d:DataContext misses the closed set and the loader emits CUR2006 (context ignored)
+        // under the generated provider while reflection resolves it — designer/runtime drift.
+        foreach (Match m in Regex.Matches(text, "[A-Za-z_]\\w*:DataContext\\s*=\\s*\\\"([^\\\"{][^\\\"]*)\\\""))
+            Add(m.Groups[1].Value);
+
         // Dotted setter-property owners: <Setter Property="Control.Template"/> resolves 'Control'
         // at load to find the member.
         foreach (Match m in Regex.Matches(text, "\\bProperty\\s*=\\s*\\\"([A-Za-z_][\\w:]*)\\.[A-Za-z_]"))

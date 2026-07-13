@@ -30,7 +30,9 @@ public class MetadataProviderEmitterTests
     {
         var xaml = """
                    <UserControl xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
-                                xmlns:vm="clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly">
+                                xmlns:d="https://cursorial.dev/xaml/design"
+                                xmlns:vm="clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly"
+                                d:DataContext="vm:DesignOnlyModel">
                        <UserControl.Styles>
                            <Style TargetType="ListBoxItem" Selector="ListBoxItem:is(ContentControl)">
                                <Setter Property="Control.Template" Value="{x:Null}"/>
@@ -53,6 +55,7 @@ public class MetadataProviderEmitterTests
         Assert.Contains("ProbeModel", locals);       // {x:Type vm:…} argument
         Assert.Contains(names, n => n is { LocalName: "ProbeModel", Namespace: "clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly" });
         Assert.Contains("ListBox", locals) /* attached/property-element owner */ ;
+        Assert.Contains("DesignOnlyModel", locals);  // d:DataContext="vm:…" type reference
     }
 
     [Fact]

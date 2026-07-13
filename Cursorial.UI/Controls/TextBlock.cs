@@ -116,11 +116,11 @@ public class TextBlock : UIElement
         // paint time — NOT baked into the cached FormattedText (the attribute properties are
         // AffectsRender, so a flip re-paints the cached layout without re-formatting it). The fold is
         // the single composition point (proposal-textattributes-decomposition §3.1).
-        var attrs = TextElement.ComposeAttributes(this).Flags;
+        var resolved = TextElement.ComposeAttributes(this);
         if (Foreground is {} brush)
-            context.DrawFormattedText(formatted, context.Bounds, brush, attrs);
+            context.DrawFormattedText(formatted, context.Bounds, brush, resolved.Flags, resolved.UnderlineShape);
         else
-            context.DrawFormattedText(formatted, context.Bounds, attrs);
+            context.DrawFormattedText(formatted, context.Bounds, resolved.Flags, resolved.UnderlineShape);
     }
 
     private FormattedText GetFormatted(int width)

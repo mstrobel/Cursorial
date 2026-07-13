@@ -231,6 +231,45 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
     /// and the warm per-op costs. Warm reads and writes must allocate exactly zero. Cold
     /// measurements run as best-of-5 batches of 2,000 fresh instances each.
     /// </summary>
+    [Fact] // proposal-textattributes-decomposition §3.2 — the paint-time fold: nine own-value reads, zero allocation
+    public void Spike4_ComposeAttributesFold_ZeroAllocation()
+    {
+        const int count = 2_000;
+
+        var blocks = new Cursorial.UI.Controls.TextBlock[count];
+        for (var i = 0; i < count; i++)
+            blocks[i] = new Cursorial.UI.Controls.TextBlock("x");
+
+        // A third carry axis values (the themed-focused shape); the rest are the all-unset common case
+        // (own-entry-or-default reads — the axes are non-inheriting, so no ancestor walks exist at all).
+        for (var i = 0; i < count; i += 3)
+        {
+            Cursorial.UI.Controls.TextElement.SetInverse(blocks[i], true);
+            Cursorial.UI.Controls.TextElement.SetTextWeight(blocks[i], Cursorial.UI.Controls.TextWeight.Bold);
+        }
+
+        long warmSink = 0;
+        for (var i = 0; i < 50_000; i++)
+            warmSink += (long)Cursorial.UI.Controls.TextElement.ComposeAttributes(blocks[i % count]).Flags;
+        SettleJit();
+        for (var i = 0; i < 5_000; i++)
+            warmSink += (long)Cursorial.UI.Controls.TextElement.ComposeAttributes(blocks[i % count]).Flags;
+
+        long sink = 0;
+        var (ms, bytes) = MeasureBest(Repetitions, () =>
+        {
+            long s = 0;
+            for (var i = 0; i < count; i++)
+                s += (long)Cursorial.UI.Controls.TextElement.ComposeAttributes(blocks[i]).Flags;
+            sink = s;
+        });
+
+        output.WriteLine(
+            $"ComposeAttributes fold: {count} text elements, best of {Repetitions}: {ms:F3} ms " +
+            $"({ms * 1_000_000 / count:F0} ns/element), {bytes} bytes (warm sinks {warmSink & 1}{sink & 1})");
+        Assert.Equal(0, bytes); // the fold allocates nothing (proposal §3.2)
+    }
+
     [Fact]
     public void Spike3_ColdAndWarmMicroNumbers()
     {

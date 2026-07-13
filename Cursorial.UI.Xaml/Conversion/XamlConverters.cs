@@ -460,31 +460,15 @@ public static class XamlConverters
 
         private static Color ParseHex(string text, in XamlValueContext ctx)
         {
-            var body = text.Substring(1);
-            // #AARRGGBB / #ARGB extension: an 8- or 4-digit hex carries leading alpha.
-            try
-            {
-                if (body.Length == 8)
-                {
-                    byte a = ParseByte(body, 0);
-                    byte r = ParseByte(body, 2);
-                    byte g = ParseByte(body, 4);
-                    byte b = ParseByte(body, 6);
-                    return Color.FromRgba(r, g, b, a);
-                }
-                if (body.Length is 3 or 6)
-                    return Color.FromHex(text.AsSpan());
-            }
-            catch (ArgumentException)
-            {
-                // fall through to the diagnostic
-            }
+            // One hex parser, one convention (proposal-textattributes-decomposition §10): Core owns
+            // the digits — 8-digit is #RRGGBBAA (alpha LAST; a deliberate DEV from WPF's #AARRGGBB
+            // so one alpha convention holds across the whole stack, and StyleDiagnostics.FormatValue
+            // output round-trips through this converter).
+            if (Color.TryParseHex(text.AsSpan(), out var color, out _))
+                return color;
 
-            throw Fail($"'{text}' is not a valid hex color (expected #RGB, #RRGGBB, or #AARRGGBB).", ctx);
+            throw Fail($"'{text}' is not a valid hex color (expected #RGB, #RRGGBB, or #RRGGBBAA).", ctx);
         }
-
-        private static byte ParseByte(string s, int offset)
-            => byte.Parse(s.AsSpan(offset, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
     }
 
     private sealed class BrushConverter : ITypeConverter

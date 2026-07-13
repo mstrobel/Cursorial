@@ -69,14 +69,14 @@ internal static class ContentRealization
 
             // ④ an AccessText value always becomes an AccessTextPresenter, regardless of RecognizesAccessKey.
             case AccessText accessText:
-                return new AccessTextPresenter(accessText);
+                return ForwardTextAttributeAxes(host, new AccessTextPresenter(accessText));
 
             // ④ extension: a plain string under RecognizesAccessKey folds to an AccessText (doc §12.5). The access
             // key is parsed from the RAW content — the same text ContentControl registers with the AccessKeyManager
             // — so the underlined mnemonic always matches the active gesture (a ContentStringFormat never injects
             // or moves a mnemonic, and never disagrees with the registration).
             case string s when recognizesAccessKey:
-                return new AccessTextPresenter(AccessText.Parse(s));
+                return ForwardTextAttributeAxes(host, new AccessTextPresenter(AccessText.Parse(s)));
 
             // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
             // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
@@ -85,13 +85,38 @@ internal static class ContentRealization
                               ? new TextBlock { Markup = SafeFormat(host, stringFormat, s) }
                               : new TextBlock { Text = SafeFormat(host, stringFormat, s) };
                 stb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
-                return stb;
+                return ForwardTextAttributeAxes(host, stb);
 
             default:
                 var dtb = new TextBlock(SafeFormat(host, stringFormat, content));
                 dtb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
-                return dtb;
+                return ForwardTextAttributeAxes(host, dtb);
         }
+    }
+
+    // The presentation elements this array names are forwarded from the templated parent onto every
+    // GENERATED leaf (chains ④/⑤ only — never chain ③ element content, never chain ①/② DataTemplate
+    // content: app content is app-styleable, proposal-textattributes-decomposition §2.1/§7.3). The
+    // axes are non-inheriting ("flows like Background"), so a control-level cue — the theme's
+    // `.caps-nocolor Button:focus → Inverse` — reaches the label the presenter materializes through
+    // these live forwards, the same idiom the TextWrapping binding above uses.
+    private static readonly UIProperty[] ForwardedTextAxes =
+    [
+        TextElement.TextWeightProperty, TextElement.ItalicProperty, TextElement.UnderlineProperty,
+        TextElement.StrikethroughProperty, TextElement.OverlineProperty, TextElement.InverseProperty,
+        TextElement.BlinkProperty, TextElement.ConcealedProperty,
+    ];
+
+    private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
+    {
+        // The forward source is the control the theme rules land on (the templated parent); a
+        // free-standing presenter forwards its own values (it IS the element the app styles).
+        var source = host.TemplatedParent ?? (UIObject)host;
+
+        foreach (var axis in ForwardedTextAxes)
+            leaf.SetBinding(axis, new Binding($"({nameof(TextElement)}.{axis.Name})") { Source = source });
+
+        return leaf;
     }
 
     // Applies a composite format to content (null format ⇒ Convert.ToString, the prior behavior). A MALFORMED

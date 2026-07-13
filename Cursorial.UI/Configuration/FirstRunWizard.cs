@@ -108,7 +108,7 @@ public sealed class FirstRunWizard : Window
         headerRow.Children.Add(progress);
 
         var pageTitle = new TextBlock();
-        pageTitle.SetValue(TextElement.TextAttributesProperty, Output.TextAttributes.Bold);
+        pageTitle.SetValue(TextElement.TextWeightProperty, Controls.TextWeight.Bold);
         pageTitle.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         pageTitle.SetBinding(TextBlock.TextProperty, new Binding("CurrentPage.Title"));
         headerRow.Children.Add(pageTitle);

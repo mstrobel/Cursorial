@@ -1,9 +1,11 @@
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.UI;
 
 using Style = Cursorial.UI.Style;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Input;
 
 // ReSharper disable InconsistentNaming
 
@@ -37,7 +39,7 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal(TextAttributes.Faint, TextElement.ComposeAttributes(e).Flags); // one dial — Bold|Faint unrepresentable
 
         TextElement.SetTextWeight(e, TextWeight.Normal);
-        TextElement.SetItalic(e, true);
+        TextElement.SetTextStyle(e, TextStyle.Italic);
         TextElement.SetStrikethrough(e, true);
         TextElement.SetOverline(e, true);
         TextElement.SetInverse(e, true);
@@ -188,6 +190,63 @@ public sealed class Section45_TextAttributeAxes
 
         Assert.False(TextElement.GetInverse(tb)); // flows like Background: no ambient inheritance
         Assert.Equal(TextAttributes.None, TextElement.ComposeAttributes(tb).Flags);
+    }
+
+    [Fact] // TA10 — pair coherence: every tier dictionary carries BOTH cue keys (the judge's lint, at test-time cost)
+    public void TA10_CuePair_PresentInEveryTierDictionary()
+    {
+        var theme = Cursorial.UI.Themes.CursorialTheme.CreateDefault();
+
+        var carriers = theme.ThemeDictionaries
+            .Where(kv => kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse)
+                      || kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight))
+            .ToList();
+
+        Assert.NotEmpty(carriers);
+        Assert.All(carriers, kv =>
+        {
+            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse),
+                $"tier {kv.Key} carries CueWeight but not CueInverse");
+            Assert.True(kv.Value.ContainsKey(Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight),
+                $"tier {kv.Key} carries CueInverse but not CueWeight");
+            Assert.IsType<bool>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse]);
+            Assert.IsType<TextWeight>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
+        });
+    }
+
+    [Fact] // TA11 — the landed P9.3b (the composability proof): NoColor focus-row = selection Inverse + focus Bold, composed
+    public void TA11_NoColor_ListFocusRow_InverseAndBold_ComposeWithSelection()
+    {
+        using var host = UIHeadlessHost.Create();
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.Application.RequestedColorTier = ColorDepth.NoColor;
+
+        var list = new ListBox { ItemsSource = new[] { "alpha", "beta" } };
+        var root = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        root.Children.Add(list);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(ColorDepth.NoColor, host.Application.ActualThemeVariant.Tier);
+
+        // Select the first row and give it the keyboard focus-visible cue: :selected (Inverse via the
+        // selection rule) AND :focus-visible (Inverse + Bold via the focus-cue rule) — the two rules
+        // COMPOSE per axis: Inverse from either, Bold from the focus rule's independent weight axis.
+        // Pre-decomposition this was impossible — the combined-flags rule fought the selection rule
+        // over one property (the deferred P9.3b).
+        var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0)!;
+        container.IsSelected = true;
+        Assert.True(container.Focus(FocusNavigationMethod.Tab)); // Tab modality ⇒ :focus-visible
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(container.IsSelected);
+        Assert.True(TextElement.GetInverse(container));
+        Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(container));
+
+        // And the cells prove delivery end-to-end: the row's text carries Inverse|Bold.
+        var (col, row) = container.TranslateToWindow(1, 0); // past the 1-cell row padding
+        var style = host.GetCell(col, row).Style;
+        Assert.True((style.Attributes & TextAttributes.Inverse) != 0);
+        Assert.True((style.Attributes & TextAttributes.Bold) != 0);
     }
 
     private static UIElement? FindLeaf(UIElement root)

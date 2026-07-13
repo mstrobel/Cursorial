@@ -25,6 +25,22 @@ public enum TextWeight : byte
 }
 
 /// <summary>
+/// The text posture axis (proposal-textattributes-decomposition §1, amended 2026-07-13): the enum
+/// shape (rather than a bare bool) keeps the <c>Text*</c> property family discoverable as a set
+/// (<see cref="TextWeight"/>/<see cref="TextStyle"/>) and leaves headroom for future terminal
+/// posture standards (SGR 20 fraktur is the historical precedent) — while still refusing WPF's
+/// <c>Oblique</c>, which has no terminal encoding.
+/// </summary>
+public enum TextStyle : byte
+{
+    /// <summary>Upright text (SGR 23 — the reset state).</summary>
+    Normal = 0,
+
+    /// <summary>SGR 3 — italic.</summary>
+    Italic,
+}
+
+/// <summary>
 /// The paint-time resolution of the <see cref="TextElement"/> attribute properties into the Drawing
 /// tier's vocabulary (proposal-textattributes-decomposition §3.1): the folded flag bitset (including
 /// the <see cref="TextAttributes.Underline"/> presence bit) plus the underline shape, meaningful only
@@ -76,7 +92,7 @@ public abstract class TextElement
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ForegroundProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextAttributesProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
-        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ItalicProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, StrikethroughProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, OverlineProperty);
@@ -126,9 +142,9 @@ public abstract class TextElement
     public static readonly AttachedProperty<TextWeight> TextWeightProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, TextWeight>("TextWeight");
 
-    /// <summary>Italic (SGR 3/23). Non-inheriting.</summary>
-    public static readonly AttachedProperty<bool> ItalicProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, bool>("Italic");
+    /// <summary>The text posture axis (SGR 3/23). Non-inheriting.</summary>
+    public static readonly AttachedProperty<TextStyle> TextStyleProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, TextStyle>("TextStyle");
 
     /// <summary>
     /// Underline presence + shape unified (SGR 4 / 4:n / 24): <see langword="null"/> = no underline;
@@ -174,18 +190,18 @@ public abstract class TextElement
         element.SetValue(TextWeightProperty, value);
     }
 
-    /// <summary>Reads the italic axis attached to <paramref name="element"/>.</summary>
-    public static bool GetItalic(UIElement element)
+    /// <summary>Reads the text posture axis attached to <paramref name="element"/>.</summary>
+    public static TextStyle GetTextStyle(UIElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return element.GetValue(ItalicProperty);
+        return element.GetValue(TextStyleProperty);
     }
 
-    /// <summary>Sets the italic axis on <paramref name="element"/>.</summary>
-    public static void SetItalic(UIElement element, bool value)
+    /// <summary>Sets the text posture axis on <paramref name="element"/>.</summary>
+    public static void SetTextStyle(UIElement element, TextStyle value)
     {
         ArgumentNullException.ThrowIfNull(element);
-        element.SetValue(ItalicProperty, value);
+        element.SetValue(TextStyleProperty, value);
     }
 
     /// <summary>Reads the underline presence + shape attached to <paramref name="element"/> (<see langword="null"/> = none).</summary>
@@ -293,7 +309,7 @@ public abstract class TextElement
 
         var underline = element.GetValue(UnderlineProperty);
         if (underline is not null)                        flags |= TextAttributes.Underline;
-        if (element.GetValue(ItalicProperty))             flags |= TextAttributes.Italic;
+        if (element.GetValue(TextStyleProperty) == TextStyle.Italic) flags |= TextAttributes.Italic;
         if (element.GetValue(StrikethroughProperty))      flags |= TextAttributes.Strikethrough;
         if (element.GetValue(OverlineProperty))           flags |= TextAttributes.Overline;
         if (element.GetValue(InverseProperty))            flags |= TextAttributes.Inverse;

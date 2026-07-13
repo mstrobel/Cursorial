@@ -79,7 +79,7 @@ internal static class CursorialThemeStyles
             ".caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pointerover, " +
             ".caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pointerover")
         { Key = "Theme.CapsNoColor.Inverse" };
-        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
+        style.Setters.Add(new Setter(TextElement.InverseProperty, true)); // per-axis (proposal §4.3); delivery = face forward + presenter forward
         return style;
     }
 
@@ -93,26 +93,47 @@ internal static class CursorialThemeStyles
     internal static Style CapsNoColorDisabledFaint()
     {
         var style = new Style(".caps-nocolor :is(ButtonBase):disabled") { Key = "Theme.CapsNoColor.DisabledFaint" };
-        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Faint));
+        style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Faint)); // the weight AXIS (proposal §1)
         return style;
     }
 
     /// <summary>
     /// The caps-nocolor SELECTION layer (companion to <see cref="CapsNoColorInteractiveInverse"/>): under
     /// <c>.caps-nocolor</c> the SelectionBrush resolves to <see cref="Colors.Default"/>, so a selected item is
-    /// indistinguishable; <see cref="TextAttributes.Inverse"/> reverse-videos the row instead (the design guide's
-    /// monochrome-selection rule). Subjects are the FLAT input-list item types (the inherited TextAttributes would
-    /// leak Inverse into a TreeViewItem's nested children, so the tree's header-bar reverse is left to a future
-    /// part-targeted rule). Armed at Theme layer.
+    /// indistinguishable; the <c>Inverse</c> axis reverse-videos the row instead (the design guide's
+    /// monochrome-selection rule). Subjects are CONTROL-level for every member — the axes are
+    /// non-inheriting ("flows like Background", proposal §2.1), so a control-level value cannot leak
+    /// into content: the TabItem member no longer needs the /template/ part targeting (the old
+    /// "would invert its CONTENT as well" hazard dissolved with inheritance), and the historical
+    /// TreeViewItem exclusion (inherited Inverse bleeding into nested children) is obsolete — the
+    /// tree cue can land as a follow-up on the same pattern. Delivery: the face Border forwards
+    /// Inverse from the control; the label rides the presenter forward. Armed at Theme layer.
     /// </summary>
     internal static Style CapsNoColorSelectionInverse()
     {
         var style = new Style(".caps-nocolor ListBoxItem:selected, " +
                               ".caps-nocolor ComboBoxItem:selected, " +
-                              // DO NOT set inverse-video on the TabItem itself; that would invert its CONTENT as well.
-                              ".caps-nocolor TabItem:selected /template/ #PART_HeaderSite")
+                              ".caps-nocolor TabItem:selected")
         { Key = "Theme.CapsNoColor.SelectionInverse" };
-        style.Setters.Add(new Setter(TextElement.TextAttributesProperty, TextAttributes.Inverse));
+        style.Setters.Add(new Setter(TextElement.InverseProperty, true));
+        return style;
+    }
+
+    /// <summary>
+    /// The caps-nocolor keyboard focus-row cue for list items (the deferred P9.3b "Inverse+Bold" —
+    /// gallery <c>.item.rev</c>): under NoColor the brush-pair focus row collapses, so the row
+    /// reverse-videos AND bolds. THE composability proof of the per-axis decomposition
+    /// (proposal §5 P3): Inverse composes with the selection rule's Inverse (same axis, same value)
+    /// while Bold rides the INDEPENDENT weight axis — the combined-flags rule that used to fight the
+    /// selection rule is now two orthogonal contributions. Ordered after the selection rule.
+    /// </summary>
+    internal static Style CapsNoColorListFocusCue()
+    {
+        var style = new Style(".caps-nocolor ListBoxItem:focus-visible, " +
+                              ".caps-nocolor ComboBoxItem:focus-visible")
+        { Key = "Theme.CapsNoColor.ListFocusCue" };
+        style.Setters.Add(new Setter(TextElement.InverseProperty, true));
+        style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;
     }
 
@@ -137,7 +158,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)
@@ -165,7 +187,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush)
@@ -194,7 +217,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)
@@ -223,7 +247,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)
@@ -252,7 +277,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
@@ -281,7 +307,8 @@ internal static class CursorialThemeStyles
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes),
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush)

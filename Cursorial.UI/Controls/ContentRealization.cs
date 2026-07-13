@@ -102,7 +102,7 @@ internal static class ContentRealization
     // these live forwards, the same idiom the TextWrapping binding above uses.
     private static readonly UIProperty[] ForwardedTextAxes =
     [
-        TextElement.TextWeightProperty, TextElement.ItalicProperty, TextElement.UnderlineProperty,
+        TextElement.TextWeightProperty, TextElement.TextStyleProperty, TextElement.UnderlineProperty,
         TextElement.StrikethroughProperty, TextElement.OverlineProperty, TextElement.InverseProperty,
         TextElement.BlinkProperty, TextElement.ConcealedProperty,
     ];

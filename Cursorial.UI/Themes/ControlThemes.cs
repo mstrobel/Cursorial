@@ -97,7 +97,9 @@ internal static class ControlThemes
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-        border.SetBinding(TextElement.TextAttributesProperty, new TemplateBinding(TextElement.TextAttributesProperty));
+        // The face consumes the Inverse AXIS for its fill (non-inheriting — "flows like Background"):
+        // a live per-axis forward, the brush idiom verbatim (proposal §4.2; was the aggregate forward).
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
         // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
@@ -268,7 +270,9 @@ internal static class ControlThemes
     // default-theme gallery mockup (.item.sel/.hov/.dis): selected = SelectionBrush fill + TextBrush ink (NOT the
     // OnAccent pair — selection is milder than pressed; adoption-spec line 14), hover = HoverBrush + TextBrush,
     // disabled = MutedBrush ink. Ordered hover → selected so a hovered-selected item reads as selected (document
-    // order). The keyboard focus-row reverse-video cue (gallery .item.rev / Inverse+Bold) lands with P9.3b.
+    // order). The keyboard focus-row cue: brush-pair at color tiers (below); Inverse+Bold under
+    // .caps-nocolor (CursorialThemeStyles.CapsNoColorListFocusCue — the landed P9.3b, the per-axis
+    // composability proof).
     private static ControlTemplate ListBoxItemTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter();
@@ -276,6 +280,9 @@ internal static class ControlThemes
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        // The row face forwards the Inverse axis (the NoColor selection/focus-row cue paints the
+        // WHOLE bar via the opaque NoColor fill); the label rides the presenter forward.
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
         return border;
     });
 
@@ -378,6 +385,7 @@ internal static class ControlThemes
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
         return border;
     });
 
@@ -794,6 +802,10 @@ internal static class ControlThemes
                var headerHost = new Border { Padding = new Margins(1, 0), Child = header, Background = Brushes.Transparent, Occludes = true };
                headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                headerHost.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+               // The header face forwards the Inverse axis: the NoColor selection rule now targets the
+               // TABITEM (control-level — non-inheriting axes cannot leak into the page content), and
+               // this forward + the header presenter's leaf forward deliver it to fill + label.
+               headerHost.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
                ctx.RegisterName("PART_HeaderSite", headerHost);
 
                // The active-tab accent underline (gallery "active tab marked by accent bar (━ cells)"): a 1-row
@@ -1276,7 +1288,8 @@ internal static class ControlThemes
     // fill swap; focus = reverse-video (TextBrush fill + WindowBackground text); pressed = accent reverse-video;
     // disabled = disabled fill + muted text. All brush-pair setters are ResourceReferences into the
     // palette spine (color tiers); the NoColor interactive-state distinction rides the caps-nocolor
-    // theme-styles rules (inherited TextElement.TextAttributes — Inverse / Faint; see CursorialThemeStyles).
+    // theme-styles rules (the per-axis TextElement.Inverse / TextWeight cue, delivered by the face +
+    // presenter forwards; see CursorialThemeStyles).
     // Ordered hover → focus → pressed → disabled so the higher-intent state wins on a pseudo-class tie.
     private static Style AddButtonStates<TButton>(Style theme) where TButton : ButtonBase
     {
@@ -1385,6 +1398,9 @@ internal static class ControlThemes
                    // to its StackPanel's width, so a reverse fill would span the whole row like a selection bar.
                    var glyphCell = new Grid();
                    var glyph = new ToggleGlyph(glyphKey, checkedMarkKey, indeterminateMarkKey);
+                   // The glyph forwards the weight axis so the caps-nocolor disabled-Faint rule (set on
+                   // the CONTROL) dims the box to match its (presenter-forwarded) label.
+                   glyph.SetBinding(TextElement.TextWeightProperty, new TemplateBinding(TextElement.TextWeightProperty));
                    ctx.RegisterName("PART_Glyph", glyph);
 
                    var caret = new Caret

@@ -63,7 +63,7 @@ public enum TextWeight : byte { Normal = 0, Faint, Bold }
 | Property | Type | Default | SGR fold | Precedent |
 |---|---|---|---|---|
 | `TextWeightProperty` | `TextWeight` | `Normal` | Bold→1, Faint→2, Normal→neither (reset 22) | the axis of WPF `FontWeight` / CSS `font-weight`, not the type (§8 Q1) |
-| `ItalicProperty` | `bool` | `false` | 3 / 23 | WPF `FontStyle` minus the inexpressible `Oblique` |
+| `TextStyleProperty` | `TextStyle { Normal, Italic }` | `Normal` | 3 / 23 | the posture axis; enum per the 2026-07-13 amendment (below) |
 | `UnderlineProperty` | `UnderlineStyle?` | `null` | 4 / 4:n / 24 | presence + shape unified; `null` = no underline (§8 Q2) |
 | `UnderlineBrushProperty` | `IBrush?` | `null` | 58 / 59 | CSS `text-decoration-color`; **phase-late, demand-gated** |
 | `StrikethroughProperty` | `bool` | `false` | 9 / 29 | CSS `line-through` |
@@ -82,11 +82,13 @@ Design arguments per row:
   under independent bools it composes into `Bold|Faint` folklore that only a downstream quantizer
   special-case could repair. Mutual exclusion by construction, arbitration where arbitration is
   meaningful. (The uniform-bools alternative conceded this point in its own self-critique.)
-- **`Italic` as `bool`, not a `FontStyle` enum.** WPF's third value (`Oblique`) has no terminal
-  encoding; a two-value enum is ceremony. Plain-adjective naming (`Italic`, `Strikethrough`,
-  `Inverse`, …) mirrors the `TextAttributes` member vocabulary and the markup tags (`[i]`, `[s]`):
-  these name *attributes present on text*, not element state — `TextElement.Italic="True"` reads
-  as the declaration it is.
+- **`TextStyle { Normal, Italic }` — the posture axis as an enum (owner amendment, 2026-07-13;
+  supersedes the judge's Italic-as-bool trim).** Two reasons: *discoverability* — the `Text*`
+  prefix groups the axis family (`TextWeight`/`TextStyle`) as a set in completion lists; and
+  *headroom* — future terminal posture standards slot in as values, not new properties (SGR 20
+  fraktur is the historical precedent). WPF's `Oblique` is still refused (no terminal encoding).
+  The remaining boolean axes keep plain-adjective naming (`Strikethrough`, `Inverse`, …),
+  mirroring the `TextAttributes` member vocabulary and the markup tags (`[s]`, `[u]`).
 - **Underline: presence + shape unified as `UnderlineStyle?`; color split.** SGR encodes presence
   *as* shape (`4:0` = off), so a shape-with-no-presence state should be unrepresentable — `null` =
   absent, a value = present in that shape. Core's `UnderlineStyle` is reused **as-is** (`Single =
@@ -521,6 +523,10 @@ arbitrate axes — give it axes.
    (styled directly instead), and templates carry the per-axis forwards their parts consume. The
    panel's uniform-INHERITING recommendation and its demotion-gate machinery are superseded; kept
    in the judgment doc for the record.
+4a. **Posture axis shape (amendment, 2026-07-13) — DECIDED: `TextStyle { Normal, Italic }`**
+   instead of the judge's Italic-as-bool: `Text*`-prefix discoverability of the axis family, and
+   enum headroom for possible future terminal text standards (SGR 20 fraktur as precedent).
+
 4. **The commented-out XAML accent `:focus-visible` setters — DECIDED: delete, with the real
    reasons recorded.** (a) Mechanical: at color tiers the non-occluding face's glyph-transparent
    tint drops attributes on glyphless cells (`Border.cs:151-162`) — Inverse inverted only the

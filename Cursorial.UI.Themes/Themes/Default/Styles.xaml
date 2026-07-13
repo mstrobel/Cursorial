@@ -50,6 +50,14 @@
       <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
     </Style>
 
+    <!-- The keyboard focus-row cue for list items (P9.3b — gallery .item.rev): under NoColor the row
+         reverse-videos AND bolds; the two setters ride INDEPENDENT axes, composing with the selection
+         rule's Inverse (proposal-textattributes-decomposition §5 P3 — the composability proof). -->
+    <Style Selector=".caps-nocolor ListBoxItem:focus-visible, .caps-nocolor ComboBoxItem:focus-visible">
+      <Setter Property="TextElement.Inverse" Value="True"/>
+      <Setter Property="TextElement.TextWeight" Value="Bold"/>
+    </Style>
+
     <Style Selector=".caps-ansi16 Border, .caps-ansi16 :is(Panel), .caps-ansi16 :is(UIElement) /template/ Border">
       <Setter Property="Border.Occludes" Value="True"/>
     </Style>

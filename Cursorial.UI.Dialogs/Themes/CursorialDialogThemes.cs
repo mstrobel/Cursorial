@@ -52,13 +52,13 @@ public static class CursorialDialogThemes
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));

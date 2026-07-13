@@ -197,7 +197,9 @@ public sealed class BarControlsTests
         button.Focus();
         host.RunUntilIdle();
 
-        Assert.Equal(TextAttributes.Inverse, TextElement.GetTextAttributes(button)); // the monochrome focus cue
+        // Re-pinned 2026-07-13 (per-axis decomposition): the cue rides the Inverse AXIS now.
+        Assert.True(TextElement.GetInverse(button)); // the monochrome focus cue
+        Assert.Equal(TextAttributes.Inverse, TextElement.ComposeAttributes(button).Flags & TextAttributes.Inverse);
     }
 
     [Fact] // under a color tier the SAME focus does NOT set Inverse (the palette fill is the cue — no double-invert)

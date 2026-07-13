@@ -43,8 +43,16 @@ internal static class GeneratorHarness
     /// <summary>Runs the generator over the given (name → xaml) files, each carrying the
     /// <c>SourceItemType=CursorialXaml</c> AdditionalFiles metadata, and returns the run result.</summary>
     public static GeneratorDriverRunResult Run(params (string FileName, string Xaml)[] files)
+        => Run(files, sources: null);
+
+    /// <summary>As <see cref="Run(ValueTuple{string, string}[])"/>, with C# <paramref name="sources"/> added
+    /// to the compilation first (e.g. the user half of an x:Class partial).</summary>
+    public static GeneratorDriverRunResult Run((string FileName, string Xaml)[] files, string[]? sources)
     {
         var compilation = ReferencedCompilation();
+
+        if (sources is { Length: > 0 })
+            compilation = compilation.AddSyntaxTrees(sources.Select(s => CSharpSyntaxTree.ParseText(s)));
 
         var additionalTexts = files
                               .Select(f => (AdditionalText) new InMemoryAdditionalText(f.FileName, f.Xaml))

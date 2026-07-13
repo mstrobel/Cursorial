@@ -6,6 +6,7 @@ using System.Text;
 
 using Cursorial.UI.Xaml; // source-linked frontend: XamlFrontend, XamlDocument, XamlDiagnostic, XamlParseOptions
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 
 namespace Cursorial.UI.Xaml.Generator;
@@ -86,11 +87,17 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             provider.GlobalOptions.TryGetValue("build_property.CursorialXamlLowering", out var mode)
             && string.Equals(mode, "full", System.StringComparison.OrdinalIgnoreCase));
 
+        // Every document's (x:Class, root element) — the cross-document base map. A per-document emit
+        // analyzing `<v:EditorsPane Width="…">` must know EditorsPane's base even though that base is
+        // declared by the GENERATED partial of a SIBLING document (a generator never sees its own output).
+        var classRoots = xamlFiles.Select(static (input, _) => XClassBaseScanner.Scan(input.Text)).Collect();
+
         // Combine with the compilation so the symbol-backed RoslynXamlMetadata can resolve types (WS-X4.3).
         // This makes the generator compilation-coupled (re-runs as the compilation changes) — the standard
         // tradeoff for a semantic generator; XAML inputs themselves stay equatable for the file half.
-        var withCompilation = xamlFiles.Combine(context.CompilationProvider).Combine(loweringFull);
-        context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left.Left, pair.Left.Right, pair.Right));
+        var withCompilation = xamlFiles.Combine(context.CompilationProvider).Combine(loweringFull).Combine(classRoots);
+        context.RegisterSourceOutput(withCompilation, static (spc, pair) =>
+            Emit(spc, pair.Left.Left.Left, pair.Left.Left.Right, pair.Left.Right, pair.Right));
 
         // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
         // file's closed type set, advertised via [assembly: XamlMetadataProvider]. The loader's lazy default
@@ -105,6 +112,11 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
     {
         if (inputs.IsDefaultOrEmpty)
             return;
+
+        // The baked member tables must see through generated base declarations too, or an x:Class type
+        // referenced by a sibling document bakes an EMPTY member set (no inherited Width/Margin/...).
+        compilation = AugmentWithXClassBases(
+            compilation, inputs.Select(static i => XClassBaseScanner.Scan(i.Text)).ToImmutableArray());
 
         var resolver = new XamlSymbolResolver(compilation);
 
@@ -139,8 +151,16 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 
-    private static void Emit(SourceProductionContext spc, XamlInput input, Compilation compilation, bool loweringFull)
+    private static void Emit(
+        SourceProductionContext spc,
+        XamlInput input,
+        Compilation compilation,
+        bool loweringFull,
+        ImmutableArray<(string ClassName, string RootNamespace, string RootLocalName)?> classRoots)
     {
+        // See AugmentWithXClassBases — without this, inherited members on sibling x:Class types are false CUR2102s.
+        compilation = AugmentWithXClassBases(compilation, classRoots);
+
         // Run the SAME parser the loader runs, now over the symbol-backed provider (WS-X4.3) so element types
         // resolve and the node graph carries them. FoldConstants=false — there are no runtime values to fold at
         // generator time. CollectAll so a malformed document yields every diagnostic rather than throwing.
@@ -232,6 +252,59 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             $"// x:Class: {rootClass}; diagnostics: {document.Diagnostics.Count}\n";
 
         spc.AddSource(hint, SourceText.From(src, Encoding.UTF8));
+    }
+
+    /// <summary>
+    /// The ANALYSIS compilation: the source compilation plus a synthetic <c>partial class C : Base { }</c>
+    /// for every x:Class document whose code-behind leaves the base type to the GENERATED partial. A source
+    /// generator never sees its own output, so without this the symbol model reads such a class as
+    /// <c>: object</c> — every inherited member set on it from a sibling document
+    /// (<c>&lt;v:EditorsPane Width="…"&gt;</c>) is a false CUR2102, and the emitted provider bakes an empty
+    /// member table for it. The synthetic trees mirror exactly what <see cref="CodeBehindEmitter"/> emits into
+    /// the REAL compilation; they exist only for symbol lookup and are never added as sources.
+    /// </summary>
+    private static Compilation AugmentWithXClassBases(
+        Compilation compilation,
+        ImmutableArray<(string ClassName, string RootNamespace, string RootLocalName)?> classRoots)
+    {
+        List<string>? declarations = null;
+        XamlSymbolResolver? resolver = null;
+
+        foreach (var entry in classRoots)
+        {
+            if (entry is not ({ } className, { } rootNamespace, { } rootLocalName) ||
+                className.Length == 0 ||
+                !className.Split('.').All(SyntaxFacts.IsValidIdentifier))
+                continue;
+
+            // Only augment when the base is genuinely missing: a code-behind that declares its own base is
+            // left alone (a conflicting synthetic declaration would corrupt symbol lookup; CS0263 in the real
+            // compilation already polices root/code-behind mismatches).
+            if (compilation.GetTypeByMetadataName(className) is not { BaseType.SpecialType: SpecialType.System_Object } existing)
+                continue;
+
+            resolver ??= new XamlSymbolResolver(compilation);
+            var baseSymbol = resolver.Resolve(rootNamespace, rootLocalName, out _);
+            if (baseSymbol is null || SymbolEqualityComparer.Default.Equals(baseSymbol, existing))
+                continue;
+
+            var dot = className.LastIndexOf('.');
+            var declaration =
+                $"partial class {className.Substring(dot + 1)} : {baseSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} {{ }}";
+            (declarations ??= new List<string>()).Add(
+                dot < 0 ? declaration : $"namespace {className.Substring(0, dot)} {{ {declaration} }}");
+        }
+
+        if (declarations is null)
+            return compilation;
+
+        // Parse with the compilation's OWN options — AddSyntaxTrees rejects trees whose language
+        // version / feature flags differ from the existing ones ("Inconsistent syntax tree features").
+        var parseOptions = compilation.SyntaxTrees.FirstOrDefault()?.Options as CSharpParseOptions;
+        return compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+            "// Synthetic analysis-only x:Class base declarations (mirror of the generated partials).\n" +
+            string.Join("\n", declarations),
+            parseOptions));
     }
 
     private static Diagnostic ToRoslyn(XamlDiagnostic diagnostic, XamlInput input)

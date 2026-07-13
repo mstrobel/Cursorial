@@ -87,6 +87,30 @@ public class XamlSourceGeneratorTests
         Assert.Contains("Bad.xaml", lineSpan.Path);
     }
 
+    [Fact] // an x:Class code-behind may leave its base type to the GENERATED partial (the one-place edit);
+    // the semantic band must still see INHERITED members on that class when a SIBLING document sets them
+    // (<v:EditorsPane Width="…">). The generator can't see its own output, so the analysis compilation is
+    // augmented with the would-be generated base declarations — without that, Width is a false CUR2102.
+    public void Generator_ResolvesInheritedMembers_OnSiblingXClassTypes()
+    {
+        var result = GeneratorHarness.Run(
+            [
+                ("EditorsPane.xaml",
+                 "<UserControl xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+                 "x:Class=\"Test.Views.EditorsPane\"><Border/></UserControl>"),
+                ("MainView.xaml",
+                 "<StackPanel xmlns=\"https://cursorial.dev/ui\" " +
+                 "xmlns:v=\"clr-namespace:Test.Views;assembly=GeneratorTestAssembly\">" +
+                 "<v:EditorsPane Width=\"30\"/></StackPanel>"),
+            ],
+            sources: ["namespace Test.Views { public partial class EditorsPane { } }"]);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id.StartsWith("CUR2"));
+        // And the emitted provider bakes the inherited member table, not an empty one.
+        var provider = result.Results.SelectMany(r => r.GeneratedSources).Single(s => s.HintName.Contains("__GeneratedXamlMetadata"));
+        Assert.Contains("Width", provider.SourceText.ToString());
+    }
+
     [Fact] // an unknown element type surfaces CUR2002 (type-not-found)
     public void Generator_ReportsUnknownType_AsRoslynDiagnostic()
     {

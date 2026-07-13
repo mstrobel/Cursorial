@@ -111,11 +111,16 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
 
         var resolver = new XamlSymbolResolver(compilation);
 
-        // Union of every file's recorded element/attached-owner names → resolved symbols (the closed set).
+        // Union of every file's recorded element/attached-owner names PLUS its load-time type
+        // references (x:Type, TargetType/DataType/AncestorType, selector tokens) → resolved
+        // symbols (the closed set). Elements alone are not enough: the loader resolves the
+        // reference forms at RUNTIME through this provider.
         var names = new HashSet<(string Namespace, string LocalName)>();
         foreach (var input in inputs)
         {
             foreach (var name in ClosedTypeSet.CollectElementNames(input.Text))
+                names.Add(name);
+            foreach (var name in ClosedTypeSet.CollectTypeReferenceNames(input.Text))
                 names.Add(name);
         }
 

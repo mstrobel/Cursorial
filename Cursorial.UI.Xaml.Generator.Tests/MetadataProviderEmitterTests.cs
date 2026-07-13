@@ -25,6 +25,36 @@ public class MetadataProviderEmitterTests
         return (source, GeneratorHarness.CompileErrors(source));
     }
 
+    [Fact] // load-time TYPE REFERENCES join the closed set: x:Type, TargetType/DataType, dotted
+    public void ClosedSet_CollectsLoadTimeTypeReferences() // Setter owners, selector tokens (the LayerModel/ListBoxItem bug)
+    {
+        var xaml = """
+                   <UserControl xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
+                                xmlns:vm="clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly">
+                       <UserControl.Styles>
+                           <Style TargetType="ListBoxItem" Selector="ListBoxItem:is(ContentControl)">
+                               <Setter Property="Control.Template" Value="{x:Null}"/>
+                           </Style>
+                       </UserControl.Styles>
+                       <ListBox>
+                           <ListBox.ItemTemplate>
+                               <DataTemplate DataType="{x:Type vm:ProbeModel}"><TextBlock/></DataTemplate>
+                           </ListBox.ItemTemplate>
+                       </ListBox>
+                   </UserControl>
+                   """;
+
+        var names = ClosedTypeSet.CollectTypeReferenceNames(xaml);
+        var locals = names.Select(n => n.LocalName).ToList();
+
+        Assert.Contains("ListBoxItem", locals);      // TargetType + selector token
+        Assert.Contains("ContentControl", locals);   // :is() argument
+        Assert.Contains("Control", locals);          // dotted Setter Property owner
+        Assert.Contains("ProbeModel", locals);       // {x:Type vm:…} argument
+        Assert.Contains(names, n => n is { LocalName: "ProbeModel", Namespace: "clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly" });
+        Assert.Contains("ListBox", locals) /* attached/property-element owner */ ;
+    }
+
     [Fact]
     public void Emits_CompilableProvider_ForControlTree()
     {

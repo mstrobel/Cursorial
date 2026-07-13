@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 using Microsoft.CodeAnalysis;
 
@@ -36,6 +37,86 @@ internal static class ClosedTypeSet
         }
 
         return recorder.Names;
+    }
+
+    /// <summary>
+    /// Type names a document references OUTSIDE element position — the load-time resolutions:
+    /// <c>{x:Type …}</c> arguments, <c>TargetType</c>/<c>DataType</c>/<c>AncestorType</c> attributes (and
+    /// the in-extension <c>AncestorType=</c> form), and selector type tokens. The recording parse never
+    /// sees these (the frontend defers them to the loader), so without this sweep the generated provider
+    /// knows a document's ELEMENTS but not its type REFERENCES — <c>{x:Type vm:LayerModel}</c> and
+    /// <c>TargetType="ListBoxItem"</c> resolved under reflection and died under the closed set at
+    /// runtime. Text-scan like <see cref="CollectStaticPaths"/>: over-collection (a reference inside a
+    /// string, say) resolves-or-drops — never a wrong bake.
+    /// </summary>
+    public static IReadOnlyList<(string Namespace, string LocalName)> CollectTypeReferenceNames(string xaml)
+    {
+        var text = Regex.Replace(xaml, "<!--.*?-->", " ", RegexOptions.Singleline);
+
+        var map = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(text, "xmlns(?::([A-Za-z_][\\w.-]*))?\\s*=\\s*\\\"([^\\\"]*)\\\""))
+            map[m.Groups[1].Success ? m.Groups[1].Value : string.Empty] = m.Groups[2].Value;
+
+        var seen = new HashSet<(string, string)>();
+        var names = new List<(string Namespace, string LocalName)>();
+
+        void Add(string reference)
+        {
+            reference = reference.Trim();
+            if (reference.Length == 0 || reference[0] == '{')
+                return;
+
+            var colon = reference.IndexOf(':');
+            var prefix = colon > 0 ? reference.Substring(0, colon) : string.Empty;
+            var local = colon > 0 ? reference.Substring(colon + 1) : reference;
+            if (local.Length == 0 || !map.TryGetValue(prefix, out var ns))
+                return;
+
+            if (seen.Add((ns, local)))
+                names.Add((ns, local));
+        }
+
+        foreach (Match m in Regex.Matches(text, "\\{x:Type\\s+([^\\s,}]+)"))
+            Add(m.Groups[1].Value);
+
+        // Bare attribute forms ({x:Type …} values are caught above). Type= is x:Array's.
+        foreach (Match m in Regex.Matches(text, "\\b(?:TargetType|DataType|AncestorType|Type)\\s*=\\s*\\\"([^\\\"{][^\\\"]*)\\\""))
+            Add(m.Groups[1].Value);
+
+        // The in-extension form: {Binding …, AncestorType=Name, …}.
+        foreach (Match m in Regex.Matches(text, "\\bAncestorType\\s*=\\s*([A-Za-z_][\\w:.]*)"))
+            Add(m.Groups[1].Value);
+
+        // Dotted setter-property owners: <Setter Property="Control.Template"/> resolves 'Control'
+        // at load to find the member.
+        foreach (Match m in Regex.Matches(text, "\\bProperty\\s*=\\s*\\\"([A-Za-z_][\\w:]*)\\.[A-Za-z_]"))
+            Add(m.Groups[1].Value);
+
+        // Attached-attribute owners (Grid.Row=, bars:Ribbon.ButtonSize=) and dotted
+        // property-element owners (<Grid.RowDefinitions>): the owner resolves at load for the
+        // member lookup. Binding-path fragments over-match here and resolve-or-drop.
+        foreach (Match m in Regex.Matches(text, "[<\\s]([A-Za-z_][\\w:]*)\\.[A-Za-z_]\\w*\\s*="))
+            Add(m.Groups[1].Value);
+        foreach (Match m in Regex.Matches(text, "<([A-Za-z_][\\w:]*)\\.[A-Za-z_]"))
+            Add(m.Groups[1].Value);
+
+        // Selector type tokens: leading compound identifiers, ns|Type forms, :is() arguments.
+        foreach (Match sel in Regex.Matches(text, "\\bSelector\\s*=\\s*\\\"([^\\\"]*)\\\""))
+        {
+            var selector = sel.Groups[1].Value;
+            foreach (Match m in Regex.Matches(selector, "(?:^|[\\s>+~,^(])([A-Za-z_]\\w*)(?:\\|([A-Za-z_]\\w*))?"))
+            {
+                if (m.Groups[2].Success)
+                    Add(m.Groups[1].Value + ":" + m.Groups[2].Value);
+                else
+                    Add(m.Groups[1].Value);
+            }
+
+            foreach (Match m in Regex.Matches(selector, ":is\\(\\s*([^)\\s]+)\\s*\\)"))
+                Add(m.Groups[1].Value.Replace('|', ':'));
+        }
+
+        return names;
     }
 
     /// <summary>

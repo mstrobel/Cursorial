@@ -29,6 +29,9 @@
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <!-- The headless host — the kitchen-sink drift gate renders whole documents under both
+             providers and asserts byte-identical frames. -->
+        <ProjectReference Include="..\Cursorial.UI.Hosting.Headless\Cursorial.UI.Hosting.Headless.csproj" />
         <!-- UITestHost — the live frame loop / app for behavioral resource + template lowering tests. -->
         <ProjectReference Include="..\Cursorial.UI.Hosting.Headless\Cursorial.UI.Hosting.Headless.csproj" />
     </ItemGroup>

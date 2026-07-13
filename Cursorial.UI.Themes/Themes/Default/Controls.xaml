@@ -357,13 +357,14 @@
        :focus-visible (not :focus) is the keyboard focus-row reverse-video cue so a mouse click shows :selected while
        keyboard nav shows the reverse row; disabled = muted ink. The declarative twin of ControlThemes.ListBoxItemTheme(). -->
   <ControlTemplate x:Key="ListBoxItemTemplate">
-    <Border Padding="1,0" Background="{TemplateBinding Background}">
+    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
       <ContentPresenter x:Name="PART_ContentPresenter"/>
     </Border>
   </ControlTemplate>
 
   <Style x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
+    <Setter Property="Padding"    Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ListBoxItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ListBoxItem">

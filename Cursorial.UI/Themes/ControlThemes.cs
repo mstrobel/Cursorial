@@ -273,7 +273,8 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        var border = new Border { Child = presenter };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         return border;
     });
@@ -986,12 +987,21 @@ internal static class ControlThemes
                                      Mode = BindingMode.TwoWay
                                  });
 
+               DockPanel.SetDock(header, Dock.Top);
+               
                ctx.RegisterName("PART_Header", header);
 
                var content = new ContentPresenter(); // auto-aliases to the Expander's Content (A22)
+               
+               content.SetBinding(UIElement.HorizontalAlignmentProperty, 
+                                  new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty));
+
+               content.SetBinding(UIElement.VerticalAlignmentProperty, 
+                                  new TemplateBinding(ContentControl.VerticalContentAlignmentProperty));
+               
                ctx.RegisterName("PART_Content", content);
 
-               var root = new StackPanel { Orientation = Orientation.Vertical };
+               var root = new DockPanel { LastChildFill = true };
                root.Children.Add(header);
                root.Children.Add(content);
 
@@ -1236,6 +1246,7 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.ListBoxItem" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.PaddingProperty, new(1, 0))
             .Set(Control.TemplateProperty, ListBoxItemTemplate());
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));

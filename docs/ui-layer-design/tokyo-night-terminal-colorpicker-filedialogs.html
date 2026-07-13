@@ -215,6 +215,24 @@
   .fd-pathedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
   .fd-newfolder .nmedit .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
   .fd-frow .fname .caret::before{content:'';position:absolute;left:-1px;top:0.05em;height:1.15em;width:2px;background:var(--accent);animation:ibeamblink 1.06s steps(1) infinite;}
+  /* ===== keyboard-spec section ===== */
+  .kbd{background:var(--surface);color:var(--text);padding:0 5px;white-space:nowrap;}
+  .ktbl{width:100%;max-width:900px;border-collapse:collapse;margin:8px 0;font-size:12px;}
+  .ktbl th{text-align:left;color:var(--muted);font-weight:normal;padding:3px 10px;border-bottom:1px solid var(--faint);}
+  .ktbl td{padding:3px 10px;border-bottom:1px solid var(--faint);color:var(--text-dim);vertical-align:top;}
+  .ktbl td:first-child{white-space:nowrap;width:20ch;}
+  .ktbl tr:last-child td{border-bottom:0;}
+  .ktbl td b{color:var(--text);font-weight:normal;}
+  .statebox{background:var(--panel);padding:8px 12px;color:var(--text-dim);overflow-x:auto;margin:8px 0;}
+  .statebox pre{margin:0;font:inherit;white-space:pre;line-height:1.5;}
+  .statebox .st{color:var(--accent);} .statebox .key{color:var(--amber);}
+  .statebox .cm{color:var(--muted);} .statebox .arr{color:var(--muted);}
+  .kcallout{background:var(--panel);border-left:3px solid var(--accent);padding:6px 12px;margin:10px 0;max-width:900px;color:var(--text-dim);}
+  .kcallout .ct{color:var(--accent);font-size:11px;margin-bottom:2px;}
+  .kcallout.warn{border-left-color:var(--amber);} .kcallout.warn .ct{color:var(--amber);}
+  .gated{color:var(--purple);font-size:10px;white-space:nowrap;}
+  .ktbl td .alt{color:var(--muted);font-size:11px;}
+  h3.ksub{color:var(--accent-2);font-size:12px;font-weight:normal;margin:16px 0 4px;}
 </style>
 </head>
 <body>
@@ -607,6 +625,142 @@
     </div>
   </div>
   <div class="caption">Clicking into the breadcrumb (or pressing the path's empty space) flips it from segmented chips to a <b>raw editable text field</b> — the full path as a string with a caret, the already-committed prefix dimmed and the partial final segment (<span style="color:var(--text)">te</span>) live. A <b>completion dropdown</b> drops below, Claude-Code-style: matches filtered on the partial segment with the matched characters <span style="color:var(--accent);font-weight:bold">bold-highlighted</span>, folders (<span style="color:var(--accent-2)">▸</span>, which continue the path) ahead of files, fuzzy matches included and labelled, the current candidate selected, and a key-hint footer (Tab completes, ↑↓ selects, ↵ opens, Esc reverts to chips). The list behind dims to show focus is in the path bar.</div>
+
+
+  <h2 class="sec">▸ Keyboard interaction — breadcrumb navigation &amp; path edit mode</h2>
+  <div class="caption" style="margin-bottom:10px">The dialogs above show the breadcrumb's <i>states</i> but not how a keyboard user moves
+  between them. This section specifies that completely: the focus-state machine, how to enter and leave path-edit mode, the completion
+  popup's keys, and the dialog-wide tab-stop model. It composes with the framework's retaining / non-retaining focus scopes — the dialog
+  retains focus; the breadcrumb, its completion popup, and any sibling dropdown are transient scopes layered over it. Bindings marked
+  <span class="gated">[CAP]</span> require <code style="color:var(--purple)">caps-kitty-keyboard</code>; each has an always-available
+  ungated equivalent — see the <span class="kbd">Ctrl</span>-chord hazard note below.</div>
+
+  <h3 class="ksub">Focus-state machine</h3>
+  <div class="statebox"><pre>  <span class="cm">breadcrumb focus states — Esc unwinds exactly one level per press</span>
+
+     <span class="st">S0</span> unfocused
+      <span class="arr">│</span>  <span class="key">Tab</span> into region  <span class="cm">/</span>  <span class="key">F4</span> <span class="cm">·</span> <span class="key">Alt+D</span> <span class="cm">(jump straight to S2)</span>
+      <span class="arr">▼</span>
+     <span class="st">S1</span> CHIP mode        <span class="cm">segments as chips; ←/→ moves the active chip</span>
+      <span class="arr">│</span>  <span class="key">F4</span> <span class="cm">·</span> <span class="key">Alt+D</span> <span class="cm">·</span> <span class="key">F2</span>          <span class="arr">▲</span> <span class="key">Esc</span> <span class="cm">(revert, discard edits)</span>
+      <span class="arr">▼</span>                                    <span class="arr">│</span>
+     <span class="st">S2</span> EDIT mode        <span class="cm">raw path text + caret; path pre-selected</span>
+      <span class="arr">│</span>  <span class="key">↓</span> <span class="cm">·</span> <span class="key">Ctrl+Space</span> <span class="cm">·</span> <span class="key">Tab</span><span class="cm">(if completable)</span>   <span class="arr">▲</span> <span class="key">Esc</span> <span class="cm">(close popup, keep text)</span>
+      <span class="arr">▼</span>                                    <span class="arr">│</span>
+     <span class="st">S3</span> EDIT + completion popup open
+
+  <span class="cm">and at the dialog's top level:</span>
+     <span class="st">S1</span> <span class="key">Esc</span> <span class="arr">──▶</span> focus returns to the <b>file list</b>  <span class="cm">(NOT dialog-cancel)</span>
+     file list <span class="key">Esc</span> <span class="arr">──▶</span> Cancel the dialog        <span class="cm">(final rung)</span></pre></div>
+  <div class="kcallout warn"><div class="ct">⚠ <span class="kbd">Esc</span> MUST UNWIND ONE LEVEL — NOT CANCEL THE DIALOG</div>
+The breadcrumb stacks up to three scopes (chips → edit → completion popup). <span class="kbd">Esc</span> pops <b>exactly one</b> per press, per the framework's
+focus-scope model. Critically, <span class="kbd">Esc</span> from the breadcrumb in chip mode returns focus to the <b>file list</b> — it does <b>not</b> cancel the
+dialog. A user backing out of the path bar must never destroy their dialog. <span class="kbd">Esc</span> only cancels once focus is already at the dialog's top
+level with no sub-scope active. The dialog itself is the <b>retaining</b> scope; the breadcrumb, its popup, and the sibling dropdown are
+<b>non-retaining</b> scopes layered over it — so backing out of them simply falls through to where focus already was.</div>
+
+  <h3 class="ksub">Entering path-edit mode</h3>
+  <div class="caption" style="margin-bottom:6px">Two accelerators, both landing in EDIT mode with the whole path <b>pre-selected</b> so typing
+  replaces it: <span class="kbd">F4</span> — the primary, being both the classic address-bar key <i>and</i> the combobox-drop key (apt, because a breadcrumb
+  with completion <i>is</i> a combobox) — and <span class="kbd">Alt+D</span> (&ldquo;focus address&rdquo;). Both work from anywhere in the dialog.
+  With the breadcrumb already focused in chip mode, <span class="kbd">F2</span> also enters edit mode (the rename/edit idiom). Pointer users click the path
+  bar's empty space, as shown above.
+  <br><br><b>Deliberately not <span class="kbd">Ctrl+L</span>.</b> In a browser that means &ldquo;focus the location bar,&rdquo; but in a terminal
+  <span class="kbd">Ctrl+L</span> is the near-universal <b>clear / force-repaint</b> binding (readline's <span style="color:var(--accent-2)">clear-screen</span>;
+  shells, <span style="color:var(--accent-2)">less</span>, <span style="color:var(--accent-2)">vim</span>, <span style="color:var(--accent-2)">tmux</span>),
+  and the framework reserves it app-wide. A dialog stealing it would strand a user hitting <span class="kbd">Ctrl+L</span> to fix a corrupted
+  screen — exactly when they most need it. <b>Terminal conventions outrank GUI conventions in a terminal app.</b></div>
+
+  <h3 class="ksub">CHIP mode (S1)</h3>
+  <table class="ktbl">
+<tr><th>Key</th><th>Action in CHIP mode (S1)</th></tr>
+<tr><td><span class="kbd">←</span> / <span class="kbd">→</span></td><td>Move the <b>active segment</b> among the chips. Does <i>not</i> navigate — focus only.</td></tr>
+<tr><td><span class="kbd">Home</span> / <span class="kbd">End</span></td><td>First / last segment.</td></tr>
+<tr><td><span class="kbd">Enter</span> / <span class="kbd">Space</span></td><td><b>Activate</b> the active segment → navigate to that ancestor directory. Breadcrumb stays focused; the path rebuilds.</td></tr>
+<tr><td><span class="kbd">↓</span></td><td><i>Optional</i>: open the segment's <b>sibling dropdown</b> (the <span style="color:var(--muted)">▸</span> separator lists sibling folders at that level, Explorer-style). Non-retaining popup; <span class="kbd">Esc</span> closes it.</td></tr>
+<tr><td><span class="kbd">F4</span> · <span class="kbd">Alt+D</span> · <span class="kbd">F2</span></td><td>Enter <b>EDIT mode</b> (S2), path text pre-selected.</td></tr>
+<tr><td><span class="kbd">Esc</span></td><td>Leave the breadcrumb → focus the <b>file list</b>. Does not cancel the dialog.</td></tr>
+<tr><td><span class="kbd">Tab</span> / <span class="kbd">Shift+Tab</span></td><td>Leave the region forward / backward (breadcrumb is <b>one tab stop</b>).</td></tr>
+</table>
+
+  <h3 class="ksub">EDIT mode (S2)</h3>
+  <table class="ktbl">
+<tr><th>Key</th><th>Action in EDIT mode (S2) — raw path field</th></tr>
+<tr><td><i>text keys</i></td><td>Standard caret + selection editing (arrows, Home/End, <span class="kbd">Ctrl+←/→</span> by path segment, selection, clipboard).</td></tr>
+<tr><td><span class="kbd">↓</span><br><span class="kbd">Ctrl+Space</span> <span class="gated">[CAP]</span></td><td>Open the <b>completion popup</b> explicitly (S3). <span class="alt"><span class="kbd">↓</span> is the ungated primary; <span class="kbd">Ctrl+Space</span> often transmits as <span style="color:var(--accent-2)">NUL</span> and is only distinguishable under <code style="color:var(--purple)">caps-kitty-keyboard</code>.</span></td></tr>
+<tr><td><span class="kbd">Tab</span></td><td><b>Context-sensitive</b> — see the callout below. Completes when there is something to complete; otherwise leaves the region.</td></tr>
+<tr><td><span class="kbd">Enter</span></td><td><b>Commit the typed path.</b> Directory → navigate there, revert to chips, move focus to the file list. File → Open dialog: select + Open it. Save dialog: place the name in the filename field and focus it. Invalid → inline error, stay in edit.</td></tr>
+<tr><td><span class="kbd">Alt+Enter</span><br><span class="kbd">Ctrl+Enter</span> <span class="gated">[CAP]</span></td><td>Commit <b>exactly as typed</b>, bypassing any pending completion. <span class="alt"><span class="kbd">Ctrl+M</span> <i>is</i> <span class="kbd">Enter</span> at the byte level, so <span class="kbd">Ctrl+Enter</span> is indistinguishable without <code style="color:var(--purple)">caps-kitty-keyboard</code>. <span class="kbd">Alt+Enter</span> is the always-available path.</span></td></tr>
+<tr><td><span class="kbd">Esc</span></td><td>Revert to <b>CHIP mode</b> (S1), <b>discarding</b> typed edits; the original path is restored.</td></tr>
+<tr><td><span class="kbd">Shift+Tab</span></td><td>Always leaves the region backward — never completes. Unambiguous escape hatch.</td></tr>
+</table>
+  <div class="kcallout"><div class="ct">RESOLVING THE <span class="kbd">Tab</span> CONFLICT</div>
+<span class="kbd">Tab</span> means <i>complete</i> in a path field and <i>next region</i> everywhere else in the dialog. The rule that removes the ambiguity —
+and matches shells and Claude&nbsp;Code — is to make it <b>context-sensitive</b>:
+<div style="margin:6px 0 4px 0">
+&nbsp;• popup <b>open</b> → <span class="kbd">Tab</span> accepts the selected candidate (stays in edit)<br>
+&nbsp;• popup <b>closed</b>, a completion exists for the partial segment → <span class="kbd">Tab</span> opens the popup / completes the longest common prefix<br>
+&nbsp;• popup <b>closed</b>, nothing to complete (empty partial, or path already exact) → <span class="kbd">Tab</span> <b>leaves the region</b>, normal tab-stop behavior
+</div>
+The user is never trapped: when there's nothing to complete, <span class="kbd">Tab</span> does the ordinary thing. And <span class="kbd">Shift+Tab</span> <i>always</i> leaves,
+never completes, so there is always an unambiguous way backwards.</div>
+
+  <h3 class="ksub">Completion popup (S3)</h3>
+  <table class="ktbl">
+<tr><th>Key</th><th>Action with COMPLETION POPUP open (S3)</th></tr>
+<tr><td><span class="kbd">↑</span> / <span class="kbd">↓</span></td><td>Move the selected candidate. Wraps.</td></tr>
+<tr><td><span class="kbd">PgUp</span> / <span class="kbd">PgDn</span></td><td>Page through candidates.</td></tr>
+<tr><td><span class="kbd">Tab</span></td><td><b>Accept</b> the selected candidate into the field and <b>keep editing</b>. Folder → appends the path separator so you can keep drilling.</td></tr>
+<tr><td><span class="kbd">Enter</span></td><td><b>Folder</b> → insert it + separator and <b>keep editing</b> (you're mid-path; don't end the flow). <b>File</b> → accept and <b>commit</b> (nothing to drill into). A second <span class="kbd">Enter</span> on the now-complete folder path commits and navigates — so the natural <i>drill, then go</i> is <span class="kbd">Enter</span> <span class="kbd">Enter</span>.</td></tr>
+<tr><td><span class="kbd">Esc</span></td><td>Close the popup → back to <b>EDIT mode</b> (S2), <b>keeping</b> the typed text.</td></tr>
+</table>
+
+  <h3 class="ksub">Dialog-wide keys</h3>
+  <table class="ktbl">
+<tr><th>Key</th><th>Dialog-wide</th></tr>
+<tr><td><span class="kbd">Tab</span> / <span class="kbd">Shift+Tab</span></td><td>Cycle the dialog's <b>regions</b>, not its individual controls. Each region is a <b>single tab stop</b> with arrow-key navigation inside — the same "once" tab-stop rule the toolbar uses. Order: nav buttons → breadcrumb → search → view switcher → places rail → file list → filename field → type filter → Open → Cancel.</td></tr>
+<tr><td><span class="kbd">Alt+←</span> / <span class="kbd">Alt+→</span></td><td>Back / Forward (mirrors the <span style="color:var(--accent)">◂ ▸</span> nav buttons).</td></tr>
+<tr><td><span class="kbd">Alt+↑</span> · <span class="kbd">Backspace</span></td><td>Up one directory (mirrors <span style="color:var(--accent)">▴</span>). <span class="kbd">Backspace</span> applies when the file list has focus and no text field is active.</td></tr>
+<tr><td><span class="kbd">F5</span></td><td>Refresh (mirrors <span style="color:var(--accent)">↻</span>). <span class="alt">Not <span class="kbd">Ctrl+R</span> — that is readline's reverse-history-search.</span></td></tr>
+<tr><td><span class="kbd">Enter</span> <i>(file list)</i></td><td>Folder selected → navigate into it. File selected → choose it (= Open).</td></tr>
+<tr><td><span class="kbd">F2</span> <i>(file list)</i></td><td>Rename the selected item, where the dialog permits it.</td></tr>
+<tr><td><span class="kbd">Alt+N</span><br><span class="kbd">Ctrl+Shift+N</span> <span class="gated">[CAP]</span></td><td>New folder (Save As dialog). <span class="alt"><span class="kbd">Shift</span> on a control character needs <code style="color:var(--purple)">caps-kitty-keyboard</code> to be seen at all; <span class="kbd">Alt+N</span> is the always-available path.</span></td></tr>
+<tr><td><span class="kbd">Alt+O</span> / <span class="kbd">Alt+C</span></td><td>Open / Cancel via access keys. <span class="kbd">Enter</span> on the default button, <span class="kbd">Esc</span> at top level cancels.</td></tr>
+<tr><td><span class="kbd">Alt+F</span> · <span class="kbd">F3</span></td><td>Focus the search box. <span class="alt">Not <span class="kbd">Ctrl+F</span> / <span class="kbd">Ctrl+E</span> — readline binds those to forward-char and end-of-line.</span></td></tr>
+<tr><td><i>type-ahead</i></td><td>Typing printable characters with the <b>file list</b> focused jumps to the first matching name (standard list type-ahead). Typing in the <b>places rail</b> does the same there.</td></tr>
+</table>
+
+
+  <div class="kcallout warn"><div class="ct">⚠ THE <span class="kbd">Ctrl</span>+&lt;letter&gt; HAZARD IN A TUI</div>
+  <span class="kbd">Ctrl</span>-chords map onto <b>ASCII control characters</b>, a space the terminal and shell already own. Three
+  distinct traps, all of which bit this keymap:
+  <div style="margin:6px 0 6px 0">
+  <b>1 · Reserved by the terminal layer.</b> <span class="kbd">Ctrl+C</span> <span class="kbd">Ctrl+D</span> <span class="kbd">Ctrl+Z</span>
+  <span class="kbd">Ctrl+L</span> <span class="kbd">Ctrl+\</span> are claimed by shells/terminals.
+  <span class="kbd">Ctrl+S</span>/<span class="kbd">Ctrl+Q</span> are <b>XON/XOFF flow control</b> — on terminals where that is still
+  enabled, binding them will <i>freeze your application</i>. Readline also owns <span class="kbd">Ctrl+R</span> (reverse-search),
+  <span class="kbd">Ctrl+E</span> (end-of-line), <span class="kbd">Ctrl+F</span> (forward-char), and many more.<br>
+  <b>2 · Some are not distinct keys at all.</b> <span class="kbd">Ctrl+I</span> <i>is</i> <span class="kbd">Tab</span>.
+  <span class="kbd">Ctrl+M</span> <i>is</i> <span class="kbd">Enter</span>. <span class="kbd">Ctrl+H</span> <i>is</i>
+  <span class="kbd">Backspace</span>. <span class="kbd">Ctrl+[</span> <i>is</i> <span class="kbd">Esc</span>. These are the same byte —
+  not a conflict you can resolve, a fact of the encoding.<br>
+  <b>3 · Modifier combinations may be invisible.</b> <span class="kbd">Ctrl+Enter</span>, <span class="kbd">Ctrl+Shift+N</span>,
+  <span class="kbd">Ctrl+Space</span> can only be told apart from their base keys where the terminal reports disambiguated key events —
+  i.e. under <code style="color:var(--purple)">caps-kitty-keyboard</code>.
+  </div>
+  <b>Design rules that follow:</b> prefer <b>function keys</b> and <b><span class="kbd">Alt</span>-chords</b> for application accelerators
+  (neither collides with the control-character space). Treat every <span class="kbd">Ctrl</span>+&lt;letter&gt; binding as
+  <b>capability-gated territory</b>, marked <span class="gated">[CAP]</span> above. And critically —
+  <b>no command may be reachable <i>only</i> through a gated binding</b>: every <span class="gated">[CAP]</span> shortcut in this keymap has
+  an always-available ungated twin (<span class="kbd">↓</span> for the popup, <span class="kbd">Alt+Enter</span> for commit-as-typed,
+  <span class="kbd">Alt+N</span> for new folder). This is the keyboard analogue of the whole-cell discipline: respect what the medium
+  already claims.</div>
+
+  <div class="kcallout"><div class="ct">WHY THE BREADCRUMB IS ONE TAB STOP</div>
+  A breadcrumb is a container of related, individually-activatable items — structurally the same as a toolbar. Making each segment its own
+  tab stop would tax every keyboard user crossing the dialog (a deep path costs a dozen <span class="kbd">Tab</span> presses to pass). So it takes the
+  <b>&ldquo;once&rdquo; tab stop + arrow navigation</b> rule: <span class="kbd">Tab</span> treats the whole breadcrumb as one stop; <span class="kbd">←</span><span class="kbd">→</span> move
+  <i>within</i> it. The same rule applies to the nav buttons, the view switcher, the places rail, and the file list.</div>
 
   <h2 class="sec">▸ Save As dialog — new folder, type selector, overwrite confirm</h2>
   <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">

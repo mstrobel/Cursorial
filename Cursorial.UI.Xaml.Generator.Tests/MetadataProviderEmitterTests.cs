@@ -130,18 +130,19 @@ public class MetadataProviderEmitterTests
         Assert.Contains("GetProperty(\"Color\")", source);     // the init-only setter goes through reflection
     }
 
-    [Fact] // a library opt-out (installModuleInit: false) emits the provider but NOT the auto-install plumbing,
-    // so it doesn't hijack the consuming app's process-wide default.
-    public void OptOut_OmitsModuleInitializerAndAssemblyAttribute()
+    [Fact] // the provider is advertised via [assembly: XamlMetadataProvider] ONLY — pull metadata for the
+    // loader's entry-assembly discovery. Never a [ModuleInitializer]: merely loading an assembly (which
+    // designer/test hosts do constantly) must not repoint the process-wide default provider.
+    public void Emit_AdvertisesAssemblyAttribute_NeverModuleInitializer()
     {
         var compilation = GeneratorHarness.ReferencedCompilation();
         var resolver = new XamlSymbolResolver(compilation);
         var types = new[] { resolver.Resolve(Ui, "Button", out _)! }.ToList();
-        var source = new MetadataProviderEmitter(compilation).Emit(types, installModuleInit: false)!;
+        var source = new MetadataProviderEmitter(compilation).Emit(types)!;
 
         Assert.DoesNotContain("ModuleInitializer", source);
-        Assert.DoesNotContain("[assembly:", source);
-        Assert.Contains("__GeneratedXamlMetadata", source);     // the provider itself is still emitted
+        Assert.Contains("[assembly:", source);
+        Assert.Contains("XamlMetadataProvider(typeof(Cursorial.UI.Xaml.Generated.__GeneratedXamlMetadata))", source);
         Assert.Empty(GeneratorHarness.CompileErrors(source));    // and is valid C#
     }
 

@@ -67,7 +67,8 @@ public class XamlSourceGeneratorTests
         var provider = Assert.Single(providers); // exactly one per compilation (not per file)
         var src = provider.SourceText.ToString();
         Assert.Contains("__GeneratedXamlMetadata", src);
-        Assert.Contains("ModuleInitializer", src); // installs itself as the loader default (AOT-clean)
+        Assert.DoesNotContain("ModuleInitializer", src); // pull-discovered via the attribute, never auto-installed
+        Assert.Contains("[assembly:", src);               // ...which the loader's entry-assembly discovery consults
         // The union of both files' types is baked.
         Assert.Contains("typeof(global::Cursorial.UI.Controls.StackPanel)", src);
         Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", src);

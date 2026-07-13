@@ -7,10 +7,6 @@
         <Nullable>enable</Nullable>
         <RootNamespace>Cursorial.Demo</RootNamespace>
         <CursorialXamlEmbedResources>true</CursorialXamlEmbedResources>
-        <!-- This is a LIBRARY: don't auto-install the generated provider as the consuming app's process-wide
-             default. (With full lowering the provider isn't used at runtime anyway; the .xaml stays embedded
-             only as the dual-run drift oracle.) -->
-        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
         <!-- The full demo is reflection-heavy (runtime XAML loading, reflective bindings); keep the reflection
              metadata provider available rather than fail-fast. The warnings it produces are expected. -->
         <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>

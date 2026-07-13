@@ -41,8 +41,6 @@
 -->
         <TrimMode>full</TrimMode>
         <CursorialXamlLowering>full</CursorialXamlLowering>
-        <!-- No runtime provider is needed (lowering never loads); don't emit the install module-init. -->
-        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
         <!-- Lowering never runtime-loads the .xaml, so don't embed it. -->
         <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>
         <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the

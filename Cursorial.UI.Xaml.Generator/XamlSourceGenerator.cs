@@ -21,7 +21,8 @@ namespace Cursorial.UI.Xaml.Generator;
 /// <c>CUR2xxx</c> semantic band — type/member-not-found) as Roslyn build diagnostics at the <c>.xaml</c>
 /// location.</item>
 /// <item>WS-X4.5 — one generated <c>IXamlTypeMetadataProvider</c> per compilation (over the union closed
-/// type set) with a <c>[ModuleInitializer]</c> that installs it as the AOT-clean loader default.</item>
+/// type set), advertised via <c>[assembly: XamlMetadataProvider]</c> for the loader's entry-assembly
+/// pull discovery (the AOT-clean default; loading an assembly never mutates process state).</item>
 /// <item>WS-X4.6 — for each <c>x:Class</c> document, the code-behind partial: typed <c>x:Name</c> fields +
 /// <c>InitializeComponent</c>.</item>
 /// </list>
@@ -91,20 +92,16 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         var withCompilation = xamlFiles.Combine(context.CompilationProvider).Combine(loweringFull);
         context.RegisterSourceOutput(withCompilation, static (spc, pair) => Emit(spc, pair.Left.Left, pair.Left.Right, pair.Right));
 
-        // Whether the generated provider auto-installs as the process default (an app behavior). A library that
-        // only ships XAML sets CursorialXamlInstallProvider=false so it doesn't hijack the consuming app's default.
-        var installProvider = context.AnalyzerConfigOptionsProvider.Select(static (provider, _) =>
-            !(provider.GlobalOptions.TryGetValue("build_property.CursorialXamlInstallProvider", out var v)
-              && string.Equals(v, "false", System.StringComparison.OrdinalIgnoreCase)));
-
         // WS-X4.5 — one generated metadata provider per compilation, over the UNION of every CursorialXaml
-        // file's closed type set. A generated [ModuleInitializer] installs it as the loader default (unless
-        // opted out) so the app's XAML loads (incl. each code-behind's cached parse) run reflection-free.
-        var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider).Combine(installProvider);
-        context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left.Left, pair.Left.Right, pair.Right));
+        // file's closed type set, advertised via [assembly: XamlMetadataProvider]. The loader's lazy default
+        // pull-discovers the ENTRY assembly's attribute, so an app's XAML loads (incl. each code-behind's
+        // cached parse) run reflection-free while a library's attribute stays inert — no [ModuleInitializer],
+        // so loading an assembly never hijacks a host's default (the designer/test-host bug).
+        var allXaml = xamlFiles.Collect().Combine(context.CompilationProvider);
+        context.RegisterSourceOutput(allXaml, static (spc, pair) => EmitProvider(spc, pair.Left, pair.Right));
     }
 
-    private static void EmitProvider(SourceProductionContext spc, ImmutableArray<XamlInput> inputs, Compilation compilation, bool installModuleInit)
+    private static void EmitProvider(SourceProductionContext spc, ImmutableArray<XamlInput> inputs, Compilation compilation)
     {
         if (inputs.IsDefaultOrEmpty)
             return;
@@ -138,7 +135,7 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         // test also uses, so the two can't drift.
         var statics = ClosedTypeSet.CollectStatics(resolver, inputs.Select(i => i.Text));
 
-        if (new MetadataProviderEmitter(compilation).Emit(types, installModuleInit, statics) is { } source)
+        if (new MetadataProviderEmitter(compilation).Emit(types, statics) is { } source)
             spc.AddSource("__GeneratedXamlMetadata.g.cs", SourceText.From(source, Encoding.UTF8));
     }
 

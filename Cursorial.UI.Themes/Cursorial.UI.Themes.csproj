@@ -21,10 +21,6 @@
              GeneratedXamlLoaders.Build…() builder that CursorialXamlTheme calls — no runtime parse, no provider. -->
         <CursorialXamlLowering>full</CursorialXamlLowering>
         <CursorialXamlEmbedResources>true</CursorialXamlEmbedResources>
-        <!-- This is a LIBRARY: don't auto-install the generated provider as the consuming app's process-wide
-             default. (With full lowering the provider isn't used at runtime anyway; the .xaml stays embedded
-             only as the dual-run drift oracle.) -->
-        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
 <!--        <CompilerGeneratedFilesOutputPath>generated</CompilerGeneratedFilesOutputPath>-->
     </PropertyGroup>

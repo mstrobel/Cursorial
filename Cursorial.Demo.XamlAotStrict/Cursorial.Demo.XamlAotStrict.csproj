@@ -4,7 +4,8 @@
         WS-X4.7 — the STRICT NativeAOT proof. Unlike Cursorial.Demo.XamlAot (the reflection baseline, TrimMode=
         partial), this app loads its XAML through the X4.6 GENERATED metadata provider (no reflection): a
         <CursorialXaml> x:Class view whose generated InitializeComponent binds to the assembly's own generated
-        provider, installed process-wide by its [ModuleInitializer]. CursorialXamlStrictAot defaults to true under
+        provider (advertised via [assembly: XamlMetadataProvider] for the loader's entry-assembly pull
+        discovery). CursorialXamlStrictAot defaults to true under
         PublishAot (the generator .props), so the paired .targets flip the reflection provider's feature switch OFF
         and the trimmer drops it entirely.
 
@@ -33,8 +34,6 @@
              entirely.) The view here is literal-only (no bindings/converters), so the lowered code touches only
              Cursorial.UI construction. -->
         <CursorialXamlLowering>full</CursorialXamlLowering>
-        <!-- No runtime provider is needed (lowering never loads); don't emit the install module-init. -->
-        <CursorialXamlInstallProvider>false</CursorialXamlInstallProvider>
         <!-- Lowering never runtime-loads the .xaml, so don't embed it. -->
         <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>
         <!-- CursorialXamlStrictAot defaults to true under PublishAot (generator .props) → the .targets emit the

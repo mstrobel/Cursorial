@@ -103,19 +103,28 @@ public class DualRunDriftTests
         }
     }
 
-    [Fact] // WS-X4.5 — the generated provider's [ModuleInitializer] installs it as the loader default (no opt-in)
-    public void ModuleInitializer_InstallsGeneratedProvider_AsLoaderDefault()
+    [Fact] // WS-X4.5 (amended) — the generated provider is PULL metadata: loading its assembly must NOT
+    // repoint the process default (the retired [ModuleInitializer] hijacked any host that loaded a user
+    // assembly — the designer's language service most painfully); the [assembly: XamlMetadataProvider]
+    // attribute is the discovery vehicle the loader's lazy default consults on the ENTRY assembly.
+    public void GeneratedProvider_IsDiscoverable_AndNeverAutoInstalls()
     {
         var xaml = $"<StackPanel {Xmlns}><Button Content=\"Hi\"/></StackPanel>";
         var saved = XamlLoaderOptions.DefaultMetadataProvider;
         try
         {
-            // Loading the generated assembly + touching its Instance fires the module initializer.
+            // Loading the generated assembly (and touching its Instance) leaves the default untouched.
             var generated = BuildGeneratedProvider(xaml);
-            Assert.Same(generated, XamlLoaderOptions.DefaultMetadataProvider); // installed as the default
+            Assert.Same(saved, XamlLoaderOptions.DefaultMetadataProvider);
 
-            // A default-constructed loader now uses the generated provider — no explicit MetadataProvider.
-            var root = (StackPanel)new XamlLoader().Load(xaml);
+            // Pull discovery finds the advertised provider — the Instance singleton, not a fresh construction.
+            var discovered = XamlLoaderOptions.TryDiscoverMetadataProvider(generated.GetType().Assembly);
+            Assert.Same(generated, discovered);
+
+            // And an unadvertised assembly discovers nothing (no attribute → null, no throw).
+            Assert.Null(XamlLoaderOptions.TryDiscoverMetadataProvider(typeof(DualRunDriftTests).Assembly));
+
+            var root = (StackPanel)new XamlLoader(new XamlLoaderOptions { MetadataProvider = discovered! }).Load(xaml);
             var button = Assert.IsType<Button>(Assert.Single(root.Children));
             Assert.Equal("Hi", button.Content);
         }

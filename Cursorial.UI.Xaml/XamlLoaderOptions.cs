@@ -43,22 +43,19 @@ public sealed class XamlLoaderOptions
     /// <paramref name="assembly"/> is null or carries no attribute; throws when the advertised type is not
     /// an <see cref="IXamlTypeMetadataProvider"/>. <see cref="DefaultMetadataProvider"/> uses this against
     /// the entry assembly; a host loading foreign assemblies (designer, test runner) can call it to adopt a
-    /// specific assembly's provider deliberately.
+    /// specific assembly's provider deliberately. Trim/AOT-safe by construction: the attribute's
+    /// <c>[DynamicallyAccessedMembers]</c> annotation keeps any advertised type's <c>Instance</c> field and
+    /// constructors, so the reflection below always finds them.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075:DynamicallyAccessedMembers",
-        Justification = "The generated provider's Instance field and parameterless ctor are rooted by the same " +
-                        "assembly's generated code-behinds (they reference __GeneratedXamlMetadata.Instance); " +
-                        "hand-written providers opt into reflection visibility by advertising themselves.")]
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:DynamicallyAccessedMembers",
-        Justification = "Same rooting argument as IL2075 — discovery only re-finds already-rooted members.")]
     public static IXamlTypeMetadataProvider? TryDiscoverMetadataProvider(System.Reflection.Assembly? assembly)
     {
-        var providerType = assembly is null
-            ? null
-            : System.Reflection.CustomAttributeExtensions.GetCustomAttribute<XamlMetadataProviderAttribute>(assembly)?.ProviderType;
-        if (providerType is null)
+        // AllowMultiple attribute — first wins (the generator emits exactly one per compilation).
+        var advertised = assembly?.GetCustomAttributes(typeof(XamlMetadataProviderAttribute), inherit: false)
+            is [XamlMetadataProviderAttribute first, ..] ? first : null;
+        if (advertised is null)
             return null;
 
+        var providerType = advertised.ProviderType;
         var instance = providerType
                            .GetField("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
                            ?.GetValue(null)

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 // ReSharper disable CheckNamespace
 
@@ -9,16 +10,30 @@ namespace Cursorial.UI.Xaml;
 // (the Cursorial.Shared markup-attribute pattern — #96/#108).
 
 /// <summary>
-/// Registers a generated <see cref="IXamlTypeMetadataProvider"/> for trim/AOT-clean loading
-/// (the X5 endgame). Present now as the seam; the generated provider is deferred (matrix XD16/X186).
+/// Advertises an assembly's <see cref="IXamlTypeMetadataProvider"/> for trim/AOT-clean loading — pure
+/// PULL metadata (matrix X186 as amended): the loader's lazy default consults the ENTRY assembly's
+/// attribute (<c>XamlLoaderOptions.DefaultMetadataProvider</c>), and hosts adopt a specific assembly's
+/// provider via <c>XamlLoaderOptions.TryDiscoverMetadataProvider</c>. Nothing registers at load time, so
+/// loading an assembly never repoints another host's default. The X4 generator emits one per compilation.
 /// </summary>
+/// <remarks>
+/// The <see cref="DynamicallyAccessedMembersAttribute"/> annotation makes discovery trim-safe by
+/// construction: the trimmer keeps the advertised type's <c>Instance</c> field (public static fields) and
+/// its constructors, which discovery reads reflectively.
+/// </remarks>
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true, Inherited = false)]
 public sealed class XamlMetadataProviderAttribute : Attribute
 {
-    /// <summary>Registers the provider type.</summary>
-    public XamlMetadataProviderAttribute(Type providerType)
+    private const DynamicallyAccessedMemberTypes DiscoveredMembers =
+        DynamicallyAccessedMemberTypes.PublicParameterlessConstructor |
+        DynamicallyAccessedMemberTypes.NonPublicConstructors |
+        DynamicallyAccessedMemberTypes.PublicFields;
+
+    /// <summary>Advertises the provider type.</summary>
+    public XamlMetadataProviderAttribute([DynamicallyAccessedMembers(DiscoveredMembers)] Type providerType)
         => ProviderType = providerType ?? throw new ArgumentNullException(nameof(providerType));
 
     /// <summary>The provider type (must implement <see cref="IXamlTypeMetadataProvider"/>).</summary>
+    [DynamicallyAccessedMembers(DiscoveredMembers)]
     public Type ProviderType { get; }
 }

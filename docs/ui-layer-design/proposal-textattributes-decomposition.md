@@ -209,8 +209,14 @@ deliberately drops attributes on glyphless cells (`Border.cs:151-162` — an att
 needs `FillOpaque` to composite onto the WHOLE face) — so a color-tier Inverse cue inverts only
 the label's cells, not the face's whitespace. NoColor forces opaque fills, which is exactly why
 whole-face reverse-video works there and why color-tier emphasis is (correctly) faked with brush
-swaps instead. Theme authors: do not re-attempt color-tier Inverse cues; that is what the brush
-half of the cue model is for.
+swaps instead. And the deeper reason holds even where whole-face Inverse WOULD work
+(owner, 2026-07-13): **within a tier, all interactive-state cues must speak one vocabulary.** At
+color tiers the sibling states (`:pointerover`, `:pressed`) cue through fg/bg brush swaps; a lone
+attribute-based focus cue composes with them as "invert whatever brushes happen to be active" — a
+derived color, not a designed one — so focus+hover and focus+pressed render incoherently. At
+NoColor, brushes collapse and EVERY cue is an attribute, so the vocabulary stays uniform there
+too. The cue-pair tier tables encode this principle (Inverse fires only where brushes cannot
+speak); theme authors: do not mix cue vocabularies within a tier.
 
 **Pair coherence** (no proposal had this; the judge added it): a theme test walks every tier
 dictionary asserting **both** cue keys are present — the pair-coherence lint all three proposals'
@@ -511,7 +517,10 @@ arbitrate axes — give it axes.
    idiom (whole-face Inverse would require `Occludes=true`, changing compositing semantics).
    Reviving via the split cue pair would be a no-op at color tiers (`InteractiveCueInverse=false`
    there) and redundant at NoColor (the live `.caps-nocolor` button-family rules already apply
-   Inverse, and NoColor's forced-opaque fill is what makes it whole-face there). See §2.3's
+   Inverse, and NoColor's forced-opaque fill is what makes it whole-face there). A second,
+   independent reason holds even where the tint mechanics don't bite: color-tier sibling states
+   (`:pointerover`/`:pressed`) cue through brush swaps, and an attribute cue composing over
+   swapped brushes yields derived, undesigned colors — one cue vocabulary per tier. See §2.3's
    ground-truth note.
 
 ---

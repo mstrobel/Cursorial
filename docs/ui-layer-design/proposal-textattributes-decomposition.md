@@ -431,7 +431,9 @@ a color tier.
    from day one (Q2); `ContentPresenter`'s generated-leaf forward lands with its
    app-content-untouched row; new matrix rows (per-axis arbitration, forwards, piercing,
    exclusivity) prove the semantics before any theme moves. The `StoreSpikeBenchmark` fold row
-   lands here.
+   lands here. **Rider (§10): the XAML hex-color convention fix** lands in this phase too (it
+   touches the same converter file the new properties exercise; depends only on Core's
+   `Color.TryParseHex` having landed).
 3. **P3 — Code-first theme migration.** Cue-resource pair into ThemeKeys + tier dictionaries;
    rewrite 6 literal + 12 resource rules (core/Bars/Dialogs); per-axis template forwards replace
    the aggregate forward (with the §4.2 parity test); 3 imperative writers; **implement the P9.3b
@@ -551,3 +553,40 @@ deleted the panel's heaviest engineering (the batched inheritance walk, its equi
 the reparent demotion gate) in exchange for the forwarding spine and the §7.3 scoping rule. The
 judgment doc retains the panel-era analysis, including the inheritance-cost verification that
 still documents why inheriting-by-default would have been expensive.
+
+---
+
+## 10. Rider: the XAML hex-color convention fix (owner-requested, 2026-07-13)
+
+**The inconsistency.** The house convention for alpha is RGBA, alpha-LAST: `Color.FromRgba`,
+`Color.TryParseHex` (8-digit → `#RRGGBBAA`, the in-flight Core change this rider depends on),
+`MarkupColor` (delegates to it), and `StyleDiagnostics.FormatValue` (prints
+`#{R:X2}{G:X2}{B:X2}{A:X2}`). The one outlier is the XAML converter:
+`XamlConverters.ParseHex` (`Cursorial.UI.Xaml/Conversion/XamlConverters.cs:460-483`) parses
+8-digit hex as `#AARRGGBB` (the WPF convention, alpha-first). Its comment also claims a 4-digit
+`#ARGB` form that was never implemented (4-digit throws — the comment lies).
+
+**The fix (lands in §5 P2):**
+
+1. `ParseHex` delegates ALL hex forms (3/6/8-digit) to `Color.TryParseHex` — one parser, one
+   convention, no duplicated digit logic; the converter keeps its contextual diagnostic, with the
+   error text updated to `expected #RGB, #RRGGBB, or #RRGGBBAA` and the false `#ARGB` comment
+   removed (a 4-digit `#RGBA` shorthand is Core's call to add later; the converter inherits
+   whatever `TryParseHex` accepts).
+2. **Value migration — the complete known blast radius:** `IndigoDusk/Palette.xaml:103,159` —
+   `ObscuredOverlayBrush` `#60000000` (α=0x60 black under AARRGGBB) → `#00000060`. IndigoDusk is
+   WIP/not-shipping, so this is opportunistic, but it rides along since the rider redefines the
+   digits' meaning. An implementation-time grep for 8-digit hex across `.xaml` and string
+   literals re-verifies nothing new appeared.
+3. **Test re-pin:** the Section07 converter row pinning `#80ff0000` (alpha-first) re-pins to the
+   RGBA reading (e.g. `#ff000080` for the same color) — a deliberate matrix amendment, recorded
+   in `xaml-matrix.md`'s color-converter row alongside the convention note ("XAML hex is
+   `#RRGGBBAA` — a deliberate DEV from WPF's `#AARRGGBB`: one alpha convention across the whole
+   stack; `FormatValue`'s output is round-trippable into the converter").
+4. **Generator:** zero work — the converter is runtime-shared (`XamlConverters.For`), so both the
+   reflection loader and the emitted provider change together; the X174 drift row already covers
+   the parity.
+
+**Dependency:** Core's `Color.TryParseHex` (the owner's in-flight `Color.cs`/`MarkupColor.cs`
+change) must land first; the rider is otherwise independent of the decomposition phases and can
+land the moment P2 opens the converter file.

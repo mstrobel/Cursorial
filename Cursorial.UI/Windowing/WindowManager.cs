@@ -115,12 +115,13 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 bool inside = localColumn >= 0 && localColumn < layer.Scene.Columns
                                                && localRow >= 0 && localRow < layer.Scene.Rows;
 
+                if (inside is false)
+                    continue;
+
                 samples.Add(
                     new LayerCellSample(j,
                                         layer.Parameters,
-                                        inside
-                                            ? layer.Scene.GetCell(localColumn, localRow)
-                                            : null,
+                                        layer.Scene.GetCell(localColumn, localRow),
                                         descriptions[j])
                 );
             }

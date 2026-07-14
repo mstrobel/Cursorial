@@ -1,9 +1,11 @@
 # Proposal: Per-Axis Text-Attribute Properties (the `TextAttributes` Decomposition)
 
-**Status: PROPOSAL — all four owner decisions recorded (§8); ready to schedule.** Produced
+**Status: IMPLEMENTED (2026-07-13, PR pending) — all owner decisions in §8 settled; the five-phase build (P1–P5) landed with adversarial audits at P3/P5.** Produced
 2026-07-13 by the panel process recorded in §9, then re-cut the same day to the owner-directed
 **non-inheriting** flow model (§9 notes the redirect); the adversarial judgment lives in
-`judgment-textattributes-decomposition.md`. Nothing here is implemented.
+`judgment-textattributes-decomposition.md`. This document is the canonical design record; where the
+landed code refined it (the glyph Inverse-only rule §7.7, the RelativeSource-Binding forward idiom,
+the P3 audit residuals §7.5–7.7), the amendments are dated inline.
 
 ---
 

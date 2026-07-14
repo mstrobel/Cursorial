@@ -66,15 +66,6 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal(TextAttributes.None, TextElement.ComposeAttributes(e).Flags);
     }
 
-    [Fact] // TA3 — the migration bridge: aggregate + axes OR together until P5 deletes the aggregate term
-    public void TA3_Bridge_AggregateAndAxesCompose()
-    {
-        var e = new TextBlock("x");
-        TextElement.SetTextAttributes(e, TextAttributes.Italic); // the legacy aggregate
-        TextElement.SetInverse(e, true);                          // a per-axis value
-
-        Assert.Equal(TextAttributes.Italic | TextAttributes.Inverse, TextElement.ComposeAttributes(e).Flags);
-    }
 
     [Fact] // TA4 — the motivating case: a conditional Inverse rule + a resting TextWeight rule COMPOSE (different axes)
     public void TA4_ConditionalInverse_ComposesWith_RestingWeight()

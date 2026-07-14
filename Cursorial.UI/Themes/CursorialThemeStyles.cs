@@ -66,7 +66,7 @@ internal static class CursorialThemeStyles
     /// family's color brush-pair states (<see cref="ControlThemes"/> <c>:focus</c>/<c>:pressed</c>/
     /// <c>:default</c>) are visually inert. This restores the distinction with a TEXT ATTRIBUTE instead:
     /// <see cref="TextAttributes.Inverse"/> reverse-videos the terminal's own default fg/bg. It is set on
-    /// the control as the inherited <see cref="TextElement.TextAttributesProperty"/>, which the template's
+    /// the control as the per-axis <see cref="TextElement.InverseProperty"/> (forwarded to the parts), which the template's
     /// Border fill AND the content text both honor (so the WHOLE face inverts, not just the glyphs). The
     /// subjects are the EXACT button-family types (Button / RepeatButton / ToggleButton) — CheckBox /
     /// RadioButton are excluded (they keep their in-box caret focus; a reverse fill would span the row).

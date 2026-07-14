@@ -32,12 +32,12 @@ public sealed class XamlThemeStylesTests
         // (TextElement) is resolved from the property name, so the Style needs no TargetType.
         var style = new XamlLoader().Load<Cursorial.UI.Style>(
             "<Style" + Ns + " Selector=\".caps-nocolor Button:focus\">" +
-              "<Setter Property=\"TextElement.TextAttributes\" Value=\"Inverse\"/>" +
+              "<Setter Property=\"TextElement.Inverse\" Value=\"True\"/>" +
             "</Style>");
 
         Assert.NotNull(style.Selector);
-        // The dotted Setter resolved to the REAL TextElement.TextAttributes UIProperty (not a placeholder).
-        Assert.Equal("TextAttributes", Assert.Single(style.Setters).Property.Name);
+        // The dotted Setter resolved to the REAL TextElement.Inverse attached UIProperty (not a placeholder).
+        Assert.Equal("Inverse", Assert.Single(style.Setters).Property.Name);
     }
 
     [Fact] // LoadStyles populates the Styles slot with all five theme rules (the caps-nocolor inverse is a 7-branch list).

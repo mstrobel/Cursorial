@@ -16,7 +16,7 @@ Windows, macOS, and Linux terminals are all first-class — design choices that 
 
 ## Status
 
-Twenty-four projects:
+Twenty-five projects:
 
 - `Cursorial.Core` — input parsing, capability negotiation, terminal session orchestration, byte-level output writers.
 - `Cursorial.Rendering` — cell buffer + diff frame renderer that sits on top of `Cursorial.Core`'s output writers.
@@ -39,6 +39,8 @@ Twenty-four projects:
 - `Cursorial.UI.Bars` — the command-surface suite over one shared `BarCommand`: a `Toolbar` with discrete overflow,
   a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips
   (Alt-overlay accelerators), and SuperTips. See "Cursorial.UI.Bars status" below.
+- `Cursorial.UI.Dialogs` — the task-dialog suite (`TaskDialog` + `CommandLink`) over `Cursorial.UI`, with its own
+  code-first control themes (`CursorialDialogThemes`) contributed via the assembly theme tier.
 - `Cursorial.UI.Xaml.Generator` — the Fork C X4 Roslyn `IIncrementalGenerator` (symbol-backed parse, CUR1/CUR2 build
   diagnostics, the AOT-clean emitted metadata provider, typed code-behind, compiled-binding lowering + `x:DataType`).
 - `Cursorial.UI.Themes` — the data-shipped XAML theme overlay (`Default`/`IndigoDusk`) layered over the code-first
@@ -568,6 +570,19 @@ The closeout ran as seven workstreams (W1–W7):
 The `accesskeys`/`uixaml`/`windows`/control-gallery demos are the live canaries. The access-key capability gate
 on a real Kitty terminal (the `(DistinguishesKeyUpDown && ReportsRepeats) || Win32InputMode` verdict, ND23) is a
 **manual verification step** — it can't be exercised headlessly and needs a hands-on Kitty session.
+
+**TextAttributes decomposition** (2026-07-13, proposal-textattributes-decomposition.md + its adversarial
+judgment): `TextElement`'s aggregate `TextAttributesProperty` (an inherited flags bag) is retired for **per-axis,
+NON-inheriting attached properties** — `TextWeight{Normal,Faint,Bold}` (the shared SGR 22 reset makes Bold/Faint
+one axis), `TextStyle{Normal,Italic}`, `Underline:UnderlineStyle?` (presence+shape unified), `Strikethrough`/
+`Overline`/`Inverse`/`Blink`/`Concealed` bools — so the lattice arbitrates each display characteristic independently
+(the motivating bug: adding Bold no longer clobbers a theme's Inverse). Renderers fold the effective axes to
+`Output.TextAttributes` via `TextElement.ComposeAttributes` at paint. The axes "flow like `Background`" (owner
+decision): element-level values delivered to template parts and generated leaves by explicit forwards
+(`ContentPresenter` forwards all axes onto generated LABELS; glyphs/icons/carets forward Inverse ONLY — a symbol
+isn't text). The interactive-cue resource split into `ThemeKeys.InteractiveCueInverse`(bool)/`InteractiveCueWeight`
+(`TextWeight`). Rider: XAML 8-digit hex is now `#RRGGBBAA` (was `#AARRGGBB` — one alpha convention across the stack).
+The deferred P9.3b NoColor list focus cue (Inverse+Bold) shipped as the composability proof.
 
 **Post-P9 controls** (the S8 gallery extended; normative spec at `docs/ui-layer-design/control-matrix-p9.md`
 §C10–§C15, tests in `Cursorial.UI.Tests/ControlMatrix/Section23…Section28`; code-first `CursorialTheme.BuiltIn`

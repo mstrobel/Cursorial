@@ -58,10 +58,13 @@ public readonly record struct ResolvedTextAttributes(TextAttributes Flags, Under
 }
 
 /// <summary>
-/// The inherited text-attribute spine (design doc §12.1): attached properties <c>AddOwner</c>'d onto
-/// <see cref="Control"/> and <see cref="TextBlock"/> so foreground brush and text attributes flow
-/// down the logical tree. Setting <see cref="ForegroundProperty"/> high in the tree colors every
-/// descendant text element that does not override it.
+/// The text-styling spine (design doc §12.1): the inherited <see cref="ForegroundProperty"/> brush
+/// (set high in the tree, it colors every descendant text element that does not override it) plus
+/// the per-axis text-attribute properties (<see cref="TextWeightProperty"/>/<see cref="TextStyleProperty"/>/
+/// <see cref="UnderlineProperty"/>/…), which are NON-inheriting and "flow like <c>Background</c>":
+/// element-level values delivered to template parts and generated leaves by explicit forwards
+/// (proposal-textattributes-decomposition §2.1). Renderers read the folded effective attributes via
+/// <see cref="ComposeAttributes"/>.
 /// </summary>
 public abstract class TextElement
 {
@@ -80,18 +83,13 @@ public abstract class TextElement
             new PropertyMetadata<IBrush?>(Brushes.Default) { DefaultResourceKey = Themes.ThemeKeys.TextBrush },
             inherits: true);
 
-    /// <summary>The inherited text attributes (bold/italic/underline/…) (<c>Inherits | AffectsRender</c>).</summary>
-    public static readonly AttachedProperty<TextAttributes> TextAttributesProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, TextAttributes>("TextAttributes", inherits: true);
-
     static TextElement()
     {
         // Attached properties land on arbitrary host types, so AffectsRender rides the global
-        // effects lane (A1) — not a per-owner-type registration. (Foreground/TextAttributes
-        // additionally fan out to descendants via inheritance; the per-axis properties are
-        // non-inheriting and re-render only their own element.)
+        // effects lane (A1) — not a per-owner-type registration. (Foreground fans out to
+        // descendants via inheritance; the per-axis attribute properties are non-inheriting and
+        // re-render only their own element — proposal-textattributes-decomposition §2.1.)
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ForegroundProperty);
-        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextAttributesProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineProperty);
@@ -114,20 +112,6 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(ForegroundProperty, value);
-    }
-
-    /// <summary>Reads the inherited text attributes attached to <paramref name="element"/>.</summary>
-    public static TextAttributes GetTextAttributes(UIElement element)
-    {
-        ArgumentNullException.ThrowIfNull(element);
-        return element.GetValue(TextAttributesProperty);
-    }
-
-    /// <summary>Sets the text attributes on <paramref name="element"/> (inherits to its descendants).</summary>
-    public static void SetTextAttributes(UIElement element, TextAttributes value)
-    {
-        ArgumentNullException.ThrowIfNull(element);
-        element.SetValue(TextAttributesProperty, value);
     }
 
     // ───────────────────────────── the per-axis attribute properties (proposal §1) ─────────────────────────────
@@ -316,10 +300,6 @@ public abstract class TextElement
         if (element.GetValue(InverseProperty))            flags |= TextAttributes.Inverse;
         if (element.GetValue(BlinkProperty))              flags |= TextAttributes.Blink;
         if (element.GetValue(ConcealedProperty))          flags |= TextAttributes.Hidden;
-
-        // The migration bridge (proposal §4.1): unmigrated aggregate producers keep working
-        // bit-identically until P5 deletes the property and this term with it.
-        flags |= element.GetValue(TextAttributesProperty);
 
         return new ResolvedTextAttributes(flags, underline ?? UnderlineStyle.Single);
     }

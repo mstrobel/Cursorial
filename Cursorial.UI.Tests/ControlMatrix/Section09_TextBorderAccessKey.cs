@@ -119,27 +119,25 @@ public sealed class Section09_TextBorderAccessKey
         Assert.Equal("H", host.GetCell(0, 0).Grapheme);
     }
 
-    [Fact] // C166b — TextBlock honors the inherited TextElement.TextAttributes on its painted glyphs (Task #17).
-    public void C166b_TextBlockHonorsInheritedTextAttributes()
+    [Fact] // C166b — TextBlock honors its effective TextElement attributes on every painted glyph (the paint-time fold).
+    public void C166b_TextBlockHonorsTextAttributes()
     {
-        // The attribute is set on an ANCESTOR (a Decorator) and inherits to the TextBlock via TextElement;
-        // the render path must merge it onto every painted cell.
+        // The per-axis attributes are non-inheriting (proposal §2.1) — set on the element itself; the
+        // render path folds them onto every painted cell (ComposeAttributes).
         var tb = new TextBlock("Hi");
-        var root = new Decorator { Child = tb };
-        TextElement.SetTextAttributes(root, TextAttributes.Inverse);
-        using var host = Attach(root);
+        TextElement.SetInverse(tb, true);
+        using var host = Attach(tb);
 
         var (col, row) = tb.TranslateToWindow(0, 0);
         Assert.True(host.GetCell(col, row).Style.Attributes.HasFlag(TextAttributes.Inverse));      // 'H'
         Assert.True(host.GetCell(col + 1, row).Style.Attributes.HasFlag(TextAttributes.Inverse));  // 'i'
     }
 
-    [Fact] // C166c — a TextAttributes flip re-paints the CACHED FormattedText (paint-time merge, no re-format).
+    [Fact] // C166c — a text-attribute flip re-paints the CACHED FormattedText (paint-time merge, no re-format).
     public void C166c_TextAttributeFlipRepaintsWithoutReformat()
     {
         var tb = new TextBlock("Hi");
-        var root = new Decorator { Child = tb };
-        using var host = Attach(root);
+        using var host = Attach(tb);
 
         var (col, row) = tb.TranslateToWindow(0, 0);
         Assert.False(host.GetCell(col, row).Style.Attributes.HasFlag(TextAttributes.Inverse)); // rest
@@ -147,7 +145,7 @@ public sealed class Section09_TextBorderAccessKey
         // The cache key (text/width/caps/version/variant) is unchanged by an attribute-only flip, yet the
         // glyph inverts — proof the attribute is applied at paint time, not baked into the cached layout.
         var keyBefore = ResourceServices.GetResourceVersion(tb);
-        TextElement.SetTextAttributes(root, TextAttributes.Inverse); // AffectsRender → re-paint, not re-measure
+        TextElement.SetInverse(tb, true); // AffectsRender → re-paint, not re-measure
         host.RunFrame();
 
         Assert.Equal(keyBefore, ResourceServices.GetResourceVersion(tb)); // no resource pulse → same cache key

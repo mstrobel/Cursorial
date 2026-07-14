@@ -588,8 +588,10 @@ public static class XamlConverters
 
         public object ConvertFromString(string text, in XamlValueContext ctx)
         {
-            // A comma- or pipe-separated flags list — Enum.Parse honors both with the [Flags] enum;
-            // case-insensitive to match the other enum converters (P6 review P1-6).
+            // A comma-separated flags list — Enum.Parse's [Flags] syntax (NOT pipe; the prior comment
+            // claimed pipe, which Enum.Parse does not accept). Case-insensitive to match the other enum
+            // converters. Retained for the remaining TextAttributes-typed member (AccessTextPresenter.
+            // KeyAttributes) after the inherited aggregate's retirement (proposal §4.1).
             text = text.Trim();
             if (Enum.TryParse<TextAttributes>(text, ignoreCase: true, out var v))
                 return v;

@@ -105,6 +105,7 @@ public static class CursorialDialogThemes
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
         var explanation = new ContentPresenter();

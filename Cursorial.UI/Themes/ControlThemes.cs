@@ -1398,9 +1398,10 @@ internal static class ControlThemes
                    // to its StackPanel's width, so a reverse fill would span the whole row like a selection bar.
                    var glyphCell = new Grid();
                    var glyph = new ToggleGlyph(glyphKey, checkedMarkKey, indeterminateMarkKey);
-                   // The glyph forwards the weight axis so the caps-nocolor disabled-Faint rule (set on
-                   // the CONTROL) dims the box to match its (presenter-forwarded) label.
-                   glyph.SetBinding(TextElement.TextWeightProperty, new TemplateBinding(TextElement.TextWeightProperty));
+                   // A checkbox/radio indicator is a GLYPH, not text — only Inverse forwards, so the box
+                   // swaps fg/bg in unison with an inverted face and never leaves a half-inverted hole
+                   // (owner rule 2026-07-13). Weight/style/underline are meaningless on a symbol.
+                   TextElement.ForwardInverse(glyph);
                    ctx.RegisterName("PART_Glyph", glyph);
 
                    var caret = new Caret

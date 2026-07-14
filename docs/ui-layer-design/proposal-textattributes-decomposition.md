@@ -501,6 +501,20 @@ arbitrate axes — give it axes.
    values are never clobbered.
 4. **The TextPresenter gap.** TextBox content ignores the attribute spine today and still will
    until the optional template-forward follow-on lands. Recorded, not entrenched.
+5. **The TreeView NoColor selection cue is a follow-up (not yet landed).** `CapsNoColorSelectionInverse`
+   covers ListBoxItem/ComboBoxItem/TabItem; the TreeViewItem cue lands later on the same
+   control-level + face-forward pattern (§2.1's "can land as a follow-up"). Until then a NoColor
+   TreeView's selected row shows no cue. (P3 audit, 2026-07-13.)
+6. **Border-title underline SHAPE collapses to Single.** A titled `Border` (GroupBox idiom) folds
+   the underline PRESENCE onto its `PanelTitle` but the shape rides at `Single` — `PanelTitle`
+   carries no shape channel, and Q2's seam widening scoped v1 to the `DrawFormattedText`/DrawText
+   paths (both label paths carry the shape; the box-title path does not). Rare; widening
+   `PanelTitle` is a clean Drawing-layer follow-up if a real case appears. (P3 audit.)
+7. **Glyphs/icons carry ONLY the Inverse cue** (owner rule, 2026-07-13): weight/style/underline are
+   meaningless on a symbol, and Inverse alone keeps a glyph swapping fg/bg in unison with its face
+   (no half-inverted hole). Consequence: a NoColor **disabled** control dims its label (Faint) but
+   NOT its glyph box/icon (they are symbols) — a deliberate simplification of the review-#1
+   whole-control-dims behavior.
 
 ---
 

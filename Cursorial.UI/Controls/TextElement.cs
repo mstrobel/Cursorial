@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
 
@@ -321,5 +322,37 @@ public abstract class TextElement
         flags |= element.GetValue(TextAttributesProperty);
 
         return new ResolvedTextAttributes(flags, underline ?? UnderlineStyle.Single);
+    }
+
+    /// <summary>
+    /// The eight per-axis attribute properties, in fold order — the delivery/forwarding surface
+    /// (proposal §2.1). The presenter forward (<c>ContentRealization</c>) binds all eight onto a
+    /// GENERATED text leaf; a template forwards the subset its part renders.
+    /// </summary>
+    internal static readonly UIProperty[] AllAxisProperties =
+    [
+        TextWeightProperty, TextStyleProperty, UnderlineProperty, StrikethroughProperty,
+        OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty,
+    ];
+
+    /// <summary>
+    /// Forwards every per-axis attribute from a template's templated parent onto a text-rendering
+    /// <paramref name="part"/> (a caret/glyph/icon leaf), via <c>TemplateBinding</c> — so a
+    /// control-level cue reaches the part at the Template lane (pierceable by conditional rules,
+    /// PD26). Call INSIDE the control-template build. Faces honor only <see cref="InverseProperty"/>
+    /// (the fill's one flag), so a face forwards Inverse alone via <see cref="ForwardInverse"/>.
+    /// </summary>
+    public static void ForwardAllAxes(UIElement part)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        foreach (var axis in AllAxisProperties)
+            part.SetBinding(axis, new TemplateBinding(axis));
+    }
+
+    /// <summary>Forwards <see cref="InverseProperty"/> alone from the templated parent onto a face part (the fill's one flag).</summary>
+    public static void ForwardInverse(UIElement facePart)
+    {
+        ArgumentNullException.ThrowIfNull(facePart);
+        facePart.SetBinding(InverseProperty, new TemplateBinding(InverseProperty));
     }
 }

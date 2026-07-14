@@ -212,6 +212,22 @@ public sealed class Section45_TextAttributeAxes
             Assert.IsType<bool>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse]);
             Assert.IsType<TextWeight>(kv.Value[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
         });
+
+        // Pin the §2.3 four-row value table verbatim (audit fix — the presence lint above alone let a
+        // deleted required pair or a flipped Faint pass): one cue vocabulary per tier, Inverse only
+        // where brushes can't speak, Faint only at (Dark|Light, Ansi16).
+        void AssertCue(ThemeVariantKey key, bool inverse, TextWeight weight)
+        {
+            var dict = theme.ThemeDictionaries[key];
+            Assert.Equal(inverse, dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueInverse]);
+            Assert.Equal(weight, dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
+        }
+
+        AssertCue(new ThemeVariantKey(null, ColorDepth.NoColor), inverse: true,  weight: TextWeight.Normal); // NoColor: reverse-video
+        AssertCue(new ThemeVariantKey(null, ColorDepth.Ansi16),  inverse: false, weight: TextWeight.Normal); // CD8 color floor
+        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi16), inverse: false, weight: TextWeight.Faint);  // 16-color = Faint
+        AssertCue(new ThemeVariantKey(ThemeBase.Light, ColorDepth.Ansi16), inverse: false, weight: TextWeight.Faint);
+        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi256), inverse: false, weight: TextWeight.Normal); // RGB: brushes are the cue
     }
 
     [Fact] // TA11 — the landed P9.3b (the composability proof): NoColor focus-row = selection Inverse + focus Bold, composed
@@ -247,6 +263,36 @@ public sealed class Section45_TextAttributeAxes
         var style = host.GetCell(col, row).Style;
         Assert.True((style.Attributes & TextAttributes.Inverse) != 0);
         Assert.True((style.Attributes & TextAttributes.Bold) != 0);
+    }
+
+    [Fact] // TA12 — a conditional rule pierces a Template-lane forward on a generated leaf (audit fix: forwards install at Template, not LocalValue)
+    public void TA12_ConditionalRule_PiercesForward_OnGeneratedLeaf()
+    {
+        using var host = UIHeadlessHost.Create();
+        var button = new Button { Content = "OK", Focusable = false };
+        button.Classes.Add("host");
+        TextElement.SetTextWeight(button, TextWeight.Bold); // the control value the presenter forwards down
+        host.ShowRoot(button);
+        Assert.True(host.RunUntilIdle());
+
+        var leaf = FindLeaf(button)!;
+        Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(leaf)); // the forward delivers, at the Template lane
+        Assert.Equal(BindingPriority.Template, leaf.GetValueSource(TextElement.TextWeightProperty).Priority);
+
+        // A CONDITIONAL rule targeting the generated leaf pierces the Template-lane forward
+        // (StyleTrigger 50 > Template 75, PD26) — the composability the LocalValue install occluded.
+        // Class-only selector: the button's generated leaf is an AccessTextPresenter (RecognizesAccessKey).
+        host.Application.Styles.Add(new Style(".tweak")
+            .Set(TextElement.TextWeightProperty, TextWeight.Faint));
+        leaf.Classes.Add("tweak");
+        host.RunFrame();
+
+        Assert.Equal(TextWeight.Faint, TextElement.GetTextWeight(leaf));
+        Assert.Equal(BindingPriority.StyleTrigger, leaf.GetValueSource(TextElement.TextWeightProperty).Priority);
+
+        leaf.Classes.Remove("tweak"); // retract → the forward resurfaces (clean)
+        host.RunFrame();
+        Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(leaf));
     }
 
     private static UIElement? FindLeaf(UIElement root)

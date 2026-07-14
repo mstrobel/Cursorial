@@ -215,6 +215,9 @@ public sealed class BarControlsTests
         button.Focus();
         host.RunUntilIdle();
 
-        Assert.NotEqual(TextAttributes.Inverse, TextElement.GetTextAttributes(button)); // color fill IS the cue
+        // Re-pinned to the axis (audit fix): GetTextAttributes reads the dead aggregate (always None
+        // now), which can never fail — a broken CD8 descent leaking InteractiveCueInverse=true into a
+        // color tier would double-invert while the old assert stayed green. Assert the live axis.
+        Assert.False(TextElement.GetInverse(button)); // color fill IS the cue — no attribute inversion
     }
 }

@@ -65,6 +65,13 @@ internal static class ContentRealization
             // a free-standing presenter adopts it itself.
             case UIElement element:
                 AdoptElementContent(host, element);
+                // An Icon is framework PRESENTATION — a GLYPH, not text or opaque app data. It carries
+                // ONLY the Inverse cue (so it swaps fg/bg in unison with an inverted face and never
+                // leaves a half-inverted hole); weight/style/underline are meaningless on a symbol
+                // (owner rule 2026-07-13). Icon forwards Inverse onto its own internal glyph leaf.
+                // Other element content styles itself (chain 3 app content — no forward).
+                if (element is Icon)
+                    ForwardInverseOnly(host, element);
                 return element;
 
             // ④ an AccessText value always becomes an AccessTextPresenter, regardless of RecognizesAccessKey.
@@ -94,29 +101,37 @@ internal static class ContentRealization
         }
     }
 
-    // The presentation elements this array names are forwarded from the templated parent onto every
-    // GENERATED leaf (chains ④/⑤ only — never chain ③ element content, never chain ①/② DataTemplate
-    // content: app content is app-styleable, proposal-textattributes-decomposition §2.1/§7.3). The
-    // axes are non-inheriting ("flows like Background"), so a control-level cue — the theme's
-    // `.caps-nocolor Button:focus → Inverse` — reaches the label the presenter materializes through
-    // these live forwards, the same idiom the TextWrapping binding above uses.
-    private static readonly UIProperty[] ForwardedTextAxes =
-    [
-        TextElement.TextWeightProperty, TextElement.TextStyleProperty, TextElement.UnderlineProperty,
-        TextElement.StrikethroughProperty, TextElement.OverlineProperty, TextElement.InverseProperty,
-        TextElement.BlinkProperty, TextElement.ConcealedProperty,
-    ];
-
+    // Forwards the per-axis text attributes from the templated parent (the control the theme rules
+    // land on) onto a GENERATED leaf (chains ④/⑤; and framework-presentation chain-③ Icons) — never
+    // onto DataTemplate/opaque-element content (app content is app-styleable, proposal §2.1/§7.3).
+    // The axes are non-inheriting ("flows like Background"), so a control-level cue — the theme's
+    // `.caps-nocolor Button:focus → Inverse` — reaches the label through these live forwards.
     private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
     {
         // The forward source is the control the theme rules land on (the templated parent); a
         // free-standing presenter forwards its own values (it IS the element the app styles).
         var source = host.TemplatedParent ?? (UIObject)host;
 
-        foreach (var axis in ForwardedTextAxes)
-            leaf.SetBinding(axis, new Binding($"({nameof(TextElement)}.{axis.Name})") { Source = source });
+        // Install at the Template lane (audit fix 2026-07-13): opening the template-instantiation
+        // scope around the binding installs makes the forwarded value the leaf's RESTING truth —
+        // a conditional rule targeting the leaf pierces it (StyleTrigger > Template, PD26), while a
+        // resting rule does not (re-skin via the container's axes, which the forward mirrors). At
+        // LocalValue the forward would occlude even conditional rules (LocalValue > StyleTrigger).
+        using (TemplateInstantiationScope.Enter())
+            foreach (var axis in TextElement.AllAxisProperties)
+                leaf.SetBinding(axis, new Binding($"({nameof(TextElement)}.{axis.Name})") { Source = source });
 
         return leaf;
+    }
+
+    // The GLYPH/icon delivery (owner rule 2026-07-13): a symbol carries only the Inverse cue — it
+    // swaps in unison with an inverted face; weight/style/underline don't apply to a glyph.
+    private static void ForwardInverseOnly(ContentPresenter host, UIElement glyph)
+    {
+        var source = host.TemplatedParent ?? (UIObject)host;
+        using (TemplateInstantiationScope.Enter())
+            glyph.SetBinding(TextElement.InverseProperty,
+                             new Binding($"({nameof(TextElement)}.{TextElement.InverseProperty.Name})") { Source = source });
     }
 
     // Applies a composite format to content (null format ⇒ Convert.ToString, the prior behavior). A MALFORMED

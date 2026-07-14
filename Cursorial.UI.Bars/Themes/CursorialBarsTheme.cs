@@ -223,6 +223,7 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // the shared .caps-nocolor Button:focus cue is non-inheriting now — the face forwards it (audit fix)
                 var label = new ContentPresenter(); // auto-aliases the button's Content ("»")
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 border.Child = label;
@@ -330,6 +331,7 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // whole-face NoColor cue (audit fix)
 
                 var row = new DockPanel { LastChildFill = true };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
@@ -337,6 +339,7 @@ internal static class CursorialBarsTheme
                 var caret = new TextBlock { Margin = new Margins(1, 0, 0, 0) }; // leading gap (was the space in " ▾")
                 caret.SetBinding(TextBlock.TextProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                TextElement.ForwardInverse(caret); // the ▾ caret is a GLYPH — Inverse only, so it inverts in unison with the face (owner rule)
 
                 var icon = BuildIcon();
                 
@@ -400,6 +403,7 @@ internal static class CursorialBarsTheme
             {
                 var primary = new Border { Padding = new Margins(1, 0) };
                 primary.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                TextElement.ForwardInverse(primary); // the primary zone's whole-face NoColor cue (audit fix)
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -414,6 +418,9 @@ internal static class CursorialBarsTheme
                     VerticalAlignment = VerticalAlignment.Stretch
                 };
                 dropZone.SetBinding(ContentControl.ContentProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
+                // The ▾ zone is a BARRED template part; forward Inverse so it swaps in unison with the
+                // inverted primary face on a NoColor focus (the ▾ glyph is a symbol — Inverse only, owner rule).
+                TextElement.ForwardInverse(dropZone);
                 ctx.RegisterName("PART_DropDown", dropZone);
 
                 var band = new DockPanel { LastChildFill = true};

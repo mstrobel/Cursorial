@@ -34,7 +34,8 @@
   <ControlTemplate x:Key="ButtonTemplate">
     <Border Background="{TemplateBinding Background}"
             BorderPen="{TemplateBinding BorderPen}"
-            Padding="{TemplateBinding Padding}">
+            Padding="{TemplateBinding Padding}"
+            TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
     </Border>
   </ControlTemplate>
@@ -152,7 +153,8 @@
           <ToggleGlyph x:Name="PART_Glyph"
                        GlyphKey="{x:Static ThemeKeys.CheckBoxGlyphs}"
                        CheckedMarkKey="{x:Static ThemeKeys.ToggleGlyphChecked}"
-                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"/>
+                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"
+                       TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}"/>
           <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
         </Grid>
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
@@ -185,7 +187,8 @@
           <ToggleGlyph x:Name="PART_Glyph"
                        GlyphKey="{x:Static ThemeKeys.RadioGlyphs}"
                        CheckedMarkKey="{x:Static ThemeKeys.RadioGlyphChecked}"
-                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"/>
+                       IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"
+                       TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}"/>
           <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
         </Grid>
         <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
@@ -357,7 +360,8 @@
        :focus-visible (not :focus) is the keyboard focus-row reverse-video cue so a mouse click shows :selected while
        keyboard nav shows the reverse row; disabled = muted ink. The declarative twin of ControlThemes.ListBoxItemTheme(). -->
   <ControlTemplate x:Key="ListBoxItemTemplate">
-    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+            TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
       <ContentPresenter x:Name="PART_ContentPresenter"/>
     </Border>
   </ControlTemplate>
@@ -579,6 +583,7 @@
                 Padding="1,0"
                 Background="{TemplateBinding Background}"
                 BorderPen="{TemplateBinding BorderPen}"
+                TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}"
                 Occludes="True">
           <ContentPresenter x:Name="PART_ContentPresenter"
                             RecognizesAccessKey="True"
@@ -874,7 +879,8 @@
   <!-- ComboBoxItem: the ListBoxItem selection bar verbatim (hover -> selected -> focus-visible -> disabled). The
        declarative twin of ControlThemes.ComboBoxItemTheme(). -->
   <ControlTemplate x:Key="ComboBoxItemTemplate">
-    <Border Padding="1,0" Background="{TemplateBinding Background}">
+    <Border Padding="1,0" Background="{TemplateBinding Background}"
+            TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
       <ContentPresenter x:Name="PART_ContentPresenter"/>
     </Border>
   </ControlTemplate>

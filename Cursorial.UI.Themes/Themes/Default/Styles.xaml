@@ -33,21 +33,22 @@
     <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
          button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill + content
          text); the selector list spans the exact button-family types (CheckBox/RadioButton excluded — in-box caret). -->
-    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pressed, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pressed, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pressed">
-      <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pointerover, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pointerover, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pointerover">
+      <Setter Property="TextElement.Inverse" Value="True"/>
     </Style>
     
     <!-- caps-nocolor disabled layer: a disabled button-family control (incl. CheckBox/RadioButton via :is(ButtonBase))
          dims to Faint when its palette would otherwise resolve to Default. -->
     <Style Selector=".caps-nocolor :is(ButtonBase):disabled">
-      <Setter Property="TextElement.TextAttributes" Value="Faint"/>
+      <Setter Property="TextElement.TextWeight" Value="Faint"/>
     </Style>
 
-    <!-- DO NOT set inverse-video on the TabItem itself; that would invert its CONTENT as well.-->
+    <!-- Control-level Inverse: the axes are non-inheriting, so this cannot leak into a TabItem's page
+         content — the header forwards Inverse to its face + label, the content is untouched. -->
     <Style Selector=".caps-nocolor ListBoxItem:selected, 
                      .caps-nocolor ComboBoxItem:selected,
-                     .caps-nocolor TabItem:selected /template/ #PART_HeaderSite">
-      <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
+                     .caps-nocolor TabItem:selected">
+      <Setter Property="TextElement.Inverse" Value="True"/>
     </Style>
 
     <!-- The keyboard focus-row cue for list items (P9.3b — gallery .item.rev): under NoColor the row
@@ -85,11 +86,6 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#512A46"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 
@@ -102,11 +98,6 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#381ec7"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 
@@ -119,11 +110,6 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#381ec7"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 
@@ -136,11 +122,6 @@
         <Style Selector="^:is(Button):pressed">
           <Setter Property="Panel.Background" Value="#381ec7"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 
@@ -156,11 +137,6 @@
           <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
           <Setter Property="Panel.Background" Value="#d11f5e"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 
@@ -176,11 +152,6 @@
           <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
           <Setter Property="Panel.Background" Value="#d11f5e"/>
         </Style>
-        <!--
-        <Style Selector="^:is(Button):focus-visible">
-          <Setter Property="TextElement.TextAttributes" Value="Inverse"/>
-        </Style>
-      -->
       </Style.Children>
     </Style>
 

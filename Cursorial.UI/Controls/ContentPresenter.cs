@@ -285,10 +285,21 @@ public sealed class ContentPresenter : UIElement
 
     private bool _childLogicallyOwned; // the presenter adopted the element content logically (free-standing case, chain ③)
 
+    // The framework-installed Inverse forward on BORROWED Icon content (§2.1) — the presenter owns its
+    // teardown because RebuildChild leaves borrowed content's own bindings alone, so a source-anchored
+    // forward would leak the Icon otherwise (audit fix 2026-07-13). Null unless the current child is an Icon.
+    private BindingExpressionBase? _borrowedIconForward;
+
     private void RebuildChild(object? content, DataTemplate? template, string? stringFormat)
     {
         if (_child is {} old)
         {
+            // The framework's own forward onto borrowed Icon content — dispose it here (it is NOT the
+            // author's, and RemoveVisualChild does not tear it down): the source-anchored observer would
+            // otherwise pin the unhosted Icon to the live templated parent on every content swap / recycle.
+            _borrowedIconForward?.Dispose();
+            _borrowedIconForward = null;
+
             // A presenter-BUILT child (a TextBlock realized from string/object content — NOT borrowed element content,
             // where the child IS the content and the author owns it) is presenter-owned and discarded here. Tear its
             // bindings down: RemoveVisualChild does NOT run TearDown (by design), so a Source-anchored binding it
@@ -317,6 +328,11 @@ public sealed class ContentPresenter : UIElement
             _childLogicallyOwned = ReferenceEquals(built.LogicalParent, this);
             AddVisualChildOnly(built);
             RedirectBorrowedContentInheritance(built);
+
+            // An Icon carries the Inverse cue (a glyph — Inverse only; §2.1). It is borrowed content, so
+            // the presenter installs AND owns the forward (disposed above on the next rebuild).
+            if (built is Icon)
+                _borrowedIconForward = ContentRealization.ForwardInverseOnly(this, built);
         }
     }
 

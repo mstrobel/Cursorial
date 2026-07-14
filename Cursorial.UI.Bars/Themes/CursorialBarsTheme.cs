@@ -477,6 +477,8 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // the ▾ zone (an exact Button) gets Inverse from the caps
+                                                    // hover rule — its face must invert in unison with the caret (audit fix)
                 var caret = new ContentPresenter();
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 border.Child = caret;

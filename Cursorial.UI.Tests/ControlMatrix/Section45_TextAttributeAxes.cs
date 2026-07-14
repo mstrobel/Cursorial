@@ -286,6 +286,33 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(leaf));
     }
 
+    [Fact] // TA13 — the borrowed-Icon Inverse forward is disposed on content swap (final-audit leak fix)
+    public void TA13_BorrowedIconForward_TornDownOnUnhost()
+    {
+        using var host = UIHeadlessHost.Create();
+        var button = new Button { Content = "OK", Focusable = false };
+        TextElement.SetInverse(button, true);
+        var iconA = new Icon { Text = "A" };
+        button.Content = iconA;
+        host.ShowRoot(button);
+        Assert.True(host.RunUntilIdle());
+
+        // Hosted: the presenter installed the Inverse forward on iconA (Template lane), so it tracks the control.
+        Assert.True(TextElement.GetInverse(iconA));
+        Assert.Equal(BindingPriority.Template, iconA.GetValueSource(TextElement.InverseProperty).Priority);
+
+        // Swap content → the presenter disposes iconA's forward (else its source-anchored observer leaks it).
+        button.Content = new Icon { Text = "B" };
+        Assert.True(host.RunUntilIdle());
+
+        // iconA's forward is gone: its Inverse falls to Default and no longer tracks the control.
+        Assert.Equal(BindingPriority.Default, iconA.GetValueSource(TextElement.InverseProperty).Priority);
+        TextElement.SetInverse(button, false);
+        button.Content = new Icon { Text = "B2" }; // re-swap; iconA must stay untracked (no stale push)
+        Assert.True(host.RunUntilIdle());
+        Assert.False(TextElement.GetInverse(iconA));
+    }
+
     private static UIElement? FindLeaf(UIElement root)
     {
         // Depth-first search for the generated presentation leaf (AccessTextPresenter or TextBlock).

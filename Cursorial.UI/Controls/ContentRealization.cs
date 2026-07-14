@@ -65,13 +65,10 @@ internal static class ContentRealization
             // a free-standing presenter adopts it itself.
             case UIElement element:
                 AdoptElementContent(host, element);
-                // An Icon is framework PRESENTATION — a GLYPH, not text or opaque app data. It carries
-                // ONLY the Inverse cue (so it swaps fg/bg in unison with an inverted face and never
-                // leaves a half-inverted hole); weight/style/underline are meaningless on a symbol
-                // (owner rule 2026-07-13). Icon forwards Inverse onto its own internal glyph leaf.
-                // Other element content styles itself (chain 3 app content — no forward).
-                if (element is Icon)
-                    ForwardInverseOnly(host, element);
+                // Icon-as-content gets the Inverse cue (§2.1), but the forward is a framework binding on
+                // BORROWED content — the presenter must own its lifecycle (it is torn down on unhost, else
+                // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the install is
+                // driven by ContentPresenter.RebuildChild, not here.
                 return element;
 
             // ④ an AccessText value always becomes an AccessTextPresenter, regardless of RecognizesAccessKey.
@@ -125,12 +122,14 @@ internal static class ContentRealization
     }
 
     // The GLYPH/icon delivery (owner rule 2026-07-13): a symbol carries only the Inverse cue — it
-    // swaps in unison with an inverted face; weight/style/underline don't apply to a glyph.
-    private static void ForwardInverseOnly(ContentPresenter host, UIElement glyph)
+    // swaps in unison with an inverted face; weight/style/underline don't apply to a glyph. Returns the
+    // installed expression so the CALLER (ContentPresenter, for borrowed Icon content) owns its
+    // teardown — a source-anchored binding on borrowed content would otherwise leak the Icon.
+    internal static BindingExpressionBase ForwardInverseOnly(ContentPresenter host, UIElement glyph)
     {
         var source = host.TemplatedParent ?? (UIObject)host;
         using (TemplateInstantiationScope.Enter())
-            glyph.SetBinding(TextElement.InverseProperty,
+            return glyph.SetBinding(TextElement.InverseProperty,
                              new Binding($"({nameof(TextElement)}.{TextElement.InverseProperty.Name})") { Source = source });
     }
 

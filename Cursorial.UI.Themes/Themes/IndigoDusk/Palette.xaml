@@ -100,7 +100,7 @@
       <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"                 Brush="#2C1A32" Weight="Heavy"/>
       <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"             Brush="#41233F" Weight="Light"/>
       <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                     Brush="#40337f" Weight="Heavy"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#60000000"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#00000060"/>
       <!-- <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="#ff80ac"/> -->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="#c75e9a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.Ansi0}"                   Color="#f54e89"/>
@@ -156,7 +156,7 @@
       <Pen        x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="#818392" Weight="Heavy"/>
       <Pen        x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="#818392" Weight="Light"/>
       <Pen        x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="#34548a" Weight="Heavy"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#60000000"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="#00000060"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="#343b58"/>
     </ResourceDictionary>
 

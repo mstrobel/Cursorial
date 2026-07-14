@@ -297,13 +297,19 @@ public static class ThemeKeys
     /// <summary>SplitButton dropdown indicator zone fill (--dd-zone).</summary>
     public const string SplitButtonDropZoneBrush = "Theme.SplitButtonDropZoneBrush";
 
-    /// <summary>A per-tier <see cref="Cursorial.Output.TextAttributes"/> value carrying the caps-nocolor interactive
-    /// cue: <see cref="Cursorial.Output.TextAttributes.None"/> on a color tier (the palette fill IS the cue, so no
-    /// text attribute), <see cref="Cursorial.Output.TextAttributes.Inverse"/> under the NoColor tier (colors collapse
-    /// to Default, so reverse-video restores the focus/pressed distinction). Consumed by control themes whose type is
-    /// not reached by the shared exact-type <c>.caps-nocolor</c> style layer — e.g. the ButtonBase-derived bar
-    /// controls (their <c>:focus</c>/<c>:pressed</c> rules set the inherited TextAttributes to this key).</summary>
-    public const string InteractiveInverseAttributes = "Theme.InteractiveInverseAttributes";
+    /// <summary>The reverse-video HALF of the per-tier interactive-cue pair (a <c>bool</c> — the
+    /// per-axis split of the former whole-flags <c>InteractiveInverseAttributes</c>, proposal-
+    /// textattributes-decomposition §2.3): <see langword="true"/> under NoColor (colors collapse to
+    /// Default, so reverse-video restores the focus/pressed distinction — the one tier where
+    /// attributes are the cue vocabulary), <see langword="false"/> at every color tier (the palette
+    /// fill IS the cue; one cue vocabulary per tier). Cue rules set BOTH pair keys (the pair-coherence
+    /// theme test walks every tier dictionary).</summary>
+    public const string InteractiveCueInverse = "Theme.InteractiveCueInverse";
+
+    /// <summary>The weight HALF of the per-tier interactive-cue pair (a <c>Cursorial.UI.Controls.TextWeight</c>):
+    /// <c>Faint</c> at (Dark|Light, Ansi16) — the 16-color focus cue — and <c>Normal</c> everywhere else.
+    /// Enum-typed so a future Bold-cue tier is a value change, not a third key.</summary>
+    public const string InteractiveCueWeight = "Theme.InteractiveCueWeight";
 
     // ToggleSwitch / CheckBox / RadioButton.
     /// <summary>Check/radio glyph + label ink (--text).</summary>

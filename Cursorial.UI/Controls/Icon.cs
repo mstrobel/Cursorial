@@ -240,6 +240,7 @@ public class Icon : Control
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+            ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
         else if (tier is IconTier.Image)
@@ -260,6 +261,7 @@ public class Icon : Control
             var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
+            ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
         else
@@ -268,9 +270,18 @@ public class Icon : Control
             var text = new TextBlock { TextAlignment = TextAlignment.Center };
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
+            ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
     }
+
+    // An icon is a GLYPH, not text: only Inverse forwards onto its leaf, so it swaps fg/bg in unison
+    // with an inverted face (a focused NoColor button) and never leaves a half-inverted hole — weight/
+    // style/underline are meaningless on a symbol (owner rule 2026-07-13). The Icon itself receives
+    // Inverse via the presenting template's forward (or ContentRealization's chain-③-Icon forward).
+    private void ForwardTextAxesToGlyph(TextBlock glyph)
+        => glyph.SetBinding(TextElement.InverseProperty,
+                            new Binding($"({nameof(TextElement)}.{TextElement.InverseProperty.Name})") { Source = this });
 
     // Whether the EFFECTIVE capabilities (negotiated ∘ user overrides — FB-5) include a graphics protocol that can
     // carry an inline image (mirrors the protocol gate in ImagePresenter.IsImageVisible; the per-image format check

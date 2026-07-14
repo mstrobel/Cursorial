@@ -52,13 +52,13 @@ public static class CursorialDialogThemes
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDisabled));
@@ -105,6 +105,7 @@ public static class CursorialDialogThemes
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
         var explanation = new ContentPresenter();

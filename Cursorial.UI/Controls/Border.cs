@@ -142,14 +142,15 @@ public class Border : Decorator
             return;
 
         var occludes = Occludes;
-        var attrs = TextElement.GetTextAttributes(this);
+        var resolved = TextElement.ComposeAttributes(this);
+        var attrs = resolved.Flags;
         var forceOpaque = UIApplication.Current?.ActualThemeVariant is { Tier: ColorDepth.NoColor };
 
-        // An inherited TextElement.TextAttributes (e.g., the caps-nocolor reverse-video Inverse) needs an
-        // OPAQUE fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
+        // An effective TextElement Inverse (e.g., the caps-nocolor reverse-video cue) needs an OPAQUE
+        // fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
         // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
         // default transparent tint (None ⇒ the ordinary fill path, unchanged).
-        var inverse = attrs.HasFlag(TextAttributes.Inverse);
+        var inverse = resolved.Inverse;
         var background = Background;
 
         if (forceOpaque) background ??= Brushes.Default;

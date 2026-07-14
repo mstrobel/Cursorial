@@ -32,12 +32,12 @@ public sealed class XamlThemeStylesTests
         // (TextElement) is resolved from the property name, so the Style needs no TargetType.
         var style = new XamlLoader().Load<Cursorial.UI.Style>(
             "<Style" + Ns + " Selector=\".caps-nocolor Button:focus\">" +
-              "<Setter Property=\"TextElement.TextAttributes\" Value=\"Inverse\"/>" +
+              "<Setter Property=\"TextElement.Inverse\" Value=\"True\"/>" +
             "</Style>");
 
         Assert.NotNull(style.Selector);
-        // The dotted Setter resolved to the REAL TextElement.TextAttributes UIProperty (not a placeholder).
-        Assert.Equal("TextAttributes", Assert.Single(style.Setters).Property.Name);
+        // The dotted Setter resolved to the REAL TextElement.Inverse attached UIProperty (not a placeholder).
+        Assert.Equal("Inverse", Assert.Single(style.Setters).Property.Name);
     }
 
     [Fact] // LoadStyles populates the Styles slot with all five theme rules (the caps-nocolor inverse is a 7-branch list).
@@ -54,7 +54,7 @@ public sealed class XamlThemeStylesTests
         var inverseText = inverseRule.Selector!.ToString();
         Assert.Contains("caps-nocolor", inverseText);
         Assert.Contains("Button:focus", inverseText);
-        Assert.Contains("ToggleButton:pressed", inverseText);
+        Assert.Contains("ToggleButton:pointerover", inverseText); // drift reconciled to code-first (:pointerover, was :pressed)
         // The rest are single-branch (two caps-unicode glyph rules + the caps-nocolor disabled rule + AccessKeyCue).
         Assert.Equal(builtin.Count(s => s.Selector is { Branches.Length: 1 }),
                      dict.Styles!.Count(s => s.Selector is { Branches.Length: 1 }));
@@ -124,6 +124,30 @@ public sealed class XamlThemeStylesTests
         Assert.Equal("(", host.GetCell(0, 0).Grapheme);
         Assert.Equal("!", host.GetCell(1, 0).Grapheme);
         Assert.Equal(")", host.GetCell(2, 0).Grapheme);
+    }
+
+    [Fact] // P3 audit: the XAML overlay's ListBoxItem row FACE (not just the label) inverts under the NoColor per-axis cue
+    public void XamlTheme_NoColorListRow_FaceInverts_ViaPerAxisForward()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(12, 3) });
+        host.Application.Theme = CursorialDefaultTheme.LoadTheme();
+        host.Application.RequestedColorTier = ColorDepth.NoColor;
+
+        var list = new UIControls.ListBox { ItemsSource = new[] { "alpha" } };
+        var root = new UIControls.StackPanel { Name = "Root" };
+        root.Children.Add(list);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var item = (UIControls.ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0)!;
+        item.IsSelected = true; // .caps-nocolor ListBoxItem:selected → TextElement.Inverse (control-level)
+        Assert.True(host.RunUntilIdle());
+
+        // The row's per-axis Inverse forward (Controls.xaml ListBoxItemTemplate) inverts the WHOLE bar,
+        // not just the label — the audit regression (the XAML twin shipped label-only) is closed.
+        var (col, r) = item.TranslateToWindow(0, 0);
+        Assert.True(host.GetCell(col, r).Style.Attributes.HasFlag(TextAttributes.Inverse));      // the row-padding face cell
+        Assert.True(host.GetCell(col + 1, r).Style.Attributes.HasFlag(TextAttributes.Inverse));  // the 'a' label cell
     }
 
     private static (string Glyph, Color Fg, Color Bg, TextAttributes Attrs)[] RenderCaps(bool xaml, bool checkBoxCase)

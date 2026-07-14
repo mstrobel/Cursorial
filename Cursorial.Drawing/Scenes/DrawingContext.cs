@@ -839,10 +839,10 @@ public sealed class DrawingContext
     /// is honored by a re-paint, not a re-format, so it never goes stale on an attribute-only change.
     /// </para>
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities, TextAttributes baseAttributes = default)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        DrawFormattedCore(text, bounds, capabilities, brush, baseAttributes);
+        DrawFormattedCore(text, bounds, capabilities, brush, baseAttributes, baseUnderlineShape);
     }
 
     /// <summary>
@@ -853,10 +853,10 @@ public sealed class DrawingContext
     /// (default none) union-merges an inherited <see cref="TextAttributes"/> onto every painted cell at paint
     /// time — see the brushed overload.
     /// </summary>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, TextAttributes baseAttributes = default)
-        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null, baseAttributes);
+    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
+        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null, baseAttributes, baseUnderlineShape);
 
-    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush, TextAttributes baseAttributes = default)
+    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -910,9 +910,17 @@ public sealed class DrawingContext
                                           : ctx.BaseStyle;
                           }
 
-                          // The inherited-attribute leg: OR the ancestor's TextElement.TextAttributes onto the
-                          // run's own attributes (default none = a no-op for every pre-existing caller).
-                          return baseAttributes == default ? style : style.AddAttributes(baseAttributes);
+                          // The base-attribute leg: OR the element-effective attributes onto the run's own
+                          // (default none = a no-op for every pre-existing caller). When the base carries the
+                          // Underline presence bit with a non-Single shape, the shape rides along (the widened
+                          // seam — proposal-textattributes-decomposition §3.1/Q2); a run cannot author shapes
+                          // today, so the base shape never overwrites authored run state.
+                          if (baseAttributes == default)
+                              return style;
+                          var merged = style.AddAttributes(baseAttributes);
+                          if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
+                              merged = merged.WithUnderlineStyle(baseUnderlineShape);
+                          return merged;
                       });
 
         if (transformed)

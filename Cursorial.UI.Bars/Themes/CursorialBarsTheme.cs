@@ -34,6 +34,8 @@ internal static class CursorialBarsTheme
         var border = new Border();
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        // The bar face forwards the Inverse cue axis (non-inheriting; the labels ride the presenter forwards).
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
 
         // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
         // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
@@ -132,14 +134,14 @@ internal static class CursorialBarsTheme
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
-
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
@@ -163,7 +165,8 @@ internal static class CursorialBarsTheme
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
+                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         // Checked = the accent whole-cell fill (the guide's toggle "on" look), text inverted to on-accent.
         theme.Children.Add(new Style("^:checked")
             .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
@@ -173,7 +176,8 @@ internal static class CursorialBarsTheme
             .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
-            .SetResource(TextElement.TextAttributesProperty, ThemeKeys.InteractiveInverseAttributes));
+            .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
+            .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
@@ -219,6 +223,7 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // the shared .caps-nocolor Button:focus cue is non-inheriting now — the face forwards it (audit fix)
                 var label = new ContentPresenter(); // auto-aliases the button's Content ("»")
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 border.Child = label;
@@ -326,6 +331,7 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // whole-face NoColor cue (audit fix)
 
                 var row = new DockPanel { LastChildFill = true };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
@@ -333,6 +339,7 @@ internal static class CursorialBarsTheme
                 var caret = new TextBlock { Margin = new Margins(1, 0, 0, 0) }; // leading gap (was the space in " ▾")
                 caret.SetBinding(TextBlock.TextProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                TextElement.ForwardInverse(caret); // the ▾ caret is a GLYPH — Inverse only, so it inverts in unison with the face (owner rule)
 
                 var icon = BuildIcon();
                 
@@ -396,6 +403,7 @@ internal static class CursorialBarsTheme
             {
                 var primary = new Border { Padding = new Margins(1, 0) };
                 primary.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                TextElement.ForwardInverse(primary); // the primary zone's whole-face NoColor cue (audit fix)
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
                 label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -410,6 +418,9 @@ internal static class CursorialBarsTheme
                     VerticalAlignment = VerticalAlignment.Stretch
                 };
                 dropZone.SetBinding(ContentControl.ContentProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
+                // The ▾ zone is a BARRED template part; forward Inverse so it swaps in unison with the
+                // inverted primary face on a NoColor focus (the ▾ glyph is a symbol — Inverse only, owner rule).
+                TextElement.ForwardInverse(dropZone);
                 ctx.RegisterName("PART_DropDown", dropZone);
 
                 var band = new DockPanel { LastChildFill = true};
@@ -466,6 +477,8 @@ internal static class CursorialBarsTheme
                 var border = new Border();
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                 border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                TextElement.ForwardInverse(border); // the ▾ zone (an exact Button) gets Inverse from the caps
+                                                    // hover rule — its face must invert in unison with the caret (audit fix)
                 var caret = new ContentPresenter();
                 caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
                 border.Child = caret;
@@ -1077,7 +1090,7 @@ internal static class CursorialBarsTheme
                 var titlePanel = new WrapPanel { Orientation = Orientation.Horizontal };
 
                 var title = new TextBlock();
-                title.SetValue(TextElement.TextAttributesProperty, TextAttributes.Bold);
+                title.SetValue(TextElement.TextWeightProperty, Cursorial.UI.Controls.TextWeight.Bold);
                 title.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.TitleProperty));
                 title.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
 

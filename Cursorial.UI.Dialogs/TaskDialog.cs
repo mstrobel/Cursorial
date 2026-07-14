@@ -133,7 +133,7 @@ public static class TaskDialog
                                   Margin = new Margins(2, 1, 2, 1)
                               };
         
-        mainInstruction.SetValue(TextElement.TextAttributesProperty, TextAttributes.Bold);
+        mainInstruction.SetValue(TextElement.TextWeightProperty, Cursorial.UI.Controls.TextWeight.Bold);
         mainInstruction.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         
         Grid.SetRow(mainInstruction, mainInstructionRow);

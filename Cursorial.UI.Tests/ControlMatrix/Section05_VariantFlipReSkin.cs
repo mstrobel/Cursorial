@@ -381,8 +381,8 @@ public sealed class Section05_VariantFlipReSkin
 
     // ───────────────────────────── C119c — caps-nocolor: a disabled check/radio dims its glyph too ─────────────────────────────
 
-    [Fact] // C119c — under caps-nocolor a disabled CheckBox dims its GLYPH (Faint), not just its label (review #1 follow-up)
-    public void C119c_NoColor_DisabledCheckBox_DimsGlyph()
+    [Fact] // C119c — under caps-nocolor a disabled CheckBox dims its LABEL (Faint); the glyph box does NOT (glyphs are Inverse-only)
+    public void C119c_NoColor_DisabledCheckBox_DimsLabel_NotGlyph()
     {
         using var host = TruecolorHost();
         host.Application.RequestedThemeBase = ThemeBase.Dark;
@@ -395,9 +395,11 @@ public sealed class Section05_VariantFlipReSkin
         Assert.True(host.RunUntilIdle());
         Assert.Equal(ColorDepth.NoColor, host.Application.ActualThemeVariant.Tier);
 
-        // The `.caps-nocolor :is(ButtonBase):disabled` rule flips Faint, inherited by the glyph leaf, so the
-        // box glyph "[" dims — matching the (Faint) content label, so the whole control reads as disabled.
-        Assert.True(CellOf(host, "[").Style.Attributes.HasFlag(TextAttributes.Faint));
+        // The `.caps-nocolor :is(ButtonBase):disabled` rule sets TextWeight=Faint on the control; the LABEL
+        // (a text leaf, presenter-forwarded all axes) dims. The glyph box is a GLYPH — forwarded Inverse
+        // ONLY (owner rule 2026-07-13), so weight/Faint does NOT reach it: a symbol isn't text.
+        Assert.True(CellOf(host, "O").Style.Attributes.HasFlag(TextAttributes.Faint));   // the label dims
+        Assert.False(CellOf(host, "[").Style.Attributes.HasFlag(TextAttributes.Faint));  // the glyph box does not
     }
 
     // ───────────────────────────── finders ─────────────────────────────

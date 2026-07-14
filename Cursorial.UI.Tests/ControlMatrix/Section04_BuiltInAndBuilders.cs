@@ -360,22 +360,21 @@ public sealed class Section04_BuiltInAndBuilders
         var theme = CursorialTheme.CreateDefault();
         theme.Styles =
         [
-            new Style("Button:focus").Set(TextElement.TextAttributesProperty, TextAttributes.Inverse)
+            new Style("Button:focus").Set(TextElement.InverseProperty, true)
         ];
         host.Application.Theme = theme;
         host.ShowRoot(root);
         Assert.True(host.RunUntilIdle());
 
-        // The theme rule armed at Theme(2) and, with the button focused, flipped the inherited
-        // TextElement.TextAttributes to Inverse — the exact mechanism #19 will author in XAML.
+        // The theme rule armed at Theme(2) and, with the button focused, set the (non-inheriting)
+        // TextElement.Inverse axis on the control — the mechanism the XAML overlay authors too.
         Assert.True(button.IsFocused);
         Assert.Contains(StyleDiagnostics.MatchedRules(button), r => r is { Layer: StyleLayer.Theme, IsActive: true });
-        Assert.Equal(TextAttributes.Inverse, TextElement.GetTextAttributes(button));
-        // Sanity: at a color tier the inherited attribute is the theme rule's doing — clearing the theme
-        // removes it (proves it was not some always-on default).
+        Assert.True(TextElement.GetInverse(button));
+        // Sanity: the axis is the theme rule's doing — clearing the theme removes it (not an always-on default).
         host.Application.Theme = null;
         host.RunFrame();
-        Assert.Equal(default, TextElement.GetTextAttributes(button));
+        Assert.False(TextElement.GetInverse(button));
     }
 
     [Fact] // C103 — control-theme nearest-scope ordering: a nearer chain scope's Type-keyed theme wins (both at ControlTheme(0))

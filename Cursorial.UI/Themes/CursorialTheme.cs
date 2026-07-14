@@ -115,6 +115,7 @@ public static class CursorialTheme
             CursorialThemeStyles.CapsNoColorInteractiveInverse(),
             CursorialThemeStyles.CapsNoColorDisabledFaint(),
             CursorialThemeStyles.CapsNoColorSelectionInverse(),
+            CursorialThemeStyles.CapsNoColorListFocusCue(),
             CursorialThemeStyles.CapsNoColorBorderStyle(),
             CursorialThemeStyles.CapsNoColorBorderPenStyle(),
 
@@ -164,15 +165,21 @@ public static class CursorialTheme
         noColor[ThemeKeys.RibbonContextualFillBrush] = defaultBrush;
         noColor[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
         // Reverse-video is the monochrome interactive cue (the palette fill collapsed to Default). This lives ONLY
-        // at the NoColor floor; the None counterpart at the Ansi16 wildcard floor (below) keeps it from bleeding up.
-        noColor[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Inverse;
+        // at the NoColor floor; the false/Normal counterpart at the Ansi16 wildcard floor (below) keeps it from
+        // bleeding up. The pair splits along the per-axis properties (proposal §2.3).
+        noColor[ThemeKeys.InteractiveCueInverse] = true;
+        noColor[ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal;
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
 
-        // The color-tier None floor for InteractiveInverseAttributes. The CD8 probe DESCENDS tiers
+        // The color-tier floor for the cue pair. The CD8 probe DESCENDS tiers
         // (Truecolor→Ansi256→Ansi16→NoColor), so a bare NoColor=Inverse would resolve for every color tier too.
-        // Ansi16 is the lowest color tier, so every color tier's descent reaches this None before the NoColor
-        // Inverse below it, while a true NoColor variant (whose descent is NoColor-only) never sees it.
-        var ansi16Floor = new ResourceDictionary { [ThemeKeys.InteractiveInverseAttributes] = TextAttributes.None };
+        // Ansi16 is the lowest color tier, so every color tier's descent reaches this false/Normal before the
+        // NoColor pair below it, while a true NoColor variant (whose descent is NoColor-only) never sees it.
+        var ansi16Floor = new ResourceDictionary
+        {
+            [ThemeKeys.InteractiveCueInverse] = false,
+            [ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal,
+        };
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi16)] = ansi16Floor;
     }
 
@@ -313,7 +320,11 @@ public static class CursorialTheme
         // (B,Ansi256): RGB role tokens — Tokyo-Night, verbatim from the default-theme gallery; served at
         // Truecolor too (descent never ascends; CD8). The cell-faithful spine (design doc §11.8a) — fill +
         // foreground tokens; the two pens are opt-in chrome, not spine members.
-        var rgb = new ResourceDictionary { [ThemeKeys.InteractiveInverseAttributes] = TextAttributes.None };
+        var rgb = new ResourceDictionary
+        {
+            [ThemeKeys.InteractiveCueInverse] = false,
+            [ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal,
+        };
         rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#ffffff"));
         rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
         rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
@@ -471,7 +482,10 @@ public static class CursorialTheme
         ansi16[ThemeKeys.RibbonContextualFillBrush] = Palette(dark ? 0 : 7);          // tinted well, tracks the recess
         ansi16[ThemeKeys.RibbonContextualUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)13 : (byte)5)); // purple
 
-        ansi16[ThemeKeys.InteractiveInverseAttributes] = TextAttributes.Faint;
+        // The (Dark|Light, Ansi16) focus cue is FAINT (preserved verbatim from the whole-flags era —
+        // now legible in the pair table for designers to revisit): weight speaks, inverse stays off.
+        ansi16[ThemeKeys.InteractiveCueInverse] = false;
+        ansi16[ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Faint;
 
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi16)] = ansi16;
     }

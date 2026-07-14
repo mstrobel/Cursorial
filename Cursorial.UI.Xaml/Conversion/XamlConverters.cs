@@ -460,31 +460,15 @@ public static class XamlConverters
 
         private static Color ParseHex(string text, in XamlValueContext ctx)
         {
-            var body = text.Substring(1);
-            // #AARRGGBB / #ARGB extension: an 8- or 4-digit hex carries leading alpha.
-            try
-            {
-                if (body.Length == 8)
-                {
-                    byte a = ParseByte(body, 0);
-                    byte r = ParseByte(body, 2);
-                    byte g = ParseByte(body, 4);
-                    byte b = ParseByte(body, 6);
-                    return Color.FromRgba(r, g, b, a);
-                }
-                if (body.Length is 3 or 6)
-                    return Color.FromHex(text.AsSpan());
-            }
-            catch (ArgumentException)
-            {
-                // fall through to the diagnostic
-            }
+            // One hex parser, one convention (proposal-textattributes-decomposition §10): Core owns
+            // the digits — 8-digit is #RRGGBBAA (alpha LAST; a deliberate DEV from WPF's #AARRGGBB
+            // so one alpha convention holds across the whole stack, and StyleDiagnostics.FormatValue
+            // output round-trips through this converter).
+            if (Color.TryParseHex(text.AsSpan(), out var color, out _))
+                return color;
 
-            throw Fail($"'{text}' is not a valid hex color (expected #RGB, #RRGGBB, or #AARRGGBB).", ctx);
+            throw Fail($"'{text}' is not a valid hex color (expected #RGB, #RRGGBB, or #RRGGBBAA).", ctx);
         }
-
-        private static byte ParseByte(string s, int offset)
-            => byte.Parse(s.AsSpan(offset, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
     }
 
     private sealed class BrushConverter : ITypeConverter
@@ -604,8 +588,10 @@ public static class XamlConverters
 
         public object ConvertFromString(string text, in XamlValueContext ctx)
         {
-            // A comma- or pipe-separated flags list — Enum.Parse honors both with the [Flags] enum;
-            // case-insensitive to match the other enum converters (P6 review P1-6).
+            // A comma-separated flags list — Enum.Parse's [Flags] syntax (NOT pipe; the prior comment
+            // claimed pipe, which Enum.Parse does not accept). Case-insensitive to match the other enum
+            // converters. Retained for the remaining TextAttributes-typed member (AccessTextPresenter.
+            // KeyAttributes) after the inherited aggregate's retirement (proposal §4.1).
             text = text.Trim();
             if (Enum.TryParse<TextAttributes>(text, ignoreCase: true, out var v))
                 return v;

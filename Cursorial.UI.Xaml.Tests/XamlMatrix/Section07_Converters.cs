@@ -45,15 +45,20 @@ public sealed class Section07_Converters : LoaderTestBase
     [Theory]
     [InlineData("#66d9ef")]
     [InlineData("#fff")]
-    [InlineData("#80ff0000")]
+    [InlineData("#ff000080")]
     public void X086_Color_Hex(string text)
     {
+        // Re-pinned 2026-07-13 (proposal-textattributes-decomposition §10): 8-digit hex is
+        // #RRGGBBAA — alpha LAST, one convention with Color.TryParseHex/FromRgba and
+        // StyleDiagnostics.FormatValue (a deliberate DEV from WPF's #AARRGGBB).
         var color = (Color)Convert(typeof(Color), text)!;
         Assert.Equal(ColorKind.Rgb, color.Kind);
-        if (text == "#80ff0000")
+        if (text == "#ff000080")
         {
             Assert.Equal(0x80, color.Alpha);
             Assert.Equal(255, color.Red);
+            Assert.Equal(0, color.Green);
+            Assert.Equal(0, color.Blue);
         }
     }
 

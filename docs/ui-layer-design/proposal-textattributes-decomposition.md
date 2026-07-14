@@ -1,9 +1,11 @@
 # Proposal: Per-Axis Text-Attribute Properties (the `TextAttributes` Decomposition)
 
-**Status: PROPOSAL — all four owner decisions recorded (§8); ready to schedule.** Produced
+**Status: IMPLEMENTED (2026-07-13, PR pending) — all owner decisions in §8 settled; the five-phase build (P1–P5) landed with adversarial audits at P3/P5.** Produced
 2026-07-13 by the panel process recorded in §9, then re-cut the same day to the owner-directed
 **non-inheriting** flow model (§9 notes the redirect); the adversarial judgment lives in
-`judgment-textattributes-decomposition.md`. Nothing here is implemented.
+`judgment-textattributes-decomposition.md`. This document is the canonical design record; where the
+landed code refined it (the glyph Inverse-only rule §7.7, the RelativeSource-Binding forward idiom,
+the P3 audit residuals §7.5–7.7), the amendments are dated inline.
 
 ---
 
@@ -63,7 +65,7 @@ public enum TextWeight : byte { Normal = 0, Faint, Bold }
 | Property | Type | Default | SGR fold | Precedent |
 |---|---|---|---|---|
 | `TextWeightProperty` | `TextWeight` | `Normal` | Bold→1, Faint→2, Normal→neither (reset 22) | the axis of WPF `FontWeight` / CSS `font-weight`, not the type (§8 Q1) |
-| `ItalicProperty` | `bool` | `false` | 3 / 23 | WPF `FontStyle` minus the inexpressible `Oblique` |
+| `TextStyleProperty` | `TextStyle { Normal, Italic }` | `Normal` | 3 / 23 | the posture axis; enum per the 2026-07-13 amendment (below) |
 | `UnderlineProperty` | `UnderlineStyle?` | `null` | 4 / 4:n / 24 | presence + shape unified; `null` = no underline (§8 Q2) |
 | `UnderlineBrushProperty` | `IBrush?` | `null` | 58 / 59 | CSS `text-decoration-color`; **phase-late, demand-gated** |
 | `StrikethroughProperty` | `bool` | `false` | 9 / 29 | CSS `line-through` |
@@ -82,11 +84,13 @@ Design arguments per row:
   under independent bools it composes into `Bold|Faint` folklore that only a downstream quantizer
   special-case could repair. Mutual exclusion by construction, arbitration where arbitration is
   meaningful. (The uniform-bools alternative conceded this point in its own self-critique.)
-- **`Italic` as `bool`, not a `FontStyle` enum.** WPF's third value (`Oblique`) has no terminal
-  encoding; a two-value enum is ceremony. Plain-adjective naming (`Italic`, `Strikethrough`,
-  `Inverse`, …) mirrors the `TextAttributes` member vocabulary and the markup tags (`[i]`, `[s]`):
-  these name *attributes present on text*, not element state — `TextElement.Italic="True"` reads
-  as the declaration it is.
+- **`TextStyle { Normal, Italic }` — the posture axis as an enum (owner amendment, 2026-07-13;
+  supersedes the judge's Italic-as-bool trim).** Two reasons: *discoverability* — the `Text*`
+  prefix groups the axis family (`TextWeight`/`TextStyle`) as a set in completion lists; and
+  *headroom* — future terminal posture standards slot in as values, not new properties (SGR 20
+  fraktur is the historical precedent). WPF's `Oblique` is still refused (no terminal encoding).
+  The remaining boolean axes keep plain-adjective naming (`Strikethrough`, `Inverse`, …),
+  mirroring the `TextAttributes` member vocabulary and the markup tags (`[s]`, `[u]`).
 - **Underline: presence + shape unified as `UnderlineStyle?`; color split.** SGR encodes presence
   *as* shape (`4:0` = off), so a shape-with-no-presence state should be unrepresentable — `null` =
   absent, a value = present in that shape. Core's `UnderlineStyle` is reused **as-is** (`Single =
@@ -499,6 +503,20 @@ arbitrate axes — give it axes.
    values are never clobbered.
 4. **The TextPresenter gap.** TextBox content ignores the attribute spine today and still will
    until the optional template-forward follow-on lands. Recorded, not entrenched.
+5. **The TreeView NoColor selection cue is a follow-up (not yet landed).** `CapsNoColorSelectionInverse`
+   covers ListBoxItem/ComboBoxItem/TabItem; the TreeViewItem cue lands later on the same
+   control-level + face-forward pattern (§2.1's "can land as a follow-up"). Until then a NoColor
+   TreeView's selected row shows no cue. (P3 audit, 2026-07-13.)
+6. **Border-title underline SHAPE collapses to Single.** A titled `Border` (GroupBox idiom) folds
+   the underline PRESENCE onto its `PanelTitle` but the shape rides at `Single` — `PanelTitle`
+   carries no shape channel, and Q2's seam widening scoped v1 to the `DrawFormattedText`/DrawText
+   paths (both label paths carry the shape; the box-title path does not). Rare; widening
+   `PanelTitle` is a clean Drawing-layer follow-up if a real case appears. (P3 audit.)
+7. **Glyphs/icons carry ONLY the Inverse cue** (owner rule, 2026-07-13): weight/style/underline are
+   meaningless on a symbol, and Inverse alone keeps a glyph swapping fg/bg in unison with its face
+   (no half-inverted hole). Consequence: a NoColor **disabled** control dims its label (Faint) but
+   NOT its glyph box/icon (they are symbols) — a deliberate simplification of the review-#1
+   whole-control-dims behavior.
 
 ---
 
@@ -521,6 +539,10 @@ arbitrate axes — give it axes.
    (styled directly instead), and templates carry the per-axis forwards their parts consume. The
    panel's uniform-INHERITING recommendation and its demotion-gate machinery are superseded; kept
    in the judgment doc for the record.
+4a. **Posture axis shape (amendment, 2026-07-13) — DECIDED: `TextStyle { Normal, Italic }`**
+   instead of the judge's Italic-as-bool: `Text*`-prefix discoverability of the axis family, and
+   enum headroom for possible future terminal text standards (SGR 20 fraktur as precedent).
+
 4. **The commented-out XAML accent `:focus-visible` setters — DECIDED: delete, with the real
    reasons recorded.** (a) Mechanical: at color tiers the non-occluding face's glyph-transparent
    tint drops attributes on glyphless cells (`Border.cs:151-162`) — Inverse inverted only the

@@ -225,9 +225,10 @@ public static class StyleDiagnostics
     {
         return value switch
                {
-                   null     => "(null)",
-                   string s => $"\"{s.Replace("\"", "\\\"")}\"",
-                   Color c  => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
+                   null                            => "(null)",
+                   string s                        => $"\"{s.Replace("\"", "\\\"")}\"",
+                   Color { Kind: ColorKind.Rgb } c => c.ToString("x"),
+                   Color c                         => c.ToString("c"),
                    Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
                             $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
                             $"GlyphSet={FormatValue(p.GlyphSet)}, Attributes={FormatValue(p.Attributes)} }}",

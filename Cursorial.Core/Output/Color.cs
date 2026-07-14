@@ -31,7 +31,7 @@ namespace Cursorial.Output;
 /// whether to honor it as-is or quantize.
 /// </para>
 /// </remarks>
-public readonly record struct Color
+public readonly record struct Color : ISpanFormattable
 {
     private Color(ColorKind kind, byte b0, byte b1, byte b2, byte alpha)
     {
@@ -360,13 +360,7 @@ public readonly record struct Color
 
     public override string ToString()
     {
-        return Kind switch
-               {
-                   ColorKind.Default => "default",
-                   ColorKind.Palette => Alpha == 255 ? $"palette({PaletteIndex})" : $"palette({PaletteIndex},a={Alpha})",
-                   ColorKind.Rgb     => Alpha == 255 ? $"rgb({PaletteIndex},{Green},{Blue})" : $"rgba({PaletteIndex},{Green},{Blue},{Alpha})",
-                   _                 => "<invalid>"
-               };
+        return ToString(null);
     }
 
     /// <summary>
@@ -440,6 +434,144 @@ public readonly record struct Color
     private static double LerpScalar(double a, double b, double t) => a + (b - a) * t;
 
     private static byte ToByteClamped(double value) => (byte) Math.Clamp(Math.Round(value), 0, 255);
+
+    public string ToString(string? format, IFormatProvider? formatProvider = null)
+    {
+        FormattableString fs;
+
+        if (format is null or "c" or "C" or "")
+        {
+            if (Kind is ColorKind.Rgb)
+            {
+                if (Alpha is not 255)
+                    fs = $"rgba({Red},{Green},{Blue},{Alpha})";
+                else
+                    fs = $"rgb({Red},{Green},{Blue})";
+            }
+            else if (Kind is ColorKind.Palette)
+            {
+                if (Alpha is not 255)
+                    fs = $"palette({PaletteIndex},a={Alpha})";
+                else
+                    fs = $"palette({PaletteIndex})";
+            }
+            else
+            {
+                fs = $"default";
+            }
+            
+            return fs.ToString(formatProvider);
+        }
+        
+        if (Kind is ColorKind.Rgb)
+        {
+            if (format is "X")
+            {
+                if (Alpha is not 255)
+                    fs = $"#{Red:X2}{Green:X2}{Blue:X2}{Alpha:X2}";
+                else
+                    fs = $"#{Red:X2}{Green:X2}{Blue:X2}";
+
+                return fs.ToString(formatProvider);
+            }
+
+            if (format is "x")
+            {
+                if (Alpha is not 255)
+                    fs = $"#{Red:x2}{Green:x2}{Blue:x2}{Alpha:x2}";
+                else
+                    fs = $"#{Red:x2}{Green:x2}{Blue:x2}";
+
+                return fs.ToString(formatProvider);
+            }
+        }
+
+        throw new FormatException($"Invalid format for color kind {Kind}: '{format}'.");
+    }
+
+    public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format,
+                          IFormatProvider? provider = null)
+    {
+        var alpha = Alpha;
+
+        if (format is "c" or "C" or "")
+        {
+            if (Kind is ColorKind.Rgb)
+            {
+                if (alpha is not 255)
+                {
+                    return destination.TryWrite(
+                        provider,
+                        $"rgba({Red},{Green},{Blue},{alpha})",
+                        out charsWritten);
+                }
+
+                return destination.TryWrite(
+                    provider,
+                    $"rgb({Red},{Green},{Blue})",
+                    out charsWritten);
+            }
+
+            if (Kind is ColorKind.Palette)
+            {
+                if (alpha is not 255)
+                {
+                    return destination.TryWrite(
+                        provider,
+                        $"palette({PaletteIndex},a={alpha})",
+                        out charsWritten);
+                }
+
+                return destination.TryWrite(
+                    provider,
+                    $"palette({PaletteIndex})",
+                    out charsWritten);
+            }
+
+            return destination.TryWrite(
+                provider,
+                $"default",
+                out charsWritten);
+        }
+
+        if (Kind is ColorKind.Rgb)
+        {
+            if (format is "X")
+            {
+                if (alpha is not 255)
+                {
+                    return destination.TryWrite(
+                        provider,
+                        $"#{Red:X2}{Green:X2}{Blue:X2}{alpha:X2}",
+                        out charsWritten);
+                }
+
+                return destination.TryWrite(
+                    provider,
+                    $"#{Red:X2}{Green:X2}{Blue:X2}",
+                    out charsWritten);
+            }
+
+            if (format is "x")
+            {
+                if (alpha is not 255)
+                {
+                    return destination.TryWrite(
+                        provider,
+                        $"#{Red:x2}{Green:x2}{Blue:x2}{alpha:x2}",
+                        out charsWritten);
+                }
+
+                return destination.TryWrite(
+                    provider,
+                    $"#{Red:x2}{Green:x2}{Blue:x2}",
+                    out charsWritten);
+            }
+        }
+
+        charsWritten = 0;
+        return false;
+    }
 }
 
 /// <summary>The representation a <see cref="Color"/> carries.</summary>

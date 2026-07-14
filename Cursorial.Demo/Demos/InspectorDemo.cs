@@ -1230,7 +1230,8 @@ internal sealed class InspectorDemo : IDemo
                                                : $"{ts.Seconds:0.##}s",
                         Transition t => $"Transition {FormatValue(t.Property)} " + $"({FormatValue(t.Duration)}s" +
                                         $"{(t.Delay > TimeSpan.Zero ? $" after {FormatValue(t.Delay)}s" : "")})",
-                        Color c => c.Kind == ColorKind.Rgb ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}" : c.ToString(),
+                        Color { Kind: ColorKind.Rgb } c => c.ToString("x"),
+                        Color c                         => c.ToString(),
                         Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
                                  $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
                                  $"GlyphSet={FormatValue(p.GlyphSet)}, Attributes={FormatValue(p.Attributes)} }}",

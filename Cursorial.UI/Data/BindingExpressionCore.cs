@@ -287,7 +287,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     {
         if (_anchorElement is null)
             return;
-        
+
+        // Removing a handler that was never added (a non-FindAncestor anchor never subscribed the visual
+        // events) is a harmless no-op, so both pairs come off unconditionally.
         _anchorElement.AttachedToTree -= OnAnchorTreeChanged;
         _anchorElement.DetachedFromTree -= OnAnchorTreeChanged;
         _anchorElement.AttachedToLogicalTree -= OnAnchorLogicalTreeChanged;
@@ -358,6 +360,17 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             ProduceUnsetOrFallback();
             return;
         }
+
+        // A FindAncestor anchor subscribes to BOTH tree events: its walk is visual-preferred with a
+        // LogicalParent/TemplatedParent fallback, so either attach can change the effective chain (a
+        // data-template item attaches only visually; a plain logical child, only-visually-attached parts,
+        // and normal children can hit either). A normally-attached child fires the logical AND the visual
+        // event, both resolving to the SAME ancestor — skip the second, redundant re-wire: WireValueGraph is
+        // a full value-path teardown/rebuild, and a redundant OneWayToSource pass below would be a spurious
+        // source write. A genuinely different ancestor (logical fallback vs visual) has newRoot != _root and
+        // still re-wires.
+        if (_anchorKind == AnchorKind.FindAncestor && Status == BindingStatus.Active && ReferenceEquals(newRoot, _root))
+            return;
 
         _root = newRoot;
         Status = BindingStatus.Active;

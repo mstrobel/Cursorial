@@ -64,6 +64,22 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.Equal(2, binding.RelativeSource.AncestorLevel);
     }
 
+    [Fact] // an xmlns-PREFIXED AncestorType ({x:Type c:StackPanel}) resolves against the prefix's bound
+    // namespace, not just the default UI xmlns — the RelativeSource type token goes through the same
+    // prefix-aware resolution as {x:Type} keys and DataTemplate DataType.
+    public void RelativeSource_FindAncestor_PrefixedAncestorType_Resolves()
+    {
+        var root = (UIControls.StackPanel) LoadRaw(
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:c=\"clr-namespace:Cursorial.UI.Controls;assembly=Cursorial.UI\" Spacing=\"3\">" +
+            "<Border Width=\"{Binding Spacing, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type c:StackPanel}}}\"/>" +
+            "</StackPanel>");
+
+        var border = (UIControls.Border) root.Children[0];
+        var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
+        Assert.Equal(typeof(UIControls.StackPanel), binding.RelativeSource!.AncestorType);
+    }
+
     [Fact] // {x:Reference Name} resolves both a forward reference (named element appears later) and a backward one
     public void XReference_ResolvesForwardAndBackward()
     {

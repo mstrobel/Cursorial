@@ -87,6 +87,12 @@ internal static class ClosedTypeSet
         foreach (Match m in Regex.Matches(text, "\\bAncestorType\\s*=\\s*([A-Za-z_][\\w:.]*)"))
             Add(m.Groups[1].Value);
 
+        // Type-qualified {TemplateBinding Owner.Prop} / {TemplateBinding ns:Owner.Prop} (optional parens):
+        // the loader resolves the OWNER type to find the source UIProperty. A bare {TemplateBinding Prop}
+        // has no owner token. Over-collection resolves-or-drops.
+        foreach (Match m in Regex.Matches(text, "\\{TemplateBinding\\s+\\(?([A-Za-z_][\\w:]*)\\.[A-Za-z_]"))
+            Add(m.Groups[1].Value);
+
         // d:DataContext="vm:Type" — the design-time data-context TYPE reference (any design prefix; the
         // sweep is prefix-blind and over-collection resolves-or-drops). Without this, a type referenced
         // ONLY as a d:DataContext misses the closed set and the loader emits CUR2006 (context ignored)

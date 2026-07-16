@@ -949,18 +949,14 @@ internal sealed class XamlObjectGraphBuilder
             $"An x:Key markup extension must be {{x:Type T}} or {{x:Static M}}; '{node.Name}' is not supported as a key.", line, column);
     }
 
-    // Resolves an {x:Type T} token (the default UI xmlns) to its <see cref="System.Type"/> — shared by the x:Key
-    // path and a nested {x:Type} key inside a {StaticResource}/{DynamicResource} (control themes key by {x:Type},
-    // and a Style.BasedOn references one). Mirrors the generator's XamlDataTypeScope.ResolveToken.
+    // Resolves an {x:Type T} token to its <see cref="System.Type"/> — shared by the x:Key path, a nested
+    // {x:Type} key inside a {StaticResource}/{DynamicResource} (control themes key by {x:Type}, and a
+    // Style.BasedOn references one), and RelativeSource AncestorType. Delegates to the prefix-aware
+    // TryResolveTypeToken (an xmlns-prefixed token — vm:LayerModel — resolves against its bound namespace,
+    // not just the default UI xmlns), reporting an unbound prefix distinctly. Mirrors the generator's
+    // XamlDataTypeScope.ResolveToken.
     internal object ResolveTypeToken(string typeName, int line, int column)
-    {
-        if (TryResolveTypeToken(typeName, out var type, out _))
-            return type;
-        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
-        if (resolution.IsResolved)
-            return resolution.Type!.SystemType();
-        throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"{{x:Type {typeName}}} could not be resolved to a type.", line, column);
-    }
+        => ResolveTypeToken(typeName, "x:Type", line, column);
 
     // ── Resource dictionaries (matrix §11/§12) ─────────────────────────────────────────────────────
 
@@ -1462,10 +1458,37 @@ internal sealed class XamlObjectGraphBuilder
     /// <summary>
     /// Resolves a <c>{TemplateBinding sourceName}</c> source property to a registered <see cref="UIProperty"/>
     /// on the target's runtime type (matrix X127/X160). The source name resolves through the metadata
-    /// provider against the target's type (the templated parent shares the property identity).
+    /// provider against the target's type (the templated parent shares the property identity). A
+    /// TYPE-QUALIFIED source (<c>Owner.Prop</c>, <c>ns:Owner.Prop</c>, or WPF's optional-parens
+    /// <c>(Owner.Prop)</c>) names its declaring type explicitly — an attached property, or one declared on a
+    /// base/other type — and resolves the owner through that xmlns-aware token.
     /// </summary>
     internal UIProperty ResolveTemplateBindingSource(UIObject target, UIProperty targetProperty, string sourceName, int line, int column)
     {
+        var name = sourceName.Trim();
+        if (name.Length > 1 && name[0] == '(' && name[^1] == ')')
+            name = name[1..^1].Trim();
+
+        // Type-qualified: split off the OWNER (everything before the last dot — a possibly prefixed type
+        // token) and find the property on that resolved owner type.
+        int dot = name.LastIndexOf('.');
+        if (dot > 0 && dot < name.Length - 1)
+        {
+            var ownerToken = name[..dot];
+            var propName = name[(dot + 1)..];
+
+            if (!TryResolveTypeToken(ownerToken, out var ownerType, out var unboundPrefix))
+                throw unboundPrefix is not null
+                    ? Fatal(XamlDiagnosticCodes.UndeclaredPrefix,
+                        $"Unbound xmlns prefix '{unboundPrefix}' in TemplateBinding source '{sourceName}'.", line, column)
+                    : Fatal(XamlDiagnosticCodes.TypeNotFound,
+                        $"TemplateBinding source owner type '{ownerToken}' was not found.", line, column);
+
+            return UIPropertyRegistry.Find(ownerType, propName)
+                   ?? throw Fatal(XamlDiagnosticCodes.MemberNotFound,
+                       $"TemplateBinding source property '{propName}' is not a registered UIProperty on '{ownerType.Name}'.", line, column);
+        }
+
         // The source lives on the TEMPLATED PARENT (matrix X160) — resolve against its runtime type when
         // a template build is in progress, falling back to the target part's type.
         var sourceOwner = TemplateContext?.TemplatedParent?.GetType() ?? target.GetType();

@@ -1,5 +1,5 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.Input;
 
@@ -58,12 +58,17 @@ public class Thumb : Control
     {
         if (Background is { Opacity: > 0 } background && !context.Bounds.IsEmpty)
         {
+            var blink = TextElement.GetBlink(this);
             var bounds = context.Bounds;
 
             for (int c = 0, columns = context.Size.Columns; c < columns; c++)
             {
                 for (int r = 0, rows = context.Size.Rows; r < rows; r++)
-                    context.Set(c, r, "█", CellStyle.Transparent.WithForeground(background.ColorAt(c, r, bounds)));
+                {
+                    var style = CellStyle.Transparent.WithForeground(background.ColorAt(c, r, bounds));
+                    if (blink) style = style.WithAttributes(TextAttributes.Blink);
+                    context.Set(c, r, "█", style);
+                }
             }
         }
     }

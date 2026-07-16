@@ -29,7 +29,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#272b41"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#414868"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#c0caf5"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#a9b1d6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#8d9fed"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"                     Color="#565f89"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"                     Color="#414868"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#1f2335"/>
@@ -73,7 +73,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"               Brush="#414868" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                       Brush="#7aa2f7" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"           Color="#080910" Opacity="0.55"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#c0caf5"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#c0caf5"/-->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}"       Color="#3F78F3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" Color="#7aa2f7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ToolBarBrush}"                   Color="#1f2335"/>
@@ -104,7 +104,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#e1e2e7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#bfc0c6"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#343b58"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#565a6e"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#4a547d"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"                     Color="#9699a3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"                     Color="#818392"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#dcdde2"/>
@@ -148,7 +148,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"               Brush="#818392" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                       Brush="#34548a" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"           Color="#080910" Opacity="0.55"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#343b58"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#343b58"/-->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}"       Color="#23385D"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" Color="#34548a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ToolBarBrush}"                   Color="#dedee3"/>
@@ -200,7 +200,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(12)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"         Brush="Palette(12)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(15)"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(15)"/-->
     </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
@@ -251,7 +251,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(4)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"         Brush="Palette(4)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(0)"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(0)"/-->
     </ResourceDictionary>
 
     <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
@@ -295,6 +295,10 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                GlyphSet="Ascii" Weight="Heavy" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Default"/>
+    </ResourceDictionary>
+    
+    <ResourceDictionary x:Key="Ansi256">
+      <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">▍</x:String>
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>

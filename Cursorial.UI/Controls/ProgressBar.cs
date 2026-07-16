@@ -1,5 +1,6 @@
 using Cursorial.Animation;
 using Cursorial.Drawing.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 
 namespace Cursorial.UI.Controls;
@@ -67,25 +68,29 @@ public class ProgressBar : RangeBase
         var width = size.Columns;
         var height = size.Rows;
 
-        if (Background is { } track)
-            context.FillRectangle(new Rect(0, 0, width, height), track); // the recessed track behind the bar
+        if (Background is {} track)
+            context.FillOpaque(new Rect(0, 0, width, height), track, overwrite: true); // the recessed track behind the bar
 
-        if (Fill is not { } fill)
+        if (Fill is not {} fill)
             return;
 
+        var attributes = TextElement.ComposeAttributes(this).Flags & (TextAttributes.Inverse | TextAttributes.Blink);
+        
         if (IsIndeterminate)
         {
             // A sweep block (~1/3 of the track) positioned from the marquee phase: 0 → fully left, 1 → fully right.
             var blockWidth = Math.Max(1, width / 3);
             var travel = Math.Max(0, width - blockWidth);
             var x = (int)Math.Round(Math.Clamp(IndeterminatePhase, 0, 1) * travel);
-            context.FillRectangle(new Rect(x, 0, blockWidth, height), fill);
+            context.FillOpaque(new Rect(x, 0, blockWidth, height), fill, 
+                               attributes, overwrite: true);
         }
         else
         {
             var filled = (int)Math.Round(FilledFraction * width);
             if (filled > 0)
-                context.FillRectangle(new Rect(0, 0, filled, height), fill);
+                context.FillOpaque(new Rect(0, 0, filled, height), fill, 
+                                   attributes, overwrite: true);
         }
     }
 

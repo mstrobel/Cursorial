@@ -311,6 +311,9 @@ public static class ThemeKeys
     /// Enum-typed so a future Bold-cue tier is a value change, not a third key.</summary>
     public const string InteractiveCueWeight = "Theme.InteractiveCueWeight";
 
+    /// <summary>The underline style applied to the mnemonic grapheme of the access key cue.</summary>
+    public const string InteractiveCueUnderline = "Theme.InteractiveCueUnderline";
+
     // ToggleSwitch / CheckBox / RadioButton.
     /// <summary>Check/radio glyph + label ink (--text).</summary>
     public const string ToggleForegroundNormal = "Theme.ToggleForegroundNormal";
@@ -354,12 +357,16 @@ public static class ThemeKeys
     public const string ListItemForegroundHover = "Theme.ListItemForegroundHover";
     /// <summary>Selected list-item fill, focused container (--sel).</summary>
     public const string ListItemBackgroundSelected = "Theme.ListItemBackgroundSelected";
+    /// <summary>Selected but inactive list-item fill, focused container.</summary>
+    public const string ListItemBackgroundSelectedInactive = "Theme.ListItemBackgroundSelectedInactive";
     /// <summary>Keyboard-focused list-item ink — reverse-video.</summary>
     public const string ListItemForegroundFocus = "Theme.ListItemForegroundFocus";
     /// <summary>Keyboard-focused list-item fill — reverse-video (--text).</summary>
     public const string ListItemBackgroundFocus = "Theme.ListItemBackgroundFocus";
     /// <summary>Disabled list-item ink (--muted).</summary>
     public const string ListItemForegroundDisabled = "Theme.ListItemForegroundDisabled";
+    /// <summary>Gutter glyph indicating selection.</summary>
+    public const string ListItemSelectionGlyph = "Theme.ListItemSelectionGlyph";
 
     // TreeViewItem.
     /// <summary>Tree-node ink (--text).</summary>
@@ -406,6 +413,8 @@ public static class ThemeKeys
     public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";
     /// <summary>The active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>
     public const string TabUnderlinePen = "Theme.TabUnderlinePen";
+    /// <summary>The focused active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>
+    public const string TabFocusedUnderlinePen = "Theme.TabFocusedUnderlinePen";
     /// <summary>Disabled tab ink (--muted).</summary>
     public const string TabForegroundDisabled = "Theme.TabForegroundDisabled";
 

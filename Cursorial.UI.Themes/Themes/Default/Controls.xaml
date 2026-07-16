@@ -10,6 +10,7 @@
   <GlyphSetCarrier x:Key="{x:Static ThemeKeys.CheckBoxGlyphs}"    Unchecked="[ ]" Checked="[x]" Indeterminate="[-]"/>
   <GlyphSetCarrier x:Key="{x:Static ThemeKeys.RadioGlyphs}"       Unchecked="( )" Checked="(*)" Indeterminate="(-)"/>
   <GlyphSetCarrier x:Key="{x:Static ThemeKeys.ScrollArrowGlyphs}" Unchecked="^"   Checked="v"/>
+  <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">*</x:String>
 
   <!--
     The cell-faithful Button control theme (design doc §11.8a), authored declaratively in XAML — the twin of
@@ -791,7 +792,9 @@
        declarative twin of ControlThemes.TreeViewTheme(). -->
   <ControlTemplate x:Key="TreeViewTemplate">
     <Border Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}">
-      <ScrollViewer x:Name="PART_ScrollViewer">
+      <ScrollViewer x:Name="PART_ScrollViewer"
+                    HorizontalScrollBarVisibility="{Binding (ScrollViewer.HorizontalScrollBarVisibility), RelativeSource={RelativeSource TemplatedParent}}"
+                    VerticalScrollBarVisibility="{Binding (ScrollViewer.VerticalScrollBarVisibility), RelativeSource={RelativeSource TemplatedParent}}">
         <ItemsPresenter x:Name="PART_ItemsHost"/>
       </ScrollViewer>
     </Border>
@@ -810,12 +813,18 @@
        twin of ControlThemes.TreeViewItemTheme(). -->
   <ControlTemplate x:Key="TreeViewItemTemplate" TargetType="TreeViewItem">
     <StackPanel>
-      <Border Background="{TemplateBinding Background}">
+      <Border>
         <DockPanel>
-          <TextBlock x:Name="PART_Twisty" Width="2" DockPanel.Dock="Left"/>
-          <ContentPresenter x:Name="PART_ContentPresenter"
-                            Content="{TemplateBinding Header}"
-                            ContentTemplate="{TemplateBinding HeaderTemplate}"/>
+          <TextBlock x:Name="PART_Twisty" Width="2" DockPanel.Dock="Left"
+                     Foreground="{DynamicResource {x:Static ThemeKeys.TreeItemForegroundNormal}}"/>
+          <Border Background="{TemplateBinding Background}"
+                  Padding="{TemplateBinding Padding}"
+                  HorizontalAlignment="Left"
+                  TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+            <ContentPresenter x:Name="PART_HeaderPresenter"
+                              Content="{TemplateBinding Header}"
+                              ContentTemplate="{TemplateBinding HeaderTemplate}"/>
+          </Border>
         </DockPanel>
       </Border>
       <ItemsPresenter x:Name="PART_ItemsHost" Margin="2,0,0,0"/>

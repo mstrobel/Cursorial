@@ -135,19 +135,19 @@ public class Slider : RangeBase
             var travel = Math.Max(0, size.Rows - ThumbExtent);
             var thumbY = (int)Math.Round((1 - fraction) * travel); // Minimum at the bottom
             if (empty is { } e && thumbY > 0)
-                context.DrawLine(x, 0, x, thumbY, e);                 // empty: top → thumb
-            if (filled is { } f)
-                context.DrawLine(x, thumbY, x, size.Rows - 1, f);     // filled: thumb → bottom
+                context.DrawLine(x, 0, x, thumbY - 1, e, overwrite: true, armHint: Arm.Down);                 // empty: top → thumb
+            if (filled is { } f && thumbY < size.Rows - 1)
+                context.DrawLine(x, thumbY + 1, x, size.Rows - 1, f, overwrite: true, armHint: Arm.Down);     // filled: thumb → bottom
         }
         else
         {
             var y = size.Rows / 2;
             var travel = Math.Max(0, size.Columns - ThumbExtent);
             var thumbX = (int)Math.Round(fraction * travel);
-            if (filled is { } f)
-                context.DrawLine(0, y, thumbX, y, f);                 // filled: left → thumb
+            if (filled is { } f && thumbX > 0)
+                context.DrawLine(0, y, thumbX - 1, y, f, overwrite: true, armHint: Arm.Right);                // filled: left → thumb
             if (empty is { } e && thumbX < size.Columns - 1)
-                context.DrawLine(thumbX, y, size.Columns - 1, y, e);  // empty: thumb → right
+                context.DrawLine(thumbX + 1, y, size.Columns - 1, y, e, overwrite: true, armHint: Arm.Right); // empty: thumb → right
         }
     }
 

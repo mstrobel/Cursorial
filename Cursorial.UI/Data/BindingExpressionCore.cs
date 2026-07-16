@@ -273,17 +273,25 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_anchorElement is null)
             return;
 
-        _anchorElement.AttachedToLogicalTree += OnAnchorTreeChanged;
-        _anchorElement.DetachedFromLogicalTree += OnAnchorTreeChanged;
+        if (_anchorKind == AnchorKind.FindAncestor)
+        {
+            _anchorElement.AttachedToTree += OnAnchorTreeChanged;
+            _anchorElement.DetachedFromTree += OnAnchorTreeChanged;
+        }
+
+        _anchorElement.AttachedToLogicalTree += OnAnchorLogicalTreeChanged;
+        _anchorElement.DetachedFromLogicalTree += OnAnchorLogicalTreeChanged;
     }
 
     private void UnsubscribeTreeEvents()
     {
         if (_anchorElement is null)
             return;
-
-        _anchorElement.AttachedToLogicalTree -= OnAnchorTreeChanged;
-        _anchorElement.DetachedFromLogicalTree -= OnAnchorTreeChanged;
+        
+        _anchorElement.AttachedToTree -= OnAnchorTreeChanged;
+        _anchorElement.DetachedFromTree -= OnAnchorTreeChanged;
+        _anchorElement.AttachedToLogicalTree -= OnAnchorLogicalTreeChanged;
+        _anchorElement.DetachedFromLogicalTree -= OnAnchorLogicalTreeChanged;
         _anchorElement.TemplatedParentChanged -= OnAnchorTemplatedParentChanged;
     }
 
@@ -293,7 +301,15 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             ResolveRootAndWire();
     }
 
-    private void OnAnchorTreeChanged(object? sender, LogicalTreeAttachmentEventArgs e)
+    private void OnAnchorLogicalTreeChanged(object? sender, LogicalTreeAttachmentEventArgs e)
+    {
+        if (IsDisposed)
+            return;
+
+        ResolveRootAndWire();
+    }
+
+    private void OnAnchorTreeChanged(object? sender, TreeAttachmentEventArgs e)
     {
         if (IsDisposed)
             return;
@@ -440,8 +456,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return null;
         }
 
-        // No logical parent yet ⇒ park until attach (the walk re-runs on AttachedToLogicalTree).
-        if (_anchorElement.LogicalParent is null)
+        // No parent yet ⇒ park until attach (the walk re-runs on AttachedToLogicalTree).
+        if ((_anchorElement.VisualParent ?? _anchorElement.UIParent) is null)
         {
             failure = BindingFailureKind.SourceMissing;
             return null;
@@ -449,7 +465,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
 
         var matches = 0;
 
-        for (var node = _anchorElement.LogicalParent; node is not null; node = node.LogicalParent)
+        for (var node = _anchorElement.VisualParent ?? _anchorElement.UIParent;
+             node is not null;
+             node = node.VisualParent ?? node.UIParent)
         {
             if (rs.AncestorType!.IsInstanceOfType(node) && ++matches == rs.AncestorLevel)
                 return node;

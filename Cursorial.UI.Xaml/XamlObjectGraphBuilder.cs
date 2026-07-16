@@ -954,6 +954,8 @@ internal sealed class XamlObjectGraphBuilder
     // and a Style.BasedOn references one). Mirrors the generator's XamlDataTypeScope.ResolveToken.
     internal object ResolveTypeToken(string typeName, int line, int column)
     {
+        if (TryResolveTypeToken(typeName, out var type, out _))
+            return type;
         var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
         if (resolution.IsResolved)
             return resolution.Type!.SystemType();

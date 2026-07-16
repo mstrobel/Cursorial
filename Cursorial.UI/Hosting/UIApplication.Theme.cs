@@ -1,4 +1,7 @@
+using System.Buffers;
+
 using Cursorial.Output;
+using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI.Themes;
 
@@ -144,20 +147,24 @@ public sealed partial class UIApplication : IResourceHost
 
     /// <summary>
     /// The S7 capability leg (design doc §11.7): re-derives the effective variant from
-    /// <paramref name="capabilities"/> (honoring the requested overrides) and, on change, raises
+    /// <paramref name="newCapabilities"/> (honoring the requested overrides) and, on change, raises
     /// <see cref="ActualThemeVariantChanged"/> then <see cref="ResourcesChanged"/>(CatchAll), pulses
     /// every root's registry, and re-stamps the effective-tier capability classes (inversion 6). No
     /// dictionary mutates and no dictionary <c>Changed</c> fires (CD15).
     /// </summary>
-    public void OnCapabilitiesChanged(TerminalCapabilities capabilities)
+    public void OnCapabilitiesChanged(TerminalCapabilities newCapabilities)
     {
         Dispatcher.VerifyAccess();
-        _negotiatedVariant = ThemeVariant.FromCapabilities(capabilities);
-        UpdateActualThemeVariant(reStampClasses: false); // StyleEngineInternal.OnCapabilitiesChanged will restamp.
-        StyleEngineInternal.OnCapabilitiesChanged(capabilities);
-        StyleHooks?.OnCapabilitiesChanged(capabilities);
-        InputDispatchTarget?.OnCapabilitiesChanged(capabilities);
-        _accessKeys.OnCapabilitiesChanged(capabilities);
+
+        if (_renegotiating)
+            throw new InvalidOperationException("The application is already renegotiating capabilities.");
+
+        if (_host is not {} host || _renderer is not {} renderer)
+            throw new InvalidOperationException("The application is not running.");
+
+        var oldCapabilities = _capabilities;
+
+        ChangeCapabilities(host, renderer, oldCapabilities, newCapabilities, Dispatcher.ShutdownToken);
     }
 
     // The negotiated-only variant (the per-axis derivation source before the requested overrides).

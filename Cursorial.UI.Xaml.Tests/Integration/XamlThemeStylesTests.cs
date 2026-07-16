@@ -50,11 +50,18 @@ public sealed class XamlThemeStylesTests
         Assert.Equal(builtin.Count, dict.Styles!.Count);
         // The caps-nocolor interactive-state rule is the 7-member selector list — assert its CONTENT, not just
         // the branch count (a wrong selector could also have 7 branches).
-        var inverseRule = Assert.Single(dict.Styles!, s => s.Selector is { } sel && sel.Branches.Length == 7);
-        var inverseText = inverseRule.Selector!.ToString();
-        Assert.Contains("caps-nocolor", inverseText);
-        Assert.Contains("Button:focus", inverseText);
-        Assert.Contains("ToggleButton:pointerover", inverseText); // drift reconciled to code-first (:pointerover, was :pressed)
+        var inverseRule = Assert.Single(dict.Styles!, s => s.Selector!.ToString() == ".caps-nocolor :is(ButtonBase), :is(ButtonBase).caps-nocolor");
+        var inverseTextRoot = inverseRule.Selector!.ToString();
+        var inverseText1 = inverseRule.Children[0].Selector!.ToString();
+        var inverseText2 = inverseRule.Children[1].Selector!.ToString();
+        Assert.Contains("caps-nocolor", inverseTextRoot);
+        Assert.Contains("^:focus", inverseText1);
+        Assert.Contains("^:pointerover", inverseText1);
+        Assert.Contains("^:pressed", inverseText2);
+        Assert.Equal(UIControls.TextElement.InverseProperty, inverseRule.Children[0].Setters[0].Property);
+        Assert.Equal(true, inverseRule.Children[0].Setters[0].Value);
+        Assert.Equal(UIControls.TextElement.InverseProperty, inverseRule.Children[1].Setters[0].Property);
+        Assert.Equal(false, inverseRule.Children[1].Setters[0].Value);
         // The rest are single-branch (two caps-unicode glyph rules + the caps-nocolor disabled rule + AccessKeyCue).
         Assert.Equal(builtin.Count(s => s.Selector is { Branches.Length: 1 }),
                      dict.Styles!.Count(s => s.Selector is { Branches.Length: 1 }));

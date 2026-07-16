@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Cursorial.Output;
 using Cursorial.Terminal;
 using Cursorial.UI.Configuration;
 
@@ -33,7 +34,7 @@ public sealed partial class UIApplication
     /// </summary>
     public bool EmojiAvailable
     {
-        get => _emojiAvailable;
+        get => _emojiAvailable && ActualThemeVariant is { Tier: > ColorDepth.NoColor };
         set
         {
             Dispatcher.VerifyAccess();

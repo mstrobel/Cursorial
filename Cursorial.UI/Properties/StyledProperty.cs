@@ -140,7 +140,7 @@ public class StyledProperty<T> : UIProperty
 
         // A null on one side: for a reference T, null is a legitimate value, so route it through the
         // comparer with the typed default (= null) on the null side when the other side is T.
-        if (!typeof(T).IsValueType)
+        if (typeof(T).IsNullableType())
         {
             if (a is null && b is T tbn)
                 return GetMetadata(forType).EffectiveComparer.Equals(default!, tbn);

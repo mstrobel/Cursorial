@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -95,7 +96,7 @@ public static class CursorialDialogThemes
                        VerticalAlignment = VerticalAlignment.Top,
                        Margin = new Margins(0, 0, 1, 0)
                    };
-
+        
         icon.SetResourceReference(ContentPresenter.ContentProperty, CursorialDialogThemeKeys.CommandLinkIcon);
 
         var panel = new DockPanel { LastChildFill = true };
@@ -105,6 +106,7 @@ public static class CursorialDialogThemes
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        TextElement.ForwardInverse(icon); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
         TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
         var label = new ContentPresenter { RecognizesAccessKey = true };

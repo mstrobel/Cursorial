@@ -1,6 +1,4 @@
-using System.Reflection.Metadata;
-
-using Cursorial.Output;
+using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
@@ -45,9 +43,10 @@ internal static class CursorialBarsTheme
         var icon = new ContentPresenter
                    {
                        Margin = new Margins(0, 0, 1, 0),
-                       Visibility = Visibility.Collapsed
+                       Visibility = Visibility.Collapsed,
+                       ForwardTextInverse = false // we toggle the icon's inverse directly; see `IconToggleStyle()`.
                    };
-        
+
         DockPanel.SetDock(icon, Dock.Left);
 
         icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
@@ -133,15 +132,11 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
-                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         theme.Children.Add(new Style("^:pressed")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed)
-                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
-                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
@@ -164,9 +159,7 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
-                          .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
-                          .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus));
         // Checked = the accent whole-cell fill (the guide's toggle "on" look), text inverted to on-accent.
         theme.Children.Add(new Style("^:checked")
             .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
@@ -175,9 +168,7 @@ internal static class CursorialBarsTheme
         theme.Children.Add(new Style("^:checked:focus")
             .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush)
             .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
-            .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse)
-            .SetResource(TextElement.TextWeightProperty, ThemeKeys.InteractiveCueWeight));
+            .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush));
         theme.Children.Add(new Style("^:disabled")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.ButtonForegroundDisabled)
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundDisabled)
@@ -779,28 +770,39 @@ internal static class CursorialBarsTheme
     {
         var template = new ControlTemplate(ctx =>
         {
-            // A contextual tab reads as `│ Table ▾` (guide §5): a leading divider, the header, a trailing caret. The
-            // divider/caret are Collapsed on an ordinary tab (measure 0 ⇒ a normal tab renders byte-identically) and
-            // flipped Visible for `:ribbon-contextual`. They inherit the header's Foreground (purple when contextual).
-            var divider = new TextBlock { Text = "│ ", Visibility = Visibility.Collapsed };
-            ctx.RegisterName("PART_ContextDivider", divider);
+            // EDIT: Commented out the separator on account of its ugliness [2026-07-15].
+
+            // // A contextual tab reads as `│ Table ▾` (guide §5): a leading divider, the header, a trailing caret. The
+            // // divider/caret are Collapsed on an ordinary tab (measure 0 ⇒ a normal tab renders byte-identically) and
+            // // flipped Visible for `:ribbon-contextual`. They inherit the header's Foreground (purple when contextual).
+            // var divider = new TextBlock { Text = "│ ", Visibility = Visibility.Collapsed };
+            // ctx.RegisterName("PART_ContextDivider", divider);
 
             var header = new ContentPresenter { RecognizesAccessKey = true };
             ctx.RegisterName("PART_ContentPresenter", header);
             header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+            TextElement.ForwardInverse(header);
 
             // A LEFT MARGIN, not a leading space: TextBlock drops leading whitespace (its paragraph packs WordWrap), so
             // " ▾" would render as a gap-less `▾`. The divider's TRAILING space in "│ " survives, so it needs no margin.
             var caret = new TextBlock { Text = "▾", Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
             ctx.RegisterName("PART_ContextCaret", caret);
+            TextElement.ForwardInverse(caret);
 
             var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
-            headerRow.Children.Add(divider);
+            // headerRow.Children.Add(divider);
             headerRow.Children.Add(header);
             headerRow.Children.Add(caret);
 
-            var headerHost = new Border { Padding = new Margins(1, 0), Child = headerRow, Occludes = true };
-            headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+            var headerHost = new Border
+                             {
+                                 Padding = new Margins(1, 0),
+                                 Child = headerRow,
+                                 Background = Brushes.Transparent,
+                                 Occludes = true
+                             };
+            TextElement.ForwardInverse(headerHost);
+            // headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
             ctx.RegisterName("PART_HeaderSite", headerHost);
 
             var underline = new Separator { Margin = new Margins(1, 0, 1, 0) };
@@ -839,6 +841,8 @@ internal static class CursorialBarsTheme
                     .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                // new Style(Selectors.Nesting().PseudoClass(":ribbon-file:focus").Template().Name("PART_HeaderSite"))
+                //     .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse),
                 // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped
                 // active look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard
                 // focus" cue.
@@ -868,8 +872,8 @@ internal static class CursorialBarsTheme
                 new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.PurpleBrush),
-                new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextDivider"))
-                    .Set(UIElement.VisibilityProperty, Visibility.Visible),
+                // new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextDivider"))
+                //     .Set(UIElement.VisibilityProperty, Visibility.Visible),
                 new Style(Selectors.Nesting().PseudoClass(":ribbon-contextual").Template().Name("PART_ContextCaret"))
                     .Set(UIElement.VisibilityProperty, Visibility.Visible)
             }
@@ -1167,6 +1171,31 @@ internal static class CursorialBarsTheme
             }));
 
     /// <summary>
+    /// The text inverse application for BarButton-embedded icons. Rather than forward the inverse property
+    /// uniformly, we apply it conditionally based on whether the icon is a toggle, and if so, whether it is
+    /// in its checked state. "Double-inverting" the icon is about the only visual indicator we have available
+    /// to indicate a toggle button is checked when it is focused or hovered.
+    /// </summary>
+    internal static Style IconToggleStyle()
+    {
+        return new Style(".caps-nocolor :is(BarButton), .caps-nocolor :is(BarToggleButton)", TypeResolver)
+               {
+                   Key = "Theme.BarToggleButton.CheckedInverse",
+                   Children =
+                   {
+                       new Style("^:checked /template/ #PART_Icon > Icon, " +
+                                 "^:focus /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover /template/ #PART_Icon > Icon", TypeResolver)
+                          .Set(TextElement.InverseProperty, true),
+                       new Style("^:focus:checked /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover:checked /template/ #PART_Icon > Icon, " +
+                                 "^:focus:pressed /template/ #PART_Icon > Icon", TypeResolver)
+                          .Set(TextElement.InverseProperty, false)
+                   }
+               };
+    }
+
+    /// <summary>
     /// The interaction style for primary action buttons and other elements.
     /// </summary>
     internal static Style AccentStyle()
@@ -1400,6 +1429,15 @@ internal static class CursorialBarsTheme
                };
     }
 
+    internal static Style CapsNoColorSelectionInverse()
+    {
+        var style = new Style(".caps-nocolor :is(RibbonTab):focus", TypeResolver)
+                    { Key = "BarsTheme.CapsNoColor.SelectionInverse" };
+        style.Setters.Add(new Setter(TextElement.InverseProperty, true));
+        style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
+        return style;
+    }
+
     // ───────────────────────────── contribution dictionary (design doc §11.3a) ─────────────────────────────
 
     /// <summary>
@@ -1433,6 +1471,8 @@ internal static class CursorialBarsTheme
 
         Styles =
         [
+            CapsNoColorSelectionInverse(),
+            IconToggleStyle(),
             AccentStyle(),
             CoolStyle(),
             DangerStyle(),

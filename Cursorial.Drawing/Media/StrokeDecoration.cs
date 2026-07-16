@@ -2,7 +2,7 @@ namespace Cursorial.Drawing.Media;
 
 /// <summary>A cardinal direction / arm of a box-drawing cell. The value is its 2-bit field index in an
 /// arm code (Up = bits 0–1, Right = 2–3, Down = 4–5, Left = 6–7).</summary>
-internal enum Arm : byte
+public enum Arm : byte
 {
     Up = 0,
     Right = 1,

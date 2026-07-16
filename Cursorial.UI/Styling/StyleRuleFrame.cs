@@ -241,7 +241,7 @@ internal sealed class StyleRuleFrame : ValueFrame
         }
 
         if (!backed.Property.PropertyType.IsInstanceOfType(value) &&
-            !(value is null && !backed.Property.PropertyType.IsValueType))
+            !(value is null && backed.Property.PropertyType.IsNullableType()))
         {
             ResourceDiagnostics.OnRejectedValue(
                 backed.Key,

@@ -5,6 +5,7 @@
 using System.Text;
 
 using Cursorial.Input;
+using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
@@ -40,11 +41,12 @@ public sealed class TaskDialogTests
         _ => throw new ArgumentOutOfRangeException(nameof(preset)),
     };
 
-    private static UIHeadlessHost CreateHostWithRoot(string capabilityPreset)
+    private static UIHeadlessHost CreateHostWithRoot(string capabilityPreset, Size? initialSize = null)
     {
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
         {
             Capabilities = Resolve(capabilityPreset),
+            InitialSize = initialSize ?? new Size(80, 24)
         });
         host.ShowRoot(new TextBlock { Text = "root stub" });
         Assert.True(host.RunUntilIdle());

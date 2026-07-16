@@ -90,10 +90,7 @@ public sealed partial class UIApplication
                 // application theme leg runs FIRST so the effective ActualThemeVariant is current
                 // before styling stamps the effective-tier capability class (inversion 6). The
                 // access-key call receives the NEGOTIATED snapshot (ND23 — never the decorated view).
-                OnCapabilitiesChanged(_capabilities);
-                StyleHooks?.OnCapabilitiesChanged(_capabilities);
-                InputDispatchTarget?.OnCapabilitiesChanged(_capabilities);
-                _accessKeys.OnCapabilitiesChanged(_capabilities);
+                ApplyCapabilities(_capabilities);
 
                 // Resolve the main content ON the UI thread (the factory overload's contract).
                 if ((rootFactory is not null ? rootFactory() : prebuiltRoot) is { } root)
@@ -676,8 +673,25 @@ public sealed partial class UIApplication
 
         try
         {
-            var fresh = _host.Capabilities;
-            _capabilities = fresh;
+            ChangeCapabilities(_host, _renderer, oldCapabilities, _host.Capabilities, cancellationToken);
+        }
+        finally
+        {
+            _renegotiating = false;
+        }
+    }
+
+    private void ChangeCapabilities(ITerminalHost host,
+                                    FrameRenderer renderer,
+                                    TerminalCapabilities oldCapabilities,
+                                    TerminalCapabilities newCapabilities,
+                                    CancellationToken cancellationToken)
+    {
+        var wasRenegotiating = Interlocked.Exchange(ref _renegotiating, true);
+
+        try
+        {
+            _capabilities = newCapabilities;
 
             // Close the old renderer (fragment erases, autowrap restore) and flush before rebuilding.
             // The pointer shape is re-baselined here too (§7.6): reset under the OLD gate (a shape
@@ -686,15 +700,19 @@ public sealed partial class UIApplication
             try
             {
                 _scratch.ResetWrittenCount();
-                _renderer.Close(_scratch);
+                renderer.Close(_scratch);
 
                 if (oldCapabilities.Output.Protocol.MouseCursorShape)
-                    MouseCursorWriter.WriteSet(_scratch, MouseCursorShape.Default); // not WriteReset — Ghostty ignores empty-payload reset (§7.6)
+                {
+                    MouseCursorWriter.WriteSet(
+                        _scratch,
+                        MouseCursorShape.Default); // not WriteReset — Ghostty ignores empty-payload reset (§7.6)
+                }
 
                 if (_scratch.WrittenCount > 0)
                 {
-                    _host.Output.Writer.Write(_scratch.WrittenSpan);
-                    await _host.Output.Writer.FlushAsync(cancellationToken);
+                    host.Output.Writer.Write(_scratch.WrittenSpan);
+                    host.Output.Writer.FlushAsync(cancellationToken).ConfigureAwait(false).GetAwaiter().GetResult();
                 }
             }
             catch
@@ -704,36 +722,44 @@ public sealed partial class UIApplication
 
             var (columns, rows) = (_buffer!.Columns, _buffer.Rows);
 
-            _buffer = new CellBuffer(columns, rows, fresh) { CursorVisible = false };
-            _renderer = new FrameRenderer(fresh.Output, new FrameRendererOptions(OrderedDither: _options.OrderedDither));
-            _effectiveInputCapabilities = ApplyDecorationProjections(fresh.Input);
-            _supportsAltKeyTracking = ComputeAltKeyTracking(fresh.Input);
-            _windowManager?.OnCapabilitiesChanged(fresh.Output);
+            _buffer = new CellBuffer(columns, rows, newCapabilities) { CursorVisible = false };
 
-            // The capability fan-out, in order — the S7 application theme leg first (re-derives the
-            // effective variant + re-stamps the effective-tier class, inversion 6), then styling. The
-            // access-key leg re-evaluates the gate AND unconditionally clears Alt/sticky-cue state
-            // (renegotiation parks the pump; an Alt Up can vanish — doc §7.8).
-            OnCapabilitiesChanged(fresh);
-            // Now handled directly by OnCapabilitiesChanged:
-            // StyleHooks?.OnCapabilitiesChanged(fresh);
-            // InputDispatchTarget?.OnCapabilitiesChanged(fresh);
-            // _accessKeys.OnCapabilitiesChanged(fresh);
+            _renderer = new FrameRenderer(newCapabilities.Output,
+                                          new FrameRendererOptions(OrderedDither: _options.OrderedDither));
+
+            _effectiveInputCapabilities = ApplyDecorationProjections(newCapabilities.Input);
+            _supportsAltKeyTracking = ComputeAltKeyTracking(newCapabilities.Input);
+            _windowManager?.OnCapabilitiesChanged(newCapabilities.Output);
+
+            ApplyCapabilities(newCapabilities);
 
             CapabilitiesChanged?.Invoke(this,
                                         new CapabilitiesChangedEventArgs
                                         {
                                             OldCapabilities = oldCapabilities,
-                                            NewCapabilities = fresh
+                                            NewCapabilities = newCapabilities
                                         });
         }
         finally
         {
-            _renegotiating = false;
+            Interlocked.Exchange(ref _renegotiating, wasRenegotiating);
         }
+    }
 
-        _rootElement?.InvalidateMeasure(); // full relayout + redraw
-        RequestRender();
+    private void ApplyCapabilities(TerminalCapabilities newCapabilities)
+    {
+        _negotiatedVariant = ThemeVariant.FromCapabilities(newCapabilities);
+
+        // The capability fan-out, in order — the S7 application theme leg first (re-derives the
+        // effective variant + re-stamps the effective-tier class, inversion 6), then styling. The
+        // access-key leg re-evaluates the gate AND unconditionally clears Alt/sticky-cue state
+        // (renegotiation parks the pump; an Alt Up can vanish — doc §7.8).
+        UpdateActualThemeVariant(reStampClasses: false); // StyleEngineInternal.OnCapabilitiesChanged will restamp.
+        StyleEngineInternal.OnCapabilitiesChanged(newCapabilities);
+
+        StyleHooks?.OnCapabilitiesChanged(newCapabilities);
+        InputDispatchTarget?.OnCapabilitiesChanged(newCapabilities);
+        _accessKeys.OnCapabilitiesChanged(newCapabilities);
     }
 
     // ───────────────────────────── teardown (design doc §10.7) ─────────────────────────────

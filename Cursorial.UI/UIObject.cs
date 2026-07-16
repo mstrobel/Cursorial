@@ -1183,7 +1183,7 @@ public abstract class UIObject : IInheritanceNode
     {
         if (value is null)
         {
-            if (property.PropertyType.IsValueType && Nullable.GetUnderlyingType(property.PropertyType) is null)
+            if (property.PropertyType.IsNullableType() is false)
             {
                 throw new ArgumentException(
                     $"null is not a valid value for '{property}' of non-nullable type {property.PropertyType.Name}.", nameof(value));

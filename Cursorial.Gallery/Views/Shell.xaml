@@ -170,8 +170,9 @@
                    Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <StackPanel Grid.Column="2" Grid.Row="6" HorizontalAlignment="Left"
                         Orientation="Horizontal" Margin="0,1,0,0">
-              <Slider x:Name="VolumeSlider" Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+              <Slider x:Name="VolumeSlider" Width="24" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
               <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
+                         Width="4"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
             </StackPanel>
             
@@ -378,9 +379,13 @@
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
             <bars:RibbonTab IsFileTab="True">
               <bars:RibbonTab.Header>
-                <StackPanel Orientation="Horizontal">
-                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0" />
-                  <AccessTextPresenter Text="_File" />
+                <StackPanel x:Name="FileTabContent"
+                            Orientation="Horizontal"
+                            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
+                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
+                        TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                  <ContentPresenter Content="_File" RecognizesAccessKey="True"
+                                    TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
                 </StackPanel>
               </bars:RibbonTab.Header>
             </bars:RibbonTab>
@@ -635,7 +640,8 @@
         <ListBox x:Name="PageList"
                  Width="22"
                  ItemsSource="{Binding Pages}"
-                 SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
+                 SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                 TextSearch.TextPath="Title">
           <ListBox.ItemTemplate>
             <DataTemplate>
               <TextBlock Text="{Binding Title}" />

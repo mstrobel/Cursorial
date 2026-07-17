@@ -4,6 +4,7 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 
@@ -112,9 +113,59 @@ public sealed class Section15_StyleWhen : LoaderTestBase
         Assert.Equal(0d, button.MinWidth);
     }
 
+    [Fact] // a genuine-null binding delivery satisfies a Value="{x:Null}" condition (the WhenConditionRequirement
+           // null-vs-unset fix): a RESOLVED-to-null path is met, distinct from an UNRESOLVED path (which is unmet).
+    public void When_null_delivery_matches_value_null()
+    {
+        var style = Load<Style>("""
+            <Style TargetType="Button">
+              <Style.When>
+                <DataCondition Binding="{Binding Tag}" Value="{x:Null}"/>
+              </Style.When>
+              <Setter Property="MinWidth" Value="20"/>
+            </Style>
+            """);
+
+        using var host = UIHeadlessHost.Create();
+        host.Application.Styles.Add(style);
+        var vm = new WhenProbeVm { Tag = null };       // the bound property resolves to null (delivers null, not unset)
+        var button = new Button { DataContext = vm };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        // Tag == null ⇒ the Value=null condition is MET ⇒ the guarded setter applies. (Under the pre-fix
+        // `_watch?.Value ?? UnsetValue`, a null delivery collapses to UnsetValue and can never match — MinWidth 0.)
+        Assert.Equal(20d, button.MinWidth);
+
+        // A non-null delivery no longer equals null ⇒ deactivate.
+        vm.Tag = "x";
+        host.RunUntilIdle();
+        Assert.Equal(0d, button.MinWidth);
+
+        vm.Tag = null;
+        host.RunUntilIdle();
+        Assert.Equal(20d, button.MinWidth);
+    }
+
+    [Fact] // a <DataCondition> with no Binding is rejected at load with a positioned diagnostic — not an opaque
+           // ArgumentNullException deep in style arming (the Xaml init lane bypasses the ctor's reflection-lane guard).
+    public void When_missing_Binding_is_rejected_at_load()
+    {
+        var ex = ThrowsLoad(XamlDiagnosticCodes.MemberNotFound, () => Load<Style>("""
+            <Style TargetType="Button">
+              <Style.When>
+                <DataCondition Value="true"/>
+              </Style.When>
+              <Setter Property="MinWidth" Value="20"/>
+            </Style>
+            """));
+        Assert.Contains("DataCondition", ex.Message);
+    }
+
     private sealed class WhenProbeVm : INotifyPropertyChanged
     {
         private bool _isSpecial;
+        private string? _tag;
 
         public bool IsSpecial
         {
@@ -123,6 +174,16 @@ public sealed class Section15_StyleWhen : LoaderTestBase
             {
                 _isSpecial = value;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSpecial)));
+            }
+        }
+
+        public string? Tag
+        {
+            get => _tag;
+            set
+            {
+                _tag = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Tag)));
             }
         }
 

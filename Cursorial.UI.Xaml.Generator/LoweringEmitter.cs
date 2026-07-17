@@ -571,40 +571,60 @@ internal static class LoweringEmitter
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
         c.CurrentLineInfo = obj.PackedLineInfo;
 
-        string? bindingExpr = null;
-        string? valueExpr = null;
-        string? negateExpr = null;
-
+        int bindingMember = -1, valueMember = -1, negateMember = -1;
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
             if (member.Kind == XamlValueKind.Directive)
                 continue;
 
-            var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
-            switch (xm?.Name)
+            switch ((member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null)?.Name)
             {
-                case "Binding" when member.Kind == XamlValueKind.Extension &&
-                                    c.Doc.ParsedExtensions[c.Doc.Extensions[member.ValueIndex].Payload] is { } node:
-                    bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
-                    break;
-
-                // The Value is resolved (and any inline <x:Boolean>… object emitted to a local) during the loop; the
-                // .When.Add line below references the resulting expression, so ordering stays correct.
-                case "Value":
-                    valueExpr = DataConditionValueExpr(c, in member);
-                    break;
-
-                case "Negate":
-                    negateExpr = BoolLiteralExpr(c, in member);
-                    break;
+                case "Binding": bindingMember = m; break;
+                case "Value": valueMember = m; break;
+                case "Negate": negateMember = m; break;
             }
         }
 
+        // The Binding descriptor resolves FIRST — a Binding-less / non-{Binding} condition is a hard gap (emit
+        // nothing but a // TODO, never a partial DataCondition), and resolving it before any Value <x:Boolean>…
+        // object is emitted means the // TODO path leaves no dangling local behind.
+        string? bindingExpr = null;
+        if (bindingMember >= 0)
+        {
+            ref readonly var bm = ref c.Doc.Members[bindingMember];
+            if (bm.Kind == XamlValueKind.Extension &&
+                c.Doc.ParsedExtensions[c.Doc.Extensions[bm.ValueIndex].Payload] is { } node)
+                bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
+        }
         if (bindingExpr is null)
         {
             c.Todo("DataCondition without a lowerable {Binding} descriptor");
             return;
+        }
+
+        // A PRESENT Value/Negate that can't be lowered is a // TODO (never silently dropped — that would flip the
+        // condition's runtime verdict vs the loader). An absent member is fine (Value defaults null, Negate false).
+        string? valueExpr = null;
+        if (valueMember >= 0)
+        {
+            valueExpr = DataConditionValueExpr(c, in c.Doc.Members[valueMember]);
+            if (valueExpr is null)
+            {
+                c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} supported)");
+                return;
+            }
+        }
+
+        string? negateExpr = null;
+        if (negateMember >= 0)
+        {
+            negateExpr = BoolLiteralExpr(c, in c.Doc.Members[negateMember]);
+            if (negateExpr is null)
+            {
+                c.Todo("DataCondition Negate must be a boolean literal");
+                return;
+            }
         }
 
         var inits = new List<string> { $"Binding = {bindingExpr}" };
@@ -615,13 +635,17 @@ internal static class LoweringEmitter
     }
 
     // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
-    // object local), a folded {x:Null} (→ null) / {x:Static}, or a literal string kept verbatim (object slot, no
-    // conversion — matching the loader). Null ⇒ no Value member (defaults to null).
+    // object local), a folded {x:Null} (→ null) / {x:Static}, a same-dictionary {StaticResource} resolved eagerly
+    // (matching the loader's AttachStaticResource onto the object slot), or a literal string kept verbatim (object
+    // slot, no conversion). Null ⇒ the caller emits a // TODO (a {DynamicResource} — which the loader REJECTS on a
+    // non-styled slot — or any other unlowerable form).
     private static string? DataConditionValueExpr(Context c, in MemberRecord member) => member.Kind switch
     {
         XamlValueKind.Object => EmitObjectToLocal(c, member.ValueIndex),
         XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
         XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
+        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.StaticResource
+            => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
         _ => null,
     };
 

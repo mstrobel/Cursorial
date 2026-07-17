@@ -121,6 +121,44 @@ namespace GenApp { public partial class WhenView : StackPanel { public WhenView(
         Assert.Equal("SelectedDate", ((Binding)loweredStyle.When[1].Binding).Path.Path);
     }
 
+    [Fact] // Style.When — a DataCondition Value="{StaticResource …}" resolves eagerly (not dropped to null); matches the loader
+    public void Lowered_StyleWhen_StaticResourceValue_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.WhenResView\">" +
+            "<StackPanel.Resources>" +
+              "<x:String x:Key=\"Target\">special</x:String>" +
+              "<Style x:Key=\"S\" TargetType=\"Button\">" +
+                "<Style.When>" +
+                  "<DataCondition Binding=\"{Binding Name}\" Value=\"{StaticResource Target}\"/>" +
+                "</Style.When>" +
+                "<Setter Property=\"MinWidth\" Value=\"20\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class WhenResView : StackPanel { public WhenResView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.DoesNotContain("TODO X5", lowered); // the {StaticResource} Value is lowered, not silently dropped
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenResView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["S"]);
+
+        var runtime = (StackPanel)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        var runtimeStyle = Assert.IsType<Style>(runtime.Resources["S"]);
+
+        // The condition's Value is the resolved resource ("special") in BOTH lanes — not a silent null.
+        Assert.Equal("special", loweredStyle.When[0].Value);
+        Assert.Equal(runtimeStyle.When[0].Value, loweredStyle.When[0].Value);
+    }
+
     [Fact] // X5.2 — an attached property (Grid.Row) lowers to SetValue and matches the loader
     public void Lowered_AttachedProperty_MatchesLoader()
     {

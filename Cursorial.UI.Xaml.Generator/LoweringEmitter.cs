@@ -281,6 +281,22 @@ internal static class LoweringEmitter
             return;
         }
 
+        // A markup extension in element form as a dictionary entry (resource aliasing:
+        // <DynamicResource x:Key="Fg" ResourceKey="OnAccent"/>): the entry value is the extension's
+        // standalone value (a folded constant or a DynamicResource carrier), added under its key.
+        ref readonly var childRecord = ref c.Doc.Objects[childIndex];
+        if (childRecord.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            if (MarkupExtensionEntryExpr(c, in childRecord) is not { } entryExpr)
+            {
+                c.Todo("element-form markup-extension dictionary entry (only x:Null/x:Type/x:Static and DynamicResource) not yet lowered");
+                return;
+            }
+
+            c.Line($"{dictVar}.Add({keyExpr}, {entryExpr});");
+            return;
+        }
+
         var childVar = c.NextVar();
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
         c.Line($"{dictVar}.Add({keyExpr}, {childVar});");
@@ -525,7 +541,13 @@ internal static class LoweringEmitter
         var valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // valueless unless a Value member is present
         if (valueMember >= 0)
         {
-            ref readonly var value = ref c.Doc.Members[valueMember];
+            var value = c.Doc.Members[valueMember];
+
+            // Element-form Setter.Value extension (<Setter Property="…"><DynamicResource …/></Setter>): unwrap
+            // the synthetic markup-extension object to its value slot so it lowers exactly as the curly form.
+            if (value.Kind == XamlValueKind.Object && c.Doc.Objects[value.ValueIndex].HasFlag(ObjectFlags.IsMarkupExtension))
+                value = ExtensionValueMember(c, in c.Doc.Objects[value.ValueIndex]);
+
             if (value.Kind == XamlValueKind.Object)
             {
                 // An inline object Setter.Value — e.g. <Setter Property="ItemsPanel"><ItemsPanelTemplate>…</…>.
@@ -917,6 +939,15 @@ internal static class LoweringEmitter
 
                 case XamlValueKind.Object:
                 {
+                    // A markup extension in element form as a scalar member value (<Setter.Value><DynamicResource
+                    // …/></Setter.Value>): lower it exactly as the curly attribute form.
+                    ref readonly var childObj = ref c.Doc.Objects[member.ValueIndex];
+                    if (childObj.HasFlag(ObjectFlags.IsMarkupExtension))
+                    {
+                        EmitMarkupExtensionMember(c, varExpr, xm, in childObj, dataType);
+                        break;
+                    }
+
                     var childVar = c.NextVar();
                     // A ControlTemplate's (or ItemsPanelTemplate's) templated parent is the enclosing control (this
                     // objType); a DataTemplate has none. Establish it for the recursion so a {TemplateBinding} inside
@@ -1400,6 +1431,53 @@ internal static class LoweringEmitter
     };
 
     // ── {Binding} (B3a — the compiled lane) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The C# value expression for an element-form markup extension used as a dictionary/collection ENTRY
+    /// (resource aliasing): a folded constant, or a <c>DynamicResource</c> carrier
+    /// (<c>new ResourceReference(key)</c>). Null when the extension has no standalone lowering yet (a
+    /// StaticResource/Binding/custom entry), which the caller degrades to a CURG3001 note.
+    /// </summary>
+    private static string? MarkupExtensionEntryExpr(Context c, in ObjectRecord extObject)
+    {
+        var value = ExtensionValueMember(c, in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+            return FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]);
+
+        ref readonly var ext = ref c.Doc.Extensions[value.ValueIndex];
+        if (ext.Kind == ExtensionKind.DynamicResource && !ext.PayloadIsParsedExtension)
+            return $"new global::Cursorial.UI.ResourceReference(\"{Escape(c.Doc.Strings[ext.Payload])}\")";
+
+        return null;
+    }
+
+    /// <summary>The value slot of an element-form markup-extension object (the single Extension/Folded member;
+    /// an x:Key directive, when present, is separate).</summary>
+    private static MemberRecord ExtensionValueMember(Context c, in ObjectRecord record)
+    {
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var m = c.Doc.Members[record.MemberStart + i];
+            if (m.Kind is XamlValueKind.Extension or XamlValueKind.Folded)
+                return m;
+        }
+
+        return c.Doc.Members[record.MemberStart + record.MemberCount - 1];
+    }
+
+    /// <summary>
+    /// Lowers an element-form markup extension (<paramref name="extObject"/>) as the value of member
+    /// <paramref name="xm"/> — a folded intrinsic emits its constant; a live extension reuses the same
+    /// per-kind lowering the curly attribute form does (so element and curly form lower identically).
+    /// </summary>
+    private static void EmitMarkupExtensionMember(Context c, string varExpr, XamlMember xm, in ObjectRecord extObject, INamedTypeSymbol? dataType)
+    {
+        var value = ExtensionValueMember(c, in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+            EmitFoldedAssign(c, varExpr, xm, c.Doc.Constants[value.ValueIndex]);
+        else
+            EmitExtensionAssign(c, varExpr, xm, in c.Doc.Extensions[value.ValueIndex], dataType);
+    }
 
     private static void EmitExtensionAssign(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext, INamedTypeSymbol? dataType)
     {

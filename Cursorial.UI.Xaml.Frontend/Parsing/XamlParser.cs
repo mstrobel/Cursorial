@@ -282,6 +282,22 @@ internal sealed class XamlParser
         if (!isRoot && BuiltInExtensionElementName(ns, localName) is { } extensionName)
             return ParseExtensionElement(objectIndex, extensionName, parentInDeferred, lineInfo, reportLine, reportColumn);
 
+        // A CUSTOM markup extension in element form (<local:Foo/> where Foo — or its "Extension"-suffixed
+        // shorthand FooExtension — derives from MarkupExtension): provide its value, not a bare object.
+        // Resolved QUIETLY (exact name first, so a non-extension type of that name — an Icon CONTROL beside
+        // IconExtension — stays an object; then the suffix shorthand) so <Foo> doesn't spuriously report Foo
+        // as a missing type when only FooExtension exists.
+        if (!isRoot)
+        {
+            var exact = ResolveTypeQuiet(ns, localName);
+            bool isCustomExtension = exact is { IsResolved: true, Type.IsMarkupExtension: true }
+                || (!exact.IsResolved && ResolveTypeQuiet(ns, localName + "Extension") is { IsResolved: true, Type.IsMarkupExtension: true });
+            if (isCustomExtension)
+                return ParseExtensionElement(objectIndex,
+                    _reader.Prefix.Length > 0 ? _reader.Prefix + ":" + localName : localName,
+                    parentInDeferred, lineInfo, reportLine, reportColumn);
+        }
+
         // Resolve the element type.
         var resolution = ResolveType(ns, localName, reportLine, reportColumn);
         int typeId;

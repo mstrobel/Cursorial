@@ -111,7 +111,8 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             addDictionaryItem: isSelfDictionary ? BuildAddDictionaryItem() : null,
             dictionaryKeyType: isSelfDictionary ? typeof(object) : null,
             requiresInitialize: requiresInit,
-            memberResolver: name => members.GetOrAdd(name, n => BuildMember(clrType, n)));
+            memberResolver: name => members.GetOrAdd(name, n => BuildMember(clrType, n)),
+            isMarkupExtension: typeof(MarkupExtension).IsAssignableFrom(clrType));
     }
 
     // ── Activation ───────────────────────────────────────────────────────────────────────────────

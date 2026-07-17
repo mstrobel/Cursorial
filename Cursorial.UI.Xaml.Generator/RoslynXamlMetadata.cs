@@ -86,7 +86,16 @@ internal sealed class RoslynXamlMetadata : IXamlTypeMetadataProvider
             contentProperty: contentProperty,
             isCollection: isCollection,
             requiresInitialize: SymbolXamlModel.RequiresInitialize(symbol), // the parser stamps NeedsBeginInit from this
-            memberResolver: name => members.TryGetValue(name, out var m) ? m : members[name] = BuildMember(symbol, name));
+            memberResolver: name => members.TryGetValue(name, out var m) ? m : members[name] = BuildMember(symbol, name),
+            isMarkupExtension: DerivesFromMarkupExtension(symbol));
+    }
+
+    private static bool DerivesFromMarkupExtension(INamedTypeSymbol symbol)
+    {
+        for (INamedTypeSymbol? t = symbol; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
+            if (t.ToDisplayString() == "Cursorial.UI.Xaml.MarkupExtension")
+                return true;
+        return false;
     }
 
     private XamlMember? BuildMember(INamedTypeSymbol owner, string name)

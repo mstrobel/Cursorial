@@ -844,10 +844,15 @@ internal sealed class XamlObjectGraphBuilder
             case ExtensionKind.DynamicResource:
                 return new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
 
+            case ExtensionKind.Custom:
+                // A custom extension standing alone (a dictionary/collection entry): ProvideValue with no
+                // target member — the produced value is stored (and receives the entry's x:Key).
+                return _extensionHandler.ProvideStandaloneCustomValue(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
+
             default:
                 throw Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                     $"A {ext.Kind} markup extension has no target as a standalone dictionary or collection entry " +
-                    "(only x:Null/x:Type/x:Static, StaticResource, and DynamicResource may stand alone).", line, column);
+                    "(only x:Null/x:Type/x:Static, StaticResource, DynamicResource, and custom extensions may stand alone).", line, column);
         }
     }
 

@@ -34,7 +34,7 @@ internal sealed class WhenConditionRequirement
     }
 
     /// <summary>Whether the condition currently holds (the watch's last value against the verdict; unset ⇒ unmet).</summary>
-    internal bool IsMet => _condition.IsMetBy(_watch?.Value ?? UIProperty.UnsetValue);
+    internal bool IsMet => _condition.IsMetBy(_watch is {} w ? w.Value : UIProperty.UnsetValue);
 
     /// <summary>Disposes the watch (idempotent — disarm/detach end of life).</summary>
     internal void Dispose()

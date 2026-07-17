@@ -218,6 +218,13 @@ internal sealed class XamlObjectGraphBuilder
                 ((ISupportInitialize)instance).EndInit();
         }
 
+        // A <DataCondition> with no Binding: the Xaml init lane bypasses the ctors' RequireReflectionLane guard, so a
+        // Binding-less condition would otherwise load clean and then throw an opaque ArgumentNullException deep in
+        // style arming (BindingOperations.Watch). Reject it at the authoring site with a positioned diagnostic —
+        // the DataCondition analog of the Setter "requires a resolvable Property" guard.
+        if (instance is DataCondition { Binding: null })
+            throw Fatal(XamlDiagnosticCodes.MemberNotFound, "A <DataCondition> requires a Binding.", line, column);
+
         return instance;
     }
 

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.UI.Data;
 
 // ReSharper disable CheckNamespace
@@ -43,8 +45,13 @@ namespace Cursorial.UI;
 /// </remarks>
 public sealed class DataCondition
 {
-    private readonly object? _value;
     private readonly Func<object?, bool>? _predicate;
+
+    /// <summary>
+    /// Xaml-friendly constructor for creating an equality condition.
+    /// </summary>
+    [SetsRequiredMembers]
+    public DataCondition() {}
 
     /// <summary>
     /// Creates an equality condition: met when the binding's delivered value equals
@@ -57,11 +64,12 @@ public sealed class DataCondition
     /// <see cref="Negate"/>): met when the delivered value does <em>not</em> equal
     /// <paramref name="value"/>. Applied after the unmet-on-unset rule (see remarks).</param>
     /// <exception cref="ArgumentNullException"><paramref name="binding"/> is null.</exception>
+    [SetsRequiredMembers]
     public DataCondition(BindingBase binding, object? value, bool negate = false)
     {
         RequireReflectionLane(binding);
         Binding = binding;
-        _value = value;
+        Value = value;
         Negate = negate;
     }
 
@@ -73,6 +81,7 @@ public sealed class DataCondition
     /// <param name="binding">The data binding.</param>
     /// <param name="predicate">The verdict predicate over the delivered value.</param>
     /// <exception cref="ArgumentNullException"><paramref name="binding"/> or <paramref name="predicate"/> is null.</exception>
+    [SetsRequiredMembers]
     public DataCondition(BindingBase binding, Func<object?, bool> predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
@@ -97,10 +106,13 @@ public sealed class DataCondition
     }
 
     /// <summary>The data binding whose delivered value drives the condition (the S2 source half).</summary>
-    public BindingBase Binding { get; }
+    public required BindingBase Binding { get; init; } = null!;
 
     /// <summary>Whether the verdict is inverted (applied after the unmet-on-unset rule — see remarks).</summary>
     public bool Negate { get; init; }
+
+    /// <summary>The value the delivered binding value must equal.</summary>
+    public object? Value { get; init; }
 
     /// <summary>
     /// Evaluates the condition against a value delivered by the watch (design doc §3.3): an
@@ -118,7 +130,7 @@ public sealed class DataCondition
         if (ReferenceEquals(deliveredValue, UIProperty.UnsetValue))
             return false;
 
-        var raw = _predicate is not null ? _predicate(deliveredValue) : Equals(deliveredValue, _value);
+        var raw = _predicate?.Invoke(deliveredValue) ?? Equals(deliveredValue, Value);
         return Negate ? !raw : raw;
     }
 }

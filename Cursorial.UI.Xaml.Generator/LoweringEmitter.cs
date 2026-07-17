@@ -406,6 +406,7 @@ internal static class LoweringEmitter
         string? keyExpr = null;
         int settersMember = -1;
         int childrenMember = -1;
+        int whenMember = -1;
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
@@ -439,6 +440,9 @@ internal static class LoweringEmitter
                 case "Children":
                     childrenMember = m;
                     break;
+                case "When":
+                    whenMember = m;
+                    break;
             }
         }
 
@@ -467,6 +471,11 @@ internal static class LoweringEmitter
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
         c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
+
+        // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger equivalent).
+        if (whenMember >= 0)
+            foreach (int idx in ResourceItems(c, c.Doc.Members[whenMember]))
+                EmitDataCondition(c, varExpr, idx);
 
         if (settersMember >= 0)
             foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
@@ -574,6 +583,109 @@ internal static class LoweringEmitter
 
         c.Line($"{styleVar}.Setters.Add(new global::Cursorial.UI.Setter({propExpr}, {valueExpr}));");
     }
+
+    // A <DataCondition> inside <Style.When> → styleVar.When.Add(new DataCondition { Binding = <descriptor>,
+    // Value = <v>, Negate = <b> }). Binding is a {Binding} DESCRIPTOR (ReflectiveBindingExpr — the object, not a
+    // live install); Value is a typed element (<x:Boolean>…</> → an object local), a folded {x:Null}, or a literal;
+    // Negate is a bool literal. Only the equality form is XAML-expressible (a predicate needs a Func — code-only).
+    private static void EmitDataCondition(Context c, string styleVar, int objectIndex)
+    {
+        ref readonly var obj = ref c.Doc.Objects[objectIndex];
+        c.CurrentLineInfo = obj.PackedLineInfo;
+
+        int bindingMember = -1, valueMember = -1, negateMember = -1;
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind == XamlValueKind.Directive)
+                continue;
+
+            switch ((member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null)?.Name)
+            {
+                case "Binding": bindingMember = m; break;
+                case "Value": valueMember = m; break;
+                case "Negate": negateMember = m; break;
+            }
+        }
+
+        // The Binding descriptor resolves FIRST — a Binding-less / non-{Binding} condition is a hard gap (emit
+        // nothing but a // TODO, never a partial DataCondition), and resolving it before any Value <x:Boolean>…
+        // object is emitted means the // TODO path leaves no dangling local behind.
+        string? bindingExpr = null;
+        if (bindingMember >= 0)
+        {
+            ref readonly var bm = ref c.Doc.Members[bindingMember];
+            if (bm.Kind == XamlValueKind.Extension &&
+                c.Doc.ParsedExtensions[c.Doc.Extensions[bm.ValueIndex].Payload] is { } node)
+                bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
+        }
+        if (bindingExpr is null)
+        {
+            c.Todo("DataCondition without a lowerable {Binding} descriptor");
+            return;
+        }
+
+        // A PRESENT Value/Negate that can't be lowered is a // TODO (never silently dropped — that would flip the
+        // condition's runtime verdict vs the loader). An absent member is fine (Value defaults null, Negate false).
+        string? valueExpr = null;
+        if (valueMember >= 0)
+        {
+            valueExpr = DataConditionValueExpr(c, in c.Doc.Members[valueMember]);
+            if (valueExpr is null)
+            {
+                c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} supported)");
+                return;
+            }
+        }
+
+        string? negateExpr = null;
+        if (negateMember >= 0)
+        {
+            negateExpr = BoolLiteralExpr(c, in c.Doc.Members[negateMember]);
+            if (negateExpr is null)
+            {
+                c.Todo("DataCondition Negate must be a boolean literal");
+                return;
+            }
+        }
+
+        var inits = new List<string> { $"Binding = {bindingExpr}" };
+        if (valueExpr is not null) inits.Add($"Value = {valueExpr}");
+        if (negateExpr is not null) inits.Add($"Negate = {negateExpr}");
+
+        c.Line($"{styleVar}.When.Add(new global::Cursorial.UI.DataCondition{Initializers(inits)});");
+    }
+
+    // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
+    // object local), a folded {x:Null} (→ null) / {x:Static}, a same-dictionary {StaticResource} resolved eagerly
+    // (matching the loader's AttachStaticResource onto the object slot), or a literal string kept verbatim (object
+    // slot, no conversion). Null ⇒ the caller emits a // TODO (a {DynamicResource} — which the loader REJECTS on a
+    // non-styled slot — or any other unlowerable form).
+    private static string? DataConditionValueExpr(Context c, in MemberRecord member) => member.Kind switch
+    {
+        XamlValueKind.Object => EmitObjectToLocal(c, member.ValueIndex),
+        XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
+        XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
+        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.StaticResource
+            => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        _ => null,
+    };
+
+    // Emits an object subtree into a fresh local and returns its var (for an inline <x:Boolean>/<x:Int32>/… Value).
+    private static string EmitObjectToLocal(Context c, int objectIndex)
+    {
+        var v = c.NextVar();
+        EmitObject(c, objectIndex, v, isRoot: false, hasScope: false, dataType: null);
+        return v;
+    }
+
+    // A bool member (DataCondition.Negate) as a C# literal: a "True"/"False" text, or a folded bool constant.
+    private static string? BoolLiteralExpr(Context c, in MemberRecord member) => member.Kind switch
+    {
+        XamlValueKind.Text => bool.TryParse(c.Doc.Strings[member.ValueIndex], out var b) ? (b ? "true" : "false") : null,
+        XamlValueKind.Folded when c.Doc.Constants[member.ValueIndex] is bool b => b ? "true" : "false",
+        _ => null,
+    };
 
     // A Setter.Value expression: a Text value converted to the property's value type (see SetterTextValueExpr), a
     // folded null/{x:Static}, or a *Resource extension. Null = unsupported.
@@ -1849,22 +1961,37 @@ internal static class LoweringEmitter
     // — the caller uses this to decide whether a CURG2002 "works-but-reflective" info is appropriate.
     private static bool EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
     {
+        if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'") is not { } bindingExpr)
+            return false; // a specific // TODO X5 was already emitted
+
+        c.Line(
+            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {bindingExpr});");
+        return true;
+    }
+
+    // The reflective `new Binding("path") { … }` DESCRIPTOR expression (Mode / RelativeSource / Converter / path /
+    // ElementName / Source / StringFormat / FallbackValue + baked prefixed-path owners) — the shared core of the
+    // install lane (<see cref="EmitReflectiveBinding"/>, wrapped in BindingOperations.Install) and the Binding-
+    // DESCRIPTOR lane (a Binding-typed slot such as DataCondition.Binding, used as an initializer value). Returns
+    // null when a piece isn't lowerable, having emitted a specific // TODO X5 naming it via <paramref name="diagName"/>.
+    private static string? ReflectiveBindingExpr(Context c, MarkupExtensionNode node, string diagName)
+    {
         if (CanonicalMode(node) is not { } modeName)
         {
-            c.Todo($"{{Binding}} with an unrecognized Mode for '{xm.Name}'");
-            return false;
+            c.Todo($"{{Binding}} with an unrecognized Mode {diagName}");
+            return null;
         }
 
         if (RelativeSourceInit(c, node) is not { } relSource)
         {
-            c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self / TemplatedParent / FindAncestor)");
-            return false;
+            c.Todo($"{{Binding}} RelativeSource {diagName} not supported in lowering (Self / TemplatedParent / FindAncestor)");
+            return null;
         }
 
         if (ConverterInit(c, node) is not { } converterInit)
         {
-            c.Todo($"{{Binding}} Converter for '{xm.Name}' is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
-            return false;
+            c.Todo($"{{Binding}} Converter {diagName} is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
+            return null;
         }
 
         // A namespace-prefixed type-qualified path segment `(prefix:Type.Member)` resolves its owner against the
@@ -1892,10 +2019,7 @@ internal static class LoweringEmitter
             PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
 
-        c.Line(
-            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
-            $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)});");
-        return true;
+        return $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)}";
     }
 
     // {TemplateBinding SourceProp} (inside a template body) → a one-way TemplateBinding tracking the templated

@@ -261,4 +261,35 @@ public class ResourceDictionaryLoweringTests
         var style = Assert.IsType<Cursorial.UI.Style>(InvokeBuilder(assembly, "BuildMyView")[typeof(Button)]);
         Assert.IsNotType<string>(Assert.Single(style.Setters).Value); // converted off the raw "2,1" string to the Padding type
     }
+
+    [Fact] // element-form <DynamicResource> lowers identically to the curly form: a Setter.Value carrier, and
+    // a dictionary alias entry (<DynamicResource x:Key=… ResourceKey=…>) → a keyed ResourceReference.
+    public void Lowered_ElementFormDynamicResource_SetterValueAndAliasEntry()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<DynamicResource x:Key=\"AccentFg\" ResourceKey=\"OnAccent\"/>" +        // resource aliasing
+            "<ResourceDictionary.Styles>" +
+              "<Style TargetType=\"Button\">" +
+                "<Setter Property=\"Foreground\"><DynamicResource ResourceKey=\"Accent\"/></Setter>" + // element-form Setter.Value
+              "</Style>" +
+            "</ResourceDictionary.Styles>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("new global::Cursorial.UI.ResourceReference(\"OnAccent\")", lowered); // the alias entry
+        Assert.Contains("new global::Cursorial.UI.ResourceReference(\"Accent\")", lowered);   // the Setter.Value
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.DoesNotContain("CURG3001", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var dict = InvokeBuilder(assembly, "BuildMyView");
+
+        var alias = Assert.IsType<ResourceReference>(dict["AccentFg"]);
+        Assert.Equal("OnAccent", alias.Key);
+        var setter = Assert.Single(Assert.IsType<Cursorial.UI.Style>(dict.Styles!.Single()).Setters);
+        Assert.Equal("Accent", Assert.IsType<ResourceReference>(setter.Value).Key);
+    }
 }

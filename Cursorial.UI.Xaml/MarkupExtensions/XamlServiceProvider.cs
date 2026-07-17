@@ -18,13 +18,14 @@ internal sealed class XamlServiceProvider :
 {
     private readonly XamlObjectGraphBuilder _builder;
     private readonly XamlResourceScopeStack _scopes;
-    private readonly object _targetObject;
-    private readonly XamlMember _targetMember;
+    private readonly object? _targetObject;
+    private readonly XamlMember? _targetMember;
 
+    // A standalone element-form extension (a dictionary/collection entry) has no target object/member.
     internal XamlServiceProvider(
         XamlObjectGraphBuilder builder,
-        object targetObject,
-        XamlMember targetMember,
+        object? targetObject,
+        XamlMember? targetMember,
         XamlResourceScopeStack scopes,
         int line,
         int column)
@@ -48,8 +49,8 @@ internal sealed class XamlServiceProvider :
     }
 
     // IProvideValueTarget
-    public object TargetObject => _targetObject;
-    public object TargetProperty => _targetMember.Property ?? _targetMember;
+    public object? TargetObject => _targetObject;
+    public object? TargetProperty => _targetMember?.Property ?? _targetMember;
 
     // IRootObjectProvider
     public object? RootObject => _builder.RootObject;

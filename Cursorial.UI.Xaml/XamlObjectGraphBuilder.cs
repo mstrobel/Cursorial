@@ -161,6 +161,13 @@ internal sealed class XamlObjectGraphBuilder
         if (record.HasFlag(ObjectFlags.IsArray))
             return BuildArray(objectIndex, in record, type, line, column);
 
+        // A markup extension in element form consumed as a dictionary or collection ENTRY (no target member):
+        // produce its context-independent value — a folded constant, a resolved StaticResource, or a
+        // DynamicResource carrier (resource aliasing). In a member VALUE position it never reaches here (the
+        // Object-member case attaches it to the target member instead).
+        if (record.HasFlag(ObjectFlags.IsMarkupExtension))
+            return ProvideExtensionEntryValue(in record, line, column)!;
+
         if (type is null)
             throw Fatal(XamlDiagnosticCodes.TypeNotFound, "The element's type did not resolve.", line, column);
 
@@ -485,6 +492,16 @@ internal sealed class XamlObjectGraphBuilder
 
                 case XamlValueKind.Object:
                 {
+                    // A markup extension in element form as a scalar member value (<Setter.Value><DynamicResource
+                    // …/></Setter.Value>): attach it to THIS member exactly as the curly form would, rather than
+                    // instantiating an object.
+                    ref readonly var childRecord = ref _doc.Objects[member.ValueIndex];
+                    if (childRecord.HasFlag(ObjectFlags.IsMarkupExtension))
+                    {
+                        ApplyExtensionMemberObject(in member, in childRecord, instance, type, line, column);
+                        break;
+                    }
+
                     var child = InstantiateObject(member.ValueIndex);
                     ApplyValue(in member, instance, type, child, line, column);
                     break;
@@ -769,6 +786,74 @@ internal sealed class XamlObjectGraphBuilder
         var resolved = member.MemberId >= 0 ? _doc.ResolvedMembers[member.MemberId] : null;
         ref readonly var ext = ref _doc.Extensions[member.ValueIndex];
         _extensionHandler.Attach(this, instance, type, resolved, in ext, _doc, line, column);
+    }
+
+    /// <summary>The value slot of a markup-extension element object (element-form extension): the single
+    /// <see cref="XamlValueKind.Extension"/>/<see cref="XamlValueKind.Folded"/> member (an x:Key directive,
+    /// when present, is a separate member consumed by the dictionary path).</summary>
+    private ref readonly MemberRecord ExtensionValueMember(in ObjectRecord record)
+    {
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            ref readonly var m = ref _doc.Members[record.MemberStart + i];
+            if (m.Kind is XamlValueKind.Extension or XamlValueKind.Folded)
+                return ref m;
+        }
+
+        return ref _doc.Members[record.MemberStart + record.MemberCount - 1]; // always present by construction
+    }
+
+    /// <summary>
+    /// Applies an element-form markup extension (<paramref name="extObject"/>) as the value of
+    /// <paramref name="member"/>: a folded intrinsic assigns its constant; a live extension attaches to the
+    /// target member exactly as the curly attribute form does — the target is <paramref name="member"/>'s
+    /// resolved member, the extension record is the synthetic object's value slot.
+    /// </summary>
+    private void ApplyExtensionMemberObject(in MemberRecord member, in ObjectRecord extObject, object instance, XamlType type, int line, int column)
+    {
+        ref readonly var value = ref ExtensionValueMember(in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+        {
+            ApplyValue(in member, instance, type, _doc.Constants[value.ValueIndex], line, column);
+            return;
+        }
+
+        var attach = new MemberRecord(member.MemberId, XamlValueKind.Extension, value.ValueIndex, 0, member.PackedLineInfo);
+        ApplyExtension(in attach, instance, type, line, column);
+    }
+
+    /// <summary>
+    /// Produces the standalone value of an element-form markup extension used as a dictionary/collection ENTRY
+    /// (no target member): a folded constant, a resolved <c>StaticResource</c>, or a <c>DynamicResource</c>
+    /// carrier (<see cref="ResourceReference"/> — resource aliasing). Binding/TemplateBinding/custom have no
+    /// meaning without a target and are rejected with a positioned diagnostic.
+    /// </summary>
+    private object? ProvideExtensionEntryValue(in ObjectRecord record, int line, int column)
+    {
+        ref readonly var value = ref ExtensionValueMember(in record);
+        if (value.Kind == XamlValueKind.Folded)
+            return _doc.Constants[value.ValueIndex];
+
+        ref readonly var ext = ref _doc.Extensions[value.ValueIndex];
+        switch (ext.Kind)
+        {
+            case ExtensionKind.StaticResource:
+                return _extensionHandler.ResolveStaticResource(this,
+                    _extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column), line, column);
+
+            case ExtensionKind.DynamicResource:
+                return new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
+
+            case ExtensionKind.Custom:
+                // A custom extension standing alone (a dictionary/collection entry): ProvideValue with no
+                // target member — the produced value is stored (and receives the entry's x:Key).
+                return _extensionHandler.ProvideStandaloneCustomValue(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
+
+            default:
+                throw Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
+                    $"A {ext.Kind} markup extension has no target as a standalone dictionary or collection entry " +
+                    "(only x:Null/x:Type/x:Static, StaticResource, DynamicResource, and custom extensions may stand alone).", line, column);
+        }
     }
 
     private void ApplyDeferred(in MemberRecord member, object instance, XamlType type, int line, int column)

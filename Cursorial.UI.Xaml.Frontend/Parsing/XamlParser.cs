@@ -272,6 +272,32 @@ internal sealed class XamlParser
             return ParseArrayElement(objectIndex, lineInfo, reportLine, reportColumn, isEmpty,
                                      parentInDeferred, parentInResourceDictionary, isRoot);
 
+        // A built-in markup extension in ELEMENT form (<DynamicResource ResourceKey="X"/>, <x:Null/>, …):
+        // build the same extension value the curly form would, wrapped in a synthetic object so it flows
+        // into ANY VALUE position (dictionary entry — resource aliasing, property-element value, collection
+        // item, content). The loader attaches it to the target member, or produces its value as a dict/
+        // collection entry. Recognized before type resolution: a bare <DynamicResource> is not a resolvable
+        // CLR type. NOT at the document root — a root <Binding/>/<TemplateBinding/> is the bare TYPE (X014),
+        // there being no value position to provide into.
+        if (!isRoot && BuiltInExtensionElementName(ns, localName) is { } extensionName)
+            return ParseExtensionElement(objectIndex, extensionName, parentInDeferred, lineInfo, reportLine, reportColumn);
+
+        // A CUSTOM markup extension in element form (<local:Foo/> where Foo — or its "Extension"-suffixed
+        // shorthand FooExtension — derives from MarkupExtension): provide its value, not a bare object.
+        // Resolved QUIETLY (exact name first, so a non-extension type of that name — an Icon CONTROL beside
+        // IconExtension — stays an object; then the suffix shorthand) so <Foo> doesn't spuriously report Foo
+        // as a missing type when only FooExtension exists.
+        if (!isRoot)
+        {
+            var exact = ResolveTypeQuiet(ns, localName);
+            bool isCustomExtension = exact is { IsResolved: true, Type.IsMarkupExtension: true }
+                || (!exact.IsResolved && ResolveTypeQuiet(ns, localName + "Extension") is { IsResolved: true, Type.IsMarkupExtension: true });
+            if (isCustomExtension)
+                return ParseExtensionElement(objectIndex,
+                    _reader.Prefix.Length > 0 ? _reader.Prefix + ":" + localName : localName,
+                    parentInDeferred, lineInfo, reportLine, reportColumn);
+        }
+
         // Resolve the element type.
         var resolution = ResolveType(ns, localName, reportLine, reportColumn);
         int typeId;
@@ -942,119 +968,245 @@ internal sealed class XamlParser
             return -1;
         }
 
+        // A folded intrinsic (x:Null/x:Type/x:Static) becomes a Folded member here; a live extension
+        // returns its index for the caller to add as an Extension member (the historical contract).
+        if (!BuildExtensionValue(node, member, inDeferred, line, column, out bool folded, out int valueIndex))
+            return -1; // suppressed (a reported error, or a TemplateBinding outside a template body)
+
+        if (folded)
+        {
+            members.Add(new MemberRecord(memberId, XamlValueKind.Folded, valueIndex, 0, lineInfo));
+            return -1;
+        }
+
+        return valueIndex;
+    }
+
+    /// <summary>
+    /// Produces the value of a markup extension <paramref name="node"/> — the shared core of the curly form
+    /// (<c>{DynamicResource X}</c>) and the ELEMENT form (<c>&lt;DynamicResource ResourceKey="X"/&gt;</c>).
+    /// On success returns <see langword="true"/> with <paramref name="folded"/> and <paramref name="valueIndex"/>:
+    /// a FOLDED intrinsic (x:Null/x:Type/x:Static) yields a constant index; a LIVE extension yields an
+    /// <see cref="ExtensionRecord"/> index. Returns <see langword="false"/> when nothing is emitted (a reported
+    /// error, or a <c>{TemplateBinding}</c> outside a template body). <paramref name="member"/> is the target
+    /// member for a member-position extension (bindability is enforced against it), or null in a
+    /// dictionary/collection-entry position.
+    /// </summary>
+    private bool BuildExtensionValue(MarkupExtensionNode node, XamlMember? member, bool inDeferred, int line, int column,
+                                     out bool folded, out int valueIndex)
+    {
+        folded = false;
+        valueIndex = -1;
         var kind = ClassifyExtension(node.Name);
+        int lineInfo = LineInfo.Pack(node.Line, node.Column);
 
         switch (kind)
         {
             case ExtensionKind.Null:
-            {
-                int c = _builder.AddConstant(null);
-                members.Add(new MemberRecord(memberId, XamlValueKind.Folded, c, 0, lineInfo));
-                return -1;
-            }
+                valueIndex = _builder.AddConstant(null);
+                folded = true;
+                return true;
 
             case ExtensionKind.Type:
             case ExtensionKind.Static:
-            {
                 // x:Type / x:Static fold at parse against the metadata provider.
-                if (TryFoldIntrinsicExtension(kind, node, line, column, out object? folded))
+                if (TryFoldIntrinsicExtension(kind, node, line, column, out object? f))
                 {
-                    int c = _builder.AddConstant(folded);
-                    members.Add(new MemberRecord(memberId, XamlValueKind.Folded, c, 0, lineInfo));
+                    valueIndex = _builder.AddConstant(f);
+                    folded = true;
+                    return true;
                 }
 
-                return -1;
-            }
+                return false; // TryFoldIntrinsicExtension reported the miss
 
             case ExtensionKind.TemplateBinding when !inDeferred:
                 _builder.Error(XamlDiagnosticCodes.TemplateBindingOutsideTemplate,
                                "{TemplateBinding} is only legal inside a template body.",
-                               node.Line,
-                               node.Column);
-
-                return -1;
+                               node.Line, node.Column);
+                return false;
 
             case ExtensionKind.StaticResource:
             case ExtensionKind.DynamicResource:
             {
-                // Carry the key (the primary positional argument) for X2. The common form is a literal
-                // string ({DynamicResource Accent} → Strings, X44/X57). When the key is itself a markup
-                // extension ({DynamicResource {x:Static ThemeKeys.X}}, X44a/X57a) the frontend cannot
-                // resolve it (no static resolver in netstandard2.0) — store the INNER key node and let
-                // the loader resolve it at instantiate (PayloadIsParsedExtension, XD7a).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
+                // Carry the key (the primary argument) for X2. The common form is a literal string
+                // ({DynamicResource Accent} → Strings, X44/X57). When the key is itself a markup extension
+                // ({DynamicResource {x:Static ThemeKeys.X}}, X44a/X57a) the frontend cannot resolve it (no
+                // static resolver in netstandard2.0) — store the INNER key node and let the loader resolve
+                // it at instantiate (PayloadIsParsedExtension, XD7a).
+                var primary = PrimaryArgument(node, kind);
+                if (primary is { Nested: {} keyNode })
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
-
-                    return _builder.AddExtension(
-                        new ExtensionRecord(kind,
-                                            parsedKey,
-                                            LineInfo.Pack(node.Line, node.Column),
-                                            payloadIsParsedExtension: true)
-                    );
+                    valueIndex = _builder.AddExtension(new ExtensionRecord(kind, parsedKey, lineInfo, payloadIsParsedExtension: true));
+                    return true;
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
-                int payload = _builder.InternString(key);
-                return _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
+                string key = primary is { Text: {} t } ? t : string.Empty;
+                valueIndex = _builder.AddExtension(new ExtensionRecord(kind, _builder.InternString(key), lineInfo));
+                return true;
             }
 
             case ExtensionKind.Binding:
             case ExtensionKind.TemplateBinding:
             {
-                // A {Binding}/{TemplateBinding} target must be a registered UIProperty (bindable). A
-                // CLR-only member is CUR2210 at parse (matrix X120; doc §4.4).
-                if (member.Property is null && member is { IsEvent: false, ValueType.Name: not ("Binding" or "BindingBase") })
+                // A {Binding}/{TemplateBinding} target must be a registered UIProperty (bindable). A CLR-only
+                // member is CUR2210 (matrix X120; doc §4.4). This is checked only when the target member is
+                // known here (curly attribute form, or an element form whose scalar member is in hand); an
+                // element-form extension whose position is not yet known (member is null — a synthetic object)
+                // defers the check to the loader's attach, which errors against the real target (a dictionary/
+                // collection entry has no target and is rejected by ProvideExtensionEntryValue).
+                if (member is not null && member.Property is null &&
+                    member is { IsEvent: false, ValueType.Name: not ("Binding" or "BindingBase") })
                 {
                     _builder.Error(XamlDiagnosticCodes.BindingTargetNotBindable,
                                    $"Binding target '{member.Name}' is not a bindable property " +
                                    $"(only registered UIProperties can be data-bound).",
                                    node.Line, node.Column);
-
-                    return -1;
+                    return false;
                 }
 
-                int parsed = _builder.AddParsedExtension(node);
-
-                return _builder.AddExtension(
-                    new ExtensionRecord(kind,
-                                        parsed,
-                                        LineInfo.Pack(node.Line, node.Column))
-                );
+                valueIndex = _builder.AddExtension(new ExtensionRecord(kind, _builder.AddParsedExtension(node), lineInfo));
+                return true;
             }
 
             case ExtensionKind.Reference:
             {
-                // {x:Reference Name} (positional) or {x:Reference Name=…}: store the name; the loader/generator
-                // resolve it against the document name scope (forward refs resolved after the tree is built).
-                string refName = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } rt ? rt
-                               : node.FindNamed("Name") is { Text: { } nt } ? nt
-                               : string.Empty;
+                // {x:Reference Name} (positional) or Name=…: store the name; the loader/generator resolve it
+                // against the document name scope (forward refs resolved after the tree is built).
+                string refName = PrimaryArgument(node, kind) is { Text: { } rt } ? rt : string.Empty;
                 if (refName.Length == 0)
                 {
                     _builder.Error(XamlDiagnosticCodes.UnsupportedIntrinsic,
                                    "{x:Reference} requires a name (e.g. {x:Reference myButton}).", node.Line, node.Column);
-                    return -1;
+                    return false;
                 }
 
-                return _builder.AddExtension(
-                    new ExtensionRecord(ExtensionKind.Reference, _builder.InternString(refName), LineInfo.Pack(node.Line, node.Column)));
+                valueIndex = _builder.AddExtension(new ExtensionRecord(ExtensionKind.Reference, _builder.InternString(refName), lineInfo));
+                return true;
             }
 
             case ExtensionKind.Custom:
             default:
-            {
                 // A custom extension: resolve its type to surface a CUR2002 did-you-mean at parse (X53).
                 ResolveExtensionType(node, line, column);
+                valueIndex = _builder.AddExtension(new ExtensionRecord(ExtensionKind.Custom, _builder.AddParsedExtension(node), lineInfo));
+                return true;
+        }
+    }
 
-                int parsed = _builder.AddParsedExtension(node);
+    /// <summary>
+    /// The canonical extension name for an element in markup-extension ELEMENT form, or null when the element
+    /// is not a built-in extension. The resource/binding extensions live in the UI xmlns; the intrinsic
+    /// <c>x:</c> extensions in the intrinsics xmlns (returned with the <c>x:</c> prefix <see cref="ClassifyExtension"/>
+    /// expects). <c>Binding</c>/<c>TemplateBinding</c> are intercepted here in element form even though they are
+    /// also CLR types — element form means the extension (WPF parity), not a bare object.
+    /// </summary>
+    private static string? BuiltInExtensionElementName(string ns, string localName)
+    {
+        if (XmlnsNamespaces.IsIntrinsics(ns))
+            return localName switch
+            {
+                "Null" or "Static" or "Type" or "Reference" => "x:" + localName,
+                _ => null,
+            };
 
-                return _builder.AddExtension(
-                    new ExtensionRecord(ExtensionKind.Custom,
-                                        parsed,
-                                        LineInfo.Pack(node.Line, node.Column))
-                );
+        if (string.Equals(ns, XmlnsNamespaces.CursorialUi, StringComparison.Ordinal))
+            return localName switch
+            {
+                "StaticResource" or "DynamicResource" or "Binding" or "TemplateBinding" => localName,
+                _ => null,
+            };
+
+        return null;
+    }
+
+    /// <summary>
+    /// Parses a markup extension in ELEMENT form into a synthetic <see cref="ObjectFlags.IsMarkupExtension"/>
+    /// object at <paramref name="objectIndex"/>: element attributes map to the extension's NAMED arguments
+    /// (a curly value like <c>ResourceKey="{x:Static X}"</c> nests), <c>x:Key</c> is captured for a dictionary
+    /// entry, and the produced value (a <see cref="XamlValueKind.Folded"/> constant or a live
+    /// <see cref="XamlValueKind.Extension"/> record) is the object's single value member. Property-element
+    /// children of the extension are not supported (the curly nested form covers complex argument values).
+    /// </summary>
+    private int ParseExtensionElement(int objectIndex, string extensionName, bool inDeferred, int lineInfo, int line, int column)
+    {
+        bool isEmpty = _reader.IsEmptyElement;
+        string? key = null;
+        var named = new List<MarkupExtensionNamedArgument>();
+
+        if (_reader.MoveToFirstAttribute())
+        {
+            do
+            {
+                string attrLocal = _reader.LocalName;
+                string attrPrefix = _reader.Prefix;
+                string attrNs = _reader.NamespaceURI;
+                string attrValue = _reader.Value;
+
+                if (attrPrefix == "xmlns" || attrLocal == "xmlns")
+                    continue;
+                if (XmlnsNamespaces.IsIntrinsics(attrNs))
+                {
+                    if (attrLocal == "Key") key = attrValue; // the dictionary key; x:Name/x:Uid aren't args
+                    continue;
+                }
+                if (XmlnsNamespaces.IsDesignTime(attrNs) ||
+                    string.Equals(attrNs, XmlnsNamespaces.MarkupCompatibility, StringComparison.Ordinal))
+                    continue;
+
+                var argValue = MarkupExtensionParser.LooksLikeExtension(attrValue)
+                    ? MarkupExtensionArgumentValue.FromNested(ParseNestedArgument(attrValue, line, column))
+                    : MarkupExtensionArgumentValue.FromText(attrValue);
+                named.Add(new MarkupExtensionNamedArgument(attrLocal, argValue, line, column));
             }
+            while (_reader.MoveToNextAttribute());
+
+            _reader.MoveToElement();
+        }
+
+        if (!isEmpty)
+            SkipCurrentSubtree(); // attributes-only element form
+
+        var node = new MarkupExtensionNode(extensionName, positionalArguments: null, named, line, column);
+
+        var members = new List<MemberRecord>();
+        var flags = ObjectFlags.IsMarkupExtension;
+
+        if (key is not null)
+        {
+            members.Add(DirectiveMember(XamlDirectiveKind.Key, key, lineInfo));
+            flags |= ObjectFlags.HasKey;
+        }
+
+        // The produced value slot (memberId −1): a Folded constant, or a live ExtensionRecord. A suppressed
+        // build (a reported error) leaves a null so instantiation stays well-defined.
+        if (BuildExtensionValue(node, member: null, inDeferred, line, column, out bool folded, out int valueIndex))
+            members.Add(new MemberRecord(-1, folded ? XamlValueKind.Folded : XamlValueKind.Extension, valueIndex, 0, lineInfo));
+        else
+            members.Add(new MemberRecord(-1, XamlValueKind.Folded, _builder.AddConstant(null), 0, lineInfo));
+
+        int memberStart = _builder.MemberCount;
+        foreach (var m in members)
+            _builder.AddMember(m);
+
+        _builder.SetObject(objectIndex,
+            new ObjectRecord(typeId: -1, memberStart, (ushort) members.Count, flags, subtreeLength: 1, lineInfo));
+
+        return objectIndex;
+    }
+
+    /// <summary>Parses a curly markup extension appearing as an element attribute's value; on a grammar error
+    /// reports it and returns an <c>x:Null</c> placeholder so the outer build stays well-defined.</summary>
+    private MarkupExtensionNode ParseNestedArgument(string value, int line, int column)
+    {
+        try
+        {
+            return MarkupExtensionParser.Parse(value, _builder.Source, line, column);
+        }
+        catch (XamlParseException ex)
+        {
+            _builder.Report(ex.Diagnostics[0]);
+            return new MarkupExtensionNode("x:Null", positionalArguments: null, namedArguments: null, line, column);
         }
     }
 
@@ -1072,10 +1224,33 @@ internal sealed class XamlParser
                _                  => ExtensionKind.Custom,
            };
 
+    /// <summary>
+    /// The named argument a built-in extension's single positional argument also binds to (WPF
+    /// property-name parity), so <c>{DynamicResource X}</c>, <c>{DynamicResource ResourceKey=X}</c>, and
+    /// the element form <c>&lt;DynamicResource ResourceKey="X"/&gt;</c> resolve identically. Also the
+    /// primary property name for element form. Null when there is no single primary (<c>x:Null</c>).
+    /// </summary>
+    internal static string? BuiltInPrimaryArgName(ExtensionKind kind) => kind switch
+    {
+        ExtensionKind.StaticResource or ExtensionKind.DynamicResource => "ResourceKey",
+        ExtensionKind.Type            => "TypeName",
+        ExtensionKind.Static          => "Member",
+        ExtensionKind.Reference       => "Name",
+        ExtensionKind.TemplateBinding => "Property",
+        ExtensionKind.Binding         => "Path",
+        _                             => null,
+    };
+
+    /// <summary>The extension's primary argument: the first positional, else the named primary (WPF parity).</summary>
+    private static MarkupExtensionArgumentValue? PrimaryArgument(MarkupExtensionNode node, ExtensionKind kind)
+        => node.PositionalArguments.Count > 0
+               ? node.PositionalArguments[0]
+               : BuiltInPrimaryArgName(kind) is { } named ? node.FindNamed(named) : null;
+
     private bool TryFoldIntrinsicExtension(ExtensionKind kind, MarkupExtensionNode node, int line, int column, out object? folded)
     {
         folded = null;
-        string arg = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
+        string arg = PrimaryArgument(node, kind) is { Text: {} t } ? t : string.Empty;
 
         if (kind == ExtensionKind.Type)
         {
@@ -1542,7 +1717,9 @@ internal sealed class XamlParser
                 // Same nested-vs-literal key split as the direct-property site (XD7a): a nested key
                 // extension ({DynamicResource {x:Static ThemeKeys.X}}) stores the inner node for the
                 // loader to resolve at instantiate; a literal key interns as before (X117 unchanged).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
+                // The key is the primary argument — positional OR the named ResourceKey= (WPF parity).
+                var primary = PrimaryArgument(node, kind);
+                if (primary is { Nested: {} keyNode })
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
 
@@ -1556,7 +1733,7 @@ internal sealed class XamlParser
                     return new MemberRecord(valueMemberId, XamlValueKind.Extension, nestedExtIndex, 0, LineInfo.Pack(line, column));
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
+                string key = primary is { Text: {} t } ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 int extIndex = _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
                 return new MemberRecord(valueMemberId, XamlValueKind.Extension, extIndex, 0, LineInfo.Pack(line, column));

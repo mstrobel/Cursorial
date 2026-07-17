@@ -36,6 +36,15 @@ internal enum ObjectFlags : ushort
     /// <summary>An <c>&lt;x:Array Type="T"&gt;</c> intrinsic: <see cref="ObjectRecord.TypeId"/> is the
     /// ELEMENT type T (not the object's own type), and the object's items build a <c>T[]</c> (XD27).</summary>
     IsArray = 1 << 7,
+
+    /// <summary>
+    /// A markup extension in ELEMENT form (<c>&lt;DynamicResource ResourceKey="X"/&gt;</c>): the object has
+    /// no CLR type (<see cref="ObjectRecord.TypeId"/> is −1) and a single synthetic value member (memberId
+    /// −1, <see cref="XamlValueKind.Extension"/>/<see cref="XamlValueKind.Folded"/>) carrying the extension
+    /// the loader provides a value from at instantiation. Used in dictionary/collection-item positions;
+    /// a scalar member value is emitted directly as an <see cref="XamlValueKind.Extension"/> member instead.
+    /// </summary>
+    IsMarkupExtension = 1 << 8,
 }
 
 /// <summary>

@@ -1717,7 +1717,9 @@ internal sealed class XamlParser
                 // Same nested-vs-literal key split as the direct-property site (XD7a): a nested key
                 // extension ({DynamicResource {x:Static ThemeKeys.X}}) stores the inner node for the
                 // loader to resolve at instantiate; a literal key interns as before (X117 unchanged).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
+                // The key is the primary argument — positional OR the named ResourceKey= (WPF parity).
+                var primary = PrimaryArgument(node, kind);
+                if (primary is { Nested: {} keyNode })
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
 
@@ -1731,7 +1733,7 @@ internal sealed class XamlParser
                     return new MemberRecord(valueMemberId, XamlValueKind.Extension, nestedExtIndex, 0, LineInfo.Pack(line, column));
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
+                string key = primary is { Text: {} t } ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 int extIndex = _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
                 return new MemberRecord(valueMemberId, XamlValueKind.Extension, extIndex, 0, LineInfo.Pack(line, column));

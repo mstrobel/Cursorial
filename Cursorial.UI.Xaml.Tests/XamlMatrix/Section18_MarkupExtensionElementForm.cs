@@ -115,6 +115,27 @@ public sealed class Section18_MarkupExtensionElementForm : LoaderTestBase
         Assert.Equal(typeof(Cursorial.UI.Data.Binding), doc.RootType);
     }
 
+    [Fact] // X56l — an extension argument may be a PROPERTY ELEMENT (the verbose form): a literal, and a
+    // nested extension (<DynamicResource><DynamicResource.ResourceKey><x:Static …/></…></DynamicResource>).
+    public void X56l_PropertyElementArgument()
+    {
+        // Literal property-element argument.
+        var dict = (ResourceDictionary)LoadRaw(
+            $"<ResourceDictionary{Pre}><TestBrush x:Key=\"OnAccent\" Color=\"Red\"/>" +
+            "<DynamicResource x:Key=\"AccentFg\">" +
+            "<DynamicResource.ResourceKey>OnAccent</DynamicResource.ResourceKey>" +
+            "</DynamicResource></ResourceDictionary>");
+        Assert.Equal("OnAccent", Assert.IsType<ResourceReference>(dict["AccentFg"]).Key);
+
+        // Nested-extension property-element argument: the StaticResource key resolves eagerly.
+        var border = (UIControls.Border)LoadRaw(
+            $"<Border{Pre}><Border.Resources><TestBrush x:Key=\"A\" Color=\"Red\"/></Border.Resources>" +
+            "<Button><Button.Background>" +
+            "<StaticResource><StaticResource.ResourceKey>A</StaticResource.ResourceKey></StaticResource>" +
+            "</Button.Background></Button></Border>");
+        Assert.IsType<TestBrush>(((UIControls.Button)border.Child!).Background);
+    }
+
     [Fact] // X56k — the named-argument curly form matches the positional form (phase 1): both {DynamicResource X}
     // and {DynamicResource ResourceKey=X} resolve identically.
     public void X56k_NamedCurlyArg_MatchesPositional()

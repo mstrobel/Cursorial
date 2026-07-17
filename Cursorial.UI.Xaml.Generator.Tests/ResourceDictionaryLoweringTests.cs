@@ -292,4 +292,27 @@ public class ResourceDictionaryLoweringTests
         var setter = Assert.Single(Assert.IsType<Cursorial.UI.Style>(dict.Styles!.Single()).Setters);
         Assert.Equal("Accent", Assert.IsType<ResourceReference>(setter.Value).Key);
     }
+
+    [Fact] // an element-form DynamicResource dictionary alias whose ResourceKey is itself an extension
+    // (<DynamicResource x:Key="Fg" ResourceKey="{x:Static ThemeKeys.TextBrush}"/>) — the common theme-key
+    // alias — lowers to a ResourceReference carrying the resolved static key object.
+    public void Lowered_ElementFormDynamicResource_NestedStaticKeyAlias()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>" +
+            "<DynamicResource x:Key=\"Fg\" ResourceKey=\"{x:Static ThemeKeys.TextBrush}\"/>" +
+            "</ResourceDictionary>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("new global::Cursorial.UI.ResourceReference(", lowered);
+        Assert.Contains("ThemeKeys", lowered);       // the nested {x:Static} key resolved, not a literal string
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.DoesNotContain("default(object)", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var reference = Assert.IsType<ResourceReference>(InvokeBuilder(assembly, "BuildMyView")["Fg"]);
+        Assert.Equal(ThemeKeys.TextBrush, reference.Key); // keyed by the resolved static value (object), not "ThemeKeys.TextBrush"
+    }
 }

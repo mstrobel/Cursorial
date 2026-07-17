@@ -1130,8 +1130,46 @@ internal sealed class XamlParser
     /// </summary>
     private int ParseExtensionElement(int objectIndex, string extensionName, bool inDeferred, int lineInfo, int line, int column)
     {
+        var node = ReadExtensionNode(extensionName, line, column, out var key);
+
+        var members = new List<MemberRecord>();
+        var flags = ObjectFlags.IsMarkupExtension;
+
+        if (key is not null)
+        {
+            members.Add(DirectiveMember(XamlDirectiveKind.Key, key, lineInfo));
+            flags |= ObjectFlags.HasKey;
+        }
+
+        // The produced value slot (memberId −1): a Folded constant, or a live ExtensionRecord. A suppressed
+        // build (a reported error) leaves a null so instantiation stays well-defined.
+        if (BuildExtensionValue(node, member: null, inDeferred, line, column, out bool folded, out int valueIndex))
+            members.Add(new MemberRecord(-1, folded ? XamlValueKind.Folded : XamlValueKind.Extension, valueIndex, 0, lineInfo));
+        else
+            members.Add(new MemberRecord(-1, XamlValueKind.Folded, _builder.AddConstant(null), 0, lineInfo));
+
+        int memberStart = _builder.MemberCount;
+        foreach (var m in members)
+            _builder.AddMember(m);
+
+        _builder.SetObject(objectIndex,
+            new ObjectRecord(typeId: -1, memberStart, (ushort) members.Count, flags, subtreeLength: 1, lineInfo));
+
+        return objectIndex;
+    }
+
+    /// <summary>
+    /// Reads the markup-extension element the reader is positioned on into a <see cref="MarkupExtensionNode"/>:
+    /// attributes become NAMED arguments (a curly value nests), <c>x:Key</c> is returned via
+    /// <paramref name="key"/> for a dictionary entry, and PROPERTY-ELEMENT children
+    /// (<c>&lt;DynamicResource.ResourceKey&gt;…&lt;/&gt;</c>) become named arguments whose value is the child's
+    /// text or a nested markup extension (recursed). A non-property-element / non-extension child is skipped.
+    /// </summary>
+    private MarkupExtensionNode ReadExtensionNode(string extensionName, int line, int column, out string? key)
+    {
+        key = null;
         bool isEmpty = _reader.IsEmptyElement;
-        string? key = null;
+        int elementDepth = _reader.Depth;
         var named = new List<MarkupExtensionNamedArgument>();
 
         if (_reader.MoveToFirstAttribute())
@@ -1164,35 +1202,69 @@ internal sealed class XamlParser
             _reader.MoveToElement();
         }
 
+        // Property-element argument children: <Ext.ArgName>value</Ext.ArgName> — the verbose form of an
+        // attribute argument (a nested extension value that is awkward inline).
         if (!isEmpty)
-            SkipCurrentSubtree(); // attributes-only element form
-
-        var node = new MarkupExtensionNode(extensionName, positionalArguments: null, named, line, column);
-
-        var members = new List<MemberRecord>();
-        var flags = ObjectFlags.IsMarkupExtension;
-
-        if (key is not null)
         {
-            members.Add(DirectiveMember(XamlDirectiveKind.Key, key, lineInfo));
-            flags |= ObjectFlags.HasKey;
+            while (_reader.Read())
+            {
+                if (_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == elementDepth)
+                    break;
+                if (_reader.NodeType != XmlNodeType.Element)
+                    continue;
+
+                int dot = _reader.LocalName.IndexOf('.');
+                if (dot <= 0)
+                {
+                    SkipCurrentSubtree(); // not a property element of this extension
+                    continue;
+                }
+
+                string argName = _reader.LocalName.Substring(dot + 1);
+                if (ReadExtensionArgumentValue(line, column) is { } argValue)
+                    named.Add(new MarkupExtensionNamedArgument(argName, argValue, line, column));
+            }
         }
 
-        // The produced value slot (memberId −1): a Folded constant, or a live ExtensionRecord. A suppressed
-        // build (a reported error) leaves a null so instantiation stays well-defined.
-        if (BuildExtensionValue(node, member: null, inDeferred, line, column, out bool folded, out int valueIndex))
-            members.Add(new MemberRecord(-1, folded ? XamlValueKind.Folded : XamlValueKind.Extension, valueIndex, 0, lineInfo));
-        else
-            members.Add(new MemberRecord(-1, XamlValueKind.Folded, _builder.AddConstant(null), 0, lineInfo));
+        return new MarkupExtensionNode(extensionName, positionalArguments: null, named, line, column);
+    }
 
-        int memberStart = _builder.MemberCount;
-        foreach (var m in members)
-            _builder.AddMember(m);
+    /// <summary>Reads a markup-extension property-element argument's value (the reader is on the
+    /// <c>&lt;Ext.ArgName&gt;</c> element): its text, or a single nested markup-extension element (recursed);
+    /// a non-extension object child is skipped and yields null.</summary>
+    private MarkupExtensionArgumentValue? ReadExtensionArgumentValue(int line, int column)
+    {
+        if (_reader.IsEmptyElement)
+            return null;
 
-        _builder.SetObject(objectIndex,
-            new ObjectRecord(typeId: -1, memberStart, (ushort) members.Count, flags, subtreeLength: 1, lineInfo));
+        int argDepth = _reader.Depth;
+        var text = new StringBuilder();
+        MarkupExtensionArgumentValue? nested = null;
 
-        return objectIndex;
+        while (_reader.Read())
+        {
+            if (_reader.NodeType == XmlNodeType.EndElement && _reader.Depth == argDepth)
+                break;
+
+            if (_reader.NodeType == XmlNodeType.Element)
+            {
+                if (BuiltInExtensionElementName(_reader.NamespaceURI, _reader.LocalName) is { } nestedName)
+                    nested = MarkupExtensionArgumentValue.FromNested(ReadExtensionNode(nestedName, line, column, out _));
+                else
+                    SkipCurrentSubtree(); // a non-extension object as an extension argument is unsupported
+            }
+            else if (_reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA
+                                     or XmlNodeType.SignificantWhitespace or XmlNodeType.Whitespace)
+            {
+                text.Append(_reader.Value);
+            }
+        }
+
+        if (nested is { } n)
+            return n;
+
+        string literal = text.ToString().Trim();
+        return literal.Length > 0 ? MarkupExtensionArgumentValue.FromText(literal) : null;
     }
 
     /// <summary>Parses a curly markup extension appearing as an element attribute's value; on a grammar error

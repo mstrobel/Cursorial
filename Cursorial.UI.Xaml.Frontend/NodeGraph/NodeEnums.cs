@@ -39,10 +39,13 @@ internal enum ObjectFlags : ushort
 
     /// <summary>
     /// A markup extension in ELEMENT form (<c>&lt;DynamicResource ResourceKey="X"/&gt;</c>): the object has
-    /// no CLR type (<see cref="ObjectRecord.TypeId"/> is −1) and a single synthetic value member (memberId
-    /// −1, <see cref="XamlValueKind.Extension"/>/<see cref="XamlValueKind.Folded"/>) carrying the extension
-    /// the loader provides a value from at instantiation. Used in dictionary/collection-item positions;
-    /// a scalar member value is emitted directly as an <see cref="XamlValueKind.Extension"/> member instead.
+    /// no CLR type (<see cref="ObjectRecord.TypeId"/> is −1) and a synthetic VALUE member (memberId −1,
+    /// <see cref="XamlValueKind.Extension"/>/<see cref="XamlValueKind.Folded"/>) carrying the extension the
+    /// loader provides a value from at instantiation. When the element carries an <c>x:Key</c> (a dictionary
+    /// alias entry) a <see cref="XamlValueKind.Directive"/> key member accompanies it and
+    /// <see cref="HasKey"/> is set — so the object may hold one or two members; the value member is the
+    /// non-directive one. Used in dictionary/collection-item positions; a scalar member value is emitted
+    /// directly as an <see cref="XamlValueKind.Extension"/> member on the target instead.
     /// </summary>
     IsMarkupExtension = 1 << 8,
 }

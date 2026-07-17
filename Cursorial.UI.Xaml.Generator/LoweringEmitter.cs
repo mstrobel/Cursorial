@@ -850,6 +850,24 @@ internal static class LoweringEmitter
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
+
+        // A markup extension in element form reached in a VALUE position — a collection item, content, a
+        // Styles/merged child — is bound to a local from its standalone value expression. (A scalar member
+        // value, Setter.Value, and a keyed dictionary entry handle attach / keying BEFORE calling EmitObject,
+        // so those never reach here.) An extension with no standalone value (Binding/custom) degrades to a
+        // CURG3001 note with a null placeholder so the emitted C# still compiles.
+        if (obj.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            var expr = MarkupExtensionEntryExpr(c, in obj);
+            if (expr is null)
+            {
+                c.Todo("element-form markup extension in this position (Binding/TemplateBinding/custom entry) not yet lowered");
+                expr = "default(object)";
+            }
+
+            c.Line($"var {varExpr} = {expr};");
+            return;
+        }
         c.CurrentLineInfo = obj.PackedLineInfo;
 
         var objType = TypeSymbolOf(c.Doc, obj.TypeId);
@@ -1444,11 +1462,11 @@ internal static class LoweringEmitter
         if (value.Kind == XamlValueKind.Folded)
             return FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]);
 
-        ref readonly var ext = ref c.Doc.Extensions[value.ValueIndex];
-        if (ext.Kind == ExtensionKind.DynamicResource && !ext.PayloadIsParsedExtension)
-            return $"new global::Cursorial.UI.ResourceReference(\"{Escape(c.Doc.Strings[ext.Payload])}\")";
-
-        return null;
+        // Reuse the same *Resource value lowering the curly Setter.Value form uses: a DynamicResource
+        // carrier (literal OR a nested {x:Static}/{x:Type} key — the common theme-key alias), and a
+        // same-dictionary StaticResource (the already-built entry's var). Binding/TemplateBinding/custom
+        // have no standalone value expression and return null (the caller degrades to CURG3001).
+        return ResourceValueExpr(c, in c.Doc.Extensions[value.ValueIndex]);
     }
 
     /// <summary>The value slot of an element-form markup-extension object (the single Extension/Folded member;

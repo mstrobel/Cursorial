@@ -982,7 +982,8 @@ internal sealed class XamlParser
                 // extension ({DynamicResource {x:Static ThemeKeys.X}}, X44a/X57a) the frontend cannot
                 // resolve it (no static resolver in netstandard2.0) — store the INNER key node and let
                 // the loader resolve it at instantiate (PayloadIsParsedExtension, XD7a).
-                if (node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Nested is {} keyNode)
+                var primary = PrimaryArgument(node, kind);
+                if (primary is { Nested: {} keyNode })
                 {
                     int parsedKey = _builder.AddParsedExtension(keyNode);
 
@@ -994,7 +995,7 @@ internal sealed class XamlParser
                     );
                 }
 
-                string key = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
+                string key = primary is { Text: {} t } ? t : string.Empty;
                 int payload = _builder.InternString(key);
                 return _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
             }
@@ -1072,10 +1073,33 @@ internal sealed class XamlParser
                _                  => ExtensionKind.Custom,
            };
 
+    /// <summary>
+    /// The named argument a built-in extension's single positional argument also binds to (WPF
+    /// property-name parity), so <c>{DynamicResource X}</c>, <c>{DynamicResource ResourceKey=X}</c>, and
+    /// the element form <c>&lt;DynamicResource ResourceKey="X"/&gt;</c> resolve identically. Also the
+    /// primary property name for element form. Null when there is no single primary (<c>x:Null</c>).
+    /// </summary>
+    internal static string? BuiltInPrimaryArgName(ExtensionKind kind) => kind switch
+    {
+        ExtensionKind.StaticResource or ExtensionKind.DynamicResource => "ResourceKey",
+        ExtensionKind.Type            => "TypeName",
+        ExtensionKind.Static          => "Member",
+        ExtensionKind.Reference       => "Name",
+        ExtensionKind.TemplateBinding => "Property",
+        ExtensionKind.Binding         => "Path",
+        _                             => null,
+    };
+
+    /// <summary>The extension's primary argument: the first positional, else the named primary (WPF parity).</summary>
+    private static MarkupExtensionArgumentValue? PrimaryArgument(MarkupExtensionNode node, ExtensionKind kind)
+        => node.PositionalArguments.Count > 0
+               ? node.PositionalArguments[0]
+               : BuiltInPrimaryArgName(kind) is { } named ? node.FindNamed(named) : null;
+
     private bool TryFoldIntrinsicExtension(ExtensionKind kind, MarkupExtensionNode node, int line, int column, out object? folded)
     {
         folded = null;
-        string arg = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is {} t ? t : string.Empty;
+        string arg = PrimaryArgument(node, kind) is { Text: {} t } ? t : string.Empty;
 
         if (kind == ExtensionKind.Type)
         {

@@ -218,8 +218,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "TemplateBinding target is not a UIObject.", line, column);
 
-        // The single positional argument names the source property on the templated parent.
-        string sourcePropName = FirstPositional(node)
+        // The source property: the positional argument, or the named Property= (WPF parity, so element
+        // form <TemplateBinding Property="Header"/> and {TemplateBinding Property=Header} both work).
+        string sourcePropName = FirstPositional(node) ?? Named(node, "Property")
             ?? throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "TemplateBinding requires a source property name.", line, column);
 

@@ -742,6 +742,14 @@ public class DataGrid : Control
                 e.Handled = RowsPresenter is { IsEditing: true }; // read-only cells leave Enter unhandled
                 return;
 
+            // Ctrl+C — copy the selected rows as TSV (formatted values, visible columns; the
+            // terminal's native selection is unavailable under mouse tracking, so the grid provides
+            // extraction — §1 [panel]).
+            case Key.Character when ctrl && e.Text.Length == 1 && (e.Text.Span[0] is 'c' or 'C'):
+                CopySelectionToClipboard();
+                e.Handled = true;
+                return;
+
             // Ctrl+A — select all (the compact inversion).
             case Key.Character when ctrl && e.Text.Length == 1 && (e.Text.Span[0] is 'a' or 'A'):
                 RowSelection.SelectAll();
@@ -794,6 +802,48 @@ public class DataGrid : Control
     internal void OpenFilterPopup(DataGridColumn column)
     {
         // The checklist-popup stage (design doc §3.4) fills this in; the header's ▾ zone routes here.
+    }
+
+    /// <summary>
+    /// Copies the selected rows to the terminal clipboard (OSC 52) as TSV — formatted values,
+    /// visible columns, view order; falls back to the focus row when nothing is selected.
+    /// </summary>
+    public void CopySelectionToClipboard()
+    {
+        if (_controller is null)
+            return;
+
+        var snapshot = Snapshot;
+        var ids = RowSelection.IsEmpty
+            ? FocusRowIdOrEmpty(snapshot)
+            : RowSelection.MaterializeSelectedIds(snapshot);
+        if (ids.Count == 0)
+            return;
+
+        var visible = Columns.Where(c => c.Visible).ToList();
+        var builder = new System.Text.StringBuilder();
+        foreach (int rowId in ids)
+        {
+            for (int c = 0; c < visible.Count; c++)
+            {
+                if (c > 0)
+                    builder.Append('\t');
+                builder.Append(_controller.FormatCell(rowId, visible[c]));
+            }
+            builder.Append('\n');
+        }
+
+        UIApplication.Current?.Clipboard.SetText(builder.ToString());
+    }
+
+    private List<int> FocusRowIdOrEmpty(DataViewSnapshot snapshot)
+    {
+        if (FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count &&
+            snapshot.GetRow(FocusViewIndex) is { IsGroup: false, RowId: >= 0 } row)
+        {
+            return [row.RowId];
+        }
+        return [];
     }
 
     /// <summary>Brings a view row into the viewport (the drawn-rows analog of bring-into-view — §3.1).</summary>

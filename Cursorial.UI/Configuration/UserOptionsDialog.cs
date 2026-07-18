@@ -63,6 +63,7 @@ public sealed class UserOptionsDialog : Window
 
     private UIElement BuildContent()
     {
+        var nextTabIndex = 0;
         var root = new DockPanel { LastChildFill = true, Margin = new Margins(1, 0) };
 
         // ── scope switch (top) ─────────────────────────────────────────────────────────
@@ -75,12 +76,20 @@ public sealed class UserOptionsDialog : Window
 
         scopeRow.Children.Add(new TextBlock { Text = "Editing:" });
 
-        var globalScope = new RadioButton { Content = "_Global", GroupName = "options-scope", IsChecked = true };
+        var globalScope = new RadioButton
+                          {
+                              Content = "_Global",
+                              GroupName = "options-scope",
+                              IsChecked = true,
+                              TabIndex = nextTabIndex++
+                          };
+
         var appScope = new RadioButton
-        {
-            Content = $"This _application ({_model.ApplicationId})",
-            GroupName = "options-scope"
-        };
+                       {
+                           Content = $"This _application ({_model.ApplicationId})",
+                           GroupName = "options-scope",
+                           TabIndex = nextTabIndex++
+                       };
 
         globalScope.Checked += (_, _) => _model.IsEditingApplicationScope = false;
         appScope.Checked += (_, _) => _model.IsEditingApplicationScope = true;
@@ -146,7 +155,7 @@ public sealed class UserOptionsDialog : Window
         root.Children.Add(footer);
 
         // ── tabs (fill) ────────────────────────────────────────────────────────────────
-        var tabs = new TabControl();
+        var tabs = new TabControl { TabIndex = nextTabIndex++ };
 
         foreach (var category in _model.Categories)
         {
@@ -172,7 +181,7 @@ public sealed class UserOptionsDialog : Window
                 if (option.Descriptor.ReservedForFuture)
                     anyFuture = true;
 
-                page.Children.Add(OptionRowFactory.BuildRow(option));
+                page.Children.Add(OptionRowFactory.BuildRow(option, ref nextTabIndex));
             }
 
             if (anyFuture)
@@ -194,6 +203,9 @@ public sealed class UserOptionsDialog : Window
                 Header = "_" + category.DisplayName,
                 Content = new ScrollViewer { Content = page, MaxHeight = 30 }
             });
+
+            foreach (var button in buttons.Children)
+                button.TabIndex = nextTabIndex++;
         }
 
         root.Children.Add(tabs);

@@ -1574,7 +1574,7 @@ internal static class ControlThemes
                 {
                     new Style(Selectors.Nesting().Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.MutedBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_Glyph"))
+                    new Style(Selectors.Nesting().PseudoClass(":focus").Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.TextBrush),
                     new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.AccentBrush),

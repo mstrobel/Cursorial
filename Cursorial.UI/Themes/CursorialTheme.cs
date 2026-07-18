@@ -471,6 +471,8 @@ public static class CursorialTheme
         rgb[ThemeKeys.RibbonContextualFillBrush] = new SolidColorBrush(dark ? Color.FromHex("#2a2440") : Color.FromHex("#e0d8ef"));
         rgb[ThemeKeys.RibbonContextualUnderlinePen] = new Pen(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e")) { Weight = StrokeWeight.Heavy };
 
+        rgb[ThemeKeys.KeyTipTextWeight] = TextWeight.Normal;
+        
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
 
         // (B,Ansi16): hand-picked palette indices — beat the quantizer (spec §1). Pinned for role

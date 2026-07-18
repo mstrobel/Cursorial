@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
 
@@ -111,9 +112,10 @@ public sealed class ItemsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var template = owner.ItemsPanel ?? new ItemsPanelTemplate(_ => new StackPanel());
-        _panel = template.Build(new TemplateBuildContext(owner, new NameScopeDictionary())); // throws if the root isn't a Panel
 
+        _panel = template.Build(new TemplateBuildContext(owner, new NameScopeDictionary())); // throws if the root isn't a Panel
         _panel.IsItemsHost = true; // its Children adopt the containers visually only (logical parent = the ItemsControl)
+
         AddVisualChild(_panel);
 
         if (PanelHost is { } host)

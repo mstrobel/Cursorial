@@ -128,8 +128,25 @@ public abstract partial class UIElement : UIObject
     /// <param name="element">The element to evaluate.</param>
     /// <returns><c>true</c> if <paramref name="element"/> is a logical or visual descendant of this element.</returns>
     /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
-    public bool IsAncestorOf(UIElement? element) => 
-        element != null && (element == this || IsAncestorOf(element.VisualParent ?? element.UIParent));
+    public bool IsAncestorOf(UIElement? element) => IsLogicalAncestorOf(element) || IsVisualAncestorOf(element);
+
+    /// <summary>
+    /// Evaluates whether this element is a logical ancestor of <paramref name="element"/>.
+    /// </summary>
+    /// <param name="element">The element to evaluate.</param>
+    /// <returns><c>true</c> if <paramref name="element"/> is a logical descendant of this element.</returns>
+    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
+    public bool IsLogicalAncestorOf(UIElement? element) => 
+        element != null && (element == this || IsLogicalAncestorOf(element.UIParent));
+
+    /// <summary>
+    /// Evaluates whether this element is a visual ancestor of <paramref name="element"/>.
+    /// </summary>
+    /// <param name="element">The element to evaluate.</param>
+    /// <returns><c>true</c> if <paramref name="element"/> is a visual descendant of this element.</returns>
+    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
+    public bool IsVisualAncestorOf(UIElement? element) => 
+        element != null && (element == this || IsVisualAncestorOf(element._visualParent));
 
     /// <summary>
     /// Adopts <paramref name="child"/> into the visual tree at <paramref name="index"/> (−1 =

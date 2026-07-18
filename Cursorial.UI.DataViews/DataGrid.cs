@@ -526,6 +526,10 @@ public class DataGrid : Control
         }
 
         RowsPresenter?.InvalidateBand();
+
+        // Double-click begins editing the pressed cell (the DevExpress gesture; §3.2).
+        if (clickCount >= 2)
+            BeginEdit();
     }
 
     /// <summary>Resolves a view range to row ids at gesture time (§3.3) and applies it.</summary>
@@ -556,12 +560,121 @@ public class DataGrid : Control
             RowSelection.SelectRange(span, lead);
     }
 
+    /// <summary>Sets the focus cell programmatically (view-space row + visible-column index).</summary>
+    public void SetFocusCell(int viewIndex, int columnIndex)
+    {
+        var snapshot = Snapshot;
+        FocusViewIndex = Math.Clamp(viewIndex, -1, Math.Max(-1, snapshot.Count - 1));
+        int visible = RowsPresenter?.ColumnLayout.Entries.Count ?? Columns.Count(c => c.Visible);
+        FocusColumnIndex = Math.Clamp(columnIndex, -1, Math.Max(-1, visible - 1));
+        RowsPresenter?.InvalidateBand();
+    }
+
+    // ── In-cell editing (§3.2 — the owner mandate; the TextBox editor path) ──────────────────────
+
+    /// <summary>Begins editing the focused cell (F2/Enter/double-click); no-op on read-only columns.</summary>
+    public void BeginEdit()
+    {
+        var presenter = RowsPresenter;
+        var snapshot = Snapshot;
+        if (presenter is null || _controller is null ||
+            FocusViewIndex < 0 || FocusViewIndex >= snapshot.Count)
+        {
+            return;
+        }
+
+        var row = snapshot.GetRow(FocusViewIndex);
+        if (row.IsGroup)
+            return;
+
+        int columnIndex = Math.Max(0, FocusColumnIndex);
+        var entries = presenter.ColumnLayout.Entries;
+        if (columnIndex >= entries.Count)
+            return;
+
+        var column = entries[columnIndex].Column;
+        if (!_controller.IsColumnEditable(column))
+            return;
+
+        FocusColumnIndex = columnIndex;
+        presenter.BeginEdit(FocusViewIndex, columnIndex, _controller.FormatCell(row.RowId, column));
+    }
+
+    /// <summary>Commits the hosted editor's text through the compiled setter; keeps editing on parse failure.</summary>
+    public bool CommitEdit()
+    {
+        var presenter = RowsPresenter;
+        if (presenter is null || !presenter.IsEditing || _controller is null)
+            return false;
+
+        var (viewIndex, columnIndex) = presenter.EditCell;
+        var snapshot = Snapshot;
+        string text = presenter.EditorText ?? string.Empty;
+        if (viewIndex >= snapshot.Count)
+        {
+            presenter.EndEditVisual();
+            return false;
+        }
+
+        var row = snapshot.GetRow(viewIndex);
+        var column = presenter.ColumnLayout.Entries[columnIndex].Column;
+        if (!_controller.TrySetCellFromText(row.RowId, column, text))
+            return false; // unparseable — the editor stays open for correction
+
+        presenter.EndEditVisual();
+        return true;
+    }
+
+    /// <summary>Cancels the hosted editor without writing.</summary>
+    public void CancelEdit() => RowsPresenter?.EndEditVisual();
+
     /// <summary>The keyboard navigation surface (§3.3 — legacy-safe gestures).</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (e.Handled)
             return;
+
+        // Editing mode owns Enter/Esc/Tab (the edit bar's contract — commit/cancel/next-cell);
+        // everything else stays with the hosted TextBox.
+        if (RowsPresenter is { IsEditing: true } editing)
+        {
+            switch (e.Key)
+            {
+                case Key.Enter:
+                    CommitEdit();
+                    e.Handled = true;
+                    return;
+                case Key.Escape:
+                    CancelEdit();
+                    e.Handled = true;
+                    return;
+                case Key.Tab:
+                {
+                    if (CommitEdit())
+                    {
+                        int visible = editing.ColumnLayout.Entries.Count;
+                        bool back = (e.Modifiers & KeyModifiers.Shift) != 0;
+                        FocusColumnIndex = back
+                            ? Math.Max(0, FocusColumnIndex - 1)
+                            : Math.Min(Math.Max(0, visible - 1), FocusColumnIndex + 1);
+                        BeginEdit();
+                    }
+                    e.Handled = true;
+                    return;
+                }
+                default:
+                    return; // the editor owns the rest
+            }
+        }
+
+        // F2 (or Enter on a data row — handled below with the group-row Enter) begins editing.
+        if (e.Key == Key.F2)
+        {
+            BeginEdit();
+            e.Handled = true;
+            return;
+        }
 
         var snapshot = Snapshot;
         if (snapshot.Count == 0)
@@ -622,6 +735,12 @@ public class DataGrid : Control
                 e.Handled = true;
                 return;
             }
+
+            // Enter on a data row begins editing the focused cell (§3.2).
+            case Key.Enter when !focused.IsGroup && focused.RowId >= 0:
+                BeginEdit();
+                e.Handled = RowsPresenter is { IsEditing: true }; // read-only cells leave Enter unhandled
+                return;
 
             // Ctrl+A — select all (the compact inversion).
             case Key.Character when ctrl && e.Text.Length == 1 && (e.Text.Span[0] is 'a' or 'A'):

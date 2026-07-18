@@ -180,6 +180,60 @@ public class DataGridRenderTests
     }
 
     [Fact]
+    public void F2_edit_commit_writes_through_the_compiled_setter_and_reshapes()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        grid.CycleSort(grid.Columns[2]); // Amount ascending
+        host.RunUntilIdle();
+
+        host.SendClick(4, 1);            // focus the smallest row (SO-1042, 12450), column 0-ish
+        host.RunUntilIdle();
+
+        // Move the focus cell to Amount (index 2) and begin editing.
+        grid.SetFocusCell(grid.FocusViewIndex, 2);
+        host.SendKey(Cursorial.Input.Key.F2);
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter!.IsEditing);
+
+        // Type a new value: select-all is active, so typed text replaces.
+        host.SendText("99999");
+        host.RunUntilIdle();
+        host.SendKey(Cursorial.Input.Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.False(grid.RowsPresenter!.IsEditing);
+        Assert.Equal(99999m, source.Single(o => o.Id == "SO-1042").Amount);
+
+        // The write ticked the live pipeline: SO-1042 repositioned to the end.
+        Assert.Contains("SO-1046", Row(host, 1));
+        Assert.Contains("SO-1042", Row(host, 4));
+    }
+
+    [Fact]
+    public void Escape_cancels_editing_without_writing()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        host.SendClick(4, 1);
+        host.RunUntilIdle();
+        grid.SetFocusCell(grid.FocusViewIndex, 2);
+        host.SendKey(Cursorial.Input.Key.F2);
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter!.IsEditing);
+
+        host.SendText("777");
+        host.RunUntilIdle();
+        host.SendKey(Cursorial.Input.Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.False(grid.RowsPresenter!.IsEditing);
+        Assert.Equal(12450m, source[0].Amount); // untouched
+    }
+
+    [Fact]
     public void Scrolling_a_tall_source_shows_later_rows()
     {
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(50, 10) });

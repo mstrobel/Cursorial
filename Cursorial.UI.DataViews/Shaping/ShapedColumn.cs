@@ -49,6 +49,16 @@ internal abstract class ShapedColumn
 
     /// <summary>Builds the set-membership expression for the checklist filter (typed hash set baked at build).</summary>
     internal abstract Expression BuildSetExpression(ParameterExpression slot, IReadOnlyList<object?> values);
+
+    /// <summary>Whether the column has a compiled write-back setter (the editing lane — §3.2).</summary>
+    public abstract bool IsEditable { get; }
+
+    /// <summary>
+    /// Parses <paramref name="text"/> to the key type and writes it through the compiled setter
+    /// (the edit-commit path). False when the column is read-only or the text doesn't parse —
+    /// the editor stays open for correction.
+    /// </summary>
+    public abstract bool TrySetFromText(object row, string text);
 }
 
 /// <summary>The typed column (see <see cref="ShapedColumn"/>).</summary>
@@ -111,6 +121,30 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
 
     /// <summary>The compiled key comparison (exposed for the repair/aggregate kits).</summary>
     internal Comparison<TKey> KeyComparison => _comparison;
+
+    /// <summary>The compiled write-back setter (null = read-only column; the editing lane — §3.2).</summary>
+    internal Action<TRow, TKey>? Setter { get; init; }
+
+    public override bool IsEditable => Setter is not null;
+
+    public override bool TrySetFromText(object row, string text)
+    {
+        if (Setter is null)
+            return false;
+
+        TKey value;
+        try
+        {
+            value = ShapingFilter.ConvertLiteral<TKey>(text.Length == 0 && default(TKey) is null ? null : text)!;
+        }
+        catch (Exception e) when (e is FormatException or InvalidCastException or OverflowException or ArgumentException)
+        {
+            return false; // unparseable — the editor stays open for correction
+        }
+
+        Setter((TRow)row, value);
+        return true;
+    }
 
     internal override Expression BuildCompareExpression(ParameterExpression a, ParameterExpression b, bool descending)
     {

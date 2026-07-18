@@ -168,6 +168,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     protected override Size MeasureOverride(Size availableSize)
     {
         FillBandCache();
+
+        // The hosted editor (the §3.2 element-hosting special case) measures at its cell width.
+        if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
+            _editor.Measure(new Size(Math.Max(1, ColumnLayout.Entries[_editColumnIndex].Width), 1));
+
         // The SCP host path measures content at the viewport; the extent publishes via GetExtent.
         return new Size(Math.Min(ColumnLayout.TotalWidth, availableSize.Columns), Math.Min(ItemCount, availableSize.Rows));
     }
@@ -374,6 +379,75 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         }
 
         context.DrawText(x, y, text, brush);
+    }
+
+    // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────
+
+    private Cursorial.UI.Controls.TextBox? _editor;
+    private int _editViewIndex = -1;
+    private int _editColumnIndex = -1;
+
+    /// <summary>Whether an editor is hosted (the grid's key routing branches on it).</summary>
+    internal bool IsEditing => _editor is not null;
+
+    /// <summary>The edited (viewIndex, columnIndex) while editing.</summary>
+    internal (int ViewIndex, int ColumnIndex) EditCell => (_editViewIndex, _editColumnIndex);
+
+    /// <summary>
+    /// Hosts the TextBox editor at a cell (v1 — the editor suite rides the same host later): the
+    /// presenter adopts the element as a visual/logical child, arranges it at the cell's CONTENT
+    /// rect (it scrolls with the band naturally), and focuses it. The drawn cell underneath is
+    /// painted over by the editor's own background.
+    /// </summary>
+    internal void BeginEdit(int viewIndex, int columnIndex, string initialText)
+    {
+        EndEditVisual();
+
+        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        _editor = editor;
+        _editViewIndex = viewIndex;
+        _editColumnIndex = columnIndex;
+        AdoptChild(editor, index: -1);
+        InvalidateMeasure();
+
+        // Focus after the editor materializes (measure/arrange run first) — the parked-work idiom.
+        UIApplication.Current?.Dispatcher.Post(() =>
+        {
+            if (_editor == editor)
+            {
+                editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+                editor.SelectAll();
+            }
+        });
+    }
+
+    /// <summary>The editor's current text (the commit path reads before teardown).</summary>
+    internal string? EditorText => _editor?.Text;
+
+    /// <summary>Tears the editor down and returns focus to the grid.</summary>
+    internal void EndEditVisual()
+    {
+        if (_editor is null)
+            return;
+        DisownChild(_editor);
+        _editor = null;
+        _editViewIndex = -1;
+        _editColumnIndex = -1;
+        InvalidateMeasure();
+        InvalidateVisual();
+        _owner?.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        // The editor arranges at its cell's content rect (content coords == local coords).
+        if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
+        {
+            var entry = ColumnLayout.Entries[_editColumnIndex];
+            _editor.Arrange(new Rect(entry.X + DataGridColumnLayout.CellPadding, _editViewIndex,
+                                     Math.Max(1, entry.Width), 1));
+        }
+        return base.ArrangeOverride(finalSize);
     }
 
     // ── Hit testing + mouse (the single hit leaf — §3.2) ─────────────────────────────────────────

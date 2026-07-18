@@ -351,6 +351,57 @@ internal static class ShapingCodegen
             ? value.GetValueOrDefault().TryFormat(destination, out int written, format, culture) ? written : -1
             : 0;
 
+    // ── Setters (the editing lane — design doc §3.2) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the write-back lambda for a selector whose body is a member chain ending in a writable
+    /// property/field (<c>row.Customer.Name = value</c>, null-propagating through reference
+    /// intermediates — a broken chain is a no-op write, the binding-engine convention). Null when
+    /// the selector isn't a settable chain (computed keys are read-only — the editor won't open).
+    /// </summary>
+    public static LambdaExpression? TryBuildSetter(LambdaExpression selector)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+
+        // Unwrap Convert nodes; require a MemberExpression chain rooted at the row parameter.
+        Expression body = selector.Body;
+        while (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+            body = unary.Operand;
+
+        if (body is not MemberExpression leaf)
+            return null;
+
+        bool writable = leaf.Member switch
+        {
+            PropertyInfo property => property.SetMethod is { IsPublic: true },
+            FieldInfo field => !field.IsInitOnly,
+            _ => false,
+        };
+        if (!writable)
+            return null;
+
+        // Validate the chain roots at the parameter.
+        for (Expression? walk = leaf.Expression; walk is not null; walk = (walk as MemberExpression)?.Expression)
+        {
+            if (walk == selector.Parameters[0])
+                break;
+            if (walk is not MemberExpression)
+                return null;
+        }
+
+        var row = selector.Parameters[0];
+        var value = Expression.Parameter(leaf.Type, "value");
+        Expression assign = Expression.Assign(leaf, value);
+
+        // Null-guard reference intermediates: if (row.Customer != null) row.Customer.Name = value.
+        if (leaf.Expression is MemberExpression owner && !owner.Type.IsValueType)
+            assign = Expression.IfThen(Expression.NotEqual(owner, Expression.Constant(null, owner.Type)), assign);
+
+        // Force a void body so the lambda infers Action<TRow,TKey> — a bare Assign returns the
+        // assigned value and would infer Func<TRow,TKey,TKey> (the InvalidCastException trap).
+        return Expression.Lambda(Expression.Block(typeof(void), assign), row, value);
+    }
+
     // ── Column factory ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>Builds the typed column for a row selector lambda (closed generics resolved at runtime).</summary>
@@ -379,5 +430,12 @@ internal static class ShapingCodegen
             typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
                 ? new CollationKeyStore(stringComparison)
                 : null)
-        { Identity = identity };
+        {
+            Identity = identity,
+            // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
+            // computed keys stay read-only (the editor won't open on them).
+            Setter = TryBuildSetter(selector) is { } setter
+                ? (Action<TRow, TKey>)setter.Compile()
+                : null,
+        };
 }

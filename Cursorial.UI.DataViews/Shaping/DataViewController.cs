@@ -57,6 +57,16 @@ public abstract class DataViewController : IDisposable
     /// <summary>The row object for a row id (selection/copy surfaces).</summary>
     public abstract object GetRowObject(int rowId);
 
+    /// <summary>Whether a column carries the compiled write-back setter (the editing lane — §3.2).</summary>
+    public abstract bool IsColumnEditable(object columnKey);
+
+    /// <summary>
+    /// The edit-commit path (§3.2): parses <paramref name="text"/> to the column's key type and
+    /// writes through the compiled setter. A non-INPC row ticks manually (INPC rows tick through
+    /// the normal live pipeline). False when read-only or unparseable — the editor stays open.
+    /// </summary>
+    public abstract bool TrySetCellFromText(int rowId, object columnKey, string text);
+
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
@@ -222,6 +232,31 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         => FindColumn(columnKey)?.FormatSlot(rowId) ?? string.Empty;
 
     public override object GetRowObject(int rowId) => _store.GetRow(rowId);
+
+    public override bool IsColumnEditable(object columnKey) => FindColumn(columnKey)?.IsEditable == true;
+
+    public override bool TrySetCellFromText(int rowId, object columnKey, string text)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(text);
+
+        var column = FindColumn(columnKey);
+        if (column is null)
+            return false;
+
+        var row = _store.GetRow(rowId);
+        if (row is null || !column.TrySetFromText(row, text))
+            return false;
+
+        // An INPC row already ticked through the shared handler; a plain row ticks here so the
+        // written value reshapes either way.
+        if (row is not INotifyPropertyChanged)
+        {
+            MarkDirty(rowId);
+            ScheduleTick();
+        }
+        return true;
+    }
 
     /// <summary>The typed slot→row accessor (filter Custom leaves; the grid's typed surfaces).</summary>
     public Func<int, TRow> RowAccessor => _store.GetRow;

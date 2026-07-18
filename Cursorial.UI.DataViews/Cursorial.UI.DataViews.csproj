@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        The data-views suite (design doc docs/ui-layer-design/dataviews-design.md; visual spec
+        docs/ui-layer-design/tokyo-night-terminal-datagrid.html) — a DevExpress-style DataGrid over a
+        UI-free data-shaping engine (Shaping/): expression-tree-compiled typed accessors/comparers/
+        formatters/aggregators, adaptive TimSort + incremental K-row repair, filtering, multi-level
+        grouping with summaries, live INCC/INPC updates, and optional background shaping. Rows are
+        drawn directly (the ScrollContentPresenter band contract); the active edit row hosts real
+        editor elements — the sanctioned element-hosting special case. Themes are code-first
+        (Themes/CursorialDataViewsTheme.cs) over the core ThemeKeys spine.
+    -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <!-- NuGet packaging. Shared metadata lives in ../Directory.Build.props; this carries per-package fields only. -->
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PackageId>Cursorial.UI.DataViews</PackageId>
+        <Version>0.4.0</Version>
+        <Description>Data views for Cursorial.UI — a high-performance DataGrid (sorting, multi-level grouping with summaries, filtering, conditional formatting, in-place editing) over a reusable data-shaping controller: expression-tree-compiled typed pipelines, adaptive sorting with incremental live-update repair, and large-dataset row virtualization.</Description>
+        <PackageTags>terminal;tui;ui;datagrid;grid;data;sorting;grouping;filtering;crossplatform</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.UI.DataViews.Tests" />
+    </ItemGroup>
+
+</Project>

@@ -30,6 +30,10 @@
         <!-- The first-party Bars library rides privileged engine seams (the KeyTip overlay's Alt-cue hooks +
              WM surface stack), mirroring the Xaml assembly's grant. Third-party bar libraries stay public-only. -->
         <InternalsVisibleTo Include="Cursorial.UI.Bars" />
+        <!-- The first-party DataViews library rides privileged render/scroll seams (the SCP band window for its
+             direct-draw rows presenter), mirroring the Bars grant. Third-party data controls stay public-only. -->
+        <InternalsVisibleTo Include="Cursorial.UI.DataViews" />
+        <InternalsVisibleTo Include="Cursorial.UI.DataViews.Tests" />
         <InternalsVisibleTo Include="Cursorial.Demo" />
         <InternalsVisibleTo Include="Cursorial.Gallery" />
         <InternalsVisibleTo Include="cursorial-demo" />

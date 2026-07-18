@@ -1,0 +1,142 @@
+using System.Linq.Expressions;
+
+using Cursorial.Rendering.Text;
+using Cursorial.UI.DataViews.Shaping;
+
+namespace Cursorial.UI.DataViews;
+
+/// <summary>The auto-filter row's per-column cell kind (design doc §3.4 — the mockup's mixed filter row).</summary>
+public enum FilterCellKind
+{
+    /// <summary>A text condition editor with the operator grammar (<c>&gt; &gt;= &lt; &lt;= = &lt;&gt;</c>; bare text = contains/starts-with).</summary>
+    Text,
+    /// <summary>The distinct-value checklist anchored to the cell (the mockup's <c>(All) ▾</c> cells).</summary>
+    DistinctPicker,
+    /// <summary>No filter cell for this column.</summary>
+    Disabled,
+}
+
+/// <summary>
+/// One grid column (design doc §3.1 — the panel-mandated public column API): a
+/// <see cref="UIObject"/>-backed description object (XAML-instantiable; the loader fills the grid's
+/// get-only <c>Columns</c>; property-system-backed so bindings/dynamic resources can arrive without
+/// a break). The grid maps columns onto the engine's <see cref="ShapingColumnDescription"/>; the
+/// column instance itself is the shaping identity every sort/group/filter description references.
+/// </summary>
+public class DataGridColumn : UIObject
+{
+    /// <summary>The header caption (defaults to <see cref="FieldName"/> when unset).</summary>
+    public static readonly StyledProperty<string?> HeaderProperty =
+        UIProperty.Register<DataGridColumn, string?>(nameof(Header));
+
+    /// <summary>The dotted property path into the row type (the XAML lane; <see cref="KeySelector"/> is the code lane).</summary>
+    public static readonly StyledProperty<string?> FieldNameProperty =
+        UIProperty.Register<DataGridColumn, string?>(nameof(FieldName));
+
+    /// <summary>The width (fixed cells / Auto band-limited best-fit / star — design doc §1).</summary>
+    public static readonly StyledProperty<DataGridLength> WidthProperty =
+        UIProperty.Register<DataGridColumn, DataGridLength>(nameof(Width), DataGridLength.Auto);
+
+    /// <summary>The lower width bound in cells (applies to every unit).</summary>
+    public static readonly StyledProperty<int> MinWidthProperty =
+        UIProperty.Register<DataGridColumn, int>(nameof(MinWidth), 3);
+
+    /// <summary>The upper width bound in cells (0 = unbounded).</summary>
+    public static readonly StyledProperty<int> MaxWidthProperty =
+        UIProperty.Register<DataGridColumn, int>(nameof(MaxWidth));
+
+    /// <summary>The display format string (also the group-caption/summary format for this column).</summary>
+    public static readonly StyledProperty<string?> FormatProperty =
+        UIProperty.Register<DataGridColumn, string?>(nameof(Format));
+
+    /// <summary>Cell text alignment (numeric columns typically right-align — auto-generation's per-type default).</summary>
+    public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
+        UIProperty.Register<DataGridColumn, TextAlignment>(nameof(TextAlignment));
+
+    /// <summary>Whether header gestures may sort by this column.</summary>
+    public static readonly StyledProperty<bool> AllowSortProperty =
+        UIProperty.Register<DataGridColumn, bool>(nameof(AllowSort), true);
+
+    /// <summary>Whether this column may be a grouping level.</summary>
+    public static readonly StyledProperty<bool> AllowGroupProperty =
+        UIProperty.Register<DataGridColumn, bool>(nameof(AllowGroup), true);
+
+    /// <summary>Whether the filter surfaces (popup + auto-filter row) apply to this column.</summary>
+    public static readonly StyledProperty<bool> AllowFilterProperty =
+        UIProperty.Register<DataGridColumn, bool>(nameof(AllowFilter), true);
+
+    /// <summary>The auto-filter row's cell kind for this column.</summary>
+    public static readonly StyledProperty<FilterCellKind> FilterCellKindProperty =
+        UIProperty.Register<DataGridColumn, FilterCellKind>(nameof(FilterCellKind));
+
+    /// <summary>Whether the column renders (hidden columns keep their shaping identity).</summary>
+    public static readonly StyledProperty<bool> VisibleProperty =
+        UIProperty.Register<DataGridColumn, bool>(nameof(Visible), true);
+
+    /// <summary>String sort/group comparison mode (CurrentCulture default; Ordinal is the perf opt-in — design doc §2.2).</summary>
+    public static readonly StyledProperty<StringComparison> SortModeProperty =
+        UIProperty.Register<DataGridColumn, StringComparison>(nameof(SortMode), StringComparison.CurrentCulture);
+
+    /// <inheritdoc cref="HeaderProperty"/>
+    public string? Header { get => GetValue(HeaderProperty); set => SetValue(HeaderProperty, value); }
+
+    /// <inheritdoc cref="FieldNameProperty"/>
+    public string? FieldName { get => GetValue(FieldNameProperty); set => SetValue(FieldNameProperty, value); }
+
+    /// <inheritdoc cref="WidthProperty"/>
+    public DataGridLength Width { get => GetValue(WidthProperty); set => SetValue(WidthProperty, value); }
+
+    /// <inheritdoc cref="MinWidthProperty"/>
+    public int MinWidth { get => GetValue(MinWidthProperty); set => SetValue(MinWidthProperty, value); }
+
+    /// <inheritdoc cref="MaxWidthProperty"/>
+    public int MaxWidth { get => GetValue(MaxWidthProperty); set => SetValue(MaxWidthProperty, value); }
+
+    /// <inheritdoc cref="FormatProperty"/>
+    public string? Format { get => GetValue(FormatProperty); set => SetValue(FormatProperty, value); }
+
+    /// <inheritdoc cref="TextAlignmentProperty"/>
+    public TextAlignment TextAlignment { get => GetValue(TextAlignmentProperty); set => SetValue(TextAlignmentProperty, value); }
+
+    /// <inheritdoc cref="AllowSortProperty"/>
+    public bool AllowSort { get => GetValue(AllowSortProperty); set => SetValue(AllowSortProperty, value); }
+
+    /// <inheritdoc cref="AllowGroupProperty"/>
+    public bool AllowGroup { get => GetValue(AllowGroupProperty); set => SetValue(AllowGroupProperty, value); }
+
+    /// <inheritdoc cref="AllowFilterProperty"/>
+    public bool AllowFilter { get => GetValue(AllowFilterProperty); set => SetValue(AllowFilterProperty, value); }
+
+    /// <inheritdoc cref="FilterCellKindProperty"/>
+    public FilterCellKind FilterCellKind { get => GetValue(FilterCellKindProperty); set => SetValue(FilterCellKindProperty, value); }
+
+    /// <inheritdoc cref="VisibleProperty"/>
+    public bool Visible { get => GetValue(VisibleProperty); set => SetValue(VisibleProperty, value); }
+
+    /// <inheritdoc cref="SortModeProperty"/>
+    public StringComparison SortMode { get => GetValue(SortModeProperty); set => SetValue(SortModeProperty, value); }
+
+    /// <summary>The typed row→key selector (code-only authoring lane; wins over <see cref="FieldName"/>).</summary>
+    public LambdaExpression? KeySelector { get; set; }
+
+    /// <summary>
+    /// The conditional-formatting rules authored on this column (design doc §2.7 — get-only, the
+    /// collection idiom). The grid collects every column's rules into the engine on each shape push;
+    /// a <see cref="Shaping.PredicateRule"/>'s row-level format rides here too (declared on the
+    /// column whose rule set owns it, evaluated row-wide).
+    /// </summary>
+    public IList<FormatRule> FormatRules { get; } = [];
+
+    /// <summary>The effective header caption.</summary>
+    public string EffectiveHeader => Header ?? FieldName ?? string.Empty;
+
+    /// <summary>Maps this column onto the engine description (the grid's shaping bridge).</summary>
+    internal ShapingColumnDescription ToShapingDescription() => new()
+    {
+        Key = this,
+        FieldName = FieldName,
+        KeySelector = KeySelector,
+        Format = Format,
+        StringComparison = SortMode,
+    };
+}

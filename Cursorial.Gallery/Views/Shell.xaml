@@ -5,6 +5,7 @@
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
+           xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
@@ -514,6 +515,24 @@
             </TabItem>
           </TabControl>
 
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:DataGridViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <Button DockPanel.Dock="Top" Margin="2,1,2,0" HorizontalAlignment="Left"
+                  Content="{Binding FeedLabel}" Command="{Binding ToggleFeed}" />
+
+          <dv:DataGrid Margin="2,1" ItemsSource="{Binding Orders}" />
         </DockPanel>
       </DataTemplate>
 

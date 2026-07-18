@@ -18,6 +18,8 @@ internal sealed class RowStore<TRow>
     private int _slotHighWater;            // slots ever allocated (key-vector capacity requirement)
     private long _nextSequence;
     private readonly Stack<int> _freeSlots = new();
+    private readonly List<int> _deferredFrees = [];
+    private bool _deferReclamation;
 
     /// <summary>Slot → insertion sequence (monotonic per occupancy). Read by the compiled comparer's
     /// tiebreak via <see cref="ShapingCodegen.BuildSlotComparison"/> — through the field, so growth
@@ -102,8 +104,32 @@ internal sealed class RowStore<TRow>
             _slotByRow.Remove(row);
 
         _rows[slot] = default!;   // release the reference
-        _freeSlots.Push(slot);
+        if (_deferReclamation)
+            _deferredFrees.Add(slot);   // §2.6 invariant 2: a referenced slot never recycles mid-shape
+        else
+            _freeSlots.Push(slot);
         return slot;
+    }
+
+    /// <summary>
+    /// Gates slot reclamation while a background shape references the current slot space (design doc
+    /// §2.6 invariant 2): with the gate up, freed slots park in a deferred list — an insert can never
+    /// reuse a slot an in-flight or published snapshot still references. Lowering the gate releases
+    /// the parked slots to the free list.
+    /// </summary>
+    public bool DeferReclamation
+    {
+        get => _deferReclamation;
+        set
+        {
+            _deferReclamation = value;
+            if (!value && _deferredFrees.Count > 0)
+            {
+                foreach (int slot in _deferredFrees)
+                    _freeSlots.Push(slot);
+                _deferredFrees.Clear();
+            }
+        }
     }
 
     /// <summary>Replaces the row at source position <paramref name="index"/> in place; returns its slot (keys must re-extract).</summary>
@@ -149,6 +175,7 @@ internal sealed class RowStore<TRow>
         _count = 0;
         _slotHighWater = 0;
         _freeSlots.Clear();
+        _deferredFrees.Clear(); // parked slots are meaningless after a reset
     }
 
     /// <summary>Reference-equality comparer so INPC row mapping never runs user Equals overrides.</summary>

@@ -108,8 +108,23 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     private int _sortedLength;
     private bool _disposed;
 
+    // The background lane (§2.6): one shape in flight at a time, generation-checked publishes,
+    // reclamation gated while in flight, ticks replay after publish.
+    private bool _inFlight;
+    private int _shapeGeneration;
+
     public DataViewController(IShapingScheduler? scheduler = null)
         => _scheduler = scheduler ?? InlineShapingScheduler.Instance;
+
+    /// <summary>
+    /// Visible-row count above which full reshapes route to the ThreadPool (§2.6 — the size gate;
+    /// ticks share it via their post-repair view size). <see cref="int.MaxValue"/> forces the
+    /// synchronous lane (deterministic tests; small-data apps).
+    /// </summary>
+    public int BackgroundThreshold { get; set; } = 32 * 1024;
+
+    /// <summary>The background executor seam (tests inject a manually-pumped runner for deterministic interleavings).</summary>
+    internal Action<Action> BackgroundRunner { get; set; } = static work => Task.Run(work);
 
     // ── Configuration ────────────────────────────────────────────────────────────────────────────
 
@@ -219,13 +234,15 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         {
             case NotifyCollectionChangedAction.Add:
             {
+                // Key extraction is DEFERRED to the drain (§2.6 invariant 1 — vectors are written
+                // only on the owner thread and never while a shape is in flight; the drain is the
+                // one site that satisfies both, and it coalesces multi-ticks per row for free).
                 int index = e.NewStartingIndex;
                 foreach (var item in e.NewItems!)
                 {
                     var row = (TRow)item!;
                     int slot = _store.Insert(index++, row);
                     SubscribeRow(row);
-                    ExtractRowKeys(row, slot);
                     MarkInserted(slot);
                 }
                 break;
@@ -253,8 +270,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                     int slot = _store.Replace(index++, row);
                     UnsubscribeRow(old);
                     SubscribeRow(row);
-                    ExtractRowKeys(row, slot);
-                    MarkDirty(slot);
+                    MarkDirty(slot); // extraction deferred to the drain (invariant 1)
                 }
                 break;
             }
@@ -290,8 +306,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         if (slot < 0)
             return;
 
-        ExtractRowKeys(row, slot);
-        MarkDirty(slot);
+        MarkDirty(slot); // extraction deferred to the drain (invariant 1)
         ScheduleTick();
     }
 
@@ -335,11 +350,24 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     {
         if (_disposed || !_tickScheduled)
             return;
+
+        // A shape in flight owns the vectors — the tick replays after publish (§2.6).
+        if (_inFlight)
+            return;
+
         _tickScheduled = false;
 
         int k = _dirtyRows.Count + _removed.Count;
         if (k == 0)
             return;
+
+        // Deferred key extraction (invariant 1): the one owner-thread, no-shape-in-flight site.
+        foreach (int slot in _dirtyRows)
+        {
+            var row = _store.GetRow(slot);
+            if (row is not null)
+                ExtractRowKeys(row, slot);
+        }
 
         // Visibility recheck for dirty rows: a row failing the filter leaves the view (mark removed
         // for the sweep); a passing row (re-)inserts via the dirty lane.
@@ -385,20 +413,120 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         if (_slotComparison is null)
             CompileShape();
 
-        // Filter pass → the visible slot list (source order; the sort scrambles it anyway).
-        var view = _sortedView.Length >= _store.Count ? _sortedView : new int[Math.Max(16, _store.Count * 2)];
-        int length = 0;
-        foreach (int slot in _store.SourceOrder)
+        int generation = ++_shapeGeneration;
+
+        // One shape in flight at a time (§2.6): a request arriving mid-shape just bumps the
+        // generation — the in-flight completion sees the mismatch, drops its stale result, and
+        // re-runs the NEWEST shape. No double work, no torn publishes.
+        if (_inFlight)
+            return;
+
+        // A full reshape ABSORBS any pending tick: extract the deferred dirty keys first (else the
+        // sort reads stale values for ticked rows), then drop the tick — the reshape covers it.
+        if (_dirtyRows.Count > 0)
         {
-            if (_filterPredicate is null || _filterPredicate(slot))
-                view[length++] = slot;
+            foreach (int slot in _dirtyRows)
+            {
+                var row = _store.GetRow(slot);
+                if (row is not null)
+                    ExtractRowKeys(row, slot);
+            }
+        }
+        _dirty.Clear();
+        _removed.Clear();
+        _dirtyRows.Clear();
+        _tickScheduled = false;
+
+        // The size gate (§2.6): big shapes leave the owner thread. The candidate size is the store
+        // count (filtering may shrink it, but the filter pass itself is part of the gated cost).
+        if (_store.Count > BackgroundThreshold)
+        {
+            RunBackgroundReshape(generation);
+            return;
         }
 
-        ShapingSort.Sort(view, length, _slotComparison!, _scratch);
+        var (view, length) = FilterAndSort(_store.SourceOrder.ToArray(), _slotComparison!,
+                                           _filterPredicate, _scratch,
+                                           _sortedView.Length >= _store.Count ? _sortedView : null);
         _sortedView = view;
         _sortedLength = length;
 
         PublishFromSorted();
+    }
+
+    /// <summary>The filter+sort pass (both lanes; the background lane passes fresh buffers).</summary>
+    private static (int[] View, int Length) FilterAndSort(
+        int[] sourceOrder, Comparison<int> comparison, Func<int, bool>? filter,
+        SortScratch scratch, int[]? reusable)
+    {
+        var view = reusable is not null && reusable.Length >= sourceOrder.Length
+            ? reusable
+            : new int[Math.Max(16, sourceOrder.Length * 2)];
+
+        int length = 0;
+        foreach (int slot in sourceOrder)
+        {
+            if (filter is null || filter(slot))
+                view[length++] = slot;
+        }
+
+        ShapingSort.Sort(view, length, comparison, scratch);
+        return (view, length);
+    }
+
+    private void RunBackgroundReshape(int generation)
+    {
+        _inFlight = true;
+        _store.DeferReclamation = true;   // §2.6 invariant 2
+
+        // Capture everything the pipeline reads: the compiled kit is immutable per shape; the source
+        // order is copied (the store mutates on the owner thread while we run); vectors are sealed
+        // by invariant 1 (extraction deferred while in flight).
+        var sourceOrder = _store.SourceOrder.ToArray();
+        var comparison = _slotComparison!;
+        var filter = _filterPredicate;
+
+        BackgroundRunner(() =>
+        {
+            try
+            {
+                var (view, length) = FilterAndSort(sourceOrder, comparison, filter, new SortScratch(), reusable: null);
+                _scheduler.Post(() => CompleteBackgroundReshape(generation, view, length));
+            }
+            catch (Exception)
+            {
+                // A faulted shape must not strand the gates (a poisoned comparer/filter surfaces on
+                // the next sync operation); publish nothing.
+                _scheduler.Post(() => CompleteBackgroundReshape(generation, null, 0));
+            }
+        });
+    }
+
+    private void CompleteBackgroundReshape(int generation, int[]? view, int length)
+    {
+        if (_disposed)
+            return;
+
+        _inFlight = false;
+        _store.DeferReclamation = false;
+
+        if (generation == _shapeGeneration && view is not null)
+        {
+            _sortedView = view;
+            _sortedLength = length;
+            PublishFromSorted();
+        }
+        else if (generation != _shapeGeneration)
+        {
+            // Superseded: the newest shape request re-runs now (it found _inFlight and fell through
+            // to nothing — the reshape below is its deferred execution).
+            Reshape();
+            return;
+        }
+
+        // Ticks that arrived mid-shape replay as ordinary repairs against the fresh view.
+        if (_tickScheduled)
+            _scheduler.Post(DrainTick);
     }
 
     private void PublishFromSorted()

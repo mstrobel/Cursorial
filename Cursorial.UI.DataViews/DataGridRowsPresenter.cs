@@ -340,7 +340,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack inside Render — §3.2).</summary>
     private static void DrawClipped(RenderContext context, int x, int y, string text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
     {
-        if (text.Length == 0)
+        if (text.Length == 0 || brush is null)
             return;
 
         if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)

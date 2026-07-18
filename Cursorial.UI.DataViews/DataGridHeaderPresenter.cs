@@ -127,6 +127,8 @@ public sealed class DataGridHeaderPresenter : UIElement
 
     private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
     {
+        if (brush is null)
+            return;
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
             context.DrawText(x, 0, text, brush);

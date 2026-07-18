@@ -384,7 +384,26 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
         if (_dirtyRows.Count > ShapingRepair.FullSortThreshold * Math.Max(1, _sortedLength))
         {
-            Reshape(); // repair would degenerate — the adaptive full sort is near-linear here anyway
+            // Repair would degenerate — but a full Reshape would re-sort SOURCE order (random w.r.t.
+            // the keys, ~18× slower at 1M; benchmark finding 2026-07-18). Re-sort the OLD VIEW
+            // instead: [clean run (still sorted)] + [dirty rows with fresh keys] — TimSort's run
+            // detection makes this near-linear, exactly the mostly-sorted profile. Into a FRESH
+            // array: the published snapshot aliases _sortedView (immutable-by-contract, §2.6).
+            var fresh = new int[Math.Max(16, _sortedLength + _dirtyRows.Count)];
+            int count = 0;
+            for (int i = 0; i < _sortedLength; i++)
+            {
+                int slot = _sortedView[i];
+                if (!_removed.Contains(slot) && !_dirty.Contains(slot))
+                    fresh[count++] = slot;
+            }
+            foreach (int slot in _dirtyRows)
+                fresh[count++] = slot;
+
+            ShapingSort.Sort(fresh, count, _slotComparison!, _scratch);
+            _sortedView = fresh;
+            _sortedLength = count;
+            PublishFromSorted();
         }
         else
         {

@@ -625,6 +625,12 @@ public class DataGrid : Control
         RowsPresenter?.InvalidateBand();
     }
 
+    /// <summary>Opens the column's filter checklist popup (wired by the filter-surface stage).</summary>
+    internal void OpenFilterPopup(DataGridColumn column)
+    {
+        // The checklist-popup stage (design doc §3.4) fills this in; the header's ▾ zone routes here.
+    }
+
     /// <summary>Brings a view row into the viewport (the drawn-rows analog of bring-into-view — §3.1).</summary>
     public void ScrollRowIntoView(int viewIndex)
     {

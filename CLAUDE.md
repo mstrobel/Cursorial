@@ -39,6 +39,13 @@ Twenty-five projects:
 - `Cursorial.UI.Bars` — the command-surface suite over one shared `BarCommand`: a `Toolbar` with discrete overflow,
   a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips
   (Alt-overlay accelerators), and SuperTips. See "Cursorial.UI.Bars status" below.
+- `Cursorial.UI.DataViews` — the data-views suite over `Cursorial.UI`: a DevExpress-style `DataGrid`
+  (multi-level sorting/grouping with summaries, criteria-tree filtering, conditional formatting,
+  in-cell editing, row-id-keyed selection, direct-drawn virtualized rows over the SCP band contract)
+  on a UI-free data-shaping engine (`Shaping/`: expression-tree-compiled typed pipelines, TimSort +
+  galloping incremental repair, collation-key string sorts, the size-gated sync/background two-lane
+  controller). Design doc at `docs/ui-layer-design/dataviews-design.md` (panel-amended; verdicts
+  recorded beside it); visual spec `docs/ui-layer-design/tokyo-night-terminal-datagrid.html`.
 - `Cursorial.UI.Dialogs` — the task-dialog suite (`TaskDialog` + `CommandLink`) over `Cursorial.UI`, with its own
   code-first control themes (`CursorialDialogThemes`) contributed via the assembly theme tier.
 - `Cursorial.UI.Xaml.Generator` — the Fork C X4 Roslyn `IIncrementalGenerator` (symbol-backed parse, CUR1/CUR2 build

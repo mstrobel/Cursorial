@@ -353,3 +353,93 @@ reuses the popup. Q5 sealed snapshot → the three integrity invariants (§2.6) 
 Q6 direct-draw vs element rows → direct-draw upheld; editing hosts elements (owner mandate);
 TreeListView picks per density. Q7 cell-painter seam → yes: column `CellKind`/painter seam so
 custom columns don't touch the engine (DataBar/badge are the built-in painters).
+
+## 9. Wave 2 (post-merge; the deferred list — design addendum, 2026-07-18)
+
+### 9.1 The expression language (`Shaping/Expressions/`)
+
+The mockup's criteria grammar, one parser serving the filter editor, the Filter Builder, and CF
+Expression rules:
+
+```
+expr        := or
+or          := and ('Or' and)*
+and         := not ('And' not)*
+not         := 'Not' not | comparison
+comparison  := additive ( ('='|'<>'|'<'|'<='|'>'|'>=') additive
+                        | 'In' '(' additive (',' additive)* ')'
+                        | 'Between' additive 'And' additive
+                        | 'Like' additive )?
+additive    := multiplicative (('+'|'-') multiplicative)*
+multiplicative := unary (('*'|'/'|'%') unary)*
+unary       := '-' unary | primary
+primary     := '[' field ']' | number | 'quoted string' | #date# | true|false|null
+             | function '(' args ')' | '(' expr ')'
+functions   := Contains|StartsWith|EndsWith|Upper|Lower|Len|Trim|Abs|Round|IsNull|IsNullOrEmpty
+```
+
+Keywords case-insensitive; positions on every token (the validation strip's column numbers). The
+pipeline: `ExpressionParser.Parse(text)` → a positioned AST + diagnostics; `ExpressionCompiler`
+lowers the AST to a typed `Expression<Func<TRow,bool>>` over the column set (field refs bind by
+FieldName/EffectiveHeader; numeric promotion int→long→decimal→double on mixed operands; string
+relational ops honor the column's SortMode comparison; `Like` translates `%`/`_` wildcards to a
+compiled regex; `Between` inclusive) → `FilterNode.Custom`. `AstToFilterNode` recognizes the
+tree-shaped subset (And/Or over simple field-op-literal comparisons) for Filter Builder round-trip;
+`FilterNodeToAst`/`AstToText` complete the loop (Builder ⇄ text). Non-boolean roots and unknown
+fields/functions are positioned diagnostics, never throws past Parse.
+
+### 9.2 In-presenter horizontal scrolling = frozen columns + column virtualization (ONE item)
+
+Frozen columns are IMPOSSIBLE under SCP horizontal scrolling — the compositor slides the whole
+band scene, so a "fixed" column would slide with it. The fix is the already-recorded column-
+virtualization seam: **the rows presenter takes ownership of the horizontal axis**. The SCP scrolls
+vertically only (`CanScrollHorizontally=false`; horizontal extent = viewport); the grid's existing
+shared `HorizontalOffset` becomes the one horizontal truth (the ScrollViewer's H-bar binds to it);
+every band presenter already draws shifted by it — the rows presenter now does the same (drawing
+only columns intersecting the viewport — column virtualization for free) instead of letting the
+scene slide. Scenes shrink from content-width to viewport-width (a memory win at wide grids).
+`DataGridColumn.Fixed { None, Left }`: fixed columns resolve first at x 0..F and draw LAST at
+UNSHIFTED x (overpaint — the painter fills their background, no clip stack needed); scrolling
+columns draw shifted, SKIPPING cells that would start under the frozen region (truncate at the
+boundary). Hit-testing: x < frozenWidth → fixed lookup, else x+offset. Header/filter/footer mirror
+the same split. Horizontal scrolling re-inks the band (a raster, not a slide — the vertical axis
+keeps the composite-slide contract; H-scroll frequency is low, and the raster is viewport-sized).
+
+### 9.3 Master-detail
+
+`DataGrid.DetailTemplate : DataTemplate?` + a 2-cell expander gutter column (drawn `▶/▼`) when set.
+**The engine stays 1-row-per-entry** — detail geometry is presenter-side: an expanded-set map
+(rowId → hosted detail element + measured height, sorted by view position per snapshot) turns
+view-index↔y into prefix-sum arithmetic (`y = viewIndex + Σ heights(expanded above)`; the expanded
+count is small — linear/binary over it is trivial). Extent = snapshot.Count + Σ heights;
+`EstimateItemAt` inverts the map. Detail elements are hosted children (the editing precedent,
+N-at-once): realized while their anchor row is in/near the band, released outside it and when the
+row id leaves the view (refilter/removal). `DataContext` = the row object; the template builds per
+expansion (fresh subtree — the DataTemplate contract). Keyboard: the expander cell via
+Left/Right-on-gutter or Ctrl+Right/Left; mouse: expander click.
+
+### 9.4 Cell-range selection
+
+`DataGrid.SelectionUnit { Row, Cell }`. Cell mode: ONE rectangular range (the DevExpress default;
+multi-range deferred) — anchor (rowId, colIndex) + lead; gestures resolve the view-space rectangle
+to (ordered rowId list × column span) at gesture time; reshapes re-project by row id (scattered
+rows keep membership — the range's row set is id-stable, its column span index-stable).
+Shift+arrow/click extends; Ctrl+C copies the rectangle as TSV; paint marks in-range cells with the
+selection background + the lead cell with the focus well. Row mode keeps the v1 controller.
+
+### 9.5 Group ordering extensions (engine)
+
+`GroupDescription.OrderBySummary : SummaryDescription?` (+ `SummaryDirection`): after group
+derivation + aggregation, sibling groups reorder by the computed aggregate — a permutation of
+sibling RANGES applied by rebuilding the sorted view as concatenated group segments (O(V) copy,
+before flatten). Group `Direction` independent of data sorts already holds structurally (group
+levels prepend); pinned by test. TopBottom CF rules ride a `TopK` addition to the stats block
+(a bounded selection pass per rule, recomputed with stats).
+
+### 9.6 Struct rows / misc
+
+`IRowIdentity<TRow>` seam: the store's row↔slot map takes a pluggable comparer; struct rows opt in
+with LiveUpdates=false (no INPC identity) — the `where T : class` constraint relaxes to a runtime
+guard. Span formatters wire into the band cache (pooled char buffers replace per-cell strings).
+The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as
+`GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).

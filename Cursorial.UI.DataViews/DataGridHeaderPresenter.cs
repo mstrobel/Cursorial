@@ -61,11 +61,21 @@ public sealed class DataGridHeaderPresenter : UIElement
         get => _owner;
         set
         {
+            if (ReferenceEquals(_owner, value))
+                return;
+            if (_owner is not null)
+                _owner.SnapshotChanged -= OnSnapshotChanged;
             _owner = value;
+            if (_owner is not null)
+                _owner.SnapshotChanged += OnSnapshotChanged;
             ClipToBounds = true; // own boundary — band-local re-ink (§3.1; safe: a 1-row band)
             InvalidateVisual();
         }
     }
+
+    // Sort/filter state + column widths render from live grid state — every publish re-inks the band
+    // (a 1-row raster; the glyphs and Auto widths must track the shape).
+    private void OnSnapshotChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     private DataGridColumnLayout? Layout => _owner?.RowsPresenter?.ColumnLayout;
 

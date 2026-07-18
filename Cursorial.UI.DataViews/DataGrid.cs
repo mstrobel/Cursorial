@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using Cursorial.Input;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
 
@@ -152,6 +153,51 @@ public class DataGrid : Control
 
     /// <inheritdoc/>
     protected internal override bool HandlesScrolling => true;
+
+    // ── Template parts (§3.1) ────────────────────────────────────────────────────────────────────
+
+    public const string PartHeader = "PART_Header";
+    public const string PartFooter = "PART_Footer";
+    public const string PartScrollViewer = "PART_ScrollViewer";
+    public const string PartRows = "PART_Rows";
+
+    private ScrollViewer? _scrollViewer;
+
+    protected override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+
+        var header = GetTemplatePart<DataGridHeaderPresenter>(PartHeader);
+        var footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
+        _scrollViewer = GetTemplatePart<ScrollViewer>(PartScrollViewer);
+        RowsPresenter = GetTemplatePart<DataGridRowsPresenter>(PartRows);
+
+        if (RowsPresenter is not null)
+            RowsPresenter.Owner = this;
+        if (header is not null)
+        {
+            header.Owner = this;
+            if (_scrollViewer is not null)
+                header.SetBinding(DataGridHeaderPresenter.HorizontalOffsetProperty,
+                                  new Binding(nameof(ScrollViewer.HorizontalOffset)) { Source = _scrollViewer });
+        }
+        if (footer is not null)
+        {
+            footer.Owner = this;
+            if (_scrollViewer is not null)
+                footer.SetBinding(DataGridSummaryPresenter.HorizontalOffsetProperty,
+                                  new Binding(nameof(ScrollViewer.HorizontalOffset)) { Source = _scrollViewer });
+        }
+    }
+
+    protected override void OnTemplateDetaching(TemplateInstance old)
+    {
+        if (RowsPresenter is not null)
+            RowsPresenter.Owner = null;
+        _scrollViewer = null;
+        RowsPresenter = null;
+        base.OnTemplateDetaching(old);
+    }
 
     // ── Source / controller lifecycle ────────────────────────────────────────────────────────────
 

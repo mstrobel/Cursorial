@@ -136,7 +136,18 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         => new(Math.Max(ColumnLayout.TotalWidth, _viewport.Columns),
                Math.Max(_owner?.Snapshot.Count ?? 0, 1));
 
-    public void SetViewport(Size viewport) => _viewport = viewport;
+    public void SetViewport(Size viewport)
+    {
+        // The SCP hands the arranged viewport at END of arrange "before the host's next measure
+        // realizes its band" (the seam contract) — the host owns triggering that next measure. The
+        // first hand-off is the band bootstrap: without this invalidation the initial fill ran with
+        // a zero viewport and the grid rendered blank until the next unrelated invalidation.
+        if (viewport != _viewport)
+        {
+            _viewport = viewport;
+            InvalidateBand();
+        }
+    }
 
     public void InvalidateRealization() => InvalidateBand();
 

@@ -87,6 +87,14 @@ public abstract class DataViewController : IDisposable
     public abstract bool TrySetCellFromText(int rowId, object columnKey, string text);
 
     /// <summary>
+    /// The new-row lane of the edit-commit path (§3.2): parses and writes onto an UN-STORED row
+    /// instance (no row id yet — the grid's new-row template edits the object BEFORE
+    /// <c>source.Add</c> lands it). No tick is scheduled — the subsequent Add is what reshapes.
+    /// False when the column is read-only/unknown or the text doesn't parse.
+    /// </summary>
+    internal abstract bool TrySetRowText(object row, object columnKey, string text);
+
+    /// <summary>
     /// The active conditional-formatting rules (design doc §2.7): compiled against the typed key
     /// vectors on the next shape (the grid pushes rules with every shape push). Does not itself
     /// publish — evaluation surfaces (<see cref="GetCellFormat"/> et al.) lazily refresh the stats
@@ -344,6 +352,14 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
             ScheduleTick();
         }
         return true;
+    }
+
+    internal override bool TrySetRowText(object row, object columnKey, string text)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(text);
+        return FindColumn(columnKey)?.TrySetFromText(row, text) == true;
     }
 
     /// <summary>The typed slot→row accessor (filter Custom leaves; the grid's typed surfaces).</summary>

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -59,12 +61,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarTrackBrushProperty =
         UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarTrackBrush));
 
+    /// <summary>Ghost ink for the new-row template (the muted * indicator + per-column placeholders — §3.2).</summary>
+    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> MutedBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(MutedBrush));
+
     static DataGridRowsPresenter()
     {
         AffectsRender<DataGridRowsPresenter>(
             RowBackgroundProperty, RowAlternationBackgroundProperty, SelectionBackgroundProperty,
             HoverBackgroundProperty, GroupRowBackgroundProperty, TextBrushProperty, AccentBrushProperty,
-            FocusCellBackgroundProperty, DataBarFillBrushProperty, DataBarTrackBrushProperty);
+            FocusCellBackgroundProperty, DataBarFillBrushProperty, DataBarTrackBrushProperty,
+            MutedBrushProperty);
     }
 
     public Cursorial.Drawing.Media.IBrush? RowBackground { get => GetValue(RowBackgroundProperty); set => SetValue(RowBackgroundProperty, value); }
@@ -77,6 +84,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public Cursorial.Drawing.Media.IBrush? FocusCellBackground { get => GetValue(FocusCellBackgroundProperty); set => SetValue(FocusCellBackgroundProperty, value); }
     public Cursorial.Drawing.Media.IBrush? DataBarFillBrush { get => GetValue(DataBarFillBrushProperty); set => SetValue(DataBarFillBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? DataBarTrackBrush { get => GetValue(DataBarTrackBrushProperty); set => SetValue(DataBarTrackBrushProperty, value); }
+    public Cursorial.Drawing.Media.IBrush? MutedBrush { get => GetValue(MutedBrushProperty); set => SetValue(MutedBrushProperty, value); }
 
     private DataGrid? _owner;
     private Size _viewport;
@@ -155,9 +163,15 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public bool CanScrollVertically { get; set; }
     public bool IsLogicalScroll => true;
 
+    /// <summary>Whether the trailing new-row template is live (the owner's eligibility verdict — §3.2).</summary>
+    private bool NewRowActive => _owner?.HasNewRowPlaceholder == true;
+
+    /// <summary>The new-row template's view index (== Snapshot.Count — one PAST the real rows), or −1.</summary>
+    internal int NewRowViewIndex => NewRowActive ? _owner!.Snapshot.Count : -1;
+
     public Size GetExtent()
         => new(Math.Max(ColumnLayout.TotalWidth, _viewport.Columns),
-               Math.Max(_owner?.Snapshot.Count ?? 0, 1));
+               Math.Max(ItemCount, 1));
 
     public void SetViewport(Size viewport)
     {
@@ -179,7 +193,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public int PageStep(int currentOffset, int sign, bool vertical)
         => vertical ? Math.Max(1, _viewport.Rows - 1) : Math.Max(1, _viewport.Columns - 1);
 
-    public int ItemCount => _owner?.Snapshot.Count ?? 0;
+    // The new-row template participates in the scroll extent (reachable at the very bottom) but
+    // never in the band CACHE — every snapshot read stays guarded by the real Count (§3.2).
+    public int ItemCount => (_owner?.Snapshot.Count ?? 0) + (NewRowActive ? 1 : 0);
 
     public int EstimateItemAt(int offsetRow) => offsetRow;
 
@@ -192,9 +208,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         FillBandCache();
 
-        // The hosted editor (the §3.2 element-hosting special case) measures at its cell width.
+        // The hosted editor (the §3.2 element-hosting special case) measures at its cell width
+        // (minus the Spin kind's drawn ▲▼ suffix reserve).
         if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
-            _editor.Measure(new Size(Math.Max(1, ColumnLayout.Entries[_editColumnIndex].Width), 1));
+            _editor.Measure(new Size(EditorWidth(ColumnLayout.Entries[_editColumnIndex]), 1));
 
         // The SCP host path measures content at the viewport; the extent publishes via GetExtent.
         return new Size(Math.Min(ColumnLayout.TotalWidth, availableSize.Columns), Math.Min(ItemCount, availableSize.Rows));
@@ -328,8 +345,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         base.Render(context);
         var owner = _owner;
-        if (owner is null || _band.Count == 0)
-            return;
+        if (owner is null)
+            return; // (an empty band still draws the new-row template — an empty AllowAddNew grid)
 
         var selection = owner.RowSelection;
         int focusRow = owner.FocusViewIndex;
@@ -406,6 +423,74 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 }
             }
         }
+
+        // The Spin editor's ▲▼ affordance beside the hosted TextBox (the mockup's spinbtns) — drawn
+        // in the suffix reserve EditorWidth carved out of the edit cell (skipped in cramped cells).
+        if (_editor is not null && _editorKind == DataGridEditorKind.Spin &&
+            _editColumnIndex >= 0 && _editColumnIndex < entries.Count)
+        {
+            var entry = entries[_editColumnIndex];
+            if (entry.Width >= 6)
+            {
+                context.DrawText(entry.X + DataGridColumnLayout.CellPadding + entry.Width - 2,
+                                 _editViewIndex, "▲▼", AccentBrush ?? TextBrush);
+            }
+        }
+
+        DrawNewRowTemplate(context, owner, entries, focusRow, focusColumn);
+    }
+
+    /// <summary>
+    /// The new-row template at view index == Snapshot.Count (the mockup's <c>newrow</c>): a muted
+    /// <c>*</c> indicator plus per-column ghost placeholders hinting each editable column's editor
+    /// kind. Drawn straight from column state — never cached in the band (it is not a snapshot
+    /// row; §3.2). ASCII <c>*</c> stands in for the mockup's fullwidth <c>＊</c>: at CellPadding=1
+    /// a width-2 glyph would collide with the first cell's content (and wide glyphs are not
+    /// reliable across terminals — the ReliableWideGlyphs policy).
+    /// </summary>
+    private void DrawNewRowTemplate(RenderContext context, DataGrid owner,
+                                    IReadOnlyList<DataGridColumnLayout.Entry> entries,
+                                    int focusRow, int focusColumn)
+    {
+        int y = NewRowViewIndex;
+        if (y < 0)
+            return;
+
+        // Only ink inside the band scene (the SCP band covers the extent tail because ItemCount
+        // includes this row; out-of-band draws would be clipped anyway — skip the work).
+        var (windowStart, windowLength) = BandWindow();
+        if (y < windowStart || y >= windowStart + windowLength)
+            return;
+
+        var ghost = MutedBrush ?? TextBrush;
+
+        // The focused ghost cell keeps the focus-cell well cue (it is focusable like a data row).
+        if (y == focusRow && focusColumn >= 0 && focusColumn < entries.Count && FocusCellBackground is not null)
+        {
+            var focused = entries[focusColumn];
+            context.FillOpaque(new Rect(focused.X, y, focused.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                               FocusCellBackground);
+        }
+
+        context.DrawText(0, y, "*", ghost);
+        var controller = owner.Controller;
+        foreach (var entry in entries)
+        {
+            if (controller?.IsColumnEditable(entry.Column) != true)
+                continue;
+
+            string hint = owner.ResolveEditorKind(entry.Column) switch
+            {
+                DataGridEditorKind.Combo => "(pick)",
+                DataGridEditorKind.Date => "yyyy-mm-dd",
+                DataGridEditorKind.Spin => "0",
+                DataGridEditorKind.None => string.Empty,
+                _ => "…", // "…" — the text ghost
+            };
+            if (hint.Length != 0)
+                DrawClipped(context, entry.X + DataGridColumnLayout.CellPadding, y, hint, entry.Width, ghost);
+        }
+        // (no row fill — the ghost row deliberately stays on the resting background)
     }
 
     /// <summary>
@@ -516,46 +601,225 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────
 
-    private Cursorial.UI.Controls.TextBox? _editor;
+    private Control? _editor;
+    private DataGridEditorKind _editorKind;
     private int _editViewIndex = -1;
     private int _editColumnIndex = -1;
+    private bool _editorErrorFlagged;
 
     /// <summary>Whether an editor is hosted (the grid's key routing branches on it).</summary>
     internal bool IsEditing => _editor is not null;
+
+    /// <summary>The hosted editor's resolved kind (never <see cref="DataGridEditorKind.Auto"/> while editing).</summary>
+    internal DataGridEditorKind EditorKind => _editorKind;
+
+    /// <summary>The hosted editor element (tests + the grid's preview-key routing).</summary>
+    internal Control? EditorElement => _editor;
 
     /// <summary>The edited (viewIndex, columnIndex) while editing.</summary>
     internal (int ViewIndex, int ColumnIndex) EditCell => (_editViewIndex, _editColumnIndex);
 
     /// <summary>
-    /// Hosts the TextBox editor at a cell (v1 — the editor suite rides the same host later): the
-    /// presenter adopts the element as a visual/logical child, arranges it at the cell's CONTENT
-    /// rect (it scrolls with the band naturally), and focuses it. The drawn cell underneath is
-    /// painted over by the editor's own background.
+    /// Whether a drop-down editor's list is open. The grid's tunnel intercept keys off this: a
+    /// CLOSED drop-down editor must yield Enter/Esc to the edit contract (commit/cancel), an open
+    /// one owns them (Enter = pick, Esc = close) — see <c>DataGrid.OnPreviewKeyDown</c>.
     /// </summary>
-    internal void BeginEdit(int viewIndex, int columnIndex, string initialText)
+    internal bool IsEditorDropDownOpen => _editor switch
+    {
+        Cursorial.UI.Controls.ComboBox combo => combo.IsDropDownOpen,
+        Cursorial.UI.Controls.DatePicker picker => picker.IsDropDownOpen,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Hosts one editor element at a cell, keyed by <paramref name="kind"/> (the generalized §3.2
+    /// host — the v1 TextBox path plus the combo/date/spin suite): the presenter adopts the element
+    /// as a visual/logical child, arranges it at the cell's CONTENT rect (it scrolls with the band
+    /// naturally), and focuses it via the parked-work idiom. The drawn cell underneath is painted
+    /// over by the editor's own background. <paramref name="comboItems"/> feeds the Combo kind only.
+    /// </summary>
+    internal void BeginEdit(int viewIndex, int columnIndex, DataGridEditorKind kind, string initialText,
+                            IReadOnlyList<string>? comboItems = null)
     {
         EndEditVisual();
 
-        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        Control editor = kind switch
+        {
+            DataGridEditorKind.Combo => CreateComboEditor(initialText, comboItems ?? []),
+            DataGridEditorKind.Date => CreateDateEditor(initialText),
+            // Text and Spin share the TextBox face — Spin adds Up/Down stepping (the grid's editing
+            // key branch calls SpinBy; the ▲▼ affordance is drawn by Render beside the editor).
+            _ => CreateTextEditor(initialText),
+        };
+
         _editor = editor;
+        _editorKind = kind;
         _editViewIndex = viewIndex;
         _editColumnIndex = columnIndex;
+
+        // Pin the editor to its cell slot: a control theme's own minimum (the TextBox face wants
+        // ~12 cells) would otherwise inflate DesiredSize past the slot, and arrange grows an
+        // element to its desired size — the editor would paint over the neighboring cells (and
+        // the Spin suffix). Min beats Max in the LD1 clamp order, so the theme's MinWidth must be
+        // locally overridden alongside the cap; the slot is stable for the edit session.
+        if (columnIndex >= 0 && columnIndex < ColumnLayout.Entries.Count)
+        {
+            int slot = EditorWidth(ColumnLayout.Entries[columnIndex]);
+            editor.SetValue(MinWidthProperty, 1);
+            editor.SetValue(MaxWidthProperty, slot);
+        }
+
         AdoptChild(editor, index: -1);
         InvalidateMeasure();
+        _owner?.NotifyEditingChanged();
 
         // Focus after the editor materializes (measure/arrange run first) — the parked-work idiom.
         UIApplication.Current?.Dispatcher.Post(() =>
         {
-            if (_editor == editor)
+            if (ReferenceEquals(_editor, editor))
             {
                 editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
-                editor.SelectAll();
+                (editor as Cursorial.UI.Controls.TextBox)?.SelectAll();
             }
         });
     }
 
-    /// <summary>The editor's current text (the commit path reads before teardown).</summary>
-    internal string? EditorText => _editor?.Text;
+    private Cursorial.UI.Controls.TextBox CreateTextEditor(string initialText)
+    {
+        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        // The ed-err recovery contract: the danger ink clears on the NEXT text change (§3.2).
+        editor.AddHandler(Cursorial.UI.Controls.TextBox.TextChangedEvent, (_, _) => ClearEditorError());
+        return editor;
+    }
+
+    private Cursorial.UI.Controls.ComboBox CreateComboEditor(string initialText, IReadOnlyList<string> items)
+    {
+        var combo = new Cursorial.UI.Controls.ComboBox { ItemsSource = items };
+        // Preset to the current formatted value (the mockup's selected "East"); no match ⇒ no
+        // selection, and commit refuses until the user picks (TryGetEditorText's Combo contract).
+        foreach (var item in items)
+        {
+            if (string.Equals(item, initialText, StringComparison.Ordinal))
+            {
+                combo.SelectedItem = item;
+                break;
+            }
+        }
+        combo.SelectionChanged += (_, _) => ClearEditorError();
+        return combo;
+    }
+
+    private Cursorial.UI.Controls.DatePicker CreateDateEditor(string initialText)
+    {
+        // Editable: the face is a typed-text box + the calendar drop-down (the mockup's ed-date).
+        var picker = new Cursorial.UI.Controls.DatePicker { IsEditable = true };
+        // SelectedDate preset by parsing the current cell text — DateOnly first, then DateTime
+        // (a DateTime-keyed column formats through its own formatter; FromDateTime folds it).
+        if (DateOnly.TryParse(initialText, System.Globalization.CultureInfo.CurrentCulture,
+                              System.Globalization.DateTimeStyles.None, out var date))
+        {
+            picker.SelectedDate = date;
+        }
+        else if (DateTime.TryParse(initialText, System.Globalization.CultureInfo.CurrentCulture,
+                                   System.Globalization.DateTimeStyles.None, out var dateTime))
+        {
+            picker.SelectedDate = DateOnly.FromDateTime(dateTime);
+        }
+        picker.SelectedDateChanged += (_, _) => ClearEditorError();
+        return picker;
+    }
+
+    /// <summary>
+    /// The editor's committed text, per kind (the one seam <c>DataGrid.CommitEdit</c> reads —
+    /// every kind funnels into <see cref="Shaping.DataViewController.TrySetCellFromText"/>'s text
+    /// lane so parse/validation semantics stay identical across editors): TextBox = its text;
+    /// Combo = the selected item (false while nothing is selected — nothing to commit); Date = the
+    /// editable draft box's text (the typed text OR the culture "d" push from a calendar pick —
+    /// reading the box, not <c>SelectedDate</c>, preserves a draft the picker hasn't parsed yet),
+    /// falling back to the selected date's round-trip when the box hasn't templated.
+    /// </summary>
+    internal bool TryGetEditorText([NotNullWhen(true)] out string? text)
+    {
+        switch (_editor)
+        {
+            case Cursorial.UI.Controls.TextBox box:
+                text = box.Text;
+                return true;
+
+            case Cursorial.UI.Controls.ComboBox combo:
+                text = combo.SelectedItem as string;
+                return text is not null;
+
+            case Cursorial.UI.Controls.DatePicker picker:
+                text = FindDescendant<Cursorial.UI.Controls.TextBox>(picker)?.Text
+                       ?? picker.SelectedDate?.ToString("d", System.Globalization.CultureInfo.CurrentCulture)
+                       ?? string.Empty;
+                return true;
+
+            default:
+                text = null;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// The Spin kind's Up/Down stepping (the grid's editing key branch routes here): the numeric
+    /// text steps by <paramref name="delta"/> (±1, Shift ±10) and re-selects for a typed replace.
+    /// Non-numeric residue is left alone (stepping must never destroy text the user is fixing).
+    /// </summary>
+    internal void SpinBy(decimal delta)
+    {
+        if (_editorKind != DataGridEditorKind.Spin || _editor is not Cursorial.UI.Controls.TextBox box)
+            return;
+
+        string current = box.Text.Trim();
+        decimal value = 0m;
+        if (current.Length != 0 &&
+            !decimal.TryParse(current, System.Globalization.NumberStyles.Number,
+                              System.Globalization.CultureInfo.CurrentCulture, out value))
+        {
+            return;
+        }
+
+        box.Text = (value + delta).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        box.SelectAll();
+    }
+
+    /// <summary>
+    /// Flips the hosted editor into the error look (the mockup's <c>ed-err</c> idiom): the ink goes
+    /// through the theme's <see cref="Cursorial.UI.Themes.ThemeKeys.DangerBrush"/> via a live
+    /// resource reference (palette flips keep tracking). Cleared on the next text/selection change
+    /// (the per-kind change hooks) — the commit path calls this when the parse fails and the
+    /// editor stays open for correction (§3.2).
+    /// </summary>
+    internal void FlagEditorError()
+    {
+        if (_editor is not { } editor)
+            return;
+        _editorErrorFlagged = true;
+        editor.SetResourceReference(Control.ForegroundProperty, Cursorial.UI.Themes.ThemeKeys.DangerBrush);
+    }
+
+    private void ClearEditorError()
+    {
+        if (!_editorErrorFlagged || _editor is not { } editor)
+            return;
+        _editorErrorFlagged = false;
+        editor.ClearValue(Control.ForegroundProperty); // back to the inherited/themed resting ink
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        for (int i = 0; i < root.VisualChildrenCount; i++)
+        {
+            var child = root.GetVisualChild(i);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } nested)
+                return nested;
+        }
+        return null;
+    }
 
     /// <summary>Tears the editor down and returns focus to the grid.</summary>
     internal void EndEditVisual()
@@ -564,23 +828,40 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
         DisownChild(_editor);
         _editor = null;
+        _editorKind = DataGridEditorKind.Auto;
+        _editorErrorFlagged = false;
         _editViewIndex = -1;
         _editColumnIndex = -1;
         InvalidateMeasure();
         InvalidateVisual();
+        _owner?.NotifyEditingChanged();
         _owner?.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
     }
 
+    /// <summary>
+    /// The editor's arranged width inside its cell: the Spin kind reserves a 3-cell suffix for the
+    /// drawn <c>▲▼</c> affordance when the cell is wide enough (the mockup's spinbtns; skipped in
+    /// cramped cells — stepping still works, only the hint is elided).
+    /// </summary>
+    private int EditorWidth(in DataGridColumnLayout.Entry entry)
+        => _editorKind == DataGridEditorKind.Spin && entry.Width >= 6
+            ? entry.Width - 3
+            : Math.Max(1, entry.Width);
+
     protected override Size ArrangeOverride(Size finalSize)
     {
-        // The editor arranges at its cell's content rect (content coords == local coords).
+        // The editor arranges at its cell's content rect (content coords == local coords). Do NOT
+        // chain base.ArrangeOverride: the UIElement default arranges EVERY visual child to the
+        // full finalSize, which would re-arrange the editor over the whole presenter — its
+        // background then blanks the drawn rows (the latent v1 bug this stage surfaced; the host's
+        // children are exclusively hosted editors, so self-owned arrangement is total here).
         if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
         {
             var entry = ColumnLayout.Entries[_editColumnIndex];
             _editor.Arrange(new Rect(entry.X + DataGridColumnLayout.CellPadding, _editViewIndex,
-                                     Math.Max(1, entry.Width), 1));
+                                     EditorWidth(entry), 1));
         }
-        return base.ArrangeOverride(finalSize);
+        return finalSize;
     }
 
     // ── Hit testing + mouse (the single hit leaf — §3.2) ─────────────────────────────────────────
@@ -590,7 +871,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         var owner = _owner;
         if (owner is null || y < 0 || y >= owner.Snapshot.Count)
+        {
+            // The new-row template is clickable like a data row (its view index is one PAST the
+            // snapshot — every snapshot read above stays guarded).
+            if (owner is not null && y >= 0 && y == NewRowViewIndex)
+                return (y, ColumnLayout.EntryAt(x), false);
             return (-1, -1, false);
+        }
 
         var row = owner.Snapshot.GetRow(y);
         if (row.IsGroup)

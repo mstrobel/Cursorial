@@ -27,6 +27,15 @@ internal sealed class DataGridColumnLayout
     public void ResetAutoGrowth() => _autoGrown.Clear();
 
     /// <summary>
+    /// Resets ONE column's Auto-growth memory (the header-edge double-click best-fit — §1 deferred
+    /// UX, now landed): returning a manually-sized column to <c>Auto</c> must re-measure TIGHT
+    /// against the current band, not resume the old monotonic high-water mark (which may remember a
+    /// wide value that scrolled away long ago). Whole-layout <see cref="ResetAutoGrowth()"/> would
+    /// jitter the OTHER Auto columns for no reason — the reset is per-gesture, per-column.
+    /// </summary>
+    public void ResetAutoGrowth(DataGridColumn column) => _autoGrown.Remove(column);
+
+    /// <summary>
     /// Resolves widths: fixed cells verbatim; Auto = header ∨ widest band cell (via
     /// <paramref name="autoWidth"/>) with monotonic growth within the shape; star shares split the
     /// remaining viewport width by weight. Min/Max clamp every unit (min wins conflicts).

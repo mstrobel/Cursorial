@@ -196,6 +196,12 @@ public sealed class DataGridAutoFilterRow : UIElement
 
         var column = layout.Entries[columnIndex].Column;
         var editor = new Controls.TextBox { Text = owner.GetColumnFilterSummary(column) ?? string.Empty };
+        // Pin the editor to its cell slot (the rows presenter's idiom): the TextBox theme's own
+        // MinWidth would inflate DesiredSize past a narrow filter cell and arrange grows to
+        // desired — the editor would paint over the neighboring cells. Min beats Max (LD1), so
+        // both bounds stamp locally.
+        editor.SetValue(MinWidthProperty, 1);
+        editor.SetValue(MaxWidthProperty, Math.Max(1, layout.Entries[columnIndex].Width));
         _editor = editor;
         _editColumnIndex = columnIndex;
         AdoptChild(editor, index: -1);
@@ -228,12 +234,15 @@ public sealed class DataGridAutoFilterRow : UIElement
 
     protected override Size ArrangeOverride(Size finalSize)
     {
+        // No base.ArrangeOverride chain: the UIElement default re-arranges every visual child to
+        // the full finalSize, which would stretch the roving editor across the whole band and
+        // paint out the other filter cells (the rows presenter's latent v1 arrange bug, same fix).
         if (_editor is not null && EditEntry() is { } entry)
         {
             _editor.Arrange(new Rect(entry.X - HorizontalOffset + DataGridColumnLayout.CellPadding, 0,
                                      Math.Max(1, entry.Width), 1));
         }
-        return base.ArrangeOverride(finalSize);
+        return finalSize;
     }
 
     // ── The operator grammar (§1: "> >= < <= = <>"; bare = contains/equals; empty = clear) ───────

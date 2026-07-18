@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI.Input;
@@ -12,6 +13,10 @@ namespace Cursorial.UI.DataViews;
 /// boundary (ClipToBounds — a 1-row band, so the horizontal-offset re-ink stays band-local, §3.1);
 /// mirrors the shared horizontal offset. Header cells hold VIRTUAL focus (a grid-owned index +
 /// drawn cue — drawn cells cannot hold framework focus, §3.3); clicks sort (Shift appends).
+/// The §1-deferred column UX lives here too: header-edge drag resize (the right padding cell is
+/// the grab zone), press-and-drag reorder with the mockup's <c>draghdr</c> adorners (floating
+/// <c>▣</c> chip, cyan <c>▾</c> drop slot, ghosted shift target), drag-down-off-the-band to hide,
+/// and the right-click column chooser.
 /// </summary>
 public sealed class DataGridHeaderPresenter : UIElement
 {
@@ -94,6 +99,17 @@ public sealed class DataGridHeaderPresenter : UIElement
 
         int shift = -HorizontalOffset;
         var entries = layout.Entries;
+
+        // Reorder-drag adorner inputs (the mockup's draghdr row): the ghost tint on the dragged
+        // cell (lifted) and the shift target (the cell the drop displaces right) rides INSIDE the
+        // caption loop — an after-the-fact fill would wipe the caption it tints. In the hide zone
+        // (pointer below the band) there is no slot: the ▾/ghost drop out, signalling release=hide.
+        bool dragging = _gesture == HeaderGesture.Reordering && _gestureEntry >= 0 && _gestureEntry < entries.Count;
+        bool hideZone = dragging && _dragLocal.Row > HideZoneRows;
+        bool slotLive = dragging && !hideZone && DropSlot >= 0 &&
+                        DropSlot != _gestureEntry && DropSlot != _gestureEntry + 1; // beside-itself = no-op slot
+        int ghostIndex = slotLive && DropSlot < entries.Count ? DropSlot : -1;
+
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
@@ -102,7 +118,10 @@ public sealed class DataGridHeaderPresenter : UIElement
             if (x + cellWidth <= 0 || x >= Bounds.Columns)
                 continue;
 
-            if (i == _hoverEntry && HoverBackground is not null)
+            bool tinted = dragging
+                ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
+                : i == _hoverEntry;
+            if (tinted && HoverBackground is not null)
                 context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
 
             // Caption, truncated to leave glyph room on the right.
@@ -133,6 +152,30 @@ public sealed class DataGridHeaderPresenter : UIElement
                 context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", SortGlyphBrush);
             }
         }
+
+        // ── Reorder-drag overlay: the ▾ drop slot + the floating ▣ chip (drawn LAST, over all) ───
+        if (dragging)
+        {
+            if (slotLive)
+            {
+                // The cyan slot marker at the insertion boundary — SortGlyphBrush is the theme's
+                // CoolBrush (the mockup's accent-2 cyan), reused deliberately: no new theme key for
+                // a glyph that means "here" in the same accent family.
+                int boundaryX = (DropSlot < entries.Count ? entries[DropSlot].X : layout.TotalWidth) + shift;
+                if (boundaryX >= 0 && boundaryX < Bounds.Columns)
+                    context.DrawText(boundaryX, 0, "▾", SortGlyphBrush);
+            }
+
+            // The floating chip follows the pointer, clamped into the 1-row band (the terminal has
+            // no out-of-band overlay to float it in). Muted ink in the hide zone — the visual cue
+            // that release now hides instead of dropping.
+            string chip = "▣ " + entries[_gestureEntry].Column.EffectiveHeader;
+            int chipWidth = GraphemeWidth.StringWidth(chip);
+            int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
+            if (HoverBackground is not null)
+                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
+            context.DrawText(chipX, 0, chip, hideZone ? FilterGlyphBrush : Foreground);
+        }
     }
 
     private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
@@ -162,32 +205,115 @@ public sealed class DataGridHeaderPresenter : UIElement
     /// <summary>The layout entry under a local x (accounting for the shared shift), or −1.</summary>
     private int EntryAt(int localX) => Layout?.EntryAt(localX + HorizontalOffset) ?? -1;
 
+    // ── Column-UX gesture state (§1 deferred, now landed) ────────────────────────────────────────
+    //
+    // One left-button gesture at a time, disambiguated at PRESS by zone within the hit cell:
+    //   [content .. ▾ glyph][edge] — the edge (the right CellPadding cell, the seam between two
+    // columns) starts a RESIZE; the ▾ glyph cell opens the filter popup (unchanged, on the DOWN);
+    // everything else is a PENDING press — the sort-vs-reorder decision defers to movement:
+    // ≥ 2 cells promotes to a reorder drag, release without promotion IS the click (sort). The
+    // deferral moves the sort from down to up — an accepted cost: no consumer can tell a click's
+    // sort apart from a down's sort, but a drag must never ALSO sort.
+    private enum HeaderGesture { None, Pending, Resizing, Reordering }
+
+    private HeaderGesture _gesture;
+    private int _gestureEntry = -1;          // layout-entry index at press
+    private CellPosition _gestureAnchor;     // SCREEN position at press (chrome-drag idiom: the
+                                             // header never moves under the gesture, but screen
+                                             // anchoring keeps deltas honest under capture anyway)
+    private KeyModifiers _gestureModifiers;  // press-time modifiers (the deferred click replays them)
+    private int _resizeStartWidth;           // the RESOLVED content width at press (Auto → pinned)
+    private CellPosition _dragLocal;         // last pointer position local to the band (adorners)
+    private UIElement? _escapeHookRoot;      // the root carrying the mid-drag Esc tunnel handler
+
+    /// <summary>The drop slot (insertion index in visible-entry space) the drag currently targets, or −1.</summary>
+    internal int DropSlot { get; private set; } = -1;
+
+    /// <summary>Whether a reorder drag is live (tests observe promotion/cancel).</summary>
+    internal bool IsDragging => _gesture == HeaderGesture.Reordering;
+
+    /// <summary>Local row past which a drop means "hide the column" (the chooser's drag-off affordance).</summary>
+    private const int HideZoneRows = 2;
+
+    /// <summary>Movement (cells, either axis) that promotes a pending press into a reorder drag.</summary>
+    private const int DragThreshold = 2;
+
+    /// <summary>The right CellPadding cell of the entry's span — the resize grab zone.</summary>
+    private bool OnResizeEdge(DataGridColumnLayout.Entry entry, int localX)
+        => localX == entry.X - HorizontalOffset + entry.Width + 2 * DataGridColumnLayout.CellPadding - 1;
+
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || _owner is null || Layout is null)
+        if (e.Handled || _owner is null || Layout is null)
             return;
 
         var position = e.GetPosition(this);
         int index = EntryAt(position.Column);
-        if (index < 0)
+
+        // Right-press anywhere on the band opens the column chooser (the DevExpress header context
+        // affordance). On the DOWN rather than up: the band has no context-menu subsystem to defer
+        // to, and a right-drag has no meaning here.
+        if (e.Button == MouseButton.Right)
+        {
+            _owner.OpenColumnChooser(position.Column);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Button != MouseButton.Left || index < 0)
             return;
 
-        var column = Layout.Entries[index].Column;
-
-        // The ▾ zone opens the filter popup (the popup stage wires OpenFilterPopup; sorting owns the
-        // rest of the cell). Approximation: the last 2 cells of the cell rect are the filter zone.
         var entry = Layout.Entries[index];
+        var column = entry.Column;
+
+        if (OnResizeEdge(entry, position.Column))
+        {
+            // Double-click the seam = best-fit: back to Auto AND drop the monotonic growth memory,
+            // so the next resolve measures tight against the current band (not the high-water mark).
+            if (e.ClickCount >= 2)
+            {
+                column.Width = DataGridLength.Auto;
+                Layout.ResetAutoGrowth(column);
+                _owner.NotifyColumnGeometryChanged();
+                e.Handled = true;
+                return;
+            }
+
+            if (CaptureMouse())
+            {
+                _gesture = HeaderGesture.Resizing;
+                _gestureEntry = index;
+                _gestureAnchor = e.ScreenPosition;
+                _resizeStartWidth = entry.Width; // the RESOLVED width — dragging an Auto column pins it
+                // Cursor is gesture state, not hover position — force one re-resolution now
+                // (the window-chrome resize precedent; per-frame re-resolution rides after).
+                UIApplication.Current?.InputDispatcher.UpdateCursor();
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // The ▾ glyph cell opens the filter popup on the DOWN (unchanged v1 behavior). The zone
+        // narrows from 2 cells to the glyph cell itself now that the outer padding cell belongs to
+        // resize — the ▾ is drawn at cellRight − 2, so that exact cell is the popup affordance.
         int cellRight = entry.X - HorizontalOffset + entry.Width + 2 * DataGridColumnLayout.CellPadding;
-        bool onFilterZone = column.AllowFilter && position.Column >= cellRight - 2;
-
-        if (onFilterZone)
+        if (column.AllowFilter && position.Column == cellRight - 2)
+        {
             _owner.OpenFilterPopup(column);
-        else if ((e.Modifiers & KeyModifiers.Shift) != 0)
-            _owner.AppendSort(column);
-        else
-            _owner.CycleSort(column);
+            e.Handled = true;
+            return;
+        }
 
+        // Body press: capture and wait — a release without threshold movement is the sort click.
+        if (CaptureMouse())
+        {
+            _gesture = HeaderGesture.Pending;
+            _gestureEntry = index;
+            _gestureAnchor = e.ScreenPosition;
+            _gestureModifiers = e.Modifiers;
+            _dragLocal = position;
+        }
         e.Handled = true;
     }
 
@@ -195,6 +321,61 @@ public sealed class DataGridHeaderPresenter : UIElement
     {
         base.OnMouseMove(e);
         var position = e.GetPosition(this);
+        _lastPointerLocal = position; // OnQueryCursor's per-frame re-resolution reads this
+
+        switch (_gesture)
+        {
+            case HeaderGesture.Resizing when Layout is { } layout && _gestureEntry < layout.Entries.Count:
+            {
+                // Live resize: screen-anchored delta onto the press-time RESOLVED width, clamped by
+                // the column's own Min/Max (min wins — the layout convention). Writing Width as
+                // fixed cells converts an Auto column to pinned (the DevExpress behavior: a manual
+                // resize is an authored width). Every write re-resolves + re-inks all four bands
+                // through the grid's geometry funnel.
+                var column = layout.Entries[_gestureEntry].Column;
+                int delta = e.ScreenPosition.Column - _gestureAnchor.Column;
+                int min = Math.Max(1, column.MinWidth);
+                int max = column.MaxWidth > 0 ? column.MaxWidth : int.MaxValue;
+                int target = Math.Clamp(_resizeStartWidth + delta, min, Math.Max(min, max));
+                if (column.Width != DataGridLength.Cells(target))
+                {
+                    column.Width = DataGridLength.Cells(target);
+                    _owner?.NotifyColumnGeometryChanged();
+                }
+                e.Handled = true;
+                return;
+            }
+
+            case HeaderGesture.Pending:
+            {
+                int dx = Math.Abs(e.ScreenPosition.Column - _gestureAnchor.Column);
+                int dy = Math.Abs(e.ScreenPosition.Row - _gestureAnchor.Row);
+                if (dx >= DragThreshold || dy >= DragThreshold)
+                {
+                    // Promote to a reorder drag: hook the mid-drag Esc cancel on the ROOT's tunnel
+                    // pass (the band is never focusable, so its own key virtuals can't fire; the
+                    // preview tunnel sees the key first wherever focus sits inside this surface).
+                    _gesture = HeaderGesture.Reordering;
+                    HookEscape();
+                    _hoverEntry = -1; // the drag adorners own the band's feedback now
+                    UIApplication.Current?.InputDispatcher.UpdateCursor(); // Grabbing
+                }
+                else
+                {
+                    return; // sub-threshold jitter — still a click-in-waiting
+                }
+                goto case HeaderGesture.Reordering;
+            }
+
+            case HeaderGesture.Reordering:
+                _dragLocal = position;
+                DropSlot = ComputeDropSlot(position);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+        }
+
+        // No gesture: plain hover highlight (unchanged).
         int hover = EntryAt(position.Column);
         if (hover != _hoverEntry)
         {
@@ -203,13 +384,163 @@ public sealed class DataGridHeaderPresenter : UIElement
         }
     }
 
+    protected override void OnMouseUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.Button != MouseButton.Left || _gesture == HeaderGesture.None)
+            return;
+
+        var gesture = _gesture;
+        int entryIndex = _gestureEntry;
+        var modifiers = _gestureModifiers;
+        var local = e.GetPosition(this);
+
+        // Release-then-act: ReleaseMouseCapture raises LostMouseCapture, whose handler clears the
+        // gesture state — snapshot first, then let the abort path do the (idempotent) cleanup.
+        ReleaseMouseCapture();
+
+        if (_owner is null || Layout is null || entryIndex < 0 || entryIndex >= Layout.Entries.Count)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var column = Layout.Entries[entryIndex].Column;
+        switch (gesture)
+        {
+            case HeaderGesture.Pending:
+                // No promotion happened: this IS the click — sort (Shift appends), replayed with
+                // the press-time modifiers.
+                if ((modifiers & KeyModifiers.Shift) != 0)
+                    _owner.AppendSort(column);
+                else
+                    _owner.CycleSort(column);
+                break;
+
+            case HeaderGesture.Reordering when local.Row > HideZoneRows:
+                // Dropped well below the band: hide the column (the chooser's drag-off-to-hide
+                // affordance, done here where the drag already lives). Shaping identity survives —
+                // Visible only filters layout.
+                column.Visible = false;
+                _owner.NotifyColumnGeometryChanged();
+                break;
+
+            case HeaderGesture.Reordering:
+                _owner.DropColumnAtSlot(column, ComputeDropSlot(local));
+                break;
+        }
+
+        e.Handled = true;
+    }
+
+    protected override void OnLostMouseCapture(RoutedEventArgs e)
+    {
+        // Every gesture end funnels here (release, Esc cancel, a modal stealing capture): clear the
+        // state + adorners. Resize needs no revert — widths applied live are authored truth; a
+        // cancelled reorder simply never called Move.
+        bool wasResizeOrDrag = _gesture is HeaderGesture.Resizing or HeaderGesture.Reordering;
+        _gesture = HeaderGesture.None;
+        _gestureEntry = -1;
+        DropSlot = -1;
+        UnhookEscape();
+        InvalidateVisual();
+        if (wasResizeOrDrag)
+            UIApplication.Current?.InputDispatcher.UpdateCursor(); // revert the transient shape
+        base.OnLostMouseCapture(e);
+    }
+
+    /// <inheritdoc/>
+    protected override void OnQueryCursor(QueryCursorEventArgs e)
+    {
+        base.OnQueryCursor(e);
+        // Gesture state first (position-independent while captured), then the hover zone. The
+        // per-frame §7.6 re-resolution rides _lastPointer, updated by OnMouseMove above.
+        if (_gesture == HeaderGesture.Resizing)
+        {
+            e.Cursor = MouseCursorShape.ColResize;
+            e.Handled = true;
+        }
+        else if (_gesture == HeaderGesture.Reordering)
+        {
+            e.Cursor = MouseCursorShape.Grabbing;
+            e.Handled = true;
+        }
+        else if (_gesture == HeaderGesture.None && Layout is { } layout && _hoverEntry >= 0 &&
+                 _hoverEntry < layout.Entries.Count && _lastPointerLocal is { } pointer &&
+                 OnResizeEdge(layout.Entries[_hoverEntry], pointer.Column))
+        {
+            e.Cursor = MouseCursorShape.ColResize;
+            e.Handled = true;
+        }
+    }
+
+    private CellPosition? _lastPointerLocal;
+
+    protected override void OnMouseEnter(MouseEventArgs e)
+    {
+        base.OnMouseEnter(e);
+        _lastPointerLocal = e.GetPosition(this);
+    }
+
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
+        _lastPointerLocal = null;
         if (_hoverEntry != -1)
         {
             _hoverEntry = -1;
             InvalidateVisual();
         }
+    }
+
+    // ── Reorder drag internals ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The insertion slot for a pointer position: over a cell's left half inserts before it, the
+    /// right half after (the standard column-drag convention); past the right end appends. −1 while the
+    /// pointer is in the hide zone (below the band) — no slot, release hides.
+    /// </summary>
+    private int ComputeDropSlot(CellPosition local)
+    {
+        var layout = Layout;
+        if (layout is null || layout.Entries.Count == 0)
+            return -1;
+        if (local.Row > HideZoneRows)
+            return -1; // hide zone — the render pass drops the ▾/ghost to signal it
+
+        int contentX = local.Column + HorizontalOffset;
+        var entries = layout.Entries;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            int span = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+            if (contentX < entry.X + span)
+                return contentX < entry.X + span / 2 ? i : i + 1;
+        }
+        return entries.Count;
+    }
+
+    private void HookEscape()
+    {
+        if (_escapeHookRoot is not null || VisualRoot is not { } root)
+            return;
+        _escapeHookRoot = root;
+        root.AddHandler(PreviewKeyDownEvent, OnRootPreviewKeyDown);
+    }
+
+    private void UnhookEscape()
+    {
+        _escapeHookRoot?.RemoveHandler(PreviewKeyDownEvent, OnRootPreviewKeyDown);
+        _escapeHookRoot = null;
+    }
+
+    private void OnRootPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || _gesture != HeaderGesture.Reordering)
+            return;
+        // Cancel: releasing capture funnels through OnLostMouseCapture, which clears every bit of
+        // drag state (and this hook). The column never moved — nothing to undo.
+        e.Handled = true;
+        ReleaseMouseCapture();
     }
 }

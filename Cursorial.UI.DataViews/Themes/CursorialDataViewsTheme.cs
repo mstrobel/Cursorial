@@ -57,6 +57,15 @@ internal static class CursorialDataViewsTheme
         autoFilter.SetResourceReference(DataGridAutoFilterRow.PlaceholderBrushProperty, ThemeKeys.MutedBrush);
         autoFilter.SetResourceReference(DataGridAutoFilterRow.WellBackgroundProperty, ThemeKeys.WellBrush);
 
+        // The edit action bar docks BELOW the footer (added first, so it takes the outermost bottom
+        // strip); it collapses to zero rows while no editor is hosted (§3.2 — the editbar band).
+        var editBar = new DataGridEditBar();
+        DockPanel.SetDock(editBar, Dock.Bottom);
+        editBar.SetResourceReference(DataGridEditBar.BackgroundProperty, ThemeKeys.SurfaceBrush);
+        editBar.SetResourceReference(DataGridEditBar.TextBrushProperty, ThemeKeys.MutedBrush);
+        editBar.SetResourceReference(DataGridEditBar.KeyBrushProperty, ThemeKeys.AccentBrush);
+        editBar.SetResourceReference(DataGridEditBar.IndicatorBrushProperty, ThemeKeys.AmberBrush);
+
         var footer = new DataGridSummaryPresenter();
         DockPanel.SetDock(footer, Dock.Bottom);
         footer.SetResourceReference(DataGridSummaryPresenter.BackgroundProperty, ThemeKeys.SurfaceBrush);
@@ -73,6 +82,7 @@ internal static class CursorialDataViewsTheme
         rows.SetResourceReference(DataGridRowsPresenter.FocusCellBackgroundProperty, ThemeKeys.WellBrush);
         rows.SetResourceReference(DataGridRowsPresenter.DataBarFillBrushProperty, ThemeKeys.CoolBrush);
         rows.SetResourceReference(DataGridRowsPresenter.DataBarTrackBrushProperty, ThemeKeys.FaintBrush);
+        rows.SetResourceReference(DataGridRowsPresenter.MutedBrushProperty, ThemeKeys.MutedBrush);
 
         var scrollViewer = new ScrollViewer
         {
@@ -84,12 +94,14 @@ internal static class CursorialDataViewsTheme
         dock.Children.Add(groupPanel);
         dock.Children.Add(header);
         dock.Children.Add(autoFilter);
+        dock.Children.Add(editBar);
         dock.Children.Add(footer);
         dock.Children.Add(scrollViewer);
 
         ctx.RegisterName(DataGrid.PartGroupPanel, groupPanel);
         ctx.RegisterName(DataGrid.PartHeader, header);
         ctx.RegisterName(DataGrid.PartAutoFilterRow, autoFilter);
+        ctx.RegisterName(DataGrid.PartEditBar, editBar);
         ctx.RegisterName(DataGrid.PartFooter, footer);
         ctx.RegisterName(DataGrid.PartScrollViewer, scrollViewer);
         ctx.RegisterName(DataGrid.PartRows, rows);

@@ -56,6 +56,17 @@ public class DataGrid : Control
     public static readonly StyledProperty<bool> ShowSummaryFooterProperty =
         UIProperty.Register<DataGrid, bool>(nameof(ShowSummaryFooter), true);
 
+    /// <summary>
+    /// Whether the trailing new-row template renders (design doc §3.2 deferred-suite item; the
+    /// mockup's <c>newrow</c>). Effective only when the source is a non-readonly, non-fixed
+    /// <see cref="IList"/> AND a new row instance is constructible (an <see cref="AddingNewRow"/>
+    /// handler, or a public parameterless constructor on the row type) — see
+    /// <see cref="HasNewRowPlaceholder"/>.
+    /// </summary>
+    public static readonly StyledProperty<bool> AllowAddNewProperty =
+        UIProperty.Register<DataGrid, bool>(nameof(AllowAddNew),
+            changed: static (sender, _, _) => ((DataGrid)sender).RowsPresenter?.InvalidateBand());
+
     static DataGrid()
     {
         FocusableProperty.OverrideDefaultValue<DataGrid>(true);
@@ -65,13 +76,14 @@ public class DataGrid : Control
 
     private DataViewController? _controller;
     private Type? _rowType;
+    private bool _rowTypeHasParameterlessCtor;
     private bool _columnsFromAutoGeneration;
     private bool _shapePushScheduled;
 
     public DataGrid()
     {
         Columns = [];
-        Columns.CollectionChanged += (_, _) => OnColumnsChanged();
+        Columns.CollectionChanged += (_, e) => OnColumnsChanged(e);
         SortDescriptions = [];
         SortDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
         GroupDescriptions = [];
@@ -129,6 +141,21 @@ public class DataGrid : Control
         set => SetValue(ShowSummaryFooterProperty, value);
     }
 
+    /// <inheritdoc cref="AllowAddNewProperty"/>
+    public bool AllowAddNew
+    {
+        get => GetValue(AllowAddNewProperty);
+        set => SetValue(AllowAddNewProperty, value);
+    }
+
+    /// <summary>
+    /// Raised when the new-row template needs a fresh row instance (§3.2): set
+    /// <see cref="AddingNewRowEventArgs.Item"/> to supply one (rows with constructor arguments);
+    /// left null, the grid falls back to <see cref="Activator.CreateInstance(Type)"/> when the row
+    /// type has a public parameterless constructor. Neither available ⇒ the template never renders.
+    /// </summary>
+    public event EventHandler<AddingNewRowEventArgs>? AddingNewRow;
+
     /// <summary>The columns (get-only — the XAML loader fills it; empty + <see cref="AutoGenerateColumns"/> ⇒ generated).</summary>
     public ObservableCollection<DataGridColumn> Columns { get; }
 
@@ -175,6 +202,7 @@ public class DataGrid : Control
     public const string PartFooter = "PART_Footer";
     public const string PartScrollViewer = "PART_ScrollViewer";
     public const string PartRows = "PART_Rows";
+    public const string PartEditBar = "PART_EditBar";
 
     private ScrollViewer? _scrollViewer;
     private DataGridHeaderPresenter? _header;
@@ -189,9 +217,12 @@ public class DataGrid : Control
         var footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
         _scrollViewer = GetTemplatePart<ScrollViewer>(PartScrollViewer);
         RowsPresenter = GetTemplatePart<DataGridRowsPresenter>(PartRows);
+        EditBar = GetTemplatePart<DataGridEditBar>(PartEditBar);
 
         if (RowsPresenter is not null)
             RowsPresenter.Owner = this;
+        if (EditBar is not null)
+            EditBar.Owner = this;
         if (GroupPanel is not null)
             GroupPanel.Owner = this;
         if (_header is not null)
@@ -220,17 +251,21 @@ public class DataGrid : Control
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
         _filterPopup?.Close(); // the popup anchors to template parts about to detach
+        _columnChooser?.Close(); // ditto — its placement target is the header part
         if (RowsPresenter is not null)
             RowsPresenter.Owner = null;
         if (GroupPanel is not null)
             GroupPanel.Owner = null;
         if (AutoFilterRow is not null)
             AutoFilterRow.Owner = null;
+        if (EditBar is not null)
+            EditBar.Owner = null;
         _scrollViewer = null;
         _header = null;
         GroupPanel = null;
         AutoFilterRow = null;
         RowsPresenter = null;
+        EditBar = null;
         base.OnTemplateDetaching(old);
     }
 
@@ -250,6 +285,7 @@ public class DataGrid : Control
         }
 
         _rowType = DiscoverRowType(source);
+        _rowTypeHasParameterlessCtor = _rowType?.GetConstructor(Type.EmptyTypes) is not null;
         if (_rowType is null)
         {
             // An empty untyped source: no rows to discover from — stay dormant until items arrive
@@ -305,10 +341,21 @@ public class DataGrid : Control
 
     // ── Columns ──────────────────────────────────────────────────────────────────────────────────
 
-    private void OnColumnsChanged()
+    private void OnColumnsChanged(NotifyCollectionChangedEventArgs e)
     {
         if (_columnsFromAutoGeneration)
             return; // our own generation pass — not an authoring change
+
+        // A pure reorder (the header drag / ApplyColumnLayout) is LAYOUT-only: the shaping identity
+        // is the column INSTANCE, so the engine's key vectors, sort/group/filter state, and collapse
+        // paths are all order-blind — re-pushing SetColumns here would recompile every column and
+        // run a full key re-extract + reshape for a change the snapshot cannot observe. Re-fill the
+        // band caches (cell arrays index the Columns order) and re-ink instead.
+        if (e.Action == NotifyCollectionChangedAction.Move)
+        {
+            NotifyColumnGeometryChanged();
+            return;
+        }
 
         if (_controller is not null)
         {
@@ -590,6 +637,16 @@ public class DataGrid : Control
     /// <summary>The auto-filter band (stamped when the template applies).</summary>
     internal DataGridAutoFilterRow? AutoFilterRow { get; private set; }
 
+    /// <summary>The edit action bar band (stamped when the template applies; visible only while editing — §3.2).</summary>
+    internal DataGridEditBar? EditBar { get; private set; }
+
+    /// <summary>The rows presenter's editing-state fan-out (the edit bar bands in/out on it).</summary>
+    internal void NotifyEditingChanged()
+    {
+        EditBar?.InvalidateMeasure();
+        EditBar?.InvalidateVisual();
+    }
+
     /// <summary>
     /// The presenter's press gesture (mouse): expander toggles; data rows select per modifiers
     /// (plain replace / Ctrl toggle / Shift range from the anchor — ranges resolve to row ids at
@@ -601,7 +658,19 @@ public class DataGrid : Control
 
         var snapshot = Snapshot;
         if (viewIndex < 0 || viewIndex >= snapshot.Count)
+        {
+            // The new-row template (view index == Count): focus like a data row, edit on
+            // double-click; it never selects (not a snapshot row — §3.2).
+            if (viewIndex == snapshot.Count && HasNewRowPlaceholder)
+            {
+                FocusViewIndex = viewIndex;
+                FocusColumnIndex = columnIndex;
+                RowsPresenter?.InvalidateBand();
+                if (clickCount >= 2)
+                    BeginEdit();
+            }
             return;
+        }
 
         var row = snapshot.GetRow(viewIndex);
         if (row.IsGroup)
@@ -677,18 +746,100 @@ public class DataGrid : Control
         RowsPresenter?.InvalidateBand();
     }
 
-    // ── In-cell editing (§3.2 — the owner mandate; the TextBox editor path) ──────────────────────
+    // ── In-cell editing (§3.2 — the owner mandate; the per-kind editor suite over the v1 host) ───
 
-    /// <summary>Begins editing the focused cell (F2/Enter/double-click); no-op on read-only columns.</summary>
+    /// <summary>The new row instance under edit on the new-row template (null outside new-row entry — §3.2).</summary>
+    private object? _pendingNewRow;
+
+    /// <summary>
+    /// Whether the trailing new-row template is live (§3.2): <see cref="AllowAddNew"/> is on, the
+    /// source is a growable <see cref="IList"/>, the controller exists, AND a fresh instance is
+    /// constructible (an <see cref="AddingNewRow"/> handler or a public parameterless ctor —
+    /// neither ⇒ the template does not render). The template's view index == <c>Snapshot.Count</c>,
+    /// one PAST the real rows — every snapshot read against it must stay guarded.
+    /// </summary>
+    internal bool HasNewRowPlaceholder =>
+        AllowAddNew && _controller is not null &&
+        ItemsSource is IList { IsReadOnly: false, IsFixedSize: false } &&
+        (AddingNewRow is not null || _rowTypeHasParameterlessCtor);
+
+    /// <summary>Whether the focus row is the new-row template (the placeholder guard the gestures share).</summary>
+    private bool FocusOnNewRowPlaceholder => HasNewRowPlaceholder && FocusViewIndex == Snapshot.Count;
+
+    /// <summary>
+    /// Resolves a column's effective editor kind (§3.2): an authored kind wins;
+    /// <see cref="DataGridEditorKind.Auto"/> maps the column's CLR key type — bool/enum →
+    /// <see cref="DataGridEditorKind.Combo"/>, DateOnly/DateTime → <see cref="DataGridEditorKind.Date"/>,
+    /// numeric → <see cref="DataGridEditorKind.Spin"/>, everything else (string included) →
+    /// <see cref="DataGridEditorKind.Text"/>.
+    /// </summary>
+    internal DataGridEditorKind ResolveEditorKind(DataGridColumn column)
+    {
+        var kind = column.EditorKind;
+        if (kind != DataGridEditorKind.Auto)
+            return kind;
+
+        var keyType = _controller?.GetColumnKeyType(column);
+        if (keyType is null)
+            return DataGridEditorKind.Text;
+
+        var type = Nullable.GetUnderlyingType(keyType) ?? keyType;
+        if (type == typeof(bool) || type.IsEnum)
+            return DataGridEditorKind.Combo;
+        if (type == typeof(DateOnly) || type == typeof(DateTime))
+            return DataGridEditorKind.Date;
+        if (IsNumericKeyType(type))
+            return DataGridEditorKind.Spin;
+        return DataGridEditorKind.Text;
+    }
+
+    private static bool IsNumericKeyType(Type type)
+        => type == typeof(int) || type == typeof(long) || type == typeof(short) || type == typeof(byte) ||
+           type == typeof(sbyte) || type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) ||
+           type == typeof(double) || type == typeof(float) || type == typeof(decimal);
+
+    /// <summary>
+    /// The Combo kind's item list, keyed by the column's type (§3.2): enum → the declared names
+    /// (they round-trip through <c>Enum.Parse(ignoreCase)</c> in the engine's literal ladder);
+    /// bool → True/False (the formatter's own spelling); anything else (string columns) → the
+    /// column's distinct formatted values (the checklist popup's source, blanks elided — a combo
+    /// pick must always be a committable value).
+    /// </summary>
+    private IReadOnlyList<string> BuildComboItems(DataGridColumn column)
+    {
+        var keyType = _controller?.GetColumnKeyType(column);
+        var type = keyType is null ? null : Nullable.GetUnderlyingType(keyType) ?? keyType;
+        if (type is { IsEnum: true })
+            return Enum.GetNames(type);
+        if (type == typeof(bool))
+            return [bool.TrueString, bool.FalseString];
+        return _controller?.GetDistinctValues(column)
+                   .Where(v => v.Formatted.Length > 0)
+                   .Select(v => v.Formatted)
+                   .ToList()
+               ?? (IReadOnlyList<string>)[];
+    }
+
+    /// <summary>
+    /// Begins editing the focused cell (F2/Enter/double-click); no-op on read-only /
+    /// <see cref="DataGridEditorKind.None"/> columns. On the new-row template it creates the
+    /// pending instance and hosts the editor on the FIRST editable column (§3.2).
+    /// </summary>
     public void BeginEdit()
     {
         var presenter = RowsPresenter;
         var snapshot = Snapshot;
-        if (presenter is null || _controller is null ||
-            FocusViewIndex < 0 || FocusViewIndex >= snapshot.Count)
+        if (presenter is null || _controller is null || FocusViewIndex < 0)
+            return;
+
+        if (FocusOnNewRowPlaceholder)
         {
+            BeginNewRowEdit(presenter);
             return;
         }
+
+        if (FocusViewIndex >= snapshot.Count)
+            return;
 
         var row = snapshot.GetRow(FocusViewIndex);
         if (row.IsGroup)
@@ -700,14 +851,61 @@ public class DataGrid : Control
             return;
 
         var column = entries[columnIndex].Column;
-        if (!_controller.IsColumnEditable(column))
+        var kind = ResolveEditorKind(column);
+        if (kind == DataGridEditorKind.None || !_controller.IsColumnEditable(column))
             return;
 
         FocusColumnIndex = columnIndex;
-        presenter.BeginEdit(FocusViewIndex, columnIndex, _controller.FormatCell(row.RowId, column));
+        presenter.BeginEdit(FocusViewIndex, columnIndex, kind, _controller.FormatCell(row.RowId, column),
+                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null);
     }
 
-    /// <summary>Commits the hosted editor's text through the compiled setter; keeps editing on parse failure.</summary>
+    /// <summary>
+    /// The new-row entry path (§3.2, deliberately one-cell-at-a-time like the rest of the grid):
+    /// creates the pending instance (<see cref="AddingNewRow"/> first, the parameterless-ctor
+    /// fallback second) and hosts the editor on the first editable column with EMPTY initial text
+    /// (the ghost row has no cell values yet).
+    /// </summary>
+    private void BeginNewRowEdit(DataGridRowsPresenter presenter)
+    {
+        var entries = presenter.ColumnLayout.Entries;
+        int columnIndex = -1;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (ResolveEditorKind(entries[i].Column) != DataGridEditorKind.None &&
+                _controller!.IsColumnEditable(entries[i].Column))
+            {
+                columnIndex = i;
+                break;
+            }
+        }
+        if (columnIndex < 0)
+            return; // no editable column — nothing the template could write
+
+        var args = new AddingNewRowEventArgs();
+        AddingNewRow?.Invoke(this, args);
+        object? item = args.Item;
+        if (item is null && _rowTypeHasParameterlessCtor && _rowType is { } rowType)
+            item = Activator.CreateInstance(rowType);
+        if (item is null)
+            return;
+
+        _pendingNewRow = item;
+        FocusViewIndex = Snapshot.Count;
+        FocusColumnIndex = columnIndex;
+
+        var column = entries[columnIndex].Column;
+        var kind = ResolveEditorKind(column);
+        presenter.BeginEdit(FocusViewIndex, columnIndex, kind, string.Empty,
+                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null);
+    }
+
+    /// <summary>
+    /// Commits the hosted editor's per-kind value through the compiled setter; keeps editing (with
+    /// the error look) on parse failure. A pending new row writes the cell onto the un-stored
+    /// instance THEN lands via <c>source.Add</c> — INCC inserts it into the view, where it re-sorts
+    /// into position (§3.2).
+    /// </summary>
     public bool CommitEdit()
     {
         var presenter = RowsPresenter;
@@ -715,8 +913,31 @@ public class DataGrid : Control
             return false;
 
         var (viewIndex, columnIndex) = presenter.EditCell;
+        if (!presenter.TryGetEditorText(out string? text))
+            return false; // nothing committable yet (a combo with no selection) — keep editing
+
+        var column = presenter.ColumnLayout.Entries[columnIndex].Column;
+
+        if (_pendingNewRow is { } newRow)
+        {
+            if (!_controller.TrySetRowText(newRow, column, text))
+            {
+                presenter.FlagEditorError(); // the ed-err look; the editor stays open for correction
+                return false;
+            }
+
+            _pendingNewRow = null;
+            presenter.EndEditVisual(); // tear down BEFORE the reshape moves the view under the host
+            var list = (IList)ItemsSource!;
+            list.Add(newRow);
+            // A plain (non-INCC) IList carries no change wire — the one sanctioned refresh is a
+            // cold re-attach (rebuild + reshape; acceptable for the add-a-row cold path).
+            if (list is not INotifyCollectionChanged)
+                _controller.AttachSource(list, LiveUpdates);
+            return true;
+        }
+
         var snapshot = Snapshot;
-        string text = presenter.EditorText ?? string.Empty;
         if (viewIndex >= snapshot.Count)
         {
             presenter.EndEditVisual();
@@ -724,16 +945,72 @@ public class DataGrid : Control
         }
 
         var row = snapshot.GetRow(viewIndex);
-        var column = presenter.ColumnLayout.Entries[columnIndex].Column;
         if (!_controller.TrySetCellFromText(row.RowId, column, text))
-            return false; // unparseable — the editor stays open for correction
+        {
+            presenter.FlagEditorError(); // unparseable — the editor stays open for correction
+            return false;
+        }
 
         presenter.EndEditVisual();
         return true;
     }
 
-    /// <summary>Cancels the hosted editor without writing.</summary>
-    public void CancelEdit() => RowsPresenter?.EndEditVisual();
+    /// <summary>Cancels the hosted editor without writing (a pending new-row instance is discarded).</summary>
+    public void CancelEdit()
+    {
+        _pendingNewRow = null;
+        RowsPresenter?.EndEditVisual();
+    }
+
+    /// <summary>The edit bar's caption value: the edit row's first visible column, formatted ("(new)" on the template).</summary>
+    internal string EditCaption()
+    {
+        var presenter = RowsPresenter;
+        if (presenter is null || !presenter.IsEditing || _controller is null)
+            return string.Empty;
+        if (_pendingNewRow is not null)
+            return "(new)";
+
+        var snapshot = Snapshot;
+        var (viewIndex, _) = presenter.EditCell;
+        if (viewIndex < 0 || viewIndex >= snapshot.Count || presenter.ColumnLayout.Entries.Count == 0)
+            return string.Empty;
+
+        var row = snapshot.GetRow(viewIndex);
+        return row.IsGroup ? string.Empty : _controller.FormatCell(row.RowId, presenter.ColumnLayout.Entries[0].Column);
+    }
+
+    /// <summary>
+    /// The tunnel leg of the editing key contract (§3.2): drop-down editors consume Enter/Esc in
+    /// their own class handlers while CLOSED (a closed ComboBox OPENS on Enter; an editable
+    /// DatePicker parses its draft and swallows it), so the edit bar's Enter-commit / Esc-cancel
+    /// can never ride the bubble for them — intercept on the way down instead. An OPEN drop-down
+    /// owns its keys (Enter = pick the highlighted item, Esc = close the list), so the intercept
+    /// applies only while closed; the pick's close then makes the NEXT Enter the commit.
+    /// </summary>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Handled || RowsPresenter is not { IsEditing: true } editing)
+            return;
+        if (editing.EditorKind is not (DataGridEditorKind.Combo or DataGridEditorKind.Date) ||
+            editing.IsEditorDropDownOpen)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                CommitEdit();
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                CancelEdit();
+                e.Handled = true;
+                break;
+        }
+    }
 
     /// <summary>The keyboard navigation surface (§3.3 — legacy-safe gestures).</summary>
     protected override void OnKeyDown(KeyEventArgs e)
@@ -755,8 +1032,10 @@ public class DataGrid : Control
         if (AutoFilterRow is { IsEditing: true })
             return;
 
-        // Editing mode owns Enter/Esc/Tab (the edit bar's contract — commit/cancel/next-cell);
-        // everything else stays with the hosted TextBox.
+        // Editing mode owns Enter/Esc/Tab (the edit bar's contract — commit/cancel/next-cell) plus
+        // the Spin kind's Up/Down stepping; everything else stays with the hosted editor. (The
+        // drop-down kinds' Enter/Esc arrive via the OnPreviewKeyDown tunnel intercept instead —
+        // their class handlers would consume the bubble.)
         if (RowsPresenter is { IsEditing: true } editing)
         {
             switch (e.Key)
@@ -769,8 +1048,24 @@ public class DataGrid : Control
                     CancelEdit();
                     e.Handled = true;
                     return;
+                case Key.UpArrow or Key.DownArrow when editing.EditorKind == DataGridEditorKind.Spin:
+                    // The mockup's spinbtns: ±1, Shift ±10 (single-line TextBox leaves Up/Down unhandled).
+                    editing.SpinBy((e.Key == Key.UpArrow ? 1m : -1m) *
+                                   ((e.Modifiers & KeyModifiers.Shift) != 0 ? 10m : 1m));
+                    e.Handled = true;
+                    return;
                 case Key.Tab:
                 {
+                    // The new-row template is one-cell-at-a-time (§3.2): Tab = commit (the added
+                    // row re-sorts away from the template — there is no stable "next cell" to
+                    // advance into), never a cross-placeholder advance.
+                    if (_pendingNewRow is not null)
+                    {
+                        CommitEdit();
+                        e.Handled = true;
+                        return;
+                    }
+
                     if (CommitEdit())
                     {
                         int visible = editing.ColumnLayout.Entries.Count;
@@ -797,10 +1092,14 @@ public class DataGrid : Control
         }
 
         var snapshot = Snapshot;
-        if (snapshot.Count == 0)
+        // The new-row template extends the navigable range one PAST the real rows (its ghost row
+        // is focusable/clickable like a data row — §3.2), and an EMPTY AllowAddNew grid still
+        // navigates to it (the only row there is).
+        int lastNavigable = snapshot.Count - 1 + (HasNewRowPlaceholder ? 1 : 0);
+        if (lastNavigable < 0)
             return;
 
-        int current = Math.Clamp(FocusViewIndex < 0 ? 0 : FocusViewIndex, 0, snapshot.Count - 1);
+        int current = Math.Clamp(FocusViewIndex < 0 ? 0 : FocusViewIndex, 0, lastNavigable);
         int viewport = RowsPresenter is { } presenter ? Math.Max(1, presenter.PageStep(0, 1, vertical: true)) : 10;
         bool shift = (e.Modifiers & KeyModifiers.Shift) != 0;
         bool ctrl = (e.Modifiers & KeyModifiers.Control) != 0;
@@ -808,11 +1107,11 @@ public class DataGrid : Control
         int? target = e.Key switch
         {
             Key.UpArrow => Math.Max(0, current - 1),
-            Key.DownArrow => Math.Min(snapshot.Count - 1, current + 1),
+            Key.DownArrow => Math.Min(lastNavigable, current + 1),
             Key.PageUp => Math.Max(0, current - viewport),
-            Key.PageDown => Math.Min(snapshot.Count - 1, current + viewport),
+            Key.PageDown => Math.Min(lastNavigable, current + viewport),
             Key.Home when ctrl => 0,
-            Key.End when ctrl => snapshot.Count - 1,
+            Key.End when ctrl => lastNavigable,
             _ => null,
         };
 
@@ -823,7 +1122,10 @@ public class DataGrid : Control
             return;
         }
 
-        var focused = FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count
+        // The placeholder is NOT a snapshot row: `focused` stays default there, and every gesture
+        // that consumes a RowId must exclude it (default.RowId == 0 would alias a real row).
+        bool onPlaceholder = FocusOnNewRowPlaceholder;
+        var focused = !onPlaceholder && FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count
             ? snapshot.GetRow(FocusViewIndex)
             : default;
 
@@ -856,8 +1158,8 @@ public class DataGrid : Control
                 return;
             }
 
-            // Enter on a data row begins editing the focused cell (§3.2).
-            case Key.Enter when !focused.IsGroup && focused.RowId >= 0:
+            // Enter on a data row (or the new-row template) begins editing the focused cell (§3.2).
+            case Key.Enter when onPlaceholder || (!focused.IsGroup && focused.RowId >= 0):
                 BeginEdit();
                 e.Handled = RowsPresenter is { IsEditing: true }; // read-only cells leave Enter unhandled
                 return;
@@ -877,8 +1179,9 @@ public class DataGrid : Control
                 e.Handled = true;
                 return;
 
-            // Space selects (the modifier-free wire is (Character, " ") — ND10).
-            case Key.Character or Key.Space when IsSpace(e) && !focused.IsGroup && focused.RowId >= 0:
+            // Space selects (the modifier-free wire is (Character, " ") — ND10). Never on the
+            // placeholder: its default `focused` carries RowId 0, which would alias a real row.
+            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && !focused.IsGroup && focused.RowId >= 0:
                 if (ctrl)
                     RowSelection.Toggle(focused.RowId);
                 else
@@ -897,6 +1200,14 @@ public class DataGrid : Control
     {
         var snapshot = Snapshot;
         FocusViewIndex = target;
+
+        // The new-row template: focus lands, nothing selects (it is not a snapshot row — §3.2).
+        if (target >= snapshot.Count)
+        {
+            ScrollRowIntoView(target);
+            RowsPresenter?.InvalidateBand();
+            return;
+        }
 
         var row = snapshot.GetRow(target);
         if (!row.IsGroup)
@@ -1006,13 +1317,183 @@ public class DataGrid : Control
             scp.ScrollOffsetRow = viewIndex - viewportRows + 1;
     }
 
+    // ── Column UX: geometry funnel, drag-reorder drop, chooser, layout persistence (§1) ──────────
+
+    /// <summary>
+    /// Re-resolves column geometry across every band presenter after a width/order/visibility
+    /// change (the header-edge resize, drag-reorder, and chooser surfaces write column properties
+    /// that carry NO change notification into layout). Reuses the <see cref="SnapshotChanged"/>
+    /// fan-out deliberately: every band presenter already subscribes it as its "re-read grid state
+    /// and re-ink" signal, and that is exactly what a geometry change needs — the rows presenter's
+    /// handler re-fills its band cache (cell arrays index the Columns order) and re-runs
+    /// <c>ColumnLayout.Resolve</c>; header/filter/footer re-ink from the shared entries. No engine
+    /// reshape rides this path (the snapshot is genuinely unchanged).
+    /// </summary>
+    internal void NotifyColumnGeometryChanged() => RaiseSnapshotChanged();
+
+    /// <summary>
+    /// Lands a header drag: moves <paramref name="column"/> so it renders immediately before the
+    /// visible slot the pointer released over (<paramref name="slot"/> in visible-entry space;
+    /// count = append). Hidden columns interleaved in <see cref="Columns"/> keep their positions —
+    /// the move anchors on the slot's column INSTANCE, not on raw indices.
+    /// </summary>
+    internal void DropColumnAtSlot(DataGridColumn column, int slot)
+    {
+        var entries = RowsPresenter?.ColumnLayout.Entries;
+        if (entries is null || slot < 0)
+            return;
+
+        int from = -1;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (ReferenceEquals(entries[i].Column, column))
+            {
+                from = i;
+                break;
+            }
+        }
+        if (from < 0 || slot == from || slot == from + 1)
+            return; // dropping beside itself — the no-op slots the adorner pass also suppresses
+
+        int oldIndex = Columns.IndexOf(column);
+        if (oldIndex < 0)
+            return;
+
+        if (slot >= entries.Count)
+        {
+            Columns.Move(oldIndex, Columns.Count - 1); // append after the last visible column
+            return;
+        }
+
+        // Insert before the anchor: ObservableCollection.Move removes-then-inserts, so the target
+        // index shifts down by one when the anchor currently sits past the dragged column.
+        int anchorIndex = Columns.IndexOf(entries[slot].Column);
+        if (anchorIndex < 0)
+            return;
+        Columns.Move(oldIndex, anchorIndex > oldIndex ? anchorIndex - 1 : anchorIndex);
+    }
+
+    private DataGridColumnChooser? _columnChooser;
+
+    /// <summary>The live column chooser (tests reach its content; null when closed).</summary>
+    internal DataGridColumnChooser? ActiveColumnChooser
+        => _columnChooser is { IsOpen: true } chooser ? chooser : null;
+
+    /// <summary>
+    /// Opens the column chooser popup anchored below the header band (design doc §1 deferred item,
+    /// now landed; the mockup's "Column chooser — hidden columns &amp; drag-to-show"): hidden
+    /// columns as ⠿ chips (click = show, back at its original <see cref="Columns"/> position —
+    /// order is the collection, <see cref="DataGridColumn.Visible"/> only filters layout), visible
+    /// columns as checked entries (click = hide), Show All / Hide All footer. Also reachable by
+    /// right-clicking the header band.
+    /// </summary>
+    public void OpenColumnChooser() => OpenColumnChooser(0);
+
+    /// <summary>The header's right-click entry point — anchors at the pressed cell's x.</summary>
+    internal void OpenColumnChooser(int anchorX)
+    {
+        if (_header is null)
+            return;
+        _columnChooser ??= new DataGridColumnChooser(this);
+        _columnChooser.Open(_header, anchorX);
+    }
+
+    /// <summary>
+    /// Snapshots the user-facing column layout for persistence (the DevExpress table-view
+    /// expectation): per column — field name, width (in <see cref="DataGridLength"/> string form),
+    /// visibility — in display order, plus the sort/group levels by field name. JSON-agnostic
+    /// records; serialize with whatever the app already uses. Columns authored with only a
+    /// <see cref="DataGridColumn.KeySelector"/> carry a null field name and cannot be re-matched by
+    /// <see cref="ApplyColumnLayout"/> (documented limitation — name-keyed persistence needs names).
+    /// </summary>
+    public DataGridLayoutState GetColumnLayout() => new()
+    {
+        Columns = Columns
+            .Select(c => new DataGridColumnLayoutEntry(c.FieldName, c.Width.ToString(), c.Visible))
+            .ToList(),
+        Sorts = SortDescriptions
+            .Select(s => new DataGridSortLayoutEntry(FieldNameOf(s.ColumnKey), s.Direction == SortDirection.Descending))
+            .Where(s => s.FieldName is not null)
+            .ToList(),
+        Groups = GroupDescriptions
+            .Select(g => new DataGridGroupLayoutEntry(FieldNameOf(g.ColumnKey), g.Direction == SortDirection.Descending))
+            .Where(g => g.FieldName is not null)
+            .ToList(),
+    };
+
+    private static string? FieldNameOf(object columnKey)
+        => columnKey as string ?? (columnKey as DataGridColumn)?.FieldName;
+
+    /// <summary>
+    /// Restores a layout captured by <see cref="GetColumnLayout"/> onto the CURRENT column set:
+    /// columns are matched by field name (unmatched state entries are skipped; grid columns absent
+    /// from the state keep their properties and sink to the end in relative order), then width /
+    /// visibility apply and the sort/group descriptions rebuild. Deliberately tolerant — a saved
+    /// layout must survive an app adding or removing columns between sessions.
+    /// </summary>
+    public void ApplyColumnLayout(DataGridLayoutState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        // Order: walk the state's entries, pulling each matched column to the next slot (in-place
+        // Moves — each one is the cheap geometry-only OnColumnsChanged path, never a reshape).
+        int target = 0;
+        foreach (var entry in state.Columns)
+        {
+            var column = entry.FieldName is null ? null : FindColumnByField(entry.FieldName);
+            if (column is null)
+                continue;
+
+            int current = Columns.IndexOf(column);
+            if (current != target)
+                Columns.Move(current, target);
+            target++;
+
+            column.Width = DataGridLength.Parse(entry.Width);
+            column.Visible = entry.Visible;
+        }
+
+        // Sort/group state: clear-and-rebuild from field names (the observable collections are the
+        // one source of truth — §3; each edit schedules one coalesced shape push).
+        SortDescriptions.Clear();
+        foreach (var sort in state.Sorts)
+        {
+            if (sort.FieldName is not null && FindColumnByField(sort.FieldName) is { } column)
+                SortDescriptions.Add(new SortDescription(column, sort.Descending ? SortDirection.Descending : SortDirection.Ascending));
+        }
+
+        GroupDescriptions.Clear();
+        foreach (var group in state.Groups)
+        {
+            if (group.FieldName is not null && FindColumnByField(group.FieldName) is { } column)
+                GroupDescriptions.Add(new GroupDescription(column, group.Descending ? SortDirection.Descending : SortDirection.Ascending));
+        }
+
+        NotifyColumnGeometryChanged();
+    }
+
+    private DataGridColumn? FindColumnByField(string fieldName)
+        => Columns.FirstOrDefault(c => string.Equals(c.FieldName, fieldName, StringComparison.Ordinal));
+
     // ── Teardown ─────────────────────────────────────────────────────────────────────────────────
 
     protected override void OnTearDown()
     {
         _filterPopup?.Close(); // release the popup surface before the controller it reads goes away
+        _columnChooser?.Close();
         _controller?.Dispose();
         _controller = null;
         base.OnTearDown();
     }
+}
+
+/// <summary>
+/// Carries the new row instance for <see cref="DataGrid.AddingNewRow"/> (§3.2 — the new-row
+/// template's construction seam): a handler sets <see cref="Item"/> (rows without a parameterless
+/// constructor); left null, the grid falls back to <see cref="Activator.CreateInstance(Type)"/>.
+/// </summary>
+public sealed class AddingNewRowEventArgs : EventArgs
+{
+    /// <summary>The fresh row instance to edit and add, or null to use the Activator fallback.</summary>
+    public object? Item { get; set; }
 }

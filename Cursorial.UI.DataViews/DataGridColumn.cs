@@ -17,6 +17,29 @@ public enum FilterCellKind
 }
 
 /// <summary>
+/// The cell editor a column hosts while editing (design doc §3.2 — the edit-row element host; the
+/// mockup's "Inline editing" per-column editors). <see cref="Auto"/> resolves from the column's CLR
+/// key type at begin-edit time (bool/enum → <see cref="Combo"/>, DateOnly/DateTime →
+/// <see cref="Date"/>, numeric → <see cref="Spin"/>, everything else → <see cref="Text"/>);
+/// <see cref="None"/> disables editing for the column regardless of setter availability.
+/// </summary>
+public enum DataGridEditorKind
+{
+    /// <summary>Resolve the editor from the column's key type (the default).</summary>
+    Auto,
+    /// <summary>A TextBox editor (the v1 path — free text through the compiled setter).</summary>
+    Text,
+    /// <summary>A ComboBox editor (enum names / true–false / the column's distinct values).</summary>
+    Combo,
+    /// <summary>A DatePicker editor (typed date text + the ▤ calendar drop-down).</summary>
+    Date,
+    /// <summary>A TextBox editor with ▲▼ stepping (Up/Down ±1, Shift ±10 — the mockup's spin editor).</summary>
+    Spin,
+    /// <summary>The column is not editable, even when a compiled setter exists.</summary>
+    None,
+}
+
+/// <summary>
 /// One grid column (design doc §3.1 — the panel-mandated public column API): a
 /// <see cref="UIObject"/>-backed description object (XAML-instantiable; the loader fills the grid's
 /// get-only <c>Columns</c>; property-system-backed so bindings/dynamic resources can arrive without
@@ -77,6 +100,10 @@ public class DataGridColumn : UIObject
     public static readonly StyledProperty<StringComparison> SortModeProperty =
         UIProperty.Register<DataGridColumn, StringComparison>(nameof(SortMode), StringComparison.CurrentCulture);
 
+    /// <summary>The cell editor this column hosts while editing (<see cref="DataGridEditorKind.Auto"/> resolves by key type — §3.2).</summary>
+    public static readonly StyledProperty<DataGridEditorKind> EditorKindProperty =
+        UIProperty.Register<DataGridColumn, DataGridEditorKind>(nameof(EditorKind));
+
     /// <inheritdoc cref="HeaderProperty"/>
     public string? Header { get => GetValue(HeaderProperty); set => SetValue(HeaderProperty, value); }
 
@@ -115,6 +142,9 @@ public class DataGridColumn : UIObject
 
     /// <inheritdoc cref="SortModeProperty"/>
     public StringComparison SortMode { get => GetValue(SortModeProperty); set => SetValue(SortModeProperty, value); }
+
+    /// <inheritdoc cref="EditorKindProperty"/>
+    public DataGridEditorKind EditorKind { get => GetValue(EditorKindProperty); set => SetValue(EditorKindProperty, value); }
 
     /// <summary>The typed row→key selector (code-only authoring lane; wins over <see cref="FieldName"/>).</summary>
     public LambdaExpression? KeySelector { get; set; }

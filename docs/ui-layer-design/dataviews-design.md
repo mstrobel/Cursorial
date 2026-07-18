@@ -356,6 +356,19 @@ custom columns don't touch the engine (DataBar/badge are the built-in painters).
 
 ## 9. Wave 2 (post-merge; the deferred list — design addendum, 2026-07-18)
 
+> **Status (2026-07-18): LANDED — all of §9.1–§9.6 shipped** on `dataviews-datagrid`, built as four
+> packages (editor suite + column UX; the expression language; builder/rules dialogs; engine
+> extensions) plus the structural package (§9.2 H-scroll/frozen, §9.3 master-detail, §9.4
+> cell-range, the §9.6 span-formatter band cache and SCP band-window promotion). Deviations from
+> this spec are none of substance; two implementation notes: (1) the §9.3 expander gutter landed as
+> `DataGridColumnLayout.GutterWidth` — a synthetic pinned leading REGION inside `FrozenWidth`
+> rather than a synthetic `Entry` (an Entry carries the CellPadding invariant a 2-cell gutter can't
+> honor; every presenter + hit map still inherits it through the layout, which is what the pin was
+> for); (2) `TopBottomRule` evaluation compiles a rank predicate ONCE per rule (the column's own
+> sort comparison over a boxed per-publish threshold from `TryGetTopKThreshold`) instead of
+> re-compiling a condition per publish. Tests: `DataGridStructuralTests` / `DataGridDialogsTests` /
+> `Shaping/{GroupSummarySort,StructRow,TopKThreshold,CriteriaExpression}Tests`.
+
 ### 9.1 The expression language (`Shaping/Expressions/`)
 
 The mockup's criteria grammar, one parser serving the filter editor, the Filter Builder, and CF

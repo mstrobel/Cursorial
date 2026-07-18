@@ -27,8 +27,10 @@ internal sealed class RowStore<TRow>
     internal long[] Sequences = [];
 
     /// <summary>Reference-typed rows map back to their slot for INPC dispatch (doc §2.6). Null for value-type rows.</summary>
+#pragma warning disable CS8714 // TRow is unconstrained since §9.6 (struct rows); the map exists ONLY for reference rows and stores no nulls
     private readonly Dictionary<TRow, int>? _slotByRow =
         typeof(TRow).IsValueType ? null : new Dictionary<TRow, int>(ReferenceEqualityComparer<TRow>.Instance);
+#pragma warning restore CS8714
 
     /// <summary>Live row count (the source's length).</summary>
     public int Count => _count;

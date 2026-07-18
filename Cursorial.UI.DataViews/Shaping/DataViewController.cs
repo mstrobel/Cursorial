@@ -33,7 +33,26 @@ public abstract class DataViewController : IDisposable
     /// <summary>Raised on the owner thread after a new snapshot publishes.</summary>
     public event EventHandler? SnapshotChanged;
 
+    /// <summary>
+    /// Raised (owner thread) when rows leave the store — their ids are about to become reusable, so
+    /// id-keyed consumers (selection — the final-audit slot-reuse bleed) MUST forget them now.
+    /// </summary>
+    public event Action<IReadOnlyList<int>>? RowsRemoved;
+
+    /// <summary>
+    /// Raised (owner thread) when rows enter the store — id-keyed consumers reset any recycled-id
+    /// state so a reused slot behaves exactly like a fresh one (consistency under the selection
+    /// inversion — final-audit follow-through).
+    /// </summary>
+    public event Action<IReadOnlyList<int>>? RowsAdded;
+
+    /// <summary>Raised when the whole source resets/detaches — id-keyed consumer state must clear.</summary>
+    public event EventHandler? RowsReset;
+
     private protected void RaiseSnapshotChanged() => SnapshotChanged?.Invoke(this, EventArgs.Empty);
+    private protected void RaiseRowsRemoved(IReadOnlyList<int> slots) => RowsRemoved?.Invoke(slots);
+    private protected void RaiseRowsAdded(IReadOnlyList<int> slots) => RowsAdded?.Invoke(slots);
+    private protected void RaiseRowsReset() => RowsReset?.Invoke(this, EventArgs.Empty);
 
     /// <summary>The active columns, sort, grouping, summaries, and filter (see the typed surface).</summary>
     public abstract void SetColumns(IReadOnlyList<ShapingColumnDescription> columns);
@@ -108,6 +127,13 @@ public abstract class DataViewController : IDisposable
     /// </summary>
     public abstract bool CanCompileFilter(FilterNode fragment);
 
+    /// <summary>
+    /// Visible-row count above which full reshapes route to the ThreadPool (§2.6 — the size gate;
+    /// ticks share it via their post-repair view size). <see cref="int.MaxValue"/> forces the
+    /// synchronous lane (deterministic tests; small-data apps).
+    /// </summary>
+    public int BackgroundThreshold { get; set; } = 32 * 1024;
+
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
@@ -132,6 +158,8 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     private readonly RowFlagSet _dirty = new();
     private readonly RowFlagSet _removed = new();
     private readonly List<int> _dirtyRows = [];
+    private readonly List<int> _removedSlotsThisBatch = [];
+    private readonly List<int> _addedSlotsThisBatch = [];
     private bool _tickScheduled;
 
     // The shape.
@@ -167,15 +195,19 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     public DataViewController(IShapingScheduler? scheduler = null)
         => _scheduler = scheduler ?? InlineShapingScheduler.Instance;
 
-    /// <summary>
-    /// Visible-row count above which full reshapes route to the ThreadPool (§2.6 — the size gate;
-    /// ticks share it via their post-repair view size). <see cref="int.MaxValue"/> forces the
-    /// synchronous lane (deterministic tests; small-data apps).
-    /// </summary>
-    public int BackgroundThreshold { get; set; } = 32 * 1024;
-
     /// <summary>The background executor seam (tests inject a manually-pumped runner for deterministic interleavings).</summary>
-    internal Action<Action> BackgroundRunner { get; set; } = static work => Task.Run(work);
+    internal Action<Action> BackgroundRunner
+    {
+        get => _backgroundRunner;
+        set
+        {
+            _backgroundRunner = value;
+            _customRunner = true; // an injected runner pumps on the owner thread — inline Post is safe
+        }
+    }
+
+    private Action<Action> _backgroundRunner = static work => Task.Run(work);
+    private bool _customRunner;
 
     // ── Configuration ────────────────────────────────────────────────────────────────────────────
 
@@ -203,6 +235,15 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         // recompile them or verdicts would read the ORPHANED key vectors (§2.7).
         if (_formatRules.Count > 0)
             CompileFormatRules();
+
+        // The SORT/FILTER kit binds column objects the same way (the final-audit stale-kit bug: a
+        // re-pushed column set left every later insert sorting through the orphaned columns'
+        // never-extracted vectors). Drop shape entries whose key no longer resolves (the consumer's
+        // next SetShape re-authorizes them), then recompile against the new columns.
+        _sorts = _sorts.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
+        _groups = _groups.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
+        _summaries = _summaries.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
+        CompileShape();
 
         Reshape();
     }
@@ -567,6 +608,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                     int slot = _store.Insert(index++, row);
                     SubscribeRow(row);
                     MarkInserted(slot);
+                    _addedSlotsThisBatch.Add(slot);
                 }
                 break;
             }
@@ -607,7 +649,24 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
             default: // Reset
                 RebuildFromSource();
+                RaiseRowsReset();
                 return;
+        }
+
+        if (_removedSlotsThisBatch.Count > 0)
+        {
+            // Surface BEFORE the tick drains: the ids are dead the moment the event lands, so
+            // id-keyed consumers prune before any slot-reusing insert can alias them.
+            var removed = _removedSlotsThisBatch.ToArray();
+            _removedSlotsThisBatch.Clear();
+            RaiseRowsRemoved(removed);
+        }
+
+        if (_addedSlotsThisBatch.Count > 0)
+        {
+            var added = _addedSlotsThisBatch.ToArray();
+            _addedSlotsThisBatch.Clear();
+            RaiseRowsAdded(added);
         }
 
         ScheduleTick();
@@ -641,6 +700,13 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
     private void MarkInserted(int slot)
     {
+        // A freed slot can recycle within one coalescing window (remove → insert): clear the stale
+        // removed/dirty verdicts FIRST or the new row is suppressed by them and silently vanishes
+        // from the view until an unrelated reshape (the final-audit critical — regression-tested).
+        _removed.Remove(slot);
+        _dirty.Remove(slot);
+        _dirtyRows.Remove(slot);
+
         // Inserted rows enter through the dirty lane but are NOT in the current view — the repair
         // merge treats them as pure inserts (they're absent from the clean sweep by construction).
         if (_dirty.Add(slot))
@@ -649,9 +715,12 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
     private void MarkRemoved(int slot)
     {
-        if (_dirty.Contains(slot))
-            _dirtyRows.Remove(slot);
+        // Clear the dirty verdict WITH the queue entry — a stale dirty flag on a freed slot would
+        // suppress the slot's next occupant (see MarkInserted).
+        _dirty.Remove(slot);
+        _dirtyRows.Remove(slot);
         _removed.Add(slot);
+        _removedSlotsThisBatch.Add(slot);
     }
 
     private void ScheduleTick()
@@ -781,7 +850,10 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
         // The size gate (§2.6): big shapes leave the owner thread. The candidate size is the store
         // count (filtering may shrink it, but the filter pass itself is part of the gated cost).
-        if (_store.Count > BackgroundThreshold)
+        // The inline scheduler + the REAL ThreadPool runner is always a bug (the publish would run
+        // on the pool thread — the final-audit critical): headless consumers without a scheduler
+        // degrade to the synchronous lane instead; tests with an injected runner stay deterministic.
+        if (_store.Count > BackgroundThreshold && (_scheduler is not InlineShapingScheduler || _customRunner))
         {
             RunBackgroundReshape(generation);
             return;
@@ -933,6 +1005,12 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                                         flatLength)
                    { DataRowLevel = _groupColumns.Length == 0 ? 0 : _groupColumns.Length };
 
+        // §2.6 invariant 2, the PUBLISHED half (final-audit fix): freed slots release to the free
+        // list only once a snapshot that excludes them has published — a published permutation can
+        // never watch its slot's row swapped under it. The in-flight gate keeps them parked longer.
+        if (!_inFlight)
+            _store.ReleaseDeferredFrees();
+
         RaiseSnapshotChanged();
     }
 
@@ -1082,7 +1160,10 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         _dirty.Clear();
         _removed.Clear();
         _dirtyRows.Clear();
+        _removedSlotsThisBatch.Clear();
+        _addedSlotsThisBatch.Clear();
         _sortedLength = 0;
+        RaiseRowsReset();
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────────────────────────

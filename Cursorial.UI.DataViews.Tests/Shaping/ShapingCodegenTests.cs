@@ -300,7 +300,8 @@ public class ShapingCodegenTests
 
         store.Insert(0, first);              // slot 0
         int slotSecond = store.Insert(1, second); // slot 1
-        store.RemoveAt(0);                   // frees slot 0
+        store.RemoveAt(0);                   // frees slot 0 (parked until released — publish-gated)
+        store.ReleaseDeferredFrees();
         int slotThird = store.Insert(1, third);   // REUSES slot 0, but sequence 2
 
         Assert.True(slotThird < slotSecond); // the trap: slot order inverts insertion order

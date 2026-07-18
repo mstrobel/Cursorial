@@ -104,11 +104,22 @@ internal sealed class RowStore<TRow>
             _slotByRow.Remove(row);
 
         _rows[slot] = default!;   // release the reference
-        if (_deferReclamation)
-            _deferredFrees.Add(slot);   // §2.6 invariant 2: a referenced slot never recycles mid-shape
-        else
-            _freeSlots.Push(slot);
+        // §2.6 invariant 2 (both halves — final-audit fix): a freed slot ALWAYS parks and recycles
+        // only via ReleaseDeferredFrees, which the controller calls after a publish that excludes
+        // the slot (and never while a shape is in flight) — no published permutation can watch its
+        // slot's row swapped under it, and no id-keyed consumer sees a recycled id before pruning.
+        _deferredFrees.Add(slot);
         return slot;
+    }
+
+    /// <summary>Releases parked freed slots to the free list (no-op while <see cref="DeferReclamation"/> is up).</summary>
+    public void ReleaseDeferredFrees()
+    {
+        if (_deferReclamation || _deferredFrees.Count == 0)
+            return;
+        foreach (int slot in _deferredFrees)
+            _freeSlots.Push(slot);
+        _deferredFrees.Clear();
     }
 
     /// <summary>
@@ -120,16 +131,7 @@ internal sealed class RowStore<TRow>
     public bool DeferReclamation
     {
         get => _deferReclamation;
-        set
-        {
-            _deferReclamation = value;
-            if (!value && _deferredFrees.Count > 0)
-            {
-                foreach (int slot in _deferredFrees)
-                    _freeSlots.Push(slot);
-                _deferredFrees.Clear();
-            }
-        }
+        set => _deferReclamation = value; // release rides ReleaseDeferredFrees (publish-gated)
     }
 
     /// <summary>Replaces the row at source position <paramref name="index"/> in place; returns its slot (keys must re-extract).</summary>

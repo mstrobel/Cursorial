@@ -50,6 +50,7 @@ public class RowStoreTests
         Assert.Equal(3, store.SlotCapacity);
 
         int freed = store.RemoveAt(1);
+        store.ReleaseDeferredFrees();      // frees park until the owner releases (publish-gated — final-audit fix)
         int reused = store.Insert(2, new Row("d"));
 
         Assert.Equal(freed, reused);       // free-list reuse

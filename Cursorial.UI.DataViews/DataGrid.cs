@@ -258,12 +258,24 @@ public class DataGrid : Control
             return;
         }
 
-        _controller = DataViewController.Create(_rowType);
+        // The owner-thread scheduler bridge (final-audit fix): without it the controller defaults
+        // to the inline scheduler, and a background reshape past the threshold would complete ON the
+        // ThreadPool thread (cross-thread mutation; the swallowed VerifyAccess froze the grid).
+        // No ambient application (pure headless construction) falls back to inline — where the
+        // controller also refuses the real-Task.Run background lane (see RunBackgroundReshape).
+        var dispatcher = UIApplication.Current?.Dispatcher;
+        _controller = DataViewController.Create(_rowType,
+            dispatcher is null ? null : new DispatcherShapingScheduler(dispatcher));
         EnsureColumns();
         _controller.SetColumns(Columns.Where(c => c.FieldName is not null || c.KeySelector is not null)
                                       .Select(c => c.ToShapingDescription()).ToList());
         _controller.AttachSource(source, LiveUpdates);
         _controller.SnapshotChanged += (_, _) => RaiseSnapshotChanged();
+        // Row-id hygiene (final-audit fix): removed ids leave the selection BEFORE their slots can
+        // recycle onto new rows; a source reset clears id-keyed state wholesale.
+        _controller.RowsRemoved += ids => RowSelection.HandleRowsRemoved(ids);
+        _controller.RowsAdded += ids => RowSelection.HandleRowsAdded(ids);
+        _controller.RowsReset += (_, _) => RowSelection.Clear();
         PushShape();
     }
 

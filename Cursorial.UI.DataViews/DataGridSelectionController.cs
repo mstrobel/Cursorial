@@ -82,6 +82,45 @@ public sealed class DataGridSelectionController
         RaiseChanged();
     }
 
+    /// <summary>
+    /// Forgets removed row ids BEFORE their slots recycle (final-audit fix — the slot-reuse bleed:
+    /// a freed id left selected would render the slot's NEXT occupant selected). Normal mode drops
+    /// the ids; inverted mode ADDS them to the exception set (the recycled id must start
+    /// unselected). The lead resets when it dies.
+    /// </summary>
+    public void HandleRowsRemoved(IReadOnlyList<int> rowIds)
+    {
+        ArgumentNullException.ThrowIfNull(rowIds);
+        bool changed = false;
+        foreach (int id in rowIds)
+        {
+            changed |= _inverted ? _set.Add(id) : _set.Remove(id);
+            if (LeadRowId == id)
+            {
+                LeadRowId = -1;
+                changed = true;
+            }
+        }
+        if (changed)
+            RaiseChanged();
+    }
+
+    /// <summary>
+    /// Resets state for rows entering the store: a recycled id behaves exactly like a fresh one.
+    /// Normal mode: a new row is unselected (drop any stale membership). Inverted mode: new rows
+    /// JOIN an all-except selection (Ctrl+A means "everything" — the documented semantics; slot
+    /// luck must not decide, so a recycled id's stale exception drops too).
+    /// </summary>
+    public void HandleRowsAdded(IReadOnlyList<int> rowIds)
+    {
+        ArgumentNullException.ThrowIfNull(rowIds);
+        bool changed = false;
+        foreach (int id in rowIds)
+            changed |= _set.Remove(id);
+        if (changed)
+            RaiseChanged();
+    }
+
     /// <summary>Clears the selection.</summary>
     public void Clear()
     {

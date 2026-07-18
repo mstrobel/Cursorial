@@ -233,6 +233,30 @@ internal sealed class RowFlagSet
         return (uint)word < (uint)_bits.Length && (_bits[word] & (1UL << (row & 63))) != 0;
     }
 
+    /// <summary>Un-flags <paramref name="row"/>; returns false when it wasn't flagged. O(flagged)
+    /// worst case (the side-list scan) — flag counts are tick-sized, and correctness here guards the
+    /// slot-reuse-within-a-window loss (final-audit critical).</summary>
+    public bool Remove(int row)
+    {
+        int word = row >> 6;
+        if ((uint)word >= (uint)_bits.Length)
+            return false;
+        ulong mask = 1UL << (row & 63);
+        if ((_bits[word] & mask) == 0)
+            return false;
+
+        _bits[word] &= ~mask;
+        for (int i = 0; i < _flaggedCount; i++)
+        {
+            if (_flagged[i] == row)
+            {
+                _flagged[i] = _flagged[--_flaggedCount]; // swap-remove
+                break;
+            }
+        }
+        return true;
+    }
+
     /// <summary>Clears all flags in O(flagged).</summary>
     public void Clear()
     {

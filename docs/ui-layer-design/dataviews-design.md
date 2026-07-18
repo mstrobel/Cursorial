@@ -322,6 +322,27 @@ slide proofs, steady-state 0 B gates, collation-key vs ICU compare table. Contro
 cell assertions against the mockup layouts, keyboard/mouse flows, editing begin/commit/cancel,
 copy, theme tiers. Adversarial audit before PR.
 
+### 6.1 Recorded benchmark results (2026-07-18, Apple M-series, Release; `ShapingSortBenchmark`)
+
+**Sort table** (TimSort ms / `Array.Sort` ms / ratio) — the §7-Q1 verdict: **no hybrid**. Random
+costs 1.17–1.28× vs introsort (a small constant, stable across N); every mostly-sorted profile wins
+big (4× at 1% perturbed, ~parity at 20%), sorted/reversed win 13–30×:
+
+| N | random | sorted | 1% | 5% | 20% | reversed |
+|---:|---|---|---|---|---|---|
+| 10k | 1.53/1.28 (1.19) | 0.05/0.55 (0.08) | 0.13/0.58 (0.23) | 0.43/0.62 (0.69) | 0.94/0.90 (1.05) | 0.05/0.90 (0.06) |
+| 100k | 21.0/17.9 (1.17) | 0.47/6.77 (0.07) | 1.76/7.21 (0.24) | 5.27/8.36 (0.63) | 11.7/12.8 (0.91) | 0.52/13.2 (0.04) |
+| 1M | 337/288 (1.17) | 5.0/105 (0.05) | 23/94 (0.25) | 62/134 (0.46) | 161/200 (0.81) | 5.3/159 (0.03) |
+
+**Repair vs full sort** (N = 1M): K=1 → 3.4 ms (85× vs the source-order reshape, 4.6× vs the
+best-case old-view re-sort); K=100 → 1.7 ms (163×/9.1×); K=10k → 6.1 ms (52×/4.3×) — the 1/8
+threshold has generous headroom, and the >⅛ fallback now re-sorts the OLD view (near-linear; the
+benchmark surfaced that the original fallback sorted source order, ~18× slower — fixed).
+
+**Live ticks**: 0.286 ms/tick at 100k sorted rows (~3,500 ticks/s, 17× under the 5 ms gate).
+**Compare contract**: a 3-level fused comparison over 100k rows runs 47.9 ns/compare at exactly
+0 B across 1M invocations (the ordinal-string path; culture columns ride collation keys).
+
 ## 7. Panel Q&A record
 
 Q1 TimSort vs hybrid → TimSort + benchmark table; hybrid only if the table demands (open).

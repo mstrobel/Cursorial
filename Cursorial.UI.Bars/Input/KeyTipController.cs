@@ -444,8 +444,19 @@ public sealed class KeyTipController : IKeyTipController, IKeyTipLayoutHook
 
     private void RestoreFocus()
     {
-        // Focus was never moved during a drill (badges are the surrogate), so the snapshot is still valid; restore it.
-        if (_restoreFocus is { IsAttachedToTree: true } snapshot)
-            _app.FocusManager.SetFocus(snapshot, FocusNavigationMethod.Restore);
+        // Focus was never moved during a drill (badges are the surrogate), so the snapshot is still valid.
+        if (_restoreFocus is not { IsAttachedToTree: true } snapshot)
+            return;
+
+        // …but only restore it if the snapshot still belongs to the ACTIVE root. If a different window/root
+        // became active while the overlay was up — an Alt-bearing key gesture (Alt is the drill modifier, so a
+        // gesture like Alt+N reaches here through the same held-Alt window) opened or switched a window — the
+        // snapshot points into the now-inactive old root. Restoring it then yanks focus OUT of the freshly
+        // activated window back to where the cursor sat before the gesture (the reported bug). The new window's
+        // own activation focus (FocusManager.OnWindowActivated) must win; leave it alone.
+        if (_app.FocusManager.ActiveRoot is { } activeRoot && !activeRoot.IsAncestorOf(snapshot))
+            return;
+
+        _app.FocusManager.SetFocus(snapshot, FocusNavigationMethod.Restore);
     }
 }

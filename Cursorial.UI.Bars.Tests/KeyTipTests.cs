@@ -225,6 +225,49 @@ public sealed class KeyTipTests
         Assert.True(fired); // the Ctrl chord was NOT consumed by the KeyTip controller
     }
 
+    [Fact] // Regression: an Alt-BEARING key gesture that opens a NEW window must not have the overlay's focus-restore
+           // yank focus back into the OLD root. Alt arms the overlay and snapshots the pre-gesture focus; when the
+           // gesture then activates a different window, restoring that stale snapshot steals focus from the new window
+           // (the reported bug). RestoreFocus is now active-root-aware — it no-ops once the active root has changed.
+    public void AltGesture_OpensWindow_KeepsFocusInNewWindow()
+    {
+        using var host = NewHost(HeadlessCapabilities.KittyTruecolor);
+        var controller = host.Application.EnableKeyTips();
+
+        var (ribbon, _, _) = NewRibbon();                 // root badges are H (Home) / I (Insert) — 'N' is not one
+        var box = new TextBox();
+        var root = new StackPanel { Orientation = Orientation.Vertical, Children = { ribbon, box } };
+
+        // Alt+N (an Alt-bearing gesture that is NOT a KeyTip badge letter, so it bonks through the drill
+        // interception and fires the binding) opens a window whose content is a focusable button.
+        var newButton = new Button { Content = "In New Window" };
+        var window = new Window { Content = newButton };
+        root.InputBindings.Add(new KeyBinding(
+            new KeyGesture(Key.Character, KeyModifiers.Alt, "N"),
+            new BarCommand(() => window.Show(host.Application.WindowManager!))));
+
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        host.Application.FocusManager.SetFocus(box);
+        Assert.Same(box, host.Application.FocusManager.FocusedElement);
+
+        AltDown(host);                                    // arms KeyTips; snapshots focus = box
+        Assert.True(controller.IsActive);
+
+        TypeKeyTip(host, 'N');                            // Alt+N: no 'N' badge → falls through → fires the binding
+        host.RunUntilIdle();                              // the window shows, activates, auto-focuses its button
+
+        Assert.Same(newButton, host.Application.FocusManager.FocusedElement); // the new window took focus…
+
+        // Release Alt (a chord rode the bracket via Alt+N, so this is a cue-OFF exit, not a sticky tap) → the
+        // overlay tears down and its RestoreFocus runs against a now-changed active root.
+        host.Application.InputDispatcher.ProcessEvent(Key_(Key.LeftAlt, KeyModifiers.None, kind: KeyEventKind.Up));
+        host.RunUntilIdle();
+
+        Assert.False(controller.IsActive);
+        Assert.Same(newButton, host.Application.FocusManager.FocusedElement); // …and KEEPS it (not restored to box)
+    }
+
     [Fact] // Badges stay glued to their targets when the ribbon SCROLLS inside a ScrollViewer (an in-band composite
            // slide moves the tabs; the badges must follow via TranslateToScreen's scroll-offset walk).
     public void Badges_TrackTarget_WhenRibbonScrolls()

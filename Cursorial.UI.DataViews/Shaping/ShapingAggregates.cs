@@ -32,6 +32,26 @@ internal abstract class ColumnAggregator
     public abstract string Format(AggregateValue value);
 
     /// <summary>
+    /// Compares two values THIS aggregator produced (the §9.5 order-groups-by-summary projection).
+    /// Empty (zero rows / all-null) orders first — the engine's nulls-first convention; numeric
+    /// lanes compare in their accumulator type; Min/Max values compare through the column's key
+    /// comparison (sort-consistent).
+    /// </summary>
+    public abstract int CompareValues(in AggregateValue a, in AggregateValue b);
+
+    /// <summary>The shared empty-first arbitration for <see cref="CompareValues"/>.</summary>
+    private protected static bool TryCompareEmpty(in AggregateValue a, in AggregateValue b, out int result)
+    {
+        if (a.IsEmpty || b.IsEmpty)
+        {
+            result = a.IsEmpty ? (b.IsEmpty ? 0 : -1) : 1;
+            return true;
+        }
+        result = 0;
+        return false;
+    }
+
+    /// <summary>
     /// Builds the aggregator for <paramref name="column"/>: numeric keys (incl. nullable — nulls are
     /// skipped, the DevExpress ignore-null default) get Sum/Average via widened accumulators;
     /// every comparable key gets Min/Max via the column comparison; Count is universal.
@@ -72,6 +92,7 @@ internal abstract class ColumnAggregator
     {
         public override AggregateValue Aggregate(int[] view, int start, int count) => AggregateValue.FromDouble(count);
         public override string Format(AggregateValue value) => ((long)value.AsDouble).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        public override int CompareValues(in AggregateValue a, in AggregateValue b) => a.AsDouble.CompareTo(b.AsDouble);
     }
 
     private sealed class MinMaxAggregator<TRow, TKey>(ShapedColumn<TRow, TKey> column, string? format) : ColumnAggregator
@@ -101,6 +122,11 @@ internal abstract class ColumnAggregator
 
         public override string Format(AggregateValue value)
             => value.IsEmpty ? string.Empty : _formatter((TKey)value.Boxed!);
+
+        public override int CompareValues(in AggregateValue a, in AggregateValue b)
+            => TryCompareEmpty(a, b, out int empty)
+                ? empty
+                : column.KeyComparison((TKey)a.Boxed!, (TKey)b.Boxed!); // one unbox per compare — cold (per sibling pair per publish)
     }
 
     /// <summary>
@@ -238,6 +264,13 @@ internal abstract class ColumnAggregator
             if (underlying == typeof(double) || underlying == typeof(float))
                 return FormatViaColumn(v);
             return v.ToString("0.##", System.Globalization.CultureInfo.CurrentCulture);
+        }
+
+        public override int CompareValues(in AggregateValue a, in AggregateValue b)
+        {
+            if (TryCompareEmpty(a, b, out int empty))
+                return empty;
+            return _decimalLane ? a.AsDecimal.CompareTo(b.AsDecimal) : a.AsDouble.CompareTo(b.AsDouble);
         }
 
         private static bool IsIntegral(Type t)

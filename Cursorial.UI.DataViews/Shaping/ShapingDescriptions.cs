@@ -40,7 +40,26 @@ public readonly record struct SortDescription(object ColumnKey, SortDirection Di
 }
 
 /// <summary>One grouping level: a column + the group-header sort direction (a group level IS a sort level in v1).</summary>
-public readonly record struct GroupDescription(object ColumnKey, SortDirection Direction = SortDirection.Ascending);
+public readonly record struct GroupDescription(object ColumnKey, SortDirection Direction = SortDirection.Ascending)
+{
+    /// <summary>
+    /// Orders sibling groups at this level by an aggregate computed over each group's rows instead
+    /// of by the group key (design doc §9.5 — "sort groups by summary"). The aggregate is compiled
+    /// whether or not the same summary is displayed. Ordering is a <b>per-publish projection</b>:
+    /// the key-ordered sorted view stays the incremental-repair substrate (boundaries still derive
+    /// from key equality and rows within a group keep key order); only the sibling display order
+    /// permutes. Ties order by group key (the derivation order under <see cref="Direction"/>).
+    /// A parent's reorder carries its whole subtree; each level orders its own siblings.
+    /// </summary>
+    public SummaryDescription? OrderBySummary { get; init; }
+
+    /// <summary>
+    /// The direction of the <see cref="OrderBySummary"/> ordering — independent of
+    /// <see cref="Direction"/>, which keeps governing the key order boundaries/rows derive from.
+    /// Ignored when <see cref="OrderBySummary"/> is null.
+    /// </summary>
+    public SortDirection SummaryDirection { get; init; }
+}
 
 /// <summary>One summary: a column + aggregate + optional format/display template ("{0}" = the value).</summary>
 public readonly record struct SummaryDescription(object ColumnKey, AggregateKind Aggregate, string? Format = null, string? DisplayTemplate = null);

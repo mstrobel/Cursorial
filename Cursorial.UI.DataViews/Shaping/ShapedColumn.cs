@@ -29,8 +29,33 @@ internal abstract class ShapedColumn
     /// <summary>Formats <paramref name="slot"/>'s key for display.</summary>
     public abstract string FormatSlot(int slot);
 
+    /// <summary>
+    /// The §9.6 span-format lane: writes <paramref name="slot"/>'s display text into
+    /// <paramref name="destination"/>, returning chars written or −1 when it doesn't fit (the
+    /// caller grows and retries). The band cache formats through THIS into pooled char buffers —
+    /// no per-cell string; the text is identical to <see cref="FormatSlot"/> (both lanes compile
+    /// from the same format/culture pair).
+    /// </summary>
+    public abstract int FormatSlotTo(int slot, Span<char> destination);
+
     /// <summary>The key boxed — cold paths only (group captions, diagnostics).</summary>
     public abstract object? GetKeyBoxed(int slot);
+
+    /// <summary>
+    /// Whether <paramref name="slot"/>'s key is null (a null reference / <see cref="Nullable{T}"/>
+    /// without a value) — the TopK population filter (§9.5: null keys never qualify). Always false
+    /// for non-nullable value keys.
+    /// </summary>
+    internal abstract bool IsKeyNull(int slot);
+
+    /// <summary>
+    /// A rank predicate for the §9.5 TopBottom lane: <c>qualifies(slot, boxedThreshold)</c> =
+    /// non-null key AND key ≥ threshold (top) / ≤ threshold (bottom), through the column's OWN sort
+    /// comparison (ties include — consistent with
+    /// <see cref="DataViewController.TryGetTopKThreshold"/>'s boxed result). Built ONCE per rule
+    /// compile; the threshold re-derives per publish and flows in boxed.
+    /// </summary>
+    internal abstract Func<int, object?, bool> CreateRankPredicate(bool top);
 
     /// <summary>
     /// Builds the expression comparing this column's keys at slots <paramref name="a"/>/<paramref name="b"/>
@@ -72,13 +97,41 @@ internal abstract class ShapedColumn
     /// <summary>
     /// Parses <paramref name="text"/> to the key type and writes it through the compiled setter
     /// (the edit-commit path). False when the column is read-only or the text doesn't parse —
-    /// the editor stays open for correction.
+    /// the editor stays open for correction. For value-type rows the write lands IN THE BOX
+    /// (<paramref name="row"/> must be a boxed <c>TRow</c> — the new-row lane's contract; the
+    /// id-keyed lane uses the typed <see cref="ShapedColumn{TRow}.TrySetFromText(ref TRow,string)"/>
+    /// + <c>RowStore.SetRow</c> instead, §9.6).
     /// </summary>
     public abstract bool TrySetFromText(object row, string text);
+
+    /// <summary>Writes <paramref name="value"/> back INTO the box (the only way an object-typed
+    /// surface can make a struct-row edit real — unboxing yields a copy; §9.6).</summary>
+    private protected static void WriteBox<T>(object box, T value) where T : struct
+        => System.Runtime.CompilerServices.Unsafe.Unbox<T>(box) = value;
+}
+
+/// <summary>
+/// The row-typed column layer (§9.6): typed extraction and edit write-back without boxing the row —
+/// the controller knows <typeparamref name="TRow"/> but not the key type, so the struct-row lanes
+/// (attach-time extraction, the id-keyed edit commit) dispatch through here.
+/// </summary>
+internal abstract class ShapedColumn<TRow> : ShapedColumn
+{
+    /// <summary>The typed extract (the hot path — the untyped override is the INCC boundary).</summary>
+    public abstract void ExtractKey(TRow row, int slot);
+
+    /// <summary>
+    /// Parses <paramref name="text"/> and writes through the compiled setter into
+    /// <paramref name="row"/>: in place for reference rows; for value-type rows the compiled
+    /// mutator writes the modified COPY back into the ref — the caller stores it via
+    /// <c>RowStore.SetRow</c> (design doc §9.6: a setter on a copy is a silent no-op).
+    /// False when the column is read-only or the text doesn't parse.
+    /// </summary>
+    public abstract bool TrySetFromText(ref TRow row, string text);
 }
 
 /// <summary>The typed column (see <see cref="ShapedColumn"/>).</summary>
-internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
+internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
 {
     // Read via Expression.Field by compiled comparers so vector growth (re-allocation) is always
     // observed — never capture the array itself into a compiled tree.
@@ -113,7 +166,7 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
     }
 
     /// <summary>The typed extract (the hot path — the untyped override is the INCC boundary).</summary>
-    public void ExtractKey(TRow row, int slot)
+    public override void ExtractKey(TRow row, int slot)
     {
         var key = _getter(row);
         Keys[slot] = key;
@@ -133,32 +186,108 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
 
     public override string FormatSlot(int slot) => _formatter(Keys[slot]);
 
+    /// <summary>The compiled span formatter (§9.6 — set by the factory; null falls back through the
+    /// string lane, format-identical either way).</summary>
+    internal SpanFormat<TKey>? SpanFormatter { get; init; }
+
+    public override int FormatSlotTo(int slot, Span<char> destination)
+    {
+        if (SpanFormatter is { } spanFormat)
+            return spanFormat(Keys[slot], destination);
+
+        string text = _formatter(Keys[slot]);
+        if (text.Length > destination.Length)
+            return -1;
+        text.CopyTo(destination);
+        return text.Length;
+    }
+
     public override object? GetKeyBoxed(int slot) => Keys[slot];
+
+    internal override bool IsKeyNull(int slot) => Keys[slot] is null; // JIT-eliminated false for non-nullable value keys
+
+    internal override Func<int, object?, bool> CreateRankPredicate(bool top)
+        => (slot, boxedThreshold) =>
+        {
+            if (Keys[slot] is null || boxedThreshold is not TKey threshold)
+                return false;
+            int comparison = _comparison(Keys[slot], threshold);
+            return top ? comparison >= 0 : comparison <= 0;
+        };
 
     /// <summary>The compiled key comparison (exposed for the repair/aggregate kits).</summary>
     internal Comparison<TKey> KeyComparison => _comparison;
 
-    /// <summary>The compiled write-back setter (null = read-only column; the editing lane — §3.2).</summary>
+    /// <summary>The compiled write-back setter for REFERENCE rows (null = read-only column, or a
+    /// value-type row — see <see cref="StructSetter"/>; the editing lane — §3.2).</summary>
     internal Action<TRow, TKey>? Setter { get; init; }
 
-    public override bool IsEditable => Setter is not null;
+    /// <summary>The compiled write-back mutator for VALUE-TYPE rows (§9.6): takes the row COPY,
+    /// writes the member, returns the modified copy — the caller stores it back. Null for
+    /// reference rows or read-only columns.</summary>
+    internal Func<TRow, TKey, TRow>? StructSetter { get; init; }
 
-    public override bool TrySetFromText(object row, string text)
+    /// <summary>Boxed-struct write-back (built only for value-type rows) — the new-row lane's
+    /// mutate-the-box path; created via <see cref="ShapedColumn.WriteBox{T}"/> reflection once per
+    /// closed column type (the struct constraint isn't expressible on the open <typeparamref name="TRow"/>).</summary>
+    private static readonly Action<object, TRow>? BoxWriter =
+        typeof(TRow).IsValueType
+            ? (Action<object, TRow>)typeof(ShapedColumn)
+                .GetMethod(nameof(WriteBox), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .MakeGenericMethod(typeof(TRow))
+                .CreateDelegate(typeof(Action<object, TRow>))
+            : null;
+
+    public override bool IsEditable => Setter is not null || StructSetter is not null;
+
+    /// <summary>Parses the edit text to the key type; false when the column is read-only or the
+    /// text doesn't parse (the editor stays open for correction).</summary>
+    private bool TryParseForSet(string text, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out TKey value)
     {
-        if (Setter is null)
+        value = default!;
+        if (Setter is null && StructSetter is null)
             return false;
 
-        TKey value;
         try
         {
             value = ShapingFilter.ConvertLiteral<TKey>(text.Length == 0 && default(TKey) is null ? null : text)!;
+            return true;
         }
         catch (Exception e) when (e is FormatException or InvalidCastException or OverflowException or ArgumentException)
         {
             return false; // unparseable — the editor stays open for correction
         }
+    }
 
-        Setter((TRow)row, value);
+    public override bool TrySetFromText(object row, string text)
+    {
+        if (!TryParseForSet(text, out var value))
+            return false;
+
+        if (StructSetter is { } mutate)
+        {
+            // Value-type row: mutate a copy, write it back INTO the caller's box (unboxing alone
+            // would edit a throwaway copy — the §9.6 silent-no-op trap).
+            BoxWriter!(row, mutate((TRow)row, value));
+            return true;
+        }
+
+        Setter!((TRow)row, value);
+        return true;
+    }
+
+    public override bool TrySetFromText(ref TRow row, string text)
+    {
+        if (!TryParseForSet(text, out var value))
+            return false;
+
+        if (StructSetter is { } mutate)
+        {
+            row = mutate(row, value); // the caller stores the copy back (RowStore.SetRow)
+            return true;
+        }
+
+        Setter!(row, value);
         return true;
     }
 

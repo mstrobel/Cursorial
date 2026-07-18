@@ -134,6 +134,29 @@ internal sealed class RowStore<TRow>
         set => _deferReclamation = value; // release rides ReleaseDeferredFrees (publish-gated)
     }
 
+    /// <summary>
+    /// Replaces the row stored at <paramref name="slot"/> (row id) — the §9.6 value-type edit
+    /// write-back: the compiled mutator produces a modified COPY of the struct row; storing it back
+    /// here is what makes the edit real (a setter through a box mutates a throwaway copy). Also
+    /// re-points the INPC identity map for reference rows. The caller owns dirty-marking/reshaping;
+    /// undefined for freed slots (callers track liveness, the <see cref="GetRow"/> contract).
+    /// </summary>
+    public void SetRow(int slot, in TRow row)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)slot, (uint)_slotHighWater, nameof(slot));
+
+        if (_slotByRow is not null)
+        {
+            var old = _rows[slot];
+            if (old is not null && _slotByRow.TryGetValue(old, out int mapped) && mapped == slot)
+                _slotByRow.Remove(old);
+            if (row is not null)
+                _slotByRow[row] = slot;
+        }
+
+        _rows[slot] = row;
+    }
+
     /// <summary>Replaces the row at source position <paramref name="index"/> in place; returns its slot (keys must re-extract).</summary>
     public int Replace(int index, TRow row)
     {

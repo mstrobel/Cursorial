@@ -45,6 +45,15 @@ public abstract class FormatRule
 
     /// <summary>The column identity the rule targets (the shaping identity — the grid column instance).</summary>
     public required object ColumnKey { get; init; }
+
+    /// <summary>
+    /// Whether the rule participates in band-fill evaluation (the rules manager's "On" toggle —
+    /// the one MUTABLE knob on an otherwise immutable description: flipping it must not require
+    /// reconstructing the rule the manager lists). The grid's collection funnel is the guard — a
+    /// disabled rule is excluded from the set pushed into the engine, so the controller's compiled
+    /// kit never sees it; re-enable rides the next <c>RefreshFormatRules</c>/shape push.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 }
 
 /// <summary>

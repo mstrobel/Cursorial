@@ -388,6 +388,18 @@ tree-shaped subset (And/Or over simple field-op-literal comparisons) for Filter 
 `FilterNodeToAst`/`AstToText` complete the loop (Builder ⇄ text). Non-boolean roots and unknown
 fields/functions are positioned diagnostics, never throws past Parse.
 
+**Panel amendments (implemented):** ONE semantic authority — the compiled lane adopts the ENGINE's
+comparison semantics (string relational/equality via the involved column's SortMode; nullable
+relational via null-first total order — `[A] < 5` is TRUE for a null A, exactly the Condition
+lane; `= null` ≡ null-ness). Structural lowering to Condition/InSet leaves is guarded by literal
+EXACTNESS (round-trip through the key type — `[IntCol] = 2.5` stays compiled so ChangeType can
+never round it to `= 2`). Field binding: exact FieldName wins → unique display alias → ambiguity
+is a positioned diagnostic. Literals parse invariant (numbers; `#date#` ISO-first) so saved
+filters are portable; `Like` gains `[%]`/`[_]` literal escapes and its regex case-ness follows the
+column mode. The compiled-predicate fallback (`FilterNode.Custom`) does not text-round-trip — the
+ORIGINAL SOURCE TEXT is retained alongside the filter by the editor surfaces (the builder shows a
+read-only "expression" row for it; a future source-carrying FilterNode is the recorded upgrade).
+
 ### 9.2 In-presenter horizontal scrolling = frozen columns + column virtualization (ONE item)
 
 Frozen columns are IMPOSSIBLE under SCP horizontal scrolling — the compositor slides the whole
@@ -402,8 +414,36 @@ scene slide. Scenes shrink from content-width to viewport-width (a memory win at
 UNSHIFTED x (overpaint — the painter fills their background, no clip stack needed); scrolling
 columns draw shifted, SKIPPING cells that would start under the frozen region (truncate at the
 boundary). Hit-testing: x < frozenWidth → fixed lookup, else x+offset. Header/filter/footer mirror
-the same split. Horizontal scrolling re-inks the band (a raster, not a slide — the vertical axis
-keeps the composite-slide contract; H-scroll frequency is low, and the raster is viewport-sized).
+the same split.
+
+**Panel amendments (the mechanism, corrected against the shipped code):**
+- The one horizontal truth is a new `DataGrid.HorizontalOffset` styled property, clamped to
+  `[0, max(0, TotalWidth − viewportColumns)]` at set time AND re-clamped after the presenter's
+  measure resolves `ColumnLayout` (the SCP end-of-arrange re-coercion analog — a hide/resize while
+  scrolled right snaps back the same frame). All four band presenters re-bind to it; the filter
+  popup's anchor math reads it.
+- The ScrollViewer CANNOT host the H-bar (its bar wiring pins to the SCP offset, which coerces to 0
+  once `CanScrollHorizontally=false`): the template docks a **grid-owned horizontal `ScrollBar`
+  part** bound to `DataGrid.HorizontalOffset` (shown only when TotalWidth > viewport).
+- `DataGridRowsPresenter.GetExtent` reports viewport columns (the host's obligation — the SCP
+  publishes GetExtent verbatim on both axes).
+- Wheel: `DataGrid.OnMouseWheel` owns Shift+wheel/`WheelDeltaX` (routes into `HorizontalOffset`,
+  handled even at the extremes so an outer scroller never captures the gesture mid-grid).
+- The presenter's H-offset registers **AffectsMeasure** (not just render): hosted children — the
+  cell editor, §9.3 details — arrange at `entry.X − HOffset` and must re-arrange per tick (the
+  band cache's early-out keeps the re-measure a no-op).
+- **Hosted-children policy over the frozen region** (children paint OVER drawn cells and steal
+  hits — overpaint cannot clip them): `BeginEdit`/Tab-advance first auto-scroll the target cell
+  clear of the frozen width; an H-scroll that would push a hosted editor under the frozen region
+  commits it (cancel on commit-failure); §9.3 detail elements are horizontally viewport-anchored
+  (arranged at x=0 viewport-wide, never shifted).
+- `ScrollColumnIntoView(columnIndex)`: Fixed → no-op; scrolling → minimal scroll of the entry into
+  `[HOffset + frozenWidth, HOffset + viewportWidth)`, leading-edge-aligned when wider; called from
+  focus-cell moves, `SetFocusCell`, `BeginEdit`/Tab-advance, and header virtual-focus walks.
+- Cost, honestly: an H-tick re-rasters the BAND scene (≈3× viewport rows — the vertical
+  composite-slide contract requires every band row valid). Acceptable: hover already whole-band
+  re-inks per move, H-ticks are low-frequency, and ticks must invalidate RENDER/ARRANGE only —
+  never the band cache (per-row strings are offset-independent).
 
 ### 9.3 Master-detail
 
@@ -418,28 +458,55 @@ row id leaves the view (refilter/removal). `DataContext` = the row object; the t
 expansion (fresh subtree — the DataTemplate contract). Keyboard: the expander cell via
 Left/Right-on-gutter or Ctrl+Right/Left; mouse: expander click.
 
+**Panel amendments:** the band window itself is CONTENT-Y space — one bidirectional map
+(viewIndex→yStart prefix sums over the sorted expanded set; y→viewIndex-or-detail inverse) routes
+EVERY conflated site: `FillBandCache`'s window walk, `Render`'s y loop, `HitCell`, `EstimateItemAt`,
+`BringItemIntoView`, `ScrollRowIntoView`, `PageStep`, the edit host's arrange row, and the focus
+math. Detail realization predicate = "detail y-range intersects the band (± slack)" (an anchor row
+outside the band with its detail inside is the common tall-detail case); a detail's arrange rect
+may exceed the band (the scene crops). Heights capture at child measure inside `MeasureOverride`;
+`InvalidateScrollExtent` fires only on an actual Σheights delta (the VSP refinement discipline —
+convergence under the 16-pass fixpoint). Focus: a "focus is within a detail host" stand-down guard
+in `OnKeyDown` (the popup/editor precedent); Ctrl+Down enters the focused row's detail, Esc
+returns. The expander gutter is a SYNTHETIC first `ColumnLayout` entry (all presenters + hit math
+inherit it). Value-type rows: the detail `DataContext` is boxed ONCE per expansion build.
+
 ### 9.4 Cell-range selection
 
 `DataGrid.SelectionUnit { Row, Cell }`. Cell mode: ONE rectangular range (the DevExpress default;
-multi-range deferred) — anchor (rowId, colIndex) + lead; gestures resolve the view-space rectangle
-to (ordered rowId list × column span) at gesture time; reshapes re-project by row id (scattered
-rows keep membership — the range's row set is id-stable, its column span index-stable).
-Shift+arrow/click extends; Ctrl+C copies the rectangle as TSV; paint marks in-range cells with the
-selection background + the lead cell with the focus well. Row mode keeps the v1 controller.
+multi-range deferred). **Panel-corrected model — corner truth:** the range IS
+`(anchorRowId, leadRowId, anchorColumn, leadColumn)` with the COLUMN EDGES keyed by
+`DataGridColumn` identity (never visible index — the column-UX package reorders/hides at runtime);
+membership derives per snapshot from the re-projected corners (an id→viewIndex inverse map
+maintained per publish — the same substrate the stale view-space anchor/focus already need).
+Reshapes legitimately change membership (the Excel/DevExpress semantic); a corner whose row id
+leaves the view collapses the range to the focus cell; a hidden endpoint column clamps to the
+nearest visible. Group rows are never members (the lead passes THROUGH them keeping its column).
+Mode switch clears both selections and keeps the focus cell. Shift+arrow/click extends; Ctrl+C
+copies the rectangle as TSV; Ctrl+A stays row-mode-only. Row mode keeps the v1 controller.
 
 ### 9.5 Group ordering extensions (engine)
 
-`GroupDescription.OrderBySummary : SummaryDescription?` (+ `SummaryDirection`): after group
-derivation + aggregation, sibling groups reorder by the computed aggregate — a permutation of
-sibling RANGES applied by rebuilding the sorted view as concatenated group segments (O(V) copy,
-before flatten). Group `Direction` independent of data sorts already holds structurally (group
-levels prepend); pinned by test. TopBottom CF rules ride a `TopK` addition to the stats block
-(a bounded selection pass per rule, recomputed with stats).
+`GroupDescription.OrderBySummary : SummaryDescription?` (+ `SummaryDirection`). **Panel-pinned
+two-array discipline:** `_sortedView` stays KEY-ORDERED forever — it is the repair/fallback
+substrate (the gallop merge's precondition is comparison order; permuting it would corrupt every
+subsequent tick). The summary ordering is a PER-PUBLISH PROJECTION inside `PublishFromSorted`:
+derive nodes on the key-ordered view → aggregate → permute sibling segments into a projection
+array → flatten from the projection. `DeriveAndFlatten` splits into derive + flatten passes
+(aggregation and the permutation run between them); collapse-state `PathKey`s are order-independent
+(they chain formatted keys, not positions) and survive. `CompileShape` compiles each grouped
+level's `OrderBySummary` aggregator whether or not it is displayed. Group `Direction` independent
+of data sorts already holds structurally; pinned by test. TopBottom CF rules ride a `TopK` addition
+to the stats block (a bounded selection pass per rule, recomputed with stats).
 
 ### 9.6 Struct rows / misc
 
-`IRowIdentity<TRow>` seam: the store's row↔slot map takes a pluggable comparer; struct rows opt in
-with LiveUpdates=false (no INPC identity) — the `where T : class` constraint relaxes to a runtime
-guard. Span formatters wire into the band cache (pooled char buffers replace per-cell strings).
-The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as
+**Struct rows (panel-scoped honestly):** the `where T : class` constraint relaxes to runtime
+guards — `AttachSource(liveUpdates: true)` THROWS for value-type rows (no INPC identity; the
+row↔slot map is already null for value types — no `IRowIdentity` seam needed for this opt-in), and
+editing takes a position: `TrySetCellFromText` writes through a new `RowStore.SetRow(slot, row)`
+write-back (the setter mutates a boxed COPY otherwise — a silent no-op); `GetRowObject` boxes fresh
+per call, so rowId is the ONLY identity for value-type rows (id-keyed consumers never round-trip
+through it). Span formatters wire into the band cache (pooled char buffers replace per-cell
+strings). The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as a
 `GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).

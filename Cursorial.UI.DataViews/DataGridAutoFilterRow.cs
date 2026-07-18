@@ -101,46 +101,67 @@ public sealed class DataGridAutoFilterRow : UIElement
         if (Background is not null)
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
 
-        int shift = -HorizontalOffset;
+        // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
+        // frozen region re-fills its background and draws its cells unshifted on top.
         var entries = layout.Entries;
-        for (int i = 0; i < entries.Count; i++)
+        for (int i = layout.FrozenCount; i < entries.Count; i++)
+            DrawFilterCell(context, owner, layout, i);
+
+        if (layout.FrozenCount > 0)
         {
-            var entry = entries[i];
-            int x = entry.X + shift;
-            int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
-            if (x + cellWidth <= 0 || x >= Bounds.Columns)
-                continue;
-            if (i == _editColumnIndex && _editor is not null)
-                continue; // the hosted editor paints this cell
-
-            var column = entry.Column;
-            if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
-                continue;
-
-            string? summary = owner.GetColumnFilterSummary(column);
-            int contentX = x + DataGridColumnLayout.CellPadding;
-
-            if (column.FilterCellKind == FilterCellKind.DistinctPicker)
-            {
-                // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
-                if (summary is not null && WellBackground is not null)
-                    context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
-                string text = summary ?? "(All)";
-                DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
-                            summary is not null ? TextBrush : PlaceholderBrush);
-                context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", PlaceholderBrush);
-            }
-            else if (summary is not null)
-            {
-                if (WellBackground is not null)
-                    context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
-                DrawClipped(context, contentX, summary, entry.Width, TextBrush);
-            }
-            else
-            {
-                context.DrawText(contentX, 0, "⌕", PlaceholderBrush); // the idle affordance
-            }
+            if (Background is not null && HorizontalOffset > 0)
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+            for (int i = 0; i < layout.FrozenCount; i++)
+                DrawFilterCell(context, owner, layout, i);
         }
+    }
+
+    /// <summary>One filter cell at its §9.2 draw position (picker / condition summary / idle ⌕).</summary>
+    private void DrawFilterCell(RenderContext context, DataGrid owner, DataGridColumnLayout layout, int i)
+    {
+        var entry = layout.Entries[i];
+        int x = DrawXOf(layout, i);
+        int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+        int leftEdge = i < layout.FrozenCount ? 0 : layout.FrozenWidth;
+        if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
+            return;
+        if (i == _editColumnIndex && _editor is not null)
+            return; // the hosted editor paints this cell
+
+        var column = entry.Column;
+        if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
+            return;
+
+        string? summary = owner.GetColumnFilterSummary(column);
+        int contentX = x + DataGridColumnLayout.CellPadding;
+
+        if (column.FilterCellKind == FilterCellKind.DistinctPicker)
+        {
+            // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
+            if (summary is not null && WellBackground is not null)
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+            string text = summary ?? "(All)";
+            DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
+                        summary is not null ? TextBrush : PlaceholderBrush);
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", PlaceholderBrush);
+        }
+        else if (summary is not null)
+        {
+            if (WellBackground is not null)
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+            DrawClipped(context, contentX, summary, entry.Width, TextBrush);
+        }
+        else
+        {
+            context.DrawText(contentX, 0, "⌕", PlaceholderBrush); // the idle affordance
+        }
+    }
+
+    /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>
+    private int DrawXOf(DataGridColumnLayout layout, int index)
+    {
+        var entry = layout.Entries[index];
+        return index < layout.FrozenCount ? entry.X : entry.X - HorizontalOffset;
     }
 
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
@@ -237,9 +258,9 @@ public sealed class DataGridAutoFilterRow : UIElement
         // No base.ArrangeOverride chain: the UIElement default re-arranges every visual child to
         // the full finalSize, which would stretch the roving editor across the whole band and
         // paint out the other filter cells (the rows presenter's latent v1 arrange bug, same fix).
-        if (_editor is not null && EditEntry() is { } entry)
+        if (_editor is not null && Layout is { } layout && EditEntry() is { } entry)
         {
-            _editor.Arrange(new Rect(entry.X - HorizontalOffset + DataGridColumnLayout.CellPadding, 0,
+            _editor.Arrange(new Rect(DrawXOf(layout, _editColumnIndex) + DataGridColumnLayout.CellPadding, 0,
                                      Math.Max(1, entry.Width), 1));
         }
         return finalSize;
@@ -309,7 +330,10 @@ public sealed class DataGridAutoFilterRow : UIElement
             return;
 
         var position = e.GetPosition(this);
-        int index = layout.EntryAt(position.Column + HorizontalOffset);
+        int contentX = position.Column < layout.FrozenWidth
+            ? position.Column
+            : position.Column + HorizontalOffset; // the §9.2 split map
+        int index = layout.EntryAt(contentX);
         if (index < 0)
             return;
 

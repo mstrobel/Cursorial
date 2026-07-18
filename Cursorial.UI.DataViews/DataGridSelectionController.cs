@@ -2,6 +2,15 @@ using Cursorial.UI.DataViews.Shaping;
 
 namespace Cursorial.UI.DataViews;
 
+/// <summary>The grid's selection granularity (§9.4).</summary>
+public enum DataGridSelectionUnit
+{
+    /// <summary>Whole-row selection (the v1 controller — multi-select, compact inversion).</summary>
+    Row,
+    /// <summary>One rectangular cell range (the DevExpress default; corner-truth model — §9.4).</summary>
+    Cell,
+}
+
 /// <summary>
 /// Row selection keyed on stable ROW IDS (design doc §3.3 — the panel decision): membership survives
 /// every re-sort/filter/regroup by construction, so reshapes need zero selection fixup. Gestures

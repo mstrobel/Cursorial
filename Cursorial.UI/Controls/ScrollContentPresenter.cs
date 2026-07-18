@@ -202,14 +202,21 @@ public class ScrollContentPresenter : UIElement
     /// <summary>The vertical offset at the last band re-anchor (initially 0).</summary>
     internal int BandAnchorRow { get; private set; }
 
-    /// <summary>The content row the zone scene's row 0 maps to.</summary>
-    internal int BandStartRow { get; private set; }
+    /// <summary>
+    /// The content row the zone scene's row 0 maps to — the top of the realization window a
+    /// virtualizing <see cref="IScrollContentHost"/> should fill (public: the host reads the window
+    /// through <see cref="IScrollContentHost.ScrollOwner"/> at band-fill time — the promoted seam;
+    /// an in-band scroll never moves it, a re-anchor moves it AND calls
+    /// <see cref="IScrollContentHost.InvalidateRealization"/>).
+    /// </summary>
+    public int BandStartRow { get; private set; }
 
     /// <summary>The band padding <c>K = max(viewportRows, 8)</c> (matrix LD11).</summary>
     internal int BandPadding => Math.Max(_viewport.Rows, MinBandPadding);
 
-    /// <summary>The banded scene height: <c>min(contentRows, viewportRows + 2K)</c>.</summary>
-    internal int BandLength => Math.Min(ArrangedContentRows, _viewport.Rows + 2 * BandPadding);
+    /// <summary>The banded scene height <c>min(contentRows, viewportRows + 2K)</c> — the realization
+    /// window's length (public for hosts; see <see cref="BandStartRow"/>).</summary>
+    public int BandLength => Math.Min(ArrangedContentRows, _viewport.Rows + 2 * BandPadding);
 
     /// <summary>The content's arranged height — <c>max(Extent, Viewport)</c> rows when vertically scrollable, else the viewport.</summary>
     private int ArrangedContentRows => CanScrollVertically ? Math.Max(_extent.Rows, _viewport.Rows) : _viewport.Rows;

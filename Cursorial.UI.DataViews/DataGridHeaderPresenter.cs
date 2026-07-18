@@ -97,7 +97,6 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (Background is not null)
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
 
-        int shift = -HorizontalOffset;
         var entries = layout.Entries;
 
         // Reorder-drag adorner inputs (the mockup's draghdr row): the ghost tint on the dragged
@@ -110,47 +109,17 @@ public sealed class DataGridHeaderPresenter : UIElement
                         DropSlot != _gestureEntry && DropSlot != _gestureEntry + 1; // beside-itself = no-op slot
         int ghostIndex = slotLive && DropSlot < entries.Count ? DropSlot : -1;
 
-        for (int i = 0; i < entries.Count; i++)
+        // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
+        // frozen region re-fills its background and draws its cells unshifted on top.
+        for (int i = layout.FrozenCount; i < entries.Count; i++)
+            DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
+
+        if (layout.FrozenCount > 0)
         {
-            var entry = entries[i];
-            int x = entry.X + shift;
-            int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
-            if (x + cellWidth <= 0 || x >= Bounds.Columns)
-                continue;
-
-            bool tinted = dragging
-                ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
-                : i == _hoverEntry;
-            if (tinted && HoverBackground is not null)
-                context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
-
-            // Caption, truncated to leave glyph room on the right.
-            string caption = entry.Column.EffectiveHeader;
-            int glyphRoom = 2; // "▾" + gap; sort glyph adds another below when present
-            var (direction, ordinal) = owner.GetSortState(entry.Column);
-            if (direction is not null)
-                glyphRoom += ordinal > 0 ? 3 : 2;
-
-            DrawTruncated(context, x + DataGridColumnLayout.CellPadding, caption,
-                          Math.Max(1, entry.Width - glyphRoom), Foreground);
-
-            // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
-            int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
-            if (entry.Column.AllowFilter)
-            {
-                bool active = owner.HasColumnFilter(entry.Column);
-                context.DrawText(glyphX, 0, "▾", active ? ActiveFilterBrush ?? FilterGlyphBrush : FilterGlyphBrush);
-                glyphX -= 2;
-            }
-            if (direction is { } d)
-            {
-                if (ordinal > 0 && ordinal < 9)
-                {
-                    context.DrawText(glyphX, 0, (ordinal + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), SortGlyphBrush);
-                    glyphX -= 1;
-                }
-                context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", SortGlyphBrush);
-            }
+            if (Background is not null && HorizontalOffset > 0)
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+            for (int i = 0; i < layout.FrozenCount; i++)
+                DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
         }
 
         // ── Reorder-drag overlay: the ▾ drop slot + the floating ▣ chip (drawn LAST, over all) ───
@@ -161,7 +130,9 @@ public sealed class DataGridHeaderPresenter : UIElement
                 // The cyan slot marker at the insertion boundary — SortGlyphBrush is the theme's
                 // CoolBrush (the mockup's accent-2 cyan), reused deliberately: no new theme key for
                 // a glyph that means "here" in the same accent family.
-                int boundaryX = (DropSlot < entries.Count ? entries[DropSlot].X : layout.TotalWidth) + shift;
+                int boundaryX = DropSlot < entries.Count
+                    ? DrawXOf(layout, DropSlot)
+                    : layout.TotalWidth - HorizontalOffset;
                 if (boundaryX >= 0 && boundaryX < Bounds.Columns)
                     context.DrawText(boundaryX, 0, "▾", SortGlyphBrush);
             }
@@ -175,6 +146,52 @@ public sealed class DataGridHeaderPresenter : UIElement
             if (HoverBackground is not null)
                 context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
             context.DrawText(chipX, 0, chip, hideZone ? FilterGlyphBrush : Foreground);
+        }
+    }
+
+    /// <summary>One header cell at its §9.2 draw position (the caption + glyph cluster + drag tints).</summary>
+    private void DrawHeaderCell(RenderContext context, DataGrid owner, DataGridColumnLayout layout, int i,
+                                bool dragging, int ghostIndex)
+    {
+        var entry = layout.Entries[i];
+        int x = DrawXOf(layout, i);
+        int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+        int leftEdge = i < layout.FrozenCount ? 0 : layout.FrozenWidth;
+        if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
+            return;
+
+        bool tinted = dragging
+            ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
+            : i == _hoverEntry;
+        if (tinted && HoverBackground is not null)
+            context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
+
+        // Caption, truncated to leave glyph room on the right.
+        string caption = entry.Column.EffectiveHeader;
+        int glyphRoom = 2; // "▾" + gap; sort glyph adds another below when present
+        var (direction, ordinal) = owner.GetSortState(entry.Column);
+        if (direction is not null)
+            glyphRoom += ordinal > 0 ? 3 : 2;
+
+        DrawTruncated(context, x + DataGridColumnLayout.CellPadding, caption,
+                      Math.Max(1, entry.Width - glyphRoom), Foreground);
+
+        // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
+        int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
+        if (entry.Column.AllowFilter)
+        {
+            bool active = owner.HasColumnFilter(entry.Column);
+            context.DrawText(glyphX, 0, "▾", active ? ActiveFilterBrush ?? FilterGlyphBrush : FilterGlyphBrush);
+            glyphX -= 2;
+        }
+        if (direction is { } d)
+        {
+            if (ordinal > 0 && ordinal < 9)
+            {
+                context.DrawText(glyphX, 0, (ordinal + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), SortGlyphBrush);
+                glyphX -= 1;
+            }
+            context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", SortGlyphBrush);
         }
     }
 
@@ -202,8 +219,19 @@ public sealed class DataGridHeaderPresenter : UIElement
         context.DrawText(x + width, 0, "…", brush);
     }
 
-    /// <summary>The layout entry under a local x (accounting for the shared shift), or −1.</summary>
-    private int EntryAt(int localX) => Layout?.EntryAt(localX + HorizontalOffset) ?? -1;
+    /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>
+    private int EntryAt(int localX) => Layout?.EntryAt(ContentXAt(localX)) ?? -1;
+
+    /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>
+    private int DrawXOf(DataGridColumnLayout layout, int index)
+    {
+        var entry = layout.Entries[index];
+        return index < layout.FrozenCount ? entry.X : entry.X - HorizontalOffset;
+    }
+
+    /// <summary>The §9.2 local→content x map (frozen region identity, scrolled region shifted).</summary>
+    private int ContentXAt(int localX)
+        => Layout is { } layout && localX < layout.FrozenWidth ? localX : localX + HorizontalOffset;
 
     // ── Column-UX gesture state (§1 deferred, now landed) ────────────────────────────────────────
     //
@@ -239,8 +267,8 @@ public sealed class DataGridHeaderPresenter : UIElement
     private const int DragThreshold = 2;
 
     /// <summary>The right CellPadding cell of the entry's span — the resize grab zone.</summary>
-    private bool OnResizeEdge(DataGridColumnLayout.Entry entry, int localX)
-        => localX == entry.X - HorizontalOffset + entry.Width + 2 * DataGridColumnLayout.CellPadding - 1;
+    private bool OnResizeEdge(DataGridColumnLayout layout, int index, int localX)
+        => localX == DrawXOf(layout, index) + layout.Entries[index].Width + 2 * DataGridColumnLayout.CellPadding - 1;
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
@@ -267,7 +295,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         var entry = Layout.Entries[index];
         var column = entry.Column;
 
-        if (OnResizeEdge(entry, position.Column))
+        if (OnResizeEdge(Layout, index, position.Column))
         {
             // Double-click the seam = best-fit: back to Auto AND drop the monotonic growth memory,
             // so the next resolve measures tight against the current band (not the high-water mark).
@@ -297,7 +325,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         // The ▾ glyph cell opens the filter popup on the DOWN (unchanged v1 behavior). The zone
         // narrows from 2 cells to the glyph cell itself now that the outer padding cell belongs to
         // resize — the ▾ is drawn at cellRight − 2, so that exact cell is the popup affordance.
-        int cellRight = entry.X - HorizontalOffset + entry.Width + 2 * DataGridColumnLayout.CellPadding;
+        int cellRight = DrawXOf(Layout, index) + entry.Width + 2 * DataGridColumnLayout.CellPadding;
         if (column.AllowFilter && position.Column == cellRight - 2)
         {
             _owner.OpenFilterPopup(column);
@@ -467,7 +495,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         }
         else if (_gesture == HeaderGesture.None && Layout is { } layout && _hoverEntry >= 0 &&
                  _hoverEntry < layout.Entries.Count && _lastPointerLocal is { } pointer &&
-                 OnResizeEdge(layout.Entries[_hoverEntry], pointer.Column))
+                 OnResizeEdge(layout, _hoverEntry, pointer.Column))
         {
             e.Cursor = MouseCursorShape.ColResize;
             e.Handled = true;
@@ -508,7 +536,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (local.Row > HideZoneRows)
             return -1; // hide zone — the render pass drops the ▾/ghost to signal it
 
-        int contentX = local.Column + HorizontalOffset;
+        int contentX = ContentXAt(local.Column);
         var entries = layout.Entries;
         for (int i = 0; i < entries.Count; i++)
         {

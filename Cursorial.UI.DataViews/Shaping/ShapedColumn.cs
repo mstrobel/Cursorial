@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Cursorial.UI.DataViews.Shaping;
 
@@ -60,28 +61,49 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
     private readonly Func<TRow, TKey> _getter;
     private readonly Comparison<TKey> _comparison;
     private readonly Func<TKey, string> _formatter;
+    private readonly CollationKeyStore? _collation;
 
-    public ShapedColumn(Func<TRow, TKey> getter, Comparison<TKey> comparison, Func<TKey, string> formatter)
+    public ShapedColumn(Func<TRow, TKey> getter, Comparison<TKey> comparison, Func<TKey, string> formatter,
+                        CollationKeyStore? collation = null)
     {
         _getter = getter;
         _comparison = comparison;
         _formatter = formatter;
+        _collation = collation;
     }
 
     public override Type KeyType => typeof(TKey);
+
+    /// <summary>The collation-key blob — non-null only for culture-mode string columns (§2.2).
+    /// Sort-order-only: display/grouping captions/filters still read the string vector. Internal
+    /// probe for tests (ordinal columns must never pay the blob).</summary>
+    internal CollationKeyStore? Collation => _collation;
 
     public override void EnsureCapacity(int capacity)
     {
         if (Keys.Length < capacity)
             Array.Resize(ref Keys, Math.Max(capacity, Math.Max(16, Keys.Length * 2)));
+        _collation?.EnsureCapacity(Keys.Length); // range arrays stay slot-aligned with the key vector
     }
 
     /// <summary>The typed extract (the hot path — the untyped override is the INCC boundary).</summary>
-    public void ExtractKey(TRow row, int slot) => Keys[slot] = _getter(row);
+    public void ExtractKey(TRow row, int slot)
+    {
+        var key = _getter(row);
+        Keys[slot] = key;
+
+        // Culture string columns also refresh the slot's collation-key range here — the ONLY blob
+        // write site, so the §2.6 invariant (owner thread, never mid-shape) holds automatically.
+        // The cast is reference-only: _collation is non-null only when TKey == string.
+        _collation?.Extract((string?)(object?)key, slot);
+    }
 
     public override void ExtractKeyUntyped(object row, int slot) => ExtractKey((TRow)row, slot);
 
-    public override int CompareSlots(int a, int b) => _comparison(Keys[a], Keys[b]);
+    /// <summary>Culture string columns compare through the sort-key blob — the grouping boundary
+    /// walk and Min/Max must see EXACTLY the sort's order or group runs fracture (§2.5).</summary>
+    public override int CompareSlots(int a, int b)
+        => _collation is { } collation ? collation.CompareSlots(a, b) : _comparison(Keys[a], Keys[b]);
 
     public override string FormatSlot(int slot) => _formatter(Keys[slot]);
 
@@ -92,6 +114,26 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
 
     internal override Expression BuildCompareExpression(ParameterExpression a, ParameterExpression b, bool descending)
     {
+        if (_collation is { } collation)
+        {
+            // Collation-key ordinal compare (§2.2): culture order at memcmp speed. The blob/range
+            // arrays are read through Expression.Field on the store constant PER INVOCATION so
+            // growth/compaction re-allocation is always observed (the key-vector rule); the static
+            // helper owns the Span locals expression trees cannot.
+            var store = Expression.Constant(collation);
+            Expression slotA = a, slotB = b;
+            if (descending)
+                (slotA, slotB) = (slotB, slotA); // operand swap, same as the direct path
+
+            return Expression.Call(
+                typeof(CollationKeyStore).GetMethod(nameof(CollationKeyStore.CompareSortKeys),
+                                                    BindingFlags.NonPublic | BindingFlags.Static)!,
+                Expression.Field(store, nameof(CollationKeyStore.Blob)),
+                Expression.Field(store, nameof(CollationKeyStore.Offsets)),
+                Expression.Field(store, nameof(CollationKeyStore.Lengths)),
+                slotA, slotB);
+        }
+
         // this.Keys[a|b] — through the field so growth re-allocation is observed.
         var keysField = Expression.Field(Expression.Constant(this), nameof(Keys));
         Expression keyA = Expression.ArrayIndex(keysField, a);

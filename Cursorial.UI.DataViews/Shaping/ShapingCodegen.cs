@@ -6,6 +6,15 @@ using System.Reflection;
 namespace Cursorial.UI.DataViews.Shaping;
 
 /// <summary>
+/// Formats <paramref name="value"/> into <paramref name="destination"/>; returns the chars written,
+/// or <b>−1 when the destination is too small</b> (the caller grows its buffer and retries — never
+/// a partial write the caller must detect). The band cache's per-cell formatting lane (design doc
+/// §2.2 panel amendment): no per-cell string allocation. Built by
+/// <see cref="ShapingCodegen.CreateSpanFormatter{TKey}"/>.
+/// </summary>
+internal delegate int SpanFormat<TKey>(TKey value, Span<char> destination);
+
+/// <summary>
 /// The engine's single code-generation site (design doc §2.2 / invariant 8): every typed delegate the
 /// shaping pipeline runs hot — key getters, key comparisons, the fused multi-column slot comparer,
 /// formatters — is compiled here from LINQ expression trees, specialized to the row/key types so
@@ -263,6 +272,85 @@ internal static class ShapingCodegen
         return Expression.Lambda<Func<TKey, string>>(formatted, v).Compile();
     }
 
+    // ── Span formatters (§2.2 panel amendment — the band cache's per-cell lane) ──────────────────
+
+    /// <summary>
+    /// Creates the allocation-free cell formatter for the band cache (design doc §2.2 panel
+    /// amendment: <c>Func&lt;TKey,string&gt;</c> allocates per cell per band fill — 1–5k strings per
+    /// re-anchor/tick under a feed). Lanes: <see cref="ISpanFormattable"/> keys (incl.
+    /// <see cref="Nullable{T}"/> of such — unwrapped, null → 0 chars) format via a
+    /// constrained-generic helper (a constrained call, no boxing — expression trees cannot take
+    /// <see cref="Span{T}"/> parameters, so the closed generic resolves through
+    /// <see cref="System.Reflection.MethodInfo.MakeGenericMethod"/> ONCE here, never per cell);
+    /// <c>string</c> keys copy (null → 0 chars); everything else falls back to
+    /// <see cref="CreateFormatter{TKey}"/>-then-copy (documented cold — allocates per call).
+    /// Nothing consumes this yet — the band cache wires it in (§3.2).
+    /// </summary>
+    public static SpanFormat<TKey> CreateSpanFormatter<TKey>(string? format = null, CultureInfo? culture = null)
+    {
+        culture ??= CultureInfo.CurrentCulture;
+        var type = typeof(TKey);
+
+        if (type == typeof(string))
+        {
+            // String cells copy; null → 0 chars (the null-key display convention — CreateFormatter parity).
+            return (SpanFormat<TKey>)(object)new SpanFormat<string?>(static (value, destination) =>
+            {
+                if (value is null)
+                    return 0;
+                if (value.Length > destination.Length)
+                    return -1;
+                value.CopyTo(destination);
+                return value.Length;
+            });
+        }
+
+        var underlying = Nullable.GetUnderlyingType(type);
+        if (underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
+        {
+            return (SpanFormat<TKey>)typeof(ShapingCodegen)
+                .GetMethod(nameof(CreateNullableSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
+                .MakeGenericMethod(underlying)
+                .Invoke(null, [format, culture])!;
+        }
+
+        if (typeof(ISpanFormattable).IsAssignableFrom(type))
+        {
+            return (SpanFormat<TKey>)typeof(ShapingCodegen)
+                .GetMethod(nameof(CreateSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
+                .MakeGenericMethod(type)
+                .Invoke(null, [format, culture])!;
+        }
+
+        // Non-ISpanFormattable fallback: ToString-then-copy. Documented COLD — allocates the string
+        // per call; such keys don't belong in hot bands (the shipped key types all span-format).
+        var formatter = CreateFormatter<TKey>(format, culture);
+        return (value, destination) =>
+        {
+            string text = formatter(value);
+            if (text.Length > destination.Length)
+                return -1;
+            text.CopyTo(destination);
+            return text.Length;
+        };
+    }
+
+    /// <summary>The constrained lane: <c>value.TryFormat</c> compiles to a constrained call — no box
+    /// for value-typed keys. A reference-typed <see cref="ISpanFormattable"/> null → 0 chars (the
+    /// null check is JIT-eliminated for structs).</summary>
+    private static SpanFormat<TValue> CreateSpanFormatterCore<TValue>(string? format, CultureInfo culture)
+        where TValue : ISpanFormattable
+        => (value, destination) => value is null
+            ? 0
+            : value.TryFormat(destination, out int written, format, culture) ? written : -1;
+
+    /// <summary>The <see cref="Nullable{T}"/> lane: unwrap without boxing; null → 0 chars.</summary>
+    private static SpanFormat<TValue?> CreateNullableSpanFormatterCore<TValue>(string? format, CultureInfo culture)
+        where TValue : struct, ISpanFormattable
+        => (value, destination) => value.HasValue
+            ? value.GetValueOrDefault().TryFormat(destination, out int written, format, culture) ? written : -1
+            : 0;
+
     // ── Column factory ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>Builds the typed column for a row selector lambda (closed generics resolved at runtime).</summary>
@@ -285,6 +373,11 @@ internal static class ShapingCodegen
         => new ShapedColumn<TRow, TKey>(
             ((Expression<Func<TRow, TKey>>)selector).Compile(),
             CreateKeyComparison<TKey>(stringComparison),
-            CreateFormatter<TKey>(format, culture))
+            CreateFormatter<TKey>(format, culture),
+            // Culture-mode string columns get the §2.2 collation-key blob (culture order at memcmp
+            // speed); Ordinal/OrdinalIgnoreCase skip it — ordinal compare is already memcmp-speed.
+            typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
+                ? new CollationKeyStore(stringComparison)
+                : null)
         { Identity = identity };
 }

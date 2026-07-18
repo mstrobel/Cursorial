@@ -50,6 +50,11 @@ public sealed class TextPresenter : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
+        int caretAffordance = 1;
+
+        // if (UIApplication.Current?.Capabilities.Output.Cursor.ShapeControl is not false)
+        //     caretAffordance = 0;
+
         var owner = Owner;
         if (owner is null)
             return new Size(1, 1);
@@ -57,7 +62,7 @@ public sealed class TextPresenter : UIElement
         // Single line: desire the displayed text's width plus one column for the end caret; the field stretches
         // when given more and scrolls when given less.
         if (!owner.IsMultiLine)
-            return new Size(GraphemeWidth.StringWidth(owner.DisplayText) + 1, 1);
+            return new Size(GraphemeWidth.StringWidth(owner.DisplayText) + caretAffordance, 1);
 
         // Multi-line: lay out against the available width (an Unbounded width naturally disables wrapping, since
         // no line exceeds it), then reserve clamp(lineCount, MinLines, MaxLines) rows.
@@ -67,7 +72,7 @@ public sealed class TextPresenter : UIElement
         var rows = ClampRows(layout.LineCount, owner.MinLines, owner.MaxLines);
         var width = wrap && !LayoutMath.IsUnbounded(availableSize.Columns)
             ? Math.Max(1, availableSize.Columns) // wrap fills the width
-            : layout.MaxWidth + 1;               // NoWrap (or unknown width) desires the widest line + the end caret
+            : layout.MaxWidth + caretAffordance; // NoWrap (or unknown width) desires the widest line + the end caret
         return new Size(width, rows);
     }
 

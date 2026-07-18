@@ -5,3 +5,4 @@ using Cursorial.Markup;
 // invert the Cursorial.UI.Xaml → Cursorial.UI.Bars dependency); a consuming app makes the bars XAML-addressable
 // with XamlSchemaContext.Default.RegisterAssembly(typeof(Cursorial.UI.Bars.Toolbar)).
 [assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Bars")]
+[assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Bars.Input")]

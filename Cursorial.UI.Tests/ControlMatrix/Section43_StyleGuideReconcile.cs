@@ -53,9 +53,10 @@ public sealed class Section43_StyleGuideReconcile
         host.RunUntilIdle();
 
         var panel = BrushColor(probe, ThemeKeys.PanelBrush);
+        var onAccent = BrushColor(probe, ThemeKeys.OnAccentBrush);
         Assert.Equal(Panel, panel);
-        Assert.Equal(panel, BrushColor(probe, ThemeKeys.ListItemForegroundFocus)); // chases the alias → --panel
-        Assert.Equal(panel, BrushColor(probe, ThemeKeys.TreeItemForegroundFocus));
+        Assert.Equal(onAccent, BrushColor(probe, ThemeKeys.ListItemForegroundFocus)); // chases the alias → --panel
+        Assert.Equal(onAccent, BrushColor(probe, ThemeKeys.TreeItemForegroundFocus));
         Assert.Equal(panel, BrushColor(probe, ThemeKeys.CalendarDayForegroundFocus));
         // The reverse-video FILL stays --text (unchanged), and a Button's focus ink stays --bg (gallery `.rev`).
         Assert.Equal(Text, BrushColor(probe, ThemeKeys.ListItemBackgroundFocus));

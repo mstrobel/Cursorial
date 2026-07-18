@@ -50,6 +50,9 @@ internal sealed class XamlObjectGraphBuilder
     /// <summary>The captured definition-site lexical scope a template build resolves StaticResource against (matrix X162).</summary>
     internal CapturedScopeChain CapturedTemplateScope { get; init; }
 
+    /// <summary>The URI of the source Xaml document.</summary>
+    internal Uri? Source => _source;
+
     private bool InTemplateBuild => TemplateContext is not null;
 
     internal XamlObjectGraphBuilder(XamlDocument doc, XamlLoaderOptions options, Uri? source, IResourceScope? ambient = null)

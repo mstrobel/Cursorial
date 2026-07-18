@@ -1,5 +1,7 @@
 // ReSharper disable CheckNamespace
 
+using System.Globalization;
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
@@ -14,7 +16,8 @@ internal sealed class XamlServiceProvider :
     IRootObjectProvider,
     IXamlLineInfo,
     IAmbientResources,
-    INameScopeProvider
+    INameScopeProvider,
+    IXamlValueContextProvider
 {
     private readonly XamlObjectGraphBuilder _builder;
     private readonly XamlResourceScopeStack _scopes;
@@ -55,14 +58,30 @@ internal sealed class XamlServiceProvider :
     // IRootObjectProvider
     public object? RootObject => _builder.RootObject;
 
+    // IXamlValueContextProvider
+    public XamlValueContext Context => CreateXamlValueContext();
+
     // IXamlLineInfo
     public int LineNumber { get; }
+
     public int LinePosition { get; }
 
     // IAmbientResources
+
     public bool TryFindResource(object key, out object? value)
         => _scopes.TryResolve(key, out value);
 
     // INameScopeProvider
     public INameScope NameScope => _builder.DocumentScope;
+
+    private XamlValueContext CreateXamlValueContext()
+    {
+        return new XamlValueContext(culture: XamlLoader.Current?.Options.ConverterCulture ??
+                                             CultureInfo.InvariantCulture,
+                                    targetMember: _targetMember,
+                                    targetType: _targetMember?.SystemType()!,
+                                    source: _builder.Source,
+                                    line: LineNumber,
+                                    column: LinePosition);
+    }
 }

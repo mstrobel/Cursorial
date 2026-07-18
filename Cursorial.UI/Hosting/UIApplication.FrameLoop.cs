@@ -687,6 +687,8 @@ public sealed partial class UIApplication
                                     TerminalCapabilities newCapabilities,
                                     CancellationToken cancellationToken)
     {
+        Dispatcher.VerifyAccess();
+
         var wasRenegotiating = Interlocked.Exchange(ref _renegotiating, true);
 
         try
@@ -711,8 +713,9 @@ public sealed partial class UIApplication
 
                 if (_scratch.WrittenCount > 0)
                 {
-                    host.Output.Writer.Write(_scratch.WrittenSpan);
-                    host.Output.Writer.FlushAsync(cancellationToken).ConfigureAwait(false).GetAwaiter().GetResult();
+                    var writer = _host!.Output.Writer;
+                    writer.Write(_scratch.WrittenSpan);
+                    writer.FlushAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
                 }
             }
             catch

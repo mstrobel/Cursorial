@@ -43,7 +43,7 @@ public static class CursorialDialogThemes
     {
         var theme = new Style { Key = "Dialogs.CommandLink" }
                    .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-                   .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
                    .Set(Control.TemplateProperty, CommandLinkTemplate());
 
         theme.Children.Add(new Style("^:pointerover")
@@ -81,7 +81,12 @@ public static class CursorialDialogThemes
                     new Style("^:pressed /template/ #PART_Explanation, " +
                               "^:focus /template/ #PART_Explanation, " +
                               "^:focus-visible /template/ #PART_Explanation")
-                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush),
+                    new Style("^:pointerover /template/ #PART_Label, " +
+                              "^:pressed /template/ #PART_Label, " +
+                              "^:focus /template/ #PART_Label, " +
+                              "^:focus-visible /template/ #PART_Label")
+                       .Set(TextElement.TextWeightProperty, TextWeight.Normal)
                 }
             }
         );
@@ -112,6 +117,8 @@ public static class CursorialDialogThemes
         var label = new ContentPresenter { RecognizesAccessKey = true };
         var explanation = new ContentPresenter();
 
+        label.SetValue(TextElement.TextWeightProperty, TextWeight.Faint);
+        
         ctx.RegisterName("PART_Icon", icon);
         ctx.RegisterName("PART_Label", label);
         ctx.RegisterName("PART_Explanation", explanation);

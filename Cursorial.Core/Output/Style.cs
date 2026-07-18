@@ -107,8 +107,12 @@ public readonly record struct Style(
         return this with
                {
                    Foreground = Color.Composite(Foreground, backdrop.Background, mode),
-                   Background = Background != Color.Default ? Color.Composite(Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = UnderlineColor != Color.Default ? Color.Composite(UnderlineColor, backdrop.Background, mode) : backdrop.UnderlineColor
+                   Background = Background != Color.Default
+                                    ? Color.Composite(Background, backdrop.Background, mode)
+                                    : backdrop.Background,
+                   UnderlineColor = UnderlineColor != Color.Default || Attributes.HasFlag(TextAttributes.Underline)
+                                        ? Color.Composite(UnderlineColor, backdrop.Background, mode)
+                                        : backdrop.UnderlineColor
                };
     }
 }

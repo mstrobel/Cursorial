@@ -37,9 +37,11 @@
       <Style.Children>
         <Style Selector="^ :is(ListBoxItem):selected, ^ :is(TreeViewItem):selected">
           <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}" />
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelected}}" />
         </Style>
         <Style Selector="^ :is(ListBoxItem):focus-visible:selected, ^ :is(TreeViewItem):focus-visible:selected">
           <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}" />
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}" />
         </Style>
       </Style.Children>
     </Style>
@@ -92,7 +94,7 @@
                      .caps-nocolor :is(ComboBoxItem):selected,
                      .caps-nocolor :is(ComboBox):focus /template/ #PART_DropDown,
                      .caps-nocolor :is(ComboBox):open /template/ #PART_DropDown,
-                     .caps-nocolor :is(DatePicker):focus /template/ #PART_DropDown,
+                     .caps-nocolor :is(DatePicker):focus-within /template/ #PART_DropDown,
                      .caps-nocolor :is(DatePicker):open /template/ #PART_DropDown,
                      .caps-nocolor :is(MenuItem):selected,
                      .caps-nocolor :is(MenuItem):highlighted,
@@ -121,7 +123,9 @@
          reverse-videos AND bolds; the two setters ride INDEPENDENT axes, composing with the selection
          rule's Inverse (proposal-TextAttributes-decomposition §5 P3 — the composability proof). -->
     <Style Selector=".caps-nocolor :is(ListBoxItem):focus-visible,
+                     .caps-nocolor :is(ListBoxItem):focus-visible:selected,
                      .caps-nocolor :is(ComboBoxItem):focus-visible,
+                     .caps-nocolor :is(ComboBoxItem):focus-visible:selected,
                      .caps-nocolor :is(MenuItem):focus-visible,
                      .caps-nocolor :is(TabItem):focus-visible">
       <Setter Property="TextElement.Inverse" Value="True"/>

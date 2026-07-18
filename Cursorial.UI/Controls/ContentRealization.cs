@@ -54,7 +54,7 @@ internal static class ContentRealization
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
-            return template.Build(content);
+            return ForwardTextAttributeAxes(host, template.Build(content), forwardTextInverse);
 
         switch (content)
         {

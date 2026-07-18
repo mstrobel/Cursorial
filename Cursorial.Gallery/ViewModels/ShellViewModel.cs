@@ -23,12 +23,14 @@ public sealed class ShellViewModel : ViewModelBase
         Pages =
         [
             new ButtonsViewModel(),
+            new DateControlsViewModel(),
             new DialogsViewModel(app),
             new InputsPageViewModel(),
             new MenusViewModel(),
             new BarsViewModel(),
             new RibbonViewModel(),
             new TabControlViewModel(),
+            new TreeViewModel(),
             new ScrollViewerPageViewModel()
         ];
 

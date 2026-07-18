@@ -182,7 +182,8 @@ internal static class CursorialBarsTheme
     // template, robust for a single-cell-tall bar row where a DrawLine rule degenerates).
     public static Style SeparatorStyle()
         => new Style { Key = "Bars.BarSeparator" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush);
+            .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
 
     // ───────────────────────────── BarLabel ─────────────────────────────
 
@@ -836,20 +837,20 @@ internal static class CursorialBarsTheme
                 new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_HeaderSite"))
                     .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
-                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnHoverBrush),
                 new Style(Selectors.Nesting().PseudoClass(":selected").Template().Name("PART_HeaderSite"))
                     .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.RibbonTabActiveBrush)
                     .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
-                // new Style(Selectors.Nesting().PseudoClass(":ribbon-file:focus").Template().Name("PART_HeaderSite"))
-                //     .SetResource(TextElement.InverseProperty, ThemeKeys.InteractiveCueInverse),
+                new Style(Selectors.Nesting().PseudoClass(":ribbon-file:focus-visible").Template().Name("PART_HeaderSite"))
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.OnAccentBrush),
                 // Keyboard focus on the strip: the active tab reads as FOCUSED (a hover-strength fill over the dropped
                 // active look) so it is distinct from a selected-but-focus-elsewhere tab — the "which tab has keyboard
                 // focus" cue.
                 new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_HeaderSite"))
-                    .SetResource(Icon.IconBrushProperty, ThemeKeys.TextBrush)
+                    .SetResource(Icon.IconBrushProperty, ThemeKeys.OnHoverBrush)
                     .SetResource(Panel.BackgroundProperty, ThemeKeys.HoverBrush)
-                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush),
+                    .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnHoverBrush),
 
                 // Contextual tab (guide §5): purple ink on a tinted well (resting) / on the dropped band fill (active).
                 // The compound `:ribbon-contextual:selected` out-specifies the plain `:selected` rule (2 classLike vs 1,

@@ -10,6 +10,9 @@ namespace Cursorial.Drawing.Media;
 public static class Pens
 {
     /// <summary>Light, sharp, solid — equivalent to <c>default(Pen)</c>.</summary>
+    public static Pen None => default(Pen) with { Brush = Brushes.Transparent };
+
+    /// <summary>Light, sharp, solid — equivalent to <c>default(Pen)</c>.</summary>
     public static Pen Light => default;
 
     /// <summary>A heavy-weight pen.</summary>

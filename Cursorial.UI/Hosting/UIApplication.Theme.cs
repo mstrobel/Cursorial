@@ -1,7 +1,6 @@
 using System.Buffers;
 
 using Cursorial.Output;
-using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI.Themes;
 
@@ -53,7 +52,7 @@ public sealed partial class UIApplication : IResourceHost
             if (ReferenceEquals(_resources, value))
                 return;
 
-            if (_resources is { } old)
+            if (_resources is {} old)
             {
                 old.Changed -= OnApplicationResourcesChanged;
                 old.Release(this);
@@ -215,7 +214,7 @@ public sealed partial class UIApplication : IResourceHost
     // does NOT revert a user's terminal-configured cursor color (review finding #9 — set/reset symmetry).
     private bool _cursorColorEmitted;
 
-    internal void WriteThemeCursorColor(System.Buffers.IBufferWriter<byte> output)
+    internal void WriteThemeCursorColor(IBufferWriter<byte> output)
     {
         var rgbVariant = new ThemeVariant(_actualThemeVariant.Base, ColorDepth.Truecolor);
         if (ResourceExtensions.WalkApplicationTail(ThemeKeys.AccentBrush, rgbVariant, searched: null, out var value) &&
@@ -246,7 +245,7 @@ public sealed partial class UIApplication : IResourceHost
         if (!_registries.TryGetValue(root, out var registry))
             return; // no subscribers under this root yet
 
-        if (e.Kind == ResourceChangeKind.Keyed && e.Key is { } key)
+        if (e is { Kind: ResourceChangeKind.Keyed, Key: {} key })
             registry.PulseKeyed(scope, key);
         else
             registry.PulseCatchAll(scope);
@@ -305,11 +304,11 @@ public sealed partial class UIApplication : IResourceHost
     {
         // Application-level dictionary mutation fans to every root. The app is above every root, so an
         // app-scope keyed pulse uses the root itself as the containing scope (every node is contained).
-        // Snapshot first: a listener could attach/detach a root re-entrantly during a pulse, which would
+        // Snapshot first: a listener could attach/detach a root reentrantly during a pulse, which would
         // otherwise throw "collection modified" mid-iteration.
         foreach (var (root, registry) in _registries.ToArray())
         {
-            if (e.Kind == ResourceChangeKind.Keyed && e.Key is { } key)
+            if (e is { Kind: ResourceChangeKind.Keyed, Key: {} key })
                 registry.PulseKeyed(root, key);
             else
                 registry.PulseCatchAll(pulsingScope: null);

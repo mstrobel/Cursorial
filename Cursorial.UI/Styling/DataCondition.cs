@@ -50,7 +50,6 @@ public sealed class DataCondition
     /// <summary>
     /// Xaml-friendly constructor for creating an equality condition.
     /// </summary>
-    [SetsRequiredMembers]
     public DataCondition() {}
 
     /// <summary>

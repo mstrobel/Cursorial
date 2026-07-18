@@ -580,6 +580,8 @@ public sealed class DrawingContext
     //     1-cell tip at the top (no top edge) and the bottom band insets on the left (no left edge) but stays full
     //     into the bottom-right corner. With bottom only, both ends of the bottom band inset symmetrically:
     //
+    // ReSharper disable CommentTypo
+    //
     //       +------------------+x        +------------------+        radius = 4 (→ rv = 2):
     //       |                  |xx       |                  |          • right band tapers 1,2,3,4 down to the
     //       |                  |xxx      |                  |            casting bottom-right corner;
@@ -587,6 +589,8 @@ public sealed class DrawingContext
     //        xxxxxxxxxxxxxxxxxxxxxxx      xxxxxxxxxxxxxxxxxx             insets 1 cell per row toward a non-
     //         xxxxxxxxxxxxxxxxxxxx         xxxxxxxxxxxxxxxx              casting corner.
     //          (bottom | right)             (bottom only)
+    //
+    // ReSharper restore CommentTypo
     //
     // (The diagrams are approximate — the off-by-one at the tips is not load-bearing. Tune `radius`/`rv` and the
     // per-band `reach` to adjust the look; OnCastingSide gates WHICH cells cast, this gates HOW FAR / HOW SOFT.)
@@ -907,7 +911,7 @@ public sealed class DrawingContext
                           // The base-attribute leg: OR the element-effective attributes onto the run's own
                           // (default none = a no-op for every pre-existing caller). When the base carries the
                           // Underline presence bit with a non-Single shape, the shape rides along (the widened
-                          // seam — proposal-textattributes-decomposition §3.1/Q2); a run cannot author shapes
+                          // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
                           // today, so the base shape never overwrites authored run state.
                           if (baseAttributes == default)
                               return style;
@@ -1207,14 +1211,21 @@ public sealed class DrawingContext
     {
         if (rect.Columns <= 0 || rect.Rows <= 0) return;
 
-        int recordId = AddStrokeRecord(pen, rect, overwrite);
+        var drawBox = pen != Pens.None;
+
         int left = rect.Column, top = rect.Row, right = rect.ColumnEnd - 1, bottom = rect.RowEnd - 1;
         var weight = pen.Weight;
         var mode = pen.Junction;
+        int recordId = -1;
+        
+        if (drawBox)
+        {
+            recordId = AddStrokeRecord(pen, rect, overwrite);
 
-        DepositSegment(left, bottom, right, bottom, weight, recordId, mode);   // bottom
-        DepositSegment(left, top, left, bottom, weight, recordId, mode);       // left
-        DepositSegment(right, top, right, bottom, weight, recordId, mode);     // right
+            DepositSegment(left, bottom, right, bottom, weight, recordId, mode); // bottom
+            DepositSegment(left, top, left, bottom, weight, recordId, mode);     // left
+            DepositSegment(right, top, right, bottom, weight, recordId, mode);   // right
+        }
 
         // A title is a single-line slot: sanitize to the first line before truncation/gap math
         // (design doc §13.2). An empty first line degrades to a plain box, like an empty title.
@@ -1232,26 +1243,32 @@ public sealed class DrawingContext
         int maxText = rect.Columns - 6;
         int textWidth = 0;
         string text = maxText >= 1 && titleText.Length > 0 ? TruncateToWidth(titleText, maxText, out textWidth) : string.Empty;
-        if (text.Length == 0)
+        if (text.Length == 0 && recordId >= 0)
         {
             DepositSegment(left, top, right, top, weight, recordId, mode);     // full top — plain box
             return;
         }
 
-        int gapWidth = textWidth + 2;   // 1 pad cell each side of the label
-        int gapStartMin = left + 2;
+        int titleOffset = drawBox ? 2 : 0;
+        int gapWidth = textWidth + titleOffset;   // 1 pad cell each side of the label
+        int gapStartMin = left + titleOffset;
         int gapStartMax = right - 1 - gapWidth;
+
         int gapStart = title.Position switch
-        {
-            TitlePosition.Center => left + (rect.Columns - gapWidth) / 2,
-            TitlePosition.Right => gapStartMax,
-            _ => gapStartMin,
-        };
+                       {
+                           TitlePosition.Center => left + (rect.Columns - gapWidth) / 2,
+                           TitlePosition.Right  => gapStartMax,
+                           _                    => gapStartMin,
+                       };
+
         gapStart = Math.Clamp(gapStart, gapStartMin, gapStartMax);
         int gapEnd = gapStart + gapWidth - 1;
 
-        DepositSegment(left, top, gapStart - 1, top, weight, recordId, mode);   // corner → title
-        DepositSegment(gapEnd + 1, top, right, top, weight, recordId, mode);    // title → corner
+        if (drawBox)
+        {
+            DepositSegment(left, top, gapStart - 1, top, weight, recordId, mode); // corner → title
+            DepositSegment(gapEnd + 1, top, right, top, weight, recordId, mode);  // title → corner
+        }
 
         var titleBrush = title.Brush ?? pen.ResolveBrush();
         DrawText(gapStart + 1, top, text, titleBrush, background: null, Style.Default.WithAttributes(title.Attributes));

@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Themes;
 
@@ -59,10 +60,11 @@ public static class CursorialTheme
         ThemeKeys.TabForegroundDisabled, ThemeKeys.RibbonTabStripBrush, ThemeKeys.RibbonTabActiveBrush,
         ThemeKeys.KeyTipBrush, ThemeKeys.KeyTipMatchedBrush, ThemeKeys.RibbonContextualFillBrush,
         ThemeKeys.ProgressTrackBrush, ThemeKeys.CalendarDayForeground, ThemeKeys.CalendarDayInactiveForeground,
-        ThemeKeys.CalendarDayBackgroundHover, ThemeKeys.CalendarDayTodayForeground,
+        ThemeKeys.CalendarDayBackgroundHover, ThemeKeys.CalendarDayForegroundHover, ThemeKeys.CalendarDayTodayForeground,
         ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.CalendarDayForegroundSelected,
         ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.CalendarDayBackgroundFocus,
-        ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.ProgressFillNormal, ThemeKeys.ProgressFillIndeterminate
+        ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.ProgressFillNormal, ThemeKeys.ProgressFillIndeterminate,
+        ThemeKeys.OnHoverBrush, ThemeKeys.ListItemForegroundSelected
     };
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -194,6 +196,7 @@ public static class CursorialTheme
         noColor[ThemeKeys.RibbonTabStripBrush] = defaultBrush;
         noColor[ThemeKeys.RibbonTabActiveBrush] = defaultBrush;
         noColor[ThemeKeys.KeyTipBrush] = defaultBrush;
+        noColor[ThemeKeys.KeyTipTextWeight] = TextWeight.Faint;
         noColor[ThemeKeys.KeyTipMatchedBrush] = defaultBrush;
         // A contextual tab has no purple to lean on under mono; its only cue is the underline — authored ASCII-heavy
         // (visually identical to the accent one here) since RibbonTabActiveBrush = defaultBrush leaves nothing else.
@@ -268,7 +271,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.InputForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.InputBackgroundNormal, ThemeKeys.SurfaceBrush);
         Alias(ThemeKeys.InputBackgroundHover, ThemeKeys.HoverBrush);
-        Alias(ThemeKeys.InputForegroundHover, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.InputForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.InputBackgroundFocus, ThemeKeys.WellBrush);
         Alias(ThemeKeys.InputSelectionActive, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.InputSelectionInactive, ThemeKeys.SelectionInactiveBrush);
@@ -277,28 +280,29 @@ public static class CursorialTheme
 
         // ListItem (ListBox / ComboBox drop-down item).
         Alias(ThemeKeys.ListItemForegroundNormal, ThemeKeys.TextBrush);
-        Alias(ThemeKeys.ListItemBackgroundNormal, ThemeKeys.PanelBrush);
-        Alias(ThemeKeys.ListItemForegroundHover, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemBackgroundNormal, ThemeKeys.WellBrush);
+        Alias(ThemeKeys.ListItemForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.ListItemBackgroundSelectedInactive, ThemeKeys.SelectionInactiveBrush);
         // Gallery `.item.rev { background: --text; color: --panel }` (final style guide): a list item sits on the
         // PanelBrush surface, so its reverse-video focus ink is --panel (not the universal --bg). #103.
-        Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.PanelBrush);
+        Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.ListItemForegroundSelected, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemForegroundDisabled, ThemeKeys.MutedBrush);
 
         // TreeViewItem (same item-on-panel reverse-video ink, #103).
         Alias(ThemeKeys.TreeItemForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TreeItemBackgroundSelected, ThemeKeys.SelectionBrush);
-        Alias(ThemeKeys.TreeItemForegroundFocus, ThemeKeys.PanelBrush);
+        Alias(ThemeKeys.TreeItemForegroundFocus, ThemeKeys.OnAccentBrush);
         Alias(ThemeKeys.TreeItemBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.TreeItemForegroundDisabled, ThemeKeys.MutedBrush);
 
         // Menu (MenuBar / MenuItem / ContextMenu).
         Alias(ThemeKeys.MenuForegroundNormal, ThemeKeys.TextBrush);
         Alias(ThemeKeys.MenuBarBackground, ThemeKeys.SurfaceBrush);
-        Alias(ThemeKeys.MenuBackgroundHover, ThemeKeys.HoverBrush);
+        Alias(ThemeKeys.MenuBackgroundHover, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.MenuBackgroundHighlighted, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.MenuAcceleratorForeground, ThemeKeys.MutedBrush);
         Alias(ThemeKeys.MenuAcceleratorHoverForeground, ThemeKeys.TextDimBrush);
@@ -308,9 +312,9 @@ public static class CursorialTheme
         // underline bar (#103, was a --sel fill with --text ink on every tab).
         Alias(ThemeKeys.TabForegroundNormal, ThemeKeys.TextDimBrush);
         Alias(ThemeKeys.TabForegroundSelected, ThemeKeys.TextBrush);
-        Alias(ThemeKeys.TabForegroundHover, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TabForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.TabBackgroundHover, ThemeKeys.HoverBrush);
-        Alias(ThemeKeys.TabForegroundFocused, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.TabForegroundFocused, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.TabBackgroundFocused, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.TabBackgroundSelected, ThemeKeys.SurfaceBrush);
         Alias(ThemeKeys.TabForegroundDisabled, ThemeKeys.MutedBrush);
@@ -326,10 +330,11 @@ public static class CursorialTheme
         // Calendar (day cells + Year/Decade cells; DatePicker).
         Alias(ThemeKeys.CalendarDayForeground, ThemeKeys.TextBrush);
         Alias(ThemeKeys.CalendarDayInactiveForeground, ThemeKeys.MutedBrush);
+        Alias(ThemeKeys.CalendarDayForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.CalendarDayBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.CalendarDayTodayForeground, ThemeKeys.AccentBrush);
         Alias(ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.SelectionBrush);
-        Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.OnAccentBrush);
         // Gallery `.cal .focus { background: --text; color: --panel }` (#103, was --bg).
         Alias(ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.CalendarDayBackgroundFocus, ThemeKeys.TextBrush);
@@ -366,7 +371,7 @@ public static class CursorialTheme
         var rgb = new ResourceDictionary
         {
             [ThemeKeys.InteractiveCueInverse] = false,
-            [ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal,
+            [ThemeKeys.InteractiveCueWeight] = TextWeight.Normal,
             [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
             [ThemeKeys.ListItemSelectionGlyph] = "▍"
         };
@@ -386,6 +391,7 @@ public static class CursorialTheme
         rgb[ThemeKeys.AlternateRowBrush] = new SolidColorBrush(dark ? Color.FromHex("#272b41") : Color.FromHex("#e1e2e7"));
         // Light --hover nudged off --surface (#cbccd1) so a hovered control reads as a fill (spec §1.1).
         rgb[ThemeKeys.HoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
+        rgb[ThemeKeys.OnHoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
         rgb[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
         rgb[ThemeKeys.TextDimBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
         rgb[ThemeKeys.MutedBrush] = new SolidColorBrush(dark ? Color.FromHex("#565f89") : Color.FromHex("#9699a3"));
@@ -449,6 +455,13 @@ public static class CursorialTheme
         rgb[ThemeKeys.ToolBarBrush] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.SplitButtonDropZoneBrush] = new SolidColorBrush(dark ? Color.FromHex("#343c5e") : Color.FromHex("#cdd0dd"));
         
+        rgb[ThemeKeys.TabBackgroundFocused] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
+        rgb[ThemeKeys.TabForegroundFocused] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        rgb[ThemeKeys.TabBackgroundHover] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
+        rgb[ThemeKeys.TabForegroundHover] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+
+        rgb[ThemeKeys.ListItemForegroundHover] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        
         // Ribbon (Surface B): the strip recess (--tabstrip) and the dropped active-tab fill (--tab-active).
         rgb[ThemeKeys.RibbonBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
@@ -464,25 +477,26 @@ public static class CursorialTheme
         // distinguishability under reverse-video: --text/--bg at the extremes (15/0), --accent/--on-accent on
         // real blue, resting fills→0 vs interactive fills→8 (dark), status hues kept true.
         var ansi16 = new ResourceDictionary();
-        ansi16[ThemeKeys.ElevationWell] = Palette(15);
+        ansi16[ThemeKeys.ElevationWell] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.ElevationDesktop] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.ElevationWindow] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.ElevationRaised] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.ElevationHighest] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.WindowBackground] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 8 : 7);
+        ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 8 : 7);
         ansi16[ThemeKeys.ToolBarBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.RibbonBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.WellBrush] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.SelectionBrush] = Palette(8);
+        ansi16[ThemeKeys.SelectionBrush] = Palette(12);
         ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(8);    // 16-color: no distinct inactive shade — tracks active selection
         ansi16[ThemeKeys.AlternateRowBrush] = Palette(dark ? 0 : 7); // 16-color: tracks the panel fill (zebra needs RGB)
-        ansi16[ThemeKeys.HoverBrush] = Palette(8);
+        ansi16[ThemeKeys.HoverBrush] = Palette(dark ? 7 : 8);
+        ansi16[ThemeKeys.OnHoverBrush] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.TextBrush] = Palette(dark ? 15 : 0);
         ansi16[ThemeKeys.TextDimBrush] = Palette(dark ? 7 : 8);
         ansi16[ThemeKeys.MutedBrush] = Palette(8);
-        ansi16[ThemeKeys.FaintBrush] = Palette(dark ? 8 : 7);
+        ansi16[ThemeKeys.FaintBrush] = Palette(8);
         ansi16[ThemeKeys.DisabledBackgroundBrush] = Palette(dark ? 0 : 7);
         ansi16[ThemeKeys.DisabledForegroundBrush] = Palette(8);
         ansi16[ThemeKeys.AccentBrush] = Palette(dark ? 12 : 4);
@@ -493,10 +507,15 @@ public static class CursorialTheme
         ansi16[ThemeKeys.StatusBarAltForeground] = Palette(15);
         ansi16[ThemeKeys.ButtonForegroundFocus] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.ButtonBackgroundFocus] = Palette(dark ? 15 : 0);
+        ansi16[ThemeKeys.ButtonForegroundNormal] = Palette(dark ? 8 : 0);
+        ansi16[ThemeKeys.ButtonBackgroundNormal] = Palette(dark ? 7 : 15);
         ansi16[ThemeKeys.InputBackgroundNormal] = Palette(8);
+        ansi16[ThemeKeys.InputBackgroundFocus] = Palette(dark ? 7 : 15);
+        ansi16[ThemeKeys.InputForegroundNormal] = Palette(0);
+        ansi16[ThemeKeys.MenuBarBackground] = Palette(dark ? 0 : 7);
 
         // on-accent dark = 15 (white): black-on-bright-blue is unreadable on pure-blue palettes (spec §1†).
-        ansi16[ThemeKeys.OnAccentBrush] = Palette(0);
+        ansi16[ThemeKeys.OnAccentBrush] = Palette(dark ? 0 : 15);
         ansi16[ThemeKeys.AccentInverseBrush] = Palette(dark ? 4 : 12);
         ansi16[ThemeKeys.InfoBrush] = Palette(dark ? 14 : 6);
         ansi16[ThemeKeys.InfoInverseBrush] = Palette(dark ? 6 : 14);
@@ -512,8 +531,8 @@ public static class CursorialTheme
         ansi16[ThemeKeys.AmberBrush] = Palette(3);
         ansi16[ThemeKeys.RedBrush] = Palette(dark ? 9 : 1);
         ansi16[ThemeKeys.PurpleBrush] = Palette(dark ? 13 : 5);
-        ansi16[ThemeKeys.BorderPen] = Pens.Light.WithColor(Color.FromPalette(8));
-        ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithColor(Color.FromPalette(8));
+        ansi16[ThemeKeys.BorderPen] = Pens.Light.WithBrush(Palette(dark ? 8 : 15));
+        ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithBrush(Palette(dark ? 8 : 15));
         ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? 15 : 0));
         ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
         ansi16[ThemeKeys.TabUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));

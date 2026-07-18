@@ -742,6 +742,7 @@
       </Style>
       <Style Selector="^:pointerover" TargetType="CalendarButton">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayForegroundHover}}"/>
       </Style>
       <Style Selector="^:today" TargetType="CalendarButton">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.CalendarDayTodayForeground}}"/>
@@ -836,6 +837,9 @@
     <Setter Property="Template"   Value="{StaticResource TreeViewItemTemplate}"/>
     <Style.Children>
       <Style Selector="^:selected" TargetType="TreeViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.SelectionInactiveBrush}}"/>
+      </Style>
+      <Style Selector="^:focus" TargetType="TreeViewItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.TreeItemBackgroundSelected}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="TreeViewItem">
@@ -859,10 +863,10 @@
         <DockPanel>
           <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Focusable="False" IsTabStop="False"/>
           <!--Template="{StaticResource BareGlyphButtonTemplate}" Padding="0"-->
-          <Grid>
-            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"
-                              Margin="1,0"/>
-            <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed"
+          <Grid Margin="{TemplateBinding Padding}">
+            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"/>
+            <TextBox x:Name="PART_EditableTextBox"
+                     Visibility="Collapsed"
                      Placeholder="{TemplateBinding PlaceholderText}"
                      IsReadOnly="{TemplateBinding IsReadOnly}"/>
           </Grid>
@@ -882,6 +886,7 @@
   <Style x:Key="{x:Type ComboBox}" TargetType="ComboBox">
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Padding" Value="1,0"/>
     <Setter Property="Template"   Value="{StaticResource ComboBoxTemplate}"/>
   </Style>
 
@@ -947,7 +952,7 @@
        editable text box is Collapsed until IsEditable. The declarative twin of ControlThemes.DatePickerTheme(). -->
   <ControlTemplate x:Key="DatePickerTemplate" TargetType="DatePicker">
     <Grid>
-      <Border Padding="1,0,0,0"
+      <Border Padding="{TemplateBinding Padding}"
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}">
         <DockPanel>
@@ -955,7 +960,12 @@
           <!--Template="{StaticResource BareGlyphButtonTemplate}" Padding="0"-->
           <Grid>
             <TextBlock x:Name="PART_DisplayText"/>
-            <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Placeholder="{TemplateBinding Watermark}"/>
+            <TextBox x:Name="PART_EditableTextBox"
+                     Visibility="Collapsed"
+                     Padding="0"
+                     Background="{x:Null}"
+                     Cursor="Text"
+                     Placeholder="{TemplateBinding Watermark}"/>
           </Grid>
         </DockPanel>
       </Border>
@@ -971,13 +981,55 @@
         </Style>
       </Grid.Styles>
     </Grid>
+     <ControlTemplate.Styles>
+       <Style Selector="DatePicker">
+         <Style.Children>
+           <Style Selector="^:focus /template/ TextBox#PART_EditableTextBox">
+             <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+             <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+           </Style>
+           <Style Selector="^:pointerover /template/ TextBox#PART_EditableTextBox">
+             <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+             <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+           </Style>
+           <Style Selector="^:disabled /template/ TextBox#PART_EditableTextBox">
+             <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+             <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+           </Style>
+         </Style.Children>
+       </Style>
+     </ControlTemplate.Styles>
   </ControlTemplate>
 
   <Style x:Key="{x:Type DatePicker}" TargetType="DatePicker">
     <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
-    <Setter Property="MinWidth"   Value="12"/>
+    <Setter Property="Padding"   Value="1,0,0,0"/>
+    <Setter Property="MinWidth"   Value="15"/>
     <Setter Property="Template"   Value="{StaticResource DatePickerTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:focus">
+        <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+      </Style>
+      <Style Selector="^:pointerover">
+        <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Control.Background" Value="{DynamicResource {x:Static ThemeKeys.DisabledBackgroundBrush}}"/>
+        <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+      <Style Selector="^">
+        <Style.When>
+          <DataCondition Binding="{Binding RelativeSource={RelativeSource Self}, Path=(DatePicker.IsEditable)}"
+                         Value="{x:Static XamlConstants.False}" />
+          <DataCondition Binding="{Binding RelativeSource={RelativeSource Self}, Path=(DatePicker.SelectedDate)}" 
+                         Value="{x:Null}" />
+        </Style.When>
+        <Setter Property="Control.Foreground" Value="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"/>
+      </Style>
+    </Style.Children>
   </Style>
 
 </ResourceDictionary>

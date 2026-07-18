@@ -48,9 +48,11 @@ internal static class CursorialThemeStyles
                    Children =
                    {
                        new Style("^ :is(ListBoxItem):selected, ^ :is(TreeViewItem):selected")
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected),
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
                        new Style("^ :is(ListBoxItem):focus-visible:selected, ^ :is(TreeViewItem):focus-visible:selected")
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
                    }
                };
     }
@@ -154,7 +156,7 @@ internal static class CursorialThemeStyles
                               ".caps-nocolor :is(ComboBoxItem):selected, " +
                               ".caps-nocolor :is(ComboBox):focus /template/ #PART_DropDown, " +
                               ".caps-nocolor :is(ComboBox):open /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(DatePicker):focus /template/ #PART_DropDown, " +
+                              ".caps-nocolor :is(DatePicker):focus-within /template/ #PART_DropDown, " +
                               ".caps-nocolor :is(DatePicker):open /template/ #PART_DropDown, " +
                               ".caps-nocolor :is(MenuItem):selected, " +
                               ".caps-nocolor :is(MenuItem):highlighted, " +

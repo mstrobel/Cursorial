@@ -146,7 +146,11 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(leaf!)); // the other axis never moved
     }
 
-    [Fact] // TA8 — DataTemplate content is APP content: it receives NO forwarded axes (§7.3 scoping rule)
+    [Fact] // TA8 REVISED — DataTemplate in a ContentPresenter ONLY: it receives ALL forwarded axes (§7.3 scoping rule)
+           // Rationale: If text styling axes are non-inheriting, the only reason a user would set them on a
+           // ContentControl or ContentPresenter would be for them to apply to the hosted content. The default theme
+           // only sets Inverse for :caps-nocolor selection on stock item containers, so anything else would have come
+           // from user code and should be assumed intentional.
     public void TA8_DataTemplateContent_ReceivesNothing()
     {
         using var host = UIHeadlessHost.Create();
@@ -164,8 +168,8 @@ public sealed class Section45_TextAttributeAxes
         Assert.True(host.RunUntilIdle());
 
         Assert.NotNull(inner);
-        Assert.False(TextElement.GetInverse(inner!)); // app content styles itself — never clobbered by forwards
-        Assert.Equal(BindingPriority.Default, inner!.GetValueSource(TextElement.InverseProperty).Priority);
+        Assert.True(TextElement.GetInverse(inner!)); // app content styles itself — never clobbered by forwards
+        Assert.Equal(BindingPriority.Template, inner!.GetValueSource(TextElement.InverseProperty).Priority);
     }
 
     [Fact] // TA9 — non-inheriting: an ancestor's axis value does NOT flow to arbitrary descendants

@@ -33,14 +33,20 @@ public class BarSeparator : Separator
     protected override void Render(RenderContext context)
     {
         var size = context.Size;
-        if (size.Columns <= 0 || size.Rows <= 0 || Foreground is not { } brush)
+        if (size.Columns <= 0 || size.Rows <= 0 || Foreground is not {} brush)
             return;
-
+        
         if (Orientation == Orientation.Vertical)
+        {
+            var glyph = BorderPen?.GlyphSet is GlyphSet.Ascii ? "|" : "│";
             for (var r = 0; r < size.Rows; r++)
-                context.DrawText(0, r, "│", brush);
+                context.DrawText(0, r, glyph, brush);
+        }
         else
+        {
+            var glyph = BorderPen?.GlyphSet is GlyphSet.Ascii ? "-" : "─";
             for (var c = 0; c < size.Columns; c++)
-                context.DrawText(c, 0, "─", brush);
+                context.DrawText(c, 0, glyph, brush);
+        }
     }
 }

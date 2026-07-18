@@ -218,6 +218,10 @@ public class DatePicker : Control
                 case Key.Enter:
                     SetDropDownOpen(true);
                     break;
+                case Key.Delete when e.Modifiers is KeyModifiers.Shift:
+                    SetDropDownOpen(false);
+                    ClearValue(SelectedDateProperty);
+                    break;
                 case Key.Escape when editable:
                     _editing = false;
                     PushDateToBox(); // revert the uncommitted draft to the current selection
@@ -237,6 +241,10 @@ public class DatePicker : Control
         {
             case Key.Enter when editable:
                 ParseAndCommit(close: true);
+                break;
+            case Key.Delete when e.Modifiers is KeyModifiers.Shift && editable is false:
+                SetDropDownOpen(false);
+                ClearValue(SelectedDateProperty);
                 break;
             case Key.Escape:
                 if (editable)

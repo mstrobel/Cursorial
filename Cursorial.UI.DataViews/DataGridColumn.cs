@@ -119,6 +119,14 @@ public class DataGridColumn : UIObject
     /// <summary>The typed row→key selector (code-only authoring lane; wins over <see cref="FieldName"/>).</summary>
     public LambdaExpression? KeySelector { get; set; }
 
+    /// <summary>
+    /// The conditional-formatting rules authored on this column (design doc §2.7 — get-only, the
+    /// collection idiom). The grid collects every column's rules into the engine on each shape push;
+    /// a <see cref="Shaping.PredicateRule"/>'s row-level format rides here too (declared on the
+    /// column whose rule set owns it, evaluated row-wide).
+    /// </summary>
+    public IList<FormatRule> FormatRules { get; } = [];
+
     /// <summary>The effective header caption.</summary>
     public string EffectiveHeader => Header ?? FieldName ?? string.Empty;
 

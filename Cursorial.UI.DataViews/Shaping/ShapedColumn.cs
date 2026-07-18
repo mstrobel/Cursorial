@@ -50,6 +50,22 @@ internal abstract class ShapedColumn
     /// <summary>Builds the set-membership expression for the checklist filter (typed hash set baked at build).</summary>
     internal abstract Expression BuildSetExpression(ParameterExpression slot, IReadOnlyList<object?> values);
 
+    /// <summary>
+    /// A compiled slot → double read over the key vector (null keys/non-numeric → NaN), or null for
+    /// non-numeric key types. The conditional-formatting stats block (§2.7) and data-bar fractions
+    /// read through it — typed, no per-cell boxing (invariant 2).
+    /// </summary>
+    internal abstract Func<int, double>? TryCreateDoubleReader();
+
+    /// <summary>
+    /// The distinct formatted values over <paramref name="slots"/> for the checklist popup (§3.4):
+    /// typed dedupe + count, sorted by the column comparison, capped at <paramref name="maxCount"/>.
+    /// A null-key entry surfaces FIRST as <c>(Formatted: "", Raw: null)</c> — the "(Blanks)" row.
+    /// Cold path by design (one boxed key per DISTINCT value, not per row).
+    /// </summary>
+    public abstract IReadOnlyList<(string Formatted, object? Raw, int Count)> GetDistinctValues(
+        ReadOnlySpan<int> slots, int maxCount);
+
     /// <summary>Whether the column has a compiled write-back setter (the editing lane — §3.2).</summary>
     public abstract bool IsEditable { get; }
 
@@ -144,6 +160,70 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
 
         Setter((TRow)row, value);
         return true;
+    }
+
+    internal override Func<int, double>? TryCreateDoubleReader()
+    {
+        var underlying = Nullable.GetUnderlyingType(typeof(TKey)) ?? typeof(TKey);
+        if (!IsNumeric(underlying))
+            return null;
+
+        // slot => (double)this.Keys[slot] — through the field so growth re-allocation is observed
+        // (the key-vector rule); a null Nullable<V> reads as NaN (stats/bars skip NaN).
+        var slot = Expression.Parameter(typeof(int), "slot");
+        var key = Expression.ArrayIndex(Expression.Field(Expression.Constant(this), nameof(Keys)), slot);
+
+        Expression body;
+        if (Nullable.GetUnderlyingType(typeof(TKey)) is not null)
+        {
+            body = Expression.Condition(
+                Expression.Property(key, "HasValue"),
+                Expression.Convert(Expression.Property(key, "Value"), typeof(double)),
+                Expression.Constant(double.NaN));
+        }
+        else
+        {
+            body = typeof(TKey) == typeof(double) ? key : Expression.Convert(key, typeof(double));
+        }
+
+        return Expression.Lambda<Func<int, double>>(body, slot).Compile();
+    }
+
+    private static bool IsNumeric(Type type)
+        => type == typeof(int) || type == typeof(long) || type == typeof(short) || type == typeof(byte) ||
+           type == typeof(sbyte) || type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) ||
+           type == typeof(double) || type == typeof(float) || type == typeof(decimal);
+
+    public override IReadOnlyList<(string Formatted, object? Raw, int Count)> GetDistinctValues(
+        ReadOnlySpan<int> slots, int maxCount)
+    {
+        // Typed dedupe (one dictionary entry per DISTINCT key; null keys counted separately —
+        // a Dictionary cannot hold them and "(Blanks)" is its own row anyway).
+        var counts = new Dictionary<TKey, int>();
+        int nullCount = 0;
+        foreach (int slot in slots)
+        {
+            var key = Keys[slot];
+            if (key is null)
+                nullCount++;
+            else if (!counts.TryAdd(key, 1))
+                counts[key]++;
+        }
+
+        var keys = new TKey[counts.Count];
+        counts.Keys.CopyTo(keys, 0);
+        Array.Sort(keys, _comparison);
+
+        var result = new List<(string, object?, int)>(Math.Min(keys.Length + 1, maxCount));
+        if (nullCount > 0)
+            result.Add((string.Empty, null, nullCount)); // the "(Blanks)" row — always first (null sorts first)
+        foreach (var key in keys)
+        {
+            if (result.Count >= maxCount)
+                break;
+            result.Add((_formatter(key), key, counts[key])); // one box per distinct value — cold
+        }
+        return result;
     }
 
     internal override Expression BuildCompareExpression(ParameterExpression a, ParameterExpression b, bool descending)

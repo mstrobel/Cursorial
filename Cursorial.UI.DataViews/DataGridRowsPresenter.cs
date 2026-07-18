@@ -3,6 +3,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI.Controls;
+using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
 
 using CellStyle = Cursorial.Output.Style;
@@ -52,12 +53,18 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> FocusCellBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(FocusCellBackground));
 
+    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarFillBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarFillBrush));
+
+    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarTrackBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarTrackBrush));
+
     static DataGridRowsPresenter()
     {
         AffectsRender<DataGridRowsPresenter>(
             RowBackgroundProperty, RowAlternationBackgroundProperty, SelectionBackgroundProperty,
             HoverBackgroundProperty, GroupRowBackgroundProperty, TextBrushProperty, AccentBrushProperty,
-            FocusCellBackgroundProperty);
+            FocusCellBackgroundProperty, DataBarFillBrushProperty, DataBarTrackBrushProperty);
     }
 
     public Cursorial.Drawing.Media.IBrush? RowBackground { get => GetValue(RowBackgroundProperty); set => SetValue(RowBackgroundProperty, value); }
@@ -68,6 +75,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? AccentBrush { get => GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? FocusCellBackground { get => GetValue(FocusCellBackgroundProperty); set => SetValue(FocusCellBackgroundProperty, value); }
+    public Cursorial.Drawing.Media.IBrush? DataBarFillBrush { get => GetValue(DataBarFillBrushProperty); set => SetValue(DataBarFillBrushProperty, value); }
+    public Cursorial.Drawing.Media.IBrush? DataBarTrackBrush { get => GetValue(DataBarTrackBrushProperty); set => SetValue(DataBarTrackBrushProperty, value); }
 
     private DataGrid? _owner;
     private Size _viewport;
@@ -89,7 +98,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         public required string GroupCaption { get; init; }
         public required string GroupSummary { get; init; }
         public required bool GroupCollapsed { get; init; }
+
+        // Conditional-formatting verdicts, evaluated at BAND-FILL time (§2.7 — never at paint).
+        // The no-rules fast path shares the static empties (zero per-row cost).
+        public CellFormat[] CellFormats { get; init; }
+        public double[] BarFractions { get; init; }
+        public CellFormat RowFormat { get; init; }
     }
+
+    private static readonly CellFormat[] NoFormats = [];
+    private static readonly double[] NoFractions = [];
+
+    // The data-bar glyph pools: the painter slices spans off these (never a per-frame string).
+    private const int MaxBarCells = 128;
+    private static readonly string BarFillGlyphs = new('█', MaxBarCells);
+    private static readonly string BarTrackGlyphs = new('░', MaxBarCells);
 
     /// <summary>The owning grid (stamped by the grid when the template applies).</summary>
     internal DataGrid? Owner
@@ -215,6 +238,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         _band.Clear();
         var controller = owner.Controller;
+        bool hasRules = controller?.HasFormatRules == true; // the no-rules fast path — static empties
         for (int i = 0; i < length; i++)
         {
             var row = snapshot.GetRow(start + i);
@@ -233,13 +257,25 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     GroupCaption = $"{caption} ({node.RowCount})",
                     GroupSummary = summary,
                     GroupCollapsed = node.IsCollapsed,
+                    CellFormats = NoFormats,
+                    BarFractions = NoFractions,
                 });
             }
             else
             {
                 var cells = new string[columns.Count];
+                var formats = hasRules ? new CellFormat[columns.Count] : NoFormats;
+                var fractions = hasRules ? new double[columns.Count] : NoFractions;
                 for (int c = 0; c < columns.Count; c++)
+                {
                     cells[c] = controller?.FormatCell(row.RowId, columns[c]) ?? string.Empty;
+                    if (hasRules)
+                    {
+                        // §2.7: verdicts evaluate HERE (band fill), the painter only reads them.
+                        formats[c] = controller!.GetCellFormat(row.RowId, columns[c]);
+                        fractions[c] = controller.GetDataBarFraction(row.RowId, columns[c]);
+                    }
+                }
                 _band.Add(new CachedRow
                 {
                     IsGroup = false,
@@ -250,6 +286,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     GroupCaption = string.Empty,
                     GroupSummary = string.Empty,
                     GroupCollapsed = false,
+                    CellFormats = formats,
+                    BarFractions = fractions,
+                    RowFormat = hasRules ? controller!.GetRowFormat(row.RowId) : default,
                 });
             }
         }
@@ -345,12 +384,106 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
                 string text = row.Cells[c];
                 int textWidth = GraphemeWidth.StringWidth(text);
-                int drawX = entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right && textWidth < entry.Width
+                double fraction = c < row.BarFractions.Length ? row.BarFractions[c] : double.NaN;
+                bool hasBar = !double.IsNaN(fraction);
+
+                // A data-bar cell pins its value LEFT with the bar filling the remainder (the
+                // mockup's amtcell); everything else honors the column alignment.
+                int drawX = !hasBar &&
+                            entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
+                            textWidth < entry.Width
                     ? cellX + entry.Width - textWidth
                     : cellX;
-                DrawClipped(context, drawX, y, text, entry.Width, TextBrush);
+
+                // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill).
+                var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
+                DrawFormattedCell(context, drawX, y, text, entry.Width, format);
+
+                if (hasBar)
+                {
+                    int used = Math.Min(textWidth, entry.Width);
+                    DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Draws one data cell honoring its conditional-format verdict: an empty verdict rides the
+    /// resting <see cref="TextBrush"/> lane; a colored/attributed one draws through the Color
+    /// overload (the format's fg wins; Bold/Inverse/bg fold into the base <see cref="CellStyle"/> —
+    /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
+    /// </summary>
+    private void DrawFormattedCell(RenderContext context, int x, int y, string text, int maxWidth, in CellFormat format)
+    {
+        if (format.IsEmpty)
+        {
+            DrawClipped(context, x, y, text, maxWidth, TextBrush);
+            return;
+        }
+
+        if (text.Length == 0 || (format.Foreground is null && TextBrush is null))
+            return;
+
+        var attributes = default(TextAttributes);
+        if (format.Bold)
+            attributes |= TextAttributes.Bold;
+        if (format.Inverse)
+            attributes |= TextAttributes.Inverse;
+
+        CellStyle style = default;
+        if (attributes != default)
+            style = style.WithAttributes(attributes);
+        if (format.Background is { } background)
+            style = style.WithBackground(background);
+
+        // Truncate on a grapheme boundary (the DrawClipped contract), then emit through whichever
+        // foreground lane the verdict picked.
+        ReadOnlySpan<char> span = text;
+        int width = GraphemeWidth.StringWidth(text);
+        bool truncated = width > maxWidth;
+        if (truncated)
+        {
+            var enumerator = text.GetGraphemeEnumerator();
+            width = 0;
+            int end = 0;
+            while (enumerator.MoveNext())
+            {
+                int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+                if (next > maxWidth - 1)
+                    break;
+                width = next;
+                end = enumerator.ElementIndex + enumerator.Current.Length;
+            }
+            span = text.AsSpan(0, end);
+        }
+
+        if (format.Foreground is { } foreground)
+        {
+            context.DrawText(x, y, span, foreground, null, style);
+            if (truncated)
+                context.DrawText(x + width, y, "…", foreground, null, style);
+        }
+        else
+        {
+            context.DrawText(x, y, span, TextBrush!, null, style);
+            if (truncated)
+                context.DrawText(x + width, y, "…", TextBrush!, null, style);
+        }
+    }
+
+    /// <summary>The `█░` fill/track run after a data-bar cell's value (glyph shape carries the value in NoColor — §4).</summary>
+    private void DrawDataBar(RenderContext context, int x, int y, int width, double fraction)
+    {
+        if (width < 1)
+            return;
+
+        width = Math.Min(width, MaxBarCells);
+        int fill = (int)Math.Round(Math.Clamp(fraction, 0, 1) * width);
+        if (fill > 0 && DataBarFillBrush is { } fillBrush)
+            context.DrawText(x, y, BarFillGlyphs.AsSpan(0, fill), fillBrush);
+        if (fill < width && DataBarTrackBrush is { } trackBrush)
+            context.DrawText(x + fill, y, BarTrackGlyphs.AsSpan(0, width - fill), trackBrush);
     }
 
     /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack inside Render — §3.2).</summary>

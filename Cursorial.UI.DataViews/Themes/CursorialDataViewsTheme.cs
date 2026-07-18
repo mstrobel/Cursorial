@@ -24,13 +24,22 @@ internal static class CursorialDataViewsTheme
         .Set(Control.TemplateProperty, DataGridTemplate());
 
     /// <summary>
-    /// The grid anatomy (§3.1): header band (top), summary footer (bottom), the ScrollViewer-hosted
-    /// rows presenter filling the rest (the presenter is the SCP's content — the virtualization
-    /// seam). The group panel and auto-filter row join in their stages.
+    /// The grid anatomy (§3.1): group panel, header band, and auto-filter row docked top (in that
+    /// order), summary footer (bottom), the ScrollViewer-hosted rows presenter filling the rest
+    /// (the presenter is the SCP's content — the virtualization seam). The optional bands collapse
+    /// in their own measure (Show* false ⇒ 0 rows), so the template carries no visibility bindings.
     /// </summary>
     private static ControlTemplate DataGridTemplate() => new(ctx =>
     {
         var dock = new DockPanel { LastChildFill = true };
+
+        var groupPanel = new DataGridGroupPanel();
+        DockPanel.SetDock(groupPanel, Dock.Top);
+        groupPanel.SetResourceReference(DataGridGroupPanel.BackgroundProperty, ThemeKeys.PanelBrush);
+        groupPanel.SetResourceReference(DataGridGroupPanel.ChipBackgroundProperty, ThemeKeys.SurfaceBrush);
+        groupPanel.SetResourceReference(DataGridGroupPanel.TextBrushProperty, ThemeKeys.TextBrush);
+        groupPanel.SetResourceReference(DataGridGroupPanel.GlyphBrushProperty, ThemeKeys.CoolBrush);
+        groupPanel.SetResourceReference(DataGridGroupPanel.PromptBrushProperty, ThemeKeys.MutedBrush);
 
         var header = new DataGridHeaderPresenter();
         DockPanel.SetDock(header, Dock.Top);
@@ -40,6 +49,13 @@ internal static class CursorialDataViewsTheme
         header.SetResourceReference(DataGridHeaderPresenter.FilterGlyphBrushProperty, ThemeKeys.MutedBrush);
         header.SetResourceReference(DataGridHeaderPresenter.ActiveFilterBrushProperty, ThemeKeys.AmberBrush);
         header.SetResourceReference(DataGridHeaderPresenter.HoverBackgroundProperty, ThemeKeys.HoverBrush);
+
+        var autoFilter = new DataGridAutoFilterRow();
+        DockPanel.SetDock(autoFilter, Dock.Top);
+        autoFilter.SetResourceReference(DataGridAutoFilterRow.BackgroundProperty, ThemeKeys.SurfaceBrush);
+        autoFilter.SetResourceReference(DataGridAutoFilterRow.TextBrushProperty, ThemeKeys.TextBrush);
+        autoFilter.SetResourceReference(DataGridAutoFilterRow.PlaceholderBrushProperty, ThemeKeys.MutedBrush);
+        autoFilter.SetResourceReference(DataGridAutoFilterRow.WellBackgroundProperty, ThemeKeys.WellBrush);
 
         var footer = new DataGridSummaryPresenter();
         DockPanel.SetDock(footer, Dock.Bottom);
@@ -55,6 +71,8 @@ internal static class CursorialDataViewsTheme
         rows.SetResourceReference(DataGridRowsPresenter.TextBrushProperty, ThemeKeys.TextDimBrush);
         rows.SetResourceReference(DataGridRowsPresenter.AccentBrushProperty, ThemeKeys.AccentBrush);
         rows.SetResourceReference(DataGridRowsPresenter.FocusCellBackgroundProperty, ThemeKeys.WellBrush);
+        rows.SetResourceReference(DataGridRowsPresenter.DataBarFillBrushProperty, ThemeKeys.CoolBrush);
+        rows.SetResourceReference(DataGridRowsPresenter.DataBarTrackBrushProperty, ThemeKeys.FaintBrush);
 
         var scrollViewer = new ScrollViewer
         {
@@ -63,11 +81,15 @@ internal static class CursorialDataViewsTheme
             HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, // v1: full-width scenes; Auto degrades (§3.1)
         };
 
+        dock.Children.Add(groupPanel);
         dock.Children.Add(header);
+        dock.Children.Add(autoFilter);
         dock.Children.Add(footer);
         dock.Children.Add(scrollViewer);
 
+        ctx.RegisterName(DataGrid.PartGroupPanel, groupPanel);
         ctx.RegisterName(DataGrid.PartHeader, header);
+        ctx.RegisterName(DataGrid.PartAutoFilterRow, autoFilter);
         ctx.RegisterName(DataGrid.PartFooter, footer);
         ctx.RegisterName(DataGrid.PartScrollViewer, scrollViewer);
         ctx.RegisterName(DataGrid.PartRows, rows);

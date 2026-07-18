@@ -67,6 +67,47 @@ public abstract class DataViewController : IDisposable
     /// </summary>
     public abstract bool TrySetCellFromText(int rowId, object columnKey, string text);
 
+    /// <summary>
+    /// The active conditional-formatting rules (design doc §2.7): compiled against the typed key
+    /// vectors on the next shape (the grid pushes rules with every shape push). Does not itself
+    /// publish — evaluation surfaces (<see cref="GetCellFormat"/> et al.) lazily refresh the stats
+    /// block against the current snapshot version.
+    /// </summary>
+    public abstract void SetFormatRules(IReadOnlyList<FormatRule> rules);
+
+    /// <summary>Whether any compiled formatting rule is active (the band fill's fast-path gate).</summary>
+    public abstract bool HasFormatRules { get; }
+
+    /// <summary>The cell-level format verdict (Threshold first-match + ColorScale fill — §2.7). A struct; no allocation.</summary>
+    public abstract CellFormat GetCellFormat(int rowId, object columnKey);
+
+    /// <summary>The row-level format verdict (<see cref="PredicateRule"/> first-match).</summary>
+    public abstract CellFormat GetRowFormat(int rowId);
+
+    /// <summary>
+    /// The data-bar fill fraction for a cell in [0,1] (value's position in the column's stats
+    /// range), or NaN when the column carries no <see cref="DataBarRule"/> / the value is null.
+    /// </summary>
+    public abstract double GetDataBarFraction(int rowId, object columnKey);
+
+    /// <summary>
+    /// The column's distinct formatted values for the checklist popup (§3.4): typed dedupe over ALL
+    /// stored rows (deliberately unfiltered — re-widening a filter must offer the excluded values),
+    /// sorted by the column comparison, null first as <c>(Formatted: "", Raw: null)</c>, capped.
+    /// </summary>
+    public abstract IReadOnlyList<(string Formatted, object? Raw, int Count)> GetDistinctValues(
+        object columnKey, int maxCount = 1000);
+
+    /// <summary>The column's CLR key type (the auto-filter grammar's bare-text Contains-vs-Equals pick), or null.</summary>
+    public abstract Type? GetColumnKeyType(object columnKey);
+
+    /// <summary>
+    /// Whether <paramref name="fragment"/> compiles against the current columns (literal conversion
+    /// included). The filter surfaces validate BEFORE writing — the real compile runs inside a
+    /// posted shape push where a bad literal would be an unhandled dispatcher exception.
+    /// </summary>
+    public abstract bool CanCompileFilter(FilterNode fragment);
+
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
@@ -157,6 +198,12 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
         _shapedPropertyNames = BuildShapedPropertyNames(columns);
         ExtractAllKeys();
+
+        // Compiled format predicates capture ShapedColumn instances — a column rebuild must
+        // recompile them or verdicts would read the ORPHANED key vectors (§2.7).
+        if (_formatRules.Count > 0)
+            CompileFormatRules();
+
         Reshape();
     }
 
@@ -260,6 +307,247 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
     /// <summary>The typed slot→row accessor (filter Custom leaves; the grid's typed surfaces).</summary>
     public Func<int, TRow> RowAccessor => _store.GetRow;
+
+    public override Type? GetColumnKeyType(object columnKey) => FindColumn(columnKey)?.KeyType;
+
+    public override bool CanCompileFilter(FilterNode fragment)
+    {
+        ArgumentNullException.ThrowIfNull(fragment);
+        try
+        {
+            ShapingFilter.Compile(fragment, FindColumn, RowAccessor);
+            return true;
+        }
+        catch (Exception e) when (e is ArgumentException or FormatException or InvalidCastException or
+                                       OverflowException or InvalidOperationException)
+        {
+            return false; // unconvertible literal / unknown column — the surface keeps its editor open
+        }
+    }
+
+    public override IReadOnlyList<(string Formatted, object? Raw, int Count)> GetDistinctValues(
+        object columnKey, int maxCount = 1000)
+    {
+        ThrowIfDisposed();
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCount, 1);
+        return FindColumn(columnKey)?.GetDistinctValues(_store.SourceOrder, maxCount) ?? [];
+    }
+
+    // ── Conditional formatting (§2.7 — compile per rule set, stats per publish, evaluate at band fill) ──
+
+    private IReadOnlyList<FormatRule> _formatRules = [];
+    private readonly List<CompiledColumnFormats> _columnFormats = [];
+    private readonly List<(Func<int, bool> Predicate, CellFormat Format)> _rowFormatRules = [];
+    private int _statsVersion = -1;
+
+    /// <summary>One column's compiled formatting kit + its stats block (min/max over the filtered view).</summary>
+    private sealed class CompiledColumnFormats
+    {
+        public required object ColumnKey { get; init; }
+        public required ShapedColumn Column { get; init; }
+        public Func<int, double>? DoubleReader;
+        public bool HasDataBar;
+        public ColorScaleRule? ColorScale;
+        public readonly List<(Func<int, bool> Predicate, CellFormat Format)> Thresholds = [];
+        public double StatsMin = double.NaN;
+        public double StatsMax = double.NaN;
+    }
+
+    public override bool HasFormatRules => _columnFormats.Count > 0 || _rowFormatRules.Count > 0;
+
+    public override void SetFormatRules(IReadOnlyList<FormatRule> rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        ThrowIfDisposed();
+
+        // Rules are immutable description objects — the same instance sequence IS the same rule
+        // set, and the grid re-collects on EVERY shape push, so an unchanged set must not pay a
+        // recompile (expression compiles per sort click otherwise).
+        if (_formatRules.Count == rules.Count && _formatRules.SequenceEqual(rules))
+            return;
+
+        _formatRules = rules.ToArray();
+        CompileFormatRules();
+    }
+
+    /// <summary>
+    /// Compiles the rule set against the CURRENT shaped columns (re-run by <see cref="SetColumns"/>
+    /// — compiled predicates capture <see cref="ShapedColumn"/> instances, so a column rebuild must
+    /// recompile or verdicts would read orphaned key vectors). Rules referencing unshaped columns
+    /// are skipped (the grid may push before a column's field resolves; a silent no-op beats a
+    /// posted-dispatcher throw).
+    /// </summary>
+    private void CompileFormatRules()
+    {
+        _columnFormats.Clear();
+        _rowFormatRules.Clear();
+        _statsVersion = -1; // stats re-derive lazily against the next-read snapshot version
+
+        foreach (var rule in _formatRules)
+        {
+            if (rule is PredicateRule predicate)
+            {
+                // The same compile lane as FilterNode.Custom — row-type mismatches throw here
+                // (authoring-time, synchronous), never at evaluation.
+                var compiled = ShapingFilter.Compile(
+                    FilterNode.Custom(predicate.RowPredicate), FindColumn, RowAccessor);
+                _rowFormatRules.Add((compiled, predicate.Format));
+                continue;
+            }
+
+            var column = FindColumn(rule.ColumnKey);
+            if (column is null)
+                continue;
+
+            var entry = _columnFormats.FirstOrDefault(e => ReferenceEquals(e.Column, column));
+            if (entry is null)
+            {
+                entry = new CompiledColumnFormats { ColumnKey = rule.ColumnKey, Column = column };
+                _columnFormats.Add(entry);
+            }
+
+            switch (rule)
+            {
+                case DataBarRule:
+                    entry.DoubleReader ??= column.TryCreateDoubleReader();
+                    entry.HasDataBar = entry.DoubleReader is not null; // non-numeric key ⇒ inert rule
+                    break;
+
+                case ColorScaleRule scale:
+                    if (scale.Stops.Count is < 2 or > 3)
+                        throw new ArgumentException($"A color scale needs 2 or 3 stops; got {scale.Stops.Count}.");
+                    entry.DoubleReader ??= column.TryCreateDoubleReader();
+                    if (entry.DoubleReader is not null)
+                        entry.ColorScale = scale;
+                    break;
+
+                case ThresholdRule threshold:
+                    foreach (var (op, value, format) in threshold.Entries)
+                    {
+                        // Each entry compiles through the column's typed condition builder — the
+                        // FILTER lane, so literal conversion and null ordering can never drift.
+                        var slot = System.Linq.Expressions.Expression.Parameter(typeof(int), "slot");
+                        var body = column.BuildConditionExpression(slot, op, value, null);
+                        entry.Thresholds.Add((
+                            System.Linq.Expressions.Expression.Lambda<Func<int, bool>>(body, slot).Compile(),
+                            format));
+                    }
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refreshes the per-column stats blocks (min/max as double over the FILTERED sorted view —
+    /// the same population the footer aggregates; §2.7) once per published snapshot version.
+    /// </summary>
+    private void EnsureFormatStats()
+    {
+        if (_statsVersion == _version)
+            return;
+        _statsVersion = _version;
+
+        foreach (var entry in _columnFormats)
+        {
+            if (entry.DoubleReader is not { } read || (!entry.HasDataBar && entry.ColorScale is null))
+                continue;
+
+            double min = double.NaN, max = double.NaN;
+            for (int i = 0; i < _sortedLength; i++)
+            {
+                double v = read(_sortedView[i]);
+                if (double.IsNaN(v))
+                    continue; // null cells don't anchor the range (ignore-null, the aggregate convention)
+                if (double.IsNaN(min) || v < min)
+                    min = v;
+                if (double.IsNaN(max) || v > max)
+                    max = v;
+            }
+            entry.StatsMin = min;
+            entry.StatsMax = max;
+        }
+    }
+
+    private CompiledColumnFormats? FindFormats(object columnKey)
+    {
+        foreach (var entry in _columnFormats)
+        {
+            if (Equals(entry.ColumnKey, columnKey))
+                return entry;
+        }
+        return null;
+    }
+
+    public override CellFormat GetCellFormat(int rowId, object columnKey)
+    {
+        var entry = FindFormats(columnKey);
+        if (entry is null)
+            return default;
+
+        // Threshold entries: FIRST match wins (the authored priority order).
+        CellFormat result = default;
+        foreach (var (predicate, format) in entry.Thresholds)
+        {
+            if (predicate(rowId))
+            {
+                result = format;
+                break;
+            }
+        }
+
+        // ColorScale fills the foreground only when no threshold claimed it (§2.7 layering).
+        if (entry is { ColorScale: { } scale, DoubleReader: { } read } && result.Foreground is null)
+        {
+            EnsureFormatStats();
+            double v = read(rowId);
+            double range = entry.StatsMax - entry.StatsMin;
+            if (!double.IsNaN(v) && !double.IsNaN(range))
+            {
+                double t = range <= 0 ? 1 : Math.Clamp((v - entry.StatsMin) / range, 0, 1);
+                result = result with { Foreground = InterpolateStops(scale.Stops, t) };
+            }
+        }
+
+        return result;
+    }
+
+    private static Cursorial.Output.Color InterpolateStops(IReadOnlyList<Cursorial.Output.Color> stops, double t)
+    {
+        // 2 stops: one segment; 3 stops: split at 0.5 (min→mid→max, the heat-scale convention).
+        int segments = stops.Count - 1;
+        double scaled = t * segments;
+        int index = Math.Min(segments - 1, (int)scaled);
+        double local = scaled - index;
+        var (a, b) = (stops[index], stops[index + 1]);
+        return Cursorial.Output.Color.FromRgb(
+            (byte)Math.Round(a.Red + (b.Red - a.Red) * local),
+            (byte)Math.Round(a.Green + (b.Green - a.Green) * local),
+            (byte)Math.Round(a.Blue + (b.Blue - a.Blue) * local));
+    }
+
+    public override CellFormat GetRowFormat(int rowId)
+    {
+        foreach (var (predicate, format) in _rowFormatRules)
+        {
+            if (predicate(rowId))
+                return format; // first match wins (authored priority)
+        }
+        return default;
+    }
+
+    public override double GetDataBarFraction(int rowId, object columnKey)
+    {
+        var entry = FindFormats(columnKey);
+        if (entry is not { HasDataBar: true, DoubleReader: { } read })
+            return double.NaN;
+
+        EnsureFormatStats();
+        double v = read(rowId);
+        double range = entry.StatsMax - entry.StatsMin;
+        if (double.IsNaN(v) || double.IsNaN(range))
+            return double.NaN;
+        return range <= 0 ? 1 : Math.Clamp((v - entry.StatsMin) / range, 0, 1);
+    }
 
     // ── The INCC / INPC live pipeline (§2.6) ─────────────────────────────────────────────────────
 

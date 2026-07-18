@@ -38,13 +38,19 @@ public class DataGrid : Control
     public static readonly StyledProperty<bool> LiveUpdatesProperty =
         UIProperty.Register<DataGrid, bool>(nameof(LiveUpdates), true);
 
-    /// <summary>Whether the auto-filter row renders.</summary>
+    /// <summary>Whether the auto-filter row renders (default hidden — opt-in band, §3.4).</summary>
     public static readonly StyledProperty<bool> ShowAutoFilterRowProperty =
-        UIProperty.Register<DataGrid, bool>(nameof(ShowAutoFilterRow));
+        UIProperty.Register<DataGrid, bool>(nameof(ShowAutoFilterRow),
+            changed: static (sender, _, _) => ((DataGrid)sender).AutoFilterRow?.InvalidateMeasure());
 
-    /// <summary>Whether the group panel renders.</summary>
+    /// <summary>
+    /// Whether the group panel renders (default hidden — the flip drops the whole band from
+    /// measure, so grids that never group spend no row on the drag prompt; opt-in like the
+    /// auto-filter row).
+    /// </summary>
     public static readonly StyledProperty<bool> ShowGroupPanelProperty =
-        UIProperty.Register<DataGrid, bool>(nameof(ShowGroupPanel), true);
+        UIProperty.Register<DataGrid, bool>(nameof(ShowGroupPanel),
+            changed: static (sender, _, _) => ((DataGrid)sender).GroupPanel?.InvalidateMeasure());
 
     /// <summary>Whether the summary footer renders (auto-hides when no summaries are defined).</summary>
     public static readonly StyledProperty<bool> ShowSummaryFooterProperty =
@@ -69,7 +75,14 @@ public class DataGrid : Control
         SortDescriptions = [];
         SortDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
         GroupDescriptions = [];
-        GroupDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
+        GroupDescriptions.CollectionChanged += (_, _) =>
+        {
+            ScheduleShapePush();
+            // The chips re-ink even when no controller reshapes (a grouping edit before a source
+            // attaches must still surface on the panel).
+            GroupPanel?.InvalidateMeasure();
+            GroupPanel?.InvalidateVisual();
+        };
         SummaryDescriptions = [];
         SummaryDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
     }
@@ -156,30 +169,44 @@ public class DataGrid : Control
 
     // ── Template parts (§3.1) ────────────────────────────────────────────────────────────────────
 
+    public const string PartGroupPanel = "PART_GroupPanel";
     public const string PartHeader = "PART_Header";
+    public const string PartAutoFilterRow = "PART_AutoFilterRow";
     public const string PartFooter = "PART_Footer";
     public const string PartScrollViewer = "PART_ScrollViewer";
     public const string PartRows = "PART_Rows";
 
     private ScrollViewer? _scrollViewer;
+    private DataGridHeaderPresenter? _header;
 
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
 
-        var header = GetTemplatePart<DataGridHeaderPresenter>(PartHeader);
+        GroupPanel = GetTemplatePart<DataGridGroupPanel>(PartGroupPanel);
+        _header = GetTemplatePart<DataGridHeaderPresenter>(PartHeader);
+        AutoFilterRow = GetTemplatePart<DataGridAutoFilterRow>(PartAutoFilterRow);
         var footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
         _scrollViewer = GetTemplatePart<ScrollViewer>(PartScrollViewer);
         RowsPresenter = GetTemplatePart<DataGridRowsPresenter>(PartRows);
 
         if (RowsPresenter is not null)
             RowsPresenter.Owner = this;
-        if (header is not null)
+        if (GroupPanel is not null)
+            GroupPanel.Owner = this;
+        if (_header is not null)
         {
-            header.Owner = this;
+            _header.Owner = this;
             if (_scrollViewer is not null)
-                header.SetBinding(DataGridHeaderPresenter.HorizontalOffsetProperty,
-                                  new Binding(nameof(ScrollViewer.HorizontalOffset)) { Source = _scrollViewer });
+                _header.SetBinding(DataGridHeaderPresenter.HorizontalOffsetProperty,
+                                   new Binding(nameof(ScrollViewer.HorizontalOffset)) { Source = _scrollViewer });
+        }
+        if (AutoFilterRow is not null)
+        {
+            AutoFilterRow.Owner = this;
+            if (_scrollViewer is not null)
+                AutoFilterRow.SetBinding(DataGridAutoFilterRow.HorizontalOffsetProperty,
+                                         new Binding(nameof(ScrollViewer.HorizontalOffset)) { Source = _scrollViewer });
         }
         if (footer is not null)
         {
@@ -192,9 +219,17 @@ public class DataGrid : Control
 
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
+        _filterPopup?.Close(); // the popup anchors to template parts about to detach
         if (RowsPresenter is not null)
             RowsPresenter.Owner = null;
+        if (GroupPanel is not null)
+            GroupPanel.Owner = null;
+        if (AutoFilterRow is not null)
+            AutoFilterRow.Owner = null;
         _scrollViewer = null;
+        _header = null;
+        GroupPanel = null;
+        AutoFilterRow = null;
         RowsPresenter = null;
         base.OnTemplateDetaching(old);
     }
@@ -338,15 +373,41 @@ public class DataGrid : Control
         });
     }
 
-    /// <summary>Pushes sort/group/summaries/filter into the controller (one atomic reshape).</summary>
+    /// <summary>Pushes sort/group/summaries/filter/format-rules into the controller (one atomic reshape).</summary>
     private void PushShape()
     {
         if (_controller is null)
             return;
 
+        // Format rules ride every shape push (a plain IList carries no change notification — the
+        // shape push is the one sanctioned re-read point; SetFormatRules itself never publishes,
+        // the SetShape below does, and the engine short-circuits an unchanged rule sequence).
+        _controller.SetFormatRules(CollectFormatRules());
+
         FilterNode? effective = BuildEffectiveFilter();
         _controller.SetShape(SortDescriptions.ToList(), GroupDescriptions.ToList(),
                              SummaryDescriptions.ToList(), effective);
+    }
+
+    private List<FormatRule> CollectFormatRules()
+    {
+        var rules = new List<FormatRule>();
+        foreach (var column in Columns)
+            rules.AddRange(column.FormatRules);
+        return rules;
+    }
+
+    /// <summary>
+    /// Re-collects the columns' <see cref="DataGridColumn.FormatRules"/> into the engine and
+    /// re-inks the band — for rules edited AFTER the last shape push (the rule lists are plain
+    /// collections with no change notification; every shape push re-collects automatically).
+    /// </summary>
+    public void RefreshFormatRules()
+    {
+        if (_controller is null)
+            return;
+        _controller.SetFormatRules(CollectFormatRules());
+        RowsPresenter?.InvalidateBand();
     }
 
     /// <summary>AND-composes the programmatic tree with the per-column filter-surface fragments (§3.4).</summary>
@@ -364,17 +425,45 @@ public class DataGrid : Control
 
     /// <summary>Sets/clears one column's filter fragment (the checklist popup + auto-filter row write here).</summary>
     public void SetColumnFilter(DataGridColumn column, FilterNode? fragment)
+        => SetColumnFilter(column, fragment, summary: null);
+
+    /// <summary>
+    /// The surface-internal overload carrying the display SUMMARY the auto-filter row draws for the
+    /// active condition (the typed grammar text / the checklist's selected-value digest) — pure
+    /// presentation state beside the fragment, cleared with it.
+    /// </summary>
+    internal void SetColumnFilter(DataGridColumn column, FilterNode? fragment, string? summary)
     {
         ArgumentNullException.ThrowIfNull(column);
         if (fragment is null)
+        {
             _columnFilters.Remove(column);
+            _columnFilterSummaries.Remove(column);
+        }
         else
+        {
             _columnFilters[column] = fragment;
+            if (summary is not null)
+                _columnFilterSummaries[column] = summary;
+            else
+                _columnFilterSummaries.Remove(column);
+        }
         ScheduleShapePush();
+        AutoFilterRow?.InvalidateVisual();
     }
 
     /// <summary>Whether a column currently carries a filter fragment (the header's amber ▾ cue).</summary>
     public bool HasColumnFilter(DataGridColumn column) => _columnFilters.ContainsKey(column);
+
+    /// <summary>The column's active fragment (the popup pre-selects from an InSet), or null.</summary>
+    internal FilterNode? GetColumnFilter(DataGridColumn column)
+        => _columnFilters.GetValueOrDefault(column);
+
+    /// <summary>The active condition's display text for the auto-filter row's well, or null.</summary>
+    internal string? GetColumnFilterSummary(DataGridColumn column)
+        => _columnFilterSummaries.GetValueOrDefault(column);
+
+    private readonly Dictionary<DataGridColumn, string> _columnFilterSummaries = [];
 
     // ── Sort/group gesture surface (the keyboard/mouse handlers call these — §3.3) ───────────────
 
@@ -482,6 +571,12 @@ public class DataGrid : Control
 
     /// <summary>The rows presenter (stamped when the template applies; hit/paint state flows through it).</summary>
     internal DataGridRowsPresenter? RowsPresenter { get; set; }
+
+    /// <summary>The group panel band (stamped when the template applies).</summary>
+    internal DataGridGroupPanel? GroupPanel { get; private set; }
+
+    /// <summary>The auto-filter band (stamped when the template applies).</summary>
+    internal DataGridAutoFilterRow? AutoFilterRow { get; private set; }
 
     /// <summary>
     /// The presenter's press gesture (mouse): expander toggles; data rows select per modifiers
@@ -633,6 +728,19 @@ public class DataGrid : Control
     {
         base.OnKeyDown(e);
         if (e.Handled)
+            return;
+
+        // While the checklist popup is open its content owns the keyboard: the popup's route
+        // crosses back through its anchor into the grid, and a search-box Space / checklist arrow
+        // must not select rows here — unhandled arrows fall through to the dispatcher's directional
+        // navigation inside the popup instead (§3.4).
+        if (ActiveFilterPopup is not null)
+            return;
+
+        // Same contract for the roving auto-filter editor: its row already took Enter/Esc in the
+        // bubble; every other key (a typed space, Ctrl+C, arrows) belongs to the TextBox, not the
+        // grid's row gestures.
+        if (AutoFilterRow is { IsEditing: true })
             return;
 
         // Editing mode owns Enter/Esc/Tab (the edit bar's contract — commit/cancel/next-cell);
@@ -798,10 +906,36 @@ public class DataGrid : Control
         RowsPresenter?.InvalidateBand();
     }
 
-    /// <summary>Opens the column's filter checklist popup (wired by the filter-surface stage).</summary>
-    internal void OpenFilterPopup(DataGridColumn column)
+    private DataGridFilterPopup? _filterPopup;
+
+    /// <summary>The live checklist popup (tests reach its content; null when closed).</summary>
+    internal DataGridFilterPopup? ActiveFilterPopup => _filterPopup is { IsOpen: true } popup ? popup : null;
+
+    /// <summary>
+    /// Opens the column's distinct-value checklist popup anchored below its header cell
+    /// (design doc §3.4 — the header ▾ zone and DistinctPicker auto-filter cells route here).
+    /// </summary>
+    public void OpenFilterPopup(DataGridColumn column)
     {
-        // The checklist-popup stage (design doc §3.4) fills this in; the header's ▾ zone routes here.
+        ArgumentNullException.ThrowIfNull(column);
+        if (_controller is null || _header is null || RowsPresenter is null || !column.AllowFilter)
+            return;
+
+        // Anchor: the popup places against the whole header band (Bottom edge) with the cell's x
+        // as the horizontal offset — the WM clamps into the viewport, so an edge column's popup
+        // slides left rather than clipping.
+        int cellX = 0;
+        foreach (var entry in RowsPresenter.ColumnLayout.Entries)
+        {
+            if (ReferenceEquals(entry.Column, column))
+            {
+                cellX = entry.X - _header.HorizontalOffset;
+                break;
+            }
+        }
+
+        _filterPopup ??= new DataGridFilterPopup(this);
+        _filterPopup.Open(column, _header, cellX);
     }
 
     /// <summary>
@@ -864,6 +998,7 @@ public class DataGrid : Control
 
     protected override void OnTearDown()
     {
+        _filterPopup?.Close(); // release the popup surface before the controller it reads goes away
         _controller?.Dispose();
         _controller = null;
         base.OnTearDown();

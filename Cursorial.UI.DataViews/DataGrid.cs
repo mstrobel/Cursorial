@@ -4,9 +4,11 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 
+using Cursorial.Input;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
+using Cursorial.UI.Input;
 
 namespace Cursorial.UI.DataViews;
 
@@ -417,6 +419,224 @@ public class DataGrid : Control
     {
         ArgumentNullException.ThrowIfNull(node);
         _controller?.SetCollapsed(node.PathKey, !node.IsCollapsed);
+    }
+
+    // ── Selection + focus (row-id keyed — §3.3) ──────────────────────────────────────────────────
+
+    /// <summary>The row-id-keyed selection (design doc §3.3 — survives every reshape untouched).</summary>
+    public DataGridSelectionController RowSelection { get; } = new();
+
+    /// <summary>The focus row in VIEW space (−1 none; re-anchored per snapshot by row id when possible).</summary>
+    public int FocusViewIndex { get; private set; } = -1;
+
+    /// <summary>The focus cell's visible-column index (−1 = whole-row focus).</summary>
+    public int FocusColumnIndex { get; private set; } = -1;
+
+    private int _selectionAnchorViewIndex = -1;
+
+    /// <summary>The rows presenter (stamped when the template applies; hit/paint state flows through it).</summary>
+    internal DataGridRowsPresenter? RowsPresenter { get; set; }
+
+    /// <summary>
+    /// The presenter's press gesture (mouse): expander toggles; data rows select per modifiers
+    /// (plain replace / Ctrl toggle / Shift range from the anchor — ranges resolve to row ids at
+    /// gesture time against the current snapshot, then live as ids).
+    /// </summary>
+    internal void HandleRowPress(int viewIndex, int columnIndex, bool onExpander, KeyModifiers modifiers, int clickCount)
+    {
+        Focus(FocusNavigationMethod.Pointer);
+
+        var snapshot = Snapshot;
+        if (viewIndex < 0 || viewIndex >= snapshot.Count)
+            return;
+
+        var row = snapshot.GetRow(viewIndex);
+        if (row.IsGroup)
+        {
+            if (onExpander || clickCount >= 2)
+                ToggleGroup(snapshot.Groups[row.GroupNodeIndex]);
+            FocusViewIndex = viewIndex;
+            FocusColumnIndex = -1;
+            RowsPresenter?.InvalidateBand();
+            return;
+        }
+
+        FocusViewIndex = viewIndex;
+        FocusColumnIndex = columnIndex;
+
+        if ((modifiers & KeyModifiers.Shift) != 0 && _selectionAnchorViewIndex >= 0)
+        {
+            SelectViewRange(_selectionAnchorViewIndex, viewIndex, additive: (modifiers & KeyModifiers.Control) != 0);
+        }
+        else if ((modifiers & KeyModifiers.Control) != 0)
+        {
+            RowSelection.Toggle(row.RowId);
+            _selectionAnchorViewIndex = viewIndex;
+        }
+        else
+        {
+            RowSelection.SelectOnly(row.RowId);
+            _selectionAnchorViewIndex = viewIndex;
+        }
+
+        RowsPresenter?.InvalidateBand();
+    }
+
+    /// <summary>Resolves a view range to row ids at gesture time (§3.3) and applies it.</summary>
+    private void SelectViewRange(int from, int to, bool additive)
+    {
+        var snapshot = Snapshot;
+        if (from > to)
+            (from, to) = (to, from);
+        from = Math.Clamp(from, 0, Math.Max(0, snapshot.Count - 1));
+        to = Math.Clamp(to, 0, Math.Max(0, snapshot.Count - 1));
+
+        var ids = new List<int>(to - from + 1);
+        int lead = -1;
+        for (int i = from; i <= to; i++)
+        {
+            var row = snapshot.GetRow(i);
+            if (!row.IsGroup)
+            {
+                ids.Add(row.RowId);
+                lead = row.RowId;
+            }
+        }
+
+        var span = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(ids);
+        if (additive)
+            RowSelection.AddRange(span, lead);
+        else
+            RowSelection.SelectRange(span, lead);
+    }
+
+    /// <summary>The keyboard navigation surface (§3.3 — legacy-safe gestures).</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled)
+            return;
+
+        var snapshot = Snapshot;
+        if (snapshot.Count == 0)
+            return;
+
+        int current = Math.Clamp(FocusViewIndex < 0 ? 0 : FocusViewIndex, 0, snapshot.Count - 1);
+        int viewport = RowsPresenter is { } presenter ? Math.Max(1, presenter.PageStep(0, 1, vertical: true)) : 10;
+        bool shift = (e.Modifiers & KeyModifiers.Shift) != 0;
+        bool ctrl = (e.Modifiers & KeyModifiers.Control) != 0;
+
+        int? target = e.Key switch
+        {
+            Key.UpArrow => Math.Max(0, current - 1),
+            Key.DownArrow => Math.Min(snapshot.Count - 1, current + 1),
+            Key.PageUp => Math.Max(0, current - viewport),
+            Key.PageDown => Math.Min(snapshot.Count - 1, current + viewport),
+            Key.Home when ctrl => 0,
+            Key.End when ctrl => snapshot.Count - 1,
+            _ => null,
+        };
+
+        if (target is { } t)
+        {
+            MoveFocusRow(t, shift, ctrl);
+            e.Handled = true;
+            return;
+        }
+
+        var focused = FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count
+            ? snapshot.GetRow(FocusViewIndex)
+            : default;
+
+        switch (e.Key)
+        {
+            // Group rows: Left collapses, Right expands, Enter toggles (§3.3).
+            case Key.LeftArrow or Key.RightArrow or Key.Enter when focused.IsGroup:
+            {
+                var node = snapshot.Groups[focused.GroupNodeIndex];
+                bool collapse = e.Key == Key.LeftArrow || (e.Key == Key.Enter && !node.IsCollapsed);
+                if (node.IsCollapsed != collapse)
+                    _controller?.SetCollapsed(node.PathKey, collapse);
+                e.Handled = true;
+                return;
+            }
+
+            // Data rows: Left/Right move the focus cell.
+            case Key.LeftArrow when !focused.IsGroup:
+                FocusColumnIndex = Math.Max(0, (FocusColumnIndex < 0 ? 0 : FocusColumnIndex) - 1);
+                RowsPresenter?.InvalidateBand();
+                e.Handled = true;
+                return;
+
+            case Key.RightArrow when !focused.IsGroup:
+            {
+                int visible = Columns.Count(c => c.Visible);
+                FocusColumnIndex = Math.Min(Math.Max(0, visible - 1), FocusColumnIndex + 1);
+                RowsPresenter?.InvalidateBand();
+                e.Handled = true;
+                return;
+            }
+
+            // Ctrl+A — select all (the compact inversion).
+            case Key.Character when ctrl && e.Text.Length == 1 && (e.Text.Span[0] is 'a' or 'A'):
+                RowSelection.SelectAll();
+                RowsPresenter?.InvalidateBand();
+                e.Handled = true;
+                return;
+
+            // Space selects (the modifier-free wire is (Character, " ") — ND10).
+            case Key.Character or Key.Space when IsSpace(e) && !focused.IsGroup && focused.RowId >= 0:
+                if (ctrl)
+                    RowSelection.Toggle(focused.RowId);
+                else
+                    RowSelection.SelectOnly(focused.RowId);
+                _selectionAnchorViewIndex = FocusViewIndex;
+                RowsPresenter?.InvalidateBand();
+                e.Handled = true;
+                return;
+        }
+    }
+
+    private static bool IsSpace(KeyEventArgs e)
+        => e.Key == Key.Space || (e is { Key: Key.Character, Text.Length: 1 } && e.Text.Span[0] == ' ');
+
+    private void MoveFocusRow(int target, bool shift, bool ctrl)
+    {
+        var snapshot = Snapshot;
+        FocusViewIndex = target;
+
+        var row = snapshot.GetRow(target);
+        if (!row.IsGroup)
+        {
+            if (shift && _selectionAnchorViewIndex >= 0)
+            {
+                SelectViewRange(_selectionAnchorViewIndex, target, additive: false);
+            }
+            else if (!ctrl)
+            {
+                RowSelection.SelectOnly(row.RowId);
+                _selectionAnchorViewIndex = target;
+            }
+            // Ctrl+move: focus travels without selecting (the DevExpress/ListBox idiom).
+        }
+
+        // Keep the focus row visible: drive the scroll offset through the ScrollViewer seam.
+        ScrollRowIntoView(target);
+        RowsPresenter?.InvalidateBand();
+    }
+
+    /// <summary>Brings a view row into the viewport (the drawn-rows analog of bring-into-view — §3.1).</summary>
+    public void ScrollRowIntoView(int viewIndex)
+    {
+        if (RowsPresenter?.ScrollOwner is not { } scp)
+            return;
+
+        int offset = scp.ScrollOffsetRow;
+        int viewportRows = Math.Max(1, RowsPresenter.PageStep(0, 1, vertical: true) + 1);
+        if (viewIndex < offset)
+            scp.ScrollOffsetRow = viewIndex;
+        else if (viewIndex >= offset + viewportRows)
+            scp.ScrollOffsetRow = viewIndex - viewportRows + 1;
     }
 
     // ── Teardown ─────────────────────────────────────────────────────────────────────────────────

@@ -226,4 +226,36 @@ public sealed class Section11_ResourceDictionaries : LoaderTestBase
             "<TestBrush x:Key=\"{x:Type Bogus}\" Color=\"Red\"/></ResourceDictionary>"));
         Assert.Equal(XamlDiagnosticCodes.TypeNotFound, ex.Code);
     }
+
+    [Fact] // X131b — two entries in one dictionary with the same x:Key warn (CUR2305) at the later entry;
+    // the raw key is compared (so {x:Type} keys collide too), and separate scopes (merged dictionaries)
+    // don't. A warning (not error) so all collisions surface at once for paste-and-clean alias setup.
+    public void X131b_DuplicateResourceKey_Warns()
+    {
+        var collect = new XamlLoader(new XamlLoaderOptions { DiagnosticMode = XamlDiagnosticMode.CollectAll });
+
+        var doc = collect.Parse(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<TestBrush x:Key=\"A\" Color=\"Red\"/><TestBrush x:Key=\"B\" Color=\"Red\"/><TestBrush x:Key=\"A\" Color=\"Red\"/>" +
+            "</ResourceDictionary>", TestSource);
+        var dup = Assert.Single(doc.Diagnostics, d => d.Code == XamlDiagnosticCodes.DuplicateResourceKey);
+        Assert.Equal(XamlDiagnosticSeverity.Warning, dup.Severity);
+        Assert.Contains("'A'", dup.Message);
+
+        // A {x:Type} key duplicated collides on its raw form.
+        var typed = collect.Parse(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<Style x:Key=\"{x:Type Button}\" TargetType=\"Button\"/><Style x:Key=\"{x:Type Button}\" TargetType=\"Button\"/>" +
+            "</ResourceDictionary>", TestSource);
+        Assert.Contains(typed.Diagnostics, d => d.Code == XamlDiagnosticCodes.DuplicateResourceKey);
+
+        // The SAME key in two SEPARATE merged dictionaries is not a collision (distinct scopes).
+        var merged = collect.Parse(
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<ResourceDictionary.MergedDictionaries>" +
+            "<ResourceDictionary><TestBrush x:Key=\"A\" Color=\"Red\"/></ResourceDictionary>" +
+            "<ResourceDictionary><TestBrush x:Key=\"A\" Color=\"Red\"/></ResourceDictionary>" +
+            "</ResourceDictionary.MergedDictionaries></ResourceDictionary>", TestSource);
+        Assert.DoesNotContain(merged.Diagnostics, d => d.Code == XamlDiagnosticCodes.DuplicateResourceKey);
+    }
 }

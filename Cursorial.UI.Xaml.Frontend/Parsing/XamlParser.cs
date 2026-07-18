@@ -774,6 +774,57 @@ internal sealed class XamlParser
     private MemberRecord DirectiveMember(XamlDirectiveKind kind, string value, int lineInfo)
         => new(-1, XamlValueKind.Directive, _builder.InternString(value), 0, lineInfo, (int) kind);
 
+    /// <summary>
+    /// Warns (CUR2305) on entries in one resource dictionary that share an <c>x:Key</c> — the runtime
+    /// <c>ResourceDictionary.Add</c> throws on a duplicate, so this surfaces every collision at parse (all at
+    /// once, before the build/load error) to make setting up aliases paste-and-clean. Keys are compared by
+    /// their RAW written form (a literal, or a curly key like <c>{x:Type Button}</c>); merged/theme
+    /// dictionaries are separate scopes checked independently as they parse.
+    /// </summary>
+    private void WarnDuplicateResourceKeys(List<int> entryObjectIndices)
+    {
+        HashSet<string>? seen = null;
+        foreach (var idx in entryObjectIndices)
+        {
+            if (!TryGetRawKey(idx, out var key, out var keyLineInfo))
+                continue;
+
+            seen ??= new HashSet<string>(StringComparer.Ordinal);
+            if (!seen.Add(key))
+            {
+                _builder.Warning(XamlDiagnosticCodes.DuplicateResourceKey,
+                                 $"Duplicate resource key '{key}' in this dictionary — two entries cannot share a key " +
+                                 "(loading throws). Remove or rename one.",
+                                 LineInfo.Line(keyLineInfo), LineInfo.Column(keyLineInfo));
+            }
+        }
+    }
+
+    /// <summary>The raw <c>x:Key</c> string of a committed dictionary-entry object (its <c>Key</c> directive
+    /// member) and that member's position, or false when the entry carries no key.</summary>
+    private bool TryGetRawKey(int objectIndex, out string key, out int keyLineInfo)
+    {
+        key = string.Empty;
+        keyLineInfo = 0;
+
+        var obj = _builder.GetObject(objectIndex);
+        if (!obj.HasFlag(ObjectFlags.HasKey))
+            return false;
+
+        for (int i = 0; i < obj.MemberCount; i++)
+        {
+            var m = _builder.GetMember(obj.MemberStart + i);
+            if (m.Kind == XamlValueKind.Directive && m.DirectiveKind == (int) XamlDirectiveKind.Key)
+            {
+                key = _builder.GetString(m.ValueIndex);
+                keyLineInfo = m.PackedLineInfo;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void HandleAttachedAttribute(
         string attrLocal,
         int dot,
@@ -1477,8 +1528,11 @@ internal sealed class XamlParser
 
         if (sawContentChild && contentChildren.Count > 0)
         {
-            CommitContentChildren(type, 
-                                  ownerLocalName, 
+            if (inResourceDictionary)
+                WarnDuplicateResourceKeys(contentChildren);
+
+            CommitContentChildren(type,
+                                  ownerLocalName,
                                   contentChildren,
                                   members,
                                   LineInfo.Pack(_lineInfo.LineNumber, _lineInfo.LinePosition));
@@ -1614,6 +1668,10 @@ internal sealed class XamlParser
 
         if (childObjects.Count > 0)
         {
+            // A <X.Resources>-style implicit dictionary: its entries are these children directly.
+            if (InResourceDictionary(memberName))
+                WarnDuplicateResourceKeys(childObjects);
+
             if (memberIsDeferred)
             {
                 members.Add(new MemberRecord(memberId, XamlValueKind.Deferred, childObjects[0], childObjects.Count, lineInfo));

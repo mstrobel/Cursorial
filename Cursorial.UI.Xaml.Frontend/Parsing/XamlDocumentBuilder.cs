@@ -59,6 +59,8 @@ internal sealed class XamlDocumentBuilder
 
     public ObjectRecord GetObject(int index) => _objects[index];
 
+    public MemberRecord GetMember(int index) => _members[index];
+
     /// <summary>Records a root-element xmlns declaration (<paramref name="prefix"/> = "" for the default xmlns).</summary>
     public void AddNamespaceDeclaration(string prefix, string namespaceUri) => _namespaces[prefix] = namespaceUri;
 

@@ -96,6 +96,9 @@ public static class XamlDiagnosticCodes
     /// <summary><c>x:Name</c> inside a resource dictionary (no namescope).</summary>
     public const string NameInResourceDictionary = "CUR2304";
 
+    /// <summary>Two entries in one resource dictionary carry the same <c>x:Key</c> (warning-severity).</summary>
+    public const string DuplicateResourceKey = "CUR2305";
+
     /// <summary>A value failed conversion (e.g. a fractional cell, an unparseable enum/theme key).</summary>
     public const string ConversionFailed = "CUR2401";
 

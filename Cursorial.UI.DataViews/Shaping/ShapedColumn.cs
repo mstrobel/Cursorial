@@ -37,6 +37,17 @@ internal abstract class ShapedColumn
     /// compiled <see cref="Comparison{T}"/> of int.
     /// </summary>
     internal abstract Expression BuildCompareExpression(ParameterExpression a, ParameterExpression b, bool descending);
+
+    /// <summary>
+    /// Builds the boolean expression for one filter condition over this column's key at slot
+    /// <paramref name="slot"/> (the <see cref="ShapingFilter"/> compiler's leaf). Ordering operators
+    /// run through the column comparison (sort-consistent null ordering); Contains/StartsWith are
+    /// string-only; literals convert to the key type at build time (never per evaluation).
+    /// </summary>
+    internal abstract Expression BuildConditionExpression(ParameterExpression slot, FilterOperator op, object? value, object? secondValue);
+
+    /// <summary>Builds the set-membership expression for the checklist filter (typed hash set baked at build).</summary>
+    internal abstract Expression BuildSetExpression(ParameterExpression slot, IReadOnlyList<object?> values);
 }
 
 /// <summary>The typed column (see <see cref="ShapedColumn"/>).</summary>
@@ -92,4 +103,67 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn
 
         return ShapingCodegen.BuildKeyCompare(typeof(TKey), keyA, keyB, Expression.Constant(_comparison));
     }
+
+    internal override Expression BuildConditionExpression(ParameterExpression slot, FilterOperator op, object? value, object? secondValue)
+    {
+        var key = Expression.ArrayIndex(Expression.Field(Expression.Constant(this), nameof(Keys)), slot);
+
+        if (op is FilterOperator.Contains or FilterOperator.StartsWith)
+        {
+            if (typeof(TKey) != typeof(string))
+                throw new ArgumentException($"{op} applies to string columns only; the key type is '{typeof(TKey).Name}'.");
+            string needle = value as string ?? Convert.ToString(value, System.Globalization.CultureInfo.CurrentCulture) ?? string.Empty;
+            var method = typeof(string).GetMethod(op == FilterOperator.Contains ? nameof(string.Contains) : nameof(string.StartsWith),
+                                                  [typeof(string), typeof(StringComparison)])!;
+            // key != null && key.Op(needle, comparison)
+            return Expression.AndAlso(
+                Expression.NotEqual(key, Expression.Constant(null, typeof(string))),
+                Expression.Call(key, method, Expression.Constant(needle), Expression.Constant(StringComparisonMode)));
+        }
+
+        // Ordering/equality run through the column comparison against a build-time-converted literal —
+        // sort-consistent semantics (null-first) with zero per-evaluation conversion.
+        var literal = Expression.Constant(ShapingFilter.ConvertLiteral<TKey>(value), typeof(TKey));
+        var compare = Expression.Invoke(Expression.Constant(_comparison), key, literal);
+        var zero = Expression.Constant(0);
+
+        if (op == FilterOperator.Between)
+        {
+            var upper = Expression.Constant(ShapingFilter.ConvertLiteral<TKey>(secondValue), typeof(TKey));
+            return Expression.AndAlso(
+                Expression.GreaterThanOrEqual(compare, zero),
+                Expression.LessThanOrEqual(Expression.Invoke(Expression.Constant(_comparison), key, upper), zero));
+        }
+
+        return op switch
+        {
+            FilterOperator.Equals => Expression.Equal(compare, zero),
+            FilterOperator.NotEquals => Expression.NotEqual(compare, zero),
+            FilterOperator.LessThan => Expression.LessThan(compare, zero),
+            FilterOperator.LessThanOrEqual => Expression.LessThanOrEqual(compare, zero),
+            FilterOperator.GreaterThan => Expression.GreaterThan(compare, zero),
+            FilterOperator.GreaterThanOrEqual => Expression.GreaterThanOrEqual(compare, zero),
+            _ => throw new ArgumentOutOfRangeException(nameof(op)),
+        };
+    }
+
+    internal override Expression BuildSetExpression(ParameterExpression slot, IReadOnlyList<object?> values)
+    {
+        // A null member is legal for nullable/reference keys (the "(Blanks)" checkbox); for a
+        // non-nullable value key null can never match, so it is skipped rather than mis-converted.
+        bool nullable = default(TKey) is null;
+        var set = new HashSet<TKey>();
+        foreach (var value in values)
+        {
+            if (value is null && !nullable)
+                continue;
+            set.Add(ShapingFilter.ConvertLiteral<TKey>(value)!);
+        }
+
+        var key = Expression.ArrayIndex(Expression.Field(Expression.Constant(this), nameof(Keys)), slot);
+        return Expression.Call(Expression.Constant(set), typeof(HashSet<TKey>).GetMethod(nameof(HashSet<int>.Contains))!, key);
+    }
+
+    /// <summary>The string-comparison mode string Contains/StartsWith filters honor (set by the column options; Ordinal-ish default pending the controller's option plumb).</summary>
+    internal StringComparison StringComparisonMode { get; init; } = StringComparison.CurrentCultureIgnoreCase;
 }

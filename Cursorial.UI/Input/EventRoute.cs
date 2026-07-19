@@ -90,6 +90,21 @@ internal sealed class EventRoute
 internal static class EventRouting
 {
     /// <summary>Raises one event per its strategy (the public <see cref="UIElement.RaiseEvent"/> core).</summary>
+    /// <summary>
+    /// Raises a bubble along the OWNERSHIP chain (<c>VisualParent ?? UIParent</c>, the focus chain's walk)
+    /// rather than the event route — the focus pair's raise path (input-routing review Q2 ruling 4):
+    /// GotFocus/LostFocus are focus-STATE notifications, formally coupled to the same chain their
+    /// <c>IsKeyboardFocusWithin</c> gates ride (placement leg included — ComboBox/menu close-on-focus-leave
+    /// and the LostFocus binding flush depend on the full reach), so narrowing the event route never
+    /// narrows them.
+    /// </summary>
+    internal static void RaiseAlongOwnershipChain(UIElement target, RoutedEventArgs args)
+    {
+        var routedEvent = args.RoutedEventUnchecked!;
+        for (var node = (UIElement?)target; node is not null; node = node.VisualParent ?? node.UIParent)
+            InvokeNode(node, routedEvent, args);
+    }
+
     internal static void Raise(UIElement target, RoutedEventArgs args)
     {
         var routedEvent = args.RoutedEventUnchecked!;

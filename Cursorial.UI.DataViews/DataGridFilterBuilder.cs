@@ -96,12 +96,23 @@ internal sealed class DataGridFilterBuilder
     /// <summary>Non-null when this instance is a duplicate-open rider adopting the LIVE dialog.</summary>
     private readonly DataGridFilterBuilder? _live;
     private Group _root;
+    private readonly FilterNode? _seedFilter; // the ⧉ Designer hop's draft (null = the grid's filter)
+    private readonly string? _seedText;       // its source text (the §9.1 pair)
     private string _editAsTextSeed = string.Empty;
     private bool _rebuilding;
 
-    public DataGridFilterBuilder(DataGrid grid)
+    /// <param name="grid">The owning grid.</param>
+    /// <param name="seedFilter">An optional tree to seed from INSTEAD of the grid's active filter —
+    /// the editor's ⧉ Designer hop carries its lowered draft here, side-effect-free (nothing
+    /// applies until OK).</param>
+    /// <param name="seedText">The hop draft's SOURCE TEXT: labels a seeded compiled predicate's
+    /// locked ƒ row, and an un-edited OK re-applies THROUGH the text authority so the §9.1
+    /// (tree, text) pair stores together.</param>
+    public DataGridFilterBuilder(DataGrid grid, FilterNode? seedFilter = null, string? seedText = null)
     {
         _grid = grid;
+        _seedFilter = seedFilter;
+        _seedText = seedText;
 
         if (grid.ActiveFilterBuilder is { } open)
         {
@@ -124,7 +135,7 @@ internal sealed class DataGridFilterBuilder
         }
 
         _fieldColumns = grid.Columns.Where(c => c.FieldName is not null || c.KeySelector is not null).ToList();
-        _root = Seed(grid.Filter);
+        _root = Seed(seedFilter ?? grid.Filter);
 
         var content = new StackPanel(); // vertical
         content.Children.Add(new ScrollViewer
@@ -254,10 +265,11 @@ internal sealed class DataGridFilterBuilder
                 return new Opaque(not, $"Not ({DescribeOpaque(not.Child)})");
 
             case FilterPredicateNode predicate:
-                // §9.1: the compiled fallback keeps its ORIGINAL SOURCE TEXT grid-side — the
-                // builder shows it as a read-only expression row rather than pretending to edit it.
+                // §9.1: the compiled fallback keeps its ORIGINAL SOURCE TEXT — the hop's draft
+                // text when seeded from the editor, else the grid-side retained text; the builder
+                // shows it as a read-only expression row rather than pretending to edit it.
                 return new Opaque(predicate,
-                    _grid.FilterExpressionText is { Length: > 0 } text
+                    (_seedText ?? _grid.FilterExpressionText) is { Length: > 0 } text
                         ? $"ƒ {text}"
                         : "ƒ (custom predicate)");
 
@@ -707,10 +719,21 @@ internal sealed class DataGridFilterBuilder
             return;
         }
 
+        // The ⧉ Designer hop's UN-EDITED compiled draft applies THROUGH the text authority so the
+        // §9.1 (tree, source-text) pair stores together — the plain Filter write would orphan the
+        // text the hop carried.
+        if (built is FilterPredicateNode && ReferenceEquals(built, _seedFilter) && _seedText is { Length: > 0 })
+        {
+            if (!_grid.TryApplyFilterExpression(_seedText, out _))
+            {
+                SetError("the expression does not apply to the current columns");
+                return;
+            }
+        }
         // A zero-edit OK lowers back to the seeded tree verbatim (a single preserved opaque root ⇒
         // the SAME FilterNode reference). The §9.1-retained source text still describes it exactly —
         // writing through the Filter setter would clear FilterExpressionText for nothing.
-        if (!ReferenceEquals(built, _grid.Filter))
+        else if (!ReferenceEquals(built, _grid.Filter))
         {
             // The public Filter setter deliberately: the tree is now BUILDER-authored, so any
             // stored expression text is stale — the editor re-derives via ToText on its next

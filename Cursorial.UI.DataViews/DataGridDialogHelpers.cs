@@ -195,4 +195,24 @@ internal static class DataGridDialogHelpers
         block.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
         return block;
     }
+
+    /// <summary>
+    /// A small modal confirm over the suite scaffold (the editor→designer hop's representability
+    /// warning): stacks <paramref name="messageLines"/> as muted text under the title, offers
+    /// yes/no buttons, and completes <see langword="true"/> only on the affirmative (✕ / Esc /
+    /// <paramref name="noCaption"/> all decline).
+    /// </summary>
+    internal static async Task<bool> ConfirmAsync(string title, string[] messageLines,
+                                                  string yesCaption, string noCaption)
+    {
+        var content = new StackPanel(); // vertical
+        foreach (string line in messageLines)
+            content.Children.Add(Caption(line));
+
+        Window window = null!;
+        window = CreateDialogWindow(title, content,
+            (yesCaption, () => window.Close(true)),
+            (noCaption, () => window.Close(false)));
+        return await window.ShowDialogAsync() is true;
+    }
 }

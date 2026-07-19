@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.UI.Controls;
+using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
@@ -97,7 +98,7 @@ internal sealed class DataGridExpressionEditor
         content.Children.Add(_strip);
 
         _window = DataGridDialogHelpers.CreateDialogWindow("Filter Editor — text mode", content,
-            ("Apply", Apply), ("Cancel", Cancel));
+            ("⧉ Designer", () => _ = RequestEditInBuilderAsync()), ("Apply", Apply), ("Cancel", Cancel));
 
         // Focus the criteria box once the dialog surface materializes (the parked-work idiom).
         _window.ContentRendered += (_, _) => UIApplication.Current?.Dispatcher.Post(() =>
@@ -252,6 +253,89 @@ internal sealed class DataGridExpressionEditor
 
     /// <summary>Cancel: close without writing.</summary>
     internal void Cancel() => _window.Close(false);
+
+    /// <summary>Set when the dialog closed via the ⧉ Designer hop (the grid's entry point chains
+    /// into the Filter Builder seeded from <see cref="BuilderSeedFilter"/>/<see cref="BuilderSeedText"/>).</summary>
+    internal bool HopToBuilder => (_live ?? this)._hopToBuilder;
+
+    /// <summary>The hop's lowered draft (null = seed the designer from the grid's active filter).</summary>
+    internal FilterNode? BuilderSeedFilter => (_live ?? this)._builderSeedFilter;
+
+    /// <summary>The hop draft's SOURCE TEXT (labels a compiled draft's locked ƒ row; re-stored on
+    /// an un-edited apply — the §9.1 pair).</summary>
+    internal string? BuilderSeedText => (_live ?? this)._builderSeedText;
+
+    private bool _hopToBuilder;
+    private FilterNode? _builderSeedFilter;
+    private string? _builderSeedText;
+
+    /// <summary>
+    /// The reverse of the Builder's "ƒ Edit as Text" hop (⧉ Designer): lowers the CURRENT draft
+    /// and reopens it in the designer — side-effect-free (nothing applies until the designer's
+    /// OK). An empty draft hops seeded from the grid's active filter; invalid text vetoes on the
+    /// strip; a draft that only lowers to a COMPILED predicate warns first — the designer shows it
+    /// as one locked ƒ row it cannot edit, and the source text survives a designer round-trip only
+    /// while that row is left as-is.
+    /// </summary>
+    internal Task RequestEditInBuilderAsync()
+    {
+        // The entry-point marshaling idiom: the confirm's dialog continuation resumes through the
+        // CALLER'S sync context (RunContinuationsAsynchronously) — a caller without the UI context
+        // (headless tests, bare threads) would land it on the thread pool and fault the Close with
+        // a cross-thread access. InvokeAsync runs the core under the application's UI context.
+        var application = UIApplication.Current;
+        return application is null ? Task.CompletedTask : application.Dispatcher.InvokeAsync(RequestEditInBuilderCoreAsync);
+    }
+
+    private async Task RequestEditInBuilderCoreAsync()
+    {
+        if (_live is { } live)
+        {
+            await live.RequestEditInBuilderCoreAsync();
+            return;
+        }
+
+        string text = _text.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _hopToBuilder = true; // nothing drafted — the designer opens on the active filter
+            _window.Close(false);
+            return;
+        }
+
+        if (_grid.RowType is not { } rowType)
+        {
+            SetStrip(valid: false, "✕ No row source — attach an ItemsSource first");
+            return;
+        }
+
+        var lowered = CriteriaExpression.ToFilterNode(text, rowType, _fields);
+        if (!lowered.IsValid || lowered.Filter is null)
+        {
+            Revalidate(); // the strip carries the veto — fix the draft (or Cancel) first
+            return;
+        }
+
+        if (lowered.Filter is FilterPredicateNode)
+        {
+            bool proceed = await DataGridDialogHelpers.ConfirmAsync(
+                "Open in designer?",
+                [
+                    "This expression isn't fully representable in the designer:",
+                    "it will appear as a single locked ƒ row you cannot edit there.",
+                    "Conditions can be added around it, but if you change the tree",
+                    "and apply, the original text is kept only inside that row.",
+                ],
+                "Open designer", "Stay here");
+            if (!proceed)
+                return;
+        }
+
+        _builderSeedFilter = lowered.Filter;
+        _builderSeedText = text;
+        _hopToBuilder = true;
+        _window.Close(false);
+    }
 
     /// <summary>The teardown funnel (the grid closes an open dialog when it tears down).</summary>
     internal void CloseWindow()

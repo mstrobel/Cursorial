@@ -3026,15 +3026,23 @@ public class DataGrid : Control
                       (_filter is { } filter ? CriteriaExpression.ToText(filter, CriteriaFieldName) : string.Empty);
         var editor = new DataGridExpressionEditor(this, seed);
         _expressionEditor = editor;
+        bool applied;
         try
         {
-            return await editor.ShowAsync();
+            applied = await editor.ShowAsync();
         }
         finally
         {
             if (ReferenceEquals(_expressionEditor, editor))
                 _expressionEditor = null;
         }
+
+        // The ⧉ Designer hop (the reverse of the Builder's "ƒ Edit as Text"): reopen the DRAFT in
+        // the Filter Builder, side-effect-free — nothing applied yet; the designer's OK is the one
+        // write. The hop may bounce back and forth; each leg is one modal.
+        if (!applied && editor.HopToBuilder)
+            return await OpenFilterBuilderCoreAsync(editor.BuilderSeedFilter, editor.BuilderSeedText);
+        return applied;
     }
 
     /// <summary>
@@ -3048,12 +3056,12 @@ public class DataGrid : Control
         var application = UIApplication.Current;
         if (application?.WindowManager is null)
             return Task.FromResult(false);
-        return application.Dispatcher.InvokeAsync(OpenFilterBuilderCoreAsync);
+        return application.Dispatcher.InvokeAsync(() => OpenFilterBuilderCoreAsync());
     }
 
-    private async Task<bool> OpenFilterBuilderCoreAsync()
+    private async Task<bool> OpenFilterBuilderCoreAsync(FilterNode? seedFilter = null, string? seedText = null)
     {
-        var builder = new DataGridFilterBuilder(this);
+        var builder = new DataGridFilterBuilder(this, seedFilter, seedText);
         _filterBuilder = builder;
         FilterBuilderOutcome outcome;
         try

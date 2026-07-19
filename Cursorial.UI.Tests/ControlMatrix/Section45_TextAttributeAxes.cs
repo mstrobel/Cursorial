@@ -146,7 +146,11 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal(TextWeight.Bold, TextElement.GetTextWeight(leaf!)); // the other axis never moved
     }
 
-    [Fact] // TA8 — DataTemplate content is APP content: it receives NO forwarded axes (§7.3 scoping rule)
+    [Fact] // TA8 REVISED — DataTemplate in a ContentPresenter ONLY: it receives ALL forwarded axes (§7.3 scoping rule)
+           // Rationale: If text styling axes are non-inheriting, the only reason a user would set them on a
+           // ContentControl or ContentPresenter would be for them to apply to the hosted content. The default theme
+           // only sets Inverse for :caps-nocolor selection on stock item containers, so anything else would have come
+           // from user code and should be assumed intentional.
     public void TA8_DataTemplateContent_ReceivesNothing()
     {
         using var host = UIHeadlessHost.Create();
@@ -164,8 +168,8 @@ public sealed class Section45_TextAttributeAxes
         Assert.True(host.RunUntilIdle());
 
         Assert.NotNull(inner);
-        Assert.False(TextElement.GetInverse(inner!)); // app content styles itself — never clobbered by forwards
-        Assert.Equal(BindingPriority.Default, inner!.GetValueSource(TextElement.InverseProperty).Priority);
+        Assert.True(TextElement.GetInverse(inner!)); // app content styles itself — never clobbered by forwards
+        Assert.Equal(BindingPriority.Template, inner!.GetValueSource(TextElement.InverseProperty).Priority);
     }
 
     [Fact] // TA9 — non-inheriting: an ancestor's axis value does NOT flow to arbitrary descendants
@@ -214,10 +218,10 @@ public sealed class Section45_TextAttributeAxes
             Assert.Equal(weight, dict[Cursorial.UI.Themes.ThemeKeys.InteractiveCueWeight]);
         }
 
-        AssertCue(new ThemeVariantKey(null, ColorDepth.NoColor), inverse: true,  weight: TextWeight.Normal); // NoColor: reverse-video
-        AssertCue(new ThemeVariantKey(null, ColorDepth.Ansi16),  inverse: false, weight: TextWeight.Normal); // CD8 color floor
-        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi16), inverse: false, weight: TextWeight.Faint);  // 16-color = Faint
-        AssertCue(new ThemeVariantKey(ThemeBase.Light, ColorDepth.Ansi16), inverse: false, weight: TextWeight.Faint);
+        AssertCue(new ThemeVariantKey(null, ColorDepth.NoColor), inverse: true,  weight: TextWeight.Normal); // NoColor: faint
+        AssertCue(new ThemeVariantKey(null, ColorDepth.Ansi16),  inverse: false, weight: TextWeight.Bold); // CD8 color floor
+        AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi16), inverse: false, weight: TextWeight.Bold);  // 16-color = Bold
+        AssertCue(new ThemeVariantKey(ThemeBase.Light, ColorDepth.Ansi16), inverse: false, weight: TextWeight.Bold);
         AssertCue(new ThemeVariantKey(ThemeBase.Dark,  ColorDepth.Ansi256), inverse: false, weight: TextWeight.Normal); // RGB: brushes are the cue
     }
 

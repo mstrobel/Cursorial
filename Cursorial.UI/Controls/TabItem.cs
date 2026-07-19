@@ -72,7 +72,6 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
         // same reason). The pen rides SetResourceReference so it tracks variant flips; visibility is gated on
         // selection (the bar row stays laid out — Hidden, not Collapsed — so the tab strip aligns).
         _underline = GetTemplatePart<Separator>(PartUnderline);
-        _underline?.SetResourceReference(BorderPenProperty, ThemeKeys.TabUnderlinePen);
         UpdateUnderline();
     }
 

@@ -69,6 +69,96 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
         Assert.Same(view.Children[1], viewType.GetField("Frame", flags)!.GetValue(view));
     }
 
+    [Fact] // Style.When — a <Style.When>/<DataCondition> conjunction lowers to When.Add(new DataCondition{…}) and matches the loader
+    public void Lowered_StyleWhen_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.WhenView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"DPStyle\" TargetType=\"DatePicker\">" +
+                "<Style.When>" +
+                  "<DataCondition Binding=\"{Binding RelativeSource={RelativeSource Self}, Path=IsEditable}\">" +
+                    "<DataCondition.Value><x:Boolean>false</x:Boolean></DataCondition.Value>" +
+                  "</DataCondition>" +
+                  "<DataCondition Binding=\"{Binding RelativeSource={RelativeSource Self}, Path=SelectedDate}\" Value=\"{x:Null}\" Negate=\"True\"/>" +
+                "</Style.When>" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class WhenView : StackPanel { public WhenView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains(".When.Add(new global::Cursorial.UI.DataCondition", lowered); // the conjunction is emitted
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["DPStyle"]);
+
+        var runtime = (StackPanel)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        var runtimeStyle = Assert.IsType<Style>(runtime.Resources["DPStyle"]);
+
+        // Same conjunction shape + typed values as the loader.
+        Assert.Equal(runtimeStyle.When.Count, loweredStyle.When.Count);
+        Assert.Equal(2, loweredStyle.When.Count);
+
+        Assert.Equal(false, loweredStyle.When[0].Value);            // <x:Boolean>false</x:Boolean>
+        Assert.False(loweredStyle.When[0].Negate);
+        var b0 = Assert.IsType<Binding>(loweredStyle.When[0].Binding);
+        Assert.Equal("IsEditable", b0.Path.Path);
+        Assert.Equal(RelativeSourceMode.Self, b0.RelativeSource!.Mode);
+
+        Assert.Null(loweredStyle.When[1].Value);                    // Value="{x:Null}"
+        Assert.True(loweredStyle.When[1].Negate);                   // Negate="True"
+        Assert.Equal("SelectedDate", ((Binding)loweredStyle.When[1].Binding).Path.Path);
+    }
+
+    [Fact] // Style.When — a DataCondition Value="{StaticResource …}" resolves eagerly (not dropped to null); matches the loader
+    public void Lowered_StyleWhen_StaticResourceValue_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.WhenResView\">" +
+            "<StackPanel.Resources>" +
+              "<x:String x:Key=\"Target\">special</x:String>" +
+              "<Style x:Key=\"S\" TargetType=\"Button\">" +
+                "<Style.When>" +
+                  "<DataCondition Binding=\"{Binding Name}\" Value=\"{StaticResource Target}\"/>" +
+                "</Style.When>" +
+                "<Setter Property=\"MinWidth\" Value=\"20\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class WhenResView : StackPanel { public WhenResView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+        Assert.DoesNotContain("TODO X5", lowered); // the {StaticResource} Value is lowered, not silently dropped
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenResView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["S"]);
+
+        var runtime = (StackPanel)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
+        var runtimeStyle = Assert.IsType<Style>(runtime.Resources["S"]);
+
+        // The condition's Value is the resolved resource ("special") in BOTH lanes — not a silent null.
+        Assert.Equal("special", loweredStyle.When[0].Value);
+        Assert.Equal(runtimeStyle.When[0].Value, loweredStyle.When[0].Value);
+    }
+
     [Fact] // X5.2 — an attached property (Grid.Row) lowers to SetValue and matches the loader
     public void Lowered_AttachedProperty_MatchesLoader()
     {

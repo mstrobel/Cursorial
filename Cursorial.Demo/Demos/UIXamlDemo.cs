@@ -1,9 +1,11 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Input;
 using Cursorial.Output;
+using Cursorial.Rendering.Content;
 // Rect (the IBrush.ColorAt bounds type)
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -12,6 +14,7 @@ using Cursorial.UI.Input;
 using Cursorial.UI.Xaml;
 
 // ReSharper disable CheckNamespace
+namespace UIXaml;
 
 // Phase-6 (Fork C) showcase: the ENTIRE control tree is loaded at runtime from an embedded .xaml string
 // by Cursorial.UI.Xaml — the live proof that declarative UI works. The XAML carries everything the loader
@@ -60,7 +63,7 @@ internal sealed class UIXamlDemo : IDemo
 
     private sealed class Controller(UIApplication app)
     {
-        private readonly DemoVm _vm = new() { Caption = "edit me via a binding", Status = "" };
+        private readonly DemoVm _vm = new() { Status = "" };
 
         private Button _ok = null!;
         private Button _cancel = null!;
@@ -77,7 +80,7 @@ internal sealed class UIXamlDemo : IDemo
             // No app skin styles: the controls draw entirely from the cell-faithful default theme
             // (:pointerover / :focus / :pressed all come from the BuiltIn control themes now), so the demo
             // shows the default look unmasked — and 'd'/'t' re-skin it live.
-            var root = (DockPanel)XamlLoader.Shared.Load(LoadEmbeddedXaml());
+            var root = (DockPanel)LoadEmbeddedXaml();
 
             // The {Binding}s on the status line + the live caption resolve against this view-model.
             root.DataContext = _vm;
@@ -191,28 +194,73 @@ internal sealed class UIXamlDemo : IDemo
                          "  —  Tab focus, Alt+<letter> mnemonics, t tier, d dark/light, q quit";
         }
 
-        private static string LoadEmbeddedXaml()
+        private static object LoadEmbeddedXaml()
         {
-            var assembly = typeof(UIXamlDemo).Assembly;
-            using var stream = assembly.GetManifestResourceStream(XamlResourceName)
-                ?? throw new InvalidOperationException(
-                    $"Embedded XAML resource '{XamlResourceName}' was not found. Available: " +
-                    string.Join(", ", assembly.GetManifestResourceNames()));
-            using var reader = new StreamReader(stream);
-            return reader.ReadToEnd();
+            var uri = ResourceLoader.Embedded(typeof(UIXamlDemo).Assembly, "Resources.uixaml-demo.xaml");
+
+            if (XamlModule.ResourceProvider.TryGetXaml(uri, out var xaml))
+                return XamlLoader.Shared.Load(xaml!, uri);
+
+            return null!;
+        }
+    }
+
+    internal sealed class ListItem : INotifyPropertyChanged
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public bool? Complete { get; set; }
+        
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
         }
     }
 
     /// <summary>The {Binding} oracle for the XAML document (the status line + the live caption).</summary>
     [SuppressMessage("ReSharper", "UnusedMember.Local")]
-    private sealed class DemoVm : INotifyPropertyChanged
+    internal sealed class DemoVm : INotifyPropertyChanged
     {
-        private string? _caption;
+        private string? _caption = "edit me via a binding";
         private string? _status;
 
         public string? Caption { get => _caption; set { _caption = value; Raise(); } }
         public string? Status { get => _status; set { _status = value; Raise(); } }
 
+        public ObservableCollection<ListItem> ListItems { get; } =
+            [
+                new()
+                {
+                    Name = "Item 1",
+                    Description = "Description 1",
+                    Complete = false
+                },
+                new()
+                {
+                    Name = "Item 2",
+                    Description = "Description 2",
+                    Complete = true
+                },
+                new()
+                {
+                    Name = "Item 3",
+                    Description = "Description 3",
+                    Complete = null
+                }
+            ];
+        
         public event PropertyChangedEventHandler? PropertyChanged;
         private void Raise([CallerMemberName] string? name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

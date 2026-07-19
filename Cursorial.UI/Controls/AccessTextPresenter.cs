@@ -12,8 +12,8 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The access-key label renderer (design doc §12.5): a never-templated leaf that draws its
-/// <see cref="Text"/> and underlines the mnemonic grapheme (<see cref="KeyAttributesProperty"/>,
-/// default <see cref="TextAttributes.Underline"/>) when <see cref="AccessKeyManager.ShowUnderlineProperty"/>
+/// <see cref="Text"/> and underlines the mnemonic grapheme (<see cref="KeyUnderlineProperty"/>,
+/// default <see cref="UnderlineStyle.Single"/>) when <see cref="AccessKeyManager.ShowUnderlineProperty"/>
 /// is set on it. Column math is grapheme-aware (<see cref="GraphemeWidth"/>).
 /// </summary>
 public sealed class AccessTextPresenter : UIElement
@@ -22,9 +22,18 @@ public sealed class AccessTextPresenter : UIElement
     public static readonly StyledProperty<AccessText> TextProperty =
         UIProperty.Register<AccessTextPresenter, AccessText>(nameof(Text));
 
-    /// <summary>The attributes applied to the mnemonic grapheme when the cue shows (default <see cref="TextAttributes.Underline"/>; <c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<TextAttributes> KeyAttributesProperty =
-        UIProperty.Register<AccessTextPresenter, TextAttributes>(nameof(KeyAttributes), defaultValue: TextAttributes.Underline);
+    /// <summary>The text weight applied to the mnemonic grapheme when the cue shows (default <see cref="TextWeight.Normal"/>; <c>AffectsRender</c>).</summary>
+    public static readonly StyledProperty<TextWeight> KeyWeightProperty =
+        UIProperty.Register<AccessTextPresenter, TextWeight>(nameof(KeyWeight), defaultValue: TextWeight.Normal);
+
+    /// <summary>The text reverse-video atrribute applied to the mnemonic grapheme when the cue shows (default <see langword="false"/>; <c>AffectsRender</c>).</summary>
+    public static readonly StyledProperty<bool> KeyInverseProperty =
+        UIProperty.Register<AccessTextPresenter, bool>(nameof(KeyInverse), defaultValue: false);
+
+    /// <summary>The underline style applied to the mnemonic grapheme when the cue shows (default <see cref="UnderlineStyle.Single"/>; <c>AffectsRender</c>).</summary>
+    public static readonly StyledProperty<UnderlineStyle?> KeyUnderlineProperty =
+        UIProperty.Register<AccessTextPresenter, UnderlineStyle?>(nameof(KeyUnderline),
+                                                                  defaultValue: UnderlineStyle.Single);
 
     /// <summary>The text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
@@ -40,7 +49,7 @@ public sealed class AccessTextPresenter : UIElement
         // (e.g. "_Save" → "_Stop") must still repaint, so Text carries AffectsRender as well as
         // AffectsMeasure (the lanes are independent — doc §5.5).
         AffectsMeasure<AccessTextPresenter>(TextProperty);
-        AffectsRender<AccessTextPresenter>(TextProperty, KeyAttributesProperty);
+        AffectsRender<AccessTextPresenter>(TextProperty, IndicatorBrushProperty, KeyWeightProperty, KeyInverseProperty, KeyUnderlineProperty);
     }
 
     /// <summary>Creates an empty presenter.</summary>
@@ -57,8 +66,14 @@ public sealed class AccessTextPresenter : UIElement
     /// <inheritdoc cref="TextProperty"/>
     public AccessText Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
 
-    /// <inheritdoc cref="KeyAttributesProperty"/>
-    public TextAttributes KeyAttributes { get => GetValue(KeyAttributesProperty); set => SetValue(KeyAttributesProperty, value); }
+    /// <inheritdoc cref="KeyWeightProperty"/>
+    public TextWeight KeyWeight { get => GetValue(KeyWeightProperty); set => SetValue(KeyWeightProperty, value); }
+
+    /// <inheritdoc cref="KeyInverseProperty"/>
+    public bool KeyInverse { get => GetValue(KeyInverseProperty); set => SetValue(KeyInverseProperty, value); }
+
+    /// <inheritdoc cref="KeyUnderlineProperty"/>
+    public UnderlineStyle? KeyUnderline { get => GetValue(KeyUnderlineProperty); set => SetValue(KeyUnderlineProperty, value); }
 
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
@@ -108,11 +123,45 @@ public sealed class AccessTextPresenter : UIElement
         if (cluster is null)
             return;
 
-        var style = new CellStyle().WithAttributes(KeyAttributes | resolved.Flags);
+        var keyAttributes = default(TextAttributes);
+
+        var hasKeyUnderline = KeyUnderline is not null;
+        if (hasKeyUnderline)
+            keyAttributes |= TextAttributes.Underline;
+
+        if (KeyInverse)
+            keyAttributes |= TextAttributes.Inverse;
+
+        keyAttributes |= KeyWeight switch
+                         {
+                             TextWeight.Bold  => TextAttributes.Bold,
+                             TextWeight.Faint => TextAttributes.Faint,
+                             _                => default
+                         };
+
+        var keyUnderlineStyle = KeyUnderline ?? UnderlineStyle.Single;
+        var combined = resolved.Flags | keyAttributes;
+
+        // If our normal presentation is reverse-video, and the key is supposed to be reverse-video,
+        // clear the flag for the 'double-reverse-video' effect.
+        if (resolved.Flags.HasFlag(TextAttributes.Inverse) && keyAttributes.HasFlag(TextAttributes.Inverse))
+            combined &= ~TextAttributes.Inverse;
+
+        var hasUnderline = combined.HasFlag(TextAttributes.Underline);
+        var style = new CellStyle().WithAttributes(combined);
         var indicatorBrush = IndicatorBrush ?? Foreground;
         
         if (indicatorBrush is not null)
-            style = style.WithUnderlineStyle(UnderlineStyle.Single).WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds.ToRect()));
+        {
+            if (hasUnderline)
+            {
+                style = style.WithUnderlineStyle(keyUnderlineStyle)
+                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds.ToRect()));
+            }
+
+            if (hasKeyUnderline is false)
+                foreground = indicatorBrush; // if no distinguishing cue, paint the entire marker
+        }
 
         if (foreground is {} fg)
             context.DrawText(column, 0, cluster, fg, baseStyle: style);

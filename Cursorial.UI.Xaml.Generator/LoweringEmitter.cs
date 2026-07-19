@@ -281,6 +281,22 @@ internal static class LoweringEmitter
             return;
         }
 
+        // A markup extension in element form as a dictionary entry (resource aliasing:
+        // <DynamicResource x:Key="Fg" ResourceKey="OnAccent"/>): the entry value is the extension's
+        // standalone value (a folded constant or a DynamicResource carrier), added under its key.
+        ref readonly var childRecord = ref c.Doc.Objects[childIndex];
+        if (childRecord.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            if (MarkupExtensionEntryExpr(c, in childRecord) is not { } entryExpr)
+            {
+                c.Todo("element-form markup-extension dictionary entry (only x:Null/x:Type/x:Static and DynamicResource) not yet lowered");
+                return;
+            }
+
+            c.Line($"{dictVar}.Add({keyExpr}, {entryExpr});");
+            return;
+        }
+
         var childVar = c.NextVar();
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
         c.Line($"{dictVar}.Add({keyExpr}, {childVar});");
@@ -390,6 +406,7 @@ internal static class LoweringEmitter
         string? keyExpr = null;
         int settersMember = -1;
         int childrenMember = -1;
+        int whenMember = -1;
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
@@ -423,6 +440,9 @@ internal static class LoweringEmitter
                 case "Children":
                     childrenMember = m;
                     break;
+                case "When":
+                    whenMember = m;
+                    break;
             }
         }
 
@@ -451,6 +471,11 @@ internal static class LoweringEmitter
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
         c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
+
+        // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger equivalent).
+        if (whenMember >= 0)
+            foreach (int idx in ResourceItems(c, c.Doc.Members[whenMember]))
+                EmitDataCondition(c, varExpr, idx);
 
         if (settersMember >= 0)
             foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
@@ -525,7 +550,13 @@ internal static class LoweringEmitter
         var valueExpr = "global::Cursorial.UI.UIProperty.UnsetValue"; // valueless unless a Value member is present
         if (valueMember >= 0)
         {
-            ref readonly var value = ref c.Doc.Members[valueMember];
+            var value = c.Doc.Members[valueMember];
+
+            // Element-form Setter.Value extension (<Setter Property="…"><DynamicResource …/></Setter>): unwrap
+            // the synthetic markup-extension object to its value slot so it lowers exactly as the curly form.
+            if (value.Kind == XamlValueKind.Object && c.Doc.Objects[value.ValueIndex].HasFlag(ObjectFlags.IsMarkupExtension))
+                value = ExtensionValueMember(c, in c.Doc.Objects[value.ValueIndex]);
+
             if (value.Kind == XamlValueKind.Object)
             {
                 // An inline object Setter.Value — e.g. <Setter Property="ItemsPanel"><ItemsPanelTemplate>…</…>.
@@ -552,6 +583,109 @@ internal static class LoweringEmitter
 
         c.Line($"{styleVar}.Setters.Add(new global::Cursorial.UI.Setter({propExpr}, {valueExpr}));");
     }
+
+    // A <DataCondition> inside <Style.When> → styleVar.When.Add(new DataCondition { Binding = <descriptor>,
+    // Value = <v>, Negate = <b> }). Binding is a {Binding} DESCRIPTOR (ReflectiveBindingExpr — the object, not a
+    // live install); Value is a typed element (<x:Boolean>…</> → an object local), a folded {x:Null}, or a literal;
+    // Negate is a bool literal. Only the equality form is XAML-expressible (a predicate needs a Func — code-only).
+    private static void EmitDataCondition(Context c, string styleVar, int objectIndex)
+    {
+        ref readonly var obj = ref c.Doc.Objects[objectIndex];
+        c.CurrentLineInfo = obj.PackedLineInfo;
+
+        int bindingMember = -1, valueMember = -1, negateMember = -1;
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind == XamlValueKind.Directive)
+                continue;
+
+            switch ((member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null)?.Name)
+            {
+                case "Binding": bindingMember = m; break;
+                case "Value": valueMember = m; break;
+                case "Negate": negateMember = m; break;
+            }
+        }
+
+        // The Binding descriptor resolves FIRST — a Binding-less / non-{Binding} condition is a hard gap (emit
+        // nothing but a // TODO, never a partial DataCondition), and resolving it before any Value <x:Boolean>…
+        // object is emitted means the // TODO path leaves no dangling local behind.
+        string? bindingExpr = null;
+        if (bindingMember >= 0)
+        {
+            ref readonly var bm = ref c.Doc.Members[bindingMember];
+            if (bm.Kind == XamlValueKind.Extension &&
+                c.Doc.ParsedExtensions[c.Doc.Extensions[bm.ValueIndex].Payload] is { } node)
+                bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
+        }
+        if (bindingExpr is null)
+        {
+            c.Todo("DataCondition without a lowerable {Binding} descriptor");
+            return;
+        }
+
+        // A PRESENT Value/Negate that can't be lowered is a // TODO (never silently dropped — that would flip the
+        // condition's runtime verdict vs the loader). An absent member is fine (Value defaults null, Negate false).
+        string? valueExpr = null;
+        if (valueMember >= 0)
+        {
+            valueExpr = DataConditionValueExpr(c, in c.Doc.Members[valueMember]);
+            if (valueExpr is null)
+            {
+                c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} supported)");
+                return;
+            }
+        }
+
+        string? negateExpr = null;
+        if (negateMember >= 0)
+        {
+            negateExpr = BoolLiteralExpr(c, in c.Doc.Members[negateMember]);
+            if (negateExpr is null)
+            {
+                c.Todo("DataCondition Negate must be a boolean literal");
+                return;
+            }
+        }
+
+        var inits = new List<string> { $"Binding = {bindingExpr}" };
+        if (valueExpr is not null) inits.Add($"Value = {valueExpr}");
+        if (negateExpr is not null) inits.Add($"Negate = {negateExpr}");
+
+        c.Line($"{styleVar}.When.Add(new global::Cursorial.UI.DataCondition{Initializers(inits)});");
+    }
+
+    // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
+    // object local), a folded {x:Null} (→ null) / {x:Static}, a same-dictionary {StaticResource} resolved eagerly
+    // (matching the loader's AttachStaticResource onto the object slot), or a literal string kept verbatim (object
+    // slot, no conversion). Null ⇒ the caller emits a // TODO (a {DynamicResource} — which the loader REJECTS on a
+    // non-styled slot — or any other unlowerable form).
+    private static string? DataConditionValueExpr(Context c, in MemberRecord member) => member.Kind switch
+    {
+        XamlValueKind.Object => EmitObjectToLocal(c, member.ValueIndex),
+        XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
+        XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
+        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.StaticResource
+            => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        _ => null,
+    };
+
+    // Emits an object subtree into a fresh local and returns its var (for an inline <x:Boolean>/<x:Int32>/… Value).
+    private static string EmitObjectToLocal(Context c, int objectIndex)
+    {
+        var v = c.NextVar();
+        EmitObject(c, objectIndex, v, isRoot: false, hasScope: false, dataType: null);
+        return v;
+    }
+
+    // A bool member (DataCondition.Negate) as a C# literal: a "True"/"False" text, or a folded bool constant.
+    private static string? BoolLiteralExpr(Context c, in MemberRecord member) => member.Kind switch
+    {
+        XamlValueKind.Text => bool.TryParse(c.Doc.Strings[member.ValueIndex], out var b) ? (b ? "true" : "false") : null,
+        XamlValueKind.Folded when c.Doc.Constants[member.ValueIndex] is bool b => b ? "true" : "false",
+        _ => null,
+    };
 
     // A Setter.Value expression: a Text value converted to the property's value type (see SetterTextValueExpr), a
     // folded null/{x:Static}, or a *Resource extension. Null = unsupported.
@@ -828,6 +962,24 @@ internal static class LoweringEmitter
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
+
+        // A markup extension in element form reached in a VALUE position — a collection item, content, a
+        // Styles/merged child — is bound to a local from its standalone value expression. (A scalar member
+        // value, Setter.Value, and a keyed dictionary entry handle attach / keying BEFORE calling EmitObject,
+        // so those never reach here.) An extension with no standalone value (Binding/custom) degrades to a
+        // CURG3001 note with a null placeholder so the emitted C# still compiles.
+        if (obj.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            var expr = MarkupExtensionEntryExpr(c, in obj);
+            if (expr is null)
+            {
+                c.Todo("element-form markup extension in this position (Binding/TemplateBinding/custom entry) not yet lowered");
+                expr = "default(object)";
+            }
+
+            c.Line($"var {varExpr} = {expr};");
+            return;
+        }
         c.CurrentLineInfo = obj.PackedLineInfo;
 
         var objType = TypeSymbolOf(c.Doc, obj.TypeId);
@@ -917,6 +1069,15 @@ internal static class LoweringEmitter
 
                 case XamlValueKind.Object:
                 {
+                    // A markup extension in element form as a scalar member value (<Setter.Value><DynamicResource
+                    // …/></Setter.Value>): lower it exactly as the curly attribute form.
+                    ref readonly var childObj = ref c.Doc.Objects[member.ValueIndex];
+                    if (childObj.HasFlag(ObjectFlags.IsMarkupExtension))
+                    {
+                        EmitMarkupExtensionMember(c, varExpr, xm, in childObj, dataType);
+                        break;
+                    }
+
                     var childVar = c.NextVar();
                     // A ControlTemplate's (or ItemsPanelTemplate's) templated parent is the enclosing control (this
                     // objType); a DataTemplate has none. Establish it for the recursion so a {TemplateBinding} inside
@@ -1401,6 +1562,53 @@ internal static class LoweringEmitter
 
     // ── {Binding} (B3a — the compiled lane) ──────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The C# value expression for an element-form markup extension used as a dictionary/collection ENTRY
+    /// (resource aliasing): a folded constant, or a <c>DynamicResource</c> carrier
+    /// (<c>new ResourceReference(key)</c>). Null when the extension has no standalone lowering yet (a
+    /// StaticResource/Binding/custom entry), which the caller degrades to a CURG3001 note.
+    /// </summary>
+    private static string? MarkupExtensionEntryExpr(Context c, in ObjectRecord extObject)
+    {
+        var value = ExtensionValueMember(c, in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+            return FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]);
+
+        // Reuse the same *Resource value lowering the curly Setter.Value form uses: a DynamicResource
+        // carrier (literal OR a nested {x:Static}/{x:Type} key — the common theme-key alias), and a
+        // same-dictionary StaticResource (the already-built entry's var). Binding/TemplateBinding/custom
+        // have no standalone value expression and return null (the caller degrades to CURG3001).
+        return ResourceValueExpr(c, in c.Doc.Extensions[value.ValueIndex]);
+    }
+
+    /// <summary>The value slot of an element-form markup-extension object (the single Extension/Folded member;
+    /// an x:Key directive, when present, is separate).</summary>
+    private static MemberRecord ExtensionValueMember(Context c, in ObjectRecord record)
+    {
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            var m = c.Doc.Members[record.MemberStart + i];
+            if (m.Kind is XamlValueKind.Extension or XamlValueKind.Folded)
+                return m;
+        }
+
+        return c.Doc.Members[record.MemberStart + record.MemberCount - 1];
+    }
+
+    /// <summary>
+    /// Lowers an element-form markup extension (<paramref name="extObject"/>) as the value of member
+    /// <paramref name="xm"/> — a folded intrinsic emits its constant; a live extension reuses the same
+    /// per-kind lowering the curly attribute form does (so element and curly form lower identically).
+    /// </summary>
+    private static void EmitMarkupExtensionMember(Context c, string varExpr, XamlMember xm, in ObjectRecord extObject, INamedTypeSymbol? dataType)
+    {
+        var value = ExtensionValueMember(c, in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+            EmitFoldedAssign(c, varExpr, xm, c.Doc.Constants[value.ValueIndex]);
+        else
+            EmitExtensionAssign(c, varExpr, xm, in c.Doc.Extensions[value.ValueIndex], dataType);
+    }
+
     private static void EmitExtensionAssign(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext, INamedTypeSymbol? dataType)
     {
         switch (ext.Kind)
@@ -1753,22 +1961,37 @@ internal static class LoweringEmitter
     // — the caller uses this to decide whether a CURG2002 "works-but-reflective" info is appropriate.
     private static bool EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
     {
+        if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'") is not { } bindingExpr)
+            return false; // a specific // TODO X5 was already emitted
+
+        c.Line(
+            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {bindingExpr});");
+        return true;
+    }
+
+    // The reflective `new Binding("path") { … }` DESCRIPTOR expression (Mode / RelativeSource / Converter / path /
+    // ElementName / Source / StringFormat / FallbackValue + baked prefixed-path owners) — the shared core of the
+    // install lane (<see cref="EmitReflectiveBinding"/>, wrapped in BindingOperations.Install) and the Binding-
+    // DESCRIPTOR lane (a Binding-typed slot such as DataCondition.Binding, used as an initializer value). Returns
+    // null when a piece isn't lowerable, having emitted a specific // TODO X5 naming it via <paramref name="diagName"/>.
+    private static string? ReflectiveBindingExpr(Context c, MarkupExtensionNode node, string diagName)
+    {
         if (CanonicalMode(node) is not { } modeName)
         {
-            c.Todo($"{{Binding}} with an unrecognized Mode for '{xm.Name}'");
-            return false;
+            c.Todo($"{{Binding}} with an unrecognized Mode {diagName}");
+            return null;
         }
 
         if (RelativeSourceInit(c, node) is not { } relSource)
         {
-            c.Todo($"{{Binding}} RelativeSource for '{xm.Name}' not supported in lowering (Self / TemplatedParent / FindAncestor)");
-            return false;
+            c.Todo($"{{Binding}} RelativeSource {diagName} not supported in lowering (Self / TemplatedParent / FindAncestor)");
+            return null;
         }
 
         if (ConverterInit(c, node) is not { } converterInit)
         {
-            c.Todo($"{{Binding}} Converter for '{xm.Name}' is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
-            return false;
+            c.Todo($"{{Binding}} Converter {diagName} is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
+            return null;
         }
 
         // A namespace-prefixed type-qualified path segment `(prefix:Type.Member)` resolves its owner against the
@@ -1796,10 +2019,7 @@ internal static class LoweringEmitter
             PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
 
-        c.Line(
-            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
-            $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)});");
-        return true;
+        return $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)}";
     }
 
     // {TemplateBinding SourceProp} (inside a template body) → a one-way TemplateBinding tracking the templated

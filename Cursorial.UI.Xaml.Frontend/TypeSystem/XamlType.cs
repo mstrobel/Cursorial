@@ -24,7 +24,8 @@ public sealed class XamlType
         Action<object, object, object?>? addDictionaryItem = null,
         Type? dictionaryKeyType = null,
         bool requiresInitialize = false,
-        Func<string, XamlMember?>? memberResolver = null)
+        Func<string, XamlMember?>? memberResolver = null,
+        bool isMarkupExtension = false)
     {
         ClrType = clrType ?? throw new ArgumentNullException(nameof(clrType));
         Activate = activate;
@@ -35,6 +36,7 @@ public sealed class XamlType
         DictionaryKeyType = dictionaryKeyType;
         RequiresInitialize = requiresInitialize;
         _memberResolver = memberResolver;
+        IsMarkupExtension = isMarkupExtension;
     }
 
     /// <summary>
@@ -51,11 +53,12 @@ public sealed class XamlType
         Action<object, object, object?>? addDictionaryItem = null,
         Type? dictionaryKeyType = null,
         bool requiresInitialize = false,
-        Func<string, XamlMember?>? memberResolver = null)
+        Func<string, XamlMember?>? memberResolver = null,
+        bool isMarkupExtension = false)
         : this(
             new ReflectionXamlType(clrType ?? throw new ArgumentNullException(nameof(clrType))),
             activate, contentProperty, isCollection, addItem, addDictionaryItem,
-            dictionaryKeyType, requiresInitialize, memberResolver) {}
+            dictionaryKeyType, requiresInitialize, memberResolver, isMarkupExtension) {}
 
     private readonly Func<string, XamlMember?>? _memberResolver;
 
@@ -77,6 +80,10 @@ public sealed class XamlType
 
     /// <summary>True when the type is a collection the loader fills via <see cref="AddItem"/>.</summary>
     public bool IsCollection { get; }
+
+    /// <summary>True when the type derives from <c>MarkupExtension</c> — used to recognize a CUSTOM extension
+    /// in element form (<c>&lt;local:Foo/&gt;</c>) and provide its value rather than the bare object.</summary>
+    public bool IsMarkupExtension { get; }
 
     /// <summary>The cached collection-add delegate (loader-side).</summary>
     public Action<object, object?>? AddItem { get; }

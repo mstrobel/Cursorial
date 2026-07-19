@@ -60,6 +60,9 @@ public static class ThemeKeys
     /// <summary>Shared pointer-over (hover) fill.</summary>
     public const string HoverBrush = "Theme.HoverBrush";
 
+    /// <summary>Shared pointer-over (hover) foreground</summary>
+    public const string OnHoverBrush = "Theme.OnHoverBrush";
+
     /// <summary>Primary text / foreground; also the reverse-video <i>fill</i> on a focused pick control.</summary>
     public const string TextBrush = "Theme.TextBrush";
 
@@ -311,6 +314,9 @@ public static class ThemeKeys
     /// Enum-typed so a future Bold-cue tier is a value change, not a third key.</summary>
     public const string InteractiveCueWeight = "Theme.InteractiveCueWeight";
 
+    /// <summary>The underline style applied to the mnemonic grapheme of the access key cue.</summary>
+    public const string InteractiveCueUnderline = "Theme.InteractiveCueUnderline";
+
     // ToggleSwitch / CheckBox / RadioButton.
     /// <summary>Check/radio glyph + label ink (--text).</summary>
     public const string ToggleForegroundNormal = "Theme.ToggleForegroundNormal";
@@ -345,21 +351,27 @@ public static class ThemeKeys
 
     // ListItem (ListBox / ComboBox drop-down item).
     /// <summary>List-item ink (--text).</summary>
-    public const string ListItemBackgroundNormal = "Theme.ListItemForegroundNormal";
+    public const string ListItemBackgroundNormal = "Theme.ListItemBackgroundNormal";
     /// <summary>List-item fill (--surface).</summary>
-    public const string ListItemForegroundNormal = "Theme.ListItemBackgroundNormal";
+    public const string ListItemForegroundNormal = "Theme.ListItemForegroundNormal";
     /// <summary>Hovered list-item fill (--hover).</summary>
     public const string ListItemBackgroundHover = "Theme.ListItemBackgroundHover";
     /// <summary>Hovered list-item ink (--text).</summary>
     public const string ListItemForegroundHover = "Theme.ListItemForegroundHover";
     /// <summary>Selected list-item fill, focused container (--sel).</summary>
     public const string ListItemBackgroundSelected = "Theme.ListItemBackgroundSelected";
+    /// <summary>Selected but inactive list-item fill, focused container.</summary>
+    public const string ListItemBackgroundSelectedInactive = "Theme.ListItemBackgroundSelectedInactive";
+    /// <summary>Selected list-item ink.</summary>
+    public const string ListItemForegroundSelected = "Theme.ListItemForegroundSelected";
     /// <summary>Keyboard-focused list-item ink — reverse-video.</summary>
     public const string ListItemForegroundFocus = "Theme.ListItemForegroundFocus";
     /// <summary>Keyboard-focused list-item fill — reverse-video (--text).</summary>
     public const string ListItemBackgroundFocus = "Theme.ListItemBackgroundFocus";
     /// <summary>Disabled list-item ink (--muted).</summary>
     public const string ListItemForegroundDisabled = "Theme.ListItemForegroundDisabled";
+    /// <summary>Gutter glyph indicating selection.</summary>
+    public const string ListItemSelectionGlyph = "Theme.ListItemSelectionGlyph";
 
     // TreeViewItem.
     /// <summary>Tree-node ink (--text).</summary>
@@ -406,6 +418,8 @@ public static class ThemeKeys
     public const string TabBackgroundSelected = "Theme.TabBackgroundSelected";
     /// <summary>The active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>
     public const string TabUnderlinePen = "Theme.TabUnderlinePen";
+    /// <summary>The focused active tab's accent underline rule — a Heavy <c>--accent</c> pen (the gallery "active tab marked by accent bar (━ cells)").</summary>
+    public const string TabFocusedUnderlinePen = "Theme.TabFocusedUnderlinePen";
     /// <summary>Disabled tab ink (--muted).</summary>
     public const string TabForegroundDisabled = "Theme.TabForegroundDisabled";
 
@@ -418,6 +432,8 @@ public static class ThemeKeys
     public const string RibbonTabActiveBrush = "Theme.RibbonTabActiveBrush";
     /// <summary>The KeyTip badge fill (--keytip — the amber Alt-overlay accelerator badge background).</summary>
     public const string KeyTipBrush = "Theme.KeyTipBrush";
+    /// <summary>The KeyTip badge text weight.</summary>
+    public const string KeyTipTextWeight = "Theme.KeyTipTextWeight";
     /// <summary>The dimmed ink for a KeyTip badge's already-matched leading letters (multi-letter prefix highlight).</summary>
     public const string KeyTipMatchedBrush = "Theme.KeyTipMatchedBrush";
     /// <summary>A contextual ribbon tab's tinted resting well (--ctx-fill — the purple recess an inactive contextual
@@ -442,6 +458,8 @@ public static class ThemeKeys
     public const string CalendarDayInactiveForeground = "Theme.CalendarDayInactiveForeground";
     /// <summary>Hovered day fill (--hover).</summary>
     public const string CalendarDayBackgroundHover = "Theme.CalendarDayBackgroundHover";
+    /// <summary>Hovered day ink (--on-hover).</summary>
+    public const string CalendarDayForegroundHover = "Theme.CalendarDayForegroundHover";
     /// <summary>Today's day ink (--accent).</summary>
     public const string CalendarDayTodayForeground = "Theme.CalendarDayTodayForeground";
     /// <summary>Selected day fill (--sel).</summary>

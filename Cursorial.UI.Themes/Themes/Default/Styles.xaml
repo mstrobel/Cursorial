@@ -19,6 +19,33 @@
       <!-- <Setter Property="AccessTextPresenter.IndicatorBrush" Value="{DynamicResource {x:Static ThemeKeys.AccessKeyIndicatorBrush}}"/> -->
     </Style>
 
+    <!--
+     Theme key assignments for AccessTextPresenter display properties (access key/indicator weight, brush,
+     underline style, and reverse-video rendering.
+    -->
+    <Style Selector="AccessTextPresenter">
+      <Setter Property="AccessTextPresenter.IndicatorBrush" Value="{DynamicResource ThemeKeys.AccessKeyIndicatorBrush}" />
+      <Setter Property="AccessTextPresenter.KeyInverse" Value="{DynamicResource ThemeKeys.InteractiveCueInverse}" />
+      <Setter Property="AccessTextPresenter.KeyUnderline" Value="{DynamicResource ThemeKeys.InteractiveCueUnderline}" />
+      <Setter Property="AccessTextPresenter.KeyWeight" Value="{DynamicResource ThemeKeys.InteractiveCueWeight}" />
+    </Style>
+
+    <!--
+      Active selection brushes for ListBoxItem, TreeViewItem inside a :focus-within parent. 
+    -->
+    <Style Selector="ListBox:focus-within, TreeView:focus-within">
+      <Style.Children>
+        <Style Selector="^ :is(ListBoxItem):selected, ^ :is(TreeViewItem):selected">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}" />
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelected}}" />
+        </Style>
+        <Style Selector="^ :is(ListBoxItem):focus-visible:selected, ^ :is(TreeViewItem):focus-visible:selected">
+          <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}" />
+          <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}" />
+        </Style>
+      </Style.Children>
+    </Style>
+
     <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs
          attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.
          The glyph triple is the '|'-separated "unchecked|checked|indeterminate" GlyphSetCarrier form. -->
@@ -31,45 +58,106 @@
     </Style>
 
     <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
-         button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill + content
-         text); the selector list spans the exact button-family types (CheckBox/RadioButton excluded — in-box caret). -->
-    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pointerover, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pointerover, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pointerover">
+         button family's focus flip Inverse (reverse-video, honored by the Border fill + content text); the selector
+         list spans the ButtonBase family types (CheckBox/RadioButton excluded — in-box caret). Pressed state inverts
+         the reverse-video effect.
+          -->
+    <Style Selector=".caps-nocolor :is(ButtonBase), :is(ButtonBase).caps-nocolor">
+      <Style.Children>
+        <Style Selector="^:focus, ^:pointerover">
+          <Setter Property="TextElement.Inverse" Value="True"/>
+        </Style>
+        <Style Selector="^:pressed">
+          <Setter Property="TextElement.Inverse" Value="False"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
+    <!-- caps-nocolor interactive-state layer for input fields (design doc §11.8a): colors collapse to Default under
+         NoColor, so the input's family's focus/pressed/default flip Inverse (reverse-video, honored by the Border
+         fill + content text); the selector list spans the TextBox hierarchy. -->
+    <Style Selector=".caps-nocolor :is(TextBox), :is(TextBox).caps-nocolor,
+                     .caps-nocolor :is(ProgressBar), :is(ProgressBar).caps-nocolor">
       <Setter Property="TextElement.Inverse" Value="True"/>
     </Style>
     
     <!-- caps-nocolor disabled layer: a disabled button-family control (incl. CheckBox/RadioButton via :is(ButtonBase))
          dims to Faint when its palette would otherwise resolve to Default. -->
-    <Style Selector=".caps-nocolor :is(ButtonBase):disabled">
+    <Style Selector=".caps-nocolor :is(ButtonBase):disabled,
+                     :is(ButtonBase).caps-nocolor:disabled">
       <Setter Property="TextElement.TextWeight" Value="Faint"/>
     </Style>
 
     <!-- Control-level Inverse: the axes are non-inheriting, so this cannot leak into a TabItem's page
          content — the header forwards Inverse to its face + label, the content is untouched. -->
-    <Style Selector=".caps-nocolor ListBoxItem:selected, 
-                     .caps-nocolor ComboBoxItem:selected,
-                     .caps-nocolor TabItem:selected">
+    <Style Selector=".caps-nocolor :is(ListBoxItem):focus, 
+                     .caps-nocolor :is(ComboBoxItem):selected,
+                     .caps-nocolor :is(ComboBox):focus /template/ #PART_DropDown,
+                     .caps-nocolor :is(ComboBox):open /template/ #PART_DropDown,
+                     .caps-nocolor :is(DatePicker):focus-within /template/ #PART_DropDown,
+                     .caps-nocolor :is(DatePicker):open /template/ #PART_DropDown,
+                     .caps-nocolor :is(MenuItem):selected,
+                     .caps-nocolor :is(MenuItem):highlighted,
+                     .caps-nocolor :is(TabItem):focus">
       <Setter Property="TextElement.Inverse" Value="True"/>
+    </Style>
+
+    <!-- TreeViewItem-level Inverse: the axes are non-inheriting. -->
+    <Style Selector=".caps-nocolor TreeViewItem">
+      <Style.Children>
+        <Style Selector="^:selected">
+          <Setter Property="TextElement.TextWeight" Value="Bold"/>
+        </Style>
+        <Style Selector="^:focus">
+          <Setter Property="TextElement.Inverse" Value="True"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
+    <!--:caps-nocolor blink as focus indicator for slider thumb-->
+    <Style Selector=".caps-nocolor Slider:focus /template/ Thumb">
+      <Setter Property="TextElement.Blink" Value="True"/>
     </Style>
 
     <!-- The keyboard focus-row cue for list items (P9.3b — gallery .item.rev): under NoColor the row
          reverse-videos AND bolds; the two setters ride INDEPENDENT axes, composing with the selection
-         rule's Inverse (proposal-textattributes-decomposition §5 P3 — the composability proof). -->
-    <Style Selector=".caps-nocolor ListBoxItem:focus-visible, .caps-nocolor ComboBoxItem:focus-visible">
+         rule's Inverse (proposal-TextAttributes-decomposition §5 P3 — the composability proof). -->
+    <Style Selector=".caps-nocolor :is(ListBoxItem):focus-visible,
+                     .caps-nocolor :is(ListBoxItem):focus-visible:selected,
+                     .caps-nocolor :is(ComboBoxItem):focus-visible,
+                     .caps-nocolor :is(ComboBoxItem):focus-visible:selected,
+                     .caps-nocolor :is(MenuItem):focus-visible,
+                     .caps-nocolor :is(TabItem):focus-visible">
       <Setter Property="TextElement.Inverse" Value="True"/>
       <Setter Property="TextElement.TextWeight" Value="Bold"/>
     </Style>
 
-    <Style Selector=".caps-ansi16 Border, .caps-ansi16 :is(Panel), .caps-ansi16 :is(UIElement) /template/ Border">
+    <Style Selector=".caps-nocolor :is(Border),
+                     .caps-nocolor :is(Panel),
+                     .caps-nocolor /template/ :is(Border),
+                     .caps-nocolor /template/ :is(Panel),
+                     .caps-nocolor :is(UIElement) /template/ :is(Border),
+                     .caps-nocolor :is(Panel) /template/ :is(Panel)">
       <Setter Property="Border.Occludes" Value="True"/>
-    </Style>
-
-    <Style Selector=".caps-nocolor Border, .caps-nocolor :is(UIElement) /template/ Border">
-      <Setter Property="Border.Occludes" Value="True"/>
-      <Setter Property="Panel.Background" Value="default"/>
+      <!-- <Setter Property="Panel.Background" Value="default"/> -->
     </Style>
 
     <Style Selector=":is(Window).caps-nocolor, :is(Popup).caps-nocolor, ContextMenu.caps-nocolor">
-      <Setter Property="Control.BorderPen" Value="ascii"/>
+      <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
+    </Style>
+
+    <Style Selector=".caps-ansi16 :is(Border),
+                     .caps-ansi16 :is(Panel),
+                     .caps-ansi16 /template/ :is(Border),
+                     .caps-ansi16 /template/ :is(Panel),
+                     .caps-ansi16 :is(UIElement) /template/ :is(Border),
+                     .caps-ansi16 :is(Panel) /template/ :is(Panel)">
+      <Setter Property="Border.Occludes" Value="True"/>
+      <!-- <Setter Property="Panel.Background" Value="default"/> -->
+    </Style>
+
+    <Style Selector=":is(Window).caps-ansi16, :is(Popup).caps-ansi16, ContextMenu.caps-ansi16">
+      <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
     </Style>
 
     <Style Selector="MenuItem Separator, Menu Separator">

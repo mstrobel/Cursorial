@@ -337,6 +337,13 @@ internal static class SymbolXamlModel
         if (type.IsValueType)
             return type.OriginalDefinition.SpecialType != SpecialType.System_Nullable_T;
 
-        return type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
+        var hasRequiredProperties = type.GetMembers().OfType<IPropertySymbol>().Any(p => p.IsRequired);
+
+        return type.InstanceConstructors.Any(
+            c => c.Parameters.Length == 0 &&
+                 c.DeclaredAccessibility == Accessibility.Public &&
+                 (!hasRequiredProperties || c.GetAttributes()
+                                             .Any(a => a.AttributeClass?.ToDisplayString() ==
+                                                       "System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute")));
     }
 }

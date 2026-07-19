@@ -31,7 +31,7 @@ IReadOnlyList<IDemo> demos =
     new UIPanelsDemo(),
     new UIControlsDemo(),
     new ControlGalleryDemo(),
-    new UIXamlDemo(),
+    new UIXaml.UIXamlDemo(),
     new WindowingDemo(),
     new SaveDialogDemo(),
     new InspectorDemo(),
@@ -47,10 +47,24 @@ IReadOnlyList<IDemo> demos =
 
 PrintBanner();
 
+var processedArg = false;
+
 while (true)
 {
-    Console.Write("cursorial> ");
-    string? line = Console.ReadLine();
+    string? line;
+
+    if (processedArg is false && args is [{ Length: > 0 } arg])
+    {
+        line = arg;
+    }
+    else
+    {
+        Console.Write("cursorial> ");
+        line = Console.ReadLine();
+    }
+
+    processedArg = true;
+
     if (line is null) break;
 
     string trimmed = line.Trim();

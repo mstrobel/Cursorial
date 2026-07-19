@@ -169,7 +169,7 @@ public sealed class Section04_BuiltInAndBuilders
         // Style instance is untouched; only the resolved resource changes).
         var beforeTheme = CursorialTheme.BuiltIn[typeof(Button)];
         var skin = Color.FromRgb(0x11, 0xAA, 0x55);
-        host.Application.Resources[ThemeKeys.TextBrush] = new DrawingMedia.SolidColorBrush(skin);
+        host.Application.Resources[ThemeKeys.ButtonForegroundNormal] = new DrawingMedia.SolidColorBrush(skin);
         host.RunFrame();
 
         // The resolved Foreground tracks the override; the theme Style instance is the same (no re-template).

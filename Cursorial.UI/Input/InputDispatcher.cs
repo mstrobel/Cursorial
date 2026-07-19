@@ -533,11 +533,18 @@ public sealed class InputDispatcher : IInputDispatchTarget
                                  ? capture
                                  : RouteTargetUnderCapture(hit);
 
+                var temporaryHover = _capabilities.Input.Mouse.Motion is false;
+                if (temporaryHover)
+                    UpdateHoverChain(hit: target, mouse, isButtonEvent: true);
+                
                 var result = ToResult(RaiseMousePair<MouseButtonEventArgs>(
                                           isDown ? UIElement.PreviewMouseDownEvent : UIElement.PreviewMouseUpEvent,
                                           isDown ? UIElement.MouseDownEvent : UIElement.MouseUpEvent,
                                           target,
                                           mouse));
+
+                if (temporaryHover)
+                    UpdateHoverChain(hit: null, mouse, isButtonEvent: true);
 
                 // Router default (doc §12.7): an uncaptured right-button release over an element carrying
                 // ContextMenu.Menu opens it at the pointer — unless the routed event already handled it.
@@ -712,11 +719,11 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// elements cannot mutate the iteration — then <see cref="HoverChanged"/>. Handlers observe
     /// post-restyle state. An unchanged chain is a complete no-op (N73).
     /// </summary>
-    private void UpdateHoverChain(UIElement? hit, MouseEvent device)
+    private void UpdateHoverChain(UIElement? hit, MouseEvent device, bool isButtonEvent = false)
     {
         ThrowIfHoverDiffReentrant(); // N206: a handler re-running the diff mid-diff is a programming error
 
-        if (_capabilities.Input.Mouse.Motion) // capability-honest: PointerOver never set without real motion reporting (doc §7.6)
+        if (isButtonEvent || _capabilities.Input.Mouse.Motion) // capability-honest: PointerOver never set without real motion reporting (doc §7.6)
         {
             _inHoverDiff = true;
 

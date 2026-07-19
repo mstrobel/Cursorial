@@ -42,6 +42,7 @@ public sealed class KeyTipBadge : Control
     public KeyTipBadge()
     {
         this.SetResourceReference(BackgroundProperty, ThemeKeys.KeyTipBrush);
+        this.SetResourceReference(TextElement.TextWeightProperty, ThemeKeys.KeyTipTextWeight);
         SetValue(TemplateProperty, BuildTemplate());
     }
 
@@ -60,6 +61,9 @@ public sealed class KeyTipBadge : Control
         var border = new Border { Occludes = true, Child = row };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(BackgroundProperty));
 
+        TextElement.ForwardAllAxes(matched);
+        TextElement.ForwardAllAxes(rest);
+        
         ctx.RegisterName(PartMatched, matched);
         ctx.RegisterName(PartRest, rest);
         return border;

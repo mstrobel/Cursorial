@@ -168,6 +168,17 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
 
     private void AttachBinding(XamlObjectGraphBuilder builder, object instance, XamlMember? member, MarkupExtensionNode node, int line, int column)
     {
+        // A member typed as a Binding DESCRIPTOR (e.g. DataCondition.Binding) rather than a bindable
+        // UIProperty: {Binding …} yields the Binding OBJECT itself, assigned as the member value (WPF
+        // parity — a Binding in a Binding-typed slot is the descriptor, not a live install). Its consumer
+        // (the StyleEngine's When watch) arms it later; an ElementName stays on the descriptor for runtime
+        // namescope resolution rather than being resolved to a concrete source here.
+        if (member is { Property: null } && typeof(BindingBase).IsAssignableFrom(member.SystemType()))
+        {
+            builder.AssignResolvedValue(member, instance, BuildBinding(builder, node, line, column), line, column);
+            return;
+        }
+
         if (member?.Property is not UIProperty property)
             throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 $"Binding target '{member?.Name ?? "(content)"}' is not a bindable UIProperty.", line, column);
@@ -218,8 +229,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "TemplateBinding target is not a UIObject.", line, column);
 
-        // The single positional argument names the source property on the templated parent.
-        string sourcePropName = FirstPositional(node)
+        // The source property: the positional argument, or the named Property= (WPF parity, so element
+        // form <TemplateBinding Property="Header"/> and {TemplateBinding Property=Header} both work).
+        string sourcePropName = FirstPositional(node) ?? Named(node, "Property")
             ?? throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "TemplateBinding requires a source property name.", line, column);
 
@@ -246,6 +258,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             // for disambiguation/clarity; only the OWNER TYPE resolves here, the member stays runtime-resolved.
             Path = new PropertyPath(path, builder.PathTypeResolver),
             Source = namedElementSource ?? ParseSourceValue(builder, node, line, column),
+            // An ElementName is resolved to a concrete Source in the install path (namedElementSource);
+            // in the descriptor path (no resolved anchor) it rides the descriptor for runtime resolution.
+            ElementName = namedElementSource is null ? Named(node, "ElementName") : null,
             RelativeSource = ParseRelativeSource(builder, node, line, column),
             Mode = ParseEnum<BindingMode>(builder, node, "Mode", line, column) ?? BindingMode.Default,
             Converter = ResolveConverter(builder, node, line, column),
@@ -369,6 +384,16 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
     }
 
     // ── Custom MarkupExtension (matrix X125/X126) ────────────────────────────────────────────────
+
+    /// <summary>Provides a CUSTOM extension's value with no target member — an element-form extension standing
+    /// alone as a dictionary/collection entry: activate, apply its arguments, and call ProvideValue against a
+    /// target-less service provider. The produced value is stored (and receives the entry's x:Key).</summary>
+    internal object? ProvideStandaloneCustomValue(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    {
+        var extension = builder.ActivateCustomExtension(node, member: null!, line, column);
+        var services = new XamlServiceProvider(builder, targetObject: null!, targetMember: null!, _scopes, line, column);
+        return extension.ProvideValue(services);
+    }
 
     private void AttachCustom(XamlObjectGraphBuilder builder, object instance, XamlMember? member, MarkupExtensionNode node, int line, int column)
     {

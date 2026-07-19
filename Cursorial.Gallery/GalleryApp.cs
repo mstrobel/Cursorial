@@ -108,6 +108,7 @@ public static class GalleryApp
     {
         if (Interlocked.Exchange(ref _registered, 1) == 0)
             XamlSchemaContext.Default.RegisterAssembly(typeof(ShellViewModel));
+            XamlSchemaContext.Default.RegisterAssembly(typeof(Cursorial.UI.DataViews.DataGrid));
     }
 
     private static string LoadEmbedded(string name)

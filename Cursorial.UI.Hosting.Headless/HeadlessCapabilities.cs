@@ -116,6 +116,37 @@ public static class HeadlessCapabilities
             Window = WindowCapabilities.None with { AlternateScreenBuffer = true },
         });
 
+    /// <summary>
+    /// A legacy monochrome terminal: no color, basic underline only, alt screen, no mouse,
+    /// no Kitty keyboard, no focus events.
+    /// </summary>
+    public static TerminalCapabilities GenericVt { get; } = new(
+        Terminal: new TerminalIdentification(
+            Family: TerminalFamily.GenericVt,
+            Name: null,
+            Version: null,
+            RawTermEnv: "vt100",
+            RawTermProgramEnv: null,
+            InsideMultiplexer: false),
+        Input: new InputCapabilities(
+            Mouse: MouseCapabilities.None,
+            Keyboard: KeyboardCapabilities.None with { TextInput = true },
+            Pointer: PointerCapabilities.None,
+            Protocol: ProtocolCapabilities.None),
+        Output: OutputCapabilities.None with
+        {
+            Color = ColorCapabilities.None with { Depth = ColorDepth.NoColor },
+            Styling = new TextStylingCapabilities(
+                Italic: false,
+                Underline: true,
+                ExtendedUnderline: false,
+                ColoredUnderline: false,
+                Strikethrough: false,
+                Overline: false,
+                Hyperlinks: false),
+            Window = WindowCapabilities.None with { AlternateScreenBuffer = true },
+        });
+
     /// <summary>The Kitty preset minus any-event mouse motion (hover-related capability gates).</summary>
     public static TerminalCapabilities NoMotion { get; } = KittyTruecolor with
     {

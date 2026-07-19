@@ -298,7 +298,7 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
             if (cell.Kind == CellKind.WideContinuation)
                 continue;
 
-            text.Append(string.IsNullOrEmpty(cell.Grapheme) ? " " : cell.Grapheme);
+            text.Append(string.IsNullOrWhiteSpace(cell.Grapheme) ? " " : cell.Grapheme);
         }
 
         return text.ToString();

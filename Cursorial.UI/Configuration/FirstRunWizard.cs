@@ -157,6 +157,7 @@ public sealed class FirstRunWizard : Window
     private void ShowCurrentPage()
     {
         var page = _model.CurrentPage;
+        var nextTabIndex = 0;
 
         // Pages are built ONCE and reused across Back/Next — each option-row build subscribes to
         // its view-model, so rebuilding per navigation would accumulate orphaned row sets that
@@ -167,7 +168,7 @@ public sealed class FirstRunWizard : Window
             {
                 WizardPageKind.Welcome => BuildWelcomePage(),
                 WizardPageKind.Files => BuildFilesPage(),
-                _ => BuildOptionsPage(page)
+                _ => BuildOptionsPage(page, ref nextTabIndex)
             };
 
             _pageCache[page] = content;
@@ -176,6 +177,9 @@ public sealed class FirstRunWizard : Window
         _pageHost.Content = content;
         _back.IsEnabled = _model.CanGoBack;
         _next.Content = _model.IsLastPage ? "_Finish" : "_Next";
+
+        _back.TabIndex = nextTabIndex++;
+        _next.TabIndex = nextTabIndex++;
     }
 
     private int _maxWidth, _maxHeight;
@@ -228,7 +232,7 @@ public sealed class FirstRunWizard : Window
         return page;
     }
 
-    private UIElement BuildOptionsPage(WizardPageViewModel page)
+    private UIElement BuildOptionsPage(WizardPageViewModel page, ref int nextTabIndex)
     {
         var panel = new StackPanel { Margin = new Margins(1) };
 
@@ -247,7 +251,7 @@ public sealed class FirstRunWizard : Window
             if (option.Descriptor.ReservedForFuture)
                 continue; // the wizard shows only options that do something today
 
-            panel.Children.Add(OptionRowFactory.BuildRow(option));
+            panel.Children.Add(OptionRowFactory.BuildRow(option, ref nextTabIndex));
         }
 
         return panel;

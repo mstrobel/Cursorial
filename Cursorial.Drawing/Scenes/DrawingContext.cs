@@ -15,15 +15,16 @@ namespace Cursorial.Drawing;
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
 /// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="Style"/> before
 /// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush
-/// <see cref="FillRectangle(in Rect, IBrush)"/> (solid or gradient), single-line brush
+/// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (solid or gradient), single-line brush
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>, and
-/// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool)"/> /
+/// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
 /// <see cref="DrawBox(in Rect, in Pen, bool)"/> / <see cref="DrawRectangle(in Rect, in Pen, IBrush?, bool)"/>.
 /// <see cref="Color"/> overloads wrap a <see cref="SolidColorBrush"/> / <see cref="Pen"/> for the
 /// common solid case.
 /// </summary>
 /// <remarks>
-/// <see cref="Set"/> / <see cref="FillRectangle(in Rect, IBrush)"/> / <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
+/// <see cref="Set"/> / <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> /
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
 /// flush once after the draw delegate returns — last, so existing glyphs (text) survive a box edge
@@ -65,9 +66,9 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
-    /// <see cref="FillRectangle(in Rect, IBrush)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
+    /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
-    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes)"/>,
+    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>,
     /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
     /// <em>record</em> time (the draw call), not at flush, so junctions still form in final scene coordinates.
@@ -195,8 +196,9 @@ public sealed class DrawingContext
     }
 
     /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
-    public void FillRectangle(in Rect region, Color color) 
-        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: false, overwrite: true);
+    public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
+        => FillRectangleCore(region, brush: null, color, brushBounds: region, durable: false, attributes,
+                             overwrite: true);
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
@@ -209,14 +211,16 @@ public sealed class DrawingContext
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </remarks>
-    public void FillRectangle(in Rect region, IBrush brush) 
+    public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default) 
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: false, overwrite: true);
+
+        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: false, overwrite: true,
+                          attributes: attributes);
     }
 
     /// <summary>
-    /// As <see cref="FillRectangle(in Rect, IBrush)"/>, but the brush is sampled against
+    /// As <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, but the brush is sampled against
     /// <paramref name="brushBounds"/> — which may be larger than the painted <paramref name="region"/> — so a
     /// gradient spans the full bounds while only the region's cells are painted. Used by area-fill charts that
     /// paint one column at a time yet want the gradient to flow across the whole chart, not restart per column.
@@ -230,7 +234,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Fill <paramref name="region"/> with <paramref name="color"/> as <b>space-bearing</b> cells, so the fill
     /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
     /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
     /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
     /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
@@ -248,7 +252,7 @@ public sealed class DrawingContext
     /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
     /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
     /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
@@ -258,7 +262,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
     /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
     /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
     /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
     /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
@@ -276,7 +280,7 @@ public sealed class DrawingContext
     /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
     /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
     /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
@@ -289,7 +293,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
     /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush)"/> or
+    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
     /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
     /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
     /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
@@ -308,7 +312,7 @@ public sealed class DrawingContext
     /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
     /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
     /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush)"/>'s
+    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
@@ -328,7 +332,7 @@ public sealed class DrawingContext
     /// <param name="attributes">Text attributes applied to every cell (default none).</param>
     /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
     /// <remarks>
-    /// Unlike <see cref="FillRectangle(in Rect, Color)"/>, which intends for blending to be applied by the compositor
+    /// Unlike <see cref="FillRectangle(in Rect, Color, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
@@ -345,7 +349,7 @@ public sealed class DrawingContext
     /// <param name="attributes">Text attributes applied to every cell (default none).</param>
     /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
     /// <remarks>
-    /// Unlike <see cref="FillRectangle(in Rect, IBrush)"/>, which intends for blending to be applied by the compositor
+    /// Unlike <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
     public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
@@ -397,7 +401,11 @@ public sealed class DrawingContext
                 var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
 
                 if (overwrite)
-                    RawWriteWithCleanup(col + s.Dx, row + s.Dy, cell);
+                {
+                    int col1 = col + s.Dx;
+                    int row1 = row + s.Dy;
+                    _surface[col1, row1] = cell;
+                }
                 else
                     _surface.Set(col + s.Dx, row + s.Dy, cell.Grapheme, cell.Style);
             }
@@ -417,7 +425,7 @@ public sealed class DrawingContext
             var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
 
             if (overwrite)
-                RawWriteWithCleanup(col, row, cell);
+                _surface[col, row] = cell;
             else
                 _surface.Set(col, row, cell.Grapheme, cell.Style);
         }
@@ -428,20 +436,6 @@ public sealed class DrawingContext
 
     private static Cell WeakCell(Color color, TextAttributes attributes = default)
         => new(null, CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
-
-    // Raw-write a cell (preserving its color alpha for the compositor), first blanking any wide-glyph partner
-    // the write would orphan — overwriting a WideContinuation blanks its left half (col−1); overwriting a
-    // WideLeft blanks its now-dangling continuation (col+1). This is the cleanup CellBuffer.Set does, replicated
-    // for the alpha-preserving raw path so a fill straddling a wide glyph can't strand a half-glyph.
-    private void RawWriteWithCleanup(int col, int row, in Cell cell)
-    {
-        var existing = _surface[col, row];
-        if (existing.Kind == CellKind.WideContinuation && col > 0)
-            _surface[col - 1, row] = Cell.Blank;
-        else if (existing.Kind == CellKind.WideLeft && col + 1 < _surface.Columns)
-            _surface[col + 1, row] = Cell.Blank;
-        _surface[col, row] = cell;
-    }
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -586,6 +580,8 @@ public sealed class DrawingContext
     //     1-cell tip at the top (no top edge) and the bottom band insets on the left (no left edge) but stays full
     //     into the bottom-right corner. With bottom only, both ends of the bottom band inset symmetrically:
     //
+    // ReSharper disable CommentTypo
+    //
     //       +------------------+x        +------------------+        radius = 4 (→ rv = 2):
     //       |                  |xx       |                  |          • right band tapers 1,2,3,4 down to the
     //       |                  |xxx      |                  |            casting bottom-right corner;
@@ -593,6 +589,8 @@ public sealed class DrawingContext
     //        xxxxxxxxxxxxxxxxxxxxxxx      xxxxxxxxxxxxxxxxxx             insets 1 cell per row toward a non-
     //         xxxxxxxxxxxxxxxxxxxx         xxxxxxxxxxxxxxxx              casting corner.
     //          (bottom | right)             (bottom only)
+    //
+    // ReSharper restore CommentTypo
     //
     // (The diagrams are approximate — the off-by-one at the tips is not load-bearing. Tune `radius`/`rv` and the
     // per-band `reach` to adjust the look; OnCastingSide gates WHICH cells cast, this gates HOW FAR / HOW SOFT.)
@@ -848,7 +846,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Paint <paramref name="text"/> coloring only its <b>per-run</b> brushes (declared via
     /// <c>BrushedRun</c>) — runs without a brush keep their formatted style. Use the
-    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes)"/>
+    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>
     /// overload to add a document-wide brush underneath the per-run ones. <paramref name="baseAttributes"/>
     /// (default none) union-merges an inherited <see cref="TextAttributes"/> onto every painted cell at paint
     /// time — see the brushed overload.
@@ -913,7 +911,7 @@ public sealed class DrawingContext
                           // The base-attribute leg: OR the element-effective attributes onto the run's own
                           // (default none = a no-op for every pre-existing caller). When the base carries the
                           // Underline presence bit with a non-Single shape, the shape rides along (the widened
-                          // seam — proposal-textattributes-decomposition §3.1/Q2); a run cannot author shapes
+                          // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
                           // today, so the base shape never overwrites authored run state.
                           if (baseAttributes == default)
                               return style;
@@ -1089,15 +1087,23 @@ public sealed class DrawingContext
     /// braille dots (sub-cell resolution), for which the pen's weight / corners / dash / cap don't apply
     /// (only its brush, attributes, and glyph set do).
     /// </summary>
-    public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false)
+    /// <remarks>
+    /// In the event a line may have single-cell length, the framework cannot infer its direction. If you
+    /// need to cover that case, simply specify <paramref name="armHint"/> with a value of <see cref="Arm.Left"/>
+    /// or <see cref="Arm.Right"/> for horizontal; or <see cref="Arm.Up"/> or <see cref="Arm.Down"/> for vertical.
+    /// The framework will only consult the hint when <c>x0 == x1</c> and <c>y0 == y1</c>.
+    /// </remarks>
+    public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false, Arm? armHint = null)
     {
-        if (x0 == x1 && y0 == y1)
-            return;   // zero-length — nothing to draw
+        // EDIT: This check didn't actually exclude zero-length; it excluded single-length.
+        //       We want to support that case, but can't infer direction, hence the addition of 'armHint'.
+        // if (x0 == x1 && y0 == y1)
+        //     return;   // zero-length — nothing to draw
 
         if (x0 == x1 || y0 == y1)   // axis-aligned → box accumulator (exact, with junctions)
         {
             int recordId = AddStrokeRecord(pen, LineBounds(x0, y0, x1, y1), overwrite);
-            DepositSegment(x0, y0, x1, y1, pen.Weight, recordId, pen.Junction);
+            DepositSegment(x0, y0, x1, y1, pen.Weight, recordId, pen.Junction, armHint);
         }
         else                        // diagonal → braille raster (Bresenham at sub-cell resolution)
         {
@@ -1106,8 +1112,14 @@ public sealed class DrawingContext
     }
 
     /// <summary>Stroke a line (axis-aligned box, or diagonal braille) with a solid <paramref name="color"/>.</summary>
-    public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false) =>
-        DrawLine(x0, y0, x1, y1, new Pen(color), overwrite);
+    /// <remarks>
+    /// In the event a line may have single-cell length, the framework cannot infer its direction. If you
+    /// need to cover that case, simply specify <paramref name="armHint"/> with a value of <see cref="Arm.Left"/>
+    /// or <see cref="Arm.Right"/> for horizontal; or <see cref="Arm.Up"/> or <see cref="Arm.Down"/> for vertical.
+    /// The framework will only consult the hint when <c>x0 == x1</c> and <c>y0 == y1</c>.
+    /// </remarks>
+    public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false, Arm? armHint = null) =>
+        DrawLine(x0, y0, x1, y1, new Pen(color), overwrite, armHint);
 
     /// <summary>Stroke the outline of <paramref name="rect"/> with <paramref name="pen"/> (corners close).</summary>
     public void DrawBox(in Rect rect, in Pen pen, bool overwrite = false)
@@ -1171,7 +1183,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Draw a complete panel — optional <paramref name="fill"/> interior, a <paramref name="pen"/> border, and
     /// an optional <paramref name="title"/> on the top edge — the one-call "group box". Equivalent to a
-    /// <see cref="FillRectangle(in Rect, IBrush)"/> (background-only; lower glyphs show through on composite)
+    /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (background-only; lower glyphs show through on composite)
     /// followed by <see cref="DrawTitledBox(in Rect, in PanelTitle, in Pen, bool)"/>. For an <em>opaque</em>
     /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/> +
     /// <c>DrawTitledBox</c> (overwrite: true) instead.
@@ -1199,14 +1211,21 @@ public sealed class DrawingContext
     {
         if (rect.Columns <= 0 || rect.Rows <= 0) return;
 
-        int recordId = AddStrokeRecord(pen, rect, overwrite);
+        var drawBox = pen != Pens.None;
+
         int left = rect.Column, top = rect.Row, right = rect.ColumnEnd - 1, bottom = rect.RowEnd - 1;
         var weight = pen.Weight;
         var mode = pen.Junction;
+        int recordId = -1;
+        
+        if (drawBox)
+        {
+            recordId = AddStrokeRecord(pen, rect, overwrite);
 
-        DepositSegment(left, bottom, right, bottom, weight, recordId, mode);   // bottom
-        DepositSegment(left, top, left, bottom, weight, recordId, mode);       // left
-        DepositSegment(right, top, right, bottom, weight, recordId, mode);     // right
+            DepositSegment(left, bottom, right, bottom, weight, recordId, mode); // bottom
+            DepositSegment(left, top, left, bottom, weight, recordId, mode);     // left
+            DepositSegment(right, top, right, bottom, weight, recordId, mode);   // right
+        }
 
         // A title is a single-line slot: sanitize to the first line before truncation/gap math
         // (design doc §13.2). An empty first line degrades to a plain box, like an empty title.
@@ -1224,26 +1243,32 @@ public sealed class DrawingContext
         int maxText = rect.Columns - 6;
         int textWidth = 0;
         string text = maxText >= 1 && titleText.Length > 0 ? TruncateToWidth(titleText, maxText, out textWidth) : string.Empty;
-        if (text.Length == 0)
+        if (text.Length == 0 && recordId >= 0)
         {
             DepositSegment(left, top, right, top, weight, recordId, mode);     // full top — plain box
             return;
         }
 
-        int gapWidth = textWidth + 2;   // 1 pad cell each side of the label
-        int gapStartMin = left + 2;
+        int titleOffset = drawBox ? 2 : 0;
+        int gapWidth = textWidth + titleOffset;   // 1 pad cell each side of the label
+        int gapStartMin = left + titleOffset;
         int gapStartMax = right - 1 - gapWidth;
+
         int gapStart = title.Position switch
-        {
-            TitlePosition.Center => left + (rect.Columns - gapWidth) / 2,
-            TitlePosition.Right => gapStartMax,
-            _ => gapStartMin,
-        };
+                       {
+                           TitlePosition.Center => left + (rect.Columns - gapWidth) / 2,
+                           TitlePosition.Right  => gapStartMax,
+                           _                    => gapStartMin,
+                       };
+
         gapStart = Math.Clamp(gapStart, gapStartMin, gapStartMax);
         int gapEnd = gapStart + gapWidth - 1;
 
-        DepositSegment(left, top, gapStart - 1, top, weight, recordId, mode);   // corner → title
-        DepositSegment(gapEnd + 1, top, right, top, weight, recordId, mode);    // title → corner
+        if (drawBox)
+        {
+            DepositSegment(left, top, gapStart - 1, top, weight, recordId, mode); // corner → title
+            DepositSegment(gapEnd + 1, top, right, top, weight, recordId, mode);  // title → corner
+        }
 
         var titleBrush = title.Brush ?? pen.ResolveBrush();
         DrawText(gapStart + 1, top, text, titleBrush, background: null, Style.Default.WithAttributes(title.Attributes));
@@ -1371,17 +1396,19 @@ public sealed class DrawingContext
     // still merge where they actually cross) and a clipped-away cell deposits nothing. A cell just inside
     // the clip keeps its arm toward the clipped neighbor — the line visually runs to the viewport edge,
     // matching how a scene-edge-clipped stroke has always rendered.
-    private void DepositSegment(int x0, int y0, int x1, int y1, StrokeWeight weight, int recordId, JunctionMode mode)
+    private void DepositSegment(int x0, int y0, int x1, int y1, StrokeWeight weight, int recordId, JunctionMode mode,
+                                Arm? armHint = null)
     {
         var s = CurrentState;
+        var horizontal = y0 == y1 && (x0 != x1 || armHint is not (Arm.Up or Arm.Down));
 
-        if (y0 == y1)   // horizontal (also the degenerate single-cell case)
+        if (horizontal)   // horizontal (also the degenerate single-cell case)
         {
             int lo = Math.Min(x0, x1), hi = Math.Max(x0, x1);
             for (int x = lo; x <= hi; x++)
             {
                 byte arm = 0;
-                if (x > lo) arm |= StrokeAccumulator.ArmBits(Arm.Left, weight);
+                if (x > lo || lo == hi) arm |= StrokeAccumulator.ArmBits(Arm.Left, weight);
                 if (x < hi) arm |= StrokeAccumulator.ArmBits(Arm.Right, weight);
                 DepositMapped(x, y0, arm, recordId, mode, in s);
             }
@@ -1393,7 +1420,7 @@ public sealed class DrawingContext
             {
                 byte arm = 0;
                 if (y > lo) arm |= StrokeAccumulator.ArmBits(Arm.Up, weight);
-                if (y < hi) arm |= StrokeAccumulator.ArmBits(Arm.Down, weight);
+                if (y < hi || hi == lo) arm |= StrokeAccumulator.ArmBits(Arm.Down, weight);
                 DepositMapped(x0, y, arm, recordId, mode, in s);
             }
         }

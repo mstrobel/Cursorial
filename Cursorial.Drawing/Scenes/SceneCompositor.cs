@@ -399,6 +399,7 @@ public sealed class SceneCompositor
         if (string.IsNullOrEmpty(source.Grapheme))
         {
             var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
+            var tinted = dst.Style with { Foreground = blendedForeground, Background = mergedBackground };
 
             // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge
             // bg — the cross-layer tint contract that lets TEXT ghost through translucent chrome
@@ -414,8 +415,6 @@ public sealed class SceneCompositor
             // raster time (background first, glyphs after) and never reach this cross-layer path.
             if (!sourceStyle.Background.IsTransparent)
             {
-                var tinted = dst.Style with { Foreground = blendedForeground, Background = mergedBackground };
-
                 if (dst.Grapheme is { Length: > 0 } glyph && GraphemeWidth.IsEmojiPresentation(glyph))
                 {
                     // Stomp, then repair the pair partner EXPLICITLY: the maintaining indexer's
@@ -452,7 +451,7 @@ public sealed class SceneCompositor
 
             // Raw indexer — the compositor already ran Color.Composite, so routing through Set
             // (which composites again) would double-composite.
-            target[column, row] = dst with { Style = dst.Style with { Foreground = blendedForeground, Background = mergedBackground } };
+            target[column, row] = dst with { Style = tinted };
             return;
         }
 

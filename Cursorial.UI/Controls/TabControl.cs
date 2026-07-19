@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -26,12 +27,22 @@ public class TabControl : SelectingItemsControl
     public TabControl()
     {
         IsTabStop = false;
+
         ItemsPanel = new ItemsPanelTemplate(static _ =>
-        {
-            var panel = new StackPanel { Orientation = Orientation.Horizontal };
-            KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Once); // the strip is one tab stop
-            return panel;
-        });
+                                            {
+                                                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+
+                                                KeyboardNavigation.SetTabNavigation(
+                                                    panel, KeyboardNavigationMode.Once); // the strip is one tab stop
+
+                                                FocusManager.SetIsFocusScope(panel, true);
+                                                FocusManager.SetRetainsFocus(panel, true);
+
+                                                panel.SetBinding(TabIndexProperty,
+                                                                 new TemplateBinding(TabIndexProperty));
+
+                                                return panel;
+                                            });
 
         SelectionChanged += (_, _) => UpdateSelectedContent();
         ItemContainerGenerator.ContainersChanged += (_, _) =>

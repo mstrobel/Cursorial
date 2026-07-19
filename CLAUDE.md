@@ -39,6 +39,27 @@ Twenty-five projects:
 - `Cursorial.UI.Bars` — the command-surface suite over one shared `BarCommand`: a `Toolbar` with discrete overflow,
   a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips
   (Alt-overlay accelerators), and SuperTips. See "Cursorial.UI.Bars status" below.
+- `Cursorial.UI.DataViews` — the data-views suite over `Cursorial.UI`: a DevExpress-style `DataGrid`
+  (multi-level sorting/grouping with summaries, criteria-tree filtering, conditional formatting,
+  in-cell editing, row-id-keyed selection, direct-drawn virtualized rows over the SCP band contract)
+  on a UI-free data-shaping engine (`Shaping/`: expression-tree-compiled typed pipelines, TimSort +
+  galloping incremental repair, collation-key string sorts, the size-gated sync/background two-lane
+  controller). **Wave 2 complete** (design doc §9): the criteria expression language
+  (`Shaping/Expressions/` — parser/compiler/`FilterNode` bridge with ENGINE-unified semantics) +
+  the Filter Builder / expression editor / rules-manager dialog suite; the per-kind editor suite
+  (Combo/Date/Spin + new-row template) and column UX (drag-reorder, resize seam, chooser, layout
+  persistence); **in-presenter horizontal scrolling** (`DataGrid.HorizontalOffset` the one truth,
+  grid-owned H `ScrollBar` part, the SCP vertical-only) with **frozen columns**
+  (`DataGridColumn.Fixed`, fixed-first layout partition, unshifted overpaint) and column
+  virtualization; **master-detail** (`DetailTemplate`, the presenter-side content-y map over a
+  1-row engine, expander gutter, band-intersection pane realization); **cell-range selection**
+  (`SelectionUnit.Cell` — corner truth, per-snapshot re-projection, rectangle TSV); engine
+  extensions — `GroupDescription.OrderBySummary` (a per-publish projection; the key-ordered repair
+  substrate is never permuted), struct rows (runtime guards + `RowStore.SetRow` write-back), the
+  TopK stats seam (`TryGetTopKThreshold` + `TopBottomRule`), and the span-formatter band cache
+  (pooled char runs, zero per-cell strings per fill). Design doc at
+  `docs/ui-layer-design/dataviews-design.md` (panel-amended; verdicts recorded beside it); visual
+  spec `docs/ui-layer-design/tokyo-night-terminal-datagrid.html`.
 - `Cursorial.UI.Dialogs` — the task-dialog suite (`TaskDialog` + `CommandLink`) over `Cursorial.UI`, with its own
   code-first control themes (`CursorialDialogThemes`) contributed via the assembly theme tier.
 - `Cursorial.UI.Xaml.Generator` — the Fork C X4 Roslyn `IIncrementalGenerator` (symbol-backed parse, CUR1/CUR2 build

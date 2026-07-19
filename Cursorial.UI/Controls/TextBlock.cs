@@ -1,4 +1,5 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 
@@ -42,6 +43,38 @@ public class TextBlock : UIElement
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<TextBlock>();
 
+    /// <inheritdoc cref="TextElement.TextWeightProperty"/>
+    public static readonly StyledProperty<TextWeight> TextWeightProperty =
+        TextElement.TextWeightProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.TextStyleProperty"/>
+    public static readonly StyledProperty<TextStyle> TextStyleProperty =
+        TextElement.TextStyleProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.UnderlineProperty"/>
+    public static readonly StyledProperty<UnderlineStyle?> UnderlineProperty =
+        TextElement.UnderlineProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.StrikethroughProperty"/>
+    public static readonly StyledProperty<bool> StrikethroughProperty =
+        TextElement.StrikethroughProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.OverlineProperty"/>
+    public static readonly StyledProperty<bool> OverlineProperty =
+        TextElement.OverlineProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.InverseProperty"/>
+    public static readonly StyledProperty<bool> InverseProperty =
+        TextElement.InverseProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.BlinkProperty"/>
+    public static readonly StyledProperty<bool> BlinkProperty =
+        TextElement.BlinkProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.ConcealedProperty"/>
+    public static readonly StyledProperty<bool> ConcealedProperty =
+        TextElement.ConcealedProperty.AddOwner<TextBlock>();
+
     static TextBlock()
     {
         // The effects lanes are independent (doc §5.5 / PropertyEffects): AffectsMeasure routes to
@@ -66,6 +99,30 @@ public class TextBlock : UIElement
         Text = text;
     }
 
+    /// <inheritdoc cref="TextWeightProperty"/>
+    public TextWeight TextWeight { get => GetValue(TextWeightProperty); set => SetValue(TextWeightProperty, value); }
+    
+    /// <inheritdoc cref="TextStyleProperty"/>
+    public TextStyle TextStyle { get => GetValue(TextStyleProperty); set => SetValue(TextStyleProperty, value); }
+    
+    /// <inheritdoc cref="UnderlineProperty"/>
+    public UnderlineStyle? Underline { get => GetValue(UnderlineProperty); set => SetValue(UnderlineProperty, value); }
+    
+    /// <inheritdoc cref="StrikethroughProperty"/>
+    public bool Strikethrough { get => GetValue(StrikethroughProperty); set => SetValue(StrikethroughProperty, value); }
+    
+    /// <inheritdoc cref="OverlineProperty"/>
+    public bool Overline { get => GetValue(OverlineProperty); set => SetValue(OverlineProperty, value); }
+    
+    /// <inheritdoc cref="InverseProperty"/>
+    public bool Inverse { get => GetValue(InverseProperty); set => SetValue(InverseProperty, value); }
+    
+    /// <inheritdoc cref="BlinkProperty"/>
+    public bool Blink { get => GetValue(BlinkProperty); set => SetValue(BlinkProperty, value); }
+    
+    /// <inheritdoc cref="ConcealedProperty"/>
+    public bool Concealed { get => GetValue(ConcealedProperty); set => SetValue(ConcealedProperty, value); }
+    
     /// <inheritdoc cref="TextProperty"/>
     public string? Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
 

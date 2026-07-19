@@ -52,7 +52,7 @@ internal static class StyleSetterConverter
         if (value is null)
         {
             // Null is legal for reference types and Nullable<T> only (SD9).
-            if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) is null)
+            if (targetType.IsNullableType() is false)
             {
                 throw SealError(style, ruleIndex, property,
                                 $"null is not a legal value for the non-nullable value type '{targetType.Name}'");

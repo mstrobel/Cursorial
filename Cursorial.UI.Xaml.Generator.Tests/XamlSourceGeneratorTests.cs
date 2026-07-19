@@ -209,6 +209,20 @@ public class XamlSourceGeneratorTests
         Assert.Contains("typeof(global::Cursorial.Drawing.Media.JunctionMode)", src);
     }
 
+    [Fact] // a duplicate x:Key in a resource dictionary surfaces CUR2305 as a Roslyn WARNING (not an error,
+    // so codegen still proceeds) at the later entry's location.
+    public void Generator_ReportsDuplicateResourceKey_AsWarning()
+    {
+        var result = GeneratorHarness.Run(("Theme.xaml",
+            "<ResourceDictionary xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<Style x:Key=\"Accent\" TargetType=\"Button\"/><Style x:Key=\"Accent\" TargetType=\"Button\"/>" +
+            "</ResourceDictionary>"));
+
+        var dup = Assert.Single(result.Diagnostics, d => d.Id == "CUR2305");
+        Assert.Equal(DiagnosticSeverity.Warning, dup.Severity);
+        Assert.Contains("Theme.xaml", dup.Location.GetLineSpan().Path);
+    }
+
     [Fact] // an unknown element type surfaces CUR2002 (type-not-found)
     public void Generator_ReportsUnknownType_AsRoslynDiagnostic()
     {

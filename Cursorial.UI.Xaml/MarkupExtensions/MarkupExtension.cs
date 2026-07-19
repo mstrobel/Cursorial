@@ -73,3 +73,10 @@ public interface INameScopeProvider
     /// <summary>The enclosing name scope, or <see langword="null"/>.</summary>
     INameScope? NameScope { get; }
 }
+
+/// <summary>Provides a XamlValueContext, needed by some markup extensions and type converters.</summary>
+public interface IXamlValueContextProvider
+{
+    /// <summary>The currently <see cref="XamlValueContext"/>.</summary>
+    XamlValueContext Context { get; }
+}

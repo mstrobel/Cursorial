@@ -171,8 +171,9 @@ public class Border : Decorator
         if (Title is { Length: > 0 } title)
         {
             var panelTitle = new PanelTitle(title) { Position = TitlePosition, Attributes = attrs};
+            var titleBrush = TitleForeground ?? TextElement.GetForeground(this);
 
-            if (TitleForeground is {} titleBrush)
+            if (titleBrush is not null)
                 panelTitle = panelTitle with { Brush = titleBrush };
 
             optionalTitle = panelTitle;
@@ -188,7 +189,7 @@ public class Border : Decorator
         else if (optionalTitle is {} panelTitle)
         {
             // A title without an explicit pen still draws the framing edge (the GroupBox top row).
-            context.DrawTitledBox(bounds, panelTitle, Pens.Light, overwrite: occludes);
+            context.DrawTitledBox(bounds, panelTitle, Pens.None, overwrite: occludes);
         }
     }
 

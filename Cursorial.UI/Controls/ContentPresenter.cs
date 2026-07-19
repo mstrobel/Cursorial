@@ -46,6 +46,12 @@ public sealed class ContentPresenter : UIElement
     public static readonly StyledProperty<bool> RecognizesMarkupProperty =
         UIProperty.Register<ContentPresenter, bool>(nameof(RecognizesMarkup), changed: OnRecognizesMarkupChanged);
 
+    /// <summary>Whether the <see cref="TextElement.InverseProperty"/> is forwarded to the realized content.</summary>
+    public static readonly StyledProperty<bool> ForwardTextInverseProperty =
+        UIProperty.Register<ContentPresenter, bool>(nameof(ForwardTextInverse),
+                                                    changed: OnForwardTextInverseChanged,
+                                                    defaultValue: true);
+
     static ContentPresenter()
     {
         AffectsMeasure<ContentPresenter>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty, RecognizesAccessKeyProperty);
@@ -68,6 +74,9 @@ public sealed class ContentPresenter : UIElement
 
     /// <inheritdoc cref="RecognizesMarkupProperty"/>
     public bool RecognizesMarkup { get => GetValue(RecognizesMarkupProperty); set => SetValue(RecognizesMarkupProperty, value); }
+
+    /// <inheritdoc cref="ForwardTextInverseProperty"/>
+    public bool ForwardTextInverse { get => GetValue(ForwardTextInverseProperty); set => SetValue(ForwardTextInverseProperty, value); }
 
     /// <summary>The realized visual child (diagnostic; null before first measure / empty content).</summary>
     public UIElement? Child => _child;
@@ -290,6 +299,12 @@ public sealed class ContentPresenter : UIElement
     // forward would leak the Icon otherwise (audit fix 2026-07-13). Null unless the current child is an Icon.
     private BindingExpressionBase? _borrowedIconForward;
 
+    // The framework-installed Inverse forward on ADOPTED UIElement content (§2.1) — the presenter owns its
+    // teardown because RebuildChild leaves borrowed content's own bindings alone, so a source-anchored
+    // forward would leak the element otherwise (audit fix 2026-07-13). Null unless the content is an adopted
+    // UIElement.
+    private BindingExpressionBase? _adoptedContentForward;
+
     private void RebuildChild(object? content, DataTemplate? template, string? stringFormat)
     {
         if (_child is {} old)
@@ -299,6 +314,12 @@ public sealed class ContentPresenter : UIElement
             // otherwise pin the unhosted Icon to the live templated parent on every content swap / recycle.
             _borrowedIconForward?.Dispose();
             _borrowedIconForward = null;
+
+            // The framework's own forward onto adopted UIElement content — dispose it here (it is NOT the
+            // author's, and RemoveVisualChild does not tear it down): the source-anchored observer would
+            // otherwise pin the unhosted element to the live templated parent on every content swap / recycle.
+            _adoptedContentForward?.Dispose();
+            _adoptedContentForward = null;
 
             // A presenter-BUILT child (a TextBlock realized from string/object content — NOT borrowed element content,
             // where the child IS the content and the author owns it) is presenter-owned and discarded here. Tear its
@@ -311,12 +332,19 @@ public sealed class ContentPresenter : UIElement
 
             if (_childLogicallyOwned && ReferenceEquals(old.LogicalParent, this))
                 RemoveLogicalChild(old);
+
             RemoveVisualChild(old);
             _child = null;
             _childLogicallyOwned = false;
         }
 
-        var built = ContentRealization.Realize(this, content, template, RecognizesAccessKey, RecognizesMarkup, stringFormat);
+        var built = ContentRealization.Realize(this,
+                                               content,
+                                               template,
+                                               RecognizesAccessKey,
+                                               RecognizesMarkup,
+                                               stringFormat,
+                                               ForwardTextInverse);
 
         _realizedContent = content;
         _realizedTemplate = template;
@@ -331,8 +359,13 @@ public sealed class ContentPresenter : UIElement
 
             // An Icon carries the Inverse cue (a glyph — Inverse only; §2.1). It is borrowed content, so
             // the presenter installs AND owns the forward (disposed above on the next rebuild).
-            if (built is Icon)
-                _borrowedIconForward = ContentRealization.ForwardInverseOnly(this, built);
+            if (ForwardTextInverse)
+            {
+                if (built is Icon)
+                    _borrowedIconForward = ContentRealization.ForwardInverseOnly(this, built);
+                else if (content is UIElement && built == content)
+                    _adoptedContentForward = ContentRealization.ForwardInverseOnly(this, built);
+            }
         }
     }
 
@@ -385,6 +418,15 @@ public sealed class ContentPresenter : UIElement
     }
 
     private static void OnRecognizesAccessKeyChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is ContentPresenter presenter)
+        {
+            presenter._realizedContent = NoContentSentinel; // force a rebuild (the realization branch changes)
+            presenter.InvalidateMeasure();
+        }
+    }
+
+    private static void OnForwardTextInverseChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is ContentPresenter presenter)
         {

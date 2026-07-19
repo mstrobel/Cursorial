@@ -281,7 +281,7 @@ public class Icon : Control
     // Inverse via the presenting template's forward (or ContentRealization's chain-③-Icon forward).
     private void ForwardTextAxesToGlyph(TextBlock glyph)
         => glyph.SetBinding(TextElement.InverseProperty,
-                            new Binding($"({nameof(TextElement)}.{TextElement.InverseProperty.Name})") { Source = this });
+                            new Binding(TextElement.InverseProperty) { Source = this });
 
     // Whether the EFFECTIVE capabilities (negotiated ∘ user overrides — FB-5) include a graphics protocol that can
     // carry an inline image (mirrors the protocol gate in ImagePresenter.IsImageVisible; the per-image format check

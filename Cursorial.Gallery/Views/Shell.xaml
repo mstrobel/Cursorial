@@ -5,6 +5,7 @@
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
+           xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
@@ -34,7 +35,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
-              <Border Grid.Column="0" Padding="2,1" Title="Task Dialogs">
+              <Border Grid.Column="0" Padding="2,1" Title="Task Dialogs"
+                      BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
                 <StackPanel Spacing="1" Orientation="Vertical">
                   <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include _Secondary Message" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
@@ -45,7 +47,8 @@
                   <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog" MaxWidth="24" />
                 </StackPanel>
               </Border>
-              <Border Grid.Column="1" Padding="2,1" Title="Message Boxes">
+              <Border Grid.Column="1" Padding="2,1" Title="Message Boxes"
+                      BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
                 <StackPanel Spacing="1" Orientation="Vertical">
                   <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
                 </StackPanel>
@@ -132,12 +135,13 @@
             <Label Grid.Column="0" Grid.Row="0"
                    Content="_Name" Target="{x:Reference NameEditor}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <TextBox Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left"
-                     x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" />
+                     x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" Placeholder="full name" />
 
             <Label Grid.Column="0" Grid.Row="1" Margin="0,1,0,0"
                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0" HorizontalAlignment="Left"
-                         x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}" RevealPassword="{Binding ShowPassword}" />
+                         x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}"
+                         RevealPassword="{Binding ShowPassword}" Placeholder="password"/>
 
             <Label Grid.Column="4" Grid.Row="0"
                    Target="{x:Reference ColorSelector}" Content="Favorite _Color"
@@ -148,7 +152,7 @@
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:ColorInfo">
                   <DockPanel>
-                    <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="1,0" />
+                    <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="0,0,1,0" />
                     <TextBlock Text="{Binding Name}" />
                   </DockPanel>
                 </DataTemplate>
@@ -170,8 +174,9 @@
                    Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <StackPanel Grid.Column="2" Grid.Row="6" HorizontalAlignment="Left"
                         Orientation="Horizontal" Margin="0,1,0,0">
-              <Slider x:Name="VolumeSlider" Width="28" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+              <Slider x:Name="VolumeSlider" Width="24" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
               <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
+                         Width="4"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
             </StackPanel>
             
@@ -378,9 +383,13 @@
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
             <bars:RibbonTab IsFileTab="True">
               <bars:RibbonTab.Header>
-                <StackPanel Orientation="Horizontal">
-                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0" />
-                  <AccessTextPresenter Text="_File" />
+                <StackPanel x:Name="FileTabContent"
+                            Orientation="Horizontal"
+                            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
+                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
+                        TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                  <ContentPresenter Content="_File" RecognizesAccessKey="True"
+                                    TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
                 </StackPanel>
               </bars:RibbonTab.Header>
             </bars:RibbonTab>
@@ -506,6 +515,96 @@
             </TabItem>
           </TabControl>
 
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:DataGridViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <Button DockPanel.Dock="Top" Margin="2,1,2,0" HorizontalAlignment="Left"
+                  Content="{Binding FeedLabel}" Command="{Binding ToggleFeed}" />
+
+          <dv:DataGrid Margin="2,1" ItemsSource="{Binding Orders}" />
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:TreeViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <TreeView Margin="2,1">
+            <TreeViewItem Header="Item 1">
+              <TreeViewItem Header="Item 1.1" />
+              <TreeViewItem Header="Item 1.2" />
+            </TreeViewItem>
+            <TreeViewItem Header="Item 2" />
+            <TreeViewItem Header="Item 3" />
+            <TreeViewItem Header="Item 4">
+              <TreeViewItem Header="Item 4.1">
+                <TreeViewItem Header="Item 4.1.1" />
+                <TreeViewItem Header="Item 4.1.2" />
+              </TreeViewItem>
+              <TreeViewItem Header="Item 4.2">
+                <TreeViewItem Header="Item 4.2.1" />
+                <TreeViewItem Header="Item 4.2.2" />
+              </TreeViewItem>
+            </TreeViewItem>
+          </TreeView>
+        </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:DateControlsViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}"
+                  Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="2,1">
+            <Calendar VerticalAlignment="Top"/>
+            <Grid VerticalAlignment="Top">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+            </Grid>
+            
+            <Label Content="_Non-Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Target="{x:Reference NonEditableDatePicker}" />
+            <DatePicker x:Name="NonEditableDatePicker" Grid.Column="1" IsEditable="False"
+                        VerticalAlignment="Top" Watermark="birthday" /> 
+
+            <Label Grid.Row="1" Content="_Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Target="{x:Reference EditableDatePicker}"/>
+            <DatePicker x:Name="EditableDatePicker" Grid.Row="1" Grid.Column="1" IsEditable="True"
+                        VerticalAlignment="Top" Watermark="birthday" /> 
+          </StackPanel>
         </DockPanel>
       </DataTemplate>
 
@@ -635,7 +734,8 @@
         <ListBox x:Name="PageList"
                  Width="22"
                  ItemsSource="{Binding Pages}"
-                 SelectedItem="{Binding SelectedPage, Mode=TwoWay}">
+                 SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                 TextSearch.TextPath="Title">
           <ListBox.ItemTemplate>
             <DataTemplate>
               <TextBlock Text="{Binding Title}" />
@@ -646,7 +746,7 @@
     </Border>
 
     <StatusBar DockPanel.Dock="Bottom">
-      <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
+    <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
       <StatusBarItem Classes="alternate"
                      Content="{Binding ThemeDescription}" />
       <StatusBarItem Content="{Binding Path=SelectedPage.Status, TargetNullValue=''}" />

@@ -28,8 +28,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#30364d"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#272b41"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#414868"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#343b58"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#c0caf5"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#a9b1d6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#8d9fed"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"                     Color="#565f89"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"                     Color="#414868"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#1f2335"/>
@@ -73,7 +74,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"               Brush="#414868" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                       Brush="#7aa2f7" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"           Color="#080910" Opacity="0.55"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#c0caf5"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#c0caf5"/-->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}"       Color="#3F78F3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" Color="#7aa2f7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ToolBarBrush}"                   Color="#1f2335"/>
@@ -84,6 +85,11 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.KeyTipMatchedBrush}"             Color="#9d7b3f"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RibbonContextualFillBrush}"      Color="#2a2440"/>
       <Pen             x:Key="{x:Static ThemeKeys.RibbonContextualUnderlinePen}"   Brush="#bb9af7" Weight="Heavy"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabBackgroundFocused}"           Color="#414868"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabForegroundFocused}"           Color="#c0caf5"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabBackgroundHover}"             Color="#414868"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabForegroundHover}"             Color="#c0caf5"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ListItemForegroundHover}"        Color="#c0caf5"/>
     </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
@@ -103,8 +109,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#d3d5dd"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#e1e2e7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#bfc0c6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#c0caf5"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#343b58"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#565a6e"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"                   Color="#4a547d"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"                     Color="#9699a3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"                     Color="#818392"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#dcdde2"/>
@@ -148,7 +155,7 @@
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"               Brush="#818392" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                       Brush="#34548a" Weight="Heavy"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"           Color="#080910" Opacity="0.55"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#343b58"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}"        Color="#343b58"/-->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}"       Color="#23385D"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" Color="#34548a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ToolBarBrush}"                   Color="#dedee3"/>
@@ -159,23 +166,130 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.KeyTipMatchedBrush}"             Color="#b8935a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RibbonContextualFillBrush}"      Color="#e0d8ef"/>
       <Pen             x:Key="{x:Static ThemeKeys.RibbonContextualUnderlinePen}"   Brush="#5a3e8e" Weight="Heavy"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabBackgroundFocused}"           Color="#bfc0c6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabForegroundFocused}"           Color="#343b58"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabBackgroundHover}"             Color="#bfc0c6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.TabForegroundHover}"             Color="#343b58"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ListItemForegroundHover}"        Color="#343b58"/>
     </ResourceDictionary>
 
+    <ResourceDictionary x:Key="Ansi256">
+      <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">▍</x:String>
+
+      <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SelectionActiveBrush}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.PanelBackgroundBrush}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+
+      <!--  Button (Button / RepeatButton / ToggleButton). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundHover}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundFocus}" ResourceKey="{x:Static ThemeKeys.ElevationRaised}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundPressed}" ResourceKey="{x:Static ThemeKeys.AccentDarkBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundPressed}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SplitButtonDropZoneBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+
+      <!--  ToggleSwitch / CheckBox / RadioButton. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphChecked}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphIndeterminate}" ResourceKey="{x:Static ThemeKeys.AmberBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.RadioGlyphChecked}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+
+      <!--  Input (TextBox, editable ComboBox). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.WellBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionActive}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledBackgroundBrush}" />
+
+      <!--  ListItem (ListBox / ComboBox drop-down item). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.WellBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelectedInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <!--  Gallery `.item.rev { background: -text; color: -panel }` (final style guide): a list item sits on the -->
+      <!--  PanelBrush surface, so its reverse-video focus ink is -panel (not the universal -bg). #103. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TreeViewItem (same item-on-panel reverse-video ink, #103). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  Menu (MenuBar / MenuItem / ContextMenu). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBarBackground}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TabItem — gallery: inactive ink = -text-dim, active = -surface fill + -text ink + an -accent -->
+      <!--  underline bar (#103, was a -sel fill with -text ink on every tab). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabFocusedUnderlinePen}" ResourceKey="{x:Static ThemeKeys.TabUnderlinePen}" />
+      <!--  TabUnderlinePen is a Pen (not a brush alias) — defined per-variant in AddTierPalette. -->
+
+      <!--  ProgressBar — gallery: empty track = -faint (#103, was -well). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillNormal}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillIndeterminate}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressTrackBrush}" ResourceKey="{x:Static ThemeKeys.FaintBrush}" />
+
+      <!--  Calendar (day cells + Year/Decade cells; DatePicker). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForeground}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayInactiveForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayTodayForeground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundSelected}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <!--  Gallery `.cal .focus { background: -text; color: -panel }` (#103, was -bg). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundFocus}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarActiveForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToolTipBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabUnderlinePen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+    </ResourceDictionary>
+    
     <!-- ───────────────────────────── Dark · Ansi16 (palette indices) ───────────────────────────── -->
     <ResourceDictionary x:Key="Dark+Ansi16">
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"           Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"        Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"         Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"         Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"        Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Palette(0)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Palette(0)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"               Color="Palette(0)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"          Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"          Color="Palette(12)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"  Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"       Color="Palette(0)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"              Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"              Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"            Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"               Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"            Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"              Color="Palette(8)"/>
@@ -200,8 +314,13 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(12)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"         Brush="Palette(12)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(15)"/>
-    </ResourceDictionary>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(15)"/-->
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ButtonForegroundNormal}"  Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ButtonBackgroundNormal}"  Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InputBackgroundFocus}"    Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InputForegroundNormal}"   Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.MenuBarBackground}"       Color="Palette(0)"/>
+   </ResourceDictionary>
 
     <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
     <ResourceDictionary x:Key="Light+Ansi16">
@@ -214,19 +333,20 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SurfaceBrush}"            Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PanelBrush}"              Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"               Color="Palette(15)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"          Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"          Color="Palette(12)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"  Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"       Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"              Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"            Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"               Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextDimBrush}"            Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"              Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"              Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"              Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}" Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}" Color="Palette(8)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"             Color="Palette(4)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"            Color="Palette(6)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.OnAccentBrush}"           Color="Palette(15)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessBrush}"            Color="Palette(2)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningBrush}"            Color="Palette(3)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.GreenBrush}"              Color="Palette(2)"/>
@@ -245,15 +365,135 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DangerInverseBrush}"      Color="Palette(1)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SuccessInverseBrush}"     Color="Palette(2)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WarningInverseBrush}"     Color="Palette(3)"/>
-      <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(8)" Weight="Light"/>
-      <Pen             x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(8)" Weight="Double"/>
+      <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"               Brush="Palette(15)" Weight="Light"/>
+      <Pen             x:Key="{x:Static ThemeKeys.SeparatorPen}"            Brush="Palette(15)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.MenuSeparatorPen}"        Brush="Palette(8)" Weight="Light"/>
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                Brush="Palette(4)" Weight="Double"/>
       <Pen             x:Key="{x:Static ThemeKeys.TabUnderlinePen}"         Brush="Palette(4)" Weight="Double"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(0)"/>
+      <!--SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Palette(0)"/-->
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ButtonForegroundNormal}"  Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ButtonBackgroundNormal}"  Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InputBackgroundFocus}"    Color="Palette(15)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.InputForegroundNormal}"   Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.MenuBarBackground}"       Color="Palette(7)"/>
     </ResourceDictionary>
 
+    <ResourceDictionary x:Key="Ansi16">
+      <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SelectionActiveBrush}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.PanelBackgroundBrush}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ElevationPopup}" ResourceKey="{x:Static ThemeKeys.ElevationWindow}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ElevationDialog}" ResourceKey="{x:Static ThemeKeys.ElevationWindow}" />
+
+      <!--  Button (Button / RepeatButton / ToggleButton). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundHover}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundFocus}" ResourceKey="{x:Static ThemeKeys.ElevationRaised}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundPressed}" ResourceKey="{x:Static ThemeKeys.AccentDarkBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundPressed}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SplitButtonDropZoneBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+
+      <!--  ToggleSwitch / CheckBox / RadioButton. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphChecked}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphIndeterminate}" ResourceKey="{x:Static ThemeKeys.AmberBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.RadioGlyphChecked}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+
+      <!--  Input (TextBox, editable ComboBox). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionActive}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledBackgroundBrush}" />
+
+      <!--  ListItem (ListBox / ComboBox drop-down item). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.WellBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelectedInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <!--  Gallery `.item.rev { background: -text; color: -panel }` (final style guide): a list item sits on the -->
+      <!--  PanelBrush surface, so its reverse-video focus ink is -panel (not the universal -bg). #103. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TreeViewItem (same item-on-panel reverse-video ink, #103). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  Menu (MenuBar / MenuItem / ContextMenu). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TabItem — gallery: inactive ink = -text-dim, active = -surface fill + -text ink + an -accent -->
+      <!--  underline bar (#103, was a -sel fill with -text ink on every tab). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundFocused}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundFocused}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabControlBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabFocusedUnderlinePen}" ResourceKey="{x:Static ThemeKeys.TabUnderlinePen}" />
+      <!--  TabUnderlinePen is a Pen (not a brush alias) — defined per-variant in AddTierPalette. -->
+
+      <!--  ProgressBar — gallery: empty track = -faint (#103, was -well). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillNormal}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillIndeterminate}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressTrackBrush}" ResourceKey="{x:Static ThemeKeys.FaintBrush}" />
+
+      <!--  Calendar (day cells + Year/Decade cells; DatePicker). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForeground}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayInactiveForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayTodayForeground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundSelected}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <!--  Gallery `.cal .focus { background: -text; color: -panel }` (#103, was -bg). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundFocus}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarActiveForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToolTipBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.Success2Brush}" ResourceKey="{x:Static ThemeKeys.SuccessBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SuccessDarkBrush}" ResourceKey="{x:Static ThemeKeys.SuccessInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Danger2Brush}" ResourceKey="{x:Static ThemeKeys.DangerBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.DangerDarkBrush}" ResourceKey="{x:Static ThemeKeys.DangerInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Cool2Brush}" ResourceKey="{x:Static ThemeKeys.CoolBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CoolDarkBrush}" ResourceKey="{x:Static ThemeKeys.CoolInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Warning2Brush}" ResourceKey="{x:Static ThemeKeys.WarningBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WarningDarkBrush}" ResourceKey="{x:Static ThemeKeys.WarningInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Info2Brush}" ResourceKey="{x:Static ThemeKeys.InfoBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InfoDarkBrush}" ResourceKey="{x:Static ThemeKeys.InfoInverseBrush}" />
+    </ResourceDictionary>
+    
     <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
     <ResourceDictionary x:Key="NoColor">
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"        Color="Default"/>
@@ -295,7 +535,125 @@
       <Pen             x:Key="{x:Static ThemeKeys.FocusPen}"                GlyphSet="Ascii" Weight="Heavy" />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ObscuredOverlayBrush}"    Color="Default"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccessKeyIndicatorBrush}" Color="Default"/>
-    </ResourceDictionary>
 
+      <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SelectionActiveBrush}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.PanelBackgroundBrush}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ElevationPopup}" ResourceKey="{x:Static ThemeKeys.ElevationWindow}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ElevationDialog}" ResourceKey="{x:Static ThemeKeys.ElevationWindow}" />
+
+      <!--  Button (Button / RepeatButton / ToggleButton). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundHover}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundFocus}" ResourceKey="{x:Static ThemeKeys.ElevationRaised}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundPressed}" ResourceKey="{x:Static ThemeKeys.AccentDarkBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundPressed}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SplitButtonDropZoneBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+
+      <!--  ToggleSwitch / CheckBox / RadioButton. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphChecked}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleGlyphIndeterminate}" ResourceKey="{x:Static ThemeKeys.AmberBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.RadioGlyphChecked}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToggleForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+
+      <!--  Input (TextBox, editable ComboBox). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.WellBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionActive}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputSelectionInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InputBackgroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledBackgroundBrush}" />
+
+      <!--  ListItem (ListBox / ComboBox drop-down item). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundNormal}" ResourceKey="{x:Static ThemeKeys.WellBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundSelectedInactive}" ResourceKey="{x:Static ThemeKeys.SelectionInactiveBrush}" />
+      <!--  Gallery `.item.rev { background: -text; color: -panel }` (final style guide): a list item sits on the -->
+      <!--  PanelBrush surface, so its reverse-video focus ink is -panel (not the universal -bg). #103. -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ListItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TreeViewItem (same item-on-panel reverse-video ink, #103). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundFocus}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TreeItemForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  Menu (MenuBar / MenuItem / ContextMenu). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBarBackground}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <!--  TabItem — gallery: inactive ink = -text-dim, active = -surface fill + -text ink + an -accent -->
+      <!--  underline bar (#103, was a -sel fill with -text ink on every tab). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundSelected}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundFocused}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundFocused}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabControlBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabFocusedUnderlinePen}" ResourceKey="{x:Static ThemeKeys.TabUnderlinePen}" />
+      <!--  TabUnderlinePen is a Pen (not a brush alias) — defined per-variant in AddTierPalette. -->
+
+      <!--  ProgressBar — gallery: empty track = -faint (#103, was -well). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillNormal}" ResourceKey="{x:Static ThemeKeys.GreenBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressFillIndeterminate}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ProgressTrackBrush}" ResourceKey="{x:Static ThemeKeys.FaintBrush}" />
+
+      <!--  Calendar (day cells + Year/Decade cells; DatePicker). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForeground}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayInactiveForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundHover}" ResourceKey="{x:Static ThemeKeys.OnHoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundHover}" ResourceKey="{x:Static ThemeKeys.HoverBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayTodayForeground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundSelected}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundSelected}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <!--  Gallery `.cal .focus { background: -text; color: -panel }` (#103, was -bg). -->
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundFocus}" ResourceKey="{x:Static ThemeKeys.PanelBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayBackgroundFocus}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CalendarDayForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarBackground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarActiveBackground}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WindowTitleBarActiveForeground}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ToolTipBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.TabUnderlinePen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.Success2Brush}" ResourceKey="{x:Static ThemeKeys.SuccessBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.SuccessDarkBrush}" ResourceKey="{x:Static ThemeKeys.SuccessInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Danger2Brush}" ResourceKey="{x:Static ThemeKeys.DangerBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.DangerDarkBrush}" ResourceKey="{x:Static ThemeKeys.DangerInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Cool2Brush}" ResourceKey="{x:Static ThemeKeys.CoolBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.CoolDarkBrush}" ResourceKey="{x:Static ThemeKeys.CoolInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Warning2Brush}" ResourceKey="{x:Static ThemeKeys.WarningBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.WarningDarkBrush}" ResourceKey="{x:Static ThemeKeys.WarningInverseBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.Info2Brush}" ResourceKey="{x:Static ThemeKeys.InfoBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.InfoDarkBrush}" ResourceKey="{x:Static ThemeKeys.InfoInverseBrush}" />
+    </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Xaml;
 
 // ReSharper disable InconsistentNaming
 
@@ -129,6 +130,36 @@ public sealed class Section13_DeferredContentBuild : LoaderTestBase
         var instance = InstantiateOn(template, owner);
         var part = (Border)instance.Root;
         Assert.Same(owner.Background, part.Background);
+    }
+
+    [Theory] // X160a — a TYPE-QUALIFIED TemplateBinding source names its owner explicitly (an attached
+    // property, or one declared on a base): Owner.Prop, WPF's optional-parens (Owner.Prop), and the
+    // xmlns-prefixed ns:Owner.Prop all resolve the owner type and find the property there.
+    [InlineData("Control.Background")]
+    [InlineData("(Control.Background)")]
+    [InlineData("c:Control.Background")]
+    public void X160a_TemplateBinding_TypeQualifiedSource_ResolvesOwner(string source)
+    {
+        var template = (ControlTemplate)LoadRaw(
+            "<ControlTemplate xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:c=\"clr-namespace:Cursorial.UI.Controls;assembly=Cursorial.UI\">" +
+            $"<Border Background=\"{{TemplateBinding {source}}}\"/></ControlTemplate>");
+        var owner = new Button { Background = new TestBrush { Color = Color.FromRgb(1, 2, 3) } };
+        var part = (Border)InstantiateOn(template, owner).Root;
+        Assert.Same(owner.Background, part.Background); // same property identity as the plain Background form
+    }
+
+    [Fact] // X160b — a qualified TemplateBinding whose owner type resolves but has no such property is a
+    // positioned MemberNotFound (not a silent no-op). TemplateBinding attaches at INSTANTIATION, so the
+    // diagnostic surfaces there, not at template load.
+    public void X160b_TemplateBinding_QualifiedSource_UnknownProperty_Throws()
+    {
+        var template = (ControlTemplate)LoadRaw(
+            "<ControlTemplate xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\">" +
+            "<Border Background=\"{TemplateBinding Control.Nonexistent}\"/></ControlTemplate>");
+        var ex = Assert.Throws<XamlParseException>(() => InstantiateOn(template, new Button()));
+        Assert.Equal(XamlDiagnosticCodes.MemberNotFound, ex.Code);
+        Assert.Contains("Nonexistent", ex.Message);
     }
 
     [Fact] // X161

@@ -50,6 +50,9 @@ internal sealed class XamlObjectGraphBuilder
     /// <summary>The captured definition-site lexical scope a template build resolves StaticResource against (matrix X162).</summary>
     internal CapturedScopeChain CapturedTemplateScope { get; init; }
 
+    /// <summary>The URI of the source Xaml document.</summary>
+    internal Uri? Source => _source;
+
     private bool InTemplateBuild => TemplateContext is not null;
 
     internal XamlObjectGraphBuilder(XamlDocument doc, XamlLoaderOptions options, Uri? source, IResourceScope? ambient = null)
@@ -161,6 +164,13 @@ internal sealed class XamlObjectGraphBuilder
         if (record.HasFlag(ObjectFlags.IsArray))
             return BuildArray(objectIndex, in record, type, line, column);
 
+        // A markup extension in element form consumed as a dictionary or collection ENTRY (no target member):
+        // produce its context-independent value — a folded constant, a resolved StaticResource, or a
+        // DynamicResource carrier (resource aliasing). In a member VALUE position it never reaches here (the
+        // Object-member case attaches it to the target member instead).
+        if (record.HasFlag(ObjectFlags.IsMarkupExtension))
+            return ProvideExtensionEntryValue(in record, line, column)!;
+
         if (type is null)
             throw Fatal(XamlDiagnosticCodes.TypeNotFound, "The element's type did not resolve.", line, column);
 
@@ -210,6 +220,13 @@ internal sealed class XamlObjectGraphBuilder
             if (needsInit)
                 ((ISupportInitialize)instance).EndInit();
         }
+
+        // A <DataCondition> with no Binding: the Xaml init lane bypasses the ctors' RequireReflectionLane guard, so a
+        // Binding-less condition would otherwise load clean and then throw an opaque ArgumentNullException deep in
+        // style arming (BindingOperations.Watch). Reject it at the authoring site with a positioned diagnostic —
+        // the DataCondition analog of the Setter "requires a resolvable Property" guard.
+        if (instance is DataCondition { Binding: null })
+            throw Fatal(XamlDiagnosticCodes.MemberNotFound, "A <DataCondition> requires a Binding.", line, column);
 
         return instance;
     }
@@ -485,6 +502,16 @@ internal sealed class XamlObjectGraphBuilder
 
                 case XamlValueKind.Object:
                 {
+                    // A markup extension in element form as a scalar member value (<Setter.Value><DynamicResource
+                    // …/></Setter.Value>): attach it to THIS member exactly as the curly form would, rather than
+                    // instantiating an object.
+                    ref readonly var childRecord = ref _doc.Objects[member.ValueIndex];
+                    if (childRecord.HasFlag(ObjectFlags.IsMarkupExtension))
+                    {
+                        ApplyExtensionMemberObject(in member, in childRecord, instance, type, line, column);
+                        break;
+                    }
+
                     var child = InstantiateObject(member.ValueIndex);
                     ApplyValue(in member, instance, type, child, line, column);
                     break;
@@ -771,6 +798,74 @@ internal sealed class XamlObjectGraphBuilder
         _extensionHandler.Attach(this, instance, type, resolved, in ext, _doc, line, column);
     }
 
+    /// <summary>The value slot of a markup-extension element object (element-form extension): the single
+    /// <see cref="XamlValueKind.Extension"/>/<see cref="XamlValueKind.Folded"/> member (an x:Key directive,
+    /// when present, is a separate member consumed by the dictionary path).</summary>
+    private ref readonly MemberRecord ExtensionValueMember(in ObjectRecord record)
+    {
+        for (int i = 0; i < record.MemberCount; i++)
+        {
+            ref readonly var m = ref _doc.Members[record.MemberStart + i];
+            if (m.Kind is XamlValueKind.Extension or XamlValueKind.Folded)
+                return ref m;
+        }
+
+        return ref _doc.Members[record.MemberStart + record.MemberCount - 1]; // always present by construction
+    }
+
+    /// <summary>
+    /// Applies an element-form markup extension (<paramref name="extObject"/>) as the value of
+    /// <paramref name="member"/>: a folded intrinsic assigns its constant; a live extension attaches to the
+    /// target member exactly as the curly attribute form does — the target is <paramref name="member"/>'s
+    /// resolved member, the extension record is the synthetic object's value slot.
+    /// </summary>
+    private void ApplyExtensionMemberObject(in MemberRecord member, in ObjectRecord extObject, object instance, XamlType type, int line, int column)
+    {
+        ref readonly var value = ref ExtensionValueMember(in extObject);
+        if (value.Kind == XamlValueKind.Folded)
+        {
+            ApplyValue(in member, instance, type, _doc.Constants[value.ValueIndex], line, column);
+            return;
+        }
+
+        var attach = new MemberRecord(member.MemberId, XamlValueKind.Extension, value.ValueIndex, 0, member.PackedLineInfo);
+        ApplyExtension(in attach, instance, type, line, column);
+    }
+
+    /// <summary>
+    /// Produces the standalone value of an element-form markup extension used as a dictionary/collection ENTRY
+    /// (no target member): a folded constant, a resolved <c>StaticResource</c>, or a <c>DynamicResource</c>
+    /// carrier (<see cref="ResourceReference"/> — resource aliasing). Binding/TemplateBinding/custom have no
+    /// meaning without a target and are rejected with a positioned diagnostic.
+    /// </summary>
+    private object? ProvideExtensionEntryValue(in ObjectRecord record, int line, int column)
+    {
+        ref readonly var value = ref ExtensionValueMember(in record);
+        if (value.Kind == XamlValueKind.Folded)
+            return _doc.Constants[value.ValueIndex];
+
+        ref readonly var ext = ref _doc.Extensions[value.ValueIndex];
+        switch (ext.Kind)
+        {
+            case ExtensionKind.StaticResource:
+                return _extensionHandler.ResolveStaticResource(this,
+                    _extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column), line, column);
+
+            case ExtensionKind.DynamicResource:
+                return new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
+
+            case ExtensionKind.Custom:
+                // A custom extension standing alone (a dictionary/collection entry): ProvideValue with no
+                // target member — the produced value is stored (and receives the entry's x:Key).
+                return _extensionHandler.ProvideStandaloneCustomValue(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
+
+            default:
+                throw Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
+                    $"A {ext.Kind} markup extension has no target as a standalone dictionary or collection entry " +
+                    "(only x:Null/x:Type/x:Static, StaticResource, DynamicResource, and custom extensions may stand alone).", line, column);
+        }
+    }
+
     private void ApplyDeferred(in MemberRecord member, object instance, XamlType type, int line, int column)
     {
         var resolved = member.MemberId >= 0 ? _doc.ResolvedMembers[member.MemberId] : null;
@@ -949,16 +1044,14 @@ internal sealed class XamlObjectGraphBuilder
             $"An x:Key markup extension must be {{x:Type T}} or {{x:Static M}}; '{node.Name}' is not supported as a key.", line, column);
     }
 
-    // Resolves an {x:Type T} token (the default UI xmlns) to its <see cref="System.Type"/> — shared by the x:Key
-    // path and a nested {x:Type} key inside a {StaticResource}/{DynamicResource} (control themes key by {x:Type},
-    // and a Style.BasedOn references one). Mirrors the generator's XamlDataTypeScope.ResolveToken.
+    // Resolves an {x:Type T} token to its <see cref="System.Type"/> — shared by the x:Key path, a nested
+    // {x:Type} key inside a {StaticResource}/{DynamicResource} (control themes key by {x:Type}, and a
+    // Style.BasedOn references one), and RelativeSource AncestorType. Delegates to the prefix-aware
+    // TryResolveTypeToken (an xmlns-prefixed token — vm:LayerModel — resolves against its bound namespace,
+    // not just the default UI xmlns), reporting an unbound prefix distinctly. Mirrors the generator's
+    // XamlDataTypeScope.ResolveToken.
     internal object ResolveTypeToken(string typeName, int line, int column)
-    {
-        var resolution = _options.MetadataProvider.TryGetType(XamlSchemaContext.CursorialUiNamespace, typeName);
-        if (resolution.IsResolved)
-            return resolution.Type!.SystemType();
-        throw Fatal(XamlDiagnosticCodes.TypeNotFound, $"{{x:Type {typeName}}} could not be resolved to a type.", line, column);
-    }
+        => ResolveTypeToken(typeName, "x:Type", line, column);
 
     // ── Resource dictionaries (matrix §11/§12) ─────────────────────────────────────────────────────
 
@@ -1460,10 +1553,37 @@ internal sealed class XamlObjectGraphBuilder
     /// <summary>
     /// Resolves a <c>{TemplateBinding sourceName}</c> source property to a registered <see cref="UIProperty"/>
     /// on the target's runtime type (matrix X127/X160). The source name resolves through the metadata
-    /// provider against the target's type (the templated parent shares the property identity).
+    /// provider against the target's type (the templated parent shares the property identity). A
+    /// TYPE-QUALIFIED source (<c>Owner.Prop</c>, <c>ns:Owner.Prop</c>, or WPF's optional-parens
+    /// <c>(Owner.Prop)</c>) names its declaring type explicitly — an attached property, or one declared on a
+    /// base/other type — and resolves the owner through that xmlns-aware token.
     /// </summary>
     internal UIProperty ResolveTemplateBindingSource(UIObject target, UIProperty targetProperty, string sourceName, int line, int column)
     {
+        var name = sourceName.Trim();
+        if (name.Length > 1 && name[0] == '(' && name[^1] == ')')
+            name = name[1..^1].Trim();
+
+        // Type-qualified: split off the OWNER (everything before the last dot — a possibly prefixed type
+        // token) and find the property on that resolved owner type.
+        int dot = name.LastIndexOf('.');
+        if (dot > 0 && dot < name.Length - 1)
+        {
+            var ownerToken = name[..dot];
+            var propName = name[(dot + 1)..];
+
+            if (!TryResolveTypeToken(ownerToken, out var ownerType, out var unboundPrefix))
+                throw unboundPrefix is not null
+                    ? Fatal(XamlDiagnosticCodes.UndeclaredPrefix,
+                        $"Unbound xmlns prefix '{unboundPrefix}' in TemplateBinding source '{sourceName}'.", line, column)
+                    : Fatal(XamlDiagnosticCodes.TypeNotFound,
+                        $"TemplateBinding source owner type '{ownerToken}' was not found.", line, column);
+
+            return UIPropertyRegistry.Find(ownerType, propName)
+                   ?? throw Fatal(XamlDiagnosticCodes.MemberNotFound,
+                       $"TemplateBinding source property '{propName}' is not a registered UIProperty on '{ownerType.Name}'.", line, column);
+        }
+
         // The source lives on the TEMPLATED PARENT (matrix X160) — resolve against its runtime type when
         // a template build is in progress, falling back to the target part's type.
         var sourceOwner = TemplateContext?.TemplatedParent?.GetType() ?? target.GetType();

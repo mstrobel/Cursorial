@@ -263,9 +263,12 @@ internal sealed class InspectorDemo : IDemo
                              <bars:Ribbon DockPanel.Dock="Top" Margin="2,1">
                               <bars:RibbonTab IsFileTab="True">
                                  <bars:RibbonTab.Header>
-                                   <StackPanel Orientation="Horizontal">
-                                     <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0" />
-                                     <AccessTextPresenter Text="_File" />
+                                   <StackPanel x:Name="FileTabContent" Orientation="Horizontal"
+                                               TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
+                                     <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
+                                           TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                                     <ContentPresenter Content="_File" RecognizesAccessKey="True"
+                                                       TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
                                    </StackPanel>
                                  </bars:RibbonTab.Header>
                                </bars:RibbonTab>
@@ -598,6 +601,7 @@ internal sealed class InspectorDemo : IDemo
 
                 case 'd':
                     app.RequestedThemeBase = app.ActualThemeVariant.IsDark ? ThemeBase.Light : ThemeBase.Dark;
+                    UpdateStatus();
                     ReinspectLast();
                     e.Handled = true;
                     break;
@@ -960,6 +964,10 @@ internal sealed class InspectorDemo : IDemo
             root.Items.Add(Node(nameof(UIElement.DesiredSize), current.DesiredSize));
             root.Items.Add(Node(nameof(UIElement.Bounds), current.Bounds));
 
+            root.Items.Add(Node("TextElement.Attributes",
+                                NoValue,
+                                inlineValue: TextElement.ComposeAttributes(current)));
+
             if (app.InputDispatcher.LastPointerPosition is {} position)
             {
                 IReadOnlyList<LayerCellSample>? samples = app.WindowManager?.SampleCell(position.Column, position.Row);
@@ -984,7 +992,18 @@ internal sealed class InspectorDemo : IDemo
                 }
             }
 
-            var properties = current.GetSetProperties().OrderBy(p => p.Name).ToArray();
+            var properties = UIProperties.ForType(current.GetType())
+                                         .Concat(UIProperties.AttachedBy(current.GetType()))
+                                         .Concat(current.GetType() != typeof(AccessTextPresenter)
+                                                     ? UIProperties.ForType(typeof(AccessTextPresenter))
+                                                     : [])
+                                         .Concat(current.GetType() != typeof(TextElement)
+                                                     ? UIProperties.AttachedBy(typeof(TextElement))
+                                                     : [])
+                                         .Concat(UIProperties.Inheriting)
+                                         .Distinct()
+                                         .OrderBy(p => p.Name)
+                                         .ToList();
 
             foreach (var property in properties)
             {
@@ -1126,6 +1145,7 @@ internal sealed class InspectorDemo : IDemo
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.Layer), frame.Layer));
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.SelectorDescription), frame.SelectorDescription));
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.IsActive), frame.IsActive));
+                    frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.IsConditional), frame.IsConditional));
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.HasValue), frame.HasValue));
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.LastProducedValue), frame.LastProducedValue));
                     frameRoot.Items.Add(Node(nameof(StyleFrameExplanation.ResourceKey), frame.ResourceKey));
@@ -1231,7 +1251,7 @@ internal sealed class InspectorDemo : IDemo
                         Transition t => $"Transition {FormatValue(t.Property)} " + $"({FormatValue(t.Duration)}s" +
                                         $"{(t.Delay > TimeSpan.Zero ? $" after {FormatValue(t.Delay)}s" : "")})",
                         Color { Kind: ColorKind.Rgb } c => c.ToString("x"),
-                        Color c                         => c.ToString(),
+                        Color c                         => c.ToString("c"),
                         Pen p => $"Pen {{ Brush={FormatValue(p.Brush)}, Weight={p.Weight}, Corners={FormatValue(p.Corners)}, " +
                                  $"Dash={FormatValue(p.Dash)}, EndCap={FormatValue(p.EndCap)}, Junction={FormatValue(p.Junction)}, " +
                                  $"GlyphSet={FormatValue(p.GlyphSet)}, Attributes={FormatValue(p.Attributes)} }}",
@@ -1306,7 +1326,7 @@ internal sealed class InspectorDemo : IDemo
 
                 while (Rune.DecodeFromUtf16(current, out Rune r, out var consumed) is OperationStatus.Done)
                 {
-                    sb.Append(Rune.IsLetterOrDigit(r) ? r.ToString() : $"\\u{r.Value:X}");
+                    sb.Append(IsPrintableAscii(r) ? r.ToString() : $"\\u{r.Value:X}");
                     current = current.Slice(consumed);
                 }
             }
@@ -1314,6 +1334,8 @@ internal sealed class InspectorDemo : IDemo
             return sb.ToString();
         }
 
+        private static bool IsPrintableAscii(Rune rune) => rune.Value is >= 0x20 and <= 0x7E;
+        
         private static void AttachBindingExplanation(BindingExplanation bd, TreeViewItem item)
         {
             var rootBindingItem = Node("Binding", NoValue);

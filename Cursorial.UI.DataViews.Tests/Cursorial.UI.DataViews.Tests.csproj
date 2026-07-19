@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <RootNamespace>Cursorial.Tests.UI.DataViews</RootNamespace>
+
+        <!--
+            The DataViews allocation contracts (steady-state scroll/paint 0 B, the sort/shaping
+            benchmarks) assert exact zero deltas from GC.GetAllocatedBytesForCurrentThread() around
+            warmed loops — the same determinism story as Cursorial.UI.Tests (see its csproj remarks):
+            tiered re-JIT inside a measured window and background-GC allocation-context reconciliation
+            both charge phantom bytes to the delta. Test-only runtime knobs; no production effect.
+        -->
+        <TieredCompilation>false</TieredCompilation>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Cursorial.UI.DataViews\Cursorial.UI.DataViews.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Hosting.Headless\Cursorial.UI.Hosting.Headless.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -94,6 +94,7 @@ internal static class ControlThemes
         var presenter = new ContentPresenter { RecognizesAccessKey = true };
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
+        TextElement.ForwardInverse(presenter);
         var border = new Border { Child = presenter };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -245,19 +246,34 @@ internal static class ControlThemes
     // A well-fill ListBox (design doc §11.8a): a Border (opt-in BorderPen) over a ScrollViewer whose content is the
     // PART_ItemsHost ItemsPresenter — so a long list scrolls (the SCP band, C3). The items host stays in the
     // ListBox's template namescope even nested under the ScrollViewer, so GetTemplatePart finds it.
-    private static ControlTemplate ListBoxTemplate() => new(ctx =>
+    private static ControlTemplate ListBoxTemplate()
     {
-        var host = new ItemsPresenter();
-        ctx.RegisterName("PART_ItemsHost", host);
-        var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
-        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
-        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
-        ctx.RegisterName("PART_ScrollViewer", scroll);
-        var border = new Border { Child = scroll };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        return border;
-    });
+        var t = new ControlTemplate(
+            ctx =>
+                 {
+                     var host = new ItemsPresenter();
+                     ctx.RegisterName("PART_ItemsHost", host);
+
+                     var scroll = new ScrollViewer
+                                  {
+                                      Content = host
+                                  }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
+
+                     scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty,
+                                       new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+
+                     scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty,
+                                       new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+
+                     ctx.RegisterName("PART_ScrollViewer", scroll);
+                     var border = new Border { Child = scroll };
+                     border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                     return border;
+                 });
+
+        return t;
+    }
 
     private static Style ListBoxTheme()
         => new Style { Key = "Theme.ListBox" }
@@ -273,18 +289,50 @@ internal static class ControlThemes
     // order). The keyboard focus-row cue: brush-pair at color tiers (below); Inverse+Bold under
     // .caps-nocolor (CursorialThemeStyles.CapsNoColorListFocusCue — the landed P9.3b, the per-axis
     // composability proof).
-    private static ControlTemplate ListBoxItemTemplate() => new(ctx =>
+    private static ControlTemplate ListBoxItemTemplate()
     {
-        var presenter = new ContentPresenter();
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        var border = new Border { Child = presenter };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        // The row face forwards the Inverse axis (the NoColor selection/focus-row cue paints the
-        // WHOLE bar via the opaque NoColor fill); the label rides the presenter forward.
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
-        return border;
-    });
+        var t = new ControlTemplate(
+            ctx =>
+                 {
+                     var panel = new Grid();
+                     var presenter = new ContentPresenter();
+                     ctx.RegisterName("PART_ContentPresenter", presenter);
+                     var border = new Border { Child = presenter };
+                     border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                     border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     // The row face forwards the Inverse axis (the NoColor selection/focus-row cue paints the
+                     // WHOLE bar via the opaque NoColor fill); the label rides the presenter forward.
+                     border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+
+                     var selectionIndicator = new GlyphPresenter
+                                              {
+                                                  Orientation = Orientation.Vertical,
+                                                  IsHitTestVisible = false
+                                              };
+
+                     ctx.RegisterName("PART_SelectionIndicator", selectionIndicator);
+
+                     selectionIndicator.SetResourceReference(GlyphPresenter.GlyphProperty, ThemeKeys.ListItemSelectionGlyph);
+                     selectionIndicator.SetResourceReference(GlyphPresenter.ForegroundProperty, ThemeKeys.AccentBrush);
+                     
+                     TextElement.ForwardInverse(presenter);
+                     TextElement.ForwardInverse(selectionIndicator);
+
+                     selectionIndicator.SetBinding(
+                         UIElement.VisibilityProperty,
+                         new TemplateBinding(ListBoxItem.IsSelectedProperty)
+                         {
+                             Converter = BooleanToVisibilityConverter.Instance
+                         });
+
+                     panel.Children.Add(border);
+                     panel.Children.Add(selectionIndicator);
+
+                     return panel;
+                 });
+
+        return t;
+    }
 
     // ───────────────────────────── ComboBox / ComboBoxItem ─────────────────────────────
 
@@ -307,7 +355,8 @@ internal static class ControlThemes
         editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
         editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
 
-        var content = new Grid { Margin = new(1, 0) }; // the two faces overlap in one cell; the collapsed one takes no space
+        var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
+        content.SetBinding(UIElement.MarginProperty, new TemplateBinding(Control.PaddingProperty));
         content.Children.Add(selected);
         content.Children.Add(editable);
 
@@ -358,6 +407,7 @@ internal static class ControlThemes
                }
            }.SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(Control.TemplateProperty, ComboBoxTemplate());
 
     // The drop-down caret: a bare 1-cell ▾ (no button chrome — the BareGlyphButtonTemplate, like the scroll arrows),
@@ -435,6 +485,7 @@ internal static class ControlThemes
     private static ControlTemplate TreeViewItemTemplate() => new(ctx =>
     {
         var twisty = new TextBlock { Width = 2 };
+        twisty.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TreeItemForegroundNormal);
         ctx.RegisterName("PART_Twisty", twisty);
         DockPanel.SetDock(twisty, Dock.Left);
 
@@ -443,11 +494,16 @@ internal static class ControlThemes
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
         header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
 
+        var headerFace = new Border { Child = header };
         var headerRow = new DockPanel();
-        headerRow.Children.Add(twisty); // docked left (the expander)
-        headerRow.Children.Add(header); // fills the remaining width
+        headerRow.Children.Add(twisty);     // docked left (the expander)
+        headerRow.Children.Add(headerFace); // fills the remaining width
         var bar = new Border { Child = headerRow };
-        bar.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+
+        TextElement.ForwardInverse(headerFace);
+        headerFace.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        headerFace.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        headerFace.SetValue(UIElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
 
         var host = new ItemsPresenter { Margin = new Margins(2, 0, 0, 0) }; // recursive indent
         ctx.RegisterName("PART_ItemsHost", host);
@@ -466,7 +522,10 @@ internal static class ControlThemes
         // NO :pointerover fill (WPF-faithful): InteractionState.PointerOver is set on EVERY ancestor of the hovered
         // leaf, and TreeViewItems nest, so a hover rule would light the whole ancestor header-bar chain. A tree node
         // highlights on selection + keyboard focus only.
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.TreeItemBackgroundSelected));
+        theme.Children.Add(new Style("^:selected")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.SelectionInactiveBrush));
+        theme.Children.Add(new Style("^:focus")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.TreeItemBackgroundSelected));
         // The keyboard focus-row cue (reverse-video), ordered after :selected so a focused+selected node reads as
         // focused; :focus-visible (not :focus) so a mouse click shows :selected while keyboard nav shows the row.
         theme.Children.Add(new Style("^:focus-visible")
@@ -553,7 +612,9 @@ internal static class ControlThemes
             .SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForeground)
             .Set(Control.TemplateProperty, CalendarCellTemplate());
         theme.Children.Add(new Style("^:inactive").SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayInactiveForeground));
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundHover)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayForegroundHover));
         theme.Children.Add(new Style("^:today").SetResource(Control.ForegroundProperty, ThemeKeys.CalendarDayTodayForeground));
         theme.Children.Add(new Style("^:selected")
             .SetResource(Control.BackgroundProperty, ThemeKeys.CalendarDayBackgroundSelected)
@@ -596,6 +657,7 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         presenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Icon.ResolvedContentProperty));
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        TextElement.ForwardInverse(presenter);
         return presenter;
     });
 
@@ -622,59 +684,118 @@ internal static class ControlThemes
 
     // A DatePicker: a recessed WellBrush field [date text … 'v' drop glyph] that toggles a Popup hosting a Calendar
     // (PART_Calendar) — the ListBox-in-Popup recipe with a Calendar instead of a list. ASCII-safe drop glyph.
-    private static ControlTemplate DatePickerTemplate() => new(ctx =>
+    private static ControlTemplate DatePickerTemplate()
     {
-        // Read-only face: the selected date / watermark (visible when !IsEditable; the DatePicker toggles visibility).
-        var text = new TextBlock();
-        ctx.RegisterName("PART_DisplayText", text);
+        var t = new ControlTemplate(
+            ctx =>
+                 {
+                     // Read-only face: the selected date / watermark (visible when !IsEditable; the DatePicker toggles visibility).
+                     var text = new TextBlock();
+                     ctx.RegisterName("PART_DisplayText", text);
 
-        // Editable face: a text box to type a date (collapsed unless IsEditable).
-        var editable = new TextBox { Visibility = Visibility.Collapsed };
-        ctx.RegisterName("PART_EditableTextBox", editable);
-        editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(DatePicker.WatermarkProperty));
+                     // Editable face: a text box to type a date (collapsed unless IsEditable).
+                     var editable = new TextBox
+                                    {
+                                        Visibility = Visibility.Collapsed,
+                                        Padding = Margins.Zero,
+                                        Background = null,
+                                        Cursor = MouseCursorShape.Text
+                                    };
 
-        var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
-        content.Children.Add(text);
-        content.Children.Add(editable);
+                     ctx.RegisterName("PART_EditableTextBox", editable);
 
-        // Drop caret (▾) — the bare muted glyph that toggles the calendar (the DatePicker wires its Click).
-        var drop = DropDownCaret();
-        ctx.RegisterName("PART_DropDown", drop);
-        DockPanel.SetDock(drop, Dock.Right);
+                     editable.SetBinding(TextBox.PlaceholderProperty,
+                                         new TemplateBinding(DatePicker.WatermarkProperty));
 
-        var row = new DockPanel();
-        row.Children.Add(drop);    // docked right (the drop indicator + toggle)
-        row.Children.Add(content); // fills the remaining width (the face)
+                     var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
+                     content.Children.Add(text);
+                     content.Children.Add(editable);
 
-        var field = new Border { Padding = new Margins(1, 0, 0, 0), Child = row };
-        field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                     // Drop caret (▾) — the bare muted glyph that toggles the calendar (the DatePicker wires its Click).
+                     var drop = DropDownCaret();
+                     ctx.RegisterName("PART_DropDown", drop);
+                     DockPanel.SetDock(drop, Dock.Right);
 
-        // No BorderPen literal: the popup surface Border carries the themed border; a literal here
-        // would be the part's resting truth under the amended lattice (§20, 2026-07-12) and the
-        // Calendar theme's resting BorderPen could no longer replace it. (A red debug pen lived
-        // here until the 2026-07-12 pre-cleanup — masked under the old ladder, visible under the new.)
-        var calendar = new Calendar();
-        ctx.RegisterName("PART_Calendar", calendar);
-        var surface = new Border { /*Occludes = true, */Child = calendar };
-        surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
-        surface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-        var popup = new Popup { Child = surface };
-        ctx.RegisterName("PART_Popup", popup);
+                     var row = new DockPanel();
+                     row.Children.Add(drop);    // docked right (the drop indicator + toggle)
+                     row.Children.Add(content); // fills the remaining width (the face)
 
-        var root = new Grid(); // the Popup adds no layout (0×0); the field fills the cell
-        root.Children.Add(field);
-        root.Children.Add(popup);
-        root.Styles.Add(new Style(Selectors.OfType<Calendar>()).Set(Control.BorderPenProperty, null));
-        return root;
-    });
+                     var field = new Border { Child = row };
+                     field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                     field.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+
+                     // No BorderPen literal: the popup surface Border carries the themed border; a literal here
+                     // would be the part's resting truth under the amended lattice (§20, 2026-07-12) and the
+                     // Calendar theme's resting BorderPen could no longer replace it. (A red debug pen lived
+                     // here until the 2026-07-12 pre-cleanup — masked under the old ladder, visible under the new.)
+                     var calendar = new Calendar();
+                     ctx.RegisterName("PART_Calendar", calendar);
+
+                     var surface = new Border { /*Occludes = true, */Child = calendar };
+
+                     surface.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+                     surface.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+                     var popup = new Popup { Child = surface };
+                     ctx.RegisterName("PART_Popup", popup);
+
+                     var root = new Grid(); // the Popup adds no layout (0×0); the field fills the cell
+                     root.Children.Add(field);
+                     root.Children.Add(popup);
+                     root.Styles.Add(new Style(Selectors.OfType<Calendar>()).Set(Control.BorderPenProperty, null));
+                     return root;
+                 });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<DatePicker>())
+            {
+                Children =
+                {
+                    new Style("^:focus /template/ TextBox#PART_EditableTextBox")
+                       .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
+                    new Style("^:pointerover /template/ TextBox#PART_EditableTextBox")
+                       .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover),
+                    new Style("^:disabled /template/ TextBox#PART_EditableTextBox")
+                       .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush)
+                }
+            });
+        
+        return t;
+    }
 
     private static Style DatePickerTheme()
-        => new Style { Key = "Theme.DatePicker" }
-            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(UIElement.MinWidthProperty, 12)
-            .Set(Control.TemplateProperty, DatePickerTemplate());
+    =>  new Style
+        {
+            Key = "Theme.DatePicker",
+            Children =
+            {
+                new Style("^:focus")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
+                new Style("^:pointerover")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover),
+                new Style("^:disabled")
+                   .SetResource(Control.BackgroundProperty, ThemeKeys.DisabledBackgroundBrush)
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush),
+                new Style("^")
+                    {
+                        When =
+                        {
+                            new DataCondition(new Binding(DatePicker.IsEditableProperty) { RelativeSource = RelativeSource.Self }, value: false),
+                            new DataCondition(new Binding(DatePicker.SelectedDateProperty) { RelativeSource = RelativeSource.Self, FallbackValue = null }, value: null)
+                        }
+                    }
+                   .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush)
+            }
+        }.SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a recessed field
+         .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+         .Set(Control.PaddingProperty, new Margins(1,0,0,0))
+         .Set(UIElement.MinWidthProperty, 15)
+         .Set(Control.TemplateProperty, DatePickerTemplate());
 
     // ───────────────────────────── Menu / MenuItem / Separator ─────────────────────────────
 
@@ -752,10 +873,11 @@ internal static class ControlThemes
                                 Occludes = true,
                                 HorizontalAlignment = HorizontalAlignment.Center,
                                 Margin = new Margins(1, 0, 1, 0),
-                                // IsRenderBoundary = true,
-                                // ZIndex = 1 // don't get overwritten by border
+                                IsRenderBoundary = true
                             };
 
+                // strip.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                
                 ctx.RegisterName("PART_TabStrip", strip);
                 DockPanel.SetDock(strip, Dock.Top);
 
@@ -768,11 +890,11 @@ internal static class ControlThemes
                 body.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
                 // body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
 
-                var panel = new DockPanel { /*ZIndex = 1*/ };
+                var panel = new DockPanel();
                 panel.Children.Add(strip); // docked top (the header row)
                 panel.Children.Add(body);  // fills the rest (the selected tab's body)
-                
-                var border = new Border { /*Child = panel*//*,  Occludes = true*//*, ZIndex = 0*/ };
+
+                var border = new Border();
                 border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
                 border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
 
@@ -805,7 +927,8 @@ internal static class ControlThemes
                // The header face forwards the Inverse axis: the NoColor selection rule now targets the
                // TABITEM (control-level — non-inheriting axes cannot leak into the page content), and
                // this forward + the header presenter's leaf forward deliver it to fill + label.
-               headerHost.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+               TextElement.ForwardInverse(header);
+               TextElement.ForwardInverse(headerHost);
                ctx.RegisterName("PART_HeaderSite", headerHost);
 
                // The active-tab accent underline (gallery "active tab marked by accent bar (━ cells)"): a 1-row
@@ -828,8 +951,8 @@ internal static class ControlThemes
             {
                 Children =
                 {
-                    new Style(Selectors.Nesting().Template().OfType<Separator>().Name("PART_Underline"))
-                        .SetResource(Border.BorderPenProperty, ThemeKeys.TabUnderlinePen),       // underline pen
+                    new Style(Selectors.Nesting().PseudoClass(":focus").Template().OfType<Separator>().Name("PART_Underline"))
+                       .SetResource(Border.BorderPenProperty, ThemeKeys.TabFocusedUnderlinePen), // focus underline pen
 
                     new Style(Selectors.Nesting().Template().Name("PART_HeaderSite"))
                         .SetResource(TextElement.ForegroundProperty, ThemeKeys.TabForegroundNormal),
@@ -1099,15 +1222,19 @@ internal static class ControlThemes
     {
         var presenter = new TextPresenter();
         ctx.RegisterName("PART_TextPresenter", presenter);
-        var border = new Border { Padding = new Margins(1, 0), Child = presenter };
+        var border = new Border { Child = presenter };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        TextElement.ForwardInverse(border);
+        TextElement.ForwardInverse(presenter);
         return border;
     });
 
     private static Style TextBoxTheme()
     {
         var theme = ApplyPaletteSpine(new Style { Key = "Theme.TextBox" }, ThemeKeys.InputForegroundNormal, ThemeKeys.InputBackgroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
             .Set(UIElement.MinWidthProperty, 12)
             .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionInactive)
             .Set(Control.TemplateProperty, TextBoxTemplate());
@@ -1176,6 +1303,11 @@ internal static class ControlThemes
 
                      var face = new Border { Padding = new Margins(1, 0), Child = row };
                      face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     
+                     TextElement.ForwardInverse(face);
+                     TextElement.ForwardInverse(gesture);
+                     TextElement.ForwardInverse(iconTray);
+                     TextElement.ForwardInverse(submenuIndicator);
 
                      var itemsHost = new ItemsPresenter();
                      ctx.RegisterName("PART_ItemsHost", itemsHost);
@@ -1257,11 +1389,14 @@ internal static class ControlThemes
     private static Style ListBoxItemTheme()
     {
         var theme = new Style { Key = "Theme.ListBoxItem" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundNormal)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
             .Set(Control.PaddingProperty, new(1, 0))
             .Set(Control.TemplateProperty, ListBoxItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive));
         // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
         // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
         // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
@@ -1424,6 +1559,7 @@ internal static class ControlThemes
                    // check/radio never fill (a stretched row would fill full-width like a selection bar). The binding
                    // stays so a consumer that sets Background still paints. Focus is the in-box caret, not a fill.
                    var face = new Border { Child = row };
+                   TextElement.ForwardInverse(face);
                    face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
                    return face;
                });
@@ -1438,7 +1574,7 @@ internal static class ControlThemes
                 {
                     new Style(Selectors.Nesting().Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.MutedBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":focus-visible").Template().Name("PART_Glyph"))
+                    new Style(Selectors.Nesting().PseudoClass(":focus").Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.TextBrush),
                     new Style(Selectors.Nesting().PseudoClass(":pointerover").Template().Name("PART_Glyph"))
                         .SetResource(ToggleGlyph.GlyphForegroundProperty, ThemeKeys.AccentBrush),
@@ -1800,8 +1936,10 @@ internal static class ControlThemes
         chrome.Styles.Add(
             new Style(Selectors.Is<Window>().Class("obscured"))
             {
-                Children = { new Style(Selectors.Nesting().Template().Name("PART_ObscuredOverlay")).Set(UIElement.VisibilityProperty, Visibility.Visible) }
+                Children = { new Style(Selectors.Nesting().Template().Name("PART_ObscuredOverlay"))
+                                .Set(UIElement.VisibilityProperty, Visibility.Visible) }
             });
+
         return chrome;
     });
 

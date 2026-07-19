@@ -44,16 +44,17 @@ internal static class ThemeVariantProbe
             {
                 var sequence = new List<ThemeVariantKey>(9);
 
-                // 1. exact-base tier descent: (B,T) → … → (B,NoColor)
+                // 1. exact-base tier -> exact base no-tier descent: (B,T) → (B,·) → (B,T-1)… → (B,Ansi16)
                 foreach (var t in DescendFrom(tier))
+                {
                     sequence.Add(new ThemeVariantKey(@base, t));
-
-                // 2. wildcard-base tier descent: (·,T) → … → (·,NoColor)
-                foreach (var t in DescendFrom(tier))
                     sequence.Add(new ThemeVariantKey(null, t));
+                }
 
-                // 3. base-only catch-all, last.
+                // 3. base-only, last stop before NoColor (light/dark differentiation implies more than monochrome).
                 sequence.Add(new ThemeVariantKey(@base, null));
+
+                sequence.Add(new ThemeVariantKey(null, ColorDepth.NoColor));
 
                 tables[Index(@base, tier)] = [.. sequence];
             }
@@ -65,7 +66,7 @@ internal static class ThemeVariantProbe
     // The tiers from `tier` down to NoColor (descent never ascends).
     private static IEnumerable<ColorDepth> DescendFrom(ColorDepth tier)
     {
-        for (var t = (int)tier; t >= 0; t--)
-            yield return (ColorDepth)t;
+        for (var t = tier; t >= ColorDepth.Ansi16; t--)
+            yield return t;
     }
 }

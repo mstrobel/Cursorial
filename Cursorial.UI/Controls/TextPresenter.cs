@@ -50,6 +50,11 @@ public sealed class TextPresenter : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
+        int caretAffordance = 1;
+
+        // if (UIApplication.Current?.Capabilities.Output.Cursor.ShapeControl is not false)
+        //     caretAffordance = 0;
+
         var owner = Owner;
         if (owner is null)
             return new Size(1, 1);
@@ -57,7 +62,7 @@ public sealed class TextPresenter : UIElement
         // Single line: desire the displayed text's width plus one column for the end caret; the field stretches
         // when given more and scrolls when given less.
         if (!owner.IsMultiLine)
-            return new Size(GraphemeWidth.StringWidth(owner.DisplayText) + 1, 1);
+            return new Size(GraphemeWidth.StringWidth(owner.DisplayText) + caretAffordance, 1);
 
         // Multi-line: lay out against the available width (an Unbounded width naturally disables wrapping, since
         // no line exceeds it), then reserve clamp(lineCount, MinLines, MaxLines) rows.
@@ -67,7 +72,7 @@ public sealed class TextPresenter : UIElement
         var rows = ClampRows(layout.LineCount, owner.MinLines, owner.MaxLines);
         var width = wrap && !LayoutMath.IsUnbounded(availableSize.Columns)
             ? Math.Max(1, availableSize.Columns) // wrap fills the width
-            : layout.MaxWidth + 1;               // NoWrap (or unknown width) desires the widest line + the end caret
+            : layout.MaxWidth + caretAffordance; // NoWrap (or unknown width) desires the widest line + the end caret
         return new Size(width, rows);
     }
 
@@ -291,15 +296,29 @@ public sealed class TextPresenter : UIElement
             {
                 // MutedBrush carries the placeholder color on color tiers; Faint carries the de-emphasis on the
                 // NoColor tier where MutedBrush resolves to Default (adoption-spec §5: placeholder → Faint).
-                var muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
-                DrawText(context, 0, 0, placeholder, muted, null, CellStyle.Default.WithAttributes(TextAttributes.Faint));
+                IBrush? muted;
+                TextAttributes attributes = TextElement.ComposeAttributes(owner).Flags | TextAttributes.Faint;
+                
+                if (UIApplication.Current?.ActualThemeVariant.Tier >= ColorDepth.Ansi256)
+                    muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
+                else
+                    muted = foreground;
+                
+                DrawText(context, 0, 0, placeholder, muted, null, CellStyle.Default.WithAttributes(attributes));
             }
 
             return;
         }
 
+        IBrush? selectionBrush;
+        
         var noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
-        var selectionBrush = owner.SelectionBrush ?? ResolveBrush(owner.IsFocused ? ThemeKeys.SelectionBrush : ThemeKeys.SelectionInactiveBrush);
+        if (noColor)
+            selectionBrush = owner.IsFocused ? owner.SelectionBrush ?? ResolveBrush(ThemeKeys.SelectionBrush) : Brushes.Default;
+        else
+            selectionBrush = owner.SelectionBrush ?? ResolveBrush(owner.IsFocused ? ThemeKeys.SelectionBrush : ThemeKeys.SelectionInactiveBrush);
+        
+        var inverse = TextElement.GetInverse(this);
         // SelectionBounds are MODEL offsets — project them into the displayed text (identity for a TextBox).
         var (modelSelectionStart, modelSelectionEnd) = owner.SelectionBounds;
         var selectionStart = owner.ToDisplayIndex(modelSelectionStart);
@@ -307,7 +326,7 @@ public sealed class TextPresenter : UIElement
 
         if (!owner.IsMultiLine)
         {
-            RenderSingleLine(context, text, viewportColumns, foreground, noColor, selectionBrush, selectionStart, selectionEnd);
+            RenderSingleLine(context, text, viewportColumns, foreground, noColor, selectionBrush, selectionStart, selectionEnd, inverse);
             return;
         }
 
@@ -331,14 +350,14 @@ public sealed class TextPresenter : UIElement
             var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);
             var selTo = Math.Clamp(selectionEnd, firstChar, lastChar);
 
-            DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush);
-            DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush);
-            DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush);
+            DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+            DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush, inverse);
+            DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
         }
     }
 
     private void RenderSingleLine(RenderContext context, string text, int viewport, IBrush? foreground, bool noColor,
-                                  IBrush? selectionBrush, int selectionStart, int selectionEnd)
+                                  IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
     {
         var layout = GraphemeLayout.Build(text);
         // The visible char window covers the viewport — boundary at/before the left edge through the boundary
@@ -350,15 +369,15 @@ public sealed class TextPresenter : UIElement
         var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);
         var selTo = Math.Clamp(selectionEnd, firstChar, lastChar);
 
-        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, foreground, selected: false, noColor, selectionBrush);
-        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, foreground, selected: true, noColor, selectionBrush);
-        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, foreground, selected: false, noColor, selectionBrush);
+        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, foreground, selected: false, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, foreground, selected: true, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, foreground, selected: false, noColor, selectionBrush, inverse);
     }
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the
     // line's per-cluster columns and lineStart is the line's model offset (0 for single-line).
     private void DrawLineRun(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text, int from, int to,
-                             int localRow, IBrush? foreground, bool selected, bool noColor, IBrush? selectionBrush)
+                             int localRow, IBrush? foreground, bool selected, bool noColor, IBrush? selectionBrush, bool inverse)
     {
         if (to <= from)
             return;
@@ -366,16 +385,19 @@ public sealed class TextPresenter : UIElement
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
         var span = text.AsSpan(from, to - from);
 
-        if (selected)
+        var style = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;
+        var selectionStyle = inverse || !noColor ? CellStyle.Default : CellStyle.Default.WithAttributes(TextAttributes.Inverse);
+ 
+        if (selected && (!noColor || Owner?.IsFocused is true))
         {
             if (noColor)
-                DrawText(context, localColumn, localRow, span, foreground, null, CellStyle.Default.WithAttributes(TextAttributes.Inverse));
+                DrawText(context, localColumn, localRow, span, foreground, null, selectionStyle);
             else
-                DrawText(context, localColumn, localRow, span, foreground, selectionBrush, CellStyle.Default);
+                DrawText(context, localColumn, localRow, span, foreground, selectionBrush, style);
         }
         else
         {
-            DrawText(context, localColumn, localRow, span, foreground, null, CellStyle.Default);
+            DrawText(context, localColumn, localRow, span, foreground, null, style);
         }
     }
 

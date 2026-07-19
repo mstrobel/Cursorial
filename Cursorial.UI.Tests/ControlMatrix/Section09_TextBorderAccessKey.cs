@@ -310,7 +310,7 @@ public sealed class Section09_TextBorderAccessKey
         Assert.False(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'i' not underlined
 
         Assert.True(AccessTextPresenter.TextProperty.GetEffects(typeof(AccessTextPresenter)).HasFlag(PropertyEffects.AffectsMeasure));
-        Assert.Equal(TextAttributes.Underline, new AccessTextPresenter().KeyAttributes); // default
+        Assert.Equal(UnderlineStyle.Single, new AccessTextPresenter().KeyUnderline); // default
     }
 
     [Fact] // C176

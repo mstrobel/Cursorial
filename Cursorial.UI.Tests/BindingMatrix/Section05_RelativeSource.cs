@@ -1,6 +1,7 @@
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
 
@@ -113,6 +114,28 @@ public class Section05_RelativeSource
         part.SetBinding(BindWidget.TextProperty,
             new Binding("Spacing") { RelativeSource = RelativeSource.Ancestor<StackPanel>(1) });
         Assert.Equal("11", part.Text); // reached past the templated parent to the outer StackPanel
+    }
+
+    [Fact] // B052a — a VISUAL-only anchor (a data-template item / template part attaches to the visual
+    // tree, never the logical one, so AttachedToLogicalTree never fires for it) must still wire its
+    // FindAncestor when it attaches VISUALLY. Installed while detached → parks; the visual attach event
+    // resolves it through the visual ancestor chain.
+    public void B052a_FindAncestor_VisualOnlyAttach_WiresOnVisualTree()
+    {
+        using var host = UIHeadlessHost.Create();
+        var panel = new StackPanel { Spacing = 42 };
+        host.ShowRoot(panel);
+        host.RunUntilIdle();
+
+        var leaf = new BindWidget();
+        var expr = leaf.SetBinding(BindWidget.TextProperty,
+            new Binding("Spacing") { RelativeSource = RelativeSource.Ancestor<StackPanel>(1) });
+        Assert.Equal(BindingStatus.SourceMissing, expr.Status); // no parent yet → parked
+
+        panel.AddVisualChildOnly(leaf); // visual attach ONLY — LogicalParent stays null
+        Assert.Null(leaf.LogicalParent);
+        Assert.Equal(BindingStatus.Active, expr.Status);
+        Assert.Equal("42", leaf.Text);  // resolved through the visual ancestor chain
     }
 
     [Fact]

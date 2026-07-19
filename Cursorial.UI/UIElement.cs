@@ -128,8 +128,25 @@ public abstract partial class UIElement : UIObject
     /// <param name="element">The element to evaluate.</param>
     /// <returns><c>true</c> if <paramref name="element"/> is a logical or visual descendant of this element.</returns>
     /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
-    public bool IsAncestorOf(UIElement? element) => 
-        element != null && (element == this || IsAncestorOf(element.VisualParent ?? element.UIParent));
+    public bool IsAncestorOf(UIElement? element) => IsLogicalAncestorOf(element) || IsVisualAncestorOf(element);
+
+    /// <summary>
+    /// Evaluates whether this element is a logical ancestor of <paramref name="element"/>.
+    /// </summary>
+    /// <param name="element">The element to evaluate.</param>
+    /// <returns><c>true</c> if <paramref name="element"/> is a logical descendant of this element.</returns>
+    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
+    public bool IsLogicalAncestorOf(UIElement? element) => 
+        element != null && (element == this || IsLogicalAncestorOf(element.UIParent));
+
+    /// <summary>
+    /// Evaluates whether this element is a visual ancestor of <paramref name="element"/>.
+    /// </summary>
+    /// <param name="element">The element to evaluate.</param>
+    /// <returns><c>true</c> if <paramref name="element"/> is a visual descendant of this element.</returns>
+    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
+    public bool IsVisualAncestorOf(UIElement? element) => 
+        element != null && (element == this || IsVisualAncestorOf(element._visualParent));
 
     /// <summary>
     /// Adopts <paramref name="child"/> into the visual tree at <paramref name="index"/> (−1 =
@@ -365,7 +382,19 @@ public abstract partial class UIElement : UIObject
     /// <summary>Raised when the element loses its logical parent (the S2 seam).</summary>
     public event EventHandler<LogicalTreeAttachmentEventArgs>? DetachedFromLogicalTree;
 
+    /// <summary>Raised when the element gains a visual parent (the S2 seam — DataContext/namescope wiring rides this).</summary>
+    public event EventHandler<TreeAttachmentEventArgs>? AttachedToTree;
+
+    /// <summary>Raised when the element loses its visual parent (the S2 seam).</summary>
+    public event EventHandler<TreeAttachmentEventArgs>? DetachedFromTree;
+
     // ───────────────────────────── lifecycle walks ─────────────────────────────
+
+    private void OnAttachedToTreeCore(in TreeAttachmentEventArgs e)
+    {
+        OnAttachedToTree(e);
+        AttachedToTree?.Invoke(this, e);
+    }
 
     /// <summary>
     /// Called when this element becomes part of an attached visual tree (pre-order, parent-first —
@@ -375,6 +404,13 @@ public abstract partial class UIElement : UIObject
     protected virtual void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
     }
+    
+    private void OnDetachedFromTreeCore(in TreeAttachmentEventArgs e)
+    {
+        OnDetachedFromTree(e);
+        DetachedFromTree?.Invoke(this, e);
+    }
+
 
     /// <summary>
     /// Called when this element leaves the attached visual tree (bottom-up — descendants detach
@@ -425,7 +461,7 @@ public abstract partial class UIElement : UIObject
         element._hasArrangedVisible = false; // §9.5: a re-attach re-parks transitions until the next real arrange
 
         element.UpdateEffectiveEnabled();
-        element.OnAttachedToTree(new TreeAttachmentEventArgs(root, element._visualParent));
+        element.OnAttachedToTreeCore(new TreeAttachmentEventArgs(root, element._visualParent));
 
         // S7 resource subscription re-resolution (CD16): force one re-resolve per producer, before
         // styling arms (a control-theme/setter resource read must see fresh values).
@@ -472,7 +508,7 @@ public abstract partial class UIElement : UIObject
         element.IsPromotedBoundary = false;
 
         var root = element._visualRoot!;
-        element.OnDetachedFromTree(new TreeAttachmentEventArgs(root, element._visualParent));
+        element.OnDetachedFromTreeCore(new TreeAttachmentEventArgs(root, element._visualParent));
         element._visualRoot = null;
         element.Depth = 0;
 

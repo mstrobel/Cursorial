@@ -33,6 +33,29 @@ public class ClosedTypeSetTests
         Assert.Contains("Binding", names); // raw — no BindingExtension exists; bare fallback bakes Binding
     }
 
+    [Fact] // a type-qualified {TemplateBinding Owner.Prop} / {TemplateBinding ns:Owner.Prop} joins the
+    // closed set: the loader resolves the OWNER type (via the metadata provider) to find the source
+    // UIProperty, so the generated provider must bake it. A bare {TemplateBinding Prop} has no owner.
+    public void Collects_TemplateBindingOwner_FromQualifiedSource()
+    {
+        const string xaml =
+            "<UserControl xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:vm=\"clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly\">" +
+            "<Border Background=\"{TemplateBinding Control.Background}\"/>" +
+            "<Border Tag=\"{TemplateBinding vm:ProbeModel.Value}\"/>" +
+            "<Border Padding=\"{TemplateBinding (Control.Padding)}\"/>" +
+            "<Border Width=\"{TemplateBinding Width}\"/>" +
+            "</UserControl>";
+
+        var locals = ClosedTypeSet.CollectTypeReferenceNames(xaml).Select(n => n.LocalName).ToHashSet();
+
+        Assert.Contains("Control", locals);      // Owner.Prop
+        Assert.Contains("ProbeModel", locals);   // ns:Owner.Prop (prefix carried through)
+        Assert.Contains(ClosedTypeSet.CollectTypeReferenceNames(xaml),
+            n => n is { LocalName: "ProbeModel", Namespace: "clr-namespace:GenApp.ViewModels;assembly=GeneratorTestAssembly" });
+        Assert.DoesNotContain("Width", locals);  // bare {TemplateBinding Prop} has no owner token
+    }
+
     [Fact]
     public void Collects_NestedElementNames()
     {

@@ -16,10 +16,9 @@ namespace Cursorial.UI.Configuration;
 /// </summary>
 internal static class OptionRowFactory
 {
-    internal static UIElement BuildRow(OptionViewModel option)
+    internal static UIElement BuildRow(OptionViewModel option, ref int nextTabIndex)
     {
         var row = new StackPanel { Margin = new Margins(0, 0, 0, 1) };
-
         var header = new DockPanel { LastChildFill = true };
 
         // Reset-to-inherited (docked right; visible only while the current layer sets the key).
@@ -39,7 +38,8 @@ internal static class OptionRowFactory
         DockPanel.SetDock(badge, Dock.Right);
         header.Children.Add(badge);
 
-        header.Children.Add(BuildEditor(option));
+        var editor = BuildEditor(option, ref nextTabIndex);
+        header.Children.Add(editor);
         row.Children.Add(header);
 
         row.Children.Add(new TextBlock
@@ -58,16 +58,17 @@ internal static class OptionRowFactory
         };
 
         row.DataContext = option;
+        reset.TabIndex = nextTabIndex++;
         return row;
     }
 
-    private static UIElement BuildEditor(OptionViewModel option)
+    private static UIElement BuildEditor(OptionViewModel option, ref int nextTabIndex)
     {
         switch (option)
         {
             case BooleanOptionViewModel boolean:
             {
-                var check = new CheckBox { Content = option.DisplayName };
+                var check = new CheckBox { Content = option.DisplayName, TabIndex = nextTabIndex++ };
                 check.DataContext = boolean;
                 check.SetBinding(ToggleButton.IsCheckedProperty,
                                  new Binding(nameof(BooleanOptionViewModel.IsChecked)) { Mode = BindingMode.TwoWay });
@@ -81,7 +82,7 @@ internal static class OptionRowFactory
                 DockPanel.SetDock(label, Dock.Left);
                 panel.Children.Add(label);
 
-                var combo = new ComboBox { DataContext = choice, MinWidth = 24 };
+                var combo = new ComboBox { DataContext = choice, MinWidth = 24, TabIndex = nextTabIndex++ };
                 combo.SetBinding(ItemsControl.ItemsSourceProperty, new Binding(nameof(ChoiceOptionViewModel.Items)));
                 combo.SetBinding(SelectingItemsControl.SelectedIndexProperty,
                                  new Binding(nameof(ChoiceOptionViewModel.SelectedIndex)) { Mode = BindingMode.TwoWay });

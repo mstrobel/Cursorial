@@ -225,15 +225,15 @@ public sealed class RenderContext
     // ───────────────────────────── strokes, boxes, panels, shadows ─────────────────────────────
 
     /// <summary>Strokes a line between element-local endpoints (axis-aligned → box glyphs; diagonal → braille).</summary>
-    public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false)
+    public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false, Arm? armHint = null)
     {
-        Inner.DrawLine(x0, y0, x1, y1, pen, overwrite);
+        Inner.DrawLine(x0, y0, x1, y1, pen, overwrite, armHint);
     }
 
-    /// <inheritdoc cref="DrawLine(int, int, int, int, in Pen, bool)"/>
-    public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false)
+    /// <inheritdoc cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/>
+    public void DrawLine(int x0, int y0, int x1, int y1, Color color, bool overwrite = false, Arm? armHint = null)
     {
-        Inner.DrawLine(x0, y0, x1, y1, color, overwrite);
+        Inner.DrawLine(x0, y0, x1, y1, color, overwrite, armHint);
     }
 
     /// <summary>Strokes the outline of an element-local <paramref name="rect"/>.</summary>

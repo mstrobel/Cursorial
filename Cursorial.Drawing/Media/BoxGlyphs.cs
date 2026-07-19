@@ -162,11 +162,15 @@ internal static class BoxGlyphs
 
     private static string AsciiFor(byte arms)
     {
-        bool horizontal = WeightOf(arms, 1) != 0 || WeightOf(arms, 3) != 0;
-        bool vertical = WeightOf(arms, 0) != 0 || WeightOf(arms, 2) != 0;
+        var wRight = WeightOf(arms, 1);
+        var wLeft = WeightOf(arms, 3);
+        var wTop = WeightOf(arms, 0);
+        var wBottom = WeightOf(arms, 2);
+        bool horizontal = wRight != 0 || wLeft != 0;
+        bool vertical = wTop != 0 || wBottom != 0;
         if (horizontal && vertical) return "+";
-        if (horizontal) return "-";
-        if (vertical) return "|";
+        if (horizontal) return wLeft > 2 || wRight > 2 ? "=" : "-";
+        if (vertical) return wTop > 2 || wBottom > 2 ? "#" : "|";
         return Space;
     }
 }

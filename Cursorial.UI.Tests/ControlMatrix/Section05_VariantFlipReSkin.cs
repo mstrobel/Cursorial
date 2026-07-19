@@ -178,7 +178,7 @@ public sealed class Section05_VariantFlipReSkin
         // Shadow the palette key at app scope — the control theme's ResourceReference setter re-resolves to
         // the override and the control re-skins with zero template work (the R2 promise).
         var custom = Color.FromRgb(0xCC, 0x33, 0x99);
-        host.Application.Resources[ThemeKeys.TextBrush] = new SolidColorBrush(custom);
+        host.Application.Resources[ThemeKeys.ButtonForegroundNormal] = new SolidColorBrush(custom);
         host.RunFrame();
         Assert.Equal(custom, FindForeground(host, "OK"));
     }
@@ -231,7 +231,7 @@ public sealed class Section05_VariantFlipReSkin
         Assert.Equal(ColorDepth.Ansi16, host.Application.ActualThemeVariant.Tier);
         var ansi16Ink = FindForeground(host, "OK");
         Assert.Equal(ColorKind.Palette, ansi16Ink.Kind);       // a palette index, not RGB — the KIND changed
-        Assert.Equal(Color.FromPalette(15), ansi16Ink);        // the (Dark,Ansi16) hand-picked TextBrush = Palette(15)
+        Assert.Equal(Color.FromPalette(8), ansi16Ink);        // the (Dark,Ansi16) hand-picked TextBrush = Palette(8)
 
         // Clear the override → back to the negotiated truecolor tier → RGB again.
         host.Application.RequestedColorTier = null;
@@ -273,7 +273,7 @@ public sealed class Section05_VariantFlipReSkin
         // Positive: the re-resolution reached the cell buffer (TextBrush → the hand-picked palette index),
         // and the wire no longer carries the 24-bit RGB ink (a regression dropping fg to Default would fail
         // the buffer assert rather than silently pass the wire-absence one).
-        Assert.Equal(Color.FromPalette(15), FindForeground(host, "OK"));
+        Assert.Equal(Color.FromPalette(8), FindForeground(host, "OK"));
         Assert.False(Contains(host.LastFrameBytes, "38;2;192;202;245"u8), "the dark RGB foreground SGR was emitted on an Ansi16 tier");
         var ansi16Version = rgbScene.RasterVersion;
 

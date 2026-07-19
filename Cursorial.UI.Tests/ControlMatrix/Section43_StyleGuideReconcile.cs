@@ -26,7 +26,7 @@ public sealed class Section43_StyleGuideReconcile
 {
     // Dark (Truecolor) palette hex the gallery pins.
     private static readonly Color Text = Color.FromHex("#c0caf5");      // --text
-    private static readonly Color TextDim = Color.FromHex("#a9b1d6");   // --text-dim
+    private static readonly Color TextDim = Color.FromHex("#8d9fed");   // --text-dim
     private static readonly Color Surface = Color.FromHex("#24283b");   // --surface
     private static readonly Color Panel = Color.FromHex("#171A26");     // --panel
     private static readonly Color Accent = Color.FromHex("#7aa2f7");    // --accent
@@ -53,9 +53,10 @@ public sealed class Section43_StyleGuideReconcile
         host.RunUntilIdle();
 
         var panel = BrushColor(probe, ThemeKeys.PanelBrush);
+        var onAccent = BrushColor(probe, ThemeKeys.OnAccentBrush);
         Assert.Equal(Panel, panel);
-        Assert.Equal(panel, BrushColor(probe, ThemeKeys.ListItemForegroundFocus)); // chases the alias → --panel
-        Assert.Equal(panel, BrushColor(probe, ThemeKeys.TreeItemForegroundFocus));
+        Assert.Equal(onAccent, BrushColor(probe, ThemeKeys.ListItemForegroundFocus)); // chases the alias → --panel
+        Assert.Equal(onAccent, BrushColor(probe, ThemeKeys.TreeItemForegroundFocus));
         Assert.Equal(panel, BrushColor(probe, ThemeKeys.CalendarDayForegroundFocus));
         // The reverse-video FILL stays --text (unchanged), and a Button's focus ink stays --bg (gallery `.rev`).
         Assert.Equal(Text, BrushColor(probe, ThemeKeys.ListItemBackgroundFocus));

@@ -668,6 +668,9 @@ public sealed class InputDispatcher : IInputDispatchTarget
         while (hit is not null && !hit.IsEffectivelyEnabled)
             hit = hit.VisualParent ?? hit.UIParent; // ND7 — same logical hop as the route walk
 
+        // TODO: ^^^ mouse events probably _shouldn't_ route outside the visual tree, but until that decision
+        //           is adversarially reviewed and put into effect, this should match the logic in EventRoute.
+        
         return hit;
     }
 

@@ -50,6 +50,10 @@ internal sealed class EventRoute
     /// tooltip/popup→owner bridge they do (a PlacementTarget-only popup's Escape reaches its owner).</summary>
     internal void Build(UIElement target)
     {
+        // TODO: Certain classes of events--specifically input events, and mouse events in particular--should
+        //       probably not jump outside the visual tree. This theory should be adversarially reviewed. If
+        //       put into effect, there is additional tree-walking code that should maintain parity with this,
+        //       e.g., `InputDispatcher.HitTestForEvent`.
         for (var node = target; node is not null; node = node.VisualParent ?? node.UIParent)
             Add(node);
     }

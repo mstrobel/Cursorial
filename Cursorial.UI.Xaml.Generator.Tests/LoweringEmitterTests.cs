@@ -70,6 +70,37 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
     }
 
     [Fact] // Style.When — a <Style.When>/<DataCondition> conjunction lowers to When.Add(new DataCondition{…}) and matches the loader
+    public void Lowered_StyleRequiresCapabilities_MatchesLoader()
+    {
+        // The capability gate must survive FULL lowering — a silently dropped attribute turns a
+        // tier-gated rule into an unconditional one (the occlusion-everywhere regression this pins).
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.CapsView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"CapsStyle\" Selector=\":is(Border)\" RequiresCapabilities=\"Ansi16, NoColor\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class CapsView : StackPanel { public CapsView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("RequiresCapabilities = global::Cursorial.UI.StyleCapabilities.Ansi16 | global::Cursorial.UI.StyleCapabilities.NoColor", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
+        Assert.Equal(StyleCapabilities.Ansi16 | StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
+    }
+
+    [Fact]
     public void Lowered_StyleWhen_MatchesLoader()
     {
         var xaml =

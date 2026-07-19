@@ -404,6 +404,7 @@ internal static class LoweringEmitter
         string? selectorText = null;
         string? basedOnExpr = null;
         string? keyExpr = null;
+        string? requiresExpr = null;
         int settersMember = -1;
         int childrenMember = -1;
         int whenMember = -1;
@@ -443,6 +444,11 @@ internal static class LoweringEmitter
                 case "When":
                     whenMember = m;
                     break;
+                case "RequiresCapabilities" when member.Kind == XamlValueKind.Text:
+                    requiresExpr = BakeCapabilities(c.Doc.Strings[member.ValueIndex]);
+                    if (requiresExpr is null)
+                        c.Todo($"<Style> RequiresCapabilities \"{Escape(c.Doc.Strings[member.ValueIndex])}\" has an unknown member");
+                    break;
             }
         }
 
@@ -470,6 +476,7 @@ internal static class LoweringEmitter
         var inits = new List<string>();
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
+        if (requiresExpr is not null) inits.Add($"RequiresCapabilities = {requiresExpr}");
         c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
 
         // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger equivalent).
@@ -489,6 +496,42 @@ internal static class LoweringEmitter
                 EmitObject(c, idx, childVar, isRoot: false, hasScope: false, dataType: null);
                 c.Line($"{varExpr}.Children.Add({childVar});");
             }
+    }
+
+    // Bakes a RequiresCapabilities attribute ("NoColor" / "NoColor, Motion") into a StyleCapabilities
+    // flags expression — names case-insensitive (XAML enum parity); an unknown member returns null (→ TODO
+    // diagnostic at the call site, mirroring the unbaked-selector path).
+    private static string? BakeCapabilities(string text)
+    {
+        string[] known =
+        [
+            "None", "Truecolor", "Ansi256", "Ansi16", "NoColor", "Motion", "KittyKeyboard",
+            "Images", "ImageClipping", "ImageOcclusion", "NerdFont", "Emoji", "Unicode",
+        ];
+
+        var terms = new List<string>();
+
+        foreach (var raw in text.Split(','))
+        {
+            var name = raw.Trim();
+            string? match = null;
+
+            foreach (var candidate in known)
+            {
+                if (string.Equals(candidate, name, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    match = candidate;
+                    break;
+                }
+            }
+
+            if (match is null)
+                return null;
+
+            terms.Add($"global::Cursorial.UI.StyleCapabilities.{match}");
+        }
+
+        return terms.Count == 0 ? null : string.Join(" | ", terms);
     }
 
     // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, value)). A Text value

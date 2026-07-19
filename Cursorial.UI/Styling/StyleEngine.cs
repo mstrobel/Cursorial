@@ -163,11 +163,19 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // SD14: capability classes stamp on a surface root at its visual-root attachment. ANY surface root
         // (the app root, a shown Window, an open Popup, WM chrome) — not just app.RootElement — so window/
         // popup content can match caps-* selectors (P7 multi-surface). At this point IsStylable(element) holds,
-        // so VisualParent == null ⇒ this element is a surface root. The RootElementHost is STYLING-TRANSPARENT:
-        // the stamp passes through to its hosted content, so the classes land where they always have (the
-        // application's root element) and caps-* descendant-rule matching is unchanged by the wrapper.
+        // so VisualParent == null ⇒ this element is a surface root. The RootElementHost stamps BOTH itself
+        // and its hosted content: the content stamp keeps the classes where they always were (app selectors
+        // targeting the root's classes are unchanged), and the HOST stamp gives root-level content a
+        // class-bearing PROPER ancestor — an app-authored descendant rule like '.caps-nocolor X' now matches
+        // a control shown as the root (the top-level-element gap, closed for the app-root surface; framework
+        // rules use Style.RequiresCapabilities and need no ancestor at all).
         if (element.VisualParent is null)
-            StampCapabilityClasses(element is RootElementHost host ? host.Content : element);
+        {
+            StampCapabilityClasses(element);
+
+            if (element is RootElementHost host)
+                StampCapabilityClasses(host.Content);
+        }
 
         BeginStructuralPass();
 
@@ -652,11 +660,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
             foreach (var surface in surfaces)
             {
-                // The RootElementHost is styling-transparent — its hosted content is the stylable root.
-                var root = surface.Root is RootElementHost host ? host.Content : surface.Root;
-
-                if (IsStylable(root))
-                    roots.Add(root);
+                // ONE entry per surface — this list also drives whole-surface re-match, and the
+                // RootElementHost's subtree already contains its content (a second entry would double-walk
+                // the tree). The restamp loop handles the host's DUAL class stamp explicitly.
+                if (IsStylable(surface.Root))
+                    roots.Add(surface.Root);
             }
         }
         else if (_app.RootElement is {} root && IsStylable(root))
@@ -815,6 +823,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 if (candidate.Rule.Branch is not {} branch)
                     continue; // selector-less keyed styles never match through the index
 
+                // The Style.RequiresCapabilities gate (the @media model): capabilities are terminal-global,
+                // so one mask compare rejects the rule for EVERY element before structural evaluation.
+                if (candidate.Rule.RequiresCapabilities != StyleCapabilities.None &&
+                    !SatisfiesCapabilities(candidate.Rule.RequiresCapabilities))
+                    continue;
+
                 if (barred && !candidate.Rule.HasTemplateHop)
                     continue;
 
@@ -864,6 +878,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         for (var r = 0; r < rules.Length; r++)
         {
             var rule = rules[r];
+
+            // The Style.RequiresCapabilities gate applies to the element-addressed channels too — an
+            // explicit style / control theme (or a Children rule of one) with a capability requirement
+            // gates identically to a selector rule, so authors can move rules between channels freely.
+            if (rule.RequiresCapabilities != StyleCapabilities.None && !SatisfiesCapabilities(rule.RequiresCapabilities))
+                continue;
             var key = StyleSortKey.Create(layer, rule.Names, rule.ClassLike, rule.Types, scopeDepth: 0, order: r);
 
             if (rule.Branch is not {} branch)
@@ -1497,7 +1517,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     internal void RestampCapabilityClasses()
     {
         foreach (var root in StylableSurfaceRoots()) // re-stamp on every surface (P7)
+        {
             StampCapabilityClasses(root);
+
+            // The RootElementHost stamps both itself and its hosted content (see OnElementAttached).
+            if (root is RootElementHost host && IsStylable(host.Content))
+                StampCapabilityClasses(host.Content);
+        }
     }
 
     /// <summary>
@@ -1512,12 +1538,96 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// snapshot can never desync. Folding at stamp time (rather than caching a rewritten record)
     /// is what makes overrides survive renegotiation for free.
     /// </summary>
+    // The effective capability set as a mask — the SINGLE source of truth shared by the caps-* class
+    // stamp (the names derive from it) and Style.RequiresCapabilities gating (SatisfiesCapabilities), so
+    // the two can never desync. Refreshed by every stamp (attach, tier flip, renegotiation, opt-ins).
+    private StyleCapabilities _effectiveCaps;
+
+    /// <summary>Whether every flag of <paramref name="required"/> is in the effective capability set — the
+    /// <see cref="Style.RequiresCapabilities"/> gate. <see cref="StyleCapabilities.None"/> always passes.</summary>
+    internal bool SatisfiesCapabilities(StyleCapabilities required)
+        => (required & _effectiveCaps) == required;
+
+    /// <summary>The (flag, class-name) derivation table — mask first, names from it (SD14).</summary>
+    private static readonly (StyleCapabilities Flag, string Name)[] CapabilityClassMap =
+    [
+        (StyleCapabilities.Truecolor, CapabilityClasses.Truecolor),
+        (StyleCapabilities.Ansi256, CapabilityClasses.Ansi256),
+        (StyleCapabilities.Ansi16, CapabilityClasses.Ansi16),
+        (StyleCapabilities.NoColor, CapabilityClasses.NoColor),
+        (StyleCapabilities.Motion, CapabilityClasses.Motion),
+        (StyleCapabilities.KittyKeyboard, CapabilityClasses.KittyKeyboard),
+        (StyleCapabilities.Images, CapabilityClasses.Images),
+        (StyleCapabilities.ImageClipping, CapabilityClasses.ImageClipping),
+        (StyleCapabilities.ImageOcclusion, CapabilityClasses.ImageOcclusion),
+        (StyleCapabilities.NerdFont, CapabilityClasses.NerdFont),
+        (StyleCapabilities.Emoji, CapabilityClasses.Emoji),
+        (StyleCapabilities.Unicode, CapabilityClasses.Unicode),
+    ];
+
+    /// <summary>
+    /// Folds the effective capability MASK from the negotiated snapshot + overrides + the effective color
+    /// tier — the one derivation both the class stamp and the <see cref="Style.RequiresCapabilities"/>
+    /// gate consume.
+    /// </summary>
+    private StyleCapabilities ComputeEffectiveCapabilities(TerminalCapabilities negotiated)
+    {
+        var capabilities = _app.CapabilityOverrides.Apply(negotiated); // the FB-5 per-axis fold
+
+        // The color tier follows the EFFECTIVE tier (inversion 6 — honors RequestedColorTier).
+        var mask = _app.ActualThemeVariant.Tier switch
+                   {
+                       ColorDepth.Truecolor => StyleCapabilities.Truecolor,
+                       ColorDepth.Ansi256   => StyleCapabilities.Ansi256,
+                       ColorDepth.Ansi16    => StyleCapabilities.Ansi16,
+                       _                    => StyleCapabilities.NoColor
+                   };
+
+        // Non-color axes stay sourced from the negotiated snapshot (CD14).
+        if (capabilities.Input.Mouse.Motion)
+            mask |= StyleCapabilities.Motion;
+
+        if (capabilities.Input.Protocol.KittyKeyboardProtocol)
+            mask |= StyleCapabilities.KittyKeyboard;
+
+        // Graphics axes (CD-P2J-1): Images for ANY inline-image protocol; ImageOcclusion only for Kitty
+        // graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the
+        // cell grid, iTerm2 is excluded for now pending an occlusion model).
+        var graphics = capabilities.Output.Graphics;
+
+        if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
+            mask |= StyleCapabilities.Images;
+
+        if (graphics.Sixel || graphics.KittyGraphics)
+            mask |= StyleCapabilities.ImageClipping;
+
+        if (graphics.KittyGraphics)
+            mask |= StyleCapabilities.ImageOcclusion;
+
+        // NerdFont is a no-probe opt-in (no terminal advertises Nerd Font coverage), sourced from the
+        // app's user-options flag (CD-P2J-1) — app state, so it survives renegotiation.
+        if (_app.NerdFontAvailable)
+            mask |= StyleCapabilities.NerdFont;
+
+        // Emoji is probe-less like NerdFont but the OPPOSITE default (FB-15, maintainer decision
+        // 2026-07-04): present unless the user disables it — emoji coverage in modern terminals is
+        // near-universal; grid safety is owned by the Icon element's 2-cell emoji measurement.
+        if (_app.EmojiAvailable)
+            mask |= StyleCapabilities.Emoji;
+
+        // Unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no negotiated
+        // glyph-capability source exists (SD14 recorded deferral).
+        mask |= StyleCapabilities.Unicode;
+
+        return mask;
+    }
+
     private void StampCapabilityClasses(UIElement root)
     {
         if (_capabilities is not {} negotiated)
             return; // nothing negotiated yet — the startup pre-Show call records only (B2)
 
-        var capabilities = _app.CapabilityOverrides.Apply(negotiated); // the FB-5 per-axis fold
+        _effectiveCaps = ComputeEffectiveCapabilities(negotiated);
 
         var replacement = new List<string>();
 
@@ -1530,51 +1640,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
             }
         }
 
-        // The color-tier class follows the EFFECTIVE tier (inversion 6 — honors RequestedColorTier).
-        replacement.Add(_app.ActualThemeVariant.Tier switch
-                        {
-                            ColorDepth.Truecolor => CapabilityClasses.Truecolor,
-                            ColorDepth.Ansi256   => CapabilityClasses.Ansi256,
-                            ColorDepth.Ansi16    => CapabilityClasses.Ansi16,
-                            _                    => CapabilityClasses.NoColor
-                        });
-
-        // Non-color classes stay sourced from the negotiated snapshot (CD14).
-        if (capabilities.Input.Mouse.Motion)
-            replacement.Add(CapabilityClasses.Motion);
-
-        if (capabilities.Input.Protocol.KittyKeyboardProtocol)
-            replacement.Add(CapabilityClasses.KittyKeyboard);
-
-        // Graphics classes (CD-P2J-1): caps-images for ANY inline-image protocol; caps-image-occlusion only for
-        // Kitty graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the cell
-        // grid, iTerm2 is excluded for now pending an occlusion model).
-        var graphics = capabilities.Output.Graphics;
-
-        if (graphics.Sixel || graphics.KittyGraphics || graphics.ITerm2InlineImages)
-            replacement.Add(CapabilityClasses.Images);
-
-        if (graphics.Sixel || graphics.KittyGraphics)
-            replacement.Add(CapabilityClasses.ImageClipping);
-
-        if (graphics.KittyGraphics)
-            replacement.Add(CapabilityClasses.ImageOcclusion);
-
-        // caps-nerdfont is a no-probe opt-in (no terminal advertises Nerd Font coverage), sourced from the app's
-        // user-options flag (CD-P2J-1) — app state, so it survives renegotiation.
-        if (_app.NerdFontAvailable)
-            replacement.Add(CapabilityClasses.NerdFont);
-
-        // caps-emoji is probe-less like caps-nerdfont but the OPPOSITE default (FB-15, maintainer decision
-        // 2026-07-04): stamped unless the user disables it. Emoji coverage in modern terminals is near-universal
-        // (unlike Nerd Font PUA coverage, where default-absent rightly stays), and grid safety is owned by the
-        // Icon element's 2-cell emoji measurement, not by hiding the tier. App state — survives renegotiation.
-        if (_app.EmojiAvailable)
-            replacement.Add(CapabilityClasses.Emoji);
-
-        // caps-unicode is unconditional; caps-ascii is RESERVED and never stamped at P5 — no
-        // negotiated glyph-capability source exists (SD14 recorded deferral).
-        replacement.Add(CapabilityClasses.Unicode);
+        // The class names DERIVE from the mask (one derivation — the RequiresCapabilities gate and the
+        // class stamp can never disagree).
+        foreach (var (flag, name) in CapabilityClassMap)
+        {
+            if ((_effectiveCaps & flag) != 0)
+                replacement.Add(name);
+        }
 
         root.Classes.Replace(CollectionsMarshal.AsSpan(replacement)); // one restyle pass (doc §3.2)
     }

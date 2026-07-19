@@ -36,8 +36,10 @@ internal sealed class CompiledRule
 
     internal CompiledRule(
         Style ownerStyle, Style declaringStyle, int ruleIndex, SelectorBranch? branch, string selectorText,
-        int names, int classLike, int types, CompiledSetter[] setters, DataCondition[]? whenConditions = null)
+        int names, int classLike, int types, CompiledSetter[] setters, DataCondition[]? whenConditions = null,
+        StyleCapabilities requiresCapabilities = StyleCapabilities.None)
     {
+        RequiresCapabilities = requiresCapabilities;
         OwnerStyle = ownerStyle;
         DeclaringStyle = declaringStyle;
         RuleIndex = ruleIndex;
@@ -105,6 +107,10 @@ internal sealed class CompiledRule
 
     /// <summary>The top-level style whose <see cref="Style.Seal"/> produced this rule (diagnostics naming).</summary>
     internal Style OwnerStyle { get; }
+
+    /// <summary>The flattened capability requirement (union across nesting/BasedOn — AND semantics); the
+    /// match pass gates on it against the engine's effective set before structural evaluation.</summary>
+    internal StyleCapabilities RequiresCapabilities { get; }
 
     /// <summary>The style whose setters/edge actions this rule carries (the nested child for composed rules; else the owner).</summary>
     internal Style DeclaringStyle { get; }

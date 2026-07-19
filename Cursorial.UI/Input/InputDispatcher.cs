@@ -622,7 +622,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // Leg 1 — a route that ended at a standalone Popup element continues at its placement owner chain.
         if (end is Popup popup && popup.EffectiveTarget is { IsAttachedToTree: true } anchor)
         {
-            if (wm?.SurfaceForElement(anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
+            // The modal gate resolves the anchor's surface TRANSITIVELY through nested popup surfaces
+            // (popup surfaces carry no HostWindow — a nested popup's anchor sits on another popup's
+            // surface, and the walk must reach the ROOT host to learn whether it is blocked).
+            if (wm is not null && RootHostSurfaceForTail(wm, anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
                 return; // the owner chain is modal-blocked — no chord delivery at all
 
             var guard = 0;
@@ -642,6 +645,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
             if (wm is not null && !wm.IsInputEnabled(window))
                 return; // focus in a modal-blocked window is anomalous; deliver nothing
 
+            // While a MODAL is up the application root is behind the gate: app-level chords must not
+            // commandeer the blocked main UI from modal focus. Framework chords (Ctrl+L redraw, the
+            // options gesture) are unaffected — EnsureFrameworkBindings installs them on every window
+            // root, the modal included, so they fire on-route.
+            if (wm is { TopmostModal: not null })
+                return;
+
             if (UIApplication.Current?.RootElement is { IsAttachedToTree: true } appRoot && !ReferenceEquals(appRoot, end))
             {
                 var guard = 0;
@@ -655,12 +665,36 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
     }
 
+    /// <summary>The non-popup surface <paramref name="element"/>'s surface chain ultimately lives on —
+    /// nested popup surfaces resolve through their owning popup's anchor (the modal gate needs the ROOT
+    /// host; popup surfaces carry no <c>HostWindow</c>). Mirrors the window manager's dismissal walk;
+    /// consolidate onto a shared WM helper when the modal-integrity branch lands.</summary>
+    private static TopLevelSurface? RootHostSurfaceForTail(WindowManager wm, UIElement element)
+    {
+        var surface = wm.SurfaceForElement(element);
+
+        for (var guard = 0; surface is { IsPopup: true } && guard < 32; guard++)
+        {
+            var owner = wm.PopupAnchorForSurface(surface);
+            surface = owner is { IsAttachedToTree: true } ? wm.SurfaceForElement(owner) : null;
+        }
+
+        return surface;
+    }
+
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
-        // Clamped at the hit's SURFACE root (input-routing review Q1): the in-surface UIParent hops are
-        // needed and correct (a template part's ContextMenu lookup jumps to its templated control), but the
-        // walk never crosses a popup seam — a right-click INSIDE a popup must not open the OWNER's menu.
-        for (var node = from; node is not null; node = node.VisualParent is null ? null : node.UIParent ?? node.VisualParent)
+        // Clamped to the hit's SURFACE (input-routing review Q1): the in-surface UIParent hops are needed
+        // and correct (a template part's ContextMenu lookup jumps to its templated control), but the walk
+        // never crosses a popup seam — a right-click INSIDE a popup must not open the OWNER's menu. The
+        // seam can hide MID-CHAIN, not only at the surface root: a generated container's LOGICAL parent is
+        // its ItemsControl, which for the ListBox-in-Popup recipe (ComboBox dropdown items, submenu
+        // MenuItems) sits on the OWNER surface — so a UIParent hop is taken only while it stays on the
+        // same surface (VisualRoot), else the walk falls back to the visual leg and ends at the root.
+        for (var node = from; node is not null;
+             node = node.VisualParent is null
+                        ? null
+                        : node.UIParent is { } up && ReferenceEquals(up.VisualRoot, node.VisualRoot) ? up : node.VisualParent)
         {
             if (ContextMenu.GetMenu(node) is {} menu)
             {

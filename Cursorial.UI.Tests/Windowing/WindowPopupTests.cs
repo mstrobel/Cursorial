@@ -524,6 +524,53 @@ public sealed class WindowPopupTests
         Assert.False(owner.ContextMenu!.IsOpen); // the owner's menu did not open across the seam
     }
 
+    [Fact] // ROUTING-REVIEW PIN (the mid-chain seam): a generated container's LOGICAL parent is its
+           // ItemsControl on the OWNER surface (the ListBox-in-Popup recipe), so the right-click router's
+           // walk meets the seam MID-CHAIN, not at the surface root — a right-click on a ComboBox dropdown
+           // ITEM must not open the ComboBox's own ContextMenu (the UIParent hop is taken only while it
+           // stays on the same surface).
+    public void RightClickComboBoxDropdownItem_DoesNotOpenComboBoxContextMenu()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var combo = new UIControls.ComboBox
+        {
+            Width = 14,
+            ContextMenu = new UIControls.ContextMenu { Items = { new UIControls.MenuItem { Header = "Nope" } } },
+        };
+        combo.Items.Add("alpha");
+        combo.Items.Add("beta");
+        var root = new UIControls.StackPanel();
+        root.Children.Add(combo);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        combo.IsDropDownOpen = true;
+        Assert.True(host.RunUntilIdle());
+
+        var item = host.Application.WindowManager!.Surfaces
+            .Where(sf => sf.IsPopup)
+            .SelectMany(sf => AllDescendants<UIControls.ComboBoxItem>(sf.Root))
+            .First();
+        var cell = item.TranslateToScreen(1, 0);
+
+        host.SendClick(cell.Column, cell.Row, MouseButton.Right); // right-click the dropdown ITEM
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(combo.ContextMenu!.IsOpen); // the mid-chain logical hop did not cross the seam
+    }
+
+    private static IEnumerable<T> AllDescendants<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            yield return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                foreach (var found in AllDescendants<T>(child))
+                    yield return found;
+    }
+
     private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
     {
         public event EventHandler? CanExecuteChanged { add { } remove { } }

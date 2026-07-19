@@ -164,6 +164,122 @@ public sealed class WindowInputTests
         Assert.True(fired); // the app-root chord reached from window-focused content (the tail's leg 2)
     }
 
+    [Fact] // ROUTING-REVIEW: the tail's leg-1 → leg-2 HANDOFF — a popup anchored in WINDOW content walks the
+           // owner chain (leg 1) to the window root, then continues at the application root (leg 2): an
+           // app-root chord fires from popup-in-window focus.
+    public void AppRootChord_FiresFromPopupInWindowFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var anchor = new UIControls.Button { Width = 6, Height = 1, Content = "anchor" };
+        var a = At(host, 2, 2);
+        a.Content = anchor;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+
+        var inner = new UIControls.Button { Width = 6, Height = 1, Content = "in popup" };
+        var popup = new Popup { Child = inner, PlacementTarget = anchor };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // leg 1 climbed anchor → window root; leg 2 delivered the app-root chord
+    }
+
+    [Fact] // ROUTING-REVIEW: the tail's leg-2 MODAL gate — app-root chords do NOT fire while a modal holds
+           // focus (modality: an app-level chord must not commandeer the blocked main UI). Framework chords
+           // are unaffected: EnsureFrameworkBindings installs them on the modal's own root, on-route.
+    public void AppRootChord_DoesNotFireFromModalFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var content = new UIControls.Button { Width = 6, Height = 1, Content = "in modal" };
+        var dialog = At(host, 30, 4);
+        dialog.Content = content;
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(content.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(fired); // the modal gate held: app chords stay out of modal sessions
+    }
+
+    [Fact] // ROUTING-REVIEW: the tail's leg-1 MODAL gate resolves NESTED popup anchors to the root host —
+           // a chord on a window's content does not fire from a popup chain whose host window is blocked
+           // (popup surfaces carry no HostWindow; the gate walks anchors transitively).
+    public void OwnerChainChord_DoesNotFire_WhenAnchorWindowModalBlocked()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+        host.ShowRoot(new UIControls.StackPanel());
+        Assert.True(host.RunUntilIdle());
+
+        var anchor = new UIControls.Button { Width = 6, Height = 1, Content = "anchor" };
+        var a = At(host, 2, 2);
+        a.Content = anchor;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+
+        var fired = false;
+        a.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "K"),
+            new RelayTestCommand(() => fired = true)));
+
+        // Nested standalone popups: outer anchored in the window, inner anchored in the OUTER's content.
+        var innerAnchor = new UIControls.Button { Width = 6, Height = 1, Content = "sub" };
+        var outer = new Popup { Child = innerAnchor, PlacementTarget = anchor, StaysOpen = true };
+        var innerButton = new UIControls.Button { Width = 6, Height = 1, Content = "x" };
+        var inner = new Popup { Child = innerButton, PlacementTarget = innerAnchor, StaysOpen = true };
+        outer.Open();
+        Assert.True(host.RunUntilIdle());
+        inner.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(innerButton.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        // Block the anchor's window with a modal the popups do not belong to.
+        var dialog = At(host, 30, 10);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+        Assert.False(host.Application.WindowManager!.IsInputEnabled(a));
+
+        // The popups (StaysOpen; anchored in the now-blocked A) still exist; a chord typed with focus in
+        // the INNER popup must not reach A's InputBindings through the tail.
+        if (host.Application.FocusManager.FocusedElement != innerButton)
+            _ = innerButton.Focus(); // the modal took focus; put it back for the delivery test
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "K");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(fired); // the transitive gate resolved inner → outer → A (blocked) and delivered nothing
+    }
+
     private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
     {
         public event EventHandler? CanExecuteChanged { add { } remove { } }

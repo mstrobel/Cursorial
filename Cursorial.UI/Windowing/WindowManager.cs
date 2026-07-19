@@ -1176,6 +1176,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.Opacity = popup.Opacity;
     }
 
+    /// <summary>The owning popup's effective anchor for a popup <paramref name="surface"/>, or null — the
+    /// dispatcher's gesture-tail modal gate resolves nested popup surfaces to their root host through this.</summary>
+    internal UIElement? PopupAnchorForSurface(TopLevelSurface surface) => PopupForSurface(surface)?.EffectiveTarget;
+
     /// <summary>The popup owning <paramref name="surface"/>, or null (a chrome/window/root surface).</summary>
     private Popup? PopupForSurface(TopLevelSurface surface)
     {

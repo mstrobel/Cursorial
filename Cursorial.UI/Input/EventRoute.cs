@@ -60,9 +60,14 @@ internal sealed class EventRoute
         if (node.VisualParent is { } visual)
             return visual;
 
+        // The dead-leg proof covers LIVE routes only: a DETACHED template subtree is legitimately stamped
+        // with a TemplatedParent before visual attach (ControlTemplate.Instantiate stamps pre-order; a
+        // stamp-time {TemplateBinding} push can raise routed events from the unattached parts), and a
+        // discarded fragment keeps its stamp forever (there is no template unstamp) while public RaiseEvent
+        // on detached elements stays documented-legal — both end their route at the fragment root.
         System.Diagnostics.Debug.Assert(
-            node.LogicalParent is not null || node.TemplatedParent is null,
-            "A route reached a node whose only continuation is a TemplatedParent — the dead-leg assumption is violated.");
+            !node.IsAttachedToTree || node.LogicalParent is not null || node.TemplatedParent is null,
+            "A live route reached a node whose only continuation is a TemplatedParent — the dead-leg assumption is violated.");
 
         return node.LogicalParent;
     }
@@ -96,6 +101,15 @@ internal sealed class EventRoute
         }
     }
 
+    /// <summary>Builds the OWNERSHIP chain (<c>VisualParent ?? UIParent</c> — the focus pair's raise walk),
+    /// snapshotted into the pooled scratch like every route (ND3), with a hop guard.</summary>
+    internal void BuildOwnership(UIElement target)
+    {
+        var guard = 0;
+        for (var node = (UIElement?)target; node is not null && guard++ < 256; node = node.VisualParent ?? node.UIParent)
+            Add(node);
+    }
+
     private void Add(UIElement node)
     {
         if (_count == _nodes.Length)
@@ -125,8 +139,21 @@ internal static class EventRouting
     internal static void RaiseAlongOwnershipChain(UIElement target, RoutedEventArgs args)
     {
         var routedEvent = args.RoutedEventUnchecked!;
-        for (var node = (UIElement?)target; node is not null; node = node.VisualParent ?? node.UIParent)
-            InvokeNode(node, routedEvent, args);
+
+        // Snapshot the chain before dispatch (ND3 parity with Raise): a handler that reparents or closes a
+        // popup must not alter the in-flight chain. The guard bounds the ownership walk (it can carry a
+        // placement hop; the chain is cycle-free in practice, but the route scratch never was unbounded).
+        var route = EventRoute.Rent();
+        try
+        {
+            route.BuildOwnership(target);
+            for (var i = 0; i < route.Count; i++)
+                InvokeNode(route[i], routedEvent, args);
+        }
+        finally
+        {
+            EventRoute.Return(route);
+        }
     }
 
     /// <summary>Raises one event per its strategy (the public <see cref="UIElement.RaiseEvent"/> core).</summary>

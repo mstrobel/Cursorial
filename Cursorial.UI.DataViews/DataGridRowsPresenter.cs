@@ -1436,7 +1436,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_owner is null)
+
+        if (_owner is null || IsPointerOver is false)
             return;
 
         var position = e.GetPosition(this);

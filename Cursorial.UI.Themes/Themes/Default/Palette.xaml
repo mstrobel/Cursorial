@@ -190,6 +190,7 @@
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundFocus}" ResourceKey="{x:Static ThemeKeys.ElevationRaised}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundPressed}" ResourceKey="{x:Static ThemeKeys.AccentDarkBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundPressed}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledBackgroundBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.SplitButtonDropZoneBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
 
@@ -394,6 +395,7 @@
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundFocus}" ResourceKey="{x:Static ThemeKeys.ElevationRaised}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundPressed}" ResourceKey="{x:Static ThemeKeys.AccentDarkBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundPressed}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ButtonBackgroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledBackgroundBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.ButtonForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.DisabledForegroundBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.SplitButtonDropZoneBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
 

@@ -532,7 +532,11 @@
           <Button DockPanel.Dock="Top" Margin="2,1,2,0" HorizontalAlignment="Left"
                   Content="{Binding FeedLabel}" Command="{Binding ToggleFeed}" />
 
-          <dv:DataGrid Margin="2,1" ItemsSource="{Binding Orders}" />
+          <dv:DataGrid Margin="2,1"
+                       ItemsSource="{Binding Orders}"
+                       ShowAutoFilterRow="True"
+                       ShowGroupPanel="True"
+                       ShowSummaryFooter="True"/>
         </DockPanel>
       </DataTemplate>
 

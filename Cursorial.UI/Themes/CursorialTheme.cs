@@ -257,6 +257,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.ButtonForegroundFocus, ThemeKeys.ElevationRaised);
         Alias(ThemeKeys.ButtonBackgroundPressed, ThemeKeys.AccentDarkBrush);
         Alias(ThemeKeys.ButtonForegroundPressed, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.ButtonBackgroundDisabled, ThemeKeys.DisabledBackgroundBrush);
         Alias(ThemeKeys.ButtonForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
         Alias(ThemeKeys.SplitButtonDropZoneBrush, ThemeKeys.AccentBrush);
 

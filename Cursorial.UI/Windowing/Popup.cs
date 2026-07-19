@@ -169,10 +169,13 @@ public class Popup : UIElement
 
     /// <summary>
     /// The bridge hop (§8.4): when the popup has no logical/templated parent, its owner is the
-    /// <see cref="PlacementTarget"/> — so styling, resources, inheritance, and routed events all reach the
-    /// owner. The target is honored only while it is attached to a live tree: a detached / never-attached
-    /// target is not a valid parent and would otherwise let the parent-chain walks traverse stale topology
-    /// (or, if it pointed back into this popup's subtree, cycle — these walks carry no visited-set).
+    /// <see cref="PlacementTarget"/> — so styling, resources, inheritance, focus chains, and the other
+    /// OWNERSHIP walks all reach the owner. Event ROUTES deliberately do not (the input-routing review):
+    /// the route continues past a surface root via the logical parent only, so a standalone popup's route
+    /// ends at this element — owner chords ride the dispatcher's gesture tail instead. The target is
+    /// honored only while it is attached to a live tree: a detached / never-attached target is not a valid
+    /// parent and would otherwise let the parent-chain walks traverse stale topology (or, if it pointed
+    /// back into this popup's subtree, cycle — these walks carry no visited-set).
     /// </summary>
     protected internal override UIElement? UIParent
         => base.UIParent ?? (PlacementTarget is { IsAttachedToTree: true } target ? target : null);

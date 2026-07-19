@@ -141,6 +141,23 @@ public class Section16_CapabilityRequirements
         Assert.Equal(41, widget.GetValue(Widget.P)); // the host ancestor carries caps-truecolor
     }
 
+    [Fact] // LANE preservation: a capability requirement makes the rule CONDITIONAL (ClassLike > 0 —
+           // each flag counts one class-like unit), so it arbitrates at StyleTrigger exactly like its old
+           // .caps-* class form — ABOVE the Template lane. Load-bearing for the occlusion rules that write
+           // Occludes onto /template/ Borders: they must keep piercing template-authored part values.
+    public void Requires_KeepsStyleTriggerLane_LikeTheClassForm()
+    {
+        var requiresForm = new Style(Selectors.Is<Widget>()) { RequiresCapabilities = StyleCapabilities.NoColor };
+        requiresForm.Setters.Add(new Setter(Widget.P, 1));
+        requiresForm.Seal();
+        Assert.True(requiresForm.CompiledRules[0].IsConditional); // → BindingPriority.StyleTrigger
+
+        var restingForm = new Style(Selectors.Is<Widget>());
+        restingForm.Setters.Add(new Setter(Widget.P, 2));
+        restingForm.Seal();
+        Assert.False(restingForm.CompiledRules[0].IsConditional); // a bare type rule stays at Style
+    }
+
     [Fact] // two TIER flags under AND semantics can never both hold — the contradiction throws at Seal
            // (the SD17 fail-fast precedent), checked on the COMBINED mask so a BasedOn-composed conflict
            // is caught too. "ansi16 OR nocolor" is two styles, not a comma list.

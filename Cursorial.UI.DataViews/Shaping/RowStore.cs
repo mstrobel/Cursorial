@@ -41,6 +41,18 @@ internal sealed class RowStore<TRow>
     /// <summary>The row occupying <paramref name="slot"/> (undefined for freed slots — callers track liveness).</summary>
     public TRow GetRow(int slot) => _rows[slot];
 
+    /// <summary>
+    /// Whether <paramref name="slot"/> currently holds a live source row (wave-2 audit F2): freed
+    /// slots — parked in the deferred list OR recycled onto the free list — report false, so an
+    /// id-keyed consumer holding a stale rowId cannot write into (and resurrect) a dead slot. The
+    /// reference lane's <c>row is null</c> convention cannot cover value-type rows, whose freed
+    /// slots hold a default STRUCT; this flag is the one liveness truth for both.
+    /// </summary>
+    public bool IsLive(int slot)
+        => (uint)slot < (uint)_slotHighWater && _liveSlots[slot];
+
+    private bool[] _liveSlots = [];
+
     /// <summary>The slot at source position <paramref name="index"/>.</summary>
     public int SlotAt(int index)
     {
@@ -73,6 +85,9 @@ internal sealed class RowStore<TRow>
         }
 
         _rows[slot] = row;
+        if (slot >= _liveSlots.Length)
+            Array.Resize(ref _liveSlots, Math.Max(16, Math.Max(slot + 1, _liveSlots.Length * 2)));
+        _liveSlots[slot] = true;
         if (slot >= Sequences.Length)
             Array.Resize(ref Sequences, Math.Max(16, Math.Max(slot + 1, Sequences.Length * 2)));
         Sequences[slot] = _nextSequence++;
@@ -106,6 +121,7 @@ internal sealed class RowStore<TRow>
             _slotByRow.Remove(row);
 
         _rows[slot] = default!;   // release the reference
+        _liveSlots[slot] = false; // the liveness truth flips at REMOVAL, not reclamation (audit F2)
         // §2.6 invariant 2 (both halves — final-audit fix): a freed slot ALWAYS parks and recycles
         // only via ReleaseDeferredFrees, which the controller calls after a publish that excludes
         // the slot (and never while a shape is in flight) — no published permutation can watch its
@@ -199,6 +215,8 @@ internal sealed class RowStore<TRow>
         if (_slotByRow is not null)
             _slotByRow.Clear();
         Array.Clear(_rows, 0, _slotHighWater);
+        if (_liveSlots.Length > 0)
+            Array.Clear(_liveSlots, 0, Math.Min(_slotHighWater, _liveSlots.Length));
         _count = 0;
         _slotHighWater = 0;
         _freeSlots.Clear();

@@ -28,11 +28,30 @@ internal sealed class DataGridRulesManager
     private readonly Window _window;
     private readonly StackPanel _rowsHost = new();
     private readonly List<RuleRow> _rows = [];
+    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>Non-null when this instance is a duplicate-open rider adopting the LIVE dialog.</summary>
+    private readonly DataGridRulesManager? _live;
+    private DataGridRuleEditor? _activeRuleEditor;
     private int _selectedIndex = -1;
 
     public DataGridRulesManager(DataGrid grid)
     {
         _grid = grid;
+
+        if (grid.ActiveRulesManager is { } open)
+        {
+            // Already-open guard (§2.7 dialogs): the fire-and-forget entry point can run twice in
+            // one input batch (a double-click posts two opens before the first modal blocks its
+            // trigger). The duplicate never builds a second window — it ADOPTS the live manager
+            // (same window, same row list), so the grid's tracking handle (re-stamped onto the
+            // duplicate) still reaches the ONE real dialog, and ShowAsync rides its close.
+            var live = open._live ?? open;
+            _live = live;
+            _window = live._window;
+            _rowsHost = live._rowsHost;
+            _rows = live._rows;
+            return;
+        }
 
         var content = new StackPanel(); // vertical
 
@@ -87,18 +106,41 @@ internal sealed class DataGridRulesManager
     internal IReadOnlyList<RuleRow> Rows => _rows;
 
     /// <summary>The selected list index (−1 none).</summary>
-    internal int SelectedIndex => _selectedIndex;
+    internal int SelectedIndex => (_live ?? this)._selectedIndex;
 
     /// <summary>The live add/edit dialog (null while none is open; tests reach its panes).</summary>
-    internal DataGridRuleEditor? ActiveRuleEditor { get; private set; }
+    internal DataGridRuleEditor? ActiveRuleEditor => (_live ?? this)._activeRuleEditor;
 
-    internal async Task ShowAsync() => _ = await _window.ShowDialogAsync();
+    internal async Task ShowAsync()
+    {
+        if (_live is { } live)
+        {
+            // A duplicate open rides the live manager and completes when IT closes.
+            await live._closed.Task;
+            return;
+        }
+
+        try
+        {
+            _ = await _window.ShowDialogAsync();
+        }
+        finally
+        {
+            _closed.TrySetResult();
+        }
+    }
 
     // ── The rule list ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Rebuilds the rows from the columns' rule lists (the chooser's rebuild-per-mutation idiom).</summary>
     internal void RefreshRows()
     {
+        if (_live is { } live)
+        {
+            live.RefreshRows();
+            return;
+        }
+
         _rows.Clear();
         _rowsHost.Children.Clear();
 
@@ -149,6 +191,12 @@ internal sealed class DataGridRulesManager
     /// <summary>Selects a listed rule (the ✎/✕/▲▼ target).</summary>
     internal void Select(int index)
     {
+        if (_live is { } live)
+        {
+            live.Select(index);
+            return;
+        }
+
         _selectedIndex = index >= 0 && index < _rows.Count ? index : -1;
         ApplySelectionLook();
     }
@@ -201,6 +249,7 @@ internal sealed class DataGridRulesManager
         FilterOperator.GreaterThanOrEqual => ">=",
         FilterOperator.Contains => "contains",
         FilterOperator.StartsWith => "starts with",
+        FilterOperator.EndsWith => "ends with",
         FilterOperator.Between => "between",
         _ => "?",
     };
@@ -257,9 +306,17 @@ internal sealed class DataGridRulesManager
 
     private async Task NewRuleCoreAsync()
     {
+        if (_live is { } live)
+        {
+            await live.NewRuleCoreAsync();
+            return;
+        }
+        if (ActiveRuleEditor is { IsOpen: true })
+            return; // double-activation in one input batch — the first editor is already up
+
         var seedColumn = _selectedIndex >= 0 ? _rows[_selectedIndex].Column : _grid.Columns.FirstOrDefault();
         var editor = new DataGridRuleEditor(_grid, seed: null, seedColumn);
-        ActiveRuleEditor = editor;
+        _activeRuleEditor = editor;
         try
         {
             if (await editor.ShowAsync() && editor is { Result: { } rule, TargetColumn: { } column })
@@ -272,7 +329,10 @@ internal sealed class DataGridRulesManager
         }
         finally
         {
-            ActiveRuleEditor = null;
+            // Guarded (the grid entry points' pattern): never null out a LATER editor's tracking
+            // from an earlier core's finally.
+            if (ReferenceEquals(_activeRuleEditor, editor))
+                _activeRuleEditor = null;
         }
     }
 
@@ -284,12 +344,19 @@ internal sealed class DataGridRulesManager
 
     private async Task EditSelectedCoreAsync()
     {
+        if (_live is { } live)
+        {
+            await live.EditSelectedCoreAsync();
+            return;
+        }
+        if (ActiveRuleEditor is { IsOpen: true })
+            return; // double-activation in one input batch — the first editor is already up
         if (_selectedIndex < 0 || _selectedIndex >= _rows.Count)
             return;
 
         var (column, rule, _, _) = _rows[_selectedIndex];
         var editor = new DataGridRuleEditor(_grid, rule, column);
-        ActiveRuleEditor = editor;
+        _activeRuleEditor = editor;
         try
         {
             if (await editor.ShowAsync() && editor is { Result: { } replacement, TargetColumn: { } target })
@@ -313,13 +380,19 @@ internal sealed class DataGridRulesManager
         }
         finally
         {
-            ActiveRuleEditor = null;
+            if (ReferenceEquals(_activeRuleEditor, editor))
+                _activeRuleEditor = null;
         }
     }
 
     /// <summary>✕ Delete: removes the selected rule.</summary>
     internal void DeleteSelected()
     {
+        if (_live is { } live)
+        {
+            live.DeleteSelected();
+            return;
+        }
         if (_selectedIndex < 0 || _selectedIndex >= _rows.Count)
             return;
 
@@ -335,6 +408,11 @@ internal sealed class DataGridRulesManager
     /// </summary>
     internal void MoveSelected(int delta)
     {
+        if (_live is { } live)
+        {
+            live.MoveSelected(delta);
+            return;
+        }
         if (_selectedIndex < 0 || _selectedIndex >= _rows.Count)
             return;
 

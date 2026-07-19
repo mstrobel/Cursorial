@@ -28,6 +28,9 @@ internal sealed class DataGridExpressionEditor
     private readonly TextBlock _strip;
     private readonly ComboBox _columnsMenu;
     private readonly ComboBox _functionsMenu;
+    private readonly TaskCompletionSource<bool> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>Non-null when this instance is a duplicate-open rider adopting the LIVE dialog.</summary>
+    private readonly DataGridExpressionEditor? _live;
     private bool _valid;
     private bool _syncingInsert;
 
@@ -41,6 +44,26 @@ internal sealed class DataGridExpressionEditor
     public DataGridExpressionEditor(DataGrid grid, string seedText)
     {
         _grid = grid;
+
+        if (grid.ActiveFilterEditor is { } open)
+        {
+            // Already-open guard (§9.1 dialogs): the fire-and-forget entry point can run twice in
+            // one input batch (a double-click posts two opens before the first modal blocks its
+            // trigger). The duplicate never builds a second window — it ADOPTS the live dialog
+            // (same window, same text box, the user's in-progress text preserved), so the grid's
+            // tracking handle (re-stamped onto the duplicate) still reaches the ONE real dialog,
+            // and ShowAsync rides its outcome instead of stacking a second modal.
+            var live = open._live ?? open;
+            _live = live;
+            _fields = live._fields;
+            _window = live._window;
+            _text = live._text;
+            _strip = live._strip;
+            _columnsMenu = live._columnsMenu;
+            _functionsMenu = live._functionsMenu;
+            return;
+        }
+
         _fields = grid.BuildCriteriaFields();
 
         var content = new StackPanel(); // vertical
@@ -100,13 +123,24 @@ internal sealed class DataGridExpressionEditor
     internal ComboBox FunctionsMenu => _functionsMenu;
 
     /// <summary>The live parse+compile verdict for the current text.</summary>
-    internal bool IsValid => _valid;
+    internal bool IsValid => (_live ?? this)._valid;
 
     /// <summary>Shows modally; true ⇔ Apply landed a filter (Cancel/✕ ⇒ false).</summary>
     internal async Task<bool> ShowAsync()
     {
-        var result = await _window.ShowDialogAsync();
-        return result is true;
+        if (_live is { } live)
+            return await live._result.Task; // a duplicate open completes with the live dialog's outcome
+
+        try
+        {
+            bool applied = await _window.ShowDialogAsync() is true;
+            _result.TrySetResult(applied);
+            return applied;
+        }
+        finally
+        {
+            _result.TrySetResult(false); // the throw path (dialog cancellation)
+        }
     }
 
     /// <summary>An inserter pick: splice the token at the caret, then reset the menu face.</summary>
@@ -200,6 +234,12 @@ internal sealed class DataGridExpressionEditor
     /// </summary>
     internal void Apply()
     {
+        if (_live is { } live)
+        {
+            live.Apply(); // the strip verdict + _valid must land on the instance IsValid reads
+            return;
+        }
+
         string text = _text.Text;
         if (!_grid.TryApplyFilterExpression(string.IsNullOrWhiteSpace(text) ? null : text, out var diagnostics))
         {

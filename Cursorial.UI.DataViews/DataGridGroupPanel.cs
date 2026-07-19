@@ -125,6 +125,14 @@ public sealed class DataGridGroupPanel : UIElement
             if (ChipBackground is not null)
                 context.FillOpaque(new Rect(chip.X, 0, chip.Width, 1), ChipBackground);
 
+            // The §3.3 virtual band focus: the focused chip wears the glyph accent as a frame
+            // (⟨…⟩ corners drawn in the padding cells — no new theme key for a keyboard cue).
+            if (chip.Index == owner.GroupChipFocusIndex)
+            {
+                context.DrawText(chip.X, 0, "⟨", GlyphBrush ?? TextBrush);
+                context.DrawText(chip.X + chip.Width - 1, 0, "⟩", GlyphBrush ?? TextBrush);
+            }
+
             var direction = owner.GroupDescriptions[chip.Index].Direction;
             context.DrawText(chip.X + 1, 0, direction == SortDirection.Ascending ? "▲" : "▼", GlyphBrush ?? TextBrush);
             context.DrawText(chip.X + 3, 0, chip.Column.EffectiveHeader, TextBrush);

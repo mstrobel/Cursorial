@@ -71,15 +71,18 @@ public class DataGridColumn : UIObject
 
     /// <summary>The width (fixed cells / Auto band-limited best-fit / star — design doc §1).</summary>
     public static readonly StyledProperty<DataGridLength> WidthProperty =
-        UIProperty.Register<DataGridColumn, DataGridLength>(nameof(Width), DataGridLength.Auto);
+        UIProperty.Register<DataGridColumn, DataGridLength>(nameof(Width), DataGridLength.Auto,
+            changed: static (sender, _, _) => ((DataGridColumn)sender).RaiseGeometryChanged());
 
     /// <summary>The lower width bound in cells (applies to every unit).</summary>
     public static readonly StyledProperty<int> MinWidthProperty =
-        UIProperty.Register<DataGridColumn, int>(nameof(MinWidth), 3);
+        UIProperty.Register<DataGridColumn, int>(nameof(MinWidth), 3,
+            changed: static (sender, _, _) => ((DataGridColumn)sender).RaiseGeometryChanged());
 
     /// <summary>The upper width bound in cells (0 = unbounded).</summary>
     public static readonly StyledProperty<int> MaxWidthProperty =
-        UIProperty.Register<DataGridColumn, int>(nameof(MaxWidth));
+        UIProperty.Register<DataGridColumn, int>(nameof(MaxWidth),
+            changed: static (sender, _, _) => ((DataGridColumn)sender).RaiseGeometryChanged());
 
     /// <summary>The display format string (also the group-caption/summary format for this column).</summary>
     public static readonly StyledProperty<string?> FormatProperty =
@@ -107,7 +110,8 @@ public class DataGridColumn : UIObject
 
     /// <summary>Whether the column renders (hidden columns keep their shaping identity).</summary>
     public static readonly StyledProperty<bool> VisibleProperty =
-        UIProperty.Register<DataGridColumn, bool>(nameof(Visible), true);
+        UIProperty.Register<DataGridColumn, bool>(nameof(Visible), true,
+            changed: static (sender, _, _) => ((DataGridColumn)sender).RaiseGeometryChanged());
 
     /// <summary>String sort/group comparison mode (CurrentCulture default; Ordinal is the perf opt-in — design doc §2.2).</summary>
     public static readonly StyledProperty<StringComparison> SortModeProperty =
@@ -119,7 +123,18 @@ public class DataGridColumn : UIObject
 
     /// <summary>Pins the column while the grid scrolls horizontally (design doc §9.2).</summary>
     public static readonly StyledProperty<DataGridColumnFixed> FixedProperty =
-        UIProperty.Register<DataGridColumn, DataGridColumnFixed>(nameof(Fixed));
+        UIProperty.Register<DataGridColumn, DataGridColumnFixed>(nameof(Fixed),
+            changed: static (sender, _, _) => ((DataGridColumn)sender).RaiseGeometryChanged());
+
+    /// <summary>
+    /// Raised when a LAYOUT-bearing property changes (Width/Min/Max/Visible/Fixed — audit W2-6):
+    /// the owning grid subscribes and routes into its geometry funnel, so a runtime property write
+    /// re-resolves the bands without the author knowing about the internal funnel. (The gesture
+    /// surfaces still call the funnel directly — the double invalidation coalesces.)
+    /// </summary>
+    internal event EventHandler? GeometryChanged;
+
+    private void RaiseGeometryChanged() => GeometryChanged?.Invoke(this, EventArgs.Empty);
 
     /// <inheritdoc cref="HeaderProperty"/>
     public string? Header { get => GetValue(HeaderProperty); set => SetValue(HeaderProperty, value); }

@@ -424,6 +424,31 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             }
             _detailHeightSum = sum;
             ScrollOwner?.InvalidateScrollExtent();
+
+            // Audit W2-7: a refinement moves the content-y map, so the band WINDOW covers a
+            // different view-row set than the fill that just ran — re-dirty the band so the
+            // fixpoint refills under the corrected map (a shrink otherwise left the rows the
+            // shorter map pulled into the window uncached — blank rows until a re-anchor). The
+            // next pass re-measures cache-hit panes (measured == Height → no change), so this
+            // converges in one extra pass.
+            InvalidateBand();
+        }
+
+        // Height memory hygiene (audit W2-7 adjunct): a collapsed row's stale height must not
+        // become a recycled row id's estimate.
+        if (_detailHeights.Count > 0 && owner.ExpandedDetails.Count < _detailHeights.Count)
+        {
+            List<int>? stale = null;
+            foreach (int rowId in _detailHeights.Keys)
+            {
+                if (!owner.ExpandedDetails.Contains(rowId))
+                    (stale ??= []).Add(rowId);
+            }
+            if (stale is not null)
+            {
+                foreach (int rowId in stale)
+                    _detailHeights.Remove(rowId);
+            }
         }
     }
 
@@ -800,23 +825,25 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var ghost = MutedBrush ?? TextBrush;
-
-        // The focused ghost cell keeps the focus-cell well cue (it is focusable like a data row).
-        if (viewIndex == focusRow && focusColumn >= 0 && focusColumn < entries.Count && FocusCellBackground is not null &&
-            IsEntryVisible(focusColumn))
-        {
-            var focused = entries[focusColumn];
-            context.FillOpaque(new Rect(DrawXOf(focusColumn), y, focused.Width + 2 * DataGridColumnLayout.CellPadding, 1),
-                               FocusCellBackground);
-        }
-
-        context.DrawText(0, y, "*", ghost);
         var controller = owner.Controller;
-        for (int c = 0; c < entries.Count; c++)
+        int frozenCount = ColumnLayout.FrozenCount;
+        int frozenWidth = ColumnLayout.FrozenWidth;
+
+        void DrawGhostCell(int c)
         {
             var entry = entries[c];
-            if (controller?.IsColumnEditable(entry.Column) != true || !IsEntryVisible(c))
-                continue;
+            if (!IsEntryVisible(c))
+                return;
+
+            // The focused ghost cell keeps the focus-cell well cue (it is focusable like a data row).
+            if (viewIndex == focusRow && c == focusColumn && FocusCellBackground is not null)
+            {
+                context.FillOpaque(new Rect(DrawXOf(c), y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                                   FocusCellBackground);
+            }
+
+            if (controller?.IsColumnEditable(entry.Column) != true)
+                return;
 
             string hint = owner.ResolveEditorKind(entry.Column) switch
             {
@@ -829,6 +856,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             if (hint.Length != 0)
                 DrawClipped(context, DrawXOf(c) + DataGridColumnLayout.CellPadding, y, hint, entry.Width, ghost);
         }
+
+        // §9.2 paint order (audit W2-4 — the data rows' mirror): scrolling ghosts first, then the
+        // frozen region re-fills and draws its ghosts unshifted on top.
+        for (int c = frozenCount; c < entries.Count; c++)
+            DrawGhostCell(c);
+        if (frozenWidth > 0)
+        {
+            if (owner.Background is { } erase && HOffset > 0)
+                context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+            for (int c = 0; c < frozenCount; c++)
+                DrawGhostCell(c);
+        }
+        context.DrawText(0, y, "*", ghost);
         // (no row fill — the ghost row deliberately stays on the resting background)
     }
 
@@ -1267,12 +1307,25 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || _owner is null)
+        if (e.Handled || _owner is null)
             return;
 
         var position = e.GetPosition(this);
         var (viewIndex, columnIndex, onExpander) = HitCell(position.Column, position.Row);
-        if (viewIndex < 0)
+
+        // Right-press opens the grid command menu at the pressed cell (the reachability surface:
+        // sort/group lanes, the filter dialogs, formatting, summaries, copy). Focus follows the
+        // press like a left-click so the menu's column lanes match what the user sees focused.
+        if (e.Button == MouseButton.Right)
+        {
+            if (viewIndex >= 0 && columnIndex >= 0)
+                _owner.SetFocusCell(viewIndex, columnIndex);
+            _owner.OpenGridContextMenu(columnIndex, position);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Button != MouseButton.Left || viewIndex < 0)
             return;
 
         _owner.HandleRowPress(viewIndex, columnIndex, onExpander, e.Modifiers, e.ClickCount);

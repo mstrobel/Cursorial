@@ -184,7 +184,14 @@ public static class CriteriaExpression
     private static bool IsExactForKey(object? value, Type keyType)
     {
         if (value is null)
-            return true; // null-ness is type-independent
+        {
+            // Null-ness is representable STRUCTURALLY only where the key can hold null: the
+            // engine's ConvertLiteral throws for a null literal against a non-nullable value key —
+            // inside the posted shape push, after the validation strip showed green. Failing
+            // exactness here routes '[NonNullableCol] = null' to the compiled lane, whose §9.1
+            // lowering yields the pinned null-ness semantics (constant-false / constant-true).
+            return !keyType.IsValueType || Nullable.GetUnderlyingType(keyType) is not null;
+        }
 
         var target = Nullable.GetUnderlyingType(keyType) ?? keyType;
         var source = value.GetType();
@@ -305,12 +312,15 @@ public static class CriteriaExpression
                     FilterOperator.GreaterThanOrEqual => " >= ",
                     FilterOperator.Contains => " Like ",
                     FilterOperator.StartsWith => " Like ",
+                    FilterOperator.EndsWith => " Like ",
                     _ => " = ",
                 });
                 if (condition.Operator == FilterOperator.Contains)
                     RenderLiteral($"%{condition.Value}%", builder);
                 else if (condition.Operator == FilterOperator.StartsWith)
                     RenderLiteral($"{condition.Value}%", builder);
+                else if (condition.Operator == FilterOperator.EndsWith)
+                    RenderLiteral($"%{condition.Value}", builder);
                 else
                     RenderLiteral(condition.Value, builder);
                 return;

@@ -161,6 +161,15 @@ public class DataGrid : Control
         set => SetValue(LiveUpdatesProperty, value);
     }
 
+    /// <summary>
+    /// The liveUpdates value EVERY AttachSource site must pass (§9.6 — wave-2 audit F1): value-type
+    /// rows have no INPC identity, so per-row live updates degrade off silently (the typed
+    /// controller THROWS on liveUpdates:true for structs; the non-generic grid degrades instead —
+    /// collection-level INCC still works, per-row edits ride SetRow). One property so the policy
+    /// cannot drift between the initial attach and the new-row cold re-attach.
+    /// </summary>
+    private bool EffectiveLiveUpdates => LiveUpdates && _rowType is { IsValueType: false };
+
     /// <inheritdoc cref="ShowAutoFilterRowProperty"/>
     public bool ShowAutoFilterRow
     {
@@ -250,6 +259,420 @@ public class DataGrid : Control
         _expandedDetails.RemoveWhere(rowId => ViewIndexOfRow(rowId) < 0);
     }
 
+    // ── The grid context menu (the reachability surface — every dialog + summaries; DevExpress
+    //    parity for "right-click does everything the ribbon would") ────────────────────────────────
+
+    private ContextMenu? _gridMenu;
+
+    /// <summary>The live grid context menu (tests reach its items; null when closed).</summary>
+    internal ContextMenu? ActiveGridMenu => _gridMenu is { IsOpen: true } menu ? menu : null;
+
+    /// <summary>
+    /// Opens the grid's command menu anchored at a rows-area cell (right-click / the Menu key):
+    /// per-column sort/group lanes, the filter dialogs, conditional formatting, the column chooser,
+    /// the per-column summary picker (Sum/Average gated on a numeric key — the engine throws on
+    /// non-numeric), and copy. Built FRESH per open — the items depend on the anchor column and the
+    /// live shaping state.
+    /// </summary>
+    public void OpenGridContextMenu(int columnIndex, CellPosition? position = null)
+    {
+        var presenter = RowsPresenter;
+        if (presenter is null)
+            return;
+
+        var entries = presenter.ColumnLayout.Entries;
+        var column = columnIndex >= 0 && columnIndex < entries.Count ? entries[columnIndex].Column : null;
+
+        _gridMenu?.Close();
+        var menu = new ContextMenu();
+
+        if (column is not null && column.AllowSort)
+        {
+            AddItem(menu, $"Sort \"{column.EffectiveHeader}\" ascending", () =>
+            {
+                SortDescriptions.Clear();
+                SortDescriptions.Add(SortDescription.Ascending(column));
+            });
+            AddItem(menu, $"Sort \"{column.EffectiveHeader}\" descending", () =>
+            {
+                SortDescriptions.Clear();
+                SortDescriptions.Add(SortDescription.Descending(column));
+            });
+            AddItem(menu, "Add as sort level (Ctrl+click)", () => AppendSort(column));
+            if (SortDescriptions.Count > 0)
+                AddItem(menu, "Clear sorting", SortDescriptions.Clear);
+            menu.Items.Add(new Separator());
+        }
+
+        if (column is not null && column.AllowGroup)
+        {
+            bool grouped = GroupDescriptions.Any(g => ReferenceEquals(g.ColumnKey, column));
+            if (!grouped)
+            {
+                AddItem(menu, $"Group by \"{column.EffectiveHeader}\"", () => GroupBy(column));
+            }
+            else
+            {
+                AddItem(menu, $"Ungroup \"{column.EffectiveHeader}\"", () =>
+                {
+                    for (int i = GroupDescriptions.Count - 1; i >= 0; i--)
+                    {
+                        if (ReferenceEquals(GroupDescriptions[i].ColumnKey, column))
+                            GroupDescriptions.RemoveAt(i);
+                    }
+                });
+            }
+            menu.Items.Add(new Separator());
+        }
+
+        AddItem(menu, "Filter builder…", () => _ = OpenFilterBuilderAsync());
+        AddItem(menu, "Filter editor (text)…", () => _ = OpenFilterEditorAsync());
+        AddItem(menu, "Conditional formatting…", () => _ = OpenRulesManagerAsync());
+        AddItem(menu, "Column chooser…", () => OpenColumnChooser(0));
+
+        if (column is not null && _controller is not null)
+        {
+            menu.Items.Add(new Separator());
+            var summaryMenu = new MenuItem { Header = $"Summary for \"{column.EffectiveHeader}\"" };
+
+            var keyType = _controller.GetColumnKeyType(column);
+            var underlying = keyType is null ? null : Nullable.GetUnderlyingType(keyType) ?? keyType;
+            bool numeric = underlying == typeof(int) || underlying == typeof(long) ||
+                           underlying == typeof(short) || underlying == typeof(byte) ||
+                           underlying == typeof(double) || underlying == typeof(float) ||
+                           underlying == typeof(decimal) || underlying == typeof(uint) ||
+                           underlying == typeof(ulong) || underlying == typeof(ushort);
+
+            void AddSummaryChoice(string caption, AggregateKind kind)
+            {
+                var item = new MenuItem
+                {
+                    Header = caption,
+                    IsCheckable = true,
+                    IsChecked = SummaryDescriptions.Any(s =>
+                        ReferenceEquals(s.ColumnKey, column) && s.Aggregate == kind),
+                };
+                item.Click += (_, _) => ToggleSummary(column, kind);
+                summaryMenu.Items.Add(item);
+            }
+
+            AddSummaryChoice("Count", AggregateKind.Count);
+            if (numeric)
+            {
+                AddSummaryChoice("Sum", AggregateKind.Sum);
+                AddSummaryChoice("Average", AggregateKind.Average);
+            }
+            AddSummaryChoice("Min", AggregateKind.Min);
+            AddSummaryChoice("Max", AggregateKind.Max);
+            if (SummaryDescriptions.Any(s => ReferenceEquals(s.ColumnKey, column)))
+            {
+                summaryMenu.Items.Add(new Separator());
+                var clear = new MenuItem { Header = "None" };
+                clear.Click += (_, _) =>
+                {
+                    for (int i = SummaryDescriptions.Count - 1; i >= 0; i--)
+                    {
+                        if (ReferenceEquals(SummaryDescriptions[i].ColumnKey, column))
+                            SummaryDescriptions.RemoveAt(i);
+                    }
+                };
+                summaryMenu.Items.Add(clear);
+            }
+            menu.Items.Add(summaryMenu);
+        }
+
+        menu.Items.Add(new Separator());
+        AddItem(menu, "Copy", CopySelectionToClipboard);
+
+        _gridMenu = menu;
+        menu.Open(presenter, position);
+
+        static void AddItem(ContextMenu menu, string caption, Action action)
+        {
+            var item = new MenuItem { Header = caption };
+            item.Click += (_, _) => action();
+            menu.Items.Add(item);
+        }
+    }
+
+    /// <summary>Adds the (column, kind) summary, or removes it when already present (the menu's checkable toggle).</summary>
+    public void ToggleSummary(DataGridColumn column, AggregateKind kind)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        for (int i = 0; i < SummaryDescriptions.Count; i++)
+        {
+            if (ReferenceEquals(SummaryDescriptions[i].ColumnKey, column) && SummaryDescriptions[i].Aggregate == kind)
+            {
+                SummaryDescriptions.RemoveAt(i);
+                return;
+            }
+        }
+        SummaryDescriptions.Add(new SummaryDescription(column, kind));
+    }
+
+    // ── The §3.3 band cycle + virtual band focus (v1-pinned, landed with the wave-2 closeout) ────
+    //
+    // Drawn bands cannot hold framework focus (the header/group-panel/auto-filter cells are painted,
+    // not elements), so the grid keeps the ONE framework focus and routes keys to a VIRTUAL band:
+    // Ctrl+Up from row 0 (or F6 anywhere) walks rows → header → group panel → auto-filter → rows
+    // (hidden bands skip); Esc (or Down from the header) returns to rows. Each band draws its own
+    // focus cue from the grid-owned index.
+
+    private DataGridFocusBand _focusBand = DataGridFocusBand.Rows;
+    private int _headerFocusIndex;
+    private int _chipFocusIndex;
+    private int _filterCellFocusIndex;
+
+    /// <summary>The §3.3 virtual band focus (rows unless a band walk moved it).</summary>
+    public DataGridFocusBand FocusBand => _focusBand;
+
+    /// <summary>The header band's virtually-focused entry index (−1 unless the header holds band focus).</summary>
+    internal int HeaderFocusIndex => _focusBand == DataGridFocusBand.Header ? _headerFocusIndex : -1;
+
+    /// <summary>The group panel's virtually-focused chip index (−1 unless the panel holds band focus).</summary>
+    internal int GroupChipFocusIndex => _focusBand == DataGridFocusBand.GroupPanel ? _chipFocusIndex : -1;
+
+    /// <summary>The auto-filter row's virtually-focused cell index (−1 unless the band holds band focus).</summary>
+    internal int FilterCellFocusIndex => _focusBand == DataGridFocusBand.AutoFilter ? _filterCellFocusIndex : -1;
+
+    /// <summary>Moves the virtual focus into the header band (the Ctrl+Up / F6 entry; public for tests/automation).</summary>
+    public void FocusHeaderBand() => EnterBand(DataGridFocusBand.Header);
+
+    private bool BandAvailable(DataGridFocusBand band) => band switch
+    {
+        DataGridFocusBand.Header => RowsPresenter is { ColumnLayout.Entries.Count: > 0 },
+        DataGridFocusBand.GroupPanel => ShowGroupPanel && GroupDescriptions.Count > 0,
+        DataGridFocusBand.AutoFilter => ShowAutoFilterRow && RowsPresenter is { ColumnLayout.Entries.Count: > 0 },
+        _ => true,
+    };
+
+    private void EnterBand(DataGridFocusBand band)
+    {
+        if (band != DataGridFocusBand.Rows && !BandAvailable(band))
+            return;
+        _focusBand = band;
+        switch (band)
+        {
+            case DataGridFocusBand.Header:
+                _headerFocusIndex = Math.Clamp(Math.Max(0, FocusColumnIndex), 0,
+                                               Math.Max(0, (RowsPresenter?.ColumnLayout.Entries.Count ?? 1) - 1));
+                ScrollColumnIntoView(_headerFocusIndex);
+                break;
+            case DataGridFocusBand.GroupPanel:
+                _chipFocusIndex = Math.Clamp(_chipFocusIndex, 0, Math.Max(0, GroupDescriptions.Count - 1));
+                break;
+            case DataGridFocusBand.AutoFilter:
+                _filterCellFocusIndex = Math.Clamp(Math.Max(0, FocusColumnIndex), 0,
+                                                   Math.Max(0, (RowsPresenter?.ColumnLayout.Entries.Count ?? 1) - 1));
+                ScrollColumnIntoView(_filterCellFocusIndex);
+                break;
+        }
+        InvalidateBandCues();
+    }
+
+    /// <summary>Returns the virtual focus to the rows (Esc, a rows press, or the cycle wrapping).</summary>
+    internal void ExitBandFocus()
+    {
+        if (_focusBand == DataGridFocusBand.Rows)
+            return;
+        _focusBand = DataGridFocusBand.Rows;
+        InvalidateBandCues();
+    }
+
+    private void AdvanceBandCycle()
+    {
+        ReadOnlySpan<DataGridFocusBand> cycle =
+        [
+            DataGridFocusBand.Rows, DataGridFocusBand.Header,
+            DataGridFocusBand.GroupPanel, DataGridFocusBand.AutoFilter,
+        ];
+        int at = (int)_focusBand; // the enum IS the cycle order
+        for (int step = 1; step <= cycle.Length; step++)
+        {
+            var next = cycle[(at + step) % cycle.Length];
+            if (BandAvailable(next))
+            {
+                if (next == DataGridFocusBand.Rows)
+                    ExitBandFocus();
+                else
+                    EnterBand(next);
+                return;
+            }
+        }
+    }
+
+    private void InvalidateBandCues()
+    {
+        _header?.InvalidateVisual();
+        GroupPanel?.InvalidateVisual();
+        AutoFilterRow?.InvalidateVisual();
+        RowsPresenter?.InvalidateVisual();
+    }
+
+    /// <summary>The §3.3 per-band key router (runs while a virtual band holds focus).</summary>
+    private void HandleBandKey(KeyEventArgs e)
+    {
+        bool ctrl = (e.Modifiers & KeyModifiers.Control) != 0;
+        bool alt = (e.Modifiers & KeyModifiers.Alt) != 0;
+
+        // The cycle + exit gestures are band-agnostic.
+        if (e.Key == Key.F6)
+        {
+            AdvanceBandCycle();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape)
+        {
+            ExitBandFocus();
+            e.Handled = true;
+            return;
+        }
+
+        var entries = RowsPresenter?.ColumnLayout.Entries;
+        switch (_focusBand)
+        {
+            case DataGridFocusBand.Header when entries is { Count: > 0 }:
+                switch (e.Key)
+                {
+                    case Key.LeftArrow when !ctrl:
+                        _headerFocusIndex = Math.Max(0, _headerFocusIndex - 1);
+                        ScrollColumnIntoView(_headerFocusIndex);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.RightArrow when !ctrl:
+                        _headerFocusIndex = Math.Min(entries.Count - 1, _headerFocusIndex + 1);
+                        ScrollColumnIntoView(_headerFocusIndex);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.Home:
+                        _headerFocusIndex = 0;
+                        ScrollColumnIntoView(0);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.End:
+                        _headerFocusIndex = entries.Count - 1;
+                        ScrollColumnIntoView(_headerFocusIndex);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.Enter:
+                        // Enter cycles asc→desc→none as the REPLACING sort (§3.3).
+                        CycleSort(entries[_headerFocusIndex].Column);
+                        e.Handled = true;
+                        return;
+                    // Space appends/cycles this column as an additional sort level (§3.3 — no
+                    // chord; the modifier-free wire is (Character, " "), ND10).
+                    case Key.Character when !ctrl && !alt && e.Text.Length == 1 && e.Text.Span[0] == ' ':
+                        AppendSort(entries[_headerFocusIndex].Column);
+                        e.Handled = true;
+                        return;
+                    case Key.DownArrow when alt:
+                        OpenFilterPopup(entries[_headerFocusIndex].Column); // §3.3 Alt+Down
+                        e.Handled = true;
+                        return;
+                    case Key.DownArrow:
+                        ExitBandFocus(); // back into the rows
+                        e.Handled = true;
+                        return;
+                    case Key.Character when ctrl && e.Text.Length == 1 && (e.Text.Span[0] is 'g' or 'G'):
+                        GroupBy(entries[_headerFocusIndex].Column); // §3.3 Ctrl+G
+                        e.Handled = true;
+                        return;
+                }
+                break;
+
+            case DataGridFocusBand.GroupPanel when GroupDescriptions.Count > 0:
+                _chipFocusIndex = Math.Clamp(_chipFocusIndex, 0, GroupDescriptions.Count - 1);
+                switch (e.Key)
+                {
+                    case Key.LeftArrow when ctrl:
+                    case Key.RightArrow when ctrl:
+                    {
+                        // Ctrl+Left/Right reorders the level (§3.3); the chip focus travels with it.
+                        int target = e.Key == Key.LeftArrow ? _chipFocusIndex - 1 : _chipFocusIndex + 1;
+                        if (target >= 0 && target < GroupDescriptions.Count)
+                        {
+                            (GroupDescriptions[_chipFocusIndex], GroupDescriptions[target]) =
+                                (GroupDescriptions[target], GroupDescriptions[_chipFocusIndex]);
+                            _chipFocusIndex = target;
+                            InvalidateBandCues();
+                        }
+                        e.Handled = true;
+                        return;
+                    }
+                    case Key.LeftArrow:
+                        _chipFocusIndex = Math.Max(0, _chipFocusIndex - 1);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.RightArrow:
+                        _chipFocusIndex = Math.Min(GroupDescriptions.Count - 1, _chipFocusIndex + 1);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.Enter:
+                    {
+                        // Enter toggles the chip's direction (§3.3) — the key order the level's
+                        // boundaries derive from (OrderBySummary state rides the `with`).
+                        var level = GroupDescriptions[_chipFocusIndex];
+                        GroupDescriptions[_chipFocusIndex] = level with
+                        {
+                            Direction = level.Direction == SortDirection.Ascending
+                                ? SortDirection.Descending
+                                : SortDirection.Ascending,
+                        };
+                        e.Handled = true;
+                        return;
+                    }
+                    case Key.Delete:
+                        GroupDescriptions.RemoveAt(_chipFocusIndex);
+                        if (GroupDescriptions.Count == 0)
+                            ExitBandFocus();
+                        else
+                            _chipFocusIndex = Math.Min(_chipFocusIndex, GroupDescriptions.Count - 1);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                }
+                break;
+
+            case DataGridFocusBand.AutoFilter when entries is { Count: > 0 }:
+                switch (e.Key)
+                {
+                    case Key.LeftArrow:
+                        _filterCellFocusIndex = Math.Max(0, _filterCellFocusIndex - 1);
+                        ScrollColumnIntoView(_filterCellFocusIndex);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.RightArrow:
+                        _filterCellFocusIndex = Math.Min(entries.Count - 1, _filterCellFocusIndex + 1);
+                        ScrollColumnIntoView(_filterCellFocusIndex);
+                        InvalidateBandCues();
+                        e.Handled = true;
+                        return;
+                    case Key.Enter:
+                    {
+                        // Enter engages the cell's filter surface per its kind (§3.4).
+                        var column = entries[_filterCellFocusIndex].Column;
+                        if (!column.AllowFilter)
+                            return;
+                        if (column.FilterCellKind == FilterCellKind.DistinctPicker)
+                            OpenFilterPopup(column);
+                        else if (column.FilterCellKind == FilterCellKind.Text)
+                            AutoFilterRow?.BeginEdit(_filterCellFocusIndex);
+                        e.Handled = true;
+                        return;
+                    }
+                }
+                break;
+        }
+    }
+
     // ── Cell-range selection (§9.4 — corner truth; membership derives per snapshot) ──────────────
 
     /// <inheritdoc cref="SelectionUnitProperty"/>
@@ -337,7 +760,14 @@ public class DataGrid : Control
         if (exact >= 0)
             return exact;
 
+        // A column REMOVED from the collection has no neighborhood to clamp into (audit W2-15:
+        // position −1 scanned rightward from index 0 and silently ballooned the rectangle to the
+        // FIRST column) — report no edge; the derivation returns null and the publish prune
+        // collapses per the lost-corner rule.
         int position = Columns.IndexOf(column);
+        if (position < 0)
+            return -1;
+
         for (int distance = 1; distance < Columns.Count; distance++)
         {
             if (position - distance >= 0 && EntryOf(Columns[position - distance]) is >= 0 and var left)
@@ -348,14 +778,22 @@ public class DataGrid : Control
         return -1;
     }
 
-    /// <summary>§9.4: a corner whose row id left the view collapses the range to the focus cell.</summary>
+    /// <summary>§9.4: a corner whose row id left the view — or whose column left the collection
+    /// entirely (audit W2-15) — collapses the range to the focus cell.</summary>
     private void PruneCellRange()
     {
         if (SelectionUnit != DataGridSelectionUnit.Cell || _cellAnchorRowId < 0)
             return;
-        if (ViewIndexOfRow(_cellAnchorRowId) >= 0 && ViewIndexOfRow(_cellLeadRowId) >= 0)
+        if (ViewIndexOfRow(_cellAnchorRowId) >= 0 && ViewIndexOfRow(_cellLeadRowId) >= 0 &&
+            EntryIndexOfColumnClamped(_cellAnchorColumn) >= 0 && EntryIndexOfColumnClamped(_cellLeadColumn) >= 0)
+        {
             return;
+        }
+        CollapseCellRangeToFocusCell();
+    }
 
+    private void CollapseCellRangeToFocusCell()
+    {
         var snapshot = Snapshot;
         if (FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count &&
             snapshot.GetRow(FocusViewIndex) is { IsGroup: false, RowId: >= 0 } focusRow)
@@ -365,6 +803,22 @@ public class DataGrid : Control
         else
         {
             ClearCellRange();
+        }
+    }
+
+    /// <summary>Audit W2-12: a corner id being REMOVED collapses immediately — before the freed
+    /// slot can recycle onto an unrelated row and silently re-attach the range.</summary>
+    private void HandleRowsRemovedForCellRange(IReadOnlyList<int> ids)
+    {
+        if (_cellAnchorRowId < 0)
+            return;
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (ids[i] == _cellAnchorRowId || ids[i] == _cellLeadRowId)
+            {
+                CollapseCellRangeToFocusCell();
+                return;
+            }
         }
     }
 
@@ -436,6 +890,24 @@ public class DataGrid : Control
                               drawX >= Math.Max(1, presenter.ViewportColumns);
                 if (hidden && !CommitEdit())
                     CancelEdit();
+            }
+        }
+
+        // The auto-filter row's roving editor is a hosted child under the SAME policy (audit
+        // W2-5): sliding under the frozen region (or off-viewport) commits it; an unparseable
+        // draft cancels instead of floating detached from its cell.
+        if (AutoFilterRow is { IsEditing: true } filterRow && RowsPresenter is { } rows)
+        {
+            var layout = rows.ColumnLayout;
+            int editColumn = filterRow.EditColumnIndex;
+            if (editColumn >= layout.FrozenCount && editColumn < layout.Entries.Count)
+            {
+                var entry = layout.Entries[editColumn];
+                int drawX = entry.X - value;
+                bool hidden = drawX + DataGridColumnLayout.CellPadding < layout.FrozenWidth ||
+                              drawX >= Math.Max(1, rows.ViewportColumns);
+                if (hidden && !filterRow.CommitEdit())
+                    filterRow.EndEdit();
             }
         }
 
@@ -653,6 +1125,7 @@ public class DataGrid : Control
     {
         _filterPopup?.Close(); // the popup anchors to template parts about to detach
         _columnChooser?.Close(); // ditto — its placement target is the header part
+        _gridMenu?.Close();      // ditto — the rows presenter anchors it
         if (_hScrollBar is { } hBar)
             hBar.Scroll -= OnHorizontalScroll;
         _hScrollBar = null;
@@ -680,6 +1153,12 @@ public class DataGrid : Control
         _controller?.Dispose();
         _controller = null;
         _rowType = null;
+
+        // An ItemsSource swap is a wholesale id-space change (audit W2-12): every id-keyed store
+        // resets — recycled ids from the NEW controller must never inherit old state.
+        ClearCellRange();
+        _expandedDetails.Clear();
+        _focusRowId = -1;
 
         var source = ItemsSource;
         if (source is null)
@@ -709,21 +1188,49 @@ public class DataGrid : Control
         EnsureColumns();
         _controller.SetColumns(Columns.Where(c => c.FieldName is not null || c.KeySelector is not null)
                                       .Select(c => c.ToShapingDescription()).ToList());
-        // §9.6: value-type rows have no INPC identity — per-row live updates degrade off silently
-        // (the typed controller THROWS on liveUpdates:true for structs; the non-generic grid
-        // degrades instead: collection-level INCC still works, per-row edits ride SetRow).
-        _controller.AttachSource(source, LiveUpdates && !_rowType.IsValueType);
+        _controller.AttachSource(source, EffectiveLiveUpdates);
         _controller.SnapshotChanged += (_, _) => RaiseSnapshotChanged();
         // Row-id hygiene (final-audit fix): removed ids leave the selection BEFORE their slots can
         // recycle onto new rows; a source reset clears id-keyed state wholesale.
-        _controller.RowsRemoved += ids => RowSelection.HandleRowsRemoved(ids);
+        // Row-id hygiene fans out to EVERY id-keyed store (audit W2-12 — the cell-range corners
+        // and detail expansions get the same treatment as the selection: a freed slot's id must
+        // never re-attach state to the unrelated row that recycles it).
+        _controller.RowsRemoved += ids =>
+        {
+            RowSelection.HandleRowsRemoved(ids);
+            HandleRowsRemovedForCellRange(ids);
+            if (_expandedDetails.Count > 0)
+            {
+                foreach (int id in ids)
+                    _expandedDetails.Remove(id);
+            }
+            if (_focusRowId >= 0 && Contains(ids, _focusRowId))
+                _focusRowId = -1; // the view-space fallback carries the focus (audit W2-13)
+        };
         _controller.RowsAdded += ids => RowSelection.HandleRowsAdded(ids);
-        _controller.RowsReset += (_, _) => RowSelection.Clear();
+        _controller.RowsReset += (_, _) =>
+        {
+            RowSelection.Clear();
+            ClearCellRange();
+            _expandedDetails.Clear();
+            _focusRowId = -1;
+        };
+
+        static bool Contains(IReadOnlyList<int> ids, int id)
+        {
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (ids[i] == id)
+                    return true;
+            }
+            return false;
+        }
         PushShape();
     }
 
     private void RaiseSnapshotChanged()
     {
+        ReanchorFocusRow();     // audit W2-13: focus follows its row id — the prunes read the RESULT
         PruneExpandedDetails(); // §9.3: a row id that left the view drops its pane
         PruneCellRange();       // §9.4: a lost corner collapses the range to the focus cell
         SnapshotChanged?.Invoke(this, EventArgs.Empty);
@@ -751,8 +1258,44 @@ public class DataGrid : Control
 
     // ── Columns ──────────────────────────────────────────────────────────────────────────────────
 
+    // Audit W2-6: runtime writes to a column's layout-bearing properties (Width/Min/Max/Visible/
+    // Fixed) must reach the geometry funnel without the author calling an internal method — each
+    // member column's GeometryChanged event routes here. The set tracks membership so a removed
+    // column stops notifying and a Reset re-syncs.
+    private readonly HashSet<DataGridColumn> _geometrySubscribed = [];
+
+    private void SyncColumnGeometrySubscriptions()
+    {
+        if (_geometrySubscribed.Count > 0)
+        {
+            List<DataGridColumn>? gone = null;
+            foreach (var column in _geometrySubscribed)
+            {
+                if (!Columns.Contains(column))
+                    (gone ??= []).Add(column);
+            }
+            if (gone is not null)
+            {
+                foreach (var column in gone)
+                {
+                    column.GeometryChanged -= OnColumnGeometryPropertyChanged;
+                    _geometrySubscribed.Remove(column);
+                }
+            }
+        }
+        foreach (var column in Columns)
+        {
+            if (_geometrySubscribed.Add(column))
+                column.GeometryChanged += OnColumnGeometryPropertyChanged;
+        }
+    }
+
+    private void OnColumnGeometryPropertyChanged(object? sender, EventArgs e) => NotifyColumnGeometryChanged();
+
     private void OnColumnsChanged(NotifyCollectionChangedEventArgs e)
     {
+        SyncColumnGeometrySubscriptions(); // before the generation early-out — generated columns notify too
+
         if (_columnsFromAutoGeneration)
             return; // our own generation pass — not an authoring change
 
@@ -1041,8 +1584,39 @@ public class DataGrid : Control
     /// <summary>The row-id-keyed selection (design doc §3.3 — survives every reshape untouched).</summary>
     public DataGridSelectionController RowSelection { get; } = new();
 
-    /// <summary>The focus row in VIEW space (−1 none; re-anchored per snapshot by row id when possible).</summary>
-    public int FocusViewIndex { get; private set; } = -1;
+    /// <summary>The focus row in VIEW space (−1 none; re-anchored per snapshot by row id when
+    /// possible — audit W2-13 made the doc claim true: the setter captures the focused DATA row's
+    /// id, and every publish re-projects it through the id→viewIndex map).</summary>
+    public int FocusViewIndex
+    {
+        get => _focusViewIndex;
+        private set
+        {
+            _focusViewIndex = value;
+            var snapshot = Snapshot;
+            _focusRowId = value >= 0 && value < snapshot.Count &&
+                          snapshot.GetRow(value) is { IsGroup: false, RowId: >= 0 } row
+                ? row.RowId
+                : -1;
+        }
+    }
+
+    private int _focusViewIndex = -1;
+    private int _focusRowId = -1;
+
+    /// <summary>Re-projects the focus row by id against the NEW snapshot (per publish, before the
+    /// id-keyed prunes read it); a focus id that left the view falls back to the clamped view slot.</summary>
+    private void ReanchorFocusRow()
+    {
+        var snapshot = Snapshot;
+        if (_focusRowId >= 0 && ViewIndexOfRow(_focusRowId) is >= 0 and var view)
+        {
+            _focusViewIndex = view; // the id is unchanged — bypass the setter's re-capture
+            return;
+        }
+        _focusRowId = -1;
+        _focusViewIndex = Math.Min(_focusViewIndex, Math.Max(-1, snapshot.Count - 1));
+    }
 
     /// <summary>The focus cell's visible-column index (−1 = whole-row focus). A cell focus move
     /// auto-scrolls the entry into the visible window (§9.2 — focus never lands hidden).</summary>
@@ -1090,6 +1664,7 @@ public class DataGrid : Control
     internal void HandleRowPress(int viewIndex, int columnIndex, bool onExpander, KeyModifiers modifiers, int clickCount)
     {
         Focus(FocusNavigationMethod.Pointer);
+        ExitBandFocus(); // a rows press returns the §3.3 virtual focus to the rows
 
         var snapshot = Snapshot;
         if (viewIndex < 0 || viewIndex >= snapshot.Count)
@@ -1386,9 +1961,11 @@ public class DataGrid : Control
             var list = (IList)ItemsSource!;
             list.Add(newRow);
             // A plain (non-INCC) IList carries no change wire — the one sanctioned refresh is a
-            // cold re-attach (rebuild + reshape; acceptable for the add-a-row cold path).
+            // cold re-attach (rebuild + reshape; acceptable for the add-a-row cold path). The
+            // §9.6 struct degrade rides EffectiveLiveUpdates here too (audit F1: passing the raw
+            // LiveUpdates threw the engine's value-type guard mid-commit, AFTER the row was added).
             if (list is not INotifyCollectionChanged)
-                _controller.AttachSource(list, LiveUpdates);
+                _controller.AttachSource(list, EffectiveLiveUpdates);
             return true;
         }
 
@@ -1454,6 +2031,11 @@ public class DataGrid : Control
             return;
         }
 
+        // The §9.3 stand-down guard applies on the TUNNEL too (audit W2-10): keys typed inside a
+        // hosted detail pane belong to the pane, never to an unrelated open cell editor.
+        if (editing.FocusedDetailElement() is not null)
+            return;
+
         switch (e.Key)
         {
             case Key.Enter:
@@ -1486,6 +2068,14 @@ public class DataGrid : Control
         // grid's row gestures.
         if (AutoFilterRow is { IsEditing: true })
             return;
+
+        // The §3.3 virtual band router: while a band holds the virtual focus, it owns the keys
+        // (F6 advances the cycle, Esc returns to the rows).
+        if (_focusBand != DataGridFocusBand.Rows)
+        {
+            HandleBandKey(e);
+            return;
+        }
 
         // The §9.3 detail stand-down guard (the popup/editor precedent): focus inside a hosted
         // detail pane means the pane owns the keyboard — the grid takes ONLY Esc (return to the
@@ -1572,6 +2162,30 @@ public class DataGrid : Control
         bool shift = (e.Modifiers & KeyModifiers.Shift) != 0;
         bool ctrl = (e.Modifiers & KeyModifiers.Control) != 0;
 
+        // The Menu key opens the grid command menu at the focus cell (the keyboard twin of the
+        // rows right-click — the reachability surface for the dialogs + summaries).
+        if (e.Key == Key.Menu)
+        {
+            OpenGridContextMenu(FocusColumnIndex);
+            e.Handled = true;
+            return;
+        }
+
+        // The §3.3 band-cycle entry gestures: F6 anywhere advances rows → header → group panel →
+        // auto-filter → rows; Ctrl+Up from row 0 steps straight into the header (the pinned walk).
+        if (e.Key == Key.F6)
+        {
+            AdvanceBandCycle();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.UpArrow && ctrl && FocusViewIndex <= 0)
+        {
+            FocusHeaderBand();
+            e.Handled = true;
+            return;
+        }
+
         // The §9.3 detail keyboard cluster — BEFORE the row-nav switch (its plain-arrow arms would
         // otherwise swallow the Ctrl-modified gestures): Ctrl+Right expands the focused data row's
         // pane, Ctrl+Left collapses, Ctrl+Down enters it (Esc returns via the stand-down guard).
@@ -1589,12 +2203,19 @@ public class DataGrid : Control
                     e.Handled = true;
                     return;
                 case Key.DownArrow when IsDetailExpanded(detailAnchor.RowId):
-                    if (RowsPresenter?.TryFocusDetail(detailAnchor.RowId) == true)
+                {
+                    // Audit W2-9: an expanded-but-unrealized pane must not fall through to the
+                    // plain Down arm (a silent focus move). Bring the anchor in and retry after
+                    // realization rides the next measure — the parked-work idiom.
+                    if (RowsPresenter is { } rowsPresenter && !rowsPresenter.TryFocusDetail(detailAnchor.RowId))
                     {
-                        e.Handled = true;
-                        return;
+                        int rowId = detailAnchor.RowId;
+                        ScrollRowIntoView(FocusViewIndex);
+                        UIApplication.Current?.Dispatcher.Post(() => RowsPresenter?.TryFocusDetail(rowId));
                     }
-                    break;
+                    e.Handled = true;
+                    return;
+                }
             }
         }
 
@@ -1602,8 +2223,10 @@ public class DataGrid : Control
         {
             Key.UpArrow => Math.Max(0, current - 1),
             Key.DownArrow => Math.Min(lastNavigable, current + 1),
-            Key.PageUp => Math.Max(0, current - viewport),
-            Key.PageDown => Math.Min(lastNavigable, current + viewport),
+            // §9.3 (audit W2-8): a page covers a VIEWPORT of CONTENT rows — with expanded panes,
+            // view rows and content rows diverge, so the jump steps in content-y and maps back.
+            Key.PageUp => Math.Max(0, PageTargetView(current, -viewport)),
+            Key.PageDown => Math.Min(lastNavigable, PageTargetView(current, viewport)),
             Key.Home when ctrl => 0,
             Key.End when ctrl => lastNavigable,
             _ => null,
@@ -1645,7 +2268,11 @@ public class DataGrid : Control
                     ? Math.Max(0, (FocusColumnIndex < 0 ? 0 : FocusColumnIndex) - 1)
                     : Math.Min(Math.Max(0, visible - 1), FocusColumnIndex + 1);
                 FocusColumnIndex = next;
-                if (SelectionUnit == DataGridSelectionUnit.Cell && focused.RowId >= 0)
+                // Audit W2-11: `focused` is the DEFAULT carrier on the placeholder / with no focus
+                // row (RowId 0 would alias a real slot) — the range writes need a REAL data row.
+                bool focusedIsData = !onPlaceholder && FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count &&
+                                     !focused.IsGroup && focused.RowId >= 0;
+                if (SelectionUnit == DataGridSelectionUnit.Cell && focusedIsData)
                 {
                     if (shift)
                         ExtendCellRangeTo(focused.RowId, ColumnAtEntry(next));
@@ -1682,7 +2309,10 @@ public class DataGrid : Control
 
             // Space selects (the modifier-free wire is (Character, " ") — ND10). Never on the
             // placeholder: its default `focused` carries RowId 0, which would alias a real row.
-            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && !focused.IsGroup && focused.RowId >= 0:
+            // ROW mode only (audit W2-14): cell mode keeps its one rectangle — a row-selection
+            // write would re-create the mixed state the §9.4 mode switch exists to clear.
+            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && !focused.IsGroup && focused.RowId >= 0 &&
+                                                 SelectionUnit == DataGridSelectionUnit.Row:
                 if (ctrl)
                     RowSelection.Toggle(focused.RowId);
                 else
@@ -1852,6 +2482,16 @@ public class DataGrid : Control
             return [row.RowId];
         }
         return [];
+    }
+
+    /// <summary>A page-jump's target view row (audit W2-8): the current view row's content-y, plus
+    /// a viewport of content rows, mapped back to a view row (identity without expanded panes).</summary>
+    private int PageTargetView(int currentView, int deltaContentRows)
+    {
+        if (RowsPresenter is not { } presenter)
+            return currentView + deltaContentRows;
+        int y = presenter.ContentYOf(Math.Max(0, currentView)) + deltaContentRows;
+        return presenter.ViewIndexAtY(Math.Max(0, y)).ViewIndex;
     }
 
     /// <summary>Brings a view row into the viewport (the drawn-rows analog of bring-into-view —

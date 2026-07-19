@@ -393,13 +393,19 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
     {
         var key = Expression.ArrayIndex(Expression.Field(Expression.Constant(this), nameof(Keys)), slot);
 
-        if (op is FilterOperator.Contains or FilterOperator.StartsWith)
+        if (op is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith)
         {
             if (typeof(TKey) != typeof(string))
                 throw new ArgumentException($"{op} applies to string columns only; the key type is '{typeof(TKey).Name}'.");
             string needle = value as string ?? Convert.ToString(value, System.Globalization.CultureInfo.CurrentCulture) ?? string.Empty;
-            var method = typeof(string).GetMethod(op == FilterOperator.Contains ? nameof(string.Contains) : nameof(string.StartsWith),
-                                                  [typeof(string), typeof(StringComparison)])!;
+            var method = typeof(string).GetMethod(
+                op switch
+                {
+                    FilterOperator.Contains => nameof(string.Contains),
+                    FilterOperator.StartsWith => nameof(string.StartsWith),
+                    _ => nameof(string.EndsWith),
+                },
+                [typeof(string), typeof(StringComparison)])!;
             // key != null && key.Op(needle, comparison)
             return Expression.AndAlso(
                 Expression.NotEqual(key, Expression.Constant(null, typeof(string))),

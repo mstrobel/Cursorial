@@ -262,4 +262,38 @@ public class StructRowTests
         controller.SetShape([], [], [], FilterNode.Condition("Quantity", FilterOperator.LessThan, 100));
         Assert.Equal(new[] { "MSFT", "GOOG" }, DataRowSymbols(controller)); // insertion order (sequence tiebreak)
     }
+
+    [Fact]
+    public void Stale_row_id_edit_is_refused_never_resurrecting_a_freed_slot()
+    {
+        // Wave-2 audit F2: the reference lane's `row is null` liveness sentinel cannot cover
+        // structs — a freed slot holds a default STRUCT, so a stale-id write used to "succeed",
+        // dirty-mark the dead slot, and re-insert it into the published view as a ghost row (while
+        // the same slot sat on the free list awaiting reuse — the §2.6 invariant-2 breach).
+        var rows = new ObservableCollection<Trade>(SampleRows());
+        using var controller = new DataViewController<Trade>();
+        controller.SetColumns(Columns);
+        controller.AttachSource(rows, liveUpdates: false);
+        controller.SetShape([SortDescription.Ascending("Price")], [], [], null);
+
+        // Capture GOOG's row id, then remove it from the source (its slot frees).
+        int staleId = -1;
+        var snapshot = controller.Snapshot;
+        for (int i = 0; i < snapshot.Count; i++)
+        {
+            var row = snapshot.GetRow(i);
+            if (!row.IsGroup && controller.RowAccessor(row.RowId).Symbol == "GOOG")
+                staleId = row.RowId;
+        }
+        Assert.True(staleId >= 0);
+        rows.RemoveAt(3); // GOOG
+        controller.Flush();
+        Assert.Equal(3, controller.Snapshot.Count);
+
+        // The stale-id edit must be REFUSED — and the next publish must not grow a ghost row.
+        Assert.False(controller.TrySetCellFromText(staleId, "Price", "999"));
+        controller.Flush();
+        Assert.Equal(3, controller.Snapshot.Count);
+        Assert.DoesNotContain("", DataRowSymbols(controller)); // no default-struct phantom
+    }
 }

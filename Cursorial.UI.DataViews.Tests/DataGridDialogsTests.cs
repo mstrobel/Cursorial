@@ -334,6 +334,212 @@ public class DataGridDialogsTests
         Assert.Equal(3, grid.Snapshot.Count); // 31900 + 19800 + 27300
     }
 
+    [Fact]
+    public void Builder_empty_value_on_a_non_nullable_column_vetoes_ok()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        var builder = grid.ActiveFilterBuilder!;
+
+        // Retarget the starter row to Amount (decimal — non-nullable) and leave '=' + empty value.
+        // Previously OK accepted Condition(Amount, Equals, null), the dialog closed reporting
+        // success, and the POSTED shape push crashed the dispatcher (ConvertLiteral: a null
+        // literal cannot match a non-nullable decimal key).
+        var row = builder.ConditionRows[0];
+        row.Field.SelectedIndex = 2; // Amount
+
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.False(task.IsCompleted); // vetoed — the dialog stays open
+        Assert.StartsWith("✕", builder.ValidationStrip.Text);
+        Assert.Contains("(Blanks)", builder.ValidationStrip.Text);
+        Assert.Null(grid.Filter); // no uncompilable tree reached the engine
+
+        host.RunUntilIdle(); // no faulted dispatcher job pending
+        Assert.Equal(4, grid.Snapshot.Count); // snapshot untouched
+
+        builder.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.False(task.Result);
+    }
+
+    [Fact]
+    public void Builder_blanks_equals_on_a_string_column_still_applies()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        var builder = grid.ActiveFilterBuilder!;
+
+        // Region (string) '=' empty ⇒ the (Blanks) match — legal wherever the key can HOLD null,
+        // and it must keep compiling end-to-end (the veto is only for non-nullable value keys).
+        var row = builder.ConditionRows[0];
+        row.Field.SelectedIndex = 1; // Region
+
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        var condition = Assert.IsType<FilterConditionNode>(grid.Filter);
+        Assert.Null(condition.Value);
+        Assert.Equal(0, grid.Snapshot.Count); // no sample row has a blank Region — and no crash
+    }
+
+    [Fact]
+    public void Builder_untouched_ok_applies_no_filter()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        var builder = grid.ActiveFilterBuilder!;
+
+        // The machine-seeded starter row (pre-selected first column, '=', empty value) must not
+        // lower to an unintended '[Id] = (Blanks)': an untouched OK applies NOTHING.
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        Assert.Null(grid.Filter);
+        Assert.Equal(4, grid.Snapshot.Count); // every row still visible
+    }
+
+    [Fact]
+    public void Builder_clear_then_ok_clears_the_filter()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        grid.Filter = FilterNode.Condition(grid.Columns[1], FilterOperator.Equals, "East");
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.Snapshot.Count);
+
+        var task = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        var builder = grid.ActiveFilterBuilder!;
+
+        builder.Clear(); // ⌫ Clear reseeds a pristine starter — OK must CLEAR, not land '[Id] = (Blanks)'
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.Result);
+        Assert.Null(grid.Filter);
+        Assert.Equal(4, grid.Snapshot.Count);
+    }
+
+    [Fact]
+    public void Builder_zero_edit_ok_preserves_the_retained_expression_text()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // A function call is non-structural ⇒ FilterNode.Custom with the §9.1-retained source text.
+        grid.FilterExpressionText = "Len([Id]) = 7";
+        host.RunUntilIdle();
+        var before = Assert.IsType<FilterPredicateNode>(grid.Filter);
+        Assert.Equal(4, grid.Snapshot.Count); // all sample ids are 7 chars
+
+        var task = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        var builder = grid.ActiveFilterBuilder!;
+
+        // Zero edits: OK lowers back to the SAME seeded tree — the Filter write (which nulls
+        // FilterExpressionText) must be skipped so the user's source text survives.
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        Assert.Same(before, grid.Filter);
+        Assert.Equal("Len([Id]) = 7", grid.FilterExpressionText);
+
+        // The next builder open still labels the opaque expression row from the retained text.
+        var reopened = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+        Assert.NotNull(FindText(host, "ƒ Len([Id]) = 7"));
+        grid.ActiveFilterBuilder!.Cancel();
+        host.RunUntilIdle();
+        Assert.True(reopened.IsCompleted);
+        Assert.Equal("Len([Id]) = 7", grid.FilterExpressionText); // cancel wrote nothing either
+    }
+
+    [Fact]
+    public void Duplicate_filter_builder_open_rides_the_live_dialog()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // A double-click posts BOTH opens before the first modal blocks its trigger — previously
+        // two builder windows stacked with only the last one tracked (and closed at teardown).
+        var first = grid.OpenFilterBuilderAsync();
+        var second = grid.OpenFilterBuilderAsync();
+        host.RunUntilIdle();
+
+        // ONE dialog: the duplicate adopted the live window, and the tracked handle reaches it.
+        var builder = grid.ActiveFilterBuilder;
+        Assert.NotNull(builder);
+        Assert.False(first.IsCompleted);
+        Assert.False(second.IsCompleted);
+
+        // Driving the tracked handle drives the one real dialog; both entry tasks complete with it.
+        builder.Ok(); // untouched ⇒ applies no filter
+        host.RunUntilIdle();
+        Assert.True(first.IsCompleted);
+        Assert.True(second.IsCompleted);
+        Assert.True(first.Result);
+        Assert.True(second.Result);
+        Assert.Null(grid.Filter);
+        Assert.Null(grid.ActiveFilterBuilder); // fully untracked after the one close
+    }
+
+    // ── The expression editor × the criteria bridge (null-literal exactness) ──────────────────────
+
+    [Fact]
+    public void Expression_editor_null_equals_on_a_non_nullable_column_matches_nothing_without_crashing()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+
+        // '[Amount] = null' on a non-nullable decimal key: the strip is green (valid boolean
+        // text), and the lowering must take the COMPILED lane — the structural
+        // Condition(Equals, null) shape would throw in the engine's posted shape push while the
+        // pinned §9.1 semantics say it simply matches nothing.
+        editor.TextBox.Text = "[Amount] = null";
+        host.RunUntilIdle();
+        Assert.True(editor.IsValid);
+
+        editor.Apply();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        Assert.IsType<FilterPredicateNode>(grid.Filter); // compiled lane, not a structural null condition
+        Assert.Equal("[Amount] = null", grid.FilterExpressionText);
+        Assert.Equal(0, grid.Snapshot.Count); // constant-false — matches nothing, no faulted job
+
+        // '<> null' is the constant-true mirror.
+        Assert.True(grid.TryApplyFilterExpression("[Amount] <> null", out var notNullDiagnostics));
+        Assert.Empty(notNullDiagnostics);
+        host.RunUntilIdle();
+        Assert.IsType<FilterPredicateNode>(grid.Filter);
+        Assert.Equal(4, grid.Snapshot.Count);
+
+        // Null-capable keys keep the structural (builder round-trippable) lane.
+        Assert.True(grid.TryApplyFilterExpression("[Region] = null", out var regionDiagnostics));
+        Assert.Empty(regionDiagnostics);
+        host.RunUntilIdle();
+        Assert.IsType<FilterConditionNode>(grid.Filter);
+        Assert.Equal(0, grid.Snapshot.Count);
+    }
+
     // ── The rules manager ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -424,6 +630,91 @@ public class DataGridDialogsTests
         host.RunUntilIdle();
         Assert.True(managerTask.IsCompleted);
         Assert.NotNull(FindText(host, "█")); // the max amount draws a full fill run
+    }
+
+    [Fact]
+    public void Rule_editor_text_operator_on_a_non_string_column_vetoes_ok()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+
+        var newRuleTask = manager.NewRuleAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+
+        // Highlight pane, Amount (decimal), 'Text contains' + raw text: previously OK landed a
+        // ThresholdRule the engine's CompileFormatRules THROWS on — swallowed once in the
+        // fire-and-forget click, then re-thrown unhandled on every later rules mutation.
+        editor.ColumnCombo!.SelectedIndex = 2;   // Amount
+        editor.OperatorCombo!.SelectedIndex = 6; // "Text contains"
+        editor.ValueBox!.Text = "3";
+
+        editor.Ok();
+        host.RunUntilIdle();
+        Assert.False(newRuleTask.IsCompleted); // vetoed — the editor stays open
+        Assert.True(editor.IsOpen);
+        Assert.StartsWith("✕", editor.ValidationStrip.Text);
+        Assert.Contains("text column", editor.ValidationStrip.Text);
+        Assert.All(grid.Columns, c => Assert.Empty(c.FormatRules)); // no rule landed
+
+        // The engine never saw an uncompilable rule: a follow-on recompile must not throw.
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+        Assert.Equal(4, grid.Snapshot.Count);
+
+        editor.Cancel();
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(newRuleTask.IsCompleted);
+        Assert.Null(newRuleTask.Exception);
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
+    public void Double_new_rule_activation_opens_one_editor_and_lands_one_rule()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // The grid entry point double-activated too: the duplicate manager open adopts the live one.
+        var managerTask = grid.OpenRulesManagerAsync();
+        var duplicateManagerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+
+        // A double-click on ＋ New Rule posts BOTH opens before either modal blocks the button —
+        // previously two rule editors stacked with only the last tracked (orphaning the first
+        // at teardown, and OK-ing both added duplicate rules).
+        var first = manager.NewRuleAsync();
+        var second = manager.NewRuleAsync();
+        host.RunUntilIdle();
+
+        var editor = manager.ActiveRuleEditor;
+        Assert.NotNull(editor);
+        Assert.True(editor.IsOpen);
+        Assert.True(second.IsCompleted); // the duplicate was a guarded no-op
+        Assert.Null(second.Exception);
+        Assert.False(first.IsCompleted); // the one real editor is still open
+
+        // OK on the ONE editor lands exactly one rule.
+        editor.SetKind(RuleEditorKind.DataBar);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+        editor.Ok();
+        host.RunUntilIdle();
+        Assert.True(first.IsCompleted);
+        Assert.Null(first.Exception);
+        Assert.IsType<DataBarRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Single(manager.Rows);
+        Assert.Null(manager.ActiveRuleEditor);
+
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+        Assert.True(duplicateManagerTask.IsCompleted); // the rider completed with the live close
     }
 
     [Fact]

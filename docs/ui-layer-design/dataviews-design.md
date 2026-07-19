@@ -368,6 +368,26 @@ custom columns don't touch the engine (DataBar/badge are the built-in painters).
 > sort comparison over a boxed per-publish threshold from `TryGetTopKThreshold`) instead of
 > re-compiling a condition per publish. Tests: `DataGridStructuralTests` / `DataGridDialogsTests` /
 > `Shaping/{GroupSummarySort,StructRow,TopKThreshold,CriteriaExpression}Tests`.
+>
+> **Closeout addenda (live-canary + adversarial audit, same wave):** the §3.3 keyboard model
+> landed in full — the F6 / Ctrl+Up band cycle with VIRTUAL focus over the header (Left/Right
+> walk, Enter cycles the sort, Space appends a level, Alt+Down opens the filter popup, Ctrl+G
+> groups), the group panel chips (Enter direction, Delete, Ctrl+Left/Right reorder), and the
+> auto-filter cells; a rows-area **context menu** (right-click / Menu key) is the reachability
+> surface for the filter dialogs, conditional formatting, the column chooser, per-column
+> **summaries** (`ToggleSummary`, Sum/Average gated on numeric keys) and copy. §3.3's
+> "Shift+click appends — mouse chords are wire-reliable" was WRONG for Shift: terminals reserve
+> Shift+click for native selection while mouse tracking is on, so **Ctrl+click** is the reliable
+> append chord (Shift+click still works where delivered). The auto-filter grammar gained `%xyz` /
+> `xyz%` / `%xy%` wildcard forms (ends/starts/contains — `FilterOperator.EndsWith` is new) and
+> `!` / `!=` not-equal aliases. A 6-dimension adversarial audit over the full wave-2 diff produced
+> 23 confirmed findings (3 critical, 6 major), each fixed with a regression test — notably: the
+> struct-row new-row commit's cold re-attach missing the §9.6 degrade; stale-rowId edits
+> resurrecting freed slots (the `RowStore.IsLive` liveness truth); focus now genuinely re-anchors
+> by row id per publish (the substrate the §9.4 prune reads); cell-range corners joined the
+> row-id hygiene fan-out; the band presenters' frozen overpaint gates on `FrozenWidth` (the
+> gutter is pinned without any Fixed column); and detail-pane height refinements re-dirty the
+> band so the fixpoint refills under the corrected content-y map.
 
 ### 9.1 The expression language (`Shaping/Expressions/`)
 

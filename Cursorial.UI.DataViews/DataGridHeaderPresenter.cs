@@ -12,7 +12,8 @@ namespace Cursorial.UI.DataViews;
 /// (<c>▾</c>, amber when the column carries a filter — the mockup's active state). Its own render
 /// boundary (ClipToBounds — a 1-row band, so the horizontal-offset re-ink stays band-local, §3.1);
 /// mirrors the shared horizontal offset. Header cells hold VIRTUAL focus (a grid-owned index +
-/// drawn cue — drawn cells cannot hold framework focus, §3.3); clicks sort (Shift appends).
+/// drawn cue via the §3.3 band cycle — drawn cells cannot hold framework focus); clicks sort
+/// (Ctrl+click appends — the wire-reliable chord; Shift+click too where the terminal delivers it).
 /// The §1-deferred column UX lives here too: header-edge drag resize (the right padding cell is
 /// the grab zone), press-and-drag reorder with the mockup's <c>draghdr</c> adorners (floating
 /// <c>▣</c> chip, cyan <c>▾</c> drop slot, ghosted shift target), drag-down-off-the-band to hide,
@@ -114,7 +115,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         for (int i = layout.FrozenCount; i < entries.Count; i++)
             DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
 
-        if (layout.FrozenCount > 0)
+        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-1)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
@@ -160,9 +161,11 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
             return;
 
+        // The §3.3 virtual band focus shares the hover tint (one look for "this header cell is
+        // where the next gesture lands", pointer- or keyboard-driven).
         bool tinted = dragging
             ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
-            : i == _hoverEntry;
+            : i == _hoverEntry || i == owner.HeaderFocusIndex;
         if (tinted && HoverBackground is not null)
             context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
 
@@ -437,9 +440,13 @@ public sealed class DataGridHeaderPresenter : UIElement
         switch (gesture)
         {
             case HeaderGesture.Pending:
-                // No promotion happened: this IS the click — sort (Shift appends), replayed with
-                // the press-time modifiers.
-                if ((modifiers & KeyModifiers.Shift) != 0)
+                // No promotion happened: this IS the click — sort, replayed with the press-time
+                // modifiers. Shift OR Ctrl appends a sort level: most terminals reserve Shift+click
+                // for native text selection while mouse tracking is on (the click never reaches the
+                // app), so Ctrl+click is the wire-reliable chord and Shift+click works where the
+                // terminal deigns to deliver it (a live-canary finding — the §3.3 "mouse chords are
+                // wire-reliable" claim was wrong for Shift specifically).
+                if ((modifiers & (KeyModifiers.Shift | KeyModifiers.Control)) != 0)
                     _owner.AppendSort(column);
                 else
                     _owner.CycleSort(column);

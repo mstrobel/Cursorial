@@ -15,7 +15,7 @@ namespace Cursorial.Gallery.ViewModels;
 public class DataGridViewModel : PageViewModel
 {
     public override string Title => "Data Grid";
-    public override string Summary => "Sortable, groupable, live-shaping DataGrid over the DataViews engine. Click headers to sort (Shift adds levels), Ctrl+G groups, F2 edits, Space appends sort levels from the header.";
+    public override string Summary => "Sortable, groupable, live-shaping DataGrid over the DataViews engine. Click headers to sort (Ctrl+click adds levels — terminals eat Shift+click), right-click rows for the command menu (filters, formatting, summaries), F6 walks the bands (header: Enter sorts, Space adds a level, Ctrl+G groups, Alt+Down filters), F2/Enter edits.";
 
     private static readonly string[] Regions = ["East", "West", "North", "South"];
     private static readonly string[] Reps = ["A. Chen", "K. Brooks", "M. Ortiz", "S. Kim", "R. Patel"];

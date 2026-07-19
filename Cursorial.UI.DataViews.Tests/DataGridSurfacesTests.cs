@@ -292,6 +292,66 @@ public class DataGridSurfacesTests
         Assert.Contains(">20000", Row(host, 1));
     }
 
+    [Theory] // the live-canary grammar extensions: %-wildcards + the ! not-equal aliases
+    [InlineData("so-10%", FilterOperator.StartsWith, "so-10")]
+    [InlineData("%42", FilterOperator.EndsWith, "42")]
+    [InlineData("%o-10%", FilterOperator.Contains, "o-10")]
+    [InlineData("!East", FilterOperator.NotEquals, "East")]
+    [InlineData("!=East", FilterOperator.NotEquals, "East")]
+    [InlineData("<>East", FilterOperator.NotEquals, "East")]
+    [InlineData(">= 100", FilterOperator.GreaterThanOrEqual, "100")]
+    [InlineData("%", null, "%")]           // a lone wildcard is bare text, not an empty needle
+    [InlineData("50%", FilterOperator.StartsWith, "50")]
+    public void Auto_filter_grammar_parses_wildcards_and_not_equal_aliases(
+        string text, FilterOperator? op, string literal)
+    {
+        var (parsedOp, parsedLiteral) = DataGridAutoFilterRow.ParseCondition(text);
+        Assert.Equal(op, parsedOp);
+        Assert.Equal(literal, parsedLiteral);
+    }
+
+    [Fact]
+    public void Auto_filter_wildcards_and_bang_filter_end_to_end()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        grid.ShowAutoFilterRow = true;
+        host.RunUntilIdle();
+
+        // "%44" on Id → ends-with: only SO-1044 survives.
+        var id = grid.RowsPresenter!.ColumnLayout.Entries[0];
+        host.SendClick(id.X + 1, 1);
+        host.RunUntilIdle();
+        host.SendText("%44");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(1, grid.Snapshot.Count);
+        Assert.Contains("SO-1044", Row(host, 2));
+
+        // Clear, then "!East" on Region → not-equal: South + West remain.
+        host.SendClick(id.X + 1, 1);
+        host.RunUntilIdle();
+        host.SendKey(Key.Character, text: ""); // Ctrl+A select-all is not wired in TextBox; retype instead
+        grid.AutoFilterRow!.Editor!.Text = string.Empty;
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(4, grid.Snapshot.Count);
+
+        var region = grid.RowsPresenter!.ColumnLayout.Entries[1];
+        host.SendClick(region.X + 1, 1);
+        host.RunUntilIdle();
+        host.SendText("!East");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.Snapshot.Count);
+        Assert.Contains("SO-1046", Row(host, 2)); // South
+        Assert.Contains("SO-1047", Row(host, 3)); // West
+    }
+
     [Fact]
     public void Auto_filter_unparseable_literal_keeps_the_editor_open_and_writes_nothing()
     {

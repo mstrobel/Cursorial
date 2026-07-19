@@ -506,10 +506,20 @@ internal sealed class DataGridRuleEditor
         {
             case RuleEditorKind.Highlight:
             {
-                var (op, _) = HighlightOperators[Math.Clamp(_highlightOpIndex, 0, HighlightOperators.Length - 1)];
+                var (op, opLabel) = HighlightOperators[Math.Clamp(_highlightOpIndex, 0, HighlightOperators.Length - 1)];
                 object? value;
-                if (op is FilterOperator.Contains or FilterOperator.StartsWith)
+                if (op is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith)
                 {
+                    // Text operators apply to string keys only (the Filter Builder's gate,
+                    // mirrored): the engine's condition builder has no text lane for other key
+                    // types and THROWS — inside CompileFormatRules, after the dialog closed,
+                    // poisoning every later rules recompile. Veto on the strip instead.
+                    var underlying = keyType is null ? typeof(string) : Nullable.GetUnderlyingType(keyType) ?? keyType;
+                    if (underlying != typeof(string))
+                    {
+                        SetStrip(valid: false, $"✕ '{opLabel}' needs a text column — {column.EffectiveHeader}");
+                        return;
+                    }
                     value = _highlightValue; // text operators carry the raw text
                 }
                 else if (!DataGridDialogHelpers.TryParseLiteral(keyType, _highlightValue, out value))
@@ -522,6 +532,18 @@ internal sealed class DataGridRuleEditor
                     SetStrip(valid: false, "✕ Enter a condition value");
                     return;
                 }
+
+                // Belt-and-braces: a threshold entry compiles through the same per-column condition
+                // builder as a filter fragment — probe it (the auto-filter row's pre-write idiom)
+                // so OK can never land a rule the engine's rules recompile throws on. Gated on the
+                // column being SHAPED: an unshaped column is the engine's documented silent skip.
+                if (_grid.Controller is { } controller && controller.GetColumnKeyType(column) is not null &&
+                    !controller.CanCompileFilter(FilterNode.Condition(column, op, value)))
+                {
+                    SetStrip(valid: false, $"✕ '{_highlightValue}' does not apply to {column.EffectiveHeader}");
+                    return;
+                }
+
                 Result = new ThresholdRule
                 {
                     ColumnKey = column,

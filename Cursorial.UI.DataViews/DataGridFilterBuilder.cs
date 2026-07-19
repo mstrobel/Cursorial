@@ -48,6 +48,12 @@ internal sealed class DataGridFilterBuilder
         public FilterOperator Operator = FilterOperator.Equals;
         public string ValueText = string.Empty;
         public string SecondValueText = string.Empty;
+        /// <summary>
+        /// True while the row is a machine-seeded starter the user never touched (any field/
+        /// operator/value edit through the rendered cells clears it). A pristine row never lowers —
+        /// an untouched builder's OK must apply NO filter, not "[FirstColumn] = (Blanks)".
+        /// </summary>
+        public bool Pristine;
     }
 
     /// <summary>A non-editable leaf carried through verbatim (InSet / Not / compiled predicate).</summary>
@@ -74,6 +80,7 @@ internal sealed class DataGridFilterBuilder
         (FilterOperator.GreaterThanOrEqual, ">="),
         (FilterOperator.Contains, "contains"),
         (FilterOperator.StartsWith, "starts with"),
+        (FilterOperator.EndsWith, "ends with"),
         (FilterOperator.Between, "between"),
     ];
 
@@ -84,13 +91,40 @@ internal sealed class DataGridFilterBuilder
     private readonly List<DataGridColumn> _fieldColumns;
     private readonly List<ConditionRow> _conditionRows = [];
     private readonly List<GroupRow> _groupRows = [];
+    private readonly TaskCompletionSource<FilterBuilderOutcome> _outcome =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>Non-null when this instance is a duplicate-open rider adopting the LIVE dialog.</summary>
+    private readonly DataGridFilterBuilder? _live;
+    private Group _root;
+    private string _editAsTextSeed = string.Empty;
     private bool _rebuilding;
 
     public DataGridFilterBuilder(DataGrid grid)
     {
         _grid = grid;
+
+        if (grid.ActiveFilterBuilder is { } open)
+        {
+            // Already-open guard (§9.1 dialogs): the fire-and-forget entry point can run twice in
+            // one input batch (a double-click posts two opens before the first modal blocks its
+            // trigger). The duplicate never builds a second window — it ADOPTS the live dialog
+            // (same window, same model, same rendered rows), so the grid's tracking handle (which
+            // the entry point re-stamps onto the duplicate) still reaches the ONE real dialog,
+            // and ShowAsync rides its outcome instead of stacking a second modal.
+            var live = open._live ?? open;
+            _live = live;
+            _window = live._window;
+            _treeHost = live._treeHost;
+            _strip = live._strip;
+            _fieldColumns = live._fieldColumns;
+            _conditionRows = live._conditionRows;
+            _groupRows = live._groupRows;
+            _root = live._root;
+            return;
+        }
+
         _fieldColumns = grid.Columns.Where(c => c.FieldName is not null || c.KeySelector is not null).ToList();
-        Root = Seed(grid.Filter);
+        _root = Seed(grid.Filter);
 
         var content = new StackPanel(); // vertical
         content.Children.Add(new ScrollViewer
@@ -125,7 +159,7 @@ internal sealed class DataGridFilterBuilder
     }
 
     /// <summary>The mutable root group (tests inspect and mutate the model directly).</summary>
-    internal Group Root { get; private set; }
+    internal Group Root => (_live ?? this)._root;
 
     /// <summary>Whether the dialog is currently shown (the grid's test hook gates on it).</summary>
     internal bool IsOpen => _window.IsShown;
@@ -140,12 +174,30 @@ internal sealed class DataGridFilterBuilder
     internal TextBlock ValidationStrip => _strip;
 
     /// <summary>The criteria text the "Edit as Text" hop carries (set when the outcome is <see cref="FilterBuilderOutcome.EditAsText"/>).</summary>
-    internal string EditAsTextSeed { get; private set; } = string.Empty;
+    internal string EditAsTextSeed => (_live ?? this)._editAsTextSeed;
 
     internal async Task<FilterBuilderOutcome> ShowAsync()
     {
-        var result = await _window.ShowDialogAsync();
-        return result is FilterBuilderOutcome outcome ? outcome : FilterBuilderOutcome.Cancelled;
+        if (_live is { } live)
+        {
+            // A duplicate open rides the live dialog and completes with ITS outcome. EditAsText
+            // maps to Cancelled for the rider: the live call's owner chains the expression-editor
+            // hop — chaining it from both entry tasks would stack two editors.
+            var ridden = await live._outcome.Task;
+            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Cancelled : ridden;
+        }
+
+        try
+        {
+            var result = await _window.ShowDialogAsync();
+            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Cancelled;
+            _outcome.TrySetResult(outcome);
+            return outcome;
+        }
+        finally
+        {
+            _outcome.TrySetResult(FilterBuilderOutcome.Cancelled); // the throw path (dialog cancellation)
+        }
     }
 
     // ── Seeding (FilterNode → the mutable mirror) ─────────────────────────────────────────────────
@@ -155,9 +207,10 @@ internal sealed class DataGridFilterBuilder
         if (filter is null)
         {
             // An empty builder starts with one blank condition row (the mockup's affordance —
-            // the user picks a field rather than hunting for an add button first).
+            // the user picks a field rather than hunting for an add button first). Pristine:
+            // the machine-seeded starter never lowers until the user touches it.
             var empty = new Group { Operator = FilterGroupOperator.And };
-            empty.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault() });
+            empty.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault(), Pristine = true });
             return empty;
         }
 
@@ -329,7 +382,10 @@ internal sealed class DataGridFilterBuilder
         field.SelectionChanged += (_, _) =>
         {
             if (!_rebuilding && field.SelectedIndex >= 0)
+            {
                 condition.Column = _fieldColumns[field.SelectedIndex];
+                condition.Pristine = false;
+            }
         };
         row.Children.Add(field);
 
@@ -345,7 +401,10 @@ internal sealed class DataGridFilterBuilder
         value.TextChanged += (_, _) =>
         {
             if (!_rebuilding)
+            {
                 condition.ValueText = value.Text;
+                condition.Pristine = false;
+            }
         };
         row.Children.Add(value);
 
@@ -354,7 +413,10 @@ internal sealed class DataGridFilterBuilder
         second.TextChanged += (_, _) =>
         {
             if (!_rebuilding)
+            {
                 condition.SecondValueText = second.Text;
+                condition.Pristine = false;
+            }
         };
         bool between = condition.Operator == FilterOperator.Between;
         ellipsis.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
@@ -367,6 +429,7 @@ internal sealed class DataGridFilterBuilder
             if (_rebuilding || op.SelectedIndex < 0)
                 return;
             condition.Operator = Operators[op.SelectedIndex].Op;
+            condition.Pristine = false;
             bool showSecond = condition.Operator == FilterOperator.Between;
             ellipsis.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
             second.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
@@ -407,35 +470,55 @@ internal sealed class DataGridFilterBuilder
 
     internal void AddCondition(Group group)
     {
-        group.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault() });
+        if (_live is { } live)
+        {
+            live.AddCondition(group);
+            return;
+        }
+        group.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault(), Pristine = true });
         Rebuild();
     }
 
     /// <summary>The row-level ＋: insert a sibling immediately after <paramref name="anchor"/>.</summary>
     internal void AddConditionAfter(Condition anchor)
     {
+        if (_live is { } live)
+        {
+            live.AddConditionAfter(anchor);
+            return;
+        }
         var (parent, index) = Locate(anchor);
         if (parent is null)
             return;
-        parent.Children.Insert(index + 1, new Condition { Column = anchor.Column });
+        parent.Children.Insert(index + 1, new Condition { Column = anchor.Column, Pristine = true });
         Rebuild();
     }
 
     internal void AddGroup(Group parent)
     {
+        if (_live is { } live)
+        {
+            live.AddGroup(parent);
+            return;
+        }
         // A fresh nested group starts on the OPPOSITE operator (the mockup's Or-inside-And) with
         // one blank condition so it renders as an editable row, not a bare header.
         var nested = new Group
         {
             Operator = parent.Operator == FilterGroupOperator.And ? FilterGroupOperator.Or : FilterGroupOperator.And,
         };
-        nested.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault() });
+        nested.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault(), Pristine = true });
         parent.Children.Add(nested);
         Rebuild();
     }
 
     internal void Remove(Node node)
     {
+        if (_live is { } live)
+        {
+            live.Remove(node);
+            return;
+        }
         var (parent, index) = Locate(node);
         if (parent is null)
             return;
@@ -445,8 +528,13 @@ internal sealed class DataGridFilterBuilder
 
     internal void Clear()
     {
-        Root = new Group { Operator = FilterGroupOperator.And };
-        Root.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault() });
+        if (_live is { } live)
+        {
+            live.Clear();
+            return;
+        }
+        _root = new Group { Operator = FilterGroupOperator.And };
+        _root.Children.Add(new Condition { Column = _fieldColumns.FirstOrDefault(), Pristine = true });
         _strip.Text = string.Empty;
         Rebuild();
     }
@@ -468,10 +556,12 @@ internal sealed class DataGridFilterBuilder
     // ── Lowering (the mutable mirror → FilterNode) ────────────────────────────────────────────────
 
     /// <summary>
-    /// Builds the <see cref="FilterNode"/> tree from the model. Blank condition rows (no column)
-    /// and empty groups are skipped — a starter row must not block OK; a condition whose value
-    /// doesn't parse against its column's key type is an error (never a silently-wrong literal —
-    /// the §9.1 exactness discipline). Null with no error = "no filter" (clears).
+    /// Builds the <see cref="FilterNode"/> tree from the model. Blank condition rows (no column),
+    /// untouched machine-seeded starter rows (<see cref="Condition.Pristine"/>), and empty groups
+    /// are skipped — a starter row must not block OK NOR lower to an unintended
+    /// "[FirstColumn] = (Blanks)"; a condition whose value doesn't parse against its column's key
+    /// type is an error (never a silently-wrong literal — the §9.1 exactness discipline). Null with
+    /// no error = "no filter" (clears).
     /// </summary>
     internal FilterNode? BuildResult(out string? error)
     {
@@ -497,8 +587,8 @@ internal sealed class DataGridFilterBuilder
                 }
                 case Condition condition:
                 {
-                    if (condition.Column is null)
-                        break; // a blank starter row
+                    if (condition.Column is null || condition.Pristine)
+                        break; // a blank/untouched starter row never lowers
                     var built = BuildCondition(condition, ref error);
                     if (error is not null)
                         return null;
@@ -527,7 +617,7 @@ internal sealed class DataGridFilterBuilder
         var keyType = _grid.Controller?.GetColumnKeyType(column) ?? column.KeySelector?.ReturnType;
         string header = column.EffectiveHeader;
 
-        if (condition.Operator is FilterOperator.Contains or FilterOperator.StartsWith)
+        if (condition.Operator is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith)
         {
             // Text operators carry the raw text (the auto-filter grammar's shape); they only make
             // sense on string keys — the engine's condition builder has no text lane for numbers.
@@ -563,10 +653,25 @@ internal sealed class DataGridFilterBuilder
             return FilterNode.Condition(column, FilterOperator.Between, value, second);
         }
 
-        if (value is null && condition.Operator is not (FilterOperator.Equals or FilterOperator.NotEquals))
+        if (value is null)
         {
-            error = $"'{Operators.First(o => o.Op == condition.Operator).Label}' needs a value — {header}";
-            return null;
+            if (condition.Operator is not (FilterOperator.Equals or FilterOperator.NotEquals))
+            {
+                error = $"'{Operators.First(o => o.Op == condition.Operator).Label}' needs a value — {header}";
+                return null;
+            }
+
+            // (Blanks) =/<> is meaningful only where the key can HOLD null; a null literal against
+            // a non-nullable value key would throw in the engine's literal conversion inside the
+            // POSTED shape push — after the dialog already closed reporting success. Veto on the
+            // strip instead (§9.1: never a silently-wrong or crashing literal).
+            bool nullableKey = keyType is null || !keyType.IsValueType ||
+                               Nullable.GetUnderlyingType(keyType) is not null;
+            if (!nullableKey)
+            {
+                error = $"{header} needs a value — a {FriendlyType(keyType)} column has no (Blanks)";
+                return null;
+            }
         }
 
         return FilterNode.Condition(column, condition.Operator, value);
@@ -592,9 +697,26 @@ internal sealed class DataGridFilterBuilder
             return;
         }
 
-        // The public Filter setter deliberately: the tree is now BUILDER-authored, so any stored
-        // expression text is stale — the editor re-derives via ToText on its next open (§9.1).
-        _grid.Filter = built;
+        // Belt-and-braces (the auto-filter row's pre-write probe): the REAL compile runs inside a
+        // posted shape push, where an uncompilable tree would be an unhandled dispatcher exception
+        // AFTER the dialog closed reporting success. Any fragment the engine rejects — not just the
+        // literal shapes BuildCondition anticipates — vetoes here with the dialog still open.
+        if (built is not null && _grid.Controller is { } controller && !controller.CanCompileFilter(built))
+        {
+            SetError("the filter does not apply to the current columns");
+            return;
+        }
+
+        // A zero-edit OK lowers back to the seeded tree verbatim (a single preserved opaque root ⇒
+        // the SAME FilterNode reference). The §9.1-retained source text still describes it exactly —
+        // writing through the Filter setter would clear FilterExpressionText for nothing.
+        if (!ReferenceEquals(built, _grid.Filter))
+        {
+            // The public Filter setter deliberately: the tree is now BUILDER-authored, so any
+            // stored expression text is stale — the editor re-derives via ToText on its next
+            // open (§9.1).
+            _grid.Filter = built;
+        }
         _window.Close(FilterBuilderOutcome.Applied);
     }
 
@@ -607,6 +729,14 @@ internal sealed class DataGridFilterBuilder
     /// </summary>
     internal void RequestEditAsText()
     {
+        if (_live is { } live)
+        {
+            // The hop must land its seed on the LIVE instance — its owning entry task is the one
+            // that chains into the expression editor (the rider maps EditAsText to Cancelled).
+            live.RequestEditAsText();
+            return;
+        }
+
         var built = BuildResult(out string? error);
         if (error is not null)
         {
@@ -614,7 +744,7 @@ internal sealed class DataGridFilterBuilder
             return;
         }
 
-        EditAsTextSeed = built is null ? string.Empty : CriteriaExpression.ToText(built, _grid.CriteriaFieldName);
+        _editAsTextSeed = built is null ? string.Empty : CriteriaExpression.ToText(built, _grid.CriteriaFieldName);
         _window.Close(FilterBuilderOutcome.EditAsText);
     }
 

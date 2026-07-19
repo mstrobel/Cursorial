@@ -16,6 +16,8 @@ public enum FilterOperator
     Contains,
     /// <summary>String starts-with (per-column auto-filter option).</summary>
     StartsWith,
+    /// <summary>String ends-with (the auto-filter's <c>%xyz</c> wildcard form).</summary>
+    EndsWith,
     /// <summary>Inclusive range over <see cref="FilterConditionNode.Value"/>..<see cref="FilterConditionNode.SecondValue"/>.</summary>
     Between,
 }

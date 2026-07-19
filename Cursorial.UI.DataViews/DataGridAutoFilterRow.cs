@@ -42,9 +42,13 @@ public sealed class DataGridAutoFilterRow : UIElement
 
     static DataGridAutoFilterRow()
     {
+        // The offset is in BOTH effect sets (audit W2-0): AffectsRender re-inks the drawn filter
+        // cells per H-tick (header/footer parity — AffectsMeasure alone re-ran measure into
+        // unchanged bounds and never invalidated the band's cached raster, so the cells rendered
+        // at stale x until an unrelated change), and AffectsMeasure re-arranges the hosted editor.
         AffectsRender<DataGridAutoFilterRow>(
-            BackgroundProperty, TextBrushProperty, PlaceholderBrushProperty, WellBackgroundProperty);
-        // The offset re-arranges the hosted editor, not just the ink.
+            BackgroundProperty, TextBrushProperty, PlaceholderBrushProperty, WellBackgroundProperty,
+            HorizontalOffsetProperty);
         AffectsMeasure<DataGridAutoFilterRow>(HorizontalOffsetProperty);
     }
 
@@ -107,7 +111,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         for (int i = layout.FrozenCount; i < entries.Count; i++)
             DrawFilterCell(context, owner, layout, i);
 
-        if (layout.FrozenCount > 0)
+        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
@@ -127,6 +131,11 @@ public sealed class DataGridAutoFilterRow : UIElement
             return;
         if (i == _editColumnIndex && _editor is not null)
             return; // the hosted editor paints this cell
+
+        // The §3.3 virtual band focus: the focused filter cell wears the well fill (drawn before
+        // the kind branches so the walk stays visible even over disabled cells).
+        if (i == owner.FilterCellFocusIndex && WellBackground is not null)
+            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
 
         var column = entry.Column;
         if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
@@ -200,6 +209,9 @@ public sealed class DataGridAutoFilterRow : UIElement
     /// <summary>The hosted editor (tests type through it).</summary>
     internal Controls.TextBox? Editor => _editor;
 
+    /// <summary>The edited entry index while editing (the grid's §9.2 H-scroll policy reads it).</summary>
+    internal int EditColumnIndex => _editColumnIndex;
+
     private DataGridColumnLayout.Entry? EditEntry()
         => Layout is { } layout && _editColumnIndex >= 0 && _editColumnIndex < layout.Entries.Count
             ? layout.Entries[_editColumnIndex]
@@ -266,9 +278,16 @@ public sealed class DataGridAutoFilterRow : UIElement
         return finalSize;
     }
 
-    // ── The operator grammar (§1: "> >= < <= = <>"; bare = contains/equals; empty = clear) ───────
+    // ── The operator grammar (§1, live-canary-extended: "> >= < <= = <> != !" prefixes plus the
+    //    %-wildcard forms; bare = contains/equals; empty = clear) ────────────────────────────────
 
-    /// <summary>Parses the condition text: a null Op means bare text (the per-column default op).</summary>
+    /// <summary>
+    /// Parses the condition text: a null Op means bare text (the per-column default op). Prefix
+    /// operators: <c>&gt; &gt;= &lt; &lt;= = &lt;&gt;</c> plus <c>!=</c>/<c>!</c> as not-equal
+    /// aliases (the numeric-field muscle memory). Wildcard forms on otherwise-bare text:
+    /// <c>xyz%</c> → starts-with, <c>%xyz</c> → ends-with, <c>%xy%</c> → contains (edge wildcards
+    /// only — inner <c>%</c> stays literal; a lone <c>%</c> is bare text).
+    /// </summary>
     internal static (FilterOperator? Op, string Literal) ParseCondition(string text)
     {
         text = text.Trim();
@@ -277,11 +296,24 @@ public sealed class DataGridAutoFilterRow : UIElement
             ['>', '=', .. var rest] => (FilterOperator.GreaterThanOrEqual, rest.Trim()),
             ['<', '=', .. var rest] => (FilterOperator.LessThanOrEqual, rest.Trim()),
             ['<', '>', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+            ['!', '=', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+            ['!', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
             ['>', .. var rest] => (FilterOperator.GreaterThan, rest.Trim()),
             ['<', .. var rest] => (FilterOperator.LessThan, rest.Trim()),
             ['=', .. var rest] => (FilterOperator.Equals, rest.Trim()),
-            _ => (null, text),
+            _ => ParseWildcards(text),
         };
+    }
+
+    private static (FilterOperator? Op, string Literal) ParseWildcards(string text)
+    {
+        if (text.Length >= 3 && text[0] == '%' && text[^1] == '%')
+            return (FilterOperator.Contains, text[1..^1]);
+        if (text.Length >= 2 && text[^1] == '%')
+            return (FilterOperator.StartsWith, text[..^1]);
+        if (text.Length >= 2 && text[0] == '%')
+            return (FilterOperator.EndsWith, text[1..]);
+        return (null, text);
     }
 
     /// <summary>

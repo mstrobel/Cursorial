@@ -412,6 +412,365 @@ public class DataGridStructuralTests
         Assert.Equal(1, viewIndex);
     }
 
+    // ── The §3.3 band cycle + reachability surfaces (the live-canary closeout) ───────────────────
+
+    [Fact]
+    public void F6_walks_the_bands_and_header_keys_sort()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+        Assert.Equal(DataGridFocusBand.Rows, grid.FocusBand);
+
+        // F6 → header (group panel + auto-filter are hidden, so the cycle skips them).
+        host.SendKey(Key.F6);
+        host.RunUntilIdle();
+        Assert.Equal(DataGridFocusBand.Header, grid.FocusBand);
+
+        // Right + Enter: sort by the second column (replace); Space: append the third as level 2.
+        host.SendKey(Key.RightArrow);
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Single(grid.SortDescriptions);
+        Assert.Same(grid.Columns[1], grid.SortDescriptions[0].ColumnKey);
+
+        host.SendKey(Key.RightArrow);
+        host.SendKey(Key.Character, text: " ");
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.SortDescriptions.Count);
+        Assert.Same(grid.Columns[2], grid.SortDescriptions[1].ColumnKey);
+
+        // Ctrl+G groups the focused header column; the group panel band becomes reachable.
+        grid.ShowGroupPanel = true;
+        host.SendKey(Key.Character, KeyModifiers.Control, "g");
+        host.RunUntilIdle();
+        Assert.Single(grid.GroupDescriptions);
+
+        // Esc returns to the rows.
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.Equal(DataGridFocusBand.Rows, grid.FocusBand);
+    }
+
+    [Fact]
+    public void Ctrl_up_from_row_zero_enters_the_header_and_chips_edit_grouping()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.ShowGroupPanel = true;
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1]));
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[2]));
+        host.RunUntilIdle();
+
+        grid.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+        grid.SetFocusCell(0, 0);
+        host.SendKey(Key.UpArrow, KeyModifiers.Control);
+        host.RunUntilIdle();
+        Assert.Equal(DataGridFocusBand.Header, grid.FocusBand);
+
+        // F6 onward: group panel. Enter flips the chip's direction; Delete removes the level.
+        host.SendKey(Key.F6);
+        host.RunUntilIdle();
+        Assert.Equal(DataGridFocusBand.GroupPanel, grid.FocusBand);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(SortDirection.Descending, grid.GroupDescriptions[0].Direction);
+
+        host.SendKey(Key.Delete);
+        host.RunUntilIdle();
+        Assert.Single(grid.GroupDescriptions);
+        Assert.Same(grid.Columns[2], grid.GroupDescriptions[0].ColumnKey);
+    }
+
+    [Fact]
+    public void Ctrl_click_appends_a_sort_level_where_shift_click_is_terminal_reserved()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.CycleSort(grid.Columns[0]); // level 1: Id ascending
+        host.RunUntilIdle();
+
+        // Ctrl+click the Region header — the wire-reliable append chord (terminals eat Shift+click).
+        host.SendMouseMove(12, 0);
+        foreach (var kind in new[] { MouseEventKind.ButtonDown, MouseEventKind.ButtonUp })
+        {
+            host.SendInput(new MouseEvent
+            {
+                Kind = kind,
+                Position = new CellPosition(12, 0),
+                Button = MouseButton.Left,
+                ButtonsHeld = kind == MouseEventKind.ButtonDown ? MouseButtons.Left : MouseButtons.None,
+                Modifiers = KeyModifiers.Control,
+                Timestamp = DateTimeOffset.UnixEpoch,
+            });
+            host.RunUntilIdle();
+        }
+
+        Assert.Equal(2, grid.SortDescriptions.Count);
+        Assert.Same(grid.Columns[1], grid.SortDescriptions[1].ColumnKey);
+    }
+
+    [Fact]
+    public void Grid_context_menu_reaches_the_dialogs_and_summaries()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        var menu = grid.ActiveGridMenu;
+        Assert.NotNull(menu);
+
+        // The command lanes are present: sort lanes, dialogs, the chooser, the summary submenu, copy.
+        var captions = menu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                  .Select(item => item.Header?.ToString() ?? string.Empty).ToList();
+        Assert.Contains(captions, c => c.Contains("Filter builder", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Conditional formatting", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Column chooser", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Summary for", StringComparison.Ordinal));
+        menu.Close();
+        host.RunUntilIdle();
+
+        // The summary toggle is the menu's engine: on adds the description, off removes it.
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
+        host.RunUntilIdle();
+        var summary = Assert.Single(grid.SummaryDescriptions);
+        Assert.Equal(AggregateKind.Sum, summary.Aggregate);
+        Assert.Contains("Σ", Row(host, 13) + Row(host, 12)); // the footer band renders the total
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
+        Assert.Empty(grid.SummaryDescriptions);
+    }
+
+    // ── The wave-2 audit regressions (W2-N = the confirmed finding index) ────────────────────────
+
+    [Fact]
+    public void Auto_filter_band_reinks_on_a_horizontal_tick() // W2-0
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        grid.ShowAutoFilterRow = true;
+        host.RunUntilIdle();
+        int resting = Row(host, 1).IndexOf('⌕');
+        Assert.True(resting >= 0);
+
+        // With NO editor hosted, an H-tick must still re-ink the band (AffectsMeasure alone left
+        // the cached raster at stale x — the filter cells detached from their columns).
+        grid.HorizontalOffset = 6;
+        host.RunUntilIdle();
+        Assert.NotEqual(resting, Row(host, 1).IndexOf('⌕'));
+    }
+
+    [Fact]
+    public void Gutter_region_is_repainted_over_scrolled_bleed_in_every_band() // W2-1/2/3/4
+    {
+        var (host, grid, _) = Show(); // 24 cols; TotalWidth grows by the 2-cell gutter
+        using var _ = host;
+
+        grid.ShowAutoFilterRow = true;
+        grid.DetailTemplate = DetailTemplate();
+        host.RunUntilIdle();
+
+        // Scroll so a column straddles the gutter boundary: the pinned gutter (FrozenWidth 2 with
+        // NO Fixed column) must stay clear in the header, the filter band, and the data rows.
+        grid.HorizontalOffset = 5;
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.RowsPresenter!.ColumnLayout.FrozenWidth);
+        Assert.True(string.IsNullOrWhiteSpace(Row(host, 0)[..2]), $"header gutter bled: [{Row(host, 0)[..2]}]");
+        Assert.True(string.IsNullOrWhiteSpace(Row(host, 1)[..2]), $"filter gutter bled: [{Row(host, 1)[..2]}]");
+        Assert.Equal('▶', Row(host, 2)[0]); // the data row's expander survives the overpaint
+    }
+
+    [Fact]
+    public void Runtime_fixed_write_reflows_without_the_internal_funnel() // W2-6
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // A PUBLIC property write must reach layout on its own (no NotifyColumnGeometryChanged).
+        grid.Columns[2].Fixed = DataGridColumnFixed.Left;
+        host.RunUntilIdle();
+        Assert.Equal(1, grid.RowsPresenter!.ColumnLayout.FrozenCount);
+        Assert.Same(grid.Columns[2], grid.RowsPresenter!.ColumnLayout.Entries[0].Column);
+
+        grid.Columns[2].Fixed = DataGridColumnFixed.None;
+        host.RunUntilIdle();
+        Assert.Equal(0, grid.RowsPresenter!.ColumnLayout.FrozenCount);
+    }
+
+    [Fact]
+    public void Page_jump_steps_content_rows_over_tall_panes() // W2-8
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        // A 3-row pane on the first row: PageDown from row 0 with a 3-row "viewport step" must
+        // land on view row 0+... the CONTENT step (3 rows of pane + rows), not view 0+viewport.
+        grid.DetailTemplate = new DataTemplate
+        {
+            Content = new FuncTemplateContent(_ =>
+            {
+                var panel = new StackPanel();
+                panel.Children.Add(new TextBlock("p1"));
+                panel.Children.Add(new TextBlock("p2"));
+                panel.Children.Add(new TextBlock("p3"));
+                return panel;
+            }),
+        };
+        host.RunUntilIdle();
+        grid.ExpandDetail(RowIdOf(grid, "SO-1042"));
+        host.RunUntilIdle();
+
+        grid.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+        grid.SetFocusCell(0, 0);
+        host.SendKey(Key.PageDown);
+        host.RunUntilIdle();
+
+        // Content y of view 0 is 0; a page of ~11 content rows reaches content y 11 → the pane
+        // consumed 3 of them, so the focus lands 3 VIEW rows earlier than the naive view step.
+        // With only 4 data rows both clamp to the last row — assert via the inverse instead: the
+        // page target must map through the content-y inverse, which the presenter exposes.
+        Assert.Equal(3, grid.FocusViewIndex); // clamped to the last data row either way…
+        // …so pin the MAP itself: 11 content rows down from view 0 is view 8 WITHOUT the pane,
+        // view 8−3 WITH it (the pane eats 3 content rows).
+        Assert.Equal((0, false), grid.RowsPresenter!.ViewIndexAtY(0));
+        Assert.Equal((0, true), grid.RowsPresenter!.ViewIndexAtY(2));  // inside the pane
+        Assert.Equal((1, false), grid.RowsPresenter!.ViewIndexAtY(4)); // SO-1044 pushed down by 3
+    }
+
+    [Fact]
+    public void Focus_follows_its_row_id_across_a_resort() // W2-13
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        // Focus SO-1042 (view 0 under the insertion order), then sort Amount descending: SO-1042
+        // (12450, the smallest) re-projects to the LAST view row — the focus must follow the id.
+        host.SendClick(4, 1);
+        host.RunUntilIdle();
+        Assert.Equal(0, grid.FocusViewIndex);
+
+        grid.SortDescriptions.Add(SortDescription.Descending(grid.Columns[2]));
+        host.RunUntilIdle();
+        Assert.Equal(3, grid.FocusViewIndex);
+        Assert.Contains("SO-1042", Row(host, 4)); // and it IS still the focused row on screen
+    }
+
+    [Fact]
+    public void Removed_corner_row_collapses_the_range_before_its_slot_recycles() // W2-12
+    {
+        var (host, grid, source) = Show(columns: 40);
+        using var _ = host;
+
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        // Range anchored on SO-1042..SO-1046 (rows 0..2), focus on SO-1042.
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(12, 3),
+            Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left,
+            Modifiers = KeyModifiers.Shift,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+        Assert.Equal((0, 2, 1, 1), grid.CellRangeViewRect()!.Value);
+
+        // Deleting the LEAD corner's row (SO-1046) collapses the range to the focus cell — a new
+        // row added right after (which recycles the freed slot id) must NOT re-attach the range.
+        source.RemoveAt(2);
+        host.RunUntilIdle();
+        source.Add(new Order("SO-9999", "North", 50000m));
+        host.RunUntilIdle();
+
+        var collapsed = grid.CellRangeViewRect();
+        Assert.NotNull(collapsed);
+        Assert.Equal(collapsed!.Value.FirstRow, collapsed.Value.LastRow);
+        // The Shift+click moved FOCUS onto the lead (SO-1046); its removal fell focus back to the
+        // same view slot (now SO-1047), and the range collapsed onto THAT focus cell. The vital
+        // half: the recycled slot id (SO-9999) never re-attached the range.
+        Assert.Equal(grid.FocusViewIndex, collapsed.Value.FirstRow);
+        var cornerRow = grid.Snapshot.GetRow(collapsed.Value.FirstRow);
+        Assert.Equal("SO-1047", grid.Controller!.FormatCell(cornerRow.RowId, grid.Columns[0]));
+    }
+
+    // ── §9.6 — struct rows at the grid level ─────────────────────────────────────────────────────
+
+    private struct TradeRow
+    {
+        public string Symbol;
+        public decimal Price;
+    }
+
+    [Fact]
+    public void Struct_rows_new_row_commit_survives_the_cold_reattach()
+    {
+        // Wave-2 audit F1: the new-row commit's cold re-attach (a plain non-INCC IList) passed the
+        // RAW LiveUpdates instead of the §9.6 degrade — for struct rows it hit the engine's
+        // liveUpdates:true throw MID-COMMIT, after the row was already added (crash + desync).
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 14) });
+        using var _ = host;
+
+        var source = new List<TradeRow>
+        {
+            new() { Symbol = "AAPL", Price = 210m },
+            new() { Symbol = "MSFT", Price = 420m },
+        };
+        var grid = new DataGrid { AutoGenerateColumns = false, AllowAddNew = true };
+        grid.Columns.Add(new DataGridColumn { FieldName = "Symbol", Width = DataGridLength.Cells(8) });
+        grid.Columns.Add(new DataGridColumn { FieldName = "Price", Width = DataGridLength.Cells(8) });
+        grid.AddingNewRow += (_, e) => e.Item = new TradeRow { Symbol = "?", Price = 0m };
+        grid.ItemsSource = source;
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+
+        Assert.True(grid.LiveUpdates); // the default — the crash path's precondition
+        Assert.True(grid.HasNewRowPlaceholder);
+
+        // Walk onto the ghost row, edit Symbol, commit.
+        host.SendClick(2, 2); // MSFT (view row 1)
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.FocusViewIndex);
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter!.IsEditing);
+        host.SendText("TSLA");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        // The commit survived (no engine throw), the source gained the row, and the cold re-attach
+        // refreshed the view (the row renders).
+        Assert.False(grid.RowsPresenter!.IsEditing);
+        Assert.Equal(3, source.Count);
+        Assert.Equal("TSLA", source[2].Symbol);
+        Assert.Equal(3, grid.Snapshot.Count);
+        Assert.NotNull(FindText(host, "TSLA"));
+    }
+
+    /// <summary>The first (column, row) of <paramref name="text"/> in the composited frame, or null.</summary>
+    private static (int X, int Y)? FindText(UIHeadlessHost host, string text, int rows = 14)
+    {
+        for (int y = 0; y < rows; y++)
+        {
+            int x = host.GetRowText(y).IndexOf(text, StringComparison.Ordinal);
+            if (x >= 0)
+                return (x, y);
+        }
+        return null;
+    }
+
     // ── §9.4 — cell-range selection ──────────────────────────────────────────────────────────────
 
     [Fact]

@@ -132,7 +132,7 @@ public sealed class DataGridSummaryPresenter : UIElement
         // frozen region re-fills and draws unshifted on top. Stacking accounting is per-entry, so
         // the two filtered passes keep each entry's cells in collection order.
         DrawCellPass(context, layout, cells, stackRow, rows, frozen: false);
-        if (layout.FrozenCount > 0)
+        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-3)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, rows), Background);

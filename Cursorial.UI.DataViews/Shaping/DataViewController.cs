@@ -423,9 +423,15 @@ public sealed class DataViewController<TRow> : DataViewController
         if (column is null)
             return false;
 
-        var row = _store.GetRow(rowId);
-        if (row is null && !typeof(TRow).IsValueType)
+        // Wave-2 audit F2: a stale/removed rowId must never write into a freed slot — the old
+        // reference-lane `row is null` sentinel cannot cover value-type rows (a freed slot holds a
+        // default STRUCT, so the write "succeeded", the dirty mark re-inserted the dead slot, and a
+        // ghost row entered the published view while the slot sat on the free list). IsLive is the
+        // one liveness truth for both lanes.
+        if (!_store.IsLive(rowId))
             return false;
+
+        var row = _store.GetRow(rowId);
 
         if (!column.TrySetFromText(ref row, text))
             return false;

@@ -246,6 +246,16 @@ internal static class ShapingCodegen
             formatted = Expression.Call(value, toStringMethod,
                 Expression.Constant(format, typeof(string)),
                 Expression.Constant(culture, typeof(IFormatProvider)));
+            if (!valueType.IsValueType)
+            {
+                // A null reference-typed IFormattable key formats as "" (audit W2-16 — the
+                // non-IFormattable branch below always guarded; the span lane returns "" for the
+                // same cell, and the doc pins the two lanes text-identical).
+                formatted = Expression.Condition(
+                    Expression.Equal(value, Expression.Constant(null, valueType)),
+                    Expression.Constant(string.Empty),
+                    formatted);
+            }
         }
         else
         {

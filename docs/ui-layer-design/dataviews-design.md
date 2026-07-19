@@ -353,3 +353,193 @@ reuses the popup. Q5 sealed snapshot → the three integrity invariants (§2.6) 
 Q6 direct-draw vs element rows → direct-draw upheld; editing hosts elements (owner mandate);
 TreeListView picks per density. Q7 cell-painter seam → yes: column `CellKind`/painter seam so
 custom columns don't touch the engine (DataBar/badge are the built-in painters).
+
+## 9. Wave 2 (post-merge; the deferred list — design addendum, 2026-07-18)
+
+> **Status (2026-07-18): LANDED — all of §9.1–§9.6 shipped** on `dataviews-datagrid`, built as four
+> packages (editor suite + column UX; the expression language; builder/rules dialogs; engine
+> extensions) plus the structural package (§9.2 H-scroll/frozen, §9.3 master-detail, §9.4
+> cell-range, the §9.6 span-formatter band cache and SCP band-window promotion). Deviations from
+> this spec are none of substance; two implementation notes: (1) the §9.3 expander gutter landed as
+> `DataGridColumnLayout.GutterWidth` — a synthetic pinned leading REGION inside `FrozenWidth`
+> rather than a synthetic `Entry` (an Entry carries the CellPadding invariant a 2-cell gutter can't
+> honor; every presenter + hit map still inherits it through the layout, which is what the pin was
+> for); (2) `TopBottomRule` evaluation compiles a rank predicate ONCE per rule (the column's own
+> sort comparison over a boxed per-publish threshold from `TryGetTopKThreshold`) instead of
+> re-compiling a condition per publish. Tests: `DataGridStructuralTests` / `DataGridDialogsTests` /
+> `Shaping/{GroupSummarySort,StructRow,TopKThreshold,CriteriaExpression}Tests`.
+>
+> **Closeout addenda (live-canary + adversarial audit, same wave):** the §3.3 keyboard model
+> landed in full — the F6 / Ctrl+Up band cycle with VIRTUAL focus over the header (Left/Right
+> walk, Enter cycles the sort, Space appends a level, Alt+Down opens the filter popup, Ctrl+G
+> groups), the group panel chips (Enter direction, Delete, Ctrl+Left/Right reorder), and the
+> auto-filter cells; a rows-area **context menu** (right-click / Menu key) is the reachability
+> surface for the filter dialogs, conditional formatting, the column chooser, per-column
+> **summaries** (`ToggleSummary`, Sum/Average gated on numeric keys) and copy. §3.3's
+> "Shift+click appends — mouse chords are wire-reliable" was WRONG for Shift: terminals reserve
+> Shift+click for native selection while mouse tracking is on, so **Ctrl+click** is the reliable
+> append chord (Shift+click still works where delivered). The auto-filter grammar gained `%xyz` /
+> `xyz%` / `%xy%` wildcard forms (ends/starts/contains — `FilterOperator.EndsWith` is new) and
+> `!` / `!=` not-equal aliases. A 6-dimension adversarial audit over the full wave-2 diff produced
+> 23 confirmed findings (3 critical, 6 major), each fixed with a regression test — notably: the
+> struct-row new-row commit's cold re-attach missing the §9.6 degrade; stale-rowId edits
+> resurrecting freed slots (the `RowStore.IsLive` liveness truth); focus now genuinely re-anchors
+> by row id per publish (the substrate the §9.4 prune reads); cell-range corners joined the
+> row-id hygiene fan-out; the band presenters' frozen overpaint gates on `FrozenWidth` (the
+> gutter is pinned without any Fixed column); and detail-pane height refinements re-dirty the
+> band so the fixpoint refills under the corrected content-y map.
+
+### 9.1 The expression language (`Shaping/Expressions/`)
+
+The mockup's criteria grammar, one parser serving the filter editor, the Filter Builder, and CF
+Expression rules:
+
+```
+expr        := or
+or          := and ('Or' and)*
+and         := not ('And' not)*
+not         := 'Not' not | comparison
+comparison  := additive ( ('='|'<>'|'<'|'<='|'>'|'>=') additive
+                        | 'In' '(' additive (',' additive)* ')'
+                        | 'Between' additive 'And' additive
+                        | 'Like' additive )?
+additive    := multiplicative (('+'|'-') multiplicative)*
+multiplicative := unary (('*'|'/'|'%') unary)*
+unary       := '-' unary | primary
+primary     := '[' field ']' | number | 'quoted string' | #date# | true|false|null
+             | function '(' args ')' | '(' expr ')'
+functions   := Contains|StartsWith|EndsWith|Upper|Lower|Len|Trim|Abs|Round|IsNull|IsNullOrEmpty
+```
+
+Keywords case-insensitive; positions on every token (the validation strip's column numbers). The
+pipeline: `ExpressionParser.Parse(text)` → a positioned AST + diagnostics; `ExpressionCompiler`
+lowers the AST to a typed `Expression<Func<TRow,bool>>` over the column set (field refs bind by
+FieldName/EffectiveHeader; numeric promotion int→long→decimal→double on mixed operands; string
+relational ops honor the column's SortMode comparison; `Like` translates `%`/`_` wildcards to a
+compiled regex; `Between` inclusive) → `FilterNode.Custom`. `AstToFilterNode` recognizes the
+tree-shaped subset (And/Or over simple field-op-literal comparisons) for Filter Builder round-trip;
+`FilterNodeToAst`/`AstToText` complete the loop (Builder ⇄ text). Non-boolean roots and unknown
+fields/functions are positioned diagnostics, never throws past Parse.
+
+**Panel amendments (implemented):** ONE semantic authority — the compiled lane adopts the ENGINE's
+comparison semantics (string relational/equality via the involved column's SortMode; nullable
+relational via null-first total order — `[A] < 5` is TRUE for a null A, exactly the Condition
+lane; `= null` ≡ null-ness). Structural lowering to Condition/InSet leaves is guarded by literal
+EXACTNESS (round-trip through the key type — `[IntCol] = 2.5` stays compiled so ChangeType can
+never round it to `= 2`). Field binding: exact FieldName wins → unique display alias → ambiguity
+is a positioned diagnostic. Literals parse invariant (numbers; `#date#` ISO-first) so saved
+filters are portable; `Like` gains `[%]`/`[_]` literal escapes and its regex case-ness follows the
+column mode. The compiled-predicate fallback (`FilterNode.Custom`) does not text-round-trip — the
+ORIGINAL SOURCE TEXT is retained alongside the filter by the editor surfaces (the builder shows a
+read-only "expression" row for it; a future source-carrying FilterNode is the recorded upgrade).
+
+### 9.2 In-presenter horizontal scrolling = frozen columns + column virtualization (ONE item)
+
+Frozen columns are IMPOSSIBLE under SCP horizontal scrolling — the compositor slides the whole
+band scene, so a "fixed" column would slide with it. The fix is the already-recorded column-
+virtualization seam: **the rows presenter takes ownership of the horizontal axis**. The SCP scrolls
+vertically only (`CanScrollHorizontally=false`; horizontal extent = viewport); the grid's existing
+shared `HorizontalOffset` becomes the one horizontal truth (the ScrollViewer's H-bar binds to it);
+every band presenter already draws shifted by it — the rows presenter now does the same (drawing
+only columns intersecting the viewport — column virtualization for free) instead of letting the
+scene slide. Scenes shrink from content-width to viewport-width (a memory win at wide grids).
+`DataGridColumn.Fixed { None, Left }`: fixed columns resolve first at x 0..F and draw LAST at
+UNSHIFTED x (overpaint — the painter fills their background, no clip stack needed); scrolling
+columns draw shifted, SKIPPING cells that would start under the frozen region (truncate at the
+boundary). Hit-testing: x < frozenWidth → fixed lookup, else x+offset. Header/filter/footer mirror
+the same split.
+
+**Panel amendments (the mechanism, corrected against the shipped code):**
+- The one horizontal truth is a new `DataGrid.HorizontalOffset` styled property, clamped to
+  `[0, max(0, TotalWidth − viewportColumns)]` at set time AND re-clamped after the presenter's
+  measure resolves `ColumnLayout` (the SCP end-of-arrange re-coercion analog — a hide/resize while
+  scrolled right snaps back the same frame). All four band presenters re-bind to it; the filter
+  popup's anchor math reads it.
+- The ScrollViewer CANNOT host the H-bar (its bar wiring pins to the SCP offset, which coerces to 0
+  once `CanScrollHorizontally=false`): the template docks a **grid-owned horizontal `ScrollBar`
+  part** bound to `DataGrid.HorizontalOffset` (shown only when TotalWidth > viewport).
+- `DataGridRowsPresenter.GetExtent` reports viewport columns (the host's obligation — the SCP
+  publishes GetExtent verbatim on both axes).
+- Wheel: `DataGrid.OnMouseWheel` owns Shift+wheel/`WheelDeltaX` (routes into `HorizontalOffset`,
+  handled even at the extremes so an outer scroller never captures the gesture mid-grid).
+- The presenter's H-offset registers **AffectsMeasure** (not just render): hosted children — the
+  cell editor, §9.3 details — arrange at `entry.X − HOffset` and must re-arrange per tick (the
+  band cache's early-out keeps the re-measure a no-op).
+- **Hosted-children policy over the frozen region** (children paint OVER drawn cells and steal
+  hits — overpaint cannot clip them): `BeginEdit`/Tab-advance first auto-scroll the target cell
+  clear of the frozen width; an H-scroll that would push a hosted editor under the frozen region
+  commits it (cancel on commit-failure); §9.3 detail elements are horizontally viewport-anchored
+  (arranged at x=0 viewport-wide, never shifted).
+- `ScrollColumnIntoView(columnIndex)`: Fixed → no-op; scrolling → minimal scroll of the entry into
+  `[HOffset + frozenWidth, HOffset + viewportWidth)`, leading-edge-aligned when wider; called from
+  focus-cell moves, `SetFocusCell`, `BeginEdit`/Tab-advance, and header virtual-focus walks.
+- Cost, honestly: an H-tick re-rasters the BAND scene (≈3× viewport rows — the vertical
+  composite-slide contract requires every band row valid). Acceptable: hover already whole-band
+  re-inks per move, H-ticks are low-frequency, and ticks must invalidate RENDER/ARRANGE only —
+  never the band cache (per-row strings are offset-independent).
+
+### 9.3 Master-detail
+
+`DataGrid.DetailTemplate : DataTemplate?` + a 2-cell expander gutter column (drawn `▶/▼`) when set.
+**The engine stays 1-row-per-entry** — detail geometry is presenter-side: an expanded-set map
+(rowId → hosted detail element + measured height, sorted by view position per snapshot) turns
+view-index↔y into prefix-sum arithmetic (`y = viewIndex + Σ heights(expanded above)`; the expanded
+count is small — linear/binary over it is trivial). Extent = snapshot.Count + Σ heights;
+`EstimateItemAt` inverts the map. Detail elements are hosted children (the editing precedent,
+N-at-once): realized while their anchor row is in/near the band, released outside it and when the
+row id leaves the view (refilter/removal). `DataContext` = the row object; the template builds per
+expansion (fresh subtree — the DataTemplate contract). Keyboard: the expander cell via
+Left/Right-on-gutter or Ctrl+Right/Left; mouse: expander click.
+
+**Panel amendments:** the band window itself is CONTENT-Y space — one bidirectional map
+(viewIndex→yStart prefix sums over the sorted expanded set; y→viewIndex-or-detail inverse) routes
+EVERY conflated site: `FillBandCache`'s window walk, `Render`'s y loop, `HitCell`, `EstimateItemAt`,
+`BringItemIntoView`, `ScrollRowIntoView`, `PageStep`, the edit host's arrange row, and the focus
+math. Detail realization predicate = "detail y-range intersects the band (± slack)" (an anchor row
+outside the band with its detail inside is the common tall-detail case); a detail's arrange rect
+may exceed the band (the scene crops). Heights capture at child measure inside `MeasureOverride`;
+`InvalidateScrollExtent` fires only on an actual Σheights delta (the VSP refinement discipline —
+convergence under the 16-pass fixpoint). Focus: a "focus is within a detail host" stand-down guard
+in `OnKeyDown` (the popup/editor precedent); Ctrl+Down enters the focused row's detail, Esc
+returns. The expander gutter is a SYNTHETIC first `ColumnLayout` entry (all presenters + hit math
+inherit it). Value-type rows: the detail `DataContext` is boxed ONCE per expansion build.
+
+### 9.4 Cell-range selection
+
+`DataGrid.SelectionUnit { Row, Cell }`. Cell mode: ONE rectangular range (the DevExpress default;
+multi-range deferred). **Panel-corrected model — corner truth:** the range IS
+`(anchorRowId, leadRowId, anchorColumn, leadColumn)` with the COLUMN EDGES keyed by
+`DataGridColumn` identity (never visible index — the column-UX package reorders/hides at runtime);
+membership derives per snapshot from the re-projected corners (an id→viewIndex inverse map
+maintained per publish — the same substrate the stale view-space anchor/focus already need).
+Reshapes legitimately change membership (the Excel/DevExpress semantic); a corner whose row id
+leaves the view collapses the range to the focus cell; a hidden endpoint column clamps to the
+nearest visible. Group rows are never members (the lead passes THROUGH them keeping its column).
+Mode switch clears both selections and keeps the focus cell. Shift+arrow/click extends; Ctrl+C
+copies the rectangle as TSV; Ctrl+A stays row-mode-only. Row mode keeps the v1 controller.
+
+### 9.5 Group ordering extensions (engine)
+
+`GroupDescription.OrderBySummary : SummaryDescription?` (+ `SummaryDirection`). **Panel-pinned
+two-array discipline:** `_sortedView` stays KEY-ORDERED forever — it is the repair/fallback
+substrate (the gallop merge's precondition is comparison order; permuting it would corrupt every
+subsequent tick). The summary ordering is a PER-PUBLISH PROJECTION inside `PublishFromSorted`:
+derive nodes on the key-ordered view → aggregate → permute sibling segments into a projection
+array → flatten from the projection. `DeriveAndFlatten` splits into derive + flatten passes
+(aggregation and the permutation run between them); collapse-state `PathKey`s are order-independent
+(they chain formatted keys, not positions) and survive. `CompileShape` compiles each grouped
+level's `OrderBySummary` aggregator whether or not it is displayed. Group `Direction` independent
+of data sorts already holds structurally; pinned by test. TopBottom CF rules ride a `TopK` addition
+to the stats block (a bounded selection pass per rule, recomputed with stats).
+
+### 9.6 Struct rows / misc
+
+**Struct rows (panel-scoped honestly):** the `where T : class` constraint relaxes to runtime
+guards — `AttachSource(liveUpdates: true)` THROWS for value-type rows (no INPC identity; the
+row↔slot map is already null for value types — no `IRowIdentity` seam needed for this opt-in), and
+editing takes a position: `TrySetCellFromText` writes through a new `RowStore.SetRow(slot, row)`
+write-back (the setter mutates a boxed COPY otherwise — a silent no-op); `GetRowObject` boxes fresh
+per call, so rowId is the ONLY identity for value-type rows (id-keyed consumers never round-trip
+through it). Span formatters wire into the band cache (pooled char buffers replace per-cell
+strings). The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as a
+`GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).

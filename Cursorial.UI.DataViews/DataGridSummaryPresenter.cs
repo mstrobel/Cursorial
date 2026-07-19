@@ -125,18 +125,43 @@ public sealed class DataGridSummaryPresenter : UIElement
         if (Background is not null)
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, rows), Background);
 
-        int shift = -HorizontalOffset;
         var stackRow = new Dictionary<int, int>(); // entry index → next stacked row
+        var cells = CollectCells();
 
-        foreach (var (entryIndex, label, value) in CollectCells())
+        // §9.2 paint order (the rows presenter's mirror): scrolling cells shifted first, then the
+        // frozen region re-fills and draws unshifted on top. Stacking accounting is per-entry, so
+        // the two filtered passes keep each entry's cells in collection order.
+        DrawCellPass(context, layout, cells, stackRow, rows, frozen: false);
+        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-3)
         {
-            var entry = layout.Entries[entryIndex];
+            if (Background is not null && HorizontalOffset > 0)
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, rows), Background);
+            DrawCellPass(context, layout, cells, stackRow, rows, frozen: true);
+        }
+    }
+
+    private void DrawCellPass(RenderContext context, DataGridColumnLayout layout,
+                              List<(int EntryIndex, string Label, string Value)> cells,
+                              Dictionary<int, int> stackRow, int rows, bool frozen)
+    {
+        foreach (var (entryIndex, label, value) in cells)
+        {
+            bool isFrozen = entryIndex < layout.FrozenCount;
+            if (isFrozen != frozen)
+                continue;
+
             int row = stackRow.GetValueOrDefault(entryIndex);
             stackRow[entryIndex] = row + 1;
             if (row >= rows)
                 continue;
 
-            int x = entry.X + shift + DataGridColumnLayout.CellPadding;
+            var entry = layout.Entries[entryIndex];
+            int baseX = isFrozen ? entry.X : entry.X - HorizontalOffset;
+            int leftEdge = isFrozen ? 0 : layout.FrozenWidth;
+            if (baseX + entry.Width + 2 * DataGridColumnLayout.CellPadding <= leftEdge || baseX >= Bounds.Columns)
+                continue;
+
+            int x = baseX + DataGridColumnLayout.CellPadding;
             // "Σ $203,650" — label muted, value accent, right-aligned within the column.
             int labelWidth = GraphemeWidth.StringWidth(label);
             int valueWidth = GraphemeWidth.StringWidth(value);

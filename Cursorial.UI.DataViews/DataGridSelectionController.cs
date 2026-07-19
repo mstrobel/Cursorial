@@ -3,6 +3,34 @@ using Cursorial.UI.DataViews.Shaping;
 namespace Cursorial.UI.DataViews;
 
 /// <summary>
+/// The §3.3 virtual band focus: which grid band the keyboard routes to. Drawn bands cannot hold
+/// framework focus, so the grid keeps the one focus and walks a virtual index per band
+/// (Ctrl+Up from row 0 / F6 cycles; the enum order IS the cycle order).
+/// </summary>
+public enum DataGridFocusBand
+{
+    /// <summary>The data rows (the resting state — the v1 keyboard model).</summary>
+    Rows,
+    /// <summary>The header band: Left/Right walk columns, Enter cycles the sort, Space appends a
+    /// sort level, Alt+Down opens the filter popup, Ctrl+G groups.</summary>
+    Header,
+    /// <summary>The group panel: Left/Right walk chips, Enter toggles direction, Delete removes
+    /// the level, Ctrl+Left/Right reorders.</summary>
+    GroupPanel,
+    /// <summary>The auto-filter row: Left/Right walk cells, Enter engages the cell's surface.</summary>
+    AutoFilter,
+}
+
+/// <summary>The grid's selection granularity (§9.4).</summary>
+public enum DataGridSelectionUnit
+{
+    /// <summary>Whole-row selection (the v1 controller — multi-select, compact inversion).</summary>
+    Row,
+    /// <summary>One rectangular cell range (the DevExpress default; corner-truth model — §9.4).</summary>
+    Cell,
+}
+
+/// <summary>
 /// Row selection keyed on stable ROW IDS (design doc §3.3 — the panel decision): membership survives
 /// every re-sort/filter/regroup by construction, so reshapes need zero selection fixup. Gestures
 /// resolve view ranges to ids at gesture time against the current snapshot; paint asks

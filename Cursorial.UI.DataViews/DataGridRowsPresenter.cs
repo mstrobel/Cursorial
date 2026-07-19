@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -59,12 +61,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarTrackBrushProperty =
         UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarTrackBrush));
 
+    /// <summary>Ghost ink for the new-row template (the muted * indicator + per-column placeholders — §3.2).</summary>
+    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> MutedBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(MutedBrush));
+
     static DataGridRowsPresenter()
     {
         AffectsRender<DataGridRowsPresenter>(
             RowBackgroundProperty, RowAlternationBackgroundProperty, SelectionBackgroundProperty,
             HoverBackgroundProperty, GroupRowBackgroundProperty, TextBrushProperty, AccentBrushProperty,
-            FocusCellBackgroundProperty, DataBarFillBrushProperty, DataBarTrackBrushProperty);
+            FocusCellBackgroundProperty, DataBarFillBrushProperty, DataBarTrackBrushProperty,
+            MutedBrushProperty);
     }
 
     public Cursorial.Drawing.Media.IBrush? RowBackground { get => GetValue(RowBackgroundProperty); set => SetValue(RowBackgroundProperty, value); }
@@ -77,16 +84,24 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public Cursorial.Drawing.Media.IBrush? FocusCellBackground { get => GetValue(FocusCellBackgroundProperty); set => SetValue(FocusCellBackgroundProperty, value); }
     public Cursorial.Drawing.Media.IBrush? DataBarFillBrush { get => GetValue(DataBarFillBrushProperty); set => SetValue(DataBarFillBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? DataBarTrackBrush { get => GetValue(DataBarTrackBrushProperty); set => SetValue(DataBarTrackBrushProperty, value); }
+    public Cursorial.Drawing.Media.IBrush? MutedBrush { get => GetValue(MutedBrushProperty); set => SetValue(MutedBrushProperty, value); }
 
     private DataGrid? _owner;
     private Size _viewport;
     private bool _bandDirty = true;
+    private (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? _renderCellRange; // §9.4, per render pass
 
-    // The band cache (§3.2): one entry per cached view row. String cells v1; the span-formatter
-    // pooled-char upgrade is a recorded follow-up (design doc §2.2).
+    // The band cache (§3.2): one entry per cached view row. Data cells are (start, length) RUNS
+    // into the band-shared pooled char buffer (§9.6 — the span-formatter lane; zero per-cell
+    // strings per fill), sliced back out by CellText at paint.
     private readonly List<CachedRow> _band = [];
     private int _bandStart;
     private int _snapshotVersion = -1;
+    private char[] _cellChars = new char[1024]; // the pooled cell-text buffer (reused across fills)
+    private int _cellCharsUsed;
+
+    /// <summary>One formatted cell's slice of the pooled band buffer (§9.6).</summary>
+    private readonly record struct CellRun(int Start, int Length);
 
     private readonly struct CachedRow
     {
@@ -94,7 +109,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         public required int RowId { get; init; }
         public required int GroupNodeIndex { get; init; }
         public required int Level { get; init; }
-        public required string[] Cells { get; init; }  // per visible column (empty for group rows)
+        public required CellRun[] Cells { get; init; } // per visible column (empty for group rows)
         public required string GroupCaption { get; init; }
         public required string GroupSummary { get; init; }
         public required bool GroupCollapsed { get; init; }
@@ -108,6 +123,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private static readonly CellFormat[] NoFormats = [];
     private static readonly double[] NoFractions = [];
+    private static readonly CellRun[] NoCells = [];
+
+    /// <summary>A cached cell's text, sliced from the pooled buffer (§9.6).</summary>
+    private ReadOnlySpan<char> CellText(in CachedRow row, int c)
+    {
+        var run = row.Cells[c];
+        return _cellChars.AsSpan(run.Start, run.Length);
+    }
 
     // The data-bar glyph pools: the painter slices spans off these (never a per-frame string).
     private const int MaxBarCells = 128;
@@ -147,6 +170,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// An H-offset tick (§9.2): re-measure (hosted children — the cell editor, detail hosts —
+    /// arrange at shifted x, and the band fill's early-out makes the re-measure a no-op) and
+    /// re-ink. NEVER dirties the band cache — per-row strings are offset-independent.
+    /// </summary>
+    internal void OnHorizontalOffsetChanged()
+    {
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
+
     // ── IScrollContentHost / ILogicalScrollHost (fixed-height rows ⇒ trivial math) ───────────────
 
     public bool IsScrollClient => true;
@@ -155,9 +189,47 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public bool CanScrollVertically { get; set; }
     public bool IsLogicalScroll => true;
 
+    /// <summary>Whether the trailing new-row template is live (the owner's eligibility verdict — §3.2).</summary>
+    private bool NewRowActive => _owner?.HasNewRowPlaceholder == true;
+
+    /// <summary>The new-row template's view index (== Snapshot.Count — one PAST the real rows), or −1.</summary>
+    internal int NewRowViewIndex => NewRowActive ? _owner!.Snapshot.Count : -1;
+
+    // The horizontal axis is presenter-owned (§9.2): the SCP scrolls vertically only, so the
+    // published horizontal extent IS the viewport (the host's obligation — the SCP publishes
+    // GetExtent verbatim on both axes) and the grid's HorizontalOffset shifts the painters.
+    // Vertically the extent is rows + Σ expanded-detail heights (§9.3).
     public Size GetExtent()
-        => new(Math.Max(ColumnLayout.TotalWidth, _viewport.Columns),
-               Math.Max(_owner?.Snapshot.Count ?? 0, 1));
+        => new(Math.Max(_viewport.Columns, 1),
+               Math.Max(ItemCount + _detailHeightSum, 1));
+
+    /// <summary>The grid's one horizontal truth as the painters consume it (0 without an owner).</summary>
+    private int HOffset => _owner?.HorizontalOffset ?? 0;
+
+    /// <summary>The arranged viewport width in cells (the grid's clamp ceiling input — §9.2).</summary>
+    internal int ViewportColumns => _viewport.Columns;
+
+    /// <summary>
+    /// A column entry's painted x (§9.2): frozen entries sit at their unshifted content x; scrolling
+    /// entries shift by the grid offset (they slide UNDER the frozen region, which repaints last).
+    /// </summary>
+    internal int DrawXOf(int entryIndex)
+    {
+        var entry = ColumnLayout.Entries[entryIndex];
+        return entryIndex < ColumnLayout.FrozenCount ? entry.X : entry.X - HOffset;
+    }
+
+    /// <summary>Whether an entry's slot intersects the visible viewport band (column virtualization — §9.2).</summary>
+    private bool IsEntryVisible(int entryIndex)
+    {
+        var entry = ColumnLayout.Entries[entryIndex];
+        int drawX = DrawXOf(entryIndex);
+        int slot = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+        // A scrolling entry fully under the frozen region (or scrolled off left) is skipped; the
+        // straddling one still draws — the frozen pass overpaints the overlap (no clip stack).
+        int leftEdge = entryIndex < ColumnLayout.FrozenCount ? 0 : ColumnLayout.FrozenWidth;
+        return drawX + slot > leftEdge && drawX < Math.Max(_viewport.Columns, 1);
+    }
 
     public void SetViewport(Size viewport)
     {
@@ -179,31 +251,265 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public int PageStep(int currentOffset, int sign, bool vertical)
         => vertical ? Math.Max(1, _viewport.Rows - 1) : Math.Max(1, _viewport.Columns - 1);
 
-    public int ItemCount => _owner?.Snapshot.Count ?? 0;
+    // The new-row template participates in the scroll extent (reachable at the very bottom) but
+    // never in the band CACHE — every snapshot read stays guarded by the real Count (§3.2).
+    public int ItemCount => (_owner?.Snapshot.Count ?? 0) + (NewRowActive ? 1 : 0);
 
-    public int EstimateItemAt(int offsetRow) => offsetRow;
+    public int EstimateItemAt(int offsetRow) => ViewIndexAtY(offsetRow).ViewIndex;
 
     public Rect BringItemIntoView(int itemIndex)
-        => new(0, itemIndex, Math.Max(1, ColumnLayout.TotalWidth), 1);
+        => new(0, ContentYOf(itemIndex), Math.Max(1, _viewport.Columns), 1);
+
+    // ── Master-detail (§9.3 — the content-y map; presenter-side geometry over a 1-row engine) ────
+
+    /// <summary>One expanded pane's geometry for the current pass (rebuilt per measure; the
+    /// realized element lives in <see cref="_detailElements"/> so it survives map rebuilds).</summary>
+    private sealed class DetailPane
+    {
+        public required int RowId { get; init; }
+        public required int ViewIndex { get; init; }
+        public int YStart;  // content y of the pane's first row (anchor row's y + 1)
+        public int Height;  // measured, or the 1-row estimate until first measure (VSP refinement)
+    }
+
+    private readonly List<DetailPane> _details = [];              // sorted by ViewIndex
+    private readonly Dictionary<int, UIElement> _detailElements = []; // rowId → realized pane
+    private readonly Dictionary<int, int> _detailHeights = [];    // rowId → last measured height
+    private int _detailHeightSum;
+
+    /// <summary>Whether master-detail is active this pass (the gutter + map engage).</summary>
+    private bool DetailsActive => _owner?.DetailTemplate is not null;
+
+    /// <summary>
+    /// Re-derives the pane geometry from the grid's expansion set against the CURRENT snapshot
+    /// (§9.3): view indices re-resolve through the grid's per-publish inverse map, panes sort by
+    /// view position, and the prefix sums fix each pane's content-y start. Heights come from the
+    /// per-row memory (1-row estimate before first measure — refined by <see cref="RealizeDetails"/>).
+    /// </summary>
+    private void RebuildDetailMap()
+    {
+        _details.Clear();
+        int sum = 0;
+        var owner = _owner;
+        if (owner?.DetailTemplate is not null && owner.ExpandedDetails.Count > 0)
+        {
+            foreach (int rowId in owner.ExpandedDetails)
+            {
+                int view = owner.ViewIndexOfRow(rowId);
+                if (view >= 0)
+                    _details.Add(new DetailPane { RowId = rowId, ViewIndex = view, Height = _detailHeights.GetValueOrDefault(rowId, 1) });
+            }
+            _details.Sort(static (a, b) => a.ViewIndex.CompareTo(b.ViewIndex));
+            foreach (var pane in _details)
+            {
+                pane.YStart = pane.ViewIndex + sum + 1;
+                sum += pane.Height;
+            }
+        }
+        _detailHeightSum = sum;
+    }
+
+    /// <summary>A view row's content y (§9.3: <c>y = viewIndex + Σ heights(panes above)</c>).</summary>
+    internal int ContentYOf(int viewIndex)
+    {
+        if (_details.Count == 0)
+            return viewIndex;
+        int sum = 0;
+        foreach (var pane in _details)
+        {
+            if (pane.ViewIndex >= viewIndex)
+                break;
+            sum += pane.Height;
+        }
+        return viewIndex + sum;
+    }
+
+    /// <summary>The inverse map (§9.3): a content y inside a pane reports its ANCHOR row + the flag.</summary>
+    internal (int ViewIndex, bool InDetail) ViewIndexAtY(int y)
+    {
+        if (_details.Count == 0)
+            return (y, false);
+        int offset = 0;
+        foreach (var pane in _details)
+        {
+            if (y < pane.YStart)
+                break;
+            if (y < pane.YStart + pane.Height)
+                return (pane.ViewIndex, true);
+            offset += pane.Height;
+        }
+        return (y - offset, false);
+    }
+
+    /// <summary>
+    /// Realizes panes whose y-range intersects the band (± the band's own padding — the §9.3
+    /// tall-detail predicate: an anchor row outside the band with its pane inside is the common
+    /// case) and releases the rest. Measured heights refine the estimates; only an actual Σ delta
+    /// republishes the extent (the VSP refinement discipline — convergence under the 16-pass
+    /// fixpoint). Runs in MeasureOverride (the sanctioned self-mutation site).
+    /// </summary>
+    private void RealizeDetails()
+    {
+        var owner = _owner;
+        if (owner is null)
+            return;
+
+        var (bandStart, bandLength) = BandWindow();
+        int bandEnd = bandStart + bandLength;
+        bool geometryChanged = false;
+
+        // Release: no longer expanded/visible, or fully outside the band.
+        if (_detailElements.Count > 0)
+        {
+            List<int>? drop = null;
+            foreach (var (rowId, element) in _detailElements)
+            {
+                bool keep = false;
+                foreach (var pane in _details)
+                {
+                    if (pane.RowId == rowId)
+                    {
+                        keep = pane.YStart < bandEnd && pane.YStart + pane.Height > bandStart;
+                        break;
+                    }
+                }
+                if (!keep)
+                {
+                    DisownChild(element);
+                    (drop ??= []).Add(rowId);
+                }
+            }
+            if (drop is not null)
+            {
+                foreach (int rowId in drop)
+                    _detailElements.Remove(rowId);
+            }
+        }
+
+        // Realize + measure the intersecting panes (fresh subtree per expansion — the DataTemplate
+        // contract; DataContext = the row object, boxed once for value-type rows).
+        foreach (var pane in _details)
+        {
+            if (pane.YStart >= bandEnd || pane.YStart + pane.Height <= bandStart)
+                continue;
+
+            if (!_detailElements.TryGetValue(pane.RowId, out var element))
+            {
+                if (owner.DetailTemplate is not { } template || owner.Controller is not { } controller)
+                    continue;
+                element = template.Build(controller.GetRowObject(pane.RowId));
+                _detailElements[pane.RowId] = element;
+                AdoptChild(element, index: -1);
+            }
+
+            element.Measure(new Size(Math.Max(1, _viewport.Columns), LayoutLimits.MaxScrollExtent));
+            int measured = Math.Max(1, element.DesiredSize.Rows);
+            if (measured != pane.Height)
+            {
+                _detailHeights[pane.RowId] = measured;
+                geometryChanged = true;
+            }
+        }
+
+        if (geometryChanged)
+        {
+            // Re-run the prefix sums with the refined heights, then republish the extent (the
+            // height-delta-only republish — §9.3).
+            int sum = 0;
+            foreach (var pane in _details)
+            {
+                pane.Height = _detailHeights.GetValueOrDefault(pane.RowId, 1);
+                pane.YStart = pane.ViewIndex + sum + 1;
+                sum += pane.Height;
+            }
+            _detailHeightSum = sum;
+            ScrollOwner?.InvalidateScrollExtent();
+
+            // Audit W2-7: a refinement moves the content-y map, so the band WINDOW covers a
+            // different view-row set than the fill that just ran — re-dirty the band so the
+            // fixpoint refills under the corrected map (a shrink otherwise left the rows the
+            // shorter map pulled into the window uncached — blank rows until a re-anchor). The
+            // next pass re-measures cache-hit panes (measured == Height → no change), so this
+            // converges in one extra pass.
+            InvalidateBand();
+        }
+
+        // Height memory hygiene (audit W2-7 adjunct): a collapsed row's stale height must not
+        // become a recycled row id's estimate.
+        if (_detailHeights.Count > 0 && owner.ExpandedDetails.Count < _detailHeights.Count)
+        {
+            List<int>? stale = null;
+            foreach (int rowId in _detailHeights.Keys)
+            {
+                if (!owner.ExpandedDetails.Contains(rowId))
+                    (stale ??= []).Add(rowId);
+            }
+            if (stale is not null)
+            {
+                foreach (int rowId in stale)
+                    _detailHeights.Remove(rowId);
+            }
+        }
+    }
+
+    /// <summary>The pane element holding keyboard focus, or null (the grid's stand-down guard — §9.3).</summary>
+    internal UIElement? FocusedDetailElement()
+    {
+        foreach (var element in _detailElements.Values)
+        {
+            if (element.IsKeyboardFocusWithin)
+                return element;
+        }
+        return null;
+    }
+
+    /// <summary>Ctrl+Down enters the focused row's pane: the first focusable in its subtree (§9.3).</summary>
+    internal bool TryFocusDetail(int rowId)
+    {
+        if (!_detailElements.TryGetValue(rowId, out var element))
+            return false;
+        if (FindFocusable(element) is { } target)
+        {
+            target.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+            return true;
+        }
+        return false;
+    }
+
+    private static UIElement? FindFocusable(UIElement root)
+    {
+        if (root.Focusable && root.IsEffectivelyEnabled)
+            return root;
+        for (int i = 0; i < root.VisualChildrenCount; i++)
+        {
+            if (FindFocusable(root.GetVisualChild(i)) is { } match)
+                return match;
+        }
+        return null;
+    }
 
     // ── Band fill (measure-time — the VSP-sanctioned self-mutation site) ─────────────────────────
 
     protected override Size MeasureOverride(Size availableSize)
     {
+        RebuildDetailMap(); // §9.3: the content-y map first — the band walk + realization read it
         FillBandCache();
+        RealizeDetails();
 
-        // The hosted editor (the §3.2 element-hosting special case) measures at its cell width.
+        // The hosted editor (the §3.2 element-hosting special case) measures at its cell width
+        // (minus the Spin kind's drawn ▲▼ suffix reserve).
         if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
-            _editor.Measure(new Size(Math.Max(1, ColumnLayout.Entries[_editColumnIndex].Width), 1));
+            _editor.Measure(new Size(EditorWidth(ColumnLayout.Entries[_editColumnIndex]), 1));
 
         // The SCP host path measures content at the viewport; the extent publishes via GetExtent.
-        return new Size(Math.Min(ColumnLayout.TotalWidth, availableSize.Columns), Math.Min(ItemCount, availableSize.Rows));
+        return new Size(Math.Min(ColumnLayout.TotalWidth, availableSize.Columns),
+                        Math.Min(ItemCount + _detailHeightSum, availableSize.Rows));
     }
 
     private (int Start, int Length) BandWindow()
     {
-        // The SCP band internals (IVT — design doc §3.1; the public-seam promotion is a recorded
-        // follow-up). Without an adopting SCP (a bare presenter in tests), the window is the viewport.
+        // The SCP's public realization window (the §9 seam promotion — no IVT reach-through).
+        // Without an adopting SCP (a bare presenter in tests), the window is the viewport.
         if (ScrollOwner is { } scp)
             return (scp.BandStartRow, scp.BandLength);
         return (0, Math.Max(_viewport.Rows, 1));
@@ -219,24 +525,37 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         }
 
         var snapshot = owner.Snapshot;
-        var (start, length) = BandWindow();
-        start = Math.Clamp(start, 0, Math.Max(0, snapshot.Count - 1));
-        length = Math.Min(length, snapshot.Count - start);
+        // The band window is CONTENT-y (§9.3) — route it through the inverse map to a VIEW-row
+        // window (a y inside a pane resolves to its anchor row, so tall panes keep their anchor
+        // row's cells cached while any part of the pane is banded).
+        var (windowStart, windowLength) = BandWindow();
+        int viewStart = ViewIndexAtY(windowStart).ViewIndex;
+        int viewEnd = ViewIndexAtY(windowStart + Math.Max(1, windowLength) - 1).ViewIndex + 1;
+        int start = Math.Clamp(viewStart, 0, Math.Max(0, snapshot.Count - 1));
+        int length = Math.Min(Math.Max(0, viewEnd - start), snapshot.Count - start);
 
         if (!_bandDirty && start == _bandStart && _band.Count == length && snapshot.Version == _snapshotVersion)
             return;
 
         // Resolve columns BEFORE formatting (the cache stores per-visible-column cells) — but Auto
         // widths need the formatted content, so: format first into the cache, then resolve widths
-        // from it (the band-limited Auto contract, §1).
+        // from it (the band-limited Auto contract, §1). Fixed columns partition to the FRONT
+        // (§9.2 — the frozen region leads the layout regardless of declaration order); the stable
+        // two-pass keeps each partition in collection order.
         var columns = new List<DataGridColumn>(owner.Columns.Count);
         foreach (var column in owner.Columns)
         {
-            if (column.Visible)
+            if (column.Visible && column.Fixed == DataGridColumnFixed.Left)
+                columns.Add(column);
+        }
+        foreach (var column in owner.Columns)
+        {
+            if (column.Visible && column.Fixed != DataGridColumnFixed.Left)
                 columns.Add(column);
         }
 
         _band.Clear();
+        _cellCharsUsed = 0; // the pooled buffer resets per fill (§9.6 — runs never outlive the band)
         var controller = owner.Controller;
         bool hasRules = controller?.HasFormatRules == true; // the no-rules fast path — static empties
         for (int i = 0; i < length; i++)
@@ -253,7 +572,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     RowId = -1,
                     GroupNodeIndex = row.GroupNodeIndex,
                     Level = row.Level,
-                    Cells = [],
+                    Cells = NoCells,
                     GroupCaption = $"{caption} ({node.RowCount})",
                     GroupSummary = summary,
                     GroupCollapsed = node.IsCollapsed,
@@ -263,12 +582,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             }
             else
             {
-                var cells = new string[columns.Count];
+                var cells = new CellRun[columns.Count];
                 var formats = hasRules ? new CellFormat[columns.Count] : NoFormats;
                 var fractions = hasRules ? new double[columns.Count] : NoFractions;
                 for (int c = 0; c < columns.Count; c++)
                 {
-                    cells[c] = controller?.FormatCell(row.RowId, columns[c]) ?? string.Empty;
+                    // §9.6: format into the pooled buffer through the span lane (−1 = grow + retry).
+                    int written = 0;
+                    while (controller is not null &&
+                           (written = controller.FormatCellTo(row.RowId, columns[c], _cellChars.AsSpan(_cellCharsUsed))) < 0)
+                    {
+                        Array.Resize(ref _cellChars, _cellChars.Length * 2);
+                    }
+                    cells[c] = new CellRun(_cellCharsUsed, written);
+                    _cellCharsUsed += written;
+
                     if (hasRules)
                     {
                         // §2.7: verdicts evaluate HERE (band fill), the painter only reads them.
@@ -298,17 +626,22 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         _bandDirty = false;
 
         // Band-limited Auto widths: the widest formatted cell in the cache (monotonic via the layout).
-        ColumnLayout.Resolve(columns, Math.Max(1, _viewport.Columns), column =>
+        // The §9.3 expander gutter is a synthetic leading region (2 cells when master-detail is on).
+        ColumnLayout.Resolve(columns, Math.Max(1, _viewport.Columns), gutterWidth: DetailsActive ? 2 : 0, autoWidth: column =>
         {
             int index = columns.IndexOf(column);
             int widest = 0;
             foreach (var cached in _band)
             {
                 if (!cached.IsGroup && index < cached.Cells.Length)
-                    widest = Math.Max(widest, GraphemeWidth.StringWidth(cached.Cells[index]));
+                    widest = Math.Max(widest, GraphemeWidth.StringWidth(CellText(cached, index)));
             }
             return widest;
         });
+
+        // §9.2: the resolved geometry may have shrunk under the current H offset — the grid
+        // re-clamps and refreshes its bar (the end-of-arrange re-coercion analog).
+        owner.OnColumnGeometryResolved();
     }
 
     private static string HeaderOf(DataGrid owner, Shaping.GroupNode node)
@@ -328,18 +661,23 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         base.Render(context);
         var owner = _owner;
-        if (owner is null || _band.Count == 0)
-            return;
+        if (owner is null)
+            return; // (an empty band still draws the new-row template — an empty AllowAddNew grid)
 
         var selection = owner.RowSelection;
         int focusRow = owner.FocusViewIndex;
         int focusColumn = owner.FocusColumnIndex;
         var entries = ColumnLayout.Entries;
-        int totalWidth = Math.Max(ColumnLayout.TotalWidth, _viewport.Columns);
+        int frozenCount = ColumnLayout.FrozenCount;
+        int frozenWidth = ColumnLayout.FrozenWidth;
+        int viewWidth = Math.Max(_viewport.Columns, 1);
 
+        int gutterWidth = ColumnLayout.GutterWidth;
+        _renderCellRange = owner.CellRangeViewRect(); // §9.4 — derived once per pass
         for (int i = 0; i < _band.Count; i++)
         {
-            int y = _bandStart + i;
+            int view = _bandStart + i;          // view-row space (focus/hover/striping)
+            int y = ContentYOf(view);           // content-y (§9.3 — panes push rows down)
             var row = _band[i];
 
             // Background lanes: group tint > selection > hover > alternation.
@@ -347,18 +685,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 ? GroupRowBackground
                 : selection is not null && selection.IsSelected(row.RowId)
                     ? SelectionBackground
-                    : HoverViewIndex == y
+                    : HoverViewIndex == view
                         ? HoverBackground
-                        : (y & 1) == 1
+                        : (view & 1) == 1
                             ? RowAlternationBackground
                             : RowBackground;
 
             if (background is not null)
-                context.FillOpaque(new Rect(0, y, totalWidth, 1), background);
+                context.FillOpaque(new Rect(0, y, viewWidth, 1), background);
 
             if (row.IsGroup)
             {
-                // ▾/▸ expander, indent by level, caption, right-aligned summary.
+                // ▾/▸ expander, indent by level, caption, right-aligned summary. Group rows are
+                // VIEWPORT-anchored (never shifted by the horizontal offset — the banner reads at
+                // any scroll position; §9.2).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
                 context.DrawText(x, y, glyph, AccentBrush ?? TextBrush);
@@ -367,45 +707,169 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 if (row.GroupSummary.Length > 0)
                 {
                     int width = GraphemeWidth.StringWidth(row.GroupSummary);
-                    int summaryX = Math.Max(x + 2, totalWidth - width - 1);
+                    int summaryX = Math.Max(x + 2, viewWidth - width - 1);
                     DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue, AccentBrush ?? TextBrush);
                 }
                 continue;
             }
 
-            for (int c = 0; c < entries.Count && c < row.Cells.Length; c++)
+            // §9.2 paint order: scrolling cells first (shifted — a straddler slides UNDER the
+            // frozen boundary), then the frozen region (gutter + fixed columns) re-fills its
+            // background and draws its content on top (overpaint instead of a clip stack).
+            for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
+                DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+
+            if (frozenWidth > 0)
             {
-                var entry = entries[c];
-                int cellX = entry.X + DataGridColumnLayout.CellPadding;
+                var erase = background ?? owner.Background;
+                if (erase is not null && HOffset > 0)
+                    context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+                for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
+                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+            }
 
-                // The focus cell's well-fill (the mockup's focuscell).
-                if (y == focusRow && c == focusColumn && FocusCellBackground is not null)
-                    context.FillOpaque(new Rect(entry.X, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), FocusCellBackground);
-
-                string text = row.Cells[c];
-                int textWidth = GraphemeWidth.StringWidth(text);
-                double fraction = c < row.BarFractions.Length ? row.BarFractions[c] : double.NaN;
-                bool hasBar = !double.IsNaN(fraction);
-
-                // A data-bar cell pins its value LEFT with the bar filling the remainder (the
-                // mockup's amtcell); everything else honors the column alignment.
-                int drawX = !hasBar &&
-                            entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
-                            textWidth < entry.Width
-                    ? cellX + entry.Width - textWidth
-                    : cellX;
-
-                // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill).
-                var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
-                DrawFormattedCell(context, drawX, y, text, entry.Width, format);
-
-                if (hasBar)
-                {
-                    int used = Math.Min(textWidth, entry.Width);
-                    DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
-                }
+            // The §9.3 expander gutter glyph (a data row's ▶/▼ — group rows keep their own ▸/▾).
+            if (gutterWidth > 0 && row.RowId >= 0)
+            {
+                context.DrawText(0, y, owner.IsDetailExpanded(row.RowId) ? "▼" : "▶",
+                                 AccentBrush ?? TextBrush);
             }
         }
+
+        // The Spin editor's ▲▼ affordance beside the hosted TextBox (the mockup's spinbtns) — drawn
+        // in the suffix reserve EditorWidth carved out of the edit cell (skipped in cramped cells).
+        if (_editor is not null && _editorKind == DataGridEditorKind.Spin &&
+            _editColumnIndex >= 0 && _editColumnIndex < entries.Count)
+        {
+            var entry = entries[_editColumnIndex];
+            if (entry.Width >= 6)
+            {
+                context.DrawText(DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding + entry.Width - 2,
+                                 ContentYOf(_editViewIndex), "▲▼", AccentBrush ?? TextBrush);
+            }
+        }
+
+        DrawNewRowTemplate(context, owner, entries, focusRow, focusColumn);
+    }
+
+    /// <summary>
+    /// One data cell at its §9.2 draw position (shifted for scrolling entries, unshifted for frozen
+    /// ones; skipped entirely when the slot misses the viewport — column virtualization). The body
+    /// is the v1 cell painter: focus well, formatted text honoring the column alignment, data bar.
+    /// <paramref name="view"/> is the view-row index (focus compares), <paramref name="y"/> its
+    /// content-y draw row (§9.3).
+    /// </summary>
+    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn)
+    {
+        if (!IsEntryVisible(c))
+            return;
+
+        var entry = ColumnLayout.Entries[c];
+        int drawBase = DrawXOf(c);
+        int cellX = drawBase + DataGridColumnLayout.CellPadding;
+
+        // The §9.4 cell-range fill (under the focus well + text; group rows never route here).
+        if (_renderCellRange is { } range && view >= range.FirstRow && view <= range.LastRow &&
+            c >= range.FirstColumn && c <= range.LastColumn && SelectionBackground is not null)
+            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+
+        // The focus cell's well-fill (the mockup's focuscell).
+        if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
+            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), FocusCellBackground);
+
+        ReadOnlySpan<char> text = CellText(row, c); // §9.6 — sliced from the pooled band buffer
+        int textWidth = GraphemeWidth.StringWidth(text);
+        double fraction = c < row.BarFractions.Length ? row.BarFractions[c] : double.NaN;
+        bool hasBar = !double.IsNaN(fraction);
+
+        // A data-bar cell pins its value LEFT with the bar filling the remainder (the
+        // mockup's amtcell); everything else honors the column alignment.
+        int drawX = !hasBar &&
+                    entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
+                    textWidth < entry.Width
+            ? cellX + entry.Width - textWidth
+            : cellX;
+
+        // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill).
+        var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
+        DrawFormattedCell(context, drawX, y, text, entry.Width, format);
+
+        if (hasBar)
+        {
+            int used = Math.Min(textWidth, entry.Width);
+            DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
+        }
+    }
+
+    /// <summary>
+    /// The new-row template at view index == Snapshot.Count (the mockup's <c>newrow</c>): a muted
+    /// <c>*</c> indicator plus per-column ghost placeholders hinting each editable column's editor
+    /// kind. Drawn straight from column state — never cached in the band (it is not a snapshot
+    /// row; §3.2). ASCII <c>*</c> stands in for the mockup's fullwidth <c>＊</c>: at CellPadding=1
+    /// a width-2 glyph would collide with the first cell's content (and wide glyphs are not
+    /// reliable across terminals — the ReliableWideGlyphs policy).
+    /// </summary>
+    private void DrawNewRowTemplate(RenderContext context, DataGrid owner,
+                                    IReadOnlyList<DataGridColumnLayout.Entry> entries,
+                                    int focusRow, int focusColumn)
+    {
+        int viewIndex = NewRowViewIndex;
+        if (viewIndex < 0)
+            return;
+        int y = ContentYOf(viewIndex); // §9.3: panes above push the ghost row down
+
+        // Only ink inside the band scene (the SCP band covers the extent tail because the extent
+        // includes this row; out-of-band draws would be clipped anyway — skip the work).
+        var (windowStart, windowLength) = BandWindow();
+        if (y < windowStart || y >= windowStart + windowLength)
+            return;
+
+        var ghost = MutedBrush ?? TextBrush;
+        var controller = owner.Controller;
+        int frozenCount = ColumnLayout.FrozenCount;
+        int frozenWidth = ColumnLayout.FrozenWidth;
+
+        void DrawGhostCell(int c)
+        {
+            var entry = entries[c];
+            if (!IsEntryVisible(c))
+                return;
+
+            // The focused ghost cell keeps the focus-cell well cue (it is focusable like a data row).
+            if (viewIndex == focusRow && c == focusColumn && FocusCellBackground is not null)
+            {
+                context.FillOpaque(new Rect(DrawXOf(c), y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                                   FocusCellBackground);
+            }
+
+            if (controller?.IsColumnEditable(entry.Column) != true)
+                return;
+
+            string hint = owner.ResolveEditorKind(entry.Column) switch
+            {
+                DataGridEditorKind.Combo => "(pick)",
+                DataGridEditorKind.Date => "yyyy-mm-dd",
+                DataGridEditorKind.Spin => "0",
+                DataGridEditorKind.None => string.Empty,
+                _ => "…", // "…" — the text ghost
+            };
+            if (hint.Length != 0)
+                DrawClipped(context, DrawXOf(c) + DataGridColumnLayout.CellPadding, y, hint, entry.Width, ghost);
+        }
+
+        // §9.2 paint order (audit W2-4 — the data rows' mirror): scrolling ghosts first, then the
+        // frozen region re-fills and draws its ghosts unshifted on top.
+        for (int c = frozenCount; c < entries.Count; c++)
+            DrawGhostCell(c);
+        if (frozenWidth > 0)
+        {
+            if (owner.Background is { } erase && HOffset > 0)
+                context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+            for (int c = 0; c < frozenCount; c++)
+                DrawGhostCell(c);
+        }
+        context.DrawText(0, y, "*", ghost);
+        // (no row fill — the ghost row deliberately stays on the resting background)
     }
 
     /// <summary>
@@ -414,7 +878,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// overload (the format's fg wins; Bold/Inverse/bg fold into the base <see cref="CellStyle"/> —
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
-    private void DrawFormattedCell(RenderContext context, int x, int y, string text, int maxWidth, in CellFormat format)
+    private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth, in CellFormat format)
     {
         if (format.IsEmpty)
         {
@@ -455,7 +919,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 width = next;
                 end = enumerator.ElementIndex + enumerator.Current.Length;
             }
-            span = text.AsSpan(0, end);
+            span = text[..end];
         }
 
         if (format.Foreground is { } foreground)
@@ -486,8 +950,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             context.DrawText(x + fill, y, BarTrackGlyphs.AsSpan(0, width - fill), trackBrush);
     }
 
-    /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack inside Render — §3.2).</summary>
-    private static void DrawClipped(RenderContext context, int x, int y, string text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
+    /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack
+    /// inside Render — §3.2). Span-based (§9.6) — string callers convert implicitly.</summary>
+    private static void DrawClipped(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
     {
         if (text.Length == 0 || brush is null)
             return;
@@ -506,7 +971,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 width = next;
                 end = enumerator.ElementIndex + enumerator.Current.Length;
             }
-            context.DrawText(x, y, text.AsSpan(0, end), brush);
+            context.DrawText(x, y, text[..end], brush);
             context.DrawText(x + width, y, "…", brush);
             return;
         }
@@ -516,46 +981,225 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────
 
-    private Cursorial.UI.Controls.TextBox? _editor;
+    private Control? _editor;
+    private DataGridEditorKind _editorKind;
     private int _editViewIndex = -1;
     private int _editColumnIndex = -1;
+    private bool _editorErrorFlagged;
 
     /// <summary>Whether an editor is hosted (the grid's key routing branches on it).</summary>
     internal bool IsEditing => _editor is not null;
+
+    /// <summary>The hosted editor's resolved kind (never <see cref="DataGridEditorKind.Auto"/> while editing).</summary>
+    internal DataGridEditorKind EditorKind => _editorKind;
+
+    /// <summary>The hosted editor element (tests + the grid's preview-key routing).</summary>
+    internal Control? EditorElement => _editor;
 
     /// <summary>The edited (viewIndex, columnIndex) while editing.</summary>
     internal (int ViewIndex, int ColumnIndex) EditCell => (_editViewIndex, _editColumnIndex);
 
     /// <summary>
-    /// Hosts the TextBox editor at a cell (v1 — the editor suite rides the same host later): the
-    /// presenter adopts the element as a visual/logical child, arranges it at the cell's CONTENT
-    /// rect (it scrolls with the band naturally), and focuses it. The drawn cell underneath is
-    /// painted over by the editor's own background.
+    /// Whether a drop-down editor's list is open. The grid's tunnel intercept keys off this: a
+    /// CLOSED drop-down editor must yield Enter/Esc to the edit contract (commit/cancel), an open
+    /// one owns them (Enter = pick, Esc = close) — see <c>DataGrid.OnPreviewKeyDown</c>.
     /// </summary>
-    internal void BeginEdit(int viewIndex, int columnIndex, string initialText)
+    internal bool IsEditorDropDownOpen => _editor switch
+    {
+        Cursorial.UI.Controls.ComboBox combo => combo.IsDropDownOpen,
+        Cursorial.UI.Controls.DatePicker picker => picker.IsDropDownOpen,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Hosts one editor element at a cell, keyed by <paramref name="kind"/> (the generalized §3.2
+    /// host — the v1 TextBox path plus the combo/date/spin suite): the presenter adopts the element
+    /// as a visual/logical child, arranges it at the cell's CONTENT rect (it scrolls with the band
+    /// naturally), and focuses it via the parked-work idiom. The drawn cell underneath is painted
+    /// over by the editor's own background. <paramref name="comboItems"/> feeds the Combo kind only.
+    /// </summary>
+    internal void BeginEdit(int viewIndex, int columnIndex, DataGridEditorKind kind, string initialText,
+                            IReadOnlyList<string>? comboItems = null)
     {
         EndEditVisual();
 
-        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        Control editor = kind switch
+        {
+            DataGridEditorKind.Combo => CreateComboEditor(initialText, comboItems ?? []),
+            DataGridEditorKind.Date => CreateDateEditor(initialText),
+            // Text and Spin share the TextBox face — Spin adds Up/Down stepping (the grid's editing
+            // key branch calls SpinBy; the ▲▼ affordance is drawn by Render beside the editor).
+            _ => CreateTextEditor(initialText),
+        };
+
         _editor = editor;
+        _editorKind = kind;
         _editViewIndex = viewIndex;
         _editColumnIndex = columnIndex;
+
+        // Pin the editor to its cell slot: a control theme's own minimum (the TextBox face wants
+        // ~12 cells) would otherwise inflate DesiredSize past the slot, and arrange grows an
+        // element to its desired size — the editor would paint over the neighboring cells (and
+        // the Spin suffix). Min beats Max in the LD1 clamp order, so the theme's MinWidth must be
+        // locally overridden alongside the cap; the slot is stable for the edit session.
+        if (columnIndex >= 0 && columnIndex < ColumnLayout.Entries.Count)
+        {
+            int slot = EditorWidth(ColumnLayout.Entries[columnIndex]);
+            editor.SetValue(MinWidthProperty, 1);
+            editor.SetValue(MaxWidthProperty, slot);
+        }
+
         AdoptChild(editor, index: -1);
         InvalidateMeasure();
+        _owner?.NotifyEditingChanged();
 
         // Focus after the editor materializes (measure/arrange run first) — the parked-work idiom.
         UIApplication.Current?.Dispatcher.Post(() =>
         {
-            if (_editor == editor)
+            if (ReferenceEquals(_editor, editor))
             {
                 editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
-                editor.SelectAll();
+                (editor as Cursorial.UI.Controls.TextBox)?.SelectAll();
             }
         });
     }
 
-    /// <summary>The editor's current text (the commit path reads before teardown).</summary>
-    internal string? EditorText => _editor?.Text;
+    private Cursorial.UI.Controls.TextBox CreateTextEditor(string initialText)
+    {
+        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        // The ed-err recovery contract: the danger ink clears on the NEXT text change (§3.2).
+        editor.AddHandler(Cursorial.UI.Controls.TextBox.TextChangedEvent, (_, _) => ClearEditorError());
+        return editor;
+    }
+
+    private Cursorial.UI.Controls.ComboBox CreateComboEditor(string initialText, IReadOnlyList<string> items)
+    {
+        var combo = new Cursorial.UI.Controls.ComboBox { ItemsSource = items };
+        // Preset to the current formatted value (the mockup's selected "East"); no match ⇒ no
+        // selection, and commit refuses until the user picks (TryGetEditorText's Combo contract).
+        foreach (var item in items)
+        {
+            if (string.Equals(item, initialText, StringComparison.Ordinal))
+            {
+                combo.SelectedItem = item;
+                break;
+            }
+        }
+        combo.SelectionChanged += (_, _) => ClearEditorError();
+        return combo;
+    }
+
+    private Cursorial.UI.Controls.DatePicker CreateDateEditor(string initialText)
+    {
+        // Editable: the face is a typed-text box + the calendar drop-down (the mockup's ed-date).
+        var picker = new Cursorial.UI.Controls.DatePicker { IsEditable = true };
+        // SelectedDate preset by parsing the current cell text — DateOnly first, then DateTime
+        // (a DateTime-keyed column formats through its own formatter; FromDateTime folds it).
+        if (DateOnly.TryParse(initialText, System.Globalization.CultureInfo.CurrentCulture,
+                              System.Globalization.DateTimeStyles.None, out var date))
+        {
+            picker.SelectedDate = date;
+        }
+        else if (DateTime.TryParse(initialText, System.Globalization.CultureInfo.CurrentCulture,
+                                   System.Globalization.DateTimeStyles.None, out var dateTime))
+        {
+            picker.SelectedDate = DateOnly.FromDateTime(dateTime);
+        }
+        picker.SelectedDateChanged += (_, _) => ClearEditorError();
+        return picker;
+    }
+
+    /// <summary>
+    /// The editor's committed text, per kind (the one seam <c>DataGrid.CommitEdit</c> reads —
+    /// every kind funnels into <see cref="Shaping.DataViewController.TrySetCellFromText"/>'s text
+    /// lane so parse/validation semantics stay identical across editors): TextBox = its text;
+    /// Combo = the selected item (false while nothing is selected — nothing to commit); Date = the
+    /// editable draft box's text (the typed text OR the culture "d" push from a calendar pick —
+    /// reading the box, not <c>SelectedDate</c>, preserves a draft the picker hasn't parsed yet),
+    /// falling back to the selected date's round-trip when the box hasn't templated.
+    /// </summary>
+    internal bool TryGetEditorText([NotNullWhen(true)] out string? text)
+    {
+        switch (_editor)
+        {
+            case Cursorial.UI.Controls.TextBox box:
+                text = box.Text;
+                return true;
+
+            case Cursorial.UI.Controls.ComboBox combo:
+                text = combo.SelectedItem as string;
+                return text is not null;
+
+            case Cursorial.UI.Controls.DatePicker picker:
+                text = FindDescendant<Cursorial.UI.Controls.TextBox>(picker)?.Text
+                       ?? picker.SelectedDate?.ToString("d", System.Globalization.CultureInfo.CurrentCulture)
+                       ?? string.Empty;
+                return true;
+
+            default:
+                text = null;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// The Spin kind's Up/Down stepping (the grid's editing key branch routes here): the numeric
+    /// text steps by <paramref name="delta"/> (±1, Shift ±10) and re-selects for a typed replace.
+    /// Non-numeric residue is left alone (stepping must never destroy text the user is fixing).
+    /// </summary>
+    internal void SpinBy(decimal delta)
+    {
+        if (_editorKind != DataGridEditorKind.Spin || _editor is not Cursorial.UI.Controls.TextBox box)
+            return;
+
+        string current = box.Text.Trim();
+        decimal value = 0m;
+        if (current.Length != 0 &&
+            !decimal.TryParse(current, System.Globalization.NumberStyles.Number,
+                              System.Globalization.CultureInfo.CurrentCulture, out value))
+        {
+            return;
+        }
+
+        box.Text = (value + delta).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        box.SelectAll();
+    }
+
+    /// <summary>
+    /// Flips the hosted editor into the error look (the mockup's <c>ed-err</c> idiom): the ink goes
+    /// through the theme's <see cref="Cursorial.UI.Themes.ThemeKeys.DangerBrush"/> via a live
+    /// resource reference (palette flips keep tracking). Cleared on the next text/selection change
+    /// (the per-kind change hooks) — the commit path calls this when the parse fails and the
+    /// editor stays open for correction (§3.2).
+    /// </summary>
+    internal void FlagEditorError()
+    {
+        if (_editor is not { } editor)
+            return;
+        _editorErrorFlagged = true;
+        editor.SetResourceReference(Control.ForegroundProperty, Cursorial.UI.Themes.ThemeKeys.DangerBrush);
+    }
+
+    private void ClearEditorError()
+    {
+        if (!_editorErrorFlagged || _editor is not { } editor)
+            return;
+        _editorErrorFlagged = false;
+        editor.ClearValue(Control.ForegroundProperty); // back to the inherited/themed resting ink
+    }
+
+    private static T? FindDescendant<T>(UIElement root) where T : UIElement
+    {
+        for (int i = 0; i < root.VisualChildrenCount; i++)
+        {
+            var child = root.GetVisualChild(i);
+            if (child is T match)
+                return match;
+            if (FindDescendant<T>(child) is { } nested)
+                return nested;
+        }
+        return null;
+    }
 
     /// <summary>Tears the editor down and returns focus to the grid.</summary>
     internal void EndEditVisual()
@@ -564,53 +1208,124 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
         DisownChild(_editor);
         _editor = null;
+        _editorKind = DataGridEditorKind.Auto;
+        _editorErrorFlagged = false;
         _editViewIndex = -1;
         _editColumnIndex = -1;
         InvalidateMeasure();
         InvalidateVisual();
+        _owner?.NotifyEditingChanged();
         _owner?.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
     }
 
+    /// <summary>
+    /// The editor's arranged width inside its cell: the Spin kind reserves a 3-cell suffix for the
+    /// drawn <c>▲▼</c> affordance when the cell is wide enough (the mockup's spinbtns; skipped in
+    /// cramped cells — stepping still works, only the hint is elided).
+    /// </summary>
+    private int EditorWidth(in DataGridColumnLayout.Entry entry)
+        => _editorKind == DataGridEditorKind.Spin && entry.Width >= 6
+            ? entry.Width - 3
+            : Math.Max(1, entry.Width);
+
     protected override Size ArrangeOverride(Size finalSize)
     {
-        // The editor arranges at its cell's content rect (content coords == local coords).
+        // The editor arranges at its cell's content rect (content coords == local coords). Do NOT
+        // chain base.ArrangeOverride: the UIElement default arranges EVERY visual child to the
+        // full finalSize, which would re-arrange the editor over the whole presenter — its
+        // background then blanks the drawn rows (the latent v1 bug this stage surfaced; the host's
+        // children are exclusively hosted editors, so self-owned arrangement is total here).
         if (_editor is not null && _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
         {
+            // §9.2: the arrange x is the SHIFTED draw position (hosted children re-arrange per
+            // H-tick — the offset registers AffectsMeasure on the grid); the grid's offset-change
+            // policy commits an editor before it would slide under the frozen region. The arrange
+            // row maps through the §9.3 content-y map.
             var entry = ColumnLayout.Entries[_editColumnIndex];
-            _editor.Arrange(new Rect(entry.X + DataGridColumnLayout.CellPadding, _editViewIndex,
-                                     Math.Max(1, entry.Width), 1));
+            _editor.Arrange(new Rect(DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding,
+                                     ContentYOf(_editViewIndex), EditorWidth(entry), 1));
         }
-        return base.ArrangeOverride(finalSize);
+
+        // §9.3: realized panes arrange at their content-y range, horizontally VIEWPORT-anchored
+        // (x=0 viewport-wide, never shifted by the H offset — the hosted-children-over-frozen
+        // policy). A pane's rect may exceed the band; the scene crops.
+        foreach (var pane in _details)
+        {
+            if (_detailElements.TryGetValue(pane.RowId, out var element))
+                element.Arrange(new Rect(0, pane.YStart, Math.Max(1, _viewport.Columns), pane.Height));
+        }
+        return finalSize;
     }
 
     // ── Hit testing + mouse (the single hit leaf — §3.2) ─────────────────────────────────────────
 
-    /// <summary>Maps a content position to (viewIndex, columnEntryIndex, isExpander).</summary>
+    /// <summary>
+    /// Maps a LOCAL (viewport-space) position to (viewIndex, columnEntryIndex, isExpander). The
+    /// §9.2 split: x under the frozen width hits the frozen region directly (it draws on top);
+    /// anything right of it maps through the horizontal offset. Group rows are viewport-anchored,
+    /// so their expander check reads the local x unmapped.
+    /// </summary>
     internal (int ViewIndex, int ColumnIndex, bool OnExpander) HitCell(int x, int y)
     {
         var owner = _owner;
-        if (owner is null || y < 0 || y >= owner.Snapshot.Count)
+        if (owner is null)
             return (-1, -1, false);
 
-        var row = owner.Snapshot.GetRow(y);
+        // §9.3: content-y → view row first; a y inside a pane belongs to the pane's own hosted
+        // children (elements take their hits before the presenter leaf — nothing for us).
+        var (viewIndex, inDetail) = ViewIndexAtY(y);
+        if (inDetail)
+            return (-1, -1, false);
+
+        if (viewIndex < 0 || viewIndex >= owner.Snapshot.Count)
+        {
+            // The new-row template is clickable like a data row (its view index is one PAST the
+            // snapshot — every snapshot read above stays guarded).
+            if (viewIndex >= 0 && viewIndex == NewRowViewIndex)
+                return (viewIndex, ColumnLayout.EntryAt(ContentXAt(x)), false);
+            return (-1, -1, false);
+        }
+
+        var row = owner.Snapshot.GetRow(viewIndex);
         if (row.IsGroup)
         {
             int expanderX = row.Level * 2;
-            return (y, -1, x >= expanderX && x <= expanderX + 1);
+            return (viewIndex, -1, x >= expanderX && x <= expanderX + 1);
         }
 
-        return (y, ColumnLayout.EntryAt(x), false);
+        // The §9.3 gutter zone is the data row's detail expander.
+        if (ColumnLayout.GutterWidth > 0 && x >= 0 && x < ColumnLayout.GutterWidth)
+            return (viewIndex, -1, true);
+
+        return (viewIndex, ColumnLayout.EntryAt(ContentXAt(x)), false);
     }
+
+    /// <summary>The §9.2 local→content x map (frozen region identity, scrolled region shifted).</summary>
+    internal int ContentXAt(int localX)
+        => localX < ColumnLayout.FrozenWidth ? localX : localX + HOffset;
 
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || _owner is null)
+        if (e.Handled || _owner is null)
             return;
 
         var position = e.GetPosition(this);
         var (viewIndex, columnIndex, onExpander) = HitCell(position.Column, position.Row);
-        if (viewIndex < 0)
+
+        // Right-press opens the grid command menu at the pressed cell (the reachability surface:
+        // sort/group lanes, the filter dialogs, formatting, summaries, copy). Focus follows the
+        // press like a left-click so the menu's column lanes match what the user sees focused.
+        if (e.Button == MouseButton.Right)
+        {
+            if (viewIndex >= 0 && columnIndex >= 0)
+                _owner.SetFocusCell(viewIndex, columnIndex);
+            _owner.OpenGridContextMenu(columnIndex, position);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Button != MouseButton.Left || viewIndex < 0)
             return;
 
         _owner.HandleRowPress(viewIndex, columnIndex, onExpander, e.Modifiers, e.ClickCount);
@@ -624,7 +1339,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var position = e.GetPosition(this);
-        int hover = position.Row >= 0 && position.Row < ItemCount ? position.Row : -1;
+        var (viewIndex, inDetail) = ViewIndexAtY(position.Row); // §9.3: pane rows never hover-highlight
+        int hover = !inDetail && viewIndex >= 0 && viewIndex < ItemCount ? viewIndex : -1;
         if (hover != HoverViewIndex)
         {
             HoverViewIndex = hover;

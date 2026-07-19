@@ -57,6 +57,15 @@ internal static class CursorialDataViewsTheme
         autoFilter.SetResourceReference(DataGridAutoFilterRow.PlaceholderBrushProperty, ThemeKeys.MutedBrush);
         autoFilter.SetResourceReference(DataGridAutoFilterRow.WellBackgroundProperty, ThemeKeys.WellBrush);
 
+        // The edit action bar docks BELOW the footer (added first, so it takes the outermost bottom
+        // strip); it collapses to zero rows while no editor is hosted (§3.2 — the editbar band).
+        var editBar = new DataGridEditBar();
+        DockPanel.SetDock(editBar, Dock.Bottom);
+        editBar.SetResourceReference(DataGridEditBar.BackgroundProperty, ThemeKeys.SurfaceBrush);
+        editBar.SetResourceReference(DataGridEditBar.TextBrushProperty, ThemeKeys.MutedBrush);
+        editBar.SetResourceReference(DataGridEditBar.KeyBrushProperty, ThemeKeys.AccentBrush);
+        editBar.SetResourceReference(DataGridEditBar.IndicatorBrushProperty, ThemeKeys.AmberBrush);
+
         var footer = new DataGridSummaryPresenter();
         DockPanel.SetDock(footer, Dock.Bottom);
         footer.SetResourceReference(DataGridSummaryPresenter.BackgroundProperty, ThemeKeys.SurfaceBrush);
@@ -73,25 +82,43 @@ internal static class CursorialDataViewsTheme
         rows.SetResourceReference(DataGridRowsPresenter.FocusCellBackgroundProperty, ThemeKeys.WellBrush);
         rows.SetResourceReference(DataGridRowsPresenter.DataBarFillBrushProperty, ThemeKeys.CoolBrush);
         rows.SetResourceReference(DataGridRowsPresenter.DataBarTrackBrushProperty, ThemeKeys.FaintBrush);
+        rows.SetResourceReference(DataGridRowsPresenter.MutedBrushProperty, ThemeKeys.MutedBrush);
 
         var scrollViewer = new ScrollViewer
         {
             Content = rows,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, // v1: full-width scenes; Auto degrades (§3.1)
+            // §9.2: the SCP's horizontal axis is OFF — the rows presenter owns horizontal scrolling
+            // (viewport-wide scenes, frozen columns, column virtualization); the grid's
+            // HorizontalOffset shifts every band presenter.
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         };
+
+        // The grid-owned horizontal bar (§9.2 — the SV part cannot host it): docked innermost
+        // bottom (directly under the rows viewport, above the footer/edit bar); the grid collapses
+        // it while everything fits.
+        var hScrollBar = new ScrollBar
+        {
+            Orientation = Orientation.Horizontal,
+            Visibility = Visibility.Collapsed,
+        };
+        DockPanel.SetDock(hScrollBar, Dock.Bottom);
 
         dock.Children.Add(groupPanel);
         dock.Children.Add(header);
         dock.Children.Add(autoFilter);
+        dock.Children.Add(editBar);
         dock.Children.Add(footer);
+        dock.Children.Add(hScrollBar);
         dock.Children.Add(scrollViewer);
 
         ctx.RegisterName(DataGrid.PartGroupPanel, groupPanel);
         ctx.RegisterName(DataGrid.PartHeader, header);
         ctx.RegisterName(DataGrid.PartAutoFilterRow, autoFilter);
+        ctx.RegisterName(DataGrid.PartEditBar, editBar);
         ctx.RegisterName(DataGrid.PartFooter, footer);
         ctx.RegisterName(DataGrid.PartScrollViewer, scrollViewer);
+        ctx.RegisterName(DataGrid.PartHScrollBar, hScrollBar);
         ctx.RegisterName(DataGrid.PartRows, rows);
 
         return dock;

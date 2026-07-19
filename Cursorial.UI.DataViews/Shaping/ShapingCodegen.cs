@@ -246,6 +246,16 @@ internal static class ShapingCodegen
             formatted = Expression.Call(value, toStringMethod,
                 Expression.Constant(format, typeof(string)),
                 Expression.Constant(culture, typeof(IFormatProvider)));
+            if (!valueType.IsValueType)
+            {
+                // A null reference-typed IFormattable key formats as "" (audit W2-16 — the
+                // non-IFormattable branch below always guarded; the span lane returns "" for the
+                // same cell, and the doc pins the two lanes text-identical).
+                formatted = Expression.Condition(
+                    Expression.Equal(value, Expression.Constant(null, valueType)),
+                    Expression.Constant(string.Empty),
+                    formatted);
+            }
         }
         else
         {
@@ -363,6 +373,45 @@ internal static class ShapingCodegen
     {
         ArgumentNullException.ThrowIfNull(selector);
 
+        if (TryGetSettableLeaf(selector) is not { } leaf)
+            return null;
+
+        var row = selector.Parameters[0];
+        var value = Expression.Parameter(leaf.Type, "value");
+        Expression assign = GuardedAssign(leaf, value);
+
+        // Force a void body so the lambda infers Action<TRow,TKey> — a bare Assign returns the
+        // assigned value and would infer Func<TRow,TKey,TKey> (the InvalidCastException trap).
+        return Expression.Lambda(Expression.Block(typeof(void), assign), row, value);
+    }
+
+    /// <summary>
+    /// The VALUE-TYPE-row analog of <see cref="TryBuildSetter"/> (design doc §9.6): compiles
+    /// <c>(row, value) =&gt; { row.Member = value; return row; }</c> — a <c>Func&lt;TRow,TKey,TRow&gt;</c>
+    /// mutating the by-value parameter copy and returning it, because an <c>Action</c> setter on a
+    /// struct row mutates a throwaway copy (the silent-no-op trap). The caller stores the returned
+    /// copy back (<c>RowStore.SetRow</c> / the boxed-row write-back). Null when the selector isn't a
+    /// settable member chain.
+    /// </summary>
+    public static LambdaExpression? TryBuildStructSetter(LambdaExpression selector)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+
+        if (TryGetSettableLeaf(selector) is not { } leaf)
+            return null;
+
+        var row = selector.Parameters[0];
+        var value = Expression.Parameter(leaf.Type, "value");
+        Expression assign = GuardedAssign(leaf, value);
+
+        // { row.Member = value; return row; } — the block's value is the (mutated) row parameter.
+        return Expression.Lambda(Expression.Block(assign, row), row, value);
+    }
+
+    /// <summary>The shared setter validation: unwraps Convert nodes, requires a writable
+    /// property/field leaf on a member chain rooted at the row parameter.</summary>
+    private static MemberExpression? TryGetSettableLeaf(LambdaExpression selector)
+    {
         // Unwrap Convert nodes; require a MemberExpression chain rooted at the row parameter.
         Expression body = selector.Body;
         while (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
@@ -389,17 +438,16 @@ internal static class ShapingCodegen
                 return null;
         }
 
-        var row = selector.Parameters[0];
-        var value = Expression.Parameter(leaf.Type, "value");
-        Expression assign = Expression.Assign(leaf, value);
+        return leaf;
+    }
 
-        // Null-guard reference intermediates: if (row.Customer != null) row.Customer.Name = value.
+    /// <summary>Null-guards reference intermediates: <c>if (row.Customer != null) row.Customer.Name = value</c>.</summary>
+    private static Expression GuardedAssign(MemberExpression leaf, ParameterExpression value)
+    {
+        Expression assign = Expression.Assign(leaf, value);
         if (leaf.Expression is MemberExpression owner && !owner.Type.IsValueType)
             assign = Expression.IfThen(Expression.NotEqual(owner, Expression.Constant(null, owner.Type)), assign);
-
-        // Force a void body so the lambda infers Action<TRow,TKey> — a bare Assign returns the
-        // assigned value and would infer Func<TRow,TKey,TKey> (the InvalidCastException trap).
-        return Expression.Lambda(Expression.Block(typeof(void), assign), row, value);
+        return assign;
     }
 
     // ── Column factory ───────────────────────────────────────────────────────────────────────────
@@ -432,10 +480,17 @@ internal static class ShapingCodegen
                 : null)
         {
             Identity = identity,
+            // The §9.6 span-format lane: the band cache formats into pooled char buffers through
+            // this (no per-cell string); the string _formatter stays the cold/diagnostic lane.
+            SpanFormatter = CreateSpanFormatter<TKey>(format, culture),
             // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
-            // computed keys stay read-only (the editor won't open on them).
-            Setter = TryBuildSetter(selector) is { } setter
+            // computed keys stay read-only (the editor won't open on them). Value-type rows compile
+            // the copy-returning mutator instead (§9.6 — an Action on a struct copy is a silent no-op).
+            Setter = !typeof(TRow).IsValueType && TryBuildSetter(selector) is { } setter
                 ? (Action<TRow, TKey>)setter.Compile()
+                : null,
+            StructSetter = typeof(TRow).IsValueType && TryBuildStructSetter(selector) is { } mutator
+                ? (Func<TRow, TKey, TRow>)mutator.Compile()
                 : null,
         };
 }

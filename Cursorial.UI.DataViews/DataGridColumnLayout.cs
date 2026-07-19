@@ -14,17 +14,40 @@ internal sealed class DataGridColumnLayout
     private readonly List<Entry> _entries = [];
     private readonly Dictionary<DataGridColumn, int> _autoGrown = new(); // monotonic within a shape (§1 — no scroll jitter)
 
-    /// <summary>The resolved entries (visible columns, left to right).</summary>
+    /// <summary>The resolved entries (visible columns, left to right; fixed columns lead — §9.2).</summary>
     public IReadOnlyList<Entry> Entries => _entries;
 
     /// <summary>Total content width in cells (the horizontal extent).</summary>
     public int TotalWidth { get; private set; }
+
+    /// <summary>The count of leading <see cref="DataGridColumnFixed.Left"/> entries (§9.2 — the
+    /// caller passes fixed columns first; this is how many).</summary>
+    public int FrozenCount { get; private set; }
+
+    /// <summary>The frozen region's width in cells: the §9.3 expander gutter plus the leading fixed
+    /// entries — everything left of it is pinned and draws unshifted over the scrolled band (§9.2).
+    /// Always ≥ <see cref="GutterWidth"/>.</summary>
+    public int FrozenWidth { get; private set; }
+
+    /// <summary>The §9.3 master-detail expander gutter (0 when no detail template): a synthetic
+    /// leading region every entry's x starts after — all presenters + hit math inherit it, and it
+    /// is pinned like a fixed column (inside <see cref="FrozenWidth"/>).</summary>
+    public int GutterWidth { get; private set; }
 
     /// <summary>The per-cell padding the painters apply inside a column (mirrors the mockup's 1-cell gutter).</summary>
     public const int CellPadding = 1;
 
     /// <summary>Resets the Auto-growth memory (a new shape/theme may shrink content legitimately).</summary>
     public void ResetAutoGrowth() => _autoGrown.Clear();
+
+    /// <summary>
+    /// Resets ONE column's Auto-growth memory (the header-edge double-click best-fit — §1 deferred
+    /// UX, now landed): returning a manually-sized column to <c>Auto</c> must re-measure TIGHT
+    /// against the current band, not resume the old monotonic high-water mark (which may remember a
+    /// wide value that scrolled away long ago). Whole-layout <see cref="ResetAutoGrowth()"/> would
+    /// jitter the OTHER Auto columns for no reason — the reset is per-gesture, per-column.
+    /// </summary>
+    public void ResetAutoGrowth(DataGridColumn column) => _autoGrown.Remove(column);
 
     /// <summary>
     /// Resolves widths: fixed cells verbatim; Auto = header ∨ widest band cell (via
@@ -34,12 +57,15 @@ internal sealed class DataGridColumnLayout
     /// <param name="columns">The grid's columns (hidden ones skipped).</param>
     /// <param name="viewportWidth">The viewport width star shares distribute over.</param>
     /// <param name="autoWidth">Content width probe for an Auto column (the band cache's widest formatted cell).</param>
-    public void Resolve(IReadOnlyList<DataGridColumn> columns, int viewportWidth, Func<DataGridColumn, int> autoWidth)
+    /// <param name="gutterWidth">The §9.3 expander gutter width (0 = no master-detail).</param>
+    public void Resolve(IReadOnlyList<DataGridColumn> columns, int viewportWidth, Func<DataGridColumn, int> autoWidth,
+                        int gutterWidth = 0)
     {
         ArgumentNullException.ThrowIfNull(columns);
         ArgumentNullException.ThrowIfNull(autoWidth);
 
         _entries.Clear();
+        GutterWidth = Math.Max(0, gutterWidth);
 
         // Pass 1: fixed + auto widths; collect stars.
         Span<int> widths = columns.Count <= 64 ? stackalloc int[columns.Count] : new int[columns.Count];
@@ -84,7 +110,7 @@ internal sealed class DataGridColumnLayout
         // Pass 2: distribute the remainder over stars (largest-remainder rounding keeps totals exact).
         if (starTotal > 0)
         {
-            int remaining = Math.Max(0, viewportWidth - fixedTotal);
+            int remaining = Math.Max(0, viewportWidth - fixedTotal - GutterWidth);
             double accumulated = 0;
             int assigned = 0;
             for (int i = 0; i < columns.Count; i++)
@@ -99,16 +125,26 @@ internal sealed class DataGridColumnLayout
             }
         }
 
-        // Pass 3: lay out.
-        int x = 0;
+        // Pass 3: lay out. The §9.3 gutter leads, then fixed entries (the caller partitions
+        // fixed-first — §9.2); the frozen region is the gutter + the leading run of Fixed=Left.
+        int x = GutterWidth;
+        int frozenCount = 0;
+        int frozenWidth = GutterWidth;
         for (int i = 0; i < columns.Count; i++)
         {
             if (!columns[i].Visible)
                 continue;
             _entries.Add(new Entry(columns[i], x, widths[i]));
             x += widths[i] + 2 * CellPadding;
+            if (frozenCount == _entries.Count - 1 && columns[i].Fixed == DataGridColumnFixed.Left)
+            {
+                frozenCount++;
+                frozenWidth = x;
+            }
         }
         TotalWidth = x;
+        FrozenCount = frozenCount;
+        FrozenWidth = frozenWidth;
     }
 
     private static int Clamp(DataGridColumn column, int width)

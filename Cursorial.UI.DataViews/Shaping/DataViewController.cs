@@ -15,14 +15,13 @@ public abstract class DataViewController : IDisposable
 {
     private protected DataViewController() { }
 
-    /// <summary>Closes the typed controller over <paramref name="rowType"/> (reference types only in v1).</summary>
+    /// <summary>Closes the typed controller over <paramref name="rowType"/>. Value-type rows are
+    /// supported with runtime guards (design doc §9.6): they must attach with
+    /// <c>liveUpdates: false</c>, and the row id is their only identity.</summary>
     [RequiresDynamicCode("Closes the generic controller over a runtime row type.")]
     public static DataViewController Create(Type rowType, IShapingScheduler? scheduler = null)
     {
         ArgumentNullException.ThrowIfNull(rowType);
-        if (rowType.IsValueType)
-            throw new ArgumentException("Row types are reference types in v1 (design doc §2.1).", nameof(rowType));
-
         return (DataViewController)Activator.CreateInstance(
             typeof(DataViewController<>).MakeGenericType(rowType), [scheduler])!;
     }
@@ -70,8 +69,17 @@ public abstract class DataViewController : IDisposable
     /// <summary>Toggles a group's collapse state by its path key; reshapes the flat view.</summary>
     public abstract void SetCollapsed(string groupPath, bool collapsed);
 
-    /// <summary>Formats one cell (band-cache/cold callers; the presenter's span lane comes with the band cache).</summary>
+    /// <summary>Formats one cell (cold callers — editors, copy, diagnostics; the band cache uses
+    /// the <see cref="FormatCellTo"/> span lane).</summary>
     public abstract string FormatCell(int rowId, object columnKey);
+
+    /// <summary>
+    /// The §9.6 span-format lane: writes the cell's display text into
+    /// <paramref name="destination"/>, returning chars written, −1 when it doesn't fit (grow and
+    /// retry), or 0 for an unknown column. Text-identical to <see cref="FormatCell"/>; the band
+    /// cache formats through this into pooled char buffers (no per-cell string per fill).
+    /// </summary>
+    public abstract int FormatCellTo(int rowId, object columnKey, Span<char> destination);
 
     /// <summary>The row object for a row id (selection/copy surfaces).</summary>
     public abstract object GetRowObject(int rowId);
@@ -85,6 +93,14 @@ public abstract class DataViewController : IDisposable
     /// the normal live pipeline). False when read-only or unparseable — the editor stays open.
     /// </summary>
     public abstract bool TrySetCellFromText(int rowId, object columnKey, string text);
+
+    /// <summary>
+    /// The new-row lane of the edit-commit path (§3.2): parses and writes onto an UN-STORED row
+    /// instance (no row id yet — the grid's new-row template edits the object BEFORE
+    /// <c>source.Add</c> lands it). No tick is scheduled — the subsequent Add is what reshapes.
+    /// False when the column is read-only/unknown or the text doesn't parse.
+    /// </summary>
+    internal abstract bool TrySetRowText(object row, object columnKey, string text);
 
     /// <summary>
     /// The active conditional-formatting rules (design doc §2.7): compiled against the typed key
@@ -108,6 +124,47 @@ public abstract class DataViewController : IDisposable
     /// range), or NaN when the column carries no <see cref="DataBarRule"/> / the value is null.
     /// </summary>
     public abstract double GetDataBarFraction(int rowId, object columnKey);
+
+    /// <summary>
+    /// The exact top/bottom-K threshold for <paramref name="columnKey"/> over the CURRENT visible
+    /// (filtered, pre-collapse) rows — the engine half of top/bottom conditional-format rules
+    /// (design doc §9.5's TopK stats addition). Among the visible rows' NON-NULL key values:
+    /// <list type="bullet">
+    /// <item><paramref name="top"/> true: <paramref name="threshold"/> is the K-th largest value —
+    /// a cell whose value compares &gt;= the threshold is in the top K. Ties INCLUDE (the
+    /// DevExpress semantics: every value equal to the threshold qualifies, so more than K cells may
+    /// highlight).</item>
+    /// <item><paramref name="top"/> false: the K-th smallest value — a cell &lt;= the threshold is
+    /// in the bottom K, ties included.</item>
+    /// </list>
+    /// K is <paramref name="count"/> directly, or — when <paramref name="percent"/> is true —
+    /// <c>ceil(count% × visible non-null values)</c>. K clamps to the population (K ≥ N means every
+    /// non-null value qualifies). Null keys never qualify and never count toward the population.
+    /// Comparisons use the column's sort comparison (culture/collation-consistent), so consumers
+    /// should evaluate cells against the threshold through the same column comparison (e.g. the
+    /// filter lane's GreaterThanOrEqual).
+    /// <para>
+    /// Cost: one O(V)-expected quickselect over a scratch index array per distinct
+    /// (column, count, percent, top) request, CACHED for the published snapshot's lifetime and
+    /// invalidated on every publish.
+    /// </para>
+    /// </summary>
+    /// <param name="columnKey">The shaped column's key.</param>
+    /// <param name="count">The K (row count), or the percentage in (0, 100] when <paramref name="percent"/> is set.</param>
+    /// <param name="percent">Whether <paramref name="count"/> is a percentage of the visible non-null population.</param>
+    /// <param name="top">True for top-K (largest values), false for bottom-K (smallest).</param>
+    /// <param name="threshold">The boxed threshold key value, or null when unavailable.</param>
+    /// <returns>False when the column is unknown, <paramref name="count"/> ≤ 0, or no visible row
+    /// has a non-null value for the column.</returns>
+    public abstract bool TryGetTopKThreshold(object columnKey, int count, bool percent, bool top, out object? threshold);
+
+    /// <summary>
+    /// The number of CURRENT visible (filtered, pre-collapse) rows with a non-null key value for
+    /// <paramref name="columnKey"/> — the population the percent form of
+    /// <see cref="TryGetTopKThreshold"/> computes K against. 0 for an unknown column. Cached per
+    /// published snapshot (invalidated on every publish).
+    /// </summary>
+    public abstract int VisibleNonNullCount(object columnKey);
 
     /// <summary>
     /// The column's distinct formatted values for the checklist popup (§3.4): typed dedupe over ALL
@@ -144,9 +201,15 @@ public abstract class DataViewController : IDisposable
     public abstract void Dispose();
 }
 
-/// <summary>The typed shaping controller (design doc §2; the sync lane — the size-gated background lane rides §2.6).</summary>
+/// <summary>
+/// The typed shaping controller (design doc §2; the sync lane — the size-gated background lane
+/// rides §2.6). <typeparamref name="TRow"/> may be a value type (§9.6, runtime-guarded): struct
+/// rows must attach with <c>liveUpdates: false</c> (no INPC identity to observe), the row id is
+/// their ONLY identity (<see cref="GetRowObject"/> boxes a fresh copy per call), and edits write
+/// back by id through the store (<see cref="TrySetCellFromText"/>).
+/// </summary>
 [RequiresDynamicCode("The shaping engine compiles expression trees specialized to the row type.")]
-public sealed class DataViewController<TRow> : DataViewController where TRow : class
+public sealed class DataViewController<TRow> : DataViewController
 {
     private readonly IShapingScheduler _scheduler;
     private readonly RowStore<TRow> _store = new();
@@ -163,7 +226,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     private bool _tickScheduled;
 
     // The shape.
-    private readonly List<(ShapingColumnDescription Description, ShapedColumn Column)> _columns = [];
+    private readonly List<(ShapingColumnDescription Description, ShapedColumn<TRow> Column)> _columns = [];
     private IReadOnlyList<SortDescription> _sorts = [];
     private IReadOnlyList<GroupDescription> _groups = [];
     private IReadOnlyList<SummaryDescription> _summaries = [];
@@ -174,6 +237,14 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     private ShapedColumn[] _groupColumns = [];
     private Func<int, bool>? _filterPredicate;
     private (SummaryDescription Description, ColumnAggregator Aggregator)[] _aggregators = [];
+
+    // The §9.5 order-groups-by-summary kit: one aggregator per group level with OrderBySummary
+    // (compiled whether or not the same summary is displayed), consumed by the per-publish sibling
+    // projection — never by the repair substrate.
+    private (ColumnAggregator Aggregator, bool Descending)?[] _groupOrderKits = [];
+    private bool _hasGroupOrder;
+    private AggregateValue[] _groupOrderValues = [];
+    private readonly GroupOrderComparer _groupOrderComparer = new();
 
     // Source.
     private IEnumerable? _source;
@@ -223,8 +294,8 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                 ?? ShapingCodegen.BuildPropertyPathLambda(typeof(TRow), description.FieldName
                     ?? throw new ArgumentException($"Column '{description.Key}' has neither FieldName nor KeySelector."));
 
-            var column = ShapingCodegen.CreateColumn<TRow>(description.Key, selector,
-                                                           description.StringComparison, description.Format);
+            var column = (ShapedColumn<TRow>)ShapingCodegen.CreateColumn<TRow>(
+                description.Key, selector, description.StringComparison, description.Format);
             _columns.Add((description, column));
         }
 
@@ -241,7 +312,11 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         // never-extracted vectors). Drop shape entries whose key no longer resolves (the consumer's
         // next SetShape re-authorizes them), then recompile against the new columns.
         _sorts = _sorts.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
-        _groups = _groups.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
+        _groups = _groups.Where(d => FindColumn(d.ColumnKey) is not null)
+                         .Select(d => d.OrderBySummary is { } order && FindColumn(order.ColumnKey) is null
+                             ? d with { OrderBySummary = null } // the summary column left; the level falls back to key order
+                             : d)
+                         .ToArray();
         _summaries = _summaries.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
         CompileShape();
 
@@ -266,6 +341,18 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
     public override void AttachSource(IEnumerable? source, bool liveUpdates = true)
     {
         ThrowIfDisposed();
+
+        // §9.6 pinned guard: a struct row has no INPC identity to observe — the per-row live-update
+        // lane cannot exist. Attach value-type rows with liveUpdates: false (INCC collection events
+        // still work — they are index-based; edits write back by row id via TrySetCellFromText).
+        if (typeof(TRow).IsValueType && liveUpdates && source is not null)
+        {
+            throw new InvalidOperationException(
+                $"Live row updates require reference-typed rows; '{typeof(TRow).Name}' is a value type " +
+                "with no INPC identity to observe. Attach with liveUpdates: false — collection changes " +
+                "(INCC) still apply, and edits write back by row id (design doc §9.6).");
+        }
+
         DetachSource();
 
         _source = source;
@@ -305,8 +392,9 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         PublishFromSorted();
     }
 
-    /// <summary>The shaped column for a key (the grid's paint/filter surfaces).</summary>
-    internal ShapedColumn? FindColumn(object columnKey)
+    /// <summary>The shaped column for a key (the grid's paint/filter surfaces; row-typed so the
+    /// §9.6 struct edit lane can dispatch without boxing the row).</summary>
+    internal ShapedColumn<TRow>? FindColumn(object columnKey)
     {
         foreach (var (description, column) in _columns)
         {
@@ -318,6 +406,9 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
     public override string FormatCell(int rowId, object columnKey)
         => FindColumn(columnKey)?.FormatSlot(rowId) ?? string.Empty;
+
+    public override int FormatCellTo(int rowId, object columnKey, Span<char> destination)
+        => FindColumn(columnKey)?.FormatSlotTo(rowId, destination) ?? 0;
 
     public override object GetRowObject(int rowId) => _store.GetRow(rowId);
 
@@ -332,18 +423,43 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         if (column is null)
             return false;
 
-        var row = _store.GetRow(rowId);
-        if (row is null || !column.TrySetFromText(row, text))
+        // Wave-2 audit F2: a stale/removed rowId must never write into a freed slot — the old
+        // reference-lane `row is null` sentinel cannot cover value-type rows (a freed slot holds a
+        // default STRUCT, so the write "succeeded", the dirty mark re-inserted the dead slot, and a
+        // ghost row entered the published view while the slot sat on the free list). IsLive is the
+        // one liveness truth for both lanes.
+        if (!_store.IsLive(rowId))
             return false;
 
-        // An INPC row already ticked through the shared handler; a plain row ticks here so the
-        // written value reshapes either way.
-        if (row is not INotifyPropertyChanged)
+        var row = _store.GetRow(rowId);
+
+        if (!column.TrySetFromText(ref row, text))
+            return false;
+
+        if (typeof(TRow).IsValueType)
         {
+            // §9.6: the compiled mutator wrote a modified COPY into `row` — store it back by id
+            // (rowId is a struct row's ONLY identity) and tick so the edit reshapes.
+            _store.SetRow(rowId, in row);
+            MarkDirty(rowId);
+            ScheduleTick();
+        }
+        else if (row is not INotifyPropertyChanged)
+        {
+            // An INPC row already ticked through the shared handler; a plain row ticks here so the
+            // written value reshapes either way.
             MarkDirty(rowId);
             ScheduleTick();
         }
         return true;
+    }
+
+    internal override bool TrySetRowText(object row, object columnKey, string text)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(text);
+        return FindColumn(columnKey)?.TrySetFromText(row, text) == true;
     }
 
     /// <summary>The typed slot→row accessor (filter Custom leaves; the grid's typed surfaces).</summary>
@@ -390,8 +506,19 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         public bool HasDataBar;
         public ColorScaleRule? ColorScale;
         public readonly List<(Func<int, bool> Predicate, CellFormat Format)> Thresholds = [];
+        public readonly List<CompiledTopBottom> TopBottom = [];
         public double StatsMin = double.NaN;
         public double StatsMax = double.NaN;
+    }
+
+    /// <summary>One TopBottom rule's compiled lane (§9.5): the rank predicate compiles ONCE; the
+    /// boxed threshold re-derives per publish in <see cref="EnsureFormatStats"/> (the TopK seam).</summary>
+    private sealed class CompiledTopBottom
+    {
+        public required TopBottomRule Rule { get; init; }
+        public required Func<int, object?, bool> Qualifies { get; init; }
+        public object? Threshold;
+        public bool Valid;
     }
 
     public override bool HasFormatRules => _columnFormats.Count > 0 || _rowFormatRules.Count > 0;
@@ -474,6 +601,17 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                             format));
                     }
                     break;
+
+                case TopBottomRule topBottom:
+                    // §9.5: the rank predicate binds the column's own sort comparison once; the
+                    // threshold itself is per-publish state (EnsureFormatStats re-derives it
+                    // through the TopK seam, so filter changes re-rank without a recompile).
+                    entry.TopBottom.Add(new CompiledTopBottom
+                    {
+                        Rule = topBottom,
+                        Qualifies = column.CreateRankPredicate(topBottom.Top),
+                    });
+                    break;
             }
         }
     }
@@ -490,6 +628,15 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
         foreach (var entry in _columnFormats)
         {
+            // §9.5: TopBottom thresholds re-derive per publish through the TopK seam (its own
+            // per-version cache makes repeat reads cheap); the compiled rank predicates stand.
+            foreach (var topBottom in entry.TopBottom)
+            {
+                topBottom.Valid = TryGetTopKThreshold(entry.ColumnKey, topBottom.Rule.Count,
+                                                      topBottom.Rule.Percent, topBottom.Rule.Top,
+                                                      out topBottom.Threshold);
+            }
+
             if (entry.DoubleReader is not { } read || (!entry.HasDataBar && entry.ColorScale is null))
                 continue;
 
@@ -533,6 +680,21 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
             {
                 result = format;
                 break;
+            }
+        }
+
+        // §9.5: TopBottom qualifies when no explicit threshold claimed the cell (rule layering);
+        // the rank predicate reads the per-publish threshold EnsureFormatStats derived.
+        if (result.IsEmpty && entry.TopBottom.Count > 0)
+        {
+            EnsureFormatStats();
+            foreach (var topBottom in entry.TopBottom)
+            {
+                if (topBottom.Valid && topBottom.Qualifies(rowId, topBottom.Threshold))
+                {
+                    result = topBottom.Rule.Format;
+                    break;
+                }
             }
         }
 
@@ -945,12 +1107,15 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
     private void PublishFromSorted()
     {
-        ShapingGroups.DeriveAndFlatten(_sortedView, _sortedLength, _groupColumns, _collapsedPaths, _groupBuffers);
+        // §9.5 two-pass shape: DERIVE nodes/boundaries from the key-ordered view (the repair
+        // substrate — never permuted), aggregate, project the sibling display order, then FLATTEN.
+        ShapingGroups.Derive(_sortedView, _sortedLength, _groupColumns, _collapsedPaths, _groupBuffers);
 
         GroupNode[] nodes;
         int[] flat;
         int flatLength;
-        if (_groupBuffers.FlatLength < 0)
+        bool grouped = _groupColumns.Length > 0;
+        if (!grouped)
         {
             nodes = [];
             flat = _sortedView;
@@ -958,15 +1123,13 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         }
         else
         {
-            nodes = _groupBuffers.Nodes.ToArray();
-            flat = _groupBuffers.Flat;
-            flatLength = _groupBuffers.FlatLength;
-
             // Per-group summaries (v1: recompute per publish; membership-dirty tracking is a
             // recorded optimization — the walk is aggregate-loop bound, background-gated at scale).
-            foreach (var node in nodes)
+            // Runs from the derive pass's key-ordered runs, BEFORE flatten (display order is
+            // irrelevant to aggregation — the two-array discipline).
+            if (_aggregators.Length > 0)
             {
-                if (_aggregators.Length > 0)
+                foreach (var node in _groupBuffers.Nodes)
                 {
                     var cells = new string[_aggregators.Length];
                     for (int i = 0; i < _aggregators.Length; i++)
@@ -978,6 +1141,17 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
                     node.Summaries = cells;
                 }
             }
+
+            // The §9.5 projection: permute sibling segments by their summary values (per-publish;
+            // the key-ordered view and the node array's document order are untouched).
+            if (_hasGroupOrder)
+                ApplyGroupOrderProjection();
+
+            ShapingGroups.Flatten(_sortedView, _groupColumns.Length, _groupBuffers);
+
+            nodes = _groupBuffers.Nodes.ToArray();
+            flat = _groupBuffers.Flat;
+            flatLength = _groupBuffers.FlatLength;
         }
 
         // Grand totals.
@@ -1001,7 +1175,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         // fresh arrays rather than mutating published ones (§2.6 invariant 4's sync-lane analog) —
         // EXCEPT the group buffers, which re-derive per publish into freshly-snapshot arrays above.
         Snapshot = new DataViewSnapshot(++_version, _sortedView, _sortedLength, nodes,
-                                        _groupBuffers.FlatLength < 0 ? _sortedView : CopyFlat(flat, flatLength),
+                                        grouped ? CopyFlat(flat, flatLength) : _sortedView,
                                         flatLength)
                    { DataRowLevel = _groupColumns.Length == 0 ? 0 : _groupColumns.Length };
 
@@ -1021,6 +1195,169 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         var copy = new int[length];
         Array.Copy(flat, copy, length);
         return copy;
+    }
+
+    /// <summary>
+    /// The §9.5 order-groups-by-summary projection (per publish, between derive and flatten):
+    /// computes each node's ordering aggregate from its KEY-ORDERED run, then sorts every sibling
+    /// segment of the derive pass's child-order substrate whose level carries an OrderBySummary kit.
+    /// Ties keep key order (document order within a segment IS key order — the tiebreak is the node
+    /// index, never direction-swapped); descending is an operand swap. The sorted view itself is
+    /// never touched — it remains the incremental-repair substrate.
+    /// </summary>
+    private void ApplyGroupOrderProjection()
+    {
+        var buffers = _groupBuffers;
+        var nodes = buffers.Nodes;
+        if (nodes.Count == 0)
+            return;
+
+        if (_groupOrderValues.Length < nodes.Count)
+            _groupOrderValues = new AggregateValue[Math.Max(nodes.Count, Math.Max(16, _groupOrderValues.Length * 2))];
+
+        for (int n = 0; n < nodes.Count; n++)
+        {
+            var node = nodes[n];
+            if (_groupOrderKits[node.Level] is { } kit)
+                _groupOrderValues[n] = kit.Aggregator.Aggregate(_sortedView, node.SortedStart, node.RowCount);
+        }
+
+        _groupOrderComparer.Values = _groupOrderValues;
+
+        if (_groupOrderKits[0] is { } rootKit && buffers.RootCount > 1)
+        {
+            _groupOrderComparer.Aggregator = rootKit.Aggregator;
+            _groupOrderComparer.Descending = rootKit.Descending;
+            Array.Sort(buffers.ChildOrder, 0, buffers.RootCount, _groupOrderComparer);
+        }
+
+        for (int n = 0; n < nodes.Count; n++)
+        {
+            int childLevel = nodes[n].Level + 1;
+            if (childLevel >= _groupOrderKits.Length || _groupOrderKits[childLevel] is not { } kit ||
+                buffers.ChildCount[n] <= 1)
+            {
+                continue;
+            }
+
+            _groupOrderComparer.Aggregator = kit.Aggregator;
+            _groupOrderComparer.Descending = kit.Descending;
+            Array.Sort(buffers.ChildOrder, buffers.ChildStart[n], buffers.ChildCount[n], _groupOrderComparer);
+        }
+    }
+
+    /// <summary>The sibling-segment comparer (§9.5): summary value first (descending = operand swap),
+    /// node index (document order == key order) as the never-swapped tie/total-order anchor — so the
+    /// unstable Array.Sort is de-facto stable and ties keep key order.</summary>
+    private sealed class GroupOrderComparer : IComparer<int>
+    {
+        public AggregateValue[] Values = [];
+        public ColumnAggregator Aggregator = null!;
+        public bool Descending;
+
+        public int Compare(int x, int y)
+        {
+            int c = Descending
+                ? Aggregator.CompareValues(Values[y], Values[x])
+                : Aggregator.CompareValues(Values[x], Values[y]);
+            return c != 0 ? c : x - y; // node indices are non-negative — no overflow
+        }
+    }
+
+    // ── TopK stats (the §9.5 TopBottom conditional-format seam) ──────────────────────────────────
+
+    private readonly Dictionary<(object ColumnKey, int Count, bool Percent, bool Top), (bool Found, object? Threshold)>
+        _topKCache = new();
+    private readonly Dictionary<object, int> _visibleNonNullCache = new();
+    private int _topKVersion = -1;
+    private int[] _topKScratch = [];
+
+    /// <inheritdoc/>
+    public override bool TryGetTopKThreshold(object columnKey, int count, bool percent, bool top, out object? threshold)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(columnKey);
+        threshold = null;
+
+        if (count <= 0)
+            return false;
+        var column = FindColumn(columnKey);
+        if (column is null)
+            return false;
+
+        InvalidateStatsCachesIfStale();
+        var cacheKey = (columnKey, count, percent, top);
+        if (_topKCache.TryGetValue(cacheKey, out var cached))
+        {
+            threshold = cached.Threshold;
+            return cached.Found;
+        }
+
+        int n = CollectVisibleNonNull(column);
+        bool found = false;
+        if (n > 0)
+        {
+            // K: direct, or ceil(percent% of the non-null population); clamps to the population
+            // (K ≥ N ⇒ the threshold is the extreme value — every non-null cell qualifies).
+            long k = percent ? (long)Math.Ceiling(count * (double)n / 100) : count;
+            k = Math.Clamp(k, 1, n);
+
+            // The K-th largest sits at sorted position n−K (ascending); the K-th smallest at K−1.
+            int nth = top ? n - (int)k : (int)k - 1;
+            ShapingStats.SelectNth(_topKScratch, n, nth, column.CompareSlots);
+            threshold = column.GetKeyBoxed(_topKScratch[nth]);
+            found = true;
+        }
+
+        _topKCache[cacheKey] = (found, threshold);
+        return found;
+    }
+
+    /// <inheritdoc/>
+    public override int VisibleNonNullCount(object columnKey)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(columnKey);
+
+        var column = FindColumn(columnKey);
+        if (column is null)
+            return 0;
+
+        InvalidateStatsCachesIfStale();
+        if (_visibleNonNullCache.TryGetValue(columnKey, out int cached))
+            return cached;
+
+        int n = CollectVisibleNonNull(column);
+        _visibleNonNullCache[columnKey] = n;
+        return n;
+    }
+
+    /// <summary>Fills the TopK scratch with the visible (filtered) slots whose key is non-null for
+    /// <paramref name="column"/>; returns the count.</summary>
+    private int CollectVisibleNonNull(ShapedColumn column)
+    {
+        if (_topKScratch.Length < _sortedLength)
+            _topKScratch = new int[Math.Max(_sortedLength, Math.Max(16, _topKScratch.Length * 2))];
+
+        int n = 0;
+        for (int i = 0; i < _sortedLength; i++)
+        {
+            int slot = _sortedView[i];
+            if (!column.IsKeyNull(slot))
+                _topKScratch[n++] = slot;
+        }
+        return n;
+    }
+
+    /// <summary>Per-publish cache invalidation (lazy, on read — the EnsureFormatStats pattern):
+    /// TopK thresholds and non-null counts are valid for exactly one snapshot version.</summary>
+    private void InvalidateStatsCachesIfStale()
+    {
+        if (_topKVersion == _version)
+            return;
+        _topKVersion = _version;
+        _topKCache.Clear();
+        _visibleNonNullCache.Clear();
     }
 
     private static string ApplyTemplate(string? template, string value)
@@ -1043,6 +1380,20 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
 
         _slotComparison = ShapingCodegen.BuildSlotComparison(levels, _store);
         _groupColumns = groupColumns.ToArray();
+
+        // §9.5: each grouped level's OrderBySummary aggregator compiles whether or not the same
+        // summary is displayed (the projection reads it directly, not the display summaries).
+        _groupOrderKits = new (ColumnAggregator, bool)?[_groups.Count];
+        _hasGroupOrder = false;
+        for (int i = 0; i < _groups.Count; i++)
+        {
+            if (_groups[i].OrderBySummary is not { } order)
+                continue;
+            _groupOrderKits[i] = (
+                ColumnAggregator.Create(RequireColumn(order.ColumnKey), order.Aggregate, order.Format),
+                _groups[i].SummaryDirection == SortDirection.Descending);
+            _hasGroupOrder = true;
+        }
 
         _filterPredicate = _filter is null
             ? null
@@ -1067,7 +1418,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         {
             var row = _store.GetRow(slot);
             foreach (var (_, column) in _columns)
-                column.ExtractKeyUntyped(row, slot);
+                column.ExtractKey(row, slot); // typed — value-type rows never box on the extract path (§9.6)
         }
     }
 
@@ -1076,7 +1427,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : c
         foreach (var (_, column) in _columns)
         {
             column.EnsureCapacity(_store.SlotCapacity);
-            column.ExtractKeyUntyped(row, slot);
+            column.ExtractKey(row, slot);
         }
     }
 

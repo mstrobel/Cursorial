@@ -42,9 +42,13 @@ public sealed class DataGridAutoFilterRow : UIElement
 
     static DataGridAutoFilterRow()
     {
+        // The offset is in BOTH effect sets (audit W2-0): AffectsRender re-inks the drawn filter
+        // cells per H-tick (header/footer parity — AffectsMeasure alone re-ran measure into
+        // unchanged bounds and never invalidated the band's cached raster, so the cells rendered
+        // at stale x until an unrelated change), and AffectsMeasure re-arranges the hosted editor.
         AffectsRender<DataGridAutoFilterRow>(
-            BackgroundProperty, TextBrushProperty, PlaceholderBrushProperty, WellBackgroundProperty);
-        // The offset re-arranges the hosted editor, not just the ink.
+            BackgroundProperty, TextBrushProperty, PlaceholderBrushProperty, WellBackgroundProperty,
+            HorizontalOffsetProperty);
         AffectsMeasure<DataGridAutoFilterRow>(HorizontalOffsetProperty);
     }
 
@@ -101,46 +105,72 @@ public sealed class DataGridAutoFilterRow : UIElement
         if (Background is not null)
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
 
-        int shift = -HorizontalOffset;
+        // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
+        // frozen region re-fills its background and draws its cells unshifted on top.
         var entries = layout.Entries;
-        for (int i = 0; i < entries.Count; i++)
+        for (int i = layout.FrozenCount; i < entries.Count; i++)
+            DrawFilterCell(context, owner, layout, i);
+
+        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
         {
-            var entry = entries[i];
-            int x = entry.X + shift;
-            int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
-            if (x + cellWidth <= 0 || x >= Bounds.Columns)
-                continue;
-            if (i == _editColumnIndex && _editor is not null)
-                continue; // the hosted editor paints this cell
-
-            var column = entry.Column;
-            if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
-                continue;
-
-            string? summary = owner.GetColumnFilterSummary(column);
-            int contentX = x + DataGridColumnLayout.CellPadding;
-
-            if (column.FilterCellKind == FilterCellKind.DistinctPicker)
-            {
-                // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
-                if (summary is not null && WellBackground is not null)
-                    context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
-                string text = summary ?? "(All)";
-                DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
-                            summary is not null ? TextBrush : PlaceholderBrush);
-                context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", PlaceholderBrush);
-            }
-            else if (summary is not null)
-            {
-                if (WellBackground is not null)
-                    context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
-                DrawClipped(context, contentX, summary, entry.Width, TextBrush);
-            }
-            else
-            {
-                context.DrawText(contentX, 0, "⌕", PlaceholderBrush); // the idle affordance
-            }
+            if (Background is not null && HorizontalOffset > 0)
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+            for (int i = 0; i < layout.FrozenCount; i++)
+                DrawFilterCell(context, owner, layout, i);
         }
+    }
+
+    /// <summary>One filter cell at its §9.2 draw position (picker / condition summary / idle ⌕).</summary>
+    private void DrawFilterCell(RenderContext context, DataGrid owner, DataGridColumnLayout layout, int i)
+    {
+        var entry = layout.Entries[i];
+        int x = DrawXOf(layout, i);
+        int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+        int leftEdge = i < layout.FrozenCount ? 0 : layout.FrozenWidth;
+        if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
+            return;
+        if (i == _editColumnIndex && _editor is not null)
+            return; // the hosted editor paints this cell
+
+        // The §3.3 virtual band focus: the focused filter cell wears the well fill (drawn before
+        // the kind branches so the walk stays visible even over disabled cells).
+        if (i == owner.FilterCellFocusIndex && WellBackground is not null)
+            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
+
+        var column = entry.Column;
+        if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
+            return;
+
+        string? summary = owner.GetColumnFilterSummary(column);
+        int contentX = x + DataGridColumnLayout.CellPadding;
+
+        if (column.FilterCellKind == FilterCellKind.DistinctPicker)
+        {
+            // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
+            if (summary is not null && WellBackground is not null)
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+            string text = summary ?? "(All)";
+            DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
+                        summary is not null ? TextBrush : PlaceholderBrush);
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", PlaceholderBrush);
+        }
+        else if (summary is not null)
+        {
+            if (WellBackground is not null)
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+            DrawClipped(context, contentX, summary, entry.Width, TextBrush);
+        }
+        else
+        {
+            context.DrawText(contentX, 0, "⌕", PlaceholderBrush); // the idle affordance
+        }
+    }
+
+    /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>
+    private int DrawXOf(DataGridColumnLayout layout, int index)
+    {
+        var entry = layout.Entries[index];
+        return index < layout.FrozenCount ? entry.X : entry.X - HorizontalOffset;
     }
 
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
@@ -179,6 +209,9 @@ public sealed class DataGridAutoFilterRow : UIElement
     /// <summary>The hosted editor (tests type through it).</summary>
     internal Controls.TextBox? Editor => _editor;
 
+    /// <summary>The edited entry index while editing (the grid's §9.2 H-scroll policy reads it).</summary>
+    internal int EditColumnIndex => _editColumnIndex;
+
     private DataGridColumnLayout.Entry? EditEntry()
         => Layout is { } layout && _editColumnIndex >= 0 && _editColumnIndex < layout.Entries.Count
             ? layout.Entries[_editColumnIndex]
@@ -196,6 +229,12 @@ public sealed class DataGridAutoFilterRow : UIElement
 
         var column = layout.Entries[columnIndex].Column;
         var editor = new Controls.TextBox { Text = owner.GetColumnFilterSummary(column) ?? string.Empty };
+        // Pin the editor to its cell slot (the rows presenter's idiom): the TextBox theme's own
+        // MinWidth would inflate DesiredSize past a narrow filter cell and arrange grows to
+        // desired — the editor would paint over the neighboring cells. Min beats Max (LD1), so
+        // both bounds stamp locally.
+        editor.SetValue(MinWidthProperty, 1);
+        editor.SetValue(MaxWidthProperty, Math.Max(1, layout.Entries[columnIndex].Width));
         _editor = editor;
         _editColumnIndex = columnIndex;
         AdoptChild(editor, index: -1);
@@ -228,17 +267,27 @@ public sealed class DataGridAutoFilterRow : UIElement
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        if (_editor is not null && EditEntry() is { } entry)
+        // No base.ArrangeOverride chain: the UIElement default re-arranges every visual child to
+        // the full finalSize, which would stretch the roving editor across the whole band and
+        // paint out the other filter cells (the rows presenter's latent v1 arrange bug, same fix).
+        if (_editor is not null && Layout is { } layout && EditEntry() is { } entry)
         {
-            _editor.Arrange(new Rect(entry.X - HorizontalOffset + DataGridColumnLayout.CellPadding, 0,
+            _editor.Arrange(new Rect(DrawXOf(layout, _editColumnIndex) + DataGridColumnLayout.CellPadding, 0,
                                      Math.Max(1, entry.Width), 1));
         }
-        return base.ArrangeOverride(finalSize);
+        return finalSize;
     }
 
-    // ── The operator grammar (§1: "> >= < <= = <>"; bare = contains/equals; empty = clear) ───────
+    // ── The operator grammar (§1, live-canary-extended: "> >= < <= = <> != !" prefixes plus the
+    //    %-wildcard forms; bare = contains/equals; empty = clear) ────────────────────────────────
 
-    /// <summary>Parses the condition text: a null Op means bare text (the per-column default op).</summary>
+    /// <summary>
+    /// Parses the condition text: a null Op means bare text (the per-column default op). Prefix
+    /// operators: <c>&gt; &gt;= &lt; &lt;= = &lt;&gt;</c> plus <c>!=</c>/<c>!</c> as not-equal
+    /// aliases (the numeric-field muscle memory). Wildcard forms on otherwise-bare text:
+    /// <c>xyz%</c> → starts-with, <c>%xyz</c> → ends-with, <c>%xy%</c> → contains (edge wildcards
+    /// only — inner <c>%</c> stays literal; a lone <c>%</c> is bare text).
+    /// </summary>
     internal static (FilterOperator? Op, string Literal) ParseCondition(string text)
     {
         text = text.Trim();
@@ -247,11 +296,24 @@ public sealed class DataGridAutoFilterRow : UIElement
             ['>', '=', .. var rest] => (FilterOperator.GreaterThanOrEqual, rest.Trim()),
             ['<', '=', .. var rest] => (FilterOperator.LessThanOrEqual, rest.Trim()),
             ['<', '>', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+            ['!', '=', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+            ['!', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
             ['>', .. var rest] => (FilterOperator.GreaterThan, rest.Trim()),
             ['<', .. var rest] => (FilterOperator.LessThan, rest.Trim()),
             ['=', .. var rest] => (FilterOperator.Equals, rest.Trim()),
-            _ => (null, text),
+            _ => ParseWildcards(text),
         };
+    }
+
+    private static (FilterOperator? Op, string Literal) ParseWildcards(string text)
+    {
+        if (text.Length >= 3 && text[0] == '%' && text[^1] == '%')
+            return (FilterOperator.Contains, text[1..^1]);
+        if (text.Length >= 2 && text[^1] == '%')
+            return (FilterOperator.StartsWith, text[..^1]);
+        if (text.Length >= 2 && text[0] == '%')
+            return (FilterOperator.EndsWith, text[1..]);
+        return (null, text);
     }
 
     /// <summary>
@@ -300,7 +362,10 @@ public sealed class DataGridAutoFilterRow : UIElement
             return;
 
         var position = e.GetPosition(this);
-        int index = layout.EntryAt(position.Column + HorizontalOffset);
+        int contentX = position.Column < layout.FrozenWidth
+            ? position.Column
+            : position.Column + HorizontalOffset; // the §9.2 split map
+        int index = layout.EntryAt(contentX);
         if (index < 0)
             return;
 

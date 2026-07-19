@@ -77,6 +77,9 @@ of the otherwise direct-drawn rows.
 
 ### Deferred (seams carved, recorded here)
 
+> **Disposition (2026-07-19):** everything below shipped in Wave 2 (§9) or the post-merge
+> live-canary rounds, except a small residue — the open remainder is tracked in §10.
+
 Full editor suite (combo/date/spin/new-row/validation — rides the v1 edit host); column chooser +
 header drag-reorder (API reorder exists; the drag UX later); header-edge mouse resize (the width
 model is v1; the gesture later); rules-manager/rule-dialog UI; **TopBottom format rules** (needs
@@ -564,3 +567,33 @@ per call, so rowId is the ONLY identity for value-type rows (id-keyed consumers 
 through it). Span formatters wire into the band cache (pooled char buffers replace per-cell
 strings). The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as a
 `GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).
+
+## 10. Open deferrals (live-canary addendum, 2026-07-19)
+
+The still-open remainder of §1's "Deferred" list plus the gaps recorded since, each with where it
+is recorded. (Independent group `Direction` is NOT here — it shipped, §9.5, pinned by test.)
+
+1. **Multi-range cell selection** — `SelectionUnit.Cell` is ONE rectangle (the DevExpress
+   default); Ctrl-accumulated additional ranges later (§9.4).
+2. **Cell validation hooks** — the one editor-suite slice that never shipped: commit refuses
+   unparseable text, but there is no `CellValidating`-style event, per-column validator, or
+   error-cue UX.
+3. **Expression-editor syntax highlighting + IntelliSense** — v1 is the live validation strip +
+   Columns/Functions token inserters (`DataGridExpressionEditor` header doc: "the v2 surface").
+4. **Multi-entry `ThresholdRule` editing** — the rule editor edits the FIRST entry only (a
+   3-entry shape deliberately reads as the Icon Set preset); the rules manager still lists and
+   orders every entry (`DataGridRuleEditor` seed logic).
+5. **`Between` in the Highlight pane** — the engine and criteria language support it; the pane
+   lacks the two-bound UI (`DataGridRuleEditor` operator table).
+6. **Preset-only formatting pickers** — the rule editor offers 4 fixed color-scale presets and
+   the fixed ▲●▼ icon set; the ENGINE accepts arbitrary 2/3-stop lists and any `CellFormat.Icon`
+   glyph, so this is dialog surface only.
+7. **Icon glyphs on data-bar cells** — a cell showing a bar skips its verdict's icon: per-row
+   icon presence would wobble the column-uniform track origin (`DrawDataCell`).
+8. **Hand-built `PredicateRule` re-edit** — a code-authored lambda rule has no `SourceText`, so
+   the expression field seeds empty; text-authored rules round-trip (`PredicateRule.SourceText`).
+9. **Nerd Font icon tier** — the rules-manager toolbar `IconCarrier`s ship the emoji + text-floor
+   tiers only, pending a verified glyph audit (no guessed PUA codepoints).
+10. **The SCP band-window IVT promotion** — `BandStartRow`/`BandLength` reach the presenter via
+    `InternalsVisibleTo`; the recorded follow-up is a `GetRealizationWindow()`-style
+    `IScrollContentHost` surface (solution-wide change, §9.6).

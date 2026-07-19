@@ -77,14 +77,23 @@ internal sealed class EventRoute
         return node;
     }
 
-    /// <summary>Builds the route: target → visual parents → (the <see cref="UIElement.UIParent"/> bridge hop at
-    /// surface roots — logical/templated parent, or a Popup's placement-target owner) → outermost root. Uses the
-    /// same <c>VisualParent ?? UIParent</c> walk as S3's hit-test/hover/capture so routing honors the same
-    /// tooltip/popup→owner bridge they do (a PlacementTarget-only popup's Escape reaches its owner).</summary>
-    internal void Build(UIElement target)
+    /// <summary>Builds the route: target → visual parents → (for non-surface-scoped events) the LOGICAL hop at
+    /// surface roots → outermost root. A surface-scoped (pointer-family) route never leaves the target's
+    /// surface: it is <c>VisualParent</c>-only (input-routing review Q1 — completing the 13b34bb hover
+    /// confinement at the route level). Key/semantic routes take the logical seam hop, which is what keeps a
+    /// popup's Escape reaching the <c>Popup</c> element and menu Clicks reaching the menu bar.</summary>
+    internal void Build(UIElement target, bool surfaceScoped)
     {
-        for (var node = target; node is not null; node = NextOnRoute(node))
-            Add(node);
+        if (surfaceScoped)
+        {
+            for (var node = target; node is not null; node = node.VisualParent)
+                Add(node);
+        }
+        else
+        {
+            for (var node = target; node is not null; node = NextOnRoute(node))
+                Add(node);
+        }
     }
 
     private void Add(UIElement node)
@@ -105,7 +114,6 @@ internal sealed class EventRoute
 /// </summary>
 internal static class EventRouting
 {
-    /// <summary>Raises one event per its strategy (the public <see cref="UIElement.RaiseEvent"/> core).</summary>
     /// <summary>
     /// Raises a bubble along the OWNERSHIP chain (<c>VisualParent ?? UIParent</c>, the focus chain's walk)
     /// rather than the event route — the focus pair's raise path (input-routing review Q2 ruling 4):
@@ -121,6 +129,7 @@ internal static class EventRouting
             InvokeNode(node, routedEvent, args);
     }
 
+    /// <summary>Raises one event per its strategy (the public <see cref="UIElement.RaiseEvent"/> core).</summary>
     internal static void Raise(UIElement target, RoutedEventArgs args)
     {
         var routedEvent = args.RoutedEventUnchecked!;
@@ -133,7 +142,7 @@ internal static class EventRouting
         var route = EventRoute.Rent();
         try
         {
-            route.Build(target);
+            route.Build(target, routedEvent.SurfaceScoped);
             if (routedEvent.Strategy == RoutingStrategy.Tunnel)
             {
                 for (var i = route.Count - 1; i >= 0; i--)
@@ -158,10 +167,14 @@ internal static class EventRouting
     /// </summary>
     internal static void RaisePair(UIElement target, RoutedEvent tunnelEvent, RoutedEvent bubbleEvent, RoutedEventArgs args)
     {
+        System.Diagnostics.Debug.Assert(
+            tunnelEvent.SurfaceScoped == bubbleEvent.SurfaceScoped,
+            "A Preview/main pair shares ONE route — its members must agree on SurfaceScoped.");
+
         var route = EventRoute.Rent();
         try
         {
-            route.Build(target);
+            route.Build(target, tunnelEvent.SurfaceScoped);
 
             args.SetRoutedEvent(tunnelEvent);
             for (var i = route.Count - 1; i >= 0; i--)

@@ -421,6 +421,109 @@ public sealed class WindowPopupTests
         Assert.True(fired); // the owner-side chord reached from popup-focused content
     }
 
+    [Fact] // ROUTING-REVIEW PIN (mouse containment): pointer events are SURFACE-SCOPED — a press, move, or
+           // wheel over popup content never routes across the seam. The owner sees no MouseDown/MouseMove;
+           // the structural Popup element sees none either (mouse routes take no seam hop at all — unlike
+           // keys, which still reach the Popup element for Esc); the popup itself stays open (an inside
+           // press is not a light dismiss). The dead-space bugs (ComboBox/DatePicker padding-press toggles)
+           // die with the crossing.
+    public void PopupMouse_ContainedToSurface_OwnerAndPopupElementSeeNothing()
+    {
+        var (host, _, popup, target, inner) = Setup();
+        using var _ = host;
+
+        var ownerSawMouse = false;
+        target.AddHandler(UIElement.MouseDownEvent, (_, _) => ownerSawMouse = true, handledEventsToo: true);
+        target.AddHandler(UIElement.MouseMoveEvent, (_, _) => ownerSawMouse = true, handledEventsToo: true);
+        var popupElementSawMouse = false;
+        popup.AddHandler(UIElement.MouseDownEvent, (_, _) => popupElementSawMouse = true, handledEventsToo: true);
+        var innerSawMouse = false;
+        inner.AddHandler(UIElement.MouseDownEvent, (_, _) => innerSawMouse = true, handledEventsToo: true);
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendMouseMove(surface.Left + 1, surface.Top + 1);
+        host.SendClick(surface.Left + 1, surface.Top + 1);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(innerSawMouse);        // the popup content routes normally within its surface
+        Assert.False(popupElementSawMouse); // no seam hop for mouse — not even to the Popup element
+        Assert.False(ownerSawMouse);        // and never into the owner
+        Assert.True(popup.IsOpen);          // an inside press is not a light dismiss
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (wheel containment): a wheel over popup content never scrolls an OWNER
+           // ScrollViewer beneath it — the wheel route is surface-scoped, so scrolling a dropdown at its
+           // extreme cannot leak into the page under the popup.
+    public void PopupWheel_DoesNotScrollOwnerScrollViewer()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var anchor = new UIControls.Button { Width = 10, Height = 1, Content = "anchor" };
+        var tall = new UIControls.StackPanel();
+        tall.Children.Add(anchor);
+        for (var i = 0; i < 40; i++)
+            tall.Children.Add(new UIControls.TextBlock { Text = $"row {i:000}" });
+        var sv = new UIControls.ScrollViewer { Content = tall };
+        host.ShowRoot(sv);
+        Assert.True(host.RunUntilIdle());
+
+        var popup = new Popup
+        {
+            Child = new UIControls.TextBlock { Text = "flat popup content" },
+            PlacementTarget = anchor,
+        };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        var before = sv.VerticalOffset;
+        host.Application.InputDispatcher.ProcessEvent(new Cursorial.Input.Events.MouseEvent
+        {
+            Kind = MouseEventKind.Wheel, Position = new CellPosition(surface.Left + 1, surface.Top),
+            Button = MouseButton.None, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
+            WheelDeltaY = -3, Timestamp = DateTimeOffset.UnixEpoch,
+        }); // wheel INSIDE the popup
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(before, sv.VerticalOffset); // the owner ScrollViewer beneath never moved
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (right-click router clamp): a right-click INSIDE a popup does not open the
+           // OWNER's context menu — the router's lookup walk stops at the hit's surface root.
+    public void RightClickInsidePopup_DoesNotOpenOwnersContextMenu()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var owner = new UIControls.ContentControl
+        {
+            Width = 12, Height = 1, Content = "owner",
+            ContextMenu = new UIControls.ContextMenu { Items = { new UIControls.MenuItem { Header = "Nope" } } },
+        };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var popup = new Popup
+        {
+            Child = new UIControls.TextBlock { Text = "popup content" },
+            PlacementTarget = owner,
+        };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendClick(surface.Left + 1, surface.Top, MouseButton.Right); // right-click INSIDE the popup
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(owner.ContextMenu!.IsOpen); // the owner's menu did not open across the seam
+    }
+
     private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
     {
         public event EventHandler? CanExecuteChanged { add { } remove { } }

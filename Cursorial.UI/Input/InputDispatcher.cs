@@ -657,7 +657,10 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
-        for (var node = from; node is not null; node = node.UIParent ?? node.VisualParent)
+        // Clamped at the hit's SURFACE root (input-routing review Q1): the in-surface UIParent hops are
+        // needed and correct (a template part's ContextMenu lookup jumps to its templated control), but the
+        // walk never crosses a popup seam — a right-click INSIDE a popup must not open the OWNER's menu.
+        for (var node = from; node is not null; node = node.VisualParent is null ? null : node.UIParent ?? node.VisualParent)
         {
             if (ContextMenu.GetMenu(node) is {} menu)
             {
@@ -727,12 +730,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         var hit = tree.HitTest(column, row);
 
+        // ND7 — the disabled-element fallback follows the MOUSE route's chain, and mouse routes are
+        // surface-scoped (input-routing review Q1): the walk is VisualParent-only, so a press on disabled
+        // popup content falls back within the popup's own surface (or drops) — it never seeds hover or
+        // routing across the seam into the owner (the disabled-hop variant of the 13b34bb hover bug).
         while (hit is not null && !hit.IsEffectivelyEnabled)
-            hit = hit.VisualParent ?? hit.UIParent; // ND7 — same logical hop as the route walk
+            hit = hit.VisualParent;
 
-        // TODO: ^^^ mouse events probably _shouldn't_ route outside the visual tree, but until that decision
-        //           is adversarially reviewed and put into effect, this should match the logic in EventRoute.
-        
         return hit;
     }
 

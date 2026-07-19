@@ -184,11 +184,18 @@ internal sealed class EventRoutingView : UserControl
 
                 if (next is null)
                 {
+                    // The seam the route DECLINED: render the hop that exists in the ownership chain but is
+                    // not taken — in the danger color — so the log shows what the event ISN'T crossing.
                     if (node.UIParent is {} beyond)
                     {
+                        var notTaken = ReferenceEquals(beyond, node.LogicalParent) ? "logical bridge"
+                                       : ReferenceEquals(beyond, node.TemplatedParent) ? "templated bridge"
+                                       : "placement-target bridge";
+
                         AddLine(log,
-                                $"     ⊣ route ends here — ownership continues to {beyond.GetType().Name}, the route does not",
-                                ThemeKeys.MutedBrush);
+                                $"     ╳═ seam not crossed · {notTaken} → {beyond.GetType().Name} ═╳",
+                                ThemeKeys.DangerBrush);
+                        hasBridge = true; // scroll the not-taken seam into view too
                     }
 
                     continue;

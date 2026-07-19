@@ -464,9 +464,10 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         var keyLog = KeyLog();
         Assert.Contains("MenuItem", keyLog);
-        Assert.Contains("══ surface → owner · logical bridge ══", keyLog);   // ContextMenu → its hosting Popup
-        Assert.Contains("Popup", keyLog);                                    // the route's last node
-        Assert.DoesNotContain("placement-target bridge", keyLog);            // never a route leg
+        Assert.Contains("══ surface → owner · logical bridge ══", keyLog);        // ContextMenu → its hosting Popup: TAKEN
+        Assert.Contains("Popup", keyLog);                                         // the route's last node
+        Assert.Contains("╳═ seam not crossed · placement-target bridge", keyLog); // the placement leg: DECLINED, shown in danger color
+        Assert.DoesNotContain("surface → owner · placement-target bridge", keyLog); // …and never TAKEN
         Assert.DoesNotContain("RightClickMe", keyLog);
         // The seam-hop lines must be VISIBLE at the default size: a bridged route auto-scrolls its log.
         Assert.Contains("══", Screen(host, 40));
@@ -479,10 +480,10 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         log = MouseLog();
         Assert.Contains("MenuItem", log);
-        Assert.Contains("ContextMenu", log);        // the route's LAST node — the popup surface root
-        Assert.Contains("route ends here", log);    // the containment marker (flipped-assertion guard)
-        Assert.DoesNotContain("══", log);           // no seam hop, ever
-        Assert.DoesNotContain("RightClickMe", log); // and the owner is unreachable from a mouse route
+        Assert.Contains("ContextMenu", log);                        // the route's LAST node — the popup surface root
+        Assert.Contains("╳═ seam not crossed · logical bridge", log); // the DECLINED hop, rendered in danger color
+        Assert.DoesNotContain("surface → owner", log);              // no TAKEN seam hop, ever (flipped guard)
+        Assert.DoesNotContain("RightClickMe", log);                 // and the owner is unreachable from a mouse route
 
         // Scenario 4 — the in-tree popup: toggle it open, click inside, and the route crosses the seam via
         // the LOGICAL bridge only (the Popup element sits in the host tree — contrast with scenario 3).
@@ -501,7 +502,8 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         log = MouseLog();
         Assert.Contains("Button \"InPopup\"", log);
-        Assert.DoesNotContain("══", log); // pointer routes stop at the popup surface — no seam hop
+        Assert.Contains("seam not crossed", log);      // the declined hop is SHOWN (what the event isn't crossing)
+        Assert.DoesNotContain("surface → owner", log); // …but never a taken one
 
         // The KEY route from popup content hops the LOGICAL seam to the in-tree Popup element and then
         // CONTINUES visually through the owner chain (contrast scenario 3, where the standalone popup's

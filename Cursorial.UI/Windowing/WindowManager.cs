@@ -51,6 +51,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private OutputCapabilities _capabilities;
     private Size _viewport;
     private TopLevelSurface? _rootSurface;
+    private RootElementHost? _rootHost;              // the framework wrapper the root element is hosted in (W4-c)
     private Window? _activeWindow;
     private UITimer? _modalAttentionTimer;
     private Window? _modalAttentionGate;
@@ -157,8 +158,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// <summary>Invoked when surfaces/z/modality change so S3 re-evaluates hover against the new stack (wired by the host).</summary>
     internal Action? SurfacesChanged { get; set; }
 
-    /// <summary>Invoked when a window becomes blocked so S3 can release pointer capture held inside it (wired at W3).</summary>
-    internal Action<Window>? WindowBlocked { get; set; }
+    /// <summary>Invoked when a window — or, on a modal push, the ROOT surface's element — becomes modal-blocked,
+    /// so S3 can release pointer capture held inside it (wired at W3; the root leg at W4-c).</summary>
+    internal Action<UIElement>? WindowBlocked { get; set; }
 
     /// <summary>Invoked with the active window's title to mirror it to the terminal (OSC 2 — §8.8); wired by the host.</summary>
     internal Action<string>? SetTerminalTitle { get; set; }
@@ -690,8 +692,22 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _rootSurface = null;
         }
 
+        if (_rootHost is not null)
+        {
+            _rootHost.DetachContent(); // the content must be re-adoptable by the next host
+            _rootHost = null;
+        }
+
         if (root is not null)
-            _rootSurface = new TopLevelSurface(root, _scenePool, _capabilities, _guard) { Size = _viewport };
+        {
+            // The root element is hosted inside a framework-owned RootElementHost: the root band is
+            // modal-gated like any blocked window, and the host is what carries the blocked-band darkening
+            // (the Window PART_ObscuredOverlay recipe) without touching USER content. RootElement keeps
+            // reflecting the assigned element — the wrapper is a root-surface implementation detail.
+            _rootHost = new RootElementHost(root);
+            _rootHost.SetObscured(TopmostModal is not null); // a re-host while a modal is up keeps the look
+            _rootSurface = new TopLevelSurface(_rootHost, _scenePool, _capabilities, _guard) { Size = _viewport };
+        }
 
         RebuildSurfaceStack();
         ResetCompositor();
@@ -720,6 +736,26 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         AddWindowSurface(window);
         _modalStack.Add(window);
         ComputeBlockedSet(); // blocks every window except the modal + its transitively owned subtree
+
+        // The ROOT band blocks with the modal push (the press gate in FilterMouseEvent is stateless via
+        // TopmostModal; these are the live-state legs): root-anchored popups close — left open they stay
+        // fully interactive beneath the modal — and capture held by root content releases (the W3-b
+        // mid-gesture argument, root edition). Idempotent per push; the app root deliberately KEEPS its
+        // role as the global chord scope (blocking gates pointer interaction, never gestures).
+        if (_rootSurface is { } rootSurface)
+        {
+            for (var i = _popups.Count - 1; i >= 0; i--)
+            {
+                if (i < _popups.Count && ReferenceEquals(RootHostSurfaceOfPopup(_popups[i]), rootSurface))
+                    _popups[i].CloseCore(PopupCloseReason.HostBlocked);
+            }
+
+            if (rootSurface.Root is { } rootElement)
+                WindowBlocked?.Invoke(rootElement);
+        }
+
+        _rootHost?.SetObscured(true); // the blocked-band darkening (cleared when the last modal closes)
+
         FinishShow(window);
     }
 
@@ -769,6 +805,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         RebuildSurfaceStack();
         ResetCompositor();
         ComputeBlockedSet(); // a closed modal unblocks the windows it was gating
+
+        if (_modalStack.Count == 0)
+            _rootHost?.SetObscured(false); // the last modal is gone — the root band un-dims
 
         if (wasActive)
             SetActive(ResolveHandoff(window));
@@ -1534,8 +1573,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 LightDismissPopups(surface, mouse.Position.Column, mouse.Position.Row);
 
             // A blocked window swallows everything (no hover/routing); a press redirects activation to the gate
-            // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse).
-            if (window is not null && _blocked.Contains(window))
+            // and pulses the gate's :modal-attention cue (§8.6 — the *one* source of the pulse). The ROOT band is
+            // the bottom "window" of the stack and is equally gated while any modal is up (it can never be the
+            // gate itself) — without this, presses on root content route normally BENEATH the modal (the
+            // root-band modal-bypass hole). Popup surfaces are exempt: a popup anchored in the modal is
+            // legitimate interaction, and popups anchored in blocked hosts are closed at block time anyway.
+            var rootGated = window is null && !surface.IsPopup && TopmostModal is not null;
+
+            if (rootGated || (window is not null && _blocked.Contains(window)))
             {
                 if (isPress && TopmostModal is {} gate)
                 {

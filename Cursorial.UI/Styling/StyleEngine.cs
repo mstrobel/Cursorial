@@ -163,9 +163,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // SD14: capability classes stamp on a surface root at its visual-root attachment. ANY surface root
         // (the app root, a shown Window, an open Popup, WM chrome) — not just app.RootElement — so window/
         // popup content can match caps-* selectors (P7 multi-surface). At this point IsStylable(element) holds,
-        // so VisualParent == null ⇒ this element is a surface root.
+        // so VisualParent == null ⇒ this element is a surface root. The RootElementHost is STYLING-TRANSPARENT:
+        // the stamp passes through to its hosted content, so the classes land where they always have (the
+        // application's root element) and caps-* descendant-rule matching is unchanged by the wrapper.
         if (element.VisualParent is null)
-            StampCapabilityClasses(element);
+            StampCapabilityClasses(element is RootElementHost host ? host.Content : element);
 
         BeginStructuralPass();
 
@@ -650,8 +652,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
             foreach (var surface in surfaces)
             {
-                if (IsStylable(surface.Root))
-                    roots.Add(surface.Root);
+                // The RootElementHost is styling-transparent — its hosted content is the stylable root.
+                var root = surface.Root is RootElementHost host ? host.Content : surface.Root;
+
+                if (IsStylable(root))
+                    roots.Add(root);
             }
         }
         else if (_app.RootElement is {} root && IsStylable(root))
@@ -728,6 +733,12 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 chain.Add(node);
 
             var chainCount = chain.Count;
+
+            // The RootElementHost is styling-transparent (a root-surface implementation detail): it neither
+            // contributes styles nor counts as a scope level, so depths stay relative to the APPLICATION
+            // root — identical to the pre-wrapper numbering and symmetric with window-surface chains.
+            if (chainCount > 0 && chain[chainCount - 1] is RootElementHost)
+                chainCount--;
 
             // Scoped(4) collections on the chain, self-inclusive (S70); App(3) below them.
             for (var i = 0; i < chainCount; i++)

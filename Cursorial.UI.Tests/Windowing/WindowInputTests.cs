@@ -205,4 +205,109 @@ public sealed class WindowInputTests
         Assert.False(popup.IsOpen);
         Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
     }
+
+    [Fact] // the ROOT band is modal-gated like a blocked window: while a modal is up, a press on root
+           // content is swallowed (no routing into the root) and pulses the gate's :modal-attention cue.
+           // Without the gate, root presses routed normally BENEATH the modal (the root-band bypass hole —
+           // the blocked-swallow branch required a non-null HostWindow, and the root surface has none).
+    public void ModalUp_RootBandPress_SwallowedAndPulsesGate()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var rootButton = new UIControls.Button { Width = 10, Height = 1, Content = "root" };
+        host.ShowRoot(new UIControls.StackPanel { Children = { rootButton } });
+        Assert.True(host.RunUntilIdle());
+        var wm = host.Application.WindowManager!;
+
+        var sawPress = false;
+        rootButton.AddHandler(UIElement.MouseDownEvent, (object? _, Cursorial.UI.Input.MouseButtonEventArgs _) => sawPress = true, handledEventsToo: true);
+
+        var dialog = At(host, 30, 4);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        host.SendClick(2, 0); // on the root button, beneath the modal band
+        host.RunFrame();      // process the click (the pulse timer keeps RunUntilIdle non-idle)
+
+        Assert.False(sawPress); // swallowed — never routed into root content
+        Assert.True((dialog.InteractionStateInternal & InteractionState.ModalAttention) != 0); // the gate pulsed
+    }
+
+    [Fact] // a modal push closes popups anchored in ROOT content (the root band blocks with the push) —
+           // same HostBlocked path as blocked windows.
+    public void ModalPush_ClosesRootAnchoredPopups()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var anchor = new UIControls.Button { Width = 10, Height = 1, Content = "anchor" };
+        host.ShowRoot(new UIControls.StackPanel { Children = { anchor } });
+        Assert.True(host.RunUntilIdle());
+        var wm = host.Application.WindowManager!;
+
+        var popup = new Popup { Child = new UIControls.Button { Width = 6, Height = 1, Content = "x" }, PlacementTarget = anchor };
+        PopupCloseReason? reason = null;
+        popup.Closed += (_, e) => reason = e.Reason;
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.Single(wm.Popups);
+
+        var dialog = At(host, 30, 4);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(popup.IsOpen);
+        Assert.Empty(wm.Popups);
+        Assert.Equal(PopupCloseReason.HostBlocked, reason);
+    }
+
+    [Fact] // a modal push releases capture held by ROOT content (the W3-b mid-gesture argument, root
+           // edition — previously only blocked WINDOWS released their captures).
+    public void ModalPush_ReleasesCaptureHeldInRootContent()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var dragee = new UIControls.Button { Width = 10, Height = 1, Content = "drag" };
+        host.ShowRoot(new UIControls.StackPanel { Children = { dragee } });
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(dragee.CaptureMouse());
+        Assert.Same(dragee, host.Application.InputDispatcher.MouseCaptureTarget);
+
+        var dialog = At(host, 30, 4);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
+    }
+
+    [Fact] // the root element is hosted in a framework RootElementHost; a modal push applies the
+           // blocked-band look to it (the obscured class + the Window PART_ObscuredOverlay darkening
+           // recipe), cleared when the last modal closes. RootElement keeps reflecting the assigned value.
+    public void ModalPush_AppliesObscuredLookToRootHost_ClearedOnLastClose()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var userRoot = new UIControls.StackPanel();
+        host.ShowRoot(userRoot);
+        Assert.True(host.RunUntilIdle());
+        var wm = host.Application.WindowManager!;
+
+        var rootHost = Assert.IsType<RootElementHost>(wm.RootSurface!.Root); // the wrapper hosts the root…
+        Assert.Same(userRoot, rootHost.Content);                             // …and the assigned value is intact
+        Assert.Same(userRoot, host.Application.RootElement);                 // the public API reflects the user's element
+        Assert.False(rootHost.Classes.Contains("obscured"));
+
+        var dialog = At(host, 30, 4);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(rootHost.Classes.Contains("obscured")); // dimmed with the push
+
+        dialog.Close();
+        Assert.True(host.RunUntilIdle());
+        Assert.False(rootHost.Classes.Contains("obscured")); // the last modal closed — un-dimmed
+    }
 }

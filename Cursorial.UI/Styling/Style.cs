@@ -497,6 +497,23 @@ public sealed class Style
         var combinedRequires = parentRequires | style.GetFlattenedRequires();
         var requiresSpecificity = System.Numerics.BitOperations.PopCount((uint)combinedRequires);
 
+        // The color tiers are MUTUALLY EXCLUSIVE in the effective set (exactly one folds), and Requires
+        // semantics are AND — two tier flags can never both hold, so the rule would be silently dead on
+        // every terminal. An author who means "ansi16 OR nocolor" writes two styles (or a shared BasedOn
+        // base). Thrown at Seal like the SD17 nesting error — fail fast at composition, checked on the
+        // COMBINED mask so BasedOn/nesting-composed contradictions are caught too.
+        const StyleCapabilities tierMask =
+            StyleCapabilities.Truecolor | StyleCapabilities.Ansi256 | StyleCapabilities.Ansi16 | StyleCapabilities.NoColor;
+
+        if (System.Numerics.BitOperations.PopCount((uint)(combinedRequires & tierMask)) > 1)
+        {
+            throw new InvalidOperationException(
+                $"Style '{ownerStyle.IdentityForDiagnostics}': rule {rules.Count}: RequiresCapabilities combines " +
+                $"multiple color tiers ({combinedRequires & tierMask}) — the tiers are mutually exclusive and the " +
+                "requirement is a conjunction, so the rule could never apply. Author one style per tier " +
+                "(or hoist the shared setters into a BasedOn base).");
+        }
+
         // Each DataCondition counts 1 classLike toward specificity (SD5 — data conditions ARE
         // specificity; a When-guarded style beats its unguarded base with no extra mechanism). The
         // StyleSortKey factory saturates the classLike field, so an overlong conjunction never

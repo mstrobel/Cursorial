@@ -1518,11 +1518,35 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     {
         foreach (var root in StylableSurfaceRoots()) // re-stamp on every surface (P7)
         {
-            StampCapabilityClasses(root);
-
-            // The RootElementHost stamps both itself and its hosted content (see OnElementAttached).
+            // The RootElementHost stamps both itself and its hosted content under ONE structural pass:
+            // both class sets swap quietly first, then a single subtree walk re-matches under the new
+            // ancestor classes. Per-Replace notification would walk the content subtree TWICE per flip —
+            // and the host-triggered walk would run against the content's STALE classes (the review's
+            // double-walk finding: neither naive walk is individually sufficient OR cheap).
             if (root is RootElementHost host && IsStylable(host.Content))
-                StampCapabilityClasses(host.Content);
+            {
+                var hostChanged = StampCapabilityClassesQuiet(host);
+                var contentChanged = StampCapabilityClassesQuiet(host.Content);
+
+                if (hostChanged || contentChanged)
+                {
+                    BeginStructuralPass();
+
+                    try
+                    {
+                        ReMatchElement(host);
+                        ReMatchSubtree(host, includeSelf: false); // covers the content and its whole subtree
+                    }
+                    finally
+                    {
+                        EndStructuralPass();
+                    }
+                }
+
+                continue;
+            }
+
+            StampCapabilityClasses(root);
         }
     }
 
@@ -1624,8 +1648,19 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
     private void StampCapabilityClasses(UIElement root)
     {
+        if (BuildCapabilityClassList(root) is { } replacement)
+            root.Classes.Replace(CollectionsMarshal.AsSpan(replacement)); // one restyle pass (doc §3.2)
+    }
+
+    /// <summary>The notification-free stamp leg of the dual RootElementHost swap — the caller owns the
+    /// (single) structural pass. Returns whether the class set changed.</summary>
+    private bool StampCapabilityClassesQuiet(UIElement root)
+        => BuildCapabilityClassList(root) is { } replacement && root.Classes.ReplaceCore(CollectionsMarshal.AsSpan(replacement));
+
+    private List<string>? BuildCapabilityClassList(UIElement root)
+    {
         if (_capabilities is not {} negotiated)
-            return; // nothing negotiated yet — the startup pre-Show call records only (B2)
+            return null; // nothing negotiated yet — the startup pre-Show call records only (B2)
 
         _effectiveCaps = ComputeEffectiveCapabilities(negotiated);
 
@@ -1648,7 +1683,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 replacement.Add(name);
         }
 
-        root.Classes.Replace(CollectionsMarshal.AsSpan(replacement)); // one restyle pass (doc §3.2)
+        return replacement;
     }
 }
 

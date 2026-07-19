@@ -141,6 +141,22 @@ public class Section16_CapabilityRequirements
         Assert.Equal(41, widget.GetValue(Widget.P)); // the host ancestor carries caps-truecolor
     }
 
+    [Fact] // two TIER flags under AND semantics can never both hold — the contradiction throws at Seal
+           // (the SD17 fail-fast precedent), checked on the COMBINED mask so a BasedOn-composed conflict
+           // is caught too. "ansi16 OR nocolor" is two styles, not a comma list.
+    public void Requires_ConflictingTiers_ThrowAtSeal()
+    {
+        var style = new Style(Selectors.Is<Widget>())
+        { RequiresCapabilities = StyleCapabilities.Ansi16 | StyleCapabilities.NoColor };
+        style.Setters.Add(new Setter(Widget.P, 1));
+        Assert.Throws<InvalidOperationException>(() => style.Seal());
+
+        var baseStyle = new Style(Selectors.Is<Widget>()) { RequiresCapabilities = StyleCapabilities.Ansi16 };
+        var derived = new Style(Selectors.Is<Widget>()) { BasedOn = baseStyle, RequiresCapabilities = StyleCapabilities.NoColor };
+        derived.Setters.Add(new Setter(Widget.P, 2));
+        Assert.Throws<InvalidOperationException>(() => derived.Seal()); // the BasedOn union conflicts
+    }
+
     [Fact] // Unicode is currently UNCONDITIONAL (the SD14 recorded deferral — no negotiated glyph source):
            // Requires(Unicode) passes on every host today, and starts gating for real when the deferral lifts.
     public void Requires_Unicode_CurrentlyUnconditional()

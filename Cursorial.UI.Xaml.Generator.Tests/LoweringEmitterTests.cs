@@ -77,7 +77,7 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.CapsView\">" +
             "<StackPanel.Resources>" +
-              "<Style x:Key=\"CapsStyle\" Selector=\":is(Border)\" RequiresCapabilities=\"Ansi16, NoColor\">" +
+              "<Style x:Key=\"CapsStyle\" Selector=\":is(Border)\" RequiresCapabilities=\"NoColor, Motion\">" +
                 "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
               "</Style>" +
             "</StackPanel.Resources>" +
@@ -90,14 +90,14 @@ namespace GenApp { public partial class CapsView : StackPanel { public CapsView(
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
 
-        Assert.Contains("RequiresCapabilities = global::Cursorial.UI.StyleCapabilities.Ansi16 | global::Cursorial.UI.StyleCapabilities.NoColor", lowered);
+        Assert.Contains("RequiresCapabilities = global::Cursorial.UI.StyleCapabilities.NoColor | global::Cursorial.UI.StyleCapabilities.Motion", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
-        Assert.Equal(StyleCapabilities.Ansi16 | StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
+        Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion, loweredStyle.RequiresCapabilities);
     }
 
     [Fact]

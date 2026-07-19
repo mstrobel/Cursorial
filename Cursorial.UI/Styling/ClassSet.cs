@@ -65,6 +65,15 @@ public sealed class ClassSet : IReadOnlyCollection<string>
     /// <exception cref="ArgumentException">An entry is null/empty or starts with <c>':'</c>.</exception>
     public void Replace(ReadOnlySpan<string> names)
     {
+        if (ReplaceCore(names))
+            _owner.OnStylingClassesChanged(changedClass: null); // bulk swap — one restyle pass (doc §3.2)
+    }
+
+    /// <summary>The notification-free bulk swap (the engine's dual capability stamp batches two of these
+    /// under ONE structural pass — the per-Replace subtree walk would run twice otherwise). Returns whether
+    /// the set changed; the caller owns the restyle.</summary>
+    internal bool ReplaceCore(ReadOnlySpan<string> names)
+    {
         var replacement = new List<string>(names.Length);
 
         foreach (var name in names)
@@ -76,11 +85,11 @@ public sealed class ClassSet : IReadOnlyCollection<string>
         }
 
         if (SetEquals(replacement))
-            return;
+            return false;
 
         _entries.Clear();
         _entries.AddRange(replacement);
-        _owner.OnStylingClassesChanged(changedClass: null); // bulk swap — one restyle pass (doc §3.2)
+        return true;
     }
 
     /// <summary>Enumerates the class names in insertion order.</summary>

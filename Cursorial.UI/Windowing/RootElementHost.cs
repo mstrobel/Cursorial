@@ -43,7 +43,8 @@ public sealed class RootElementHost : UIElement
             // under Style.RequiresCapabilities) would otherwise flip the scrim to FillOpaque and ERASE the
             // root band's glyphs instead of dimming them — the same self-protection the WindowManager's
             // own chrome carries. The scrim's contract is readable-but-dimmed, on every tier.
-            _overlay = new Border { IsHitTestVisible = false, Occludes = false };
+            // IsRenderBoundary=true keeps the scrim's alpha blend compositing correctly (develop 9474a3f).
+            _overlay = new Border { IsHitTestVisible = false, Occludes = false, IsRenderBoundary = true };
             _overlay.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
             AdoptChild(_overlay, index: -1); // adopted after the content ⇒ paints above it
             InvalidateMeasure();

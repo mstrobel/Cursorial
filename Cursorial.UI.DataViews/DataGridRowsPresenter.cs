@@ -36,7 +36,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     public static readonly StyledProperty<IBrush?> RowBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
             nameof(RowBackground),
-            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SurfaceBrush });
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.ElevationWell });
 
     public static readonly StyledProperty<IBrush?> RowAlternationBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
@@ -47,6 +47,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
             nameof(SelectionBackground),
             new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionActiveBrush });
+
+    public static readonly StyledProperty<IBrush?> SelectionInactiveBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(SelectionInactiveBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionInactiveBrush });
 
     public static readonly StyledProperty<IBrush?> HoverBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
@@ -114,6 +119,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         get => GetValue(SelectionBackgroundProperty);
         set => SetValue(SelectionBackgroundProperty, value);
+    }
+
+    public IBrush? SelectionInactiveBackground
+    {
+        get => GetValue(SelectionInactiveBackgroundProperty);
+        set => SetValue(SelectionInactiveBackgroundProperty, value);
     }
 
     public IBrush? HoverBackground
@@ -244,12 +255,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 return;
 
             if (_owner is not null)
+            {
                 _owner.SnapshotChanged -= OnSnapshotChanged;
+                _owner.GotFocus -= OnOwnerFocusChanged;
+                _owner.LostFocus -= OnOwnerFocusChanged;
+            }
 
             _owner = value;
 
             if (_owner is not null)
+            {
                 _owner.SnapshotChanged += OnSnapshotChanged;
+                _owner.GotFocus += OnOwnerFocusChanged;
+                _owner.LostFocus += OnOwnerFocusChanged;
+            }
 
             InvalidateBand();
         }
@@ -262,6 +281,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     internal int HoverViewIndex { get; private set; } = -1;
 
     private void OnSnapshotChanged(object? sender, EventArgs e) => InvalidateBand();
+
+    private void OnOwnerFocusChanged(object? sender, FocusChangedEventArgs focusChangedEventArgs) => InvalidateBand();
 
     /// <summary>Marks the band cache stale (data/shape/selection change) and schedules re-fill + re-ink.</summary>
     internal void InvalidateBand()
@@ -861,7 +882,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             IBrush? background = row.IsGroup
                                      ? GroupRowBackground
                                      : selection is not null && selection.IsSelected(row.RowId)
-                                         ? SelectionBackground
+                                         ? owner.IsKeyboardFocusWithin 
+                                               ? SelectionBackground
+                                               : SelectionInactiveBackground
                                          : HoverViewIndex == view
                                              ? HoverBackground
                                              : (view & 1) == 1
@@ -1357,7 +1380,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private TextBox CreateTextEditor(string initialText)
     {
-        var editor = new TextBox { Text = initialText };
+        var editor = new TextBox { Text = initialText, Padding = Margins.Zero };
         // The ed-err recovery contract: the danger ink clears on the NEXT text change (§3.2).
         editor.AddHandler(TextBox.TextChangedEvent, (_, _) => ClearEditorError());
         return editor;

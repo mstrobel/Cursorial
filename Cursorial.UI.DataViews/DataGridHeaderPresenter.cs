@@ -701,7 +701,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         // per-frame §7.6 re-resolution rides _lastPointer, updated by OnMouseMove above.
         if (_gesture == HeaderGesture.Resizing)
         {
-            e.Cursor = MouseCursorShape.ColResize;
+            e.Cursor = MouseCursorShape.EwResize;
             e.Handled = true;
         }
         else if (_gesture == HeaderGesture.Reordering)
@@ -713,7 +713,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                  _hoverEntry < layout.Entries.Count && _lastPointerLocal is {} pointer &&
                  OnResizeEdge(layout, _hoverEntry, pointer.Column))
         {
-            e.Cursor = MouseCursorShape.ColResize;
+            e.Cursor = MouseCursorShape.EwResize;
             e.Handled = true;
         }
     }

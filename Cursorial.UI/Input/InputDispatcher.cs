@@ -748,7 +748,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
         // Build the new chain leaf-first into the scratch, then reverse to root-first.
         var count = 0;
 
-        for (var node = hit; node is not null; node = node.VisualParent ?? node.UIParent)
+        for (var node = hit; node is not null; node = node.VisualParent)
         {
             if (count == _hoverScratch.Length)
                 Array.Resize(ref _hoverScratch, _hoverScratch.Length * 2);

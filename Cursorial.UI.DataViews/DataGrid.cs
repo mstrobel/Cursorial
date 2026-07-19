@@ -1206,6 +1206,11 @@ public class DataGrid : Control
             }
             if (_focusRowId >= 0 && Contains(ids, _focusRowId))
                 _focusRowId = -1; // the view-space fallback carries the focus (audit W2-13)
+            if (RowsPresenter is { IsEditing: true } editing && editing.EditRowId >= 0 &&
+                Contains(ids, editing.EditRowId))
+            {
+                CancelEdit(); // the edited row was removed — discard before its slot can recycle
+            }
         };
         _controller.RowsAdded += ids => RowSelection.HandleRowsAdded(ids);
         _controller.RowsReset += (_, _) =>
@@ -1231,10 +1236,36 @@ public class DataGrid : Control
     private void RaiseSnapshotChanged()
     {
         ReanchorFocusRow();     // audit W2-13: focus follows its row id — the prunes read the RESULT
+        ReanchorEditSession();  // the open editor rides its row id (live-canary fix)
         PruneExpandedDetails(); // §9.3: a row id that left the view drops its pane
         PruneCellRange();       // §9.4: a lost corner collapses the range to the focus cell
         SnapshotChanged?.Invoke(this, EventArgs.Empty);
         InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Re-anchors an open edit session against the NEW snapshot (live-canary fix — the gallery's
+    /// feed): a data-row session's view slot re-resolves through the id map so the hosted editor
+    /// rides its row; a row that left the view cancels the session (the DevExpress behavior — an
+    /// edit on a vanished row is discarded, never written to whatever slid under it). The new-row
+    /// placeholder session re-anchors to the ghost row (view == Count, which moves with membership).
+    /// </summary>
+    private void ReanchorEditSession()
+    {
+        if (RowsPresenter is not { IsEditing: true } presenter)
+            return;
+
+        if (_pendingNewRow is not null)
+        {
+            presenter.ReanchorEditRow(Snapshot.Count);
+            return;
+        }
+
+        int view = presenter.EditRowId >= 0 ? ViewIndexOfRow(presenter.EditRowId) : -1;
+        if (view < 0)
+            CancelEdit();
+        else
+            presenter.ReanchorEditRow(view);
     }
 
     /// <summary>Row type discovery: the source's <c>IEnumerable&lt;T&gt;</c> (first closed interface), else the first item's runtime type.
@@ -1887,7 +1918,8 @@ public class DataGrid : Control
         FocusColumnIndex = columnIndex;
         ScrollColumnIntoView(columnIndex); // §9.2: the hosted editor must sit clear of the frozen region
         presenter.BeginEdit(FocusViewIndex, columnIndex, kind, _controller.FormatCell(row.RowId, column),
-                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null);
+                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null,
+                            rowId: row.RowId); // the session's ONE identity (live publishes permute the view)
     }
 
     /// <summary>
@@ -1969,15 +2001,20 @@ public class DataGrid : Control
             return true;
         }
 
-        var snapshot = Snapshot;
-        if (viewIndex >= snapshot.Count)
+        // The commit writes through the session's ROW ID (live-canary fix): under live updates the
+        // view permutes beneath the open editor, and the old view-index lookup either aliased a
+        // DIFFERENT row (silent wrong-row write) or fell off the shrunken view (the silently
+        // discarded commit the gallery report hit). A row that left the VIEW entirely (refilter/
+        // removal) discards the edit — the per-publish re-anchor cancels it before we ever get
+        // here in practice; this is the same-frame backstop.
+        int editRowId = presenter.EditRowId;
+        if (editRowId < 0 || ViewIndexOfRow(editRowId) < 0)
         {
             presenter.EndEditVisual();
             return false;
         }
 
-        var row = snapshot.GetRow(viewIndex);
-        if (!_controller.TrySetCellFromText(row.RowId, column, text))
+        if (!_controller.TrySetCellFromText(editRowId, column, text))
         {
             presenter.FlagEditorError(); // unparseable — the editor stays open for correction
             return false;

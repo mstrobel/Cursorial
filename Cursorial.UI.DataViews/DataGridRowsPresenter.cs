@@ -985,6 +985,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private DataGridEditorKind _editorKind;
     private int _editViewIndex = -1;
     private int _editColumnIndex = -1;
+    private int _editRowId = -1;
     private bool _editorErrorFlagged;
 
     /// <summary>Whether an editor is hosted (the grid's key routing branches on it).</summary>
@@ -998,6 +999,26 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     /// <summary>The edited (viewIndex, columnIndex) while editing.</summary>
     internal (int ViewIndex, int ColumnIndex) EditCell => (_editViewIndex, _editColumnIndex);
+
+    /// <summary>
+    /// The edited DATA row's id (−1 on the new-row placeholder session) — the session's ONE
+    /// identity (live-canary fix): live publishes permute the view beneath the open editor, so a
+    /// view-index-anchored session either aliased a different row at commit (wrong-row write) or
+    /// fell off the end (the silently-discarded commit the gallery report hit). The grid
+    /// re-anchors the view slot per publish and commits through THIS id.
+    /// </summary>
+    internal int EditRowId => _editRowId;
+
+    /// <summary>Re-anchors the edit session's view slot after a publish moved its row (the grid
+    /// resolves the id → view; the hosted editor then re-arranges onto its row).</summary>
+    internal void ReanchorEditRow(int viewIndex)
+    {
+        if (_editor is null || _editViewIndex == viewIndex)
+            return;
+        _editViewIndex = viewIndex;
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
 
     /// <summary>
     /// Whether a drop-down editor's list is open. The grid's tunnel intercept keys off this: a
@@ -1019,9 +1040,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// over by the editor's own background. <paramref name="comboItems"/> feeds the Combo kind only.
     /// </summary>
     internal void BeginEdit(int viewIndex, int columnIndex, DataGridEditorKind kind, string initialText,
-                            IReadOnlyList<string>? comboItems = null)
+                            IReadOnlyList<string>? comboItems = null, int rowId = -1)
     {
         EndEditVisual();
+        _editRowId = rowId;
 
         Control editor = kind switch
         {
@@ -1212,6 +1234,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         _editorErrorFlagged = false;
         _editViewIndex = -1;
         _editColumnIndex = -1;
+        _editRowId = -1;
         InvalidateMeasure();
         InvalidateVisual();
         _owner?.NotifyEditingChanged();

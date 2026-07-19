@@ -447,8 +447,19 @@ internal static class LoweringEmitter
                 case "RequiresCapabilities" when member.Kind == XamlValueKind.Text:
                     requiresExpr = BakeCapabilities(c.Doc.Strings[member.ValueIndex]);
                     if (requiresExpr is null)
+                    {
+                        // Fail CLOSED like the unbaked-selector path: emitting the style WITHOUT its gate
+                        // would turn a tier-conditional rule into an unconditional one (the unsafe
+                        // degradation direction — the occlusion-everywhere failure class).
                         c.Todo($"<Style> RequiresCapabilities \"{Escape(c.Doc.Strings[member.ValueIndex])}\" has an unknown member");
+                        return;
+                    }
                     break;
+                case "RequiresCapabilities":
+                    // A non-Text form ({x:Static …}, property element) is not baked yet — fail closed
+                    // rather than silently dropping the capability gate.
+                    c.Todo("<Style> RequiresCapabilities uses a form not yet baked");
+                    return;
             }
         }
 
@@ -508,6 +519,16 @@ internal static class LoweringEmitter
             "None", "Truecolor", "Ansi256", "Ansi16", "NoColor", "Motion", "KittyKeyboard",
             "Images", "ImageClipping", "ImageOcclusion", "NerdFont", "Emoji", "Unicode",
         ];
+
+        // Loader parity: a bare integral value is legal XAML for an enum (X90/X92) — bake the cast when
+        // the bits are covered by the defined members (the same rule the runtime converter applies).
+        if (long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long numeric))
+        {
+            const long allBits = 0xFFF; // the 12 defined flags
+            return numeric != 0 && (numeric & ~allBits) == 0
+                       ? $"(global::Cursorial.UI.StyleCapabilities){numeric}"
+                       : null;
+        }
 
         var terms = new List<string>();
 

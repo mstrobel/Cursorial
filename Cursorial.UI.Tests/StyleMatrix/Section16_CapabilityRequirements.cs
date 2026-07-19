@@ -141,6 +141,47 @@ public class Section16_CapabilityRequirements
         Assert.Equal(41, widget.GetValue(Widget.P)); // the host ancestor carries caps-truecolor
     }
 
+    [Fact] // OWNER-ANCHOR fidelity for the occlusion legs (review): template PANELS occlude only for
+           // PANEL owners or the surface root — a non-Panel, non-root owner's template panel does NOT
+           // receive Occludes (the ":is(Panel) /template/ :is(Panel)" anchor is preserved; the folded
+           // ":is(UIElement)" form would have silently widened it to every owner).
+    public void OcclusionLegs_PreserveThePanelOwnerAnchor()
+    {
+        var nocolor = Cursorial.UI.Themes.CursorialThemeStyles.CapsNoColorBorderStyle();
+        nocolor.Seal();
+
+        var panelTemplateLegs = nocolor.CompiledRules
+            .Where(r => r.SelectorText.Contains("/template/") && r.SelectorText.Contains("Panel") && !r.SelectorText.Contains("Border"))
+            .Select(r => r.SelectorText)
+            .ToList();
+
+        Assert.Contains(panelTemplateLegs, t => t.Contains(":is(Panel)"));      // the Panel-owner anchor survives
+        Assert.Contains(panelTemplateLegs, t => t.Contains(".caps-nocolor"));   // the root-owner leg rides the stamped class
+        Assert.DoesNotContain(panelTemplateLegs, t => t.Contains(":is(UIElement)")); // never any-owner for Panels
+    }
+
+    [Fact] // the modal scrim opts OUT of the low-color occlusion rules with a LOCAL value: position-free
+           // gating + the host class stamp made the overlay Border reachable, and FillOpaque would ERASE
+           // the root band's glyphs instead of dimming them. The scrim's contract is readable-but-dimmed.
+    public void ModalOverlay_KeepsOccludesFalse_UnderLowColorTiers()
+    {
+        using var host = UIHeadlessHost.Create(null);
+        host.ShowRoot(new StackPanel { Children = { new Widget() } });
+        Assert.True(host.RunUntilIdle());
+
+        host.Application.RequestedColorTier = ColorDepth.Ansi16; // the occlusion rules arm
+        Assert.True(host.RunUntilIdle());
+
+        var dialog = host.NewWindow(windowStartupLocation: WindowStartupLocation.Manual, left: 10, top: 4, width: 20, height: 8);
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        var rootHost = Assert.IsType<RootElementHost>(host.Application.WindowManager!.RootSurface!.Root);
+        var overlay = rootHost.VisualChildrenList!.OfType<Cursorial.UI.Controls.Border>().Single();
+        Assert.Equal(Visibility.Visible, overlay.Visibility);
+        Assert.False(overlay.GetValue(Cursorial.UI.Controls.Border.OccludesProperty)); // the local value beats the theme rule
+    }
+
     [Fact] // LANE preservation: a capability requirement makes the rule CONDITIONAL (ClassLike > 0 —
            // each flag counts one class-like unit), so it arbitrates at StyleTrigger exactly like its old
            // .caps-* class form — ABOVE the Template lane. Load-bearing for the occlusion rules that write

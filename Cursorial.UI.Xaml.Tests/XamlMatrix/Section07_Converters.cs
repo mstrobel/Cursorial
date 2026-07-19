@@ -31,6 +31,24 @@ public sealed class Section07_Converters : LoaderTestBase
     public void X083_Margins_Arities(string text, int l, int t, int r, int b)
         => Assert.Equal(new Margins(l, t, r, b), Convert(typeof(Margins), text));
 
+    [Fact] // X086a — [Flags] combinations parse through the generic enum ladder (converter-level pins for
+           // the RequiresCapabilities boundaries): comma form accepted when every bit is covered; an
+           // UNCOVERED numeric rejects; a non-flags enum keeps rejecting combined values (X90 unchanged).
+    public void X086a_FlagsEnum_CombinationBoundaries()
+    {
+        Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion,
+                     Convert(typeof(StyleCapabilities), "NoColor, Motion"));
+        Assert.Equal(InteractionState.Focused | InteractionState.PointerOver,
+                     Convert(typeof(InteractionState), "Focused, PointerOver")); // a second [Flags] enum
+
+        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "4096"));  // uncovered bit
+        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "Bogus")); // unknown member
+        // Non-flags boundary (pre-existing Enum.TryParse behavior, unchanged): a comma list ORs — one that
+        // collapses to a DEFINED member is accepted; one that ORs to an undefined value rejects.
+        Assert.Equal(Visibility.Hidden, Convert(typeof(Visibility), "Visible, Hidden"));           // 0|1 → Hidden
+        Assert.Throws<XamlParseException>(() => Convert(typeof(Visibility), "Hidden, Collapsed")); // 1|2 = 3 → undefined
+    }
+
     [Fact]
     public void X084_Margins_NegativeComponent()
         => Assert.Equal(new Margins(0, -1, 0, 0), Convert(typeof(Margins), "0,-1,0,0"));

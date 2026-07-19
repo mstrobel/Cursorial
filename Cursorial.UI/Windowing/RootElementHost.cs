@@ -39,7 +39,11 @@ public sealed class RootElementHost : UIElement
         if (obscured && _overlay is null)
         {
             // Hit-test transparent: modal gating is FilterMouseEvent policy, never overlay interception.
-            _overlay = new Border { IsHitTestVisible = false };
+            // Occludes=false is a LOCAL value: the low-color-tier occlusion theme rules (position-free
+            // under Style.RequiresCapabilities) would otherwise flip the scrim to FillOpaque and ERASE the
+            // root band's glyphs instead of dimming them — the same self-protection the WindowManager's
+            // own chrome carries. The scrim's contract is readable-but-dimmed, on every tier.
+            _overlay = new Border { IsHitTestVisible = false, Occludes = false };
             _overlay.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
             AdoptChild(_overlay, index: -1); // adopted after the content ⇒ paints above it
             InvalidateMeasure();

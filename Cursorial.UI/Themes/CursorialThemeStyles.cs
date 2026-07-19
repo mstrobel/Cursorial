@@ -392,10 +392,14 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderStyle()
     {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
         return new Style(":is(Border), " +
                          ":is(Panel), " +
                          ":is(UIElement) /template/ :is(Border), " +
-                         ":is(UIElement) /template/ :is(Panel)")
+                         ":is(Panel) /template/ :is(Panel), " +
+                         ".caps-nocolor /template/ :is(Panel)")
                { Key = "Theme.CapsNoColor.BorderStyle", RequiresCapabilities = StyleCapabilities.NoColor }
            .Set(Panel.OccludesProperty, true)/*
            .Set(Panel.BackgroundProperty, Brushes.Default)*/;
@@ -409,8 +413,9 @@ internal static class CursorialThemeStyles
         return new Style(":is(Border), " +
                          ":is(Panel), " +
                          ":is(UIElement) /template/ :is(Border), " +
-                         ":is(UIElement) /template/ :is(Panel)")
-               { Key = "Theme.CapsAnsi16.BorderStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (was a live bug)
+                         ":is(Panel) /template/ :is(Panel), " +
+                         ".caps-ansi16 /template/ :is(Panel)")
+               { Key = "Theme.CapsAnsi16.BorderStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic: the styles channel is unkeyed — both rules armed under the old keys too)
            .Set(Panel.OccludesProperty, true)/*
            .Set(Panel.BackgroundProperty, Brushes.Default)*/;
     }
@@ -420,7 +425,10 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderPenStyle()
     {
-        return new Style(":is(Window), :is(Popup), ContextMenu")
+        // The historical :is(Popup) leg is deleted (review): the structural Popup element renders nothing
+        // and nothing reads BorderPen from it — popup-surface borders receive ThemeKeys.BorderPen through
+        // their own control themes. The leg only added per-Popup DynamicResource subscriptions.
+        return new Style(":is(Window), ContextMenu")
                { Key = "Theme.CapsNoColor.BorderPenStyle", RequiresCapabilities = StyleCapabilities.NoColor }
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
@@ -430,8 +438,8 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsAnsi16BorderPenStyle()
     {
-        return new Style(":is(Window), :is(Popup), ContextMenu")
-               { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (was a live bug)
+        return new Style(":is(Window), ContextMenu")
+               { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic — see the nocolor twin's note)
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
 }

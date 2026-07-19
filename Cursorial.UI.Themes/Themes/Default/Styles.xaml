@@ -133,24 +133,26 @@
     <Style Selector=":is(Border),
                      :is(Panel),
                      :is(UIElement) /template/ :is(Border),
-                     :is(UIElement) /template/ :is(Panel)" RequiresCapabilities="NoColor">
+                     :is(Panel) /template/ :is(Panel),
+                     .caps-nocolor /template/ :is(Panel)" RequiresCapabilities="NoColor">
       <Setter Property="Border.Occludes" Value="True"/>
       <!-- <Setter Property="Panel.Background" Value="default"/> -->
     </Style>
 
-    <Style Selector=":is(Window), :is(Popup), ContextMenu" RequiresCapabilities="NoColor">
+    <Style Selector=":is(Window), ContextMenu" RequiresCapabilities="NoColor">
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
     </Style>
 
     <Style Selector=":is(Border),
                      :is(Panel),
                      :is(UIElement) /template/ :is(Border),
-                     :is(UIElement) /template/ :is(Panel)" RequiresCapabilities="Ansi16">
+                     :is(Panel) /template/ :is(Panel),
+                     .caps-ansi16 /template/ :is(Panel)" RequiresCapabilities="Ansi16">
       <Setter Property="Border.Occludes" Value="True"/>
       <!-- <Setter Property="Panel.Background" Value="default"/> -->
     </Style>
 
-    <Style Selector=":is(Window), :is(Popup), ContextMenu" RequiresCapabilities="Ansi16">
+    <Style Selector=":is(Window), ContextMenu" RequiresCapabilities="Ansi16">
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
     </Style>
 

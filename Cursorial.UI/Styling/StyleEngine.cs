@@ -1516,6 +1516,17 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
     /// tier-flip re-stamp and the <see cref="UIApplication.NerdFontAvailable"/> opt-in re-stamp (CD-P2J-1).</summary>
     internal void RestampCapabilityClasses()
     {
+        // The MASK change itself forces the re-match — not just the class diff it usually produces. The
+        // two are 1:1 today (names derive from the mask), but coupling the gather's freshness to the
+        // classes would silently break the day a mask-only flag exists (the reserved caps-ascii) or the
+        // classes are ever retired. Compute once per restamp; the per-root stamps reuse it.
+        var previousMask = _effectiveCaps;
+
+        if (_capabilities is { } negotiated)
+            _effectiveCaps = ComputeEffectiveCapabilities(negotiated);
+
+        var maskChanged = _effectiveCaps != previousMask;
+
         foreach (var root in StylableSurfaceRoots()) // re-stamp on every surface (P7)
         {
             // The RootElementHost stamps both itself and its hosted content under ONE structural pass:
@@ -1528,7 +1539,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 var hostChanged = StampCapabilityClassesQuiet(host);
                 var contentChanged = StampCapabilityClassesQuiet(host.Content);
 
-                if (hostChanged || contentChanged)
+                if (maskChanged || hostChanged || contentChanged)
                 {
                     BeginStructuralPass();
 
@@ -1546,7 +1557,20 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                 continue;
             }
 
-            StampCapabilityClasses(root);
+            if (StampCapabilityClassesQuiet(root) || maskChanged)
+            {
+                BeginStructuralPass();
+
+                try
+                {
+                    ReMatchElement(root);
+                    ReMatchSubtree(root, includeSelf: false);
+                }
+                finally
+                {
+                    EndStructuralPass();
+                }
+            }
         }
     }
 
@@ -1662,7 +1686,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         if (_capabilities is not {} negotiated)
             return null; // nothing negotiated yet — the startup pre-Show call records only (B2)
 
-        _effectiveCaps = ComputeEffectiveCapabilities(negotiated);
+        _effectiveCaps = ComputeEffectiveCapabilities(negotiated); // idempotent; RestampCapabilityClasses pre-hoists
 
         var replacement = new List<string>();
 

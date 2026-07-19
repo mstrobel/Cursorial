@@ -151,7 +151,11 @@ internal sealed class DataGridColumnChooser
 
             foreach (var column in hidden)
             {
-                var chip = new Button { Content = $"⠿ {column.EffectiveHeader}" };
+                var chip = new Button
+                           {
+                               Content = $"⠿ {column.EffectiveHeader}",
+                               HorizontalContentAlignment = HorizontalAlignment.Left
+                           };
                 var captured = column;
                 chip.Click += (_, _) => SetVisible(captured, true);
 

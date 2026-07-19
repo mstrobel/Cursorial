@@ -65,7 +65,8 @@ public class DataGrid : Control
 
     /// <summary>Whether the summary footer renders (auto-hides when no summaries are defined).</summary>
     public static readonly StyledProperty<bool> ShowSummaryFooterProperty =
-        UIProperty.Register<DataGrid, bool>(nameof(ShowSummaryFooter), true);
+        UIProperty.Register<DataGrid, bool>(nameof(ShowSummaryFooter), true,
+            changed: static (sender, _, _) => ((DataGrid)sender).UpdateSummaryFooterVisibility());
 
     /// <summary>
     /// Whether the trailing new-row template renders (design doc §3.2 deferred-suite item; the
@@ -157,7 +158,11 @@ public class DataGrid : Control
             RepairBandFocus();
         };
         SummaryDescriptions = [];
-        SummaryDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
+        SummaryDescriptions.CollectionChanged += (_, _) =>
+        {
+            ScheduleShapePush();
+            UpdateSummaryFooterVisibility(); // the "auto-hides when no summaries" half of the gate
+        };
     }
 
     /// <inheritdoc cref="ItemsSourceProperty"/>
@@ -391,6 +396,13 @@ public class DataGrid : Control
         AddItem(menu, "Conditional formatting…", () => _ = OpenRulesManagerAsync());
         AddItem(menu, "Column chooser…", () => OpenColumnChooser(0));
 
+        // The view-band toggles (DevExpress Group By Box / footer parity): checked = shown. The
+        // menu is rebuilt per open, so the check state re-seeds from the live property; hiding the
+        // group panel keeps the grouping itself (the panel is chrome, not the descriptions).
+        menu.Items.Add(new Separator());
+        AddToggle(menu, "Group panel", ShowGroupPanel, () => ShowGroupPanel = !ShowGroupPanel);
+        AddToggle(menu, "Summary footer", ShowSummaryFooter, () => ShowSummaryFooter = !ShowSummaryFooter);
+
         if (column is not null && _controller is not null)
         {
             menu.Items.Add(new Separator());
@@ -454,6 +466,13 @@ public class DataGrid : Control
         {
             var item = new MenuItem { Header = caption };
             item.Click += (_, _) => action();
+            menu.Items.Add(item);
+        }
+
+        static void AddToggle(ContextMenu menu, string caption, bool isChecked, Action toggle)
+        {
+            var item = new MenuItem { Header = caption, IsCheckable = true, IsChecked = isChecked };
+            item.Click += (_, _) => toggle();
             menu.Items.Add(item);
         }
     }
@@ -1141,6 +1160,7 @@ public class DataGrid : Control
 
     private ScrollViewer? _scrollViewer;
     private DataGridHeaderPresenter? _header;
+    private DataGridSummaryPresenter? _footer;
     private ScrollBar? _hScrollBar;
 
     protected override void OnApplyTemplate()
@@ -1150,7 +1170,8 @@ public class DataGrid : Control
         GroupPanel = GetTemplatePart<DataGridGroupPanel>(PartGroupPanel);
         _header = GetTemplatePart<DataGridHeaderPresenter>(PartHeader);
         AutoFilterRow = GetTemplatePart<DataGridAutoFilterRow>(PartAutoFilterRow);
-        var footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
+        _footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
+        var footer = _footer;
         _scrollViewer = GetTemplatePart<ScrollViewer>(PartScrollViewer);
         RowsPresenter = GetTemplatePart<DataGridRowsPresenter>(PartRows);
         EditBar = GetTemplatePart<DataGridEditBar>(PartEditBar);
@@ -1180,6 +1201,7 @@ public class DataGrid : Control
             footer.Owner = this;
             footer.SetBinding(DataGridSummaryPresenter.HorizontalOffsetProperty,
                               new Binding(nameof(HorizontalOffset)) { Source = this });
+            UpdateSummaryFooterVisibility();
         }
 
         // The grid-owned horizontal bar (§9.2 — the SV part cannot host it: its bar wiring pins to
@@ -1189,6 +1211,22 @@ public class DataGrid : Control
         {
             hBar.Scroll += OnHorizontalScroll;
             UpdateHorizontalScrollBar();
+        }
+    }
+
+    /// <summary>
+    /// The footer band's effective visibility — <see cref="ShowSummaryFooter"/> AND at least one
+    /// summary defined (the property doc's "auto-hides when no summaries" promise; the presenter
+    /// itself always measures ≥ 1 row, so the collapse must live on the part). Runs on template
+    /// apply, on the property flip (the context menu's toggle), and on summary add/remove.
+    /// </summary>
+    private void UpdateSummaryFooterVisibility()
+    {
+        if (_footer is { } footer)
+        {
+            footer.Visibility = ShowSummaryFooter && SummaryDescriptions.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
     }
 
@@ -1208,6 +1246,9 @@ public class DataGrid : Control
             AutoFilterRow.Owner = null;
         if (EditBar is not null)
             EditBar.Owner = null;
+        if (_footer is not null)
+            _footer.Owner = null;
+        _footer = null;
         _scrollViewer = null;
         _header = null;
         GroupPanel = null;

@@ -533,6 +533,8 @@ public class DataGridStructuralTests
         Assert.Contains(captions, c => c.Contains("Conditional formatting", StringComparison.Ordinal));
         Assert.Contains(captions, c => c.Contains("Column chooser", StringComparison.Ordinal));
         Assert.Contains(captions, c => c.Contains("Summary for", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Group panel", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Summary footer", StringComparison.Ordinal));
         menu.Close();
         host.RunUntilIdle();
 
@@ -544,6 +546,65 @@ public class DataGridStructuralTests
         Assert.Contains("Σ", Row(host, 13) + Row(host, 12)); // the footer band renders the total
         grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
         Assert.Empty(grid.SummaryDescriptions);
+    }
+
+    [Fact]
+    public void Grid_context_menu_toggles_the_group_panel_and_summary_footer()
+    {
+        var (host, grid, _) = Show(columns: 60, rows: 16);
+        using var _ = host;
+
+        grid.ShowGroupPanel = true;
+        host.RunUntilIdle();
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // The toggles seed their check state from the live properties…
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        Assert.True(Toggle(grid, "Group panel").IsChecked);
+        Assert.True(Toggle(grid, "Summary footer").IsChecked);
+
+        // …and a click flips the property: the panel leaves and the header climbs to row 0.
+        Invoke(Toggle(grid, "Group panel"));
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.False(grid.ShowGroupPanel);
+        Assert.DoesNotContain("drag a column header here", Row(host, 0));
+
+        // Re-open: the check re-seeds unchecked; toggling back restores the panel band.
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        var groupToggle = Toggle(grid, "Group panel");
+        Assert.False(groupToggle.IsChecked);
+        Invoke(groupToggle);
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.True(grid.ShowGroupPanel);
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // The footer toggle hides a LIVE summary band — and keeps the descriptions (the panel is
+        // chrome, not state), so re-showing brings the same total back.
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
+        host.RunUntilIdle();
+        Assert.Contains("Σ", AllText(host));
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        Invoke(Toggle(grid, "Summary footer"));
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.False(grid.ShowSummaryFooter);
+        Assert.Single(grid.SummaryDescriptions);
+        Assert.DoesNotContain("Σ", AllText(host));
+
+        static MenuItem Toggle(DataGrid grid, string caption)
+            => grid.ActiveGridMenu!.Items.OfType<MenuItem>()
+                   .First(i => string.Equals(i.Header?.ToString(), caption, StringComparison.Ordinal));
+
+        static void Invoke(MenuItem item)
+            => item.RaiseEvent(new ClickEventArgs(MenuItem.ClickEvent, item));
+
+        static string AllText(UIHeadlessHost host)
+            => string.Join("\n", Enumerable.Range(0, 16).Select(host.GetRowText));
     }
 
     [Fact]

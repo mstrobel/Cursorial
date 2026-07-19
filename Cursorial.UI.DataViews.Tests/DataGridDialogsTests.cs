@@ -335,6 +335,182 @@ public class DataGridDialogsTests
     }
 
     [Fact]
+    public void Rules_manager_up_down_enable_only_when_a_same_column_move_exists()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // Region: ONE rule (lists first — Columns order); Amount: TWO (reorderable pair).
+        var regionColumn = grid.Columns[1];
+        var amountColumn = grid.Columns[2];
+        regionColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = regionColumn,
+            Entries = [(FilterOperator.Equals, "West", new CellFormat(Bold: true))],
+        });
+        amountColumn.FormatRules.Add(new DataBarRule { ColumnKey = amountColumn });
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries = [(FilterOperator.GreaterThan, 20000m, new CellFormat(Bold: true))],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        Assert.Equal(3, manager.Rows.Count);
+
+        // The first row auto-selects on open (▲▼/✎/✕ always have a target) — and it is Region's
+        // LONE rule, so both buttons gray: priority is per-COLUMN, and a silent no-op button was
+        // the live-canary report ("they appear to do nothing"). The enablement is the Move Up /
+        // Move Down BarCommands' CanExecute surfacing through the ButtonBase coupling — asserted
+        // via IsEffectivelyEnabled (IsEnabled is the plain styled property; the command gate lives
+        // in IsEnabledCore).
+        Assert.Equal(0, manager.SelectedIndex);
+        Assert.False(manager.UpButton!.IsEffectivelyEnabled);
+        Assert.False(manager.DownButton!.IsEffectivelyEnabled);
+        Assert.Null(manager.UpButton.Content); // the explicit glyph-only face beat the label auto-fill
+
+        // Amount's first rule: ▼ live (a same-column successor), ▲ gray.
+        manager.Select(1);
+        Assert.False(manager.UpButton.IsEffectivelyEnabled);
+        Assert.True(manager.DownButton.IsEffectivelyEnabled);
+
+        // Amount's second: ▲ live, ▼ gray; the move works and the enablement follows the rule.
+        manager.Select(2);
+        Assert.True(manager.UpButton.IsEffectivelyEnabled);
+        Assert.False(manager.DownButton.IsEffectivelyEnabled);
+        manager.MoveSelected(-1);
+        Assert.Same(manager.Rows[1].Rule, amountColumn.FormatRules[0]); // it moved up in ITS column
+        Assert.False(manager.UpButton.IsEffectivelyEnabled);  // now first in its column
+        Assert.True(manager.DownButton.IsEffectivelyEnabled);
+
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
+    public void Editor_designer_hop_carries_a_structural_draft_without_prompting()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Text = "[Region] = 'East'";
+        host.RunUntilIdle();
+
+        // A fully structural draft hops straight through — no warning prompt, NOTHING applied yet.
+        var hop = editor.RequestEditInBuilderAsync();
+        host.RunUntilIdle();
+        Assert.True(hop.IsCompleted);
+        Assert.Null(FindText(host, "Open in designer?"));
+        Assert.Null(grid.Filter); // side-effect-free until the designer's OK
+        Assert.Equal(4, grid.Snapshot.Count);
+
+        var builder = grid.ActiveFilterBuilder;
+        Assert.NotNull(builder);
+        var row = Assert.Single(builder.ConditionRows); // the draft seeded the tree
+        Assert.Equal("East", row.Value.Text);
+
+        // The designer's OK is the one write; the ORIGINAL editor entry-point task completes.
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        Assert.NotNull(grid.Filter);
+        Assert.Equal(2, grid.Snapshot.Count); // the two East rows
+    }
+
+    [Fact]
+    public void Editor_designer_hop_warns_on_a_compiled_draft_and_the_pair_survives_a_zero_edit_ok()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Text = "Len([Id]) = 7";
+        host.RunUntilIdle();
+        Assert.True(editor.IsValid);
+
+        // The compiled-only draft warns first (the locked-ƒ-row representability prompt).
+        var hop = editor.RequestEditInBuilderAsync();
+        host.RunUntilIdle();
+        Assert.False(hop.IsCompleted);
+        var proceed = FindText(host, "Open designer");
+        Assert.NotNull(proceed);
+
+        host.SendMouseMove(proceed!.Value.X + 1, proceed.Value.Y); // hover first (release-clicks gate on it)
+        host.RunUntilIdle();
+        host.SendClick(proceed.Value.X + 1, proceed.Value.Y);
+        host.RunUntilIdle();
+        Assert.True(hop.IsCompletedSuccessfully); // a FAULTED hop must fail here, not hide (the cross-thread trap)
+        Assert.True(editor.HopToBuilder, "hop flag not set");
+        host.RunUntilIdle();
+
+        // The designer shows the draft as ONE locked ƒ row labeled with the SOURCE TEXT.
+        var builder = grid.ActiveFilterBuilder;
+        Assert.NotNull(builder);
+        Assert.Empty(builder!.ConditionRows);
+        if (FindText(host, "ƒ Len([Id]) = 7") is null)
+        {
+            var dump = string.Join("|", Enumerable.Range(0, 16).Select(r => host.GetRowText(r).TrimEnd()));
+            Assert.True(false, $"label missing; frame: {dump}");
+        }
+
+        // A zero-edit OK applies through the TEXT AUTHORITY: tree AND source text store together.
+        builder.Ok();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.True(task.Result);
+        Assert.Equal("Len([Id]) = 7", grid.FilterExpressionText);
+        Assert.IsType<FilterPredicateNode>(grid.Filter);
+        Assert.Equal(4, grid.Snapshot.Count); // every Id is 7 chars — all rows match
+    }
+
+    [Fact]
+    public void Editor_designer_hop_stay_here_keeps_the_editor_open_with_the_draft()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Text = "Len([Id]) = 7";
+        host.RunUntilIdle();
+
+        var hop = editor.RequestEditInBuilderAsync();
+        host.RunUntilIdle();
+        var stay = FindText(host, "Stay here");
+        Assert.NotNull(stay);
+
+        host.SendMouseMove(stay!.Value.X + 1, stay.Value.Y); // hover first (release-clicks gate on it)
+        host.RunUntilIdle();
+        host.SendClick(stay.Value.X + 1, stay.Value.Y);
+        host.RunUntilIdle();
+        Assert.True(hop.IsCompletedSuccessfully);
+
+        // Declined: the editor is still open with the draft intact; nothing changed.
+        Assert.NotNull(grid.ActiveFilterEditor);
+        Assert.Null(grid.ActiveFilterBuilder);
+        Assert.Equal("Len([Id]) = 7", grid.ActiveFilterEditor!.TextBox.Text);
+        Assert.Null(grid.Filter);
+        Assert.False(task.IsCompleted);
+
+        grid.ActiveFilterEditor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+        Assert.False(task.Result);
+    }
+
+    [Fact]
     public void Builder_empty_value_on_a_non_nullable_column_vetoes_ok()
     {
         var (host, grid, _) = Show();
@@ -461,7 +637,11 @@ public class DataGridDialogsTests
         // The next builder open still labels the opaque expression row from the retained text.
         var reopened = grid.OpenFilterBuilderAsync();
         host.RunUntilIdle();
-        Assert.NotNull(FindText(host, "ƒ Len([Id]) = 7"));
+        if (FindText(host, "ƒ Len([Id]) = 7") is null)
+        {
+            var dump = string.Join("|", Enumerable.Range(0, 16).Select(r => host.GetRowText(r).TrimEnd()));
+            Assert.True(false, $"label missing; frame: {dump}");
+        }
         grid.ActiveFilterBuilder!.Cancel();
         host.RunUntilIdle();
         Assert.True(reopened.IsCompleted);

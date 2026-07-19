@@ -533,6 +533,8 @@ public class DataGridStructuralTests
         Assert.Contains(captions, c => c.Contains("Conditional formatting", StringComparison.Ordinal));
         Assert.Contains(captions, c => c.Contains("Column chooser", StringComparison.Ordinal));
         Assert.Contains(captions, c => c.Contains("Summary for", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Group panel", StringComparison.Ordinal));
+        Assert.Contains(captions, c => c.Contains("Summary footer", StringComparison.Ordinal));
         menu.Close();
         host.RunUntilIdle();
 
@@ -544,6 +546,121 @@ public class DataGridStructuralTests
         Assert.Contains("Σ", Row(host, 13) + Row(host, 12)); // the footer band renders the total
         grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
         Assert.Empty(grid.SummaryDescriptions);
+    }
+
+    [Fact]
+    public void Grid_context_menu_toggles_the_group_panel_and_summary_footer()
+    {
+        var (host, grid, _) = Show(columns: 60, rows: 16);
+        using var _ = host;
+
+        grid.ShowGroupPanel = true;
+        host.RunUntilIdle();
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // The toggles seed their check state from the live properties…
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        Assert.True(Toggle(grid, "Group panel").IsChecked);
+        Assert.True(Toggle(grid, "Summary footer").IsChecked);
+
+        // …and a click flips the property: the panel leaves and the header climbs to row 0.
+        Invoke(Toggle(grid, "Group panel"));
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.False(grid.ShowGroupPanel);
+        Assert.DoesNotContain("drag a column header here", Row(host, 0));
+
+        // Re-open: the check re-seeds unchecked; toggling back restores the panel band.
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        var groupToggle = Toggle(grid, "Group panel");
+        Assert.False(groupToggle.IsChecked);
+        Invoke(groupToggle);
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.True(grid.ShowGroupPanel);
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // The footer toggle hides a LIVE summary band — and keeps the descriptions (the panel is
+        // chrome, not state), so re-showing brings the same total back.
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum);
+        host.RunUntilIdle();
+        Assert.Contains("Σ", AllText(host));
+        grid.OpenGridContextMenu(0);
+        host.RunUntilIdle();
+        Invoke(Toggle(grid, "Summary footer"));
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+        Assert.False(grid.ShowSummaryFooter);
+        Assert.Single(grid.SummaryDescriptions);
+        Assert.DoesNotContain("Σ", AllText(host));
+
+        static MenuItem Toggle(DataGrid grid, string caption)
+            => grid.ActiveGridMenu!.Items.OfType<MenuItem>()
+                   .First(i => string.Equals(i.Header?.ToString(), caption, StringComparison.Ordinal));
+
+        static void Invoke(MenuItem item)
+            => item.RaiseEvent(new ClickEventArgs(MenuItem.ClickEvent, item));
+
+        static string AllText(UIHeadlessHost host)
+            => string.Join("\n", Enumerable.Range(0, 16).Select(host.GetRowText));
+    }
+
+    [Fact]
+    public void Header_drag_onto_the_group_panel_adds_a_grouping_level()
+    {
+        var (host, grid, _) = Show(columns: 60); // wide enough for the panel's empty prompt
+        using var _ = host;
+
+        grid.ShowGroupPanel = true;
+        host.RunUntilIdle();
+        // Screen bands: group panel row 0, header row 1, data from row 2.
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // Press the Region header, move 2 cells (promotes the pending press to a reorder drag),
+        // then up onto the panel band and release — the drop the panel's prompt advertises.
+        void Send(MouseEventKind kind, int x, int y) => host.SendInput(new MouseEvent
+        {
+            Kind = kind,
+            Position = new CellPosition(x, y),
+            Button = MouseButton.Left,
+            ButtonsHeld = kind == MouseEventKind.ButtonUp ? MouseButtons.None : MouseButtons.Left,
+            Modifiers = KeyModifiers.None,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.SendMouseMove(12, 1);
+        Send(MouseEventKind.ButtonDown, 12, 1);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, 1);
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter is not null); // the drag is live header-side
+        Send(MouseEventKind.Move, 14, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.ButtonUp, 14, 0);
+        host.RunUntilIdle();
+
+        var level = Assert.Single(grid.GroupDescriptions);
+        Assert.Same(grid.Columns[1], level.ColumnKey);
+        Assert.True(grid.Columns[1].Visible);            // never the hide path
+        Assert.Empty(grid.SortDescriptions);             // and never the click-sort path
+        Assert.Contains("▲ Region ✕", Row(host, 0));     // the chip renders on the panel
+
+        // With the panel HIDDEN there is no group zone: the same upward drop falls back to the
+        // reorder path and grouping stays untouched.
+        grid.GroupDescriptions.Clear();
+        grid.ShowGroupPanel = false;
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 0);
+        Send(MouseEventKind.ButtonDown, 12, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, -1);
+        host.RunUntilIdle();
+        Send(MouseEventKind.ButtonUp, 14, -1);
+        host.RunUntilIdle();
+        Assert.Empty(grid.GroupDescriptions);
     }
 
     // ── The wave-2 audit regressions (W2-N = the confirmed finding index) ────────────────────────

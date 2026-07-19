@@ -104,9 +104,10 @@ public sealed class DataGridHeaderPresenter : UIElement
         // cell (lifted) and the shift target (the cell the drop displaces right) rides INSIDE the
         // caption loop — an after-the-fact fill would wipe the caption it tints. In the hide zone
         // (pointer below the band) there is no slot: the ▾/ghost drop out, signalling release=hide.
-        bool dragging = _gesture == HeaderGesture.Reordering && _gestureEntry >= 0 && _gestureEntry < entries.Count;
+        bool dragging = _gesture == HeaderGesture.Reordering && _dragColumn is not null;
         bool hideZone = dragging && _dragLocal.Row > HideZoneRows;
-        bool slotLive = dragging && !hideZone && DropSlot >= 0 &&
+        bool groupZone = dragging && InGroupZone(_dragLocal, _dragColumn!);
+        bool slotLive = dragging && !hideZone && !groupZone && DropSlot >= 0 &&
                         DropSlot != _gestureEntry && DropSlot != _gestureEntry + 1; // beside-itself = no-op slot
         int ghostIndex = slotLive && DropSlot < entries.Count ? DropSlot : -1;
 
@@ -134,19 +135,27 @@ public sealed class DataGridHeaderPresenter : UIElement
                 int boundaryX = DropSlot < entries.Count
                     ? DrawXOf(layout, DropSlot)
                     : layout.TotalWidth - HorizontalOffset;
+                // A scrolling-partition boundary never draws INSIDE the frozen band (sweep [0]'s
+                // cue defect: the seam slot's shifted x landed under the frozen headers).
+                if (DropSlot >= layout.FrozenCount)
+                    boundaryX = Math.Max(boundaryX, layout.FrozenWidth);
                 if (boundaryX >= 0 && boundaryX < Bounds.Columns)
                     context.DrawText(boundaryX, 0, "▾", SortGlyphBrush);
             }
 
             // The floating chip follows the pointer, clamped into the 1-row band (the terminal has
             // no out-of-band overlay to float it in). Muted ink in the hide zone — the visual cue
-            // that release now hides instead of dropping.
-            string chip = "▣ " + entries[_gestureEntry].Column.EffectiveHeader;
+            // that release now hides instead of dropping; the accent ink + "▸ group" suffix in the
+            // GROUP zone (over the panel above) — release adds the grouping level the panel's own
+            // prompt advertises.
+            string chip = "▣ " + _dragColumn!.EffectiveHeader + (groupZone ? " ▸ group" : string.Empty);
             int chipWidth = GraphemeWidth.StringWidth(chip);
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
             if (HoverBackground is not null)
                 context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
-            context.DrawText(chipX, 0, chip, hideZone ? FilterGlyphBrush : Foreground);
+            context.DrawText(chipX, 0, chip,
+                             groupZone ? SortGlyphBrush ?? Foreground
+                                       : hideZone ? FilterGlyphBrush : Foreground);
         }
     }
 
@@ -248,7 +257,8 @@ public sealed class DataGridHeaderPresenter : UIElement
     private enum HeaderGesture { None, Pending, Resizing, Reordering }
 
     private HeaderGesture _gesture;
-    private int _gestureEntry = -1;          // layout-entry index at press
+    private int _gestureEntry = -1;          // layout-entry index at press (−1 = an EXTERNAL drag)
+    private DataGridColumn? _dragColumn;     // the dragged column (entry-derived, or the chooser's hidden column)
     private CellPosition _gestureAnchor;     // SCREEN position at press (chrome-drag idiom: the
                                              // header never moves under the gesture, but screen
                                              // anchoring keeps deltas honest under capture anyway)
@@ -268,6 +278,41 @@ public sealed class DataGridHeaderPresenter : UIElement
 
     /// <summary>Movement (cells, either axis) that promotes a pending press into a reorder drag.</summary>
     private const int DragThreshold = 2;
+
+    /// <summary>
+    /// Sweep [2]/[15] — the chooser's drag-to-show hand-off: adopts a HIDDEN column into this
+    /// band's reorder machinery mid-press (the chooser closes; mouse capture transfers HERE while
+    /// the button is still down, so the moves/release route to the header with band-local
+    /// coordinates). Release in-band shows the column at the drop slot; the hide zone, a rejected
+    /// group zone, or Esc cancel (it stays hidden); a valid group-zone release groups by it.
+    /// </summary>
+    internal bool BeginExternalColumnDrag(DataGridColumn column)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        if (_owner is null || Layout is null || _gesture != HeaderGesture.None || !CaptureMouse())
+            return false;
+
+        _gesture = HeaderGesture.Reordering;
+        _gestureEntry = -1; // no source entry — the column is hidden
+        _dragColumn = column;
+        DropSlot = -1;
+        _hoverEntry = -1;
+        HookEscape();
+        UIApplication.Current?.InputDispatcher.UpdateCursor(); // Grabbing
+        InvalidateVisual();
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a drag position sits in the GROUP zone: above the band while the group panel is
+    /// shown, with a groupable-and-not-yet-grouped drag column (the cue must never promise a
+    /// no-op). Release adds the grouping level; the panel band sits directly above, and the header
+    /// holds capture, so its coordinates simply go negative.
+    /// </summary>
+    private bool InGroupZone(CellPosition local, DataGridColumn column)
+        => local.Row < 0 && _owner is { ShowGroupPanel: true } owner &&
+           column.AllowGroup &&
+           !owner.GroupDescriptions.Any(g => ReferenceEquals(g.ColumnKey, column));
 
     /// <summary>The right CellPadding cell of the entry's span — the resize grab zone.</summary>
     private bool OnResizeEdge(DataGridColumnLayout layout, int index, int localX)
@@ -387,6 +432,9 @@ public sealed class DataGridHeaderPresenter : UIElement
                     // pass (the band is never focusable, so its own key virtuals can't fire; the
                     // preview tunnel sees the key first wherever focus sits inside this surface).
                     _gesture = HeaderGesture.Reordering;
+                    _dragColumn = Layout is { } promoted && _gestureEntry >= 0 && _gestureEntry < promoted.Entries.Count
+                        ? promoted.Entries[_gestureEntry].Column
+                        : null;
                     HookEscape();
                     _hoverEntry = -1; // the drag adorners own the band's feedback now
                     UIApplication.Current?.InputDispatcher.UpdateCursor(); // Grabbing
@@ -400,7 +448,7 @@ public sealed class DataGridHeaderPresenter : UIElement
 
             case HeaderGesture.Reordering:
                 _dragLocal = position;
-                DropSlot = ComputeDropSlot(position);
+                DropSlot = _dragColumn is { } dragColumn ? ComputeDropSlot(position, dragColumn) : -1;
                 InvalidateVisual();
                 e.Handled = true;
                 return;
@@ -424,19 +472,31 @@ public sealed class DataGridHeaderPresenter : UIElement
         var gesture = _gesture;
         int entryIndex = _gestureEntry;
         var modifiers = _gestureModifiers;
+        var dragColumn = _dragColumn;
         var local = e.GetPosition(this);
 
         // Release-then-act: ReleaseMouseCapture raises LostMouseCapture, whose handler clears the
         // gesture state — snapshot first, then let the abort path do the (idempotent) cleanup.
         ReleaseMouseCapture();
 
-        if (_owner is null || Layout is null || entryIndex < 0 || entryIndex >= Layout.Entries.Count)
+        if (_owner is null || Layout is null)
         {
             e.Handled = true;
             return;
         }
 
-        var column = Layout.Entries[entryIndex].Column;
+        // The gesture's column: entry-derived for a native press; the adopted HIDDEN column for an
+        // external chooser drag (sweep [2]/[15] — entryIndex is −1 there by construction).
+        DataGridColumn? column = entryIndex >= 0 && entryIndex < Layout.Entries.Count
+            ? Layout.Entries[entryIndex].Column
+            : gesture == HeaderGesture.Reordering ? dragColumn : null;
+        if (column is null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        bool external = entryIndex < 0;
         switch (gesture)
         {
             case HeaderGesture.Pending:
@@ -452,17 +512,45 @@ public sealed class DataGridHeaderPresenter : UIElement
                     _owner.CycleSort(column);
                 break;
 
+            case HeaderGesture.Reordering when InGroupZone(local, column):
+                // Dropped on the group panel above: add the column as a grouping level — the
+                // gesture the panel's empty prompt advertises (live-canary find: it promised the
+                // drop but nothing handled a release above the band).
+                _owner.GroupBy(column);
+                break;
+
             case HeaderGesture.Reordering when local.Row > HideZoneRows:
                 // Dropped well below the band: hide the column (the chooser's drag-off-to-hide
                 // affordance, done here where the drag already lives). Shaping identity survives —
-                // Visible only filters layout.
-                column.Visible = false;
-                _owner.NotifyColumnGeometryChanged();
+                // Visible only filters layout. An EXTERNAL (already-hidden) drag just cancels.
+                if (!external)
+                {
+                    column.Visible = false;
+                    _owner.NotifyColumnGeometryChanged();
+                }
                 break;
 
             case HeaderGesture.Reordering:
-                _owner.DropColumnAtSlot(column, ComputeDropSlot(local));
+            {
+                int slot = ComputeDropSlot(local, column);
+                if (external)
+                {
+                    // Sweep [2]/[15] — the chooser's drag-to-show lands here: the drop ORDERS the
+                    // still-hidden column at the slot (the move is anchor-instance-based, so it
+                    // works pre-show), then reveals it; a cancelled slot leaves it hidden.
+                    if (slot >= 0)
+                    {
+                        _owner.DropColumnAtSlot(column, slot);
+                        column.Visible = true;
+                        _owner.NotifyColumnGeometryChanged();
+                    }
+                }
+                else
+                {
+                    _owner.DropColumnAtSlot(column, slot);
+                }
                 break;
+            }
         }
 
         e.Handled = true;
@@ -476,6 +564,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         bool wasResizeOrDrag = _gesture is HeaderGesture.Resizing or HeaderGesture.Reordering;
         _gesture = HeaderGesture.None;
         _gestureEntry = -1;
+        _dragColumn = null;
         DropSlot = -1;
         UnhookEscape();
         InvalidateVisual();
@@ -535,7 +624,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     /// right half after (the standard column-drag convention); past the right end appends. −1 while the
     /// pointer is in the hide zone (below the band) — no slot, release hides.
     /// </summary>
-    private int ComputeDropSlot(CellPosition local)
+    private int ComputeDropSlot(CellPosition local, DataGridColumn column)
     {
         var layout = Layout;
         if (layout is null || layout.Entries.Count == 0)
@@ -543,16 +632,33 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (local.Row > HideZoneRows)
             return -1; // hide zone — the render pass drops the ▾/ghost to signal it
 
+        // Sweep [1]: above the band with the group panel VISIBLE, the only live action is a valid
+        // group drop (the caller's InGroupZone arm) — a REJECTED drop (AllowGroup=false / already
+        // grouped) cancels instead of falling through to an accidental reorder from the pointer's x.
+        if (local.Row < 0 && _owner is { ShowGroupPanel: true })
+            return -1;
+
         int contentX = ContentXAt(local.Column);
         var entries = layout.Entries;
+        int slot = entries.Count;
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
             int span = entry.Width + 2 * DataGridColumnLayout.CellPadding;
             if (contentX < entry.X + span)
-                return contentX < entry.X + span / 2 ? i : i + 1;
+            {
+                slot = contentX < entry.X + span / 2 ? i : i + 1;
+                break;
+            }
         }
-        return entries.Count;
+
+        // Sweep [0]: the slot clamps to the DRAG COLUMN'S partition — the fixed-first layout
+        // diverges from the Columns order, so a cross-partition slot both lied (the adorner
+        // ghosted a frozen cell) and mis-landed or self-moved on release. Crossing the boundary
+        // is Fixed-toggling territory, deliberately NOT a drag-reorder.
+        return column.Fixed == DataGridColumnFixed.Left
+            ? Math.Min(slot, layout.FrozenCount)
+            : Math.Max(slot, layout.FrozenCount);
     }
 
     private void HookEscape()

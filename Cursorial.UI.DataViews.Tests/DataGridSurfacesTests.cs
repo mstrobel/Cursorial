@@ -488,6 +488,33 @@ public class DataGridSurfacesTests
     }
 
     [Fact]
+    public void Data_bar_track_is_uniform_across_value_widths()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // A 3-char value beside 5-char ones (the live-canary screenshot): the bar used to start
+        // right after EACH row's text, so the origin — and therefore the SCALE — shifted per row.
+        source[0].Amount = 999m;
+        grid.Columns[2].FormatRules.Add(new DataBarRule { ColumnKey = grid.Columns[2] });
+        grid.CycleSort(grid.Columns[2]); // ascending: 999 = all track, 31900 = all fill
+        host.RunUntilIdle();
+
+        static int BarStart(string row)
+        {
+            int fill = row.IndexOf('█');
+            int track = row.IndexOf('░');
+            return fill < 0 ? track : track < 0 ? fill : Math.Min(fill, track);
+        }
+
+        int[] starts = [BarStart(Row(host, 1)), BarStart(Row(host, 2)), BarStart(Row(host, 3)), BarStart(Row(host, 4))];
+        Assert.All(starts, s => Assert.True(s >= 0, "every data row draws a bar"));
+        // ONE origin per column — equal fractions must render equal bars regardless of the
+        // value's character count.
+        Assert.All(starts, s => Assert.Equal(starts[0], s));
+    }
+
+    [Fact]
     public void Threshold_rule_colors_the_matching_cells()
     {
         var (host, grid, _) = Show();
@@ -516,6 +543,45 @@ public class DataGridSurfacesTests
         var restingCell = host.GetCell(miss.Value.X, miss.Value.Y);
         Assert.NotEqual(red, restingCell.Style.Foreground);
         Assert.True((restingCell.Style.Attributes & TextAttributes.Bold) == 0);
+    }
+
+    [Fact]
+    public void Format_background_fills_the_whole_cell()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // Live-canary fix: a format BACKGROUND used to vanish entirely — the glyph layer's
+        // DrawText overwrites the base style's background with its transparent default, so only
+        // the foreground ever changed. The background is now a WHOLE-CELL fill.
+        var wine = Color.FromRgb(90, 30, 50);
+        var amountColumn = grid.Columns[2];
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries = [(FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Background: wine))],
+        });
+        grid.CycleSort(amountColumn); // shape push re-collects rules
+        host.RunUntilIdle();
+
+        // The digits sit on the fill…
+        var hit = FindText(host, "31900");
+        Assert.NotNull(hit);
+        Assert.Equal(wine, host.GetCell(hit.Value.X, hit.Value.Y).Style.Background);
+        // …and so does the EMPTY remainder of the cell (right-aligned numerics leave the left
+        // side blank — a glyph-only tint would miss it).
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        Assert.Equal(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
+
+        // A below-threshold cell keeps the resting background.
+        var miss = FindText(host, "12450");
+        Assert.NotNull(miss);
+        Assert.NotEqual(wine, host.GetCell(miss.Value.X, miss.Value.Y).Style.Background);
+
+        // A SELECTED row's tint outranks the format fill (the selection stays legible).
+        host.SendClick(hit.Value.X, hit.Value.Y);
+        host.RunUntilIdle();
+        Assert.NotEqual(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
     }
 
     [Fact]

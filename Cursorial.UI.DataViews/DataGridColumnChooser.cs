@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -11,10 +12,11 @@ namespace Cursorial.UI.DataViews;
 /// band listing HIDDEN columns as <c>⠿</c> grip chips (click = show — the column re-lands at its
 /// original position because order IS the <see cref="DataGrid.Columns"/> collection and
 /// <see cref="DataGridColumn.Visible"/> only filters layout) and visible columns as checked entries
-/// (click = hide), with Show All / Hide All footer buttons. Esc / light dismiss close.
-/// Checklist-style click-to-toggle by design; dragging a chip from the chooser ONTO the header is a
-/// deferred polish (the click path covers the function, and the header's own drag already provides
-/// the reverse — drag a header below the band to hide).
+/// (click = hide), with Show All / Hide All footer buttons. Esc / light dismiss close. A hidden
+/// chip also DRAGS onto the header (the mockup's headline affordance, sweep [2]/[15]): the press
+/// promotes at 2 cells of movement, the header adopts the gesture (capture hand-off; its ▣ chip +
+/// ▾ slot adorners), and release in-band shows the column AT the drop slot — click-to-show remains
+/// the restore-original-position path.
 /// </summary>
 internal sealed class DataGridColumnChooser
 {
@@ -149,9 +151,45 @@ internal sealed class DataGridColumnChooser
 
             foreach (var column in hidden)
             {
-                var chip = new Button { Content = $"⠿ {column.EffectiveHeader}" };
+                var chip = new Button
+                           {
+                               Content = $"⠿ {column.EffectiveHeader}",
+                               HorizontalContentAlignment = HorizontalAlignment.Left
+                           };
                 var captured = column;
                 chip.Click += (_, _) => SetVisible(captured, true);
+
+                // The mockup's headline affordance (sweep [2]/[15]): dragging a chip onto the
+                // header inserts the column AT A CHOSEN SLOT (click-to-show can only restore the
+                // original position). A press that moves ≥2 cells promotes: the header ADOPTS the
+                // drag (capture transfers there while the button is still down — the chip's press
+                // cancels without a Click), the chooser closes, and the header's ▣/▾ adorners +
+                // drop/hide/group zones take over.
+                CellPosition? pressAnchor = null;
+                chip.AddHandler(UIElement.MouseDownEvent,
+                    (object? _, MouseButtonEventArgs downArgs) => pressAnchor = downArgs.ScreenPosition,
+                    handledEventsToo: true);
+                chip.AddHandler(UIElement.MouseMoveEvent,
+                    (object? _, MouseEventArgs moveArgs) =>
+                    {
+                        if (pressAnchor is not { } anchor || !chip.IsPressed)
+                            return;
+                        if (Math.Abs(moveArgs.ScreenPosition.Column - anchor.Column) < 2 &&
+                            Math.Abs(moveArgs.ScreenPosition.Row - anchor.Row) < 2)
+                        {
+                            return;
+                        }
+                        pressAnchor = null;
+                        // The chip's own press capture must release BEFORE the header can take it
+                        // (capture is exclusive — a refused CaptureMouse degraded the drag to a
+                        // plain click-at-original-position). Releasing also cancels the pressed
+                        // state, so the eventual button-up never fires the chip's Click.
+                        chip.ReleaseMouseCapture();
+                        if (_grid.HeaderPresenter?.BeginExternalColumnDrag(captured) == true)
+                            Close();
+                    },
+                    handledEventsToo: true);
+
                 _hiddenChips.Add((column, chip));
                 rowsHost.Children.Add(chip);
             }

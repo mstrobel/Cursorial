@@ -388,6 +388,27 @@ custom columns don't touch the engine (DataBar/badge are the built-in painters).
 > row-id hygiene fan-out; the band presenters' frozen overpaint gates on `FrozenWidth` (the
 > gutter is pinned without any Fixed column); and detail-pane height refinements re-dirty the
 > band so the fixpoint refills under the corrected content-y map.
+>
+> **The gesture sweep (2026-07-19, post-merge live-canary program):** a 6-surface promised-vs-
+> implemented audit of every input gesture (probe-tested headlessly, each finding adversarially
+> verified — 21 confirmed, 0 refuted) closed the full set: **edit sessions are ROW-ID-anchored**
+> (the editor rides its row through live churn; commits write the id, never a stale view slot —
+> the gallery's "committing didn't work"); the §9.2 **click-away displacement policy** (a press
+> outside the open cell/filter editor commits-else-cancels before landing — no more stranded
+> editors swallowing the keyboard); header drags are **partition-honest** across the frozen
+> boundary (slots clamp to the drag column's partition; a rejected group drop cancels instead of
+> reordering); the **group-panel chips drag** (reorder in-band, ungroup below, press-release
+> semantics so a promoted drag never also toggles/removes); the **chooser's drag-to-show** landed
+> (the mockup headline: a hidden chip drags onto the header, the header adopts the gesture via
+> capture hand-off, release inserts AT the slot); the rows **context menu anchors at the pressed/
+> focused cell** (Pointer placement for right-click; bottom-edge-translated offsets for the Menu
+> key) and right-click focus covers group rows + the placeholder; the reachability keys (Menu/F6/
+> Ctrl+Up) survive an EMPTY view; plain Home/End jump rows; band focus repairs when its band
+> empties/hides; `AllowDelete` + Delete + a menu lane (opt-in, unpromised parity); the drawn ▲▼
+> spin steppers are clickable; the auto-filter editor seeds only grammar-round-trippable text
+> (a checklist digest no longer destroys the InSet on Enter), scrolls clear of the frozen region
+> on the mouse path, and the checklist's tri-state (Select All) checks all from partial; the edit
+> bar's Tab hint says "commit row" on the new-row session.
 
 ### 9.1 The expression language (`Shaping/Expressions/`)
 

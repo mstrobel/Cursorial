@@ -125,6 +125,24 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private static readonly double[] NoFractions = [];
     private static readonly CellRun[] NoCells = [];
 
+    // Format-background fills reuse one brush per color (the rule palette is tiny; the paint path
+    // re-inks per hover move and must not allocate per cell).
+    private readonly Dictionary<Color, Cursorial.Drawing.Media.SolidColorBrush> _formatBrushes = [];
+
+    // The per-column data-bar text reserve (live-canary fix: the bar used to start right after
+    // EACH row's value text, so the track origin and width shifted with the number's character
+    // count — a per-row scale). The reserve is the band's widest bar-cell value per column: every
+    // bar shares ONE origin and ONE track width, so equal fractions render equal bars. Recomputed
+    // per band fill; 0 = the column has no bars this band.
+    private int[] _barReserve = [];
+
+    private Cursorial.Drawing.Media.IBrush BrushFor(Color color)
+    {
+        if (!_formatBrushes.TryGetValue(color, out var brush))
+            _formatBrushes[color] = brush = new Cursorial.Drawing.Media.SolidColorBrush(color);
+        return brush;
+    }
+
     /// <summary>A cached cell's text, sliced from the pooled buffer (§9.6).</summary>
     private ReadOnlySpan<char> CellText(in CachedRow row, int c)
     {
@@ -639,6 +657,25 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return widest;
         });
 
+        // The data-bar text reserve: per bar-bearing column, the widest bar-cell value in the band
+        // (uniform bar origin/track — equal fractions must render equal bars; see _barReserve).
+        if (_barReserve.Length < columns.Count)
+            _barReserve = new int[columns.Count];
+        Array.Clear(_barReserve, 0, _barReserve.Length);
+        if (hasRules)
+        {
+            foreach (var cached in _band)
+            {
+                if (cached.IsGroup)
+                    continue;
+                for (int c = 0; c < columns.Count && c < cached.BarFractions.Length; c++)
+                {
+                    if (!double.IsNaN(cached.BarFractions[c]))
+                        _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                }
+            }
+        }
+
         // §9.2: the resolved geometry may have shrunk under the current H offset — the grid
         // re-clamps and refreshes its bar (the end-of-arrange re-coercion analog).
         owner.OnColumnGeometryResolved();
@@ -716,8 +753,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // §9.2 paint order: scrolling cells first (shifted — a straddler slides UNDER the
             // frozen boundary), then the frozen region (gutter + fixed columns) re-fills its
             // background and draws its content on top (overpaint instead of a clip stack).
+            bool rowSelected = selection is not null && selection.IsSelected(row.RowId);
             for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
-                DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
 
             if (frozenWidth > 0)
             {
@@ -725,7 +763,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 if (erase is not null && HOffset > 0)
                     context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
-                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
             }
 
             // The §9.3 expander gutter glyph (a data row's ▶/▼ — group rows keep their own ▸/▾).
@@ -759,7 +797,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// <paramref name="view"/> is the view-row index (focus compares), <paramref name="y"/> its
     /// content-y draw row (§9.3).
     /// </summary>
-    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn)
+    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn,
+                              bool rowSelected)
     {
         if (!IsEntryVisible(c))
             return;
@@ -772,6 +811,16 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (_renderCellRange is { } range && view >= range.FirstRow && view <= range.LastRow &&
             c >= range.FirstColumn && c <= range.LastColumn && SelectionBackground is not null)
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+
+        // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill). A
+        // format BACKGROUND is a WHOLE-CELL fill (live-canary fix: the glyph layer's DrawText
+        // overwrites the base style's background with its transparent default, so a style-carried
+        // background never rendered — and cell-wide is the DevExpress look anyway; it also covers
+        // empty cells). A selected row's tint outranks it (the selection must stay legible).
+        var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
+        if (format.Background is { } formatBackground && !rowSelected)
+            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                               BrushFor(formatBackground));
 
         // The focus cell's well-fill (the mockup's focuscell).
         if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
@@ -790,13 +839,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             ? cellX + entry.Width - textWidth
             : cellX;
 
-        // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill).
-        var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
         DrawFormattedCell(context, drawX, y, text, entry.Width, format);
 
         if (hasBar)
         {
-            int used = Math.Min(textWidth, entry.Width);
+            // The bar starts after the COLUMN's text reserve, not this row's text (the live-canary
+            // uniform-scale fix): one origin + one track width per column.
+            int reserve = c < _barReserve.Length && _barReserve[c] > 0 ? _barReserve[c] : textWidth;
+            int used = Math.Min(reserve, entry.Width);
             DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
         }
     }
@@ -898,8 +948,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         CellStyle style = default;
         if (attributes != default)
             style = style.WithAttributes(attributes);
-        if (format.Background is { } background)
-            style = style.WithBackground(background);
+        // Deliberately NO WithBackground: DrawText's background parameter (transparent by default)
+        // OVERWRITES the base style's background per cell, so a style-carried background never
+        // reached the frame — the cell-wide fill in DrawDataCell is the background rendering, and
+        // the transparent glyph background lets it show through under the text.
 
         // Truncate on a grapheme boundary (the DrawClipped contract), then emit through whichever
         // foreground lane the verdict picked.
@@ -985,6 +1037,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private DataGridEditorKind _editorKind;
     private int _editViewIndex = -1;
     private int _editColumnIndex = -1;
+    private int _editRowId = -1;
     private bool _editorErrorFlagged;
 
     /// <summary>Whether an editor is hosted (the grid's key routing branches on it).</summary>
@@ -998,6 +1051,26 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     /// <summary>The edited (viewIndex, columnIndex) while editing.</summary>
     internal (int ViewIndex, int ColumnIndex) EditCell => (_editViewIndex, _editColumnIndex);
+
+    /// <summary>
+    /// The edited DATA row's id (−1 on the new-row placeholder session) — the session's ONE
+    /// identity (live-canary fix): live publishes permute the view beneath the open editor, so a
+    /// view-index-anchored session either aliased a different row at commit (wrong-row write) or
+    /// fell off the end (the silently-discarded commit the gallery report hit). The grid
+    /// re-anchors the view slot per publish and commits through THIS id.
+    /// </summary>
+    internal int EditRowId => _editRowId;
+
+    /// <summary>Re-anchors the edit session's view slot after a publish moved its row (the grid
+    /// resolves the id → view; the hosted editor then re-arranges onto its row).</summary>
+    internal void ReanchorEditRow(int viewIndex)
+    {
+        if (_editor is null || _editViewIndex == viewIndex)
+            return;
+        _editViewIndex = viewIndex;
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
 
     /// <summary>
     /// Whether a drop-down editor's list is open. The grid's tunnel intercept keys off this: a
@@ -1019,9 +1092,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// over by the editor's own background. <paramref name="comboItems"/> feeds the Combo kind only.
     /// </summary>
     internal void BeginEdit(int viewIndex, int columnIndex, DataGridEditorKind kind, string initialText,
-                            IReadOnlyList<string>? comboItems = null)
+                            IReadOnlyList<string>? comboItems = null, int rowId = -1)
     {
         EndEditVisual();
+        _editRowId = rowId;
 
         Control editor = kind switch
         {
@@ -1212,6 +1286,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         _editorErrorFlagged = false;
         _editViewIndex = -1;
         _editColumnIndex = -1;
+        _editRowId = -1;
         InvalidateMeasure();
         InvalidateVisual();
         _owner?.NotifyEditingChanged();
@@ -1311,16 +1386,42 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var position = e.GetPosition(this);
+
+        // Sweep [19]: the drawn ▲▼ spin steppers are CLICKABLE (the mockup's spinbtns — an
+        // affordance inside the edit cell that users WILL press): ▲ steps +1, ▼ −1, Shift ×10;
+        // focus stays with the editor (the press must never strand the session).
+        if (e.Button == MouseButton.Left && _editor is not null && _editorKind == DataGridEditorKind.Spin &&
+            _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
+        {
+            var editEntry = ColumnLayout.Entries[_editColumnIndex];
+            if (editEntry.Width >= 6 && position.Row == ContentYOf(_editViewIndex))
+            {
+                int zoneStart = DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding + editEntry.Width - 2;
+                if (position.Column == zoneStart || position.Column == zoneStart + 1)
+                {
+                    SpinBy((position.Column == zoneStart ? 1m : -1m) *
+                           ((e.Modifiers & KeyModifiers.Shift) != 0 ? 10m : 1m));
+                    _editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
         var (viewIndex, columnIndex, onExpander) = HitCell(position.Column, position.Row);
 
         // Right-press opens the grid command menu at the pressed cell (the reachability surface:
         // sort/group lanes, the filter dialogs, formatting, summaries, copy). Focus follows the
-        // press like a left-click so the menu's column lanes match what the user sees focused.
+        // press like a left-click — INCLUDING group rows (row focus) and the new-row placeholder
+        // (past-the-end focus) — so the menu's column lanes match what the user sees focused
+        // (sweep [7]/[8]). No position: the menu lands at the POINTER cell (sweep [6] — an
+        // explicit position means bottom-edge placement, which pinned the menu to the screen
+        // bottom regardless of the press row).
         if (e.Button == MouseButton.Right)
         {
-            if (viewIndex >= 0 && columnIndex >= 0)
-                _owner.SetFocusCell(viewIndex, columnIndex);
-            _owner.OpenGridContextMenu(columnIndex, position);
+            if (viewIndex >= 0)
+                _owner.SetContextPressFocus(viewIndex, columnIndex);
+            _owner.OpenGridContextMenu(columnIndex);
             e.Handled = true;
             return;
         }

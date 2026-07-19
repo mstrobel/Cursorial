@@ -305,8 +305,13 @@ public sealed class WindowPopupTests
         Assert.Equal(PopupCloseReason.Programmatic, reason);
     }
 
-    [Fact] // a placement-target-only popup (no logical parent) routes keys to its owner via the UIParent bridge
-    public void StandalonePopup_RoutesKeysToOwner()
+    [Fact] // ROUTING-REVIEW RE-PIN: a placement-target-only popup's keys are CONTAINED — the event route
+           // continues past a surface root via the LOGICAL parent only, and the PlacementTarget leg is a
+           // hierarchy bridge, never a route (WPF's IgnoreModelParentBuildRoute shape). The owner's raw
+           // KeyDown handler does NOT see keys typed in the popup (the previous assertion pinned the leak:
+           // a DataGrid receiving keys beneath its own filter popup — WPF-impossible behavior). The owner's
+           // CHORDS still fire — via the gesture tail, pinned by OwnerChord_FiresFromPopupFocus.
+    public void StandalonePopup_KeysContained_OwnerHandlerNotDelivered()
     {
         var host = NewHost();
         using var _ = host;
@@ -322,6 +327,8 @@ public sealed class WindowPopupTests
 
         var ownerSawKey = false;
         owner.AddHandler(UIElement.KeyDownEvent, (_, _) => ownerSawKey = true);
+        var popupSawKey = false;
+        popup.AddHandler(UIElement.KeyDownEvent, (_, _) => popupSawKey = true);
 
         popup.Open();
         Assert.True(host.RunUntilIdle());
@@ -331,7 +338,8 @@ public sealed class WindowPopupTests
         host.SendKey(Key.F1); // a plain key, left unhandled — bubbles the full route
         Assert.True(host.RunUntilIdle());
 
-        Assert.True(ownerSawKey); // routed across the PlacementTarget bridge (EventRoute uses UIParent)
+        Assert.True(popupSawKey);  // the route still reaches the Popup ELEMENT (Child's logical parent — Esc etc.)
+        Assert.False(ownerSawKey); // …but never crosses the placement leg into the owner's handlers
     }
 
     [Fact] // ROUTING-REVIEW PIN (hover isolation, 13b34bb): with the pointer over POPUP content, the popup's

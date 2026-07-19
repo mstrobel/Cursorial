@@ -47,9 +47,25 @@ internal sealed class EventRoute
     /// <summary>
     /// The route's parent hop — the SINGLE source of truth for the event-route chain, shared by
     /// <see cref="Build"/>, <see cref="RouteEnd"/> (the gesture tail's continuation point), and the
-    /// dispatcher's disabled-hit fallback parity (ND7).
+    /// dispatcher's disabled-hit fallback parity (ND7). Visual first; past a surface root the route
+    /// continues via the LOGICAL parent <b>only</b> (the input-routing review's narrowing — WPF's
+    /// <c>IgnoreModelParentBuildRoute</c> shape): the <c>PlacementTarget</c> leg is a hierarchy/lookup
+    /// bridge, never a route (the standalone-popup key/semantic leak), and the <c>TemplatedParent</c> leg
+    /// is provably dead on live routes (a template part reachable mid-route always has a visual parent) —
+    /// asserted, not traversed. Ownership-chain walks (focus, access keys, capture, dismissal ancestry,
+    /// <c>IsAncestorOf</c>) deliberately keep the wider <c>VisualParent ?? UIParent</c> chain.
     /// </summary>
-    internal static UIElement? NextOnRoute(UIElement node) => node.VisualParent ?? node.UIParent;
+    internal static UIElement? NextOnRoute(UIElement node)
+    {
+        if (node.VisualParent is { } visual)
+            return visual;
+
+        System.Diagnostics.Debug.Assert(
+            node.LogicalParent is not null || node.TemplatedParent is null,
+            "A route reached a node whose only continuation is a TemplatedParent — the dead-leg assumption is violated.");
+
+        return node.LogicalParent;
+    }
 
     /// <summary>The last node the route walk reaches from <paramref name="target"/> — where the gesture
     /// tail's ownership-chain continuation picks up (design review Q2).</summary>

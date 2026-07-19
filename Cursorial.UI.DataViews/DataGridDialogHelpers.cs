@@ -197,6 +197,28 @@ internal static class DataGridDialogHelpers
     }
 
     /// <summary>
+    /// A stepped color-scale swatch: <paramref name="cells"/> ▒ cells split evenly across the stops
+    /// IN ORDER — 2 cells per stop for a 3-color scale, 3 for a 2-color (the cfmgr mockup; the
+    /// live-canary report was every cell inked with the LAST stop). Linear boundaries, so an uneven
+    /// split spreads the remainder rather than piling it on one run.
+    /// </summary>
+    internal static StackPanel ScaleSwatch(IReadOnlyList<Color> stops, int cells = 6)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        for (int i = 0; i < stops.Count; i++)
+        {
+            int start = i * cells / stops.Count;
+            int end = (i + 1) * cells / stops.Count;
+            panel.Children.Add(new TextBlock
+            {
+                Text = new string('▒', Math.Max(1, end - start)),
+                Foreground = new Cursorial.Drawing.Media.SolidColorBrush(stops[i]),
+            });
+        }
+        return panel;
+    }
+
+    /// <summary>
     /// A small modal confirm over the suite scaffold (the editor→designer hop's representability
     /// warning): stacks <paramref name="messageLines"/> as muted text under the title, offers
     /// yes/no buttons, and completes <see langword="true"/> only on the affirmative (✕ / Esc /

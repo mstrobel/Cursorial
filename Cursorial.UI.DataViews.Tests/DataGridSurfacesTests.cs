@@ -585,6 +585,53 @@ public class DataGridSurfacesTests
     }
 
     [Fact]
+    public void Icon_set_rule_draws_its_glyphs_at_the_cell_edge()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // The editor's Icon Set lowering — glyph + color per bucket (live-canary fix: CellFormat
+        // had no glyph lane, so icon-set rules tinted values but drew no icons at all).
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var amber = Color.FromRgb(0xE0, 0xAF, 0x68);
+        var red = Color.FromRgb(0xF7, 0x76, 0x8E);
+        var amountColumn = grid.Columns[2];
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries =
+            [
+                (FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Foreground: green, Icon: "▲")),
+                (FilterOperator.GreaterThanOrEqual, 15000m, new CellFormat(Foreground: amber, Icon: "●")),
+                (FilterOperator.LessThan, 15000m, new CellFormat(Foreground: red, Icon: "▼")),
+            ],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        // Each bucket's glyph sits at the cell's LEFT content edge in the bucket color, with the
+        // value still right-aligned (and tinted) in the remaining width.
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        int iconX = entry.X + 1; // + CellPadding
+
+        var high = FindText(host, "31900");
+        Assert.NotNull(high);
+        Assert.Equal("▲", host.GetCell(iconX, high.Value.Y).Grapheme);
+        Assert.Equal(green, host.GetCell(iconX, high.Value.Y).Style.Foreground);
+        Assert.Equal(green, host.GetCell(high.Value.X, high.Value.Y).Style.Foreground);
+
+        var mid = FindText(host, "19800");
+        Assert.NotNull(mid);
+        Assert.Equal("●", host.GetCell(iconX, mid.Value.Y).Grapheme);
+        Assert.Equal(amber, host.GetCell(iconX, mid.Value.Y).Style.Foreground);
+
+        var low = FindText(host, "12450");
+        Assert.NotNull(low);
+        Assert.Equal("▼", host.GetCell(iconX, low.Value.Y).Grapheme);
+        Assert.Equal(red, host.GetCell(iconX, low.Value.Y).Style.Foreground);
+    }
+
+    [Fact]
     public void Predicate_rule_dims_the_whole_matching_row()
     {
         var (host, grid, _) = Show();

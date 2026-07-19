@@ -71,9 +71,9 @@ internal sealed class DataGridRuleEditor
         ("Blue → Red", [Color.FromRgb(0x7A, 0xA2, 0xF7), Color.FromRgb(0xF7, 0x76, 0x8E)]),
     ];
 
-    private static readonly CellFormat IconHighFormat = new(Foreground: Color.FromRgb(0x9E, 0xCE, 0x6A));
-    private static readonly CellFormat IconMidFormat = new(Foreground: Color.FromRgb(0xE0, 0xAF, 0x68));
-    private static readonly CellFormat IconLowFormat = new(Foreground: Color.FromRgb(0xF7, 0x76, 0x8E));
+    private static readonly CellFormat IconHighFormat = new(Foreground: Color.FromRgb(0x9E, 0xCE, 0x6A), Icon: "▲");
+    private static readonly CellFormat IconMidFormat = new(Foreground: Color.FromRgb(0xE0, 0xAF, 0x68), Icon: "●");
+    private static readonly CellFormat IconLowFormat = new(Foreground: Color.FromRgb(0xF7, 0x76, 0x8E), Icon: "▼");
 
     private readonly DataGrid _grid;
     private readonly List<DataGridColumn> _columns;
@@ -165,6 +165,9 @@ internal sealed class DataGridRuleEditor
     /// <summary>The validation strip.</summary>
     internal TextBlock ValidationStrip => _strip;
 
+    /// <summary>The preview host (tests assert the ColorScale swatch runs and the child restore).</summary>
+    internal Border PreviewBorder => _previewBorder;
+
     // The active pane's live controls (rebuilt per SetKind; tests drive the real cells).
     internal ComboBox? ColumnCombo { get; private set; }
     internal ComboBox? OperatorCombo { get; private set; }
@@ -218,9 +221,10 @@ internal sealed class DataGridRuleEditor
                 break;
 
             case PredicateRule predicate:
-                // The criteria SOURCE isn't stored on the rule (it holds the compiled lambda) —
-                // an edit re-enters the expression from scratch (documented; the row format seeds).
+                // Seeds from the rule's carried SourceText (live-canary fix — the field used to
+                // start empty; a hand-built lambda rule still has no text to offer).
                 _kind = RuleEditorKind.Expression;
+                _expressionText = predicate.SourceText ?? string.Empty;
                 _formatIndex = DataGridDialogHelpers.PresetIndexOf(predicate.Format);
                 break;
 
@@ -288,7 +292,7 @@ internal sealed class DataGridRuleEditor
                 break;
 
             case RuleEditorKind.IconSet:
-                _pane.Children.Add(DataGridDialogHelpers.Caption("Style: ▲●▼ (colors only — glyphs ride the column format)"));
+                _pane.Children.Add(DataGridDialogHelpers.Caption("Style: ▲●▼ (glyph + color per bucket)"));
                 AddText("▲ when >=", _iconHighText, t => _iconHighText = t, box => ValueBox = box);
                 AddText("● when >=", _iconMidText, t => _iconMidText = t);
                 _pane.Children.Add(DataGridDialogHelpers.Caption("▼ otherwise"));
@@ -389,6 +393,11 @@ internal sealed class DataGridRuleEditor
 
     private void UpdatePreview()
     {
+        // Non-scale kinds render through the single preview TextBlock; the ColorScale kind swaps a
+        // stepped swatch panel into the border (one TextBlock cannot wear per-cell foregrounds).
+        if (_kind != RuleEditorKind.ColorScale && !ReferenceEquals(_previewBorder.Child, _previewText))
+            _previewBorder.Child = _previewText;
+
         switch (_kind)
         {
             case RuleEditorKind.DataBar:
@@ -401,9 +410,7 @@ internal sealed class DataGridRuleEditor
             case RuleEditorKind.ColorScale:
             {
                 var stops = ScalePresets[Math.Clamp(_scaleIndex, 0, ScalePresets.Length - 1)].Stops;
-                _previewText.Text = "▒▒▒▒▒▒";
-                _previewText.Foreground = new SolidColorBrush(stops[^1]);
-                _previewText.TextWeight = TextWeight.Normal;
+                _previewBorder.Child = DataGridDialogHelpers.ScaleSwatch(stops);
                 _previewBorder.ClearValue(Border.BackgroundProperty);
                 return;
             }
@@ -616,6 +623,7 @@ internal sealed class DataGridRuleEditor
                     ColumnKey = column,
                     RowPredicate = compiled.Predicate,
                     Format = CurrentPresetFormat(),
+                    SourceText = _expressionText,
                 };
                 break;
             }

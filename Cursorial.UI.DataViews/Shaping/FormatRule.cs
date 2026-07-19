@@ -10,26 +10,30 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// folds it over the theme's resting brushes at draw time (an unset lane falls through to the
 /// theme). Colors are <see cref="Cursorial.Output.Color"/> — the Core value primitive, not a UI
 /// brush — so the rule model stays presentation-free and headless-testable (invariant 1's spirit:
-/// no UI machinery; Color is pure data).
+/// no UI machinery; Color is pure data). <see cref="Icon"/> is an optional glyph the painter
+/// prefixes at the cell's left edge wearing the verdict's foreground (the editor's ▲●▼ icon sets).
 /// </summary>
 public readonly record struct CellFormat(
     Color? Foreground = null,
     Color? Background = null,
     bool Bold = false,
-    bool Inverse = false)
+    bool Inverse = false,
+    string? Icon = null)
 {
     /// <summary>Whether every lane is unset (the painter's fast path — pure theme drawing).</summary>
-    public bool IsEmpty => Foreground is null && Background is null && !Bold && !Inverse;
+    public bool IsEmpty => Foreground is null && Background is null && !Bold && !Inverse && Icon is null;
 
     /// <summary>
     /// Folds this (the CELL verdict) over <paramref name="under"/> (the ROW verdict): set color
-    /// lanes win per lane; attribute flags OR (a bold threshold on a dimmed row stays both).
+    /// lanes win per lane; attribute flags OR (a bold threshold on a dimmed row stays both);
+    /// <see cref="Icon"/> is a set-wins lane like the colors.
     /// </summary>
     public CellFormat OverlayOn(in CellFormat under) => new(
         Foreground ?? under.Foreground,
         Background ?? under.Background,
         Bold || under.Bold,
-        Inverse || under.Inverse);
+        Inverse || under.Inverse,
+        Icon ?? under.Icon);
 }
 
 /// <summary>
@@ -99,4 +103,11 @@ public sealed class PredicateRule : FormatRule
 
     /// <summary>The row-level format applied when the predicate matches.</summary>
     public required CellFormat Format { get; init; }
+
+    /// <summary>
+    /// The criteria text the predicate was compiled from, when it came from text (the rule editor;
+    /// null for a hand-built lambda) — carried so an edit re-seeds the expression field instead of
+    /// starting empty (the §9.1 tree+text pairing discipline, applied to rules).
+    /// </summary>
+    public string? SourceText { get; init; }
 }

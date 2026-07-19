@@ -831,15 +831,32 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         double fraction = c < row.BarFractions.Length ? row.BarFractions[c] : double.NaN;
         bool hasBar = !double.IsNaN(fraction);
 
+        // The verdict's Icon glyph rides the cell's LEFT edge wearing the format foreground (the
+        // editor's ▲●▼ icon sets — live-canary fix: CellFormat had no glyph lane, so icon-set
+        // rules colored values but drew no icons). The value keeps its alignment in the remaining
+        // width. Bar cells skip the icon — the bar owns the cell's spare geometry, and mixing
+        // per-row icon presence would wobble the column-uniform track origin.
+        int iconReserve = 0;
+        if (!hasBar && format.Icon is { } icon)
+        {
+            int iconWidth = GraphemeWidth.StringWidth(icon);
+            if (iconWidth > 0 && iconWidth + 1 < entry.Width)
+            {
+                DrawFormattedCell(context, cellX, y, icon, entry.Width, format);
+                iconReserve = iconWidth + 1;
+            }
+        }
+
         // A data-bar cell pins its value LEFT with the bar filling the remainder (the
         // mockup's amtcell); everything else honors the column alignment.
+        int avail = entry.Width - iconReserve;
         int drawX = !hasBar &&
                     entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
-                    textWidth < entry.Width
-            ? cellX + entry.Width - textWidth
-            : cellX;
+                    textWidth < avail
+            ? cellX + iconReserve + (avail - textWidth)
+            : cellX + iconReserve;
 
-        DrawFormattedCell(context, drawX, y, text, entry.Width, format);
+        DrawFormattedCell(context, drawX, y, text, avail, format);
 
         if (hasBar)
         {

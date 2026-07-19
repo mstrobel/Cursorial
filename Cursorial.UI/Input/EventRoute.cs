@@ -44,17 +44,30 @@ internal sealed class EventRoute
             pool.Push(route);
     }
 
+    /// <summary>
+    /// The route's parent hop — the SINGLE source of truth for the event-route chain, shared by
+    /// <see cref="Build"/>, <see cref="RouteEnd"/> (the gesture tail's continuation point), and the
+    /// dispatcher's disabled-hit fallback parity (ND7).
+    /// </summary>
+    internal static UIElement? NextOnRoute(UIElement node) => node.VisualParent ?? node.UIParent;
+
+    /// <summary>The last node the route walk reaches from <paramref name="target"/> — where the gesture
+    /// tail's ownership-chain continuation picks up (design review Q2).</summary>
+    internal static UIElement RouteEnd(UIElement target)
+    {
+        var node = target;
+        while (NextOnRoute(node) is { } next)
+            node = next;
+        return node;
+    }
+
     /// <summary>Builds the route: target → visual parents → (the <see cref="UIElement.UIParent"/> bridge hop at
     /// surface roots — logical/templated parent, or a Popup's placement-target owner) → outermost root. Uses the
     /// same <c>VisualParent ?? UIParent</c> walk as S3's hit-test/hover/capture so routing honors the same
     /// tooltip/popup→owner bridge they do (a PlacementTarget-only popup's Escape reaches its owner).</summary>
     internal void Build(UIElement target)
     {
-        // TODO: Certain classes of events--specifically input events, and mouse events in particular--should
-        //       probably not jump outside the visual tree. This theory should be adversarially reviewed. If
-        //       put into effect, there is additional tree-walking code that should maintain parity with this,
-        //       e.g., `InputDispatcher.HitTestForEvent`.
-        for (var node = target; node is not null; node = node.VisualParent ?? node.UIParent)
+        for (var node = target; node is not null; node = NextOnRoute(node))
             Add(node);
     }
 

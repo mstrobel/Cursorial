@@ -441,6 +441,16 @@ public sealed class InputDispatcher : IInputDispatchTarget
             {
                 EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
                 handled = args.Handled;
+
+                // Step 4b — the gesture TAIL (input-routing review Q2): when the whole route left a KeyDown
+                // unhandled, the InputBindings-ONLY sweep continues along the OWNERSHIP chain past the
+                // route's end. KeyDown-only (ND9 — Up never runs tails of any kind); inside the pooled-args
+                // scope because the sweep needs the live KeyEventArgs (the args-lifetime constraint).
+                if (handled is false && isDown)
+                {
+                    SweepGestureTail(target, args);
+                    handled = args.Handled;
+                }
             }
 
             if (handled is false && PostProcessInput is {} postProcess)
@@ -593,6 +603,58 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// and opens it — at the pointer (<paramref name="position"/> null, the right-click case) or below the
     /// element (a keyboard-key offset). Returns whether a menu opened.
     /// </summary>
+    /// <summary>
+    /// The gesture TAIL (input-routing review Q2): an InputBindings-ONLY sweep continuing along the
+    /// ownership chain past the route's end — a standalone popup's placement-owner chain, then a window
+    /// root's application root — so owner / window / application chords still fire from popup-focused
+    /// content while raw key HANDLERS stay contained to the route. The tail starts at the route end's
+    /// CONTINUATION (surfaces the route never entered), so no node is ever swept twice; a chain under a
+    /// modal-BLOCKED window contributes nothing (a chord must not commandeer a blocked window). The
+    /// window→app-root leg generalizes <c>EnsureFrameworkBindings</c>' per-root reinstall (windows are
+    /// route islands); the popup leg only activates once the route stops at the Popup element — until the
+    /// route narrowing lands, <see cref="EventRoute.RouteEnd"/> walks past it and the leg is dormant.
+    /// </summary>
+    private void SweepGestureTail(UIElement target, KeyEventArgs args)
+    {
+        var end = EventRoute.RouteEnd(target);
+        var wm = _topology as WindowManager;
+
+        // Leg 1 — a route that ended at a standalone Popup element continues at its placement owner chain.
+        if (end is Popup popup && popup.EffectiveTarget is { IsAttachedToTree: true } anchor)
+        {
+            if (wm?.SurfaceForElement(anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
+                return; // the owner chain is modal-blocked — no chord delivery at all
+
+            var guard = 0;
+            for (var node = (UIElement?)anchor; node is not null && guard++ < 256; node = node.VisualParent ?? node.UIParent)
+            {
+                node.SweepInputBindings(args);
+                if (args.Handled)
+                    return;
+
+                end = node;
+            }
+        }
+
+        // Leg 2 — a chain that topped out at a WINDOW root continues at the application root.
+        if (end is Window window)
+        {
+            if (wm is not null && !wm.IsInputEnabled(window))
+                return; // focus in a modal-blocked window is anomalous; deliver nothing
+
+            if (UIApplication.Current?.RootElement is { IsAttachedToTree: true } appRoot && !ReferenceEquals(appRoot, end))
+            {
+                var guard = 0;
+                for (var node = (UIElement?)appRoot; node is not null && guard++ < 256; node = node.VisualParent ?? node.UIParent)
+                {
+                    node.SweepInputBindings(args);
+                    if (args.Handled)
+                        return;
+                }
+            }
+        }
+    }
+
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
         for (var node = from; node is not null; node = node.UIParent ?? node.VisualParent)

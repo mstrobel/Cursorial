@@ -131,4 +131,43 @@ public sealed class WindowInputTests
 
         Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
     }
+
+    [Fact] // ROUTING-REVIEW: the gesture TAIL's window→app-root leg — an APPLICATION-root chord fires while
+           // focus sits inside a WINDOW. Windows are route islands (a window's key route never reaches the
+           // app root), so before the tail this required per-root reinstalls (EnsureFrameworkBindings); the
+           // tail generalizes that: after the route returns unhandled, the InputBindings-only sweep
+           // continues at the application root.
+    public void AppRootChord_FiresFromWindowFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var content = new UIControls.Button { Width = 6, Height = 1, Content = "in A" };
+        var a = At(host, 2, 2);
+        a.Content = content;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(content.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // the app-root chord reached from window-focused content (the tail's leg 2)
+    }
+
+    private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => execute();
+    }
 }

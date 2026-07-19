@@ -261,7 +261,8 @@ public sealed class Section05_VariantFlipReSkin
         host.ShowRoot(button);
         Assert.True(host.RunUntilIdle());
 
-        var rgbScene = host.Application.WindowManager!.Tree!.GetScene(button)!;
+        // The shown-as-root button's zone is the ROOT zone — owned by the wrapping RootElementHost.
+        var rgbScene = host.Application.WindowManager!.Tree!.GetScene(host.Application.WindowManager!.RootSurface!.Root)!;
         var rgbVersion = rgbScene.RasterVersion;
 
         // Flip the effective tier to Ansi16 → the palette re-resolves the TextBrush to a hand-picked palette

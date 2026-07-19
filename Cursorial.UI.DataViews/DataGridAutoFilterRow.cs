@@ -1,8 +1,10 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.DataViews;
 
@@ -24,17 +26,25 @@ namespace Cursorial.UI.DataViews;
 /// </summary>
 public sealed class DataGridAutoFilterRow : UIElement
 {
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> BackgroundProperty =
-        UIProperty.Register<DataGridAutoFilterRow, Cursorial.Drawing.Media.IBrush?>(nameof(Background));
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        UIProperty.Register<DataGridAutoFilterRow, IBrush?>(
+            nameof(Background),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SurfaceBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> TextBrushProperty =
-        UIProperty.Register<DataGridAutoFilterRow, Cursorial.Drawing.Media.IBrush?>(nameof(TextBrush));
+    public static readonly StyledProperty<IBrush?> TextBrushProperty =
+        UIProperty.Register<DataGridAutoFilterRow, IBrush?>(
+            nameof(TextBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.TextBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> PlaceholderBrushProperty =
-        UIProperty.Register<DataGridAutoFilterRow, Cursorial.Drawing.Media.IBrush?>(nameof(PlaceholderBrush));
+    public static readonly StyledProperty<IBrush?> PlaceholderBrushProperty =
+        UIProperty.Register<DataGridAutoFilterRow, IBrush?>(
+            nameof(PlaceholderBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.MutedBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> WellBackgroundProperty =
-        UIProperty.Register<DataGridAutoFilterRow, Cursorial.Drawing.Media.IBrush?>(nameof(WellBackground));
+    public static readonly StyledProperty<IBrush?> WellBackgroundProperty =
+        UIProperty.Register<DataGridAutoFilterRow, IBrush?>(
+            nameof(WellBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.WellBrush });
 
     /// <summary>The shared horizontal offset (the template binds it to the ScrollViewer's — §3.1).</summary>
     public static readonly StyledProperty<int> HorizontalOffsetProperty =
@@ -49,14 +59,39 @@ public sealed class DataGridAutoFilterRow : UIElement
         AffectsRender<DataGridAutoFilterRow>(
             BackgroundProperty, TextBrushProperty, PlaceholderBrushProperty, WellBackgroundProperty,
             HorizontalOffsetProperty);
+
         AffectsMeasure<DataGridAutoFilterRow>(HorizontalOffsetProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? PlaceholderBrush { get => GetValue(PlaceholderBrushProperty); set => SetValue(PlaceholderBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? WellBackground { get => GetValue(WellBackgroundProperty); set => SetValue(WellBackgroundProperty, value); }
-    public int HorizontalOffset { get => GetValue(HorizontalOffsetProperty); set => SetValue(HorizontalOffsetProperty, value); }
+    public IBrush? Background
+    {
+        get => GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    public IBrush? TextBrush
+    {
+        get => GetValue(TextBrushProperty);
+        set => SetValue(TextBrushProperty, value);
+    }
+
+    public IBrush? PlaceholderBrush
+    {
+        get => GetValue(PlaceholderBrushProperty);
+        set => SetValue(PlaceholderBrushProperty, value);
+    }
+
+    public IBrush? WellBackground
+    {
+        get => GetValue(WellBackgroundProperty);
+        set => SetValue(WellBackgroundProperty, value);
+    }
+
+    public int HorizontalOffset
+    {
+        get => GetValue(HorizontalOffsetProperty);
+        set => SetValue(HorizontalOffsetProperty, value);
+    }
 
     private DataGrid? _owner;
 
@@ -68,11 +103,15 @@ public sealed class DataGridAutoFilterRow : UIElement
         {
             if (ReferenceEquals(_owner, value))
                 return;
+
             if (_owner is not null)
                 _owner.SnapshotChanged -= OnSnapshotChanged;
+
             _owner = value;
+
             if (_owner is not null)
                 _owner.SnapshotChanged += OnSnapshotChanged;
+
             ClipToBounds = true; // own boundary — band-local re-ink (§3.1; safe: a 1-row band)
             InvalidateMeasure();
         }
@@ -88,7 +127,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         if (_owner is not { ShowAutoFilterRow: true })
             return new Size(availableSize.Columns, 0); // collapsed — no row spent
 
-        if (_editor is not null && EditEntry() is { } entry)
+        if (_editor is not null && EditEntry() is {} entry)
             _editor.Measure(new Size(Math.Max(1, entry.Width), 1));
 
         return new Size(availableSize.Columns, 1);
@@ -99,6 +138,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         base.Render(context);
         var owner = _owner;
         var layout = Layout;
+
         if (owner is null || layout is null || Bounds.Rows < 1)
             return;
 
@@ -108,13 +148,16 @@ public sealed class DataGridAutoFilterRow : UIElement
         // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
         // frozen region re-fills its background and draws its cells unshifted on top.
         var entries = layout.Entries;
+
         for (int i = layout.FrozenCount; i < entries.Count; i++)
             DrawFilterCell(context, owner, layout, i);
 
-        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
+        if (layout.FrozenWidth >
+            0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawFilterCell(context, owner, layout, i);
         }
@@ -127,8 +170,10 @@ public sealed class DataGridAutoFilterRow : UIElement
         int x = DrawXOf(layout, i);
         int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
         int leftEdge = i < layout.FrozenCount ? 0 : layout.FrozenWidth;
+
         if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
             return;
+
         if (i == _editColumnIndex && _editor is not null)
             return; // the hosted editor paints this cell
 
@@ -138,31 +183,38 @@ public sealed class DataGridAutoFilterRow : UIElement
             context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
 
         var column = entry.Column;
+
         if (!column.AllowFilter || column.FilterCellKind == FilterCellKind.Disabled)
             return;
 
         string? summary = owner.GetColumnFilterSummary(column);
         int contentX = x + DataGridColumnLayout.CellPadding;
 
+        var placeholderBrush = PlaceholderBrush ?? Brushes.Default;
+
         if (column.FilterCellKind == FilterCellKind.DistinctPicker)
         {
             // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
             if (summary is not null && WellBackground is not null)
                 context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+
             string text = summary ?? "(All)";
+
             DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
                         summary is not null ? TextBrush : PlaceholderBrush);
-            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", PlaceholderBrush);
+
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", placeholderBrush);
         }
         else if (summary is not null)
         {
             if (WellBackground is not null)
                 context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+
             DrawClipped(context, contentX, summary, entry.Width, TextBrush);
         }
         else
         {
-            context.DrawText(contentX, 0, "⌕", PlaceholderBrush); // the idle affordance
+            context.DrawText(contentX, 0, "⌕", placeholderBrush); // the idle affordance
         }
     }
 
@@ -174,10 +226,11 @@ public sealed class DataGridAutoFilterRow : UIElement
     }
 
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
-                                    Cursorial.Drawing.Media.IBrush? brush)
+                                    IBrush? brush)
     {
         if (brush is null || text.Length == 0)
             return;
+
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
             context.DrawText(x, 0, text, brush);
@@ -186,14 +239,18 @@ public sealed class DataGridAutoFilterRow : UIElement
 
         var enumerator = text.GetGraphemeEnumerator();
         int width = 0, end = 0;
+
         while (enumerator.MoveNext())
         {
             int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
             if (next > maxWidth - 1)
                 break;
+
             width = next;
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
+
         context.DrawText(x, 0, text.AsSpan(0, end), brush);
         context.DrawText(x + width, 0, "…", brush);
     }
@@ -214,9 +271,9 @@ public sealed class DataGridAutoFilterRow : UIElement
     internal int EditColumnIndex => _editColumnIndex;
 
     private DataGridColumnLayout.Entry? EditEntry()
-        => Layout is { } layout && _editColumnIndex >= 0 && _editColumnIndex < layout.Entries.Count
-            ? layout.Entries[_editColumnIndex]
-            : null;
+        => Layout is {} layout && _editColumnIndex >= 0 && _editColumnIndex < layout.Entries.Count
+               ? layout.Entries[_editColumnIndex]
+               : null;
 
     /// <summary>
     /// Hosts the editor at a Text-kind filter cell, seeded with the active condition text when the
@@ -228,6 +285,7 @@ public sealed class DataGridAutoFilterRow : UIElement
     {
         var owner = _owner;
         var layout = Layout;
+
         if (owner is null || layout is null || columnIndex < 0 || columnIndex >= layout.Entries.Count)
             return;
 
@@ -240,12 +298,14 @@ public sealed class DataGridAutoFilterRow : UIElement
         owner.ScrollColumnIntoView(columnIndex);
 
         var column = layout.Entries[columnIndex].Column;
+
         // Seed only text that round-trips the operator grammar: a Condition fragment's summary IS
         // its typed condition text, but a checklist InSet (or any other node) stores a display
         // digest like "(2)" — re-committing that as Contains("(2)") would destroy the filter.
         string seed = owner.GetColumnFilter(column) is FilterConditionNode
-            ? owner.GetColumnFilterSummary(column) ?? string.Empty
-            : string.Empty;
+                          ? owner.GetColumnFilterSummary(column) ?? string.Empty
+                          : string.Empty;
+
         var editor = new Controls.TextBox { Text = seed };
         // Untouched-commit tracking: only actually-typed text writes (CommitEdit's dismiss
         // contract below). Subscribed after the seed is set, so the seed itself never trips it.
@@ -265,13 +325,13 @@ public sealed class DataGridAutoFilterRow : UIElement
 
         // Focus after the editor materializes (measure/arrange run first) — the parked-work idiom.
         UIApplication.Current?.Dispatcher.Post(() =>
-        {
-            if (_editor == editor)
-            {
-                editor.Focus(FocusNavigationMethod.Programmatic);
-                editor.SelectAll();
-            }
-        });
+                                               {
+                                                   if (_editor == editor)
+                                                   {
+                                                       editor.Focus(FocusNavigationMethod.Programmatic);
+                                                       editor.SelectAll();
+                                                   }
+                                               });
     }
 
     /// <summary>Tears the editor down and returns focus to the grid.</summary>
@@ -279,6 +339,7 @@ public sealed class DataGridAutoFilterRow : UIElement
     {
         if (_editor is null)
             return;
+
         DisownChild(_editor);
         _editor = null;
         _editColumnIndex = -1;
@@ -292,11 +353,12 @@ public sealed class DataGridAutoFilterRow : UIElement
         // No base.ArrangeOverride chain: the UIElement default re-arranges every visual child to
         // the full finalSize, which would stretch the roving editor across the whole band and
         // paint out the other filter cells (the rows presenter's latent v1 arrange bug, same fix).
-        if (_editor is not null && Layout is { } layout && EditEntry() is { } entry)
+        if (_editor is not null && Layout is {} layout && EditEntry() is {} entry)
         {
             _editor.Arrange(new Rect(DrawXOf(layout, _editColumnIndex) + DataGridColumnLayout.CellPadding, 0,
                                      Math.Max(1, entry.Width), 1));
         }
+
         return finalSize;
     }
 
@@ -313,28 +375,32 @@ public sealed class DataGridAutoFilterRow : UIElement
     internal static (FilterOperator? Op, string Literal) ParseCondition(string text)
     {
         text = text.Trim();
+
         return text switch
-        {
-            ['>', '=', .. var rest] => (FilterOperator.GreaterThanOrEqual, rest.Trim()),
-            ['<', '=', .. var rest] => (FilterOperator.LessThanOrEqual, rest.Trim()),
-            ['<', '>', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
-            ['!', '=', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
-            ['!', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
-            ['>', .. var rest] => (FilterOperator.GreaterThan, rest.Trim()),
-            ['<', .. var rest] => (FilterOperator.LessThan, rest.Trim()),
-            ['=', .. var rest] => (FilterOperator.Equals, rest.Trim()),
-            _ => ParseWildcards(text),
-        };
+               {
+                   ['>', '=', .. var rest] => (FilterOperator.GreaterThanOrEqual, rest.Trim()),
+                   ['<', '=', .. var rest] => (FilterOperator.LessThanOrEqual, rest.Trim()),
+                   ['<', '>', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+                   ['!', '=', .. var rest] => (FilterOperator.NotEquals, rest.Trim()),
+                   ['!', .. var rest]      => (FilterOperator.NotEquals, rest.Trim()),
+                   ['>', .. var rest]      => (FilterOperator.GreaterThan, rest.Trim()),
+                   ['<', .. var rest]      => (FilterOperator.LessThan, rest.Trim()),
+                   ['=', .. var rest]      => (FilterOperator.Equals, rest.Trim()),
+                   _                       => ParseWildcards(text),
+               };
     }
 
     private static (FilterOperator? Op, string Literal) ParseWildcards(string text)
     {
-        if (text.Length >= 3 && text[0] == '%' && text[^1] == '%')
+        if (text is ['%', _, _, ..] && text[^1] == '%')
             return (FilterOperator.Contains, text[1..^1]);
-        if (text.Length >= 2 && text[^1] == '%')
+
+        if (text is [.., _, '%'])
             return (FilterOperator.StartsWith, text[..^1]);
-        if (text.Length >= 2 && text[0] == '%')
+
+        if (text is ['%', _, ..])
             return (FilterOperator.EndsWith, text[1..]);
+
         return (null, text);
     }
 
@@ -349,10 +415,12 @@ public sealed class DataGridAutoFilterRow : UIElement
     internal bool CommitEdit()
     {
         var owner = _owner;
-        if (owner is null || _editor is null || EditEntry() is not { } entry)
+
+        if (owner is null || _editor is null || EditEntry() is not {} entry)
             return false;
 
         var column = entry.Column;
+
         if (!_editTextTouched && owner.GetColumnFilter(column) is not (null or FilterConditionNode))
         {
             // The untouched-dismiss lane (finding [13]): the seed was empty because the fragment
@@ -365,6 +433,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         }
 
         string text = _editor.Text.Trim();
+
         if (text.Length == 0)
         {
             owner.SetColumnFilter(column, null);
@@ -373,15 +442,17 @@ public sealed class DataGridAutoFilterRow : UIElement
         }
 
         var (op, literal) = ParseCondition(text);
+
         if (literal.Length == 0)
             return false; // a bare operator ("<", ">=") is incomplete — keep editing
 
         // Bare text: Contains on string columns, Equals otherwise (§1's grammar default).
         var effectiveOp = op ?? (owner.Controller?.GetColumnKeyType(column) == typeof(string)
-            ? FilterOperator.Contains
-            : FilterOperator.Equals);
+                                     ? FilterOperator.Contains
+                                     : FilterOperator.Equals);
 
         var fragment = FilterNode.Condition(column, effectiveOp, literal);
+
         if (owner.Controller?.CanCompileFilter(fragment) != true)
             return false; // unconvertible literal — the editor stays open for correction
 
@@ -395,18 +466,23 @@ public sealed class DataGridAutoFilterRow : UIElement
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Handled || e.Button != MouseButton.Left || _owner is null || Layout is not { } layout)
+
+        if (e.Handled || e.Button != MouseButton.Left || _owner is null || Layout is not {} layout)
             return;
 
         var position = e.GetPosition(this);
+
         int contentX = position.Column < layout.FrozenWidth
-            ? position.Column
-            : position.Column + HorizontalOffset; // the §9.2 split map
+                           ? position.Column
+                           : position.Column + HorizontalOffset; // the §9.2 split map
+
         int index = layout.EntryAt(contentX);
+
         if (index < 0)
             return;
 
         var column = layout.Entries[index].Column;
+
         if (!column.AllowFilter)
             return;
 
@@ -416,6 +492,7 @@ public sealed class DataGridAutoFilterRow : UIElement
                 BeginEdit(index);
                 e.Handled = true;
                 break;
+
             case FilterCellKind.DistinctPicker:
                 _owner.OpenFilterPopup(column); // the checklist anchored to the column (panel Q4)
                 e.Handled = true;
@@ -426,6 +503,7 @@ public sealed class DataGridAutoFilterRow : UIElement
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled || _editor is null)
             return;
 
@@ -435,6 +513,7 @@ public sealed class DataGridAutoFilterRow : UIElement
                 CommitEdit(); // an invalid literal keeps the editor open (the edit-commit contract)
                 e.Handled = true;
                 break;
+
             case Key.Escape:
                 EndEdit();
                 e.Handled = true;

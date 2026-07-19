@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -26,20 +27,20 @@ namespace Cursorial.UI.DataViews;
 /// </summary>
 public sealed class DataGridGroupPanel : UIElement
 {
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> BackgroundProperty =
-        UIProperty.Register<DataGridGroupPanel, Cursorial.Drawing.Media.IBrush?>(nameof(Background));
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        UIProperty.Register<DataGridGroupPanel, IBrush?>(nameof(Background));
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ChipBackgroundProperty =
-        UIProperty.Register<DataGridGroupPanel, Cursorial.Drawing.Media.IBrush?>(nameof(ChipBackground));
+    public static readonly StyledProperty<IBrush?> ChipBackgroundProperty =
+        UIProperty.Register<DataGridGroupPanel, IBrush?>(nameof(ChipBackground));
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> TextBrushProperty =
-        UIProperty.Register<DataGridGroupPanel, Cursorial.Drawing.Media.IBrush?>(nameof(TextBrush));
+    public static readonly StyledProperty<IBrush?> TextBrushProperty =
+        UIProperty.Register<DataGridGroupPanel, IBrush?>(nameof(TextBrush));
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> GlyphBrushProperty =
-        UIProperty.Register<DataGridGroupPanel, Cursorial.Drawing.Media.IBrush?>(nameof(GlyphBrush));
+    public static readonly StyledProperty<IBrush?> GlyphBrushProperty =
+        UIProperty.Register<DataGridGroupPanel, IBrush?>(nameof(GlyphBrush));
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> PromptBrushProperty =
-        UIProperty.Register<DataGridGroupPanel, Cursorial.Drawing.Media.IBrush?>(nameof(PromptBrush));
+    public static readonly StyledProperty<IBrush?> PromptBrushProperty =
+        UIProperty.Register<DataGridGroupPanel, IBrush?>(nameof(PromptBrush));
 
     static DataGridGroupPanel()
     {
@@ -47,11 +48,11 @@ public sealed class DataGridGroupPanel : UIElement
             BackgroundProperty, ChipBackgroundProperty, TextBrushProperty, GlyphBrushProperty, PromptBrushProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? ChipBackground { get => GetValue(ChipBackgroundProperty); set => SetValue(ChipBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? GlyphBrush { get => GetValue(GlyphBrushProperty); set => SetValue(GlyphBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? PromptBrush { get => GetValue(PromptBrushProperty); set => SetValue(PromptBrushProperty, value); }
+    public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
+    public IBrush? ChipBackground { get => GetValue(ChipBackgroundProperty); set => SetValue(ChipBackgroundProperty, value); }
+    public IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
+    public IBrush? GlyphBrush { get => GetValue(GlyphBrushProperty); set => SetValue(GlyphBrushProperty, value); }
+    public IBrush? PromptBrush { get => GetValue(PromptBrushProperty); set => SetValue(PromptBrushProperty, value); }
 
     private const string EmptyPrompt = "— drag a column header here to add a grouping level —";
 
@@ -122,10 +123,14 @@ public sealed class DataGridGroupPanel : UIElement
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
 
         bool any = false;
+
+        var glyphBrush = GlyphBrush ?? TextBrush ?? Brushes.Default;
+            var promptBrush = PromptBrush ?? TextBrush ??  Brushes.Default;
+
         foreach (var chip in Chips())
         {
             if (any) // separator before every chip but the first
-                context.DrawText(chip.X - 2, 0, "▸", PromptBrush ?? TextBrush);
+                context.DrawText(chip.X - 2, 0, "▸", promptBrush);
             any = true;
 
             if (ChipBackground is not null)
@@ -135,18 +140,18 @@ public sealed class DataGridGroupPanel : UIElement
             // (⟨…⟩ corners drawn in the padding cells — no new theme key for a keyboard cue).
             if (chip.Index == owner.GroupChipFocusIndex)
             {
-                context.DrawText(chip.X, 0, "⟨", GlyphBrush ?? TextBrush);
-                context.DrawText(chip.X + chip.Width - 1, 0, "⟩", GlyphBrush ?? TextBrush);
+                context.DrawText(chip.X, 0, "⟨", glyphBrush);
+                context.DrawText(chip.X + chip.Width - 1, 0, "⟩", glyphBrush);
             }
 
             var direction = owner.GroupDescriptions[chip.Index].Direction;
-            context.DrawText(chip.X + 1, 0, direction == SortDirection.Ascending ? "▲" : "▼", GlyphBrush ?? TextBrush);
-            context.DrawText(chip.X + 3, 0, chip.Column.EffectiveHeader, TextBrush);
-            context.DrawText(chip.RemoveZoneStart, 0, "✕", PromptBrush ?? TextBrush);
+            context.DrawText(chip.X + 1, 0, direction == SortDirection.Ascending ? "▲" : "▼", glyphBrush);
+            context.DrawText(chip.X + 3, 0, chip.Column.EffectiveHeader, TextBrush ?? Brushes.Default);
+            context.DrawText(chip.RemoveZoneStart, 0, "✕", promptBrush);
         }
 
         if (!any && GraphemeWidth.StringWidth(EmptyPrompt) <= Bounds.Columns - 2)
-            context.DrawText(1, 0, EmptyPrompt, PromptBrush); // drawn only when it fits (no truncated prompt)
+            context.DrawText(1, 0, EmptyPrompt, PromptBrush ?? Brushes.Default); // drawn only when it fits (no truncated prompt)
 
         // ── Chip-drag overlay: the ▾ drop slot + the floating ▣ chip (drawn LAST, over all — the
         // header presenter's adorner idiom) ──────────────────────────────────────────────────────
@@ -162,7 +167,7 @@ public sealed class DataGridGroupPanel : UIElement
             {
                 int boundaryX = SlotBoundaryX(DropSlot);
                 if (boundaryX >= 0 && boundaryX < Bounds.Columns)
-                    context.DrawText(boundaryX, 0, "▾", GlyphBrush ?? TextBrush);
+                    context.DrawText(boundaryX, 0, "▾", glyphBrush);
             }
 
             // The floating chip follows the pointer, clamped into the 1-row band (ClipToBounds —
@@ -174,8 +179,7 @@ public sealed class DataGridGroupPanel : UIElement
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
             if (ChipBackground is not null)
                 context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), ChipBackground);
-            context.DrawText(chipX, 0, chip,
-                             _dragLocal.Row == 0 ? GlyphBrush ?? TextBrush : PromptBrush ?? TextBrush);
+            context.DrawText(chipX, 0, chip, _dragLocal.Row == 0 ? glyphBrush : promptBrush);
         }
     }
 
@@ -320,7 +324,7 @@ public sealed class DataGridGroupPanel : UIElement
         switch (gesture)
         {
             case ChipGesture.Pending when onRemoveZone:
-                // The ✕ click, on the RELEASE (a press that dragged away went Cancelled instead).
+                // The ✕ click, on the RELEASE (a press that dragged away went Canceled instead).
                 owner.GroupDescriptions.RemoveAt(index);
                 break;
 
@@ -361,7 +365,7 @@ public sealed class DataGridGroupPanel : UIElement
     protected override void OnLostMouseCapture(RoutedEventArgs e)
     {
         // Every gesture end funnels here (release, Esc cancel, capture theft): clear the state +
-        // adorners. A cancelled drag simply never called Move/RemoveAt — nothing to undo.
+        // adorners. A canceled drag simply never called Move/RemoveAt — nothing to undo.
         bool wasDragging = _gesture == ChipGesture.Dragging;
         _gesture = ChipGesture.None;
         _pressColumn = null;

@@ -1,8 +1,12 @@
+using System.Globalization;
+
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.DataViews;
 
@@ -21,23 +25,35 @@ namespace Cursorial.UI.DataViews;
 /// </summary>
 public sealed class DataGridHeaderPresenter : UIElement
 {
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> BackgroundProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(Background));
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(Background),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SurfaceBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ForegroundProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(Foreground));
+    public static readonly StyledProperty<IBrush?> ForegroundProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(Foreground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AccentBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> SortGlyphBrushProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(SortGlyphBrush));
+    public static readonly StyledProperty<IBrush?> SortGlyphBrushProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(SortGlyphBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.CoolBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> FilterGlyphBrushProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(FilterGlyphBrush));
+    public static readonly StyledProperty<IBrush?> FilterGlyphBrushProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(FilterGlyphBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.MutedBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ActiveFilterBrushProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(ActiveFilterBrush));
+    public static readonly StyledProperty<IBrush?> ActiveFilterBrushProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(ActiveFilterBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AmberBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> HoverBackgroundProperty =
-        UIProperty.Register<DataGridHeaderPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(HoverBackground));
+    public static readonly StyledProperty<IBrush?> HoverBackgroundProperty =
+        UIProperty.Register<DataGridHeaderPresenter, IBrush?>(
+            nameof(HoverBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.HoverBrush });
 
     /// <summary>The shared horizontal offset (the template binds it to the ScrollViewer's — §3.1).</summary>
     public static readonly StyledProperty<int> HorizontalOffsetProperty =
@@ -50,13 +66,47 @@ public sealed class DataGridHeaderPresenter : UIElement
             ActiveFilterBrushProperty, HoverBackgroundProperty, HorizontalOffsetProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? SortGlyphBrush { get => GetValue(SortGlyphBrushProperty); set => SetValue(SortGlyphBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? FilterGlyphBrush { get => GetValue(FilterGlyphBrushProperty); set => SetValue(FilterGlyphBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? ActiveFilterBrush { get => GetValue(ActiveFilterBrushProperty); set => SetValue(ActiveFilterBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? HoverBackground { get => GetValue(HoverBackgroundProperty); set => SetValue(HoverBackgroundProperty, value); }
-    public int HorizontalOffset { get => GetValue(HorizontalOffsetProperty); set => SetValue(HorizontalOffsetProperty, value); }
+    public IBrush? Background
+    {
+        get => GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    public IBrush? Foreground
+    {
+        get => GetValue(ForegroundProperty);
+        set => SetValue(ForegroundProperty, value);
+    }
+
+    public IBrush? SortGlyphBrush
+    {
+        get => GetValue(SortGlyphBrushProperty);
+        set => SetValue(SortGlyphBrushProperty, value);
+    }
+
+    public IBrush? FilterGlyphBrush
+    {
+        get => GetValue(FilterGlyphBrushProperty);
+        set => SetValue(FilterGlyphBrushProperty, value);
+    }
+
+    public IBrush? ActiveFilterBrush
+    {
+        get => GetValue(ActiveFilterBrushProperty);
+        set => SetValue(ActiveFilterBrushProperty, value);
+    }
+
+    public IBrush? HoverBackground
+    {
+        get => GetValue(HoverBackgroundProperty);
+        set => SetValue(HoverBackgroundProperty, value);
+    }
+
+    public int HorizontalOffset
+    {
+        get => GetValue(HorizontalOffsetProperty);
+        set => SetValue(HorizontalOffsetProperty, value);
+    }
 
     private DataGrid? _owner;
     private int _hoverEntry = -1;
@@ -69,11 +119,15 @@ public sealed class DataGridHeaderPresenter : UIElement
         {
             if (ReferenceEquals(_owner, value))
                 return;
+
             if (_owner is not null)
                 _owner.SnapshotChanged -= OnSnapshotChanged;
+
             _owner = value;
+
             if (_owner is not null)
                 _owner.SnapshotChanged += OnSnapshotChanged;
+
             ClipToBounds = true; // own boundary — band-local re-ink (§3.1; safe: a 1-row band)
             InvalidateVisual();
         }
@@ -90,8 +144,10 @@ public sealed class DataGridHeaderPresenter : UIElement
     protected override void Render(RenderContext context)
     {
         base.Render(context);
+
         var owner = _owner;
         var layout = Layout;
+
         if (owner is null || layout is null)
             return;
 
@@ -107,8 +163,10 @@ public sealed class DataGridHeaderPresenter : UIElement
         bool dragging = _gesture == HeaderGesture.Reordering && _dragColumn is not null;
         bool hideZone = dragging && _dragLocal.Row > HideZoneRows;
         bool groupZone = dragging && InGroupZone(_dragLocal, _dragColumn!);
+
         bool slotLive = dragging && !hideZone && !groupZone && DropSlot >= 0 &&
                         DropSlot != _gestureEntry && DropSlot != _gestureEntry + 1; // beside-itself = no-op slot
+
         int ghostIndex = slotLive && DropSlot < entries.Count ? DropSlot : -1;
 
         // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
@@ -116,10 +174,12 @@ public sealed class DataGridHeaderPresenter : UIElement
         for (int i = layout.FrozenCount; i < entries.Count; i++)
             DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
 
-        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-1)
+        if (layout.FrozenWidth >
+            0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-1)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
         }
@@ -127,20 +187,24 @@ public sealed class DataGridHeaderPresenter : UIElement
         // ── Reorder-drag overlay: the ▾ drop slot + the floating ▣ chip (drawn LAST, over all) ───
         if (dragging)
         {
+            var foreground = Foreground ?? Brushes.Default;
+
             if (slotLive)
             {
                 // The cyan slot marker at the insertion boundary — SortGlyphBrush is the theme's
                 // CoolBrush (the mockup's accent-2 cyan), reused deliberately: no new theme key for
                 // a glyph that means "here" in the same accent family.
                 int boundaryX = DropSlot < entries.Count
-                    ? DrawXOf(layout, DropSlot)
-                    : layout.TotalWidth - HorizontalOffset;
+                                    ? DrawXOf(layout, DropSlot)
+                                    : layout.TotalWidth - HorizontalOffset;
+
                 // A scrolling-partition boundary never draws INSIDE the frozen band (sweep [0]'s
                 // cue defect: the seam slot's shifted x landed under the frozen headers).
                 if (DropSlot >= layout.FrozenCount)
                     boundaryX = Math.Max(boundaryX, layout.FrozenWidth);
+
                 if (boundaryX >= 0 && boundaryX < Bounds.Columns)
-                    context.DrawText(boundaryX, 0, "▾", SortGlyphBrush);
+                    context.DrawText(boundaryX, 0, "▾", SortGlyphBrush ?? foreground);
             }
 
             // The floating chip follows the pointer, clamped into the 1-row band (the terminal has
@@ -151,11 +215,16 @@ public sealed class DataGridHeaderPresenter : UIElement
             string chip = "▣ " + _dragColumn!.EffectiveHeader + (groupZone ? " ▸ group" : string.Empty);
             int chipWidth = GraphemeWidth.StringWidth(chip);
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
+
             if (HoverBackground is not null)
                 context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
+
             context.DrawText(chipX, 0, chip,
-                             groupZone ? SortGlyphBrush ?? Foreground
-                                       : hideZone ? FilterGlyphBrush : Foreground);
+                             groupZone
+                                 ? SortGlyphBrush ?? foreground
+                                 : hideZone
+                                     ? FilterGlyphBrush ?? foreground
+                                     : foreground);
         }
     }
 
@@ -167,14 +236,16 @@ public sealed class DataGridHeaderPresenter : UIElement
         int x = DrawXOf(layout, i);
         int cellWidth = entry.Width + 2 * DataGridColumnLayout.CellPadding;
         int leftEdge = i < layout.FrozenCount ? 0 : layout.FrozenWidth;
+
         if (x + cellWidth <= leftEdge || x >= Bounds.Columns)
             return;
 
         // The §3.3 virtual band focus shares the hover tint (one look for "this header cell is
         // where the next gesture lands", pointer- or keyboard-driven).
         bool tinted = dragging
-            ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
-            : i == _hoverEntry || i == owner.HeaderFocusIndex;
+                          ? i == ghostIndex || i == _gestureEntry // ghost the shift target + the lifted source
+                          : i == _hoverEntry || i == owner.HeaderFocusIndex;
+
         if (tinted && HoverBackground is not null)
             context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
 
@@ -182,6 +253,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         string caption = entry.Column.EffectiveHeader;
         int glyphRoom = 2; // "▾" + gap; sort glyph adds another below when present
         var (direction, ordinal) = owner.GetSortState(entry.Column);
+
         if (direction is not null)
             glyphRoom += ordinal > 0 ? 3 : 2;
 
@@ -190,27 +262,39 @@ public sealed class DataGridHeaderPresenter : UIElement
 
         // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
         int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
+        var foreground = Foreground ?? Brushes.Default;
+
         if (entry.Column.AllowFilter)
         {
             bool active = owner.HasColumnFilter(entry.Column);
-            context.DrawText(glyphX, 0, "▾", active ? ActiveFilterBrush ?? FilterGlyphBrush : FilterGlyphBrush);
+
+            context.DrawText(glyphX, 0, "▾", 
+                             active 
+                                 ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground 
+                                 : FilterGlyphBrush ?? foreground);
             glyphX -= 2;
         }
-        if (direction is { } d)
+
+        if (direction is {} d)
         {
             if (ordinal > 0 && ordinal < 9)
             {
-                context.DrawText(glyphX, 0, (ordinal + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), SortGlyphBrush);
+                context.DrawText(glyphX, 0, (ordinal + 1).ToString(CultureInfo.InvariantCulture),
+                                 SortGlyphBrush ?? foreground);
+
                 glyphX -= 1;
             }
-            context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", SortGlyphBrush);
+
+            context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", 
+                             SortGlyphBrush ?? foreground);
         }
     }
 
-    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
+    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush)
     {
         if (brush is null)
             return;
+
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
             context.DrawText(x, 0, text, brush);
@@ -219,14 +303,18 @@ public sealed class DataGridHeaderPresenter : UIElement
 
         var enumerator = text.GetGraphemeEnumerator();
         int width = 0, end = 0;
+
         while (enumerator.MoveNext())
         {
             int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
             if (next > maxWidth - 1)
                 break;
+
             width = next;
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
+
         context.DrawText(x, 0, text.AsSpan(0, end), brush);
         context.DrawText(x + width, 0, "…", brush);
     }
@@ -243,7 +331,7 @@ public sealed class DataGridHeaderPresenter : UIElement
 
     /// <summary>The §9.2 local→content x map (frozen region identity, scrolled region shifted).</summary>
     private int ContentXAt(int localX)
-        => Layout is { } layout && localX < layout.FrozenWidth ? localX : localX + HorizontalOffset;
+        => Layout is {} layout && localX < layout.FrozenWidth ? localX : localX + HorizontalOffset;
 
     // ── Column-UX gesture state (§1 deferred, now landed) ────────────────────────────────────────
     //
@@ -254,18 +342,26 @@ public sealed class DataGridHeaderPresenter : UIElement
     // ≥ 2 cells promotes to a reorder drag, release without promotion IS the click (sort). The
     // deferral moves the sort from down to up — an accepted cost: no consumer can tell a click's
     // sort apart from a down's sort, but a drag must never ALSO sort.
-    private enum HeaderGesture { None, Pending, Resizing, Reordering }
+    private enum HeaderGesture
+    {
+        None,
+        Pending,
+        Resizing,
+        Reordering
+    }
 
     private HeaderGesture _gesture;
-    private int _gestureEntry = -1;          // layout-entry index at press (−1 = an EXTERNAL drag)
-    private DataGridColumn? _dragColumn;     // the dragged column (entry-derived, or the chooser's hidden column)
-    private CellPosition _gestureAnchor;     // SCREEN position at press (chrome-drag idiom: the
-                                             // header never moves under the gesture, but screen
-                                             // anchoring keeps deltas honest under capture anyway)
-    private KeyModifiers _gestureModifiers;  // press-time modifiers (the deferred click replays them)
-    private int _resizeStartWidth;           // the RESOLVED content width at press (Auto → pinned)
-    private CellPosition _dragLocal;         // last pointer position local to the band (adorners)
-    private UIElement? _escapeHookRoot;      // the root carrying the mid-drag Esc tunnel handler
+    private int _gestureEntry = -1;      // layout-entry index at press (−1 = an EXTERNAL drag)
+    private DataGridColumn? _dragColumn; // the dragged column (entry-derived, or the chooser's hidden column)
+
+    private CellPosition _gestureAnchor; // SCREEN position at press (chrome-drag idiom: the
+
+    // header never moves under the gesture, but screen
+    // anchoring keeps deltas honest under capture anyway)
+    private KeyModifiers _gestureModifiers; // press-time modifiers (the deferred click replays them)
+    private int _resizeStartWidth;          // the RESOLVED content width at press (Auto → pinned)
+    private CellPosition _dragLocal;        // last pointer position local to the band (adorners)
+    private UIElement? _escapeHookRoot;     // the root carrying the mid-drag Esc tunnel handler
 
     /// <summary>The drop slot (insertion index in visible-entry space) the drag currently targets, or −1.</summary>
     internal int DropSlot { get; private set; } = -1;
@@ -289,6 +385,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     internal bool BeginExternalColumnDrag(DataGridColumn column)
     {
         ArgumentNullException.ThrowIfNull(column);
+
         if (_owner is null || Layout is null || _gesture != HeaderGesture.None || !CaptureMouse())
             return false;
 
@@ -321,6 +418,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+
         if (e.Handled || _owner is null || Layout is null)
             return;
 
@@ -366,6 +464,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                 // (the window-chrome resize precedent; per-frame re-resolution rides after).
                 UIApplication.Current?.InputDispatcher.UpdateCursor();
             }
+
             e.Handled = true;
             return;
         }
@@ -374,6 +473,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         // narrows from 2 cells to the glyph cell itself now that the outer padding cell belongs to
         // resize — the ▾ is drawn at cellRight − 2, so that exact cell is the popup affordance.
         int cellRight = DrawXOf(Layout, index) + entry.Width + 2 * DataGridColumnLayout.CellPadding;
+
         if (column.AllowFilter && position.Column == cellRight - 2)
         {
             _owner.OpenFilterPopup(column);
@@ -390,6 +490,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             _gestureModifiers = e.Modifiers;
             _dragLocal = position;
         }
+
         e.Handled = true;
     }
 
@@ -401,7 +502,7 @@ public sealed class DataGridHeaderPresenter : UIElement
 
         switch (_gesture)
         {
-            case HeaderGesture.Resizing when Layout is { } layout && _gestureEntry < layout.Entries.Count:
+            case HeaderGesture.Resizing when Layout is {} layout && _gestureEntry < layout.Entries.Count:
             {
                 // Live resize: screen-anchored delta onto the press-time RESOLVED width, clamped by
                 // the column's own Min/Max (min wins — the layout convention). Writing Width as
@@ -413,11 +514,13 @@ public sealed class DataGridHeaderPresenter : UIElement
                 int min = Math.Max(1, column.MinWidth);
                 int max = column.MaxWidth > 0 ? column.MaxWidth : int.MaxValue;
                 int target = Math.Clamp(_resizeStartWidth + delta, min, Math.Max(min, max));
+
                 if (column.Width != DataGridLength.Cells(target))
                 {
                     column.Width = DataGridLength.Cells(target);
                     _owner?.NotifyColumnGeometryChanged();
                 }
+
                 e.Handled = true;
                 return;
             }
@@ -426,15 +529,18 @@ public sealed class DataGridHeaderPresenter : UIElement
             {
                 int dx = Math.Abs(e.ScreenPosition.Column - _gestureAnchor.Column);
                 int dy = Math.Abs(e.ScreenPosition.Row - _gestureAnchor.Row);
+
                 if (dx >= DragThreshold || dy >= DragThreshold)
                 {
                     // Promote to a reorder drag: hook the mid-drag Esc cancel on the ROOT's tunnel
                     // pass (the band is never focusable, so its own key virtuals can't fire; the
                     // preview tunnel sees the key first wherever focus sits inside this surface).
                     _gesture = HeaderGesture.Reordering;
-                    _dragColumn = Layout is { } promoted && _gestureEntry >= 0 && _gestureEntry < promoted.Entries.Count
-                        ? promoted.Entries[_gestureEntry].Column
-                        : null;
+
+                    _dragColumn = Layout is {} promoted && _gestureEntry >= 0 && _gestureEntry < promoted.Entries.Count
+                                      ? promoted.Entries[_gestureEntry].Column
+                                      : null;
+
                     HookEscape();
                     _hoverEntry = -1; // the drag adorners own the band's feedback now
                     UIApplication.Current?.InputDispatcher.UpdateCursor(); // Grabbing
@@ -443,12 +549,13 @@ public sealed class DataGridHeaderPresenter : UIElement
                 {
                     return; // sub-threshold jitter — still a click-in-waiting
                 }
+
                 goto case HeaderGesture.Reordering;
             }
 
             case HeaderGesture.Reordering:
                 _dragLocal = position;
-                DropSlot = _dragColumn is { } dragColumn ? ComputeDropSlot(position, dragColumn) : -1;
+                DropSlot = _dragColumn is {} dragColumn ? ComputeDropSlot(position, dragColumn) : -1;
                 InvalidateVisual();
                 e.Handled = true;
                 return;
@@ -456,6 +563,7 @@ public sealed class DataGridHeaderPresenter : UIElement
 
         // No gesture: plain hover highlight (unchanged).
         int hover = EntryAt(position.Column);
+
         if (hover != _hoverEntry)
         {
             _hoverEntry = hover;
@@ -466,6 +574,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
+
         if (e.Button != MouseButton.Left || _gesture == HeaderGesture.None)
             return;
 
@@ -488,8 +597,11 @@ public sealed class DataGridHeaderPresenter : UIElement
         // The gesture's column: entry-derived for a native press; the adopted HIDDEN column for an
         // external chooser drag (sweep [2]/[15] — entryIndex is −1 there by construction).
         DataGridColumn? column = entryIndex >= 0 && entryIndex < Layout.Entries.Count
-            ? Layout.Entries[entryIndex].Column
-            : gesture == HeaderGesture.Reordering ? dragColumn : null;
+                                     ? Layout.Entries[entryIndex].Column
+                                     : gesture == HeaderGesture.Reordering
+                                         ? dragColumn
+                                         : null;
+
         if (column is null)
         {
             e.Handled = true;
@@ -497,6 +609,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         }
 
         bool external = entryIndex < 0;
+
         switch (gesture)
         {
             case HeaderGesture.Pending:
@@ -510,6 +623,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                     _owner.AppendSort(column);
                 else
                     _owner.CycleSort(column);
+
                 break;
 
             case HeaderGesture.Reordering when InGroupZone(local, column):
@@ -528,11 +642,13 @@ public sealed class DataGridHeaderPresenter : UIElement
                     column.Visible = false;
                     _owner.NotifyColumnGeometryChanged();
                 }
+
                 break;
 
             case HeaderGesture.Reordering:
             {
                 int slot = ComputeDropSlot(local, column);
+
                 if (external)
                 {
                     // Sweep [2]/[15] — the chooser's drag-to-show lands here: the drop ORDERS the
@@ -549,6 +665,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                 {
                     _owner.DropColumnAtSlot(column, slot);
                 }
+
                 break;
             }
         }
@@ -568,8 +685,10 @@ public sealed class DataGridHeaderPresenter : UIElement
         DropSlot = -1;
         UnhookEscape();
         InvalidateVisual();
+
         if (wasResizeOrDrag)
             UIApplication.Current?.InputDispatcher.UpdateCursor(); // revert the transient shape
+
         base.OnLostMouseCapture(e);
     }
 
@@ -577,6 +696,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     protected override void OnQueryCursor(QueryCursorEventArgs e)
     {
         base.OnQueryCursor(e);
+
         // Gesture state first (position-independent while captured), then the hover zone. The
         // per-frame §7.6 re-resolution rides _lastPointer, updated by OnMouseMove above.
         if (_gesture == HeaderGesture.Resizing)
@@ -589,8 +709,8 @@ public sealed class DataGridHeaderPresenter : UIElement
             e.Cursor = MouseCursorShape.Grabbing;
             e.Handled = true;
         }
-        else if (_gesture == HeaderGesture.None && Layout is { } layout && _hoverEntry >= 0 &&
-                 _hoverEntry < layout.Entries.Count && _lastPointerLocal is { } pointer &&
+        else if (_gesture == HeaderGesture.None && Layout is {} layout && _hoverEntry >= 0 &&
+                 _hoverEntry < layout.Entries.Count && _lastPointerLocal is {} pointer &&
                  OnResizeEdge(layout, _hoverEntry, pointer.Column))
         {
             e.Cursor = MouseCursorShape.ColResize;
@@ -610,6 +730,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     {
         base.OnMouseLeave(e);
         _lastPointerLocal = null;
+
         if (_hoverEntry != -1)
         {
             _hoverEntry = -1;
@@ -627,8 +748,10 @@ public sealed class DataGridHeaderPresenter : UIElement
     private int ComputeDropSlot(CellPosition local, DataGridColumn column)
     {
         var layout = Layout;
+
         if (layout is null || layout.Entries.Count == 0)
             return -1;
+
         if (local.Row > HideZoneRows)
             return -1; // hide zone — the render pass drops the ▾/ghost to signal it
 
@@ -641,10 +764,12 @@ public sealed class DataGridHeaderPresenter : UIElement
         int contentX = ContentXAt(local.Column);
         var entries = layout.Entries;
         int slot = entries.Count;
+
         for (int i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
             int span = entry.Width + 2 * DataGridColumnLayout.CellPadding;
+
             if (contentX < entry.X + span)
             {
                 slot = contentX < entry.X + span / 2 ? i : i + 1;
@@ -657,14 +782,15 @@ public sealed class DataGridHeaderPresenter : UIElement
         // ghosted a frozen cell) and mis-landed or self-moved on release. Crossing the boundary
         // is Fixed-toggling territory, deliberately NOT a drag-reorder.
         return column.Fixed == DataGridColumnFixed.Left
-            ? Math.Min(slot, layout.FrozenCount)
-            : Math.Max(slot, layout.FrozenCount);
+                   ? Math.Min(slot, layout.FrozenCount)
+                   : Math.Max(slot, layout.FrozenCount);
     }
 
     private void HookEscape()
     {
-        if (_escapeHookRoot is not null || VisualRoot is not { } root)
+        if (_escapeHookRoot is not null || VisualRoot is not {} root)
             return;
+
         _escapeHookRoot = root;
         root.AddHandler(PreviewKeyDownEvent, OnRootPreviewKeyDown);
     }
@@ -679,6 +805,7 @@ public sealed class DataGridHeaderPresenter : UIElement
     {
         if (e.Key != Key.Escape || _gesture != HeaderGesture.Reordering)
             return;
+
         // Cancel: releasing capture funnels through OnLostMouseCapture, which clears every bit of
         // drag state (and this hook). The column never moved — nothing to undo.
         e.Handled = true;

@@ -625,7 +625,7 @@ public sealed class InputDispatcher : IInputDispatchTarget
             // The modal gate resolves the anchor's surface TRANSITIVELY through nested popup surfaces
             // (popup surfaces carry no HostWindow — a nested popup's anchor sits on another popup's
             // surface, and the walk must reach the ROOT host to learn whether it is blocked).
-            if (wm is not null && RootHostSurfaceForTail(wm, anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
+            if (wm?.RootHostSurfaceForElement(anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
                 return; // the owner chain is modal-blocked — no chord delivery at all
 
             var guard = 0;
@@ -663,23 +663,6 @@ public sealed class InputDispatcher : IInputDispatchTarget
                 }
             }
         }
-    }
-
-    /// <summary>The non-popup surface <paramref name="element"/>'s surface chain ultimately lives on —
-    /// nested popup surfaces resolve through their owning popup's anchor (the modal gate needs the ROOT
-    /// host; popup surfaces carry no <c>HostWindow</c>). Mirrors the window manager's dismissal walk;
-    /// consolidate onto a shared WM helper when the modal-integrity branch lands.</summary>
-    private static TopLevelSurface? RootHostSurfaceForTail(WindowManager wm, UIElement element)
-    {
-        var surface = wm.SurfaceForElement(element);
-
-        for (var guard = 0; surface is { IsPopup: true } && guard < 32; guard++)
-        {
-            var owner = wm.PopupAnchorForSurface(surface);
-            surface = owner is { IsAttachedToTree: true } ? wm.SurfaceForElement(owner) : null;
-        }
-
-        return surface;
     }
 
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)

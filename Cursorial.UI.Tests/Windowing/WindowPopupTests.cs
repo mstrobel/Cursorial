@@ -578,6 +578,62 @@ public sealed class WindowPopupTests
         public void Execute(object? parameter) => execute();
     }
 
+    [Fact] // IsAncestorOf is the composed OWNERSHIP relation (VisualParent ?? UIParent) — it spans the popup
+           // seam via the ALTERNATING chain, which neither pure relation does: the pure-visual walk stops at
+           // the popup surface root, and the pure-logical walk dies at presenter-generated content (neither a
+           // logical nor a templated link of its own). Pins the relation the focus chain, access-key scope,
+           // and dismissal ancestry all depend on — a logical-OR-visual decomposition is NOT equivalent.
+    public void IsAncestorOf_SpansPopupSeam_ViaOwnershipChain()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        // Placement-target-only popup: the seam hop is Child → Popup (logical) → owner (placement target).
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+
+        // Presenter-generated content inside the popup: VisualParent set, but no logical/templated link.
+        var generated = FindGeneratedContent(inner);
+        Assert.NotNull(generated);
+        Assert.Null(generated!.LogicalParent);
+        Assert.Null(generated.TemplatedParent);
+
+        // The ownership relation spans the seam — from the owner, the root, and the Popup element alike.
+        Assert.True(owner.IsAncestorOf(inner));
+        Assert.True(root.IsAncestorOf(inner));
+        Assert.True(root.IsAncestorOf(generated)); // the alternating chain: visual → seam hop → visual
+
+        // Neither pure relation alone spans it — the specialized forms answer single-tree questions only.
+        Assert.False(owner.IsVisualAncestorOf(inner));       // the visual walk stops at the popup surface root
+        Assert.False(root.IsLogicalAncestorOf(generated));   // the logical walk dies at generated content
+        Assert.True(popup.IsLogicalAncestorOf(inner));       // Child IS the popup's logical child
+    }
+
+    /// <summary>The first presenter-GENERATED descendant: visual-only linkage (no logical/templated parent) —
+    /// e.g. the AccessTextPresenter a ContentPresenter materializes for string content.</summary>
+    private static UIElement? FindGeneratedContent(UIElement root)
+    {
+        if (root.VisualChildrenList is { } children)
+        {
+            foreach (var child in children)
+            {
+                if (child is { LogicalParent: null, TemplatedParent: null })
+                    return child;
+                if (FindGeneratedContent(child) is { } found)
+                    return found;
+            }
+        }
+
+        return null;
+    }
+
     [Fact] // a placement-target-only popup's child inherits the owner's DataContext — initially and on live change
     public void StandalonePopup_ChildInheritsOwnerDataContext()
     {

@@ -7,6 +7,7 @@
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
            xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
+           xmlns:pages="clr-namespace:Cursorial.Gallery.Pages;assembly=Cursorial.Gallery"
            Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
@@ -92,6 +93,21 @@
                 </ScrollViewer>
             </DockPanel>
         </DataTemplate>
+
+      <DataTemplate DataType="vm:EventRoutingViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <StackPanel Orientation="Vertical">
+              <TextBlock Text="{Binding Title}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <TextBlock Text="{Binding Summary}"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            </StackPanel>
+          </Border>
+
+          <pages:EventRoutingView Margin="0,1,0,0" />
+        </DockPanel>
+      </DataTemplate>
 
       <DataTemplate DataType="vm:InputsPageViewModel">
         <DockPanel LastChildFill="True">

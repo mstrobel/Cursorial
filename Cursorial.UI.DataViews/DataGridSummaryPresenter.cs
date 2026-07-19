@@ -1,5 +1,7 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.Text;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.DataViews;
 
@@ -11,14 +13,20 @@ namespace Cursorial.UI.DataViews;
 /// </summary>
 public sealed class DataGridSummaryPresenter : UIElement
 {
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> BackgroundProperty =
-        UIProperty.Register<DataGridSummaryPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(Background));
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        UIProperty.Register<DataGridSummaryPresenter, IBrush?>(
+            nameof(Background),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SurfaceBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ValueBrushProperty =
-        UIProperty.Register<DataGridSummaryPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(ValueBrush));
+    public static readonly StyledProperty<IBrush?> ValueBrushProperty =
+        UIProperty.Register<DataGridSummaryPresenter, IBrush?>(
+            nameof(ValueBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.CoolBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> LabelBrushProperty =
-        UIProperty.Register<DataGridSummaryPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(LabelBrush));
+    public static readonly StyledProperty<IBrush?> LabelBrushProperty =
+        UIProperty.Register<DataGridSummaryPresenter, IBrush?>(
+            nameof(LabelBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.MutedBrush });
 
     public static readonly StyledProperty<int> HorizontalOffsetProperty =
         UIProperty.Register<DataGridSummaryPresenter, int>(nameof(HorizontalOffset));
@@ -29,10 +37,29 @@ public sealed class DataGridSummaryPresenter : UIElement
                                                 HorizontalOffsetProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? ValueBrush { get => GetValue(ValueBrushProperty); set => SetValue(ValueBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? LabelBrush { get => GetValue(LabelBrushProperty); set => SetValue(LabelBrushProperty, value); }
-    public int HorizontalOffset { get => GetValue(HorizontalOffsetProperty); set => SetValue(HorizontalOffsetProperty, value); }
+    public IBrush? Background
+    {
+        get => GetValue(BackgroundProperty);
+        set => SetValue(BackgroundProperty, value);
+    }
+
+    public IBrush? ValueBrush
+    {
+        get => GetValue(ValueBrushProperty);
+        set => SetValue(ValueBrushProperty, value);
+    }
+
+    public IBrush? LabelBrush
+    {
+        get => GetValue(LabelBrushProperty);
+        set => SetValue(LabelBrushProperty, value);
+    }
+
+    public int HorizontalOffset
+    {
+        get => GetValue(HorizontalOffsetProperty);
+        set => SetValue(HorizontalOffsetProperty, value);
+    }
 
     private DataGrid? _owner;
 
@@ -43,11 +70,15 @@ public sealed class DataGridSummaryPresenter : UIElement
         {
             if (ReferenceEquals(_owner, value))
                 return;
+
             if (_owner is not null)
                 _owner.SnapshotChanged -= OnSnapshotChanged;
+
             _owner = value;
+
             if (_owner is not null)
                 _owner.SnapshotChanged += OnSnapshotChanged;
+
             ClipToBounds = true; // own boundary — band-local re-ink (§3.1)
             InvalidateMeasure();
         }
@@ -65,13 +96,16 @@ public sealed class DataGridSummaryPresenter : UIElement
         var cells = new List<(int, string, string)>();
         var owner = _owner;
         var layout = owner?.RowsPresenter?.ColumnLayout;
+
         if (owner is null || layout is null)
             return cells;
 
         var totals = owner.Controller?.Totals ?? [];
+
         for (int s = 0; s < owner.SummaryDescriptions.Count && s < totals.Count; s++)
         {
             var description = owner.SummaryDescriptions[s];
+
             if (description.ColumnKey is not DataGridColumn column)
                 continue;
 
@@ -88,14 +122,15 @@ public sealed class DataGridSummaryPresenter : UIElement
         return cells;
     }
 
-    private static string AggregateLabel(Shaping.AggregateKind kind) => kind switch
-    {
-        Shaping.AggregateKind.Sum => "Σ",
-        Shaping.AggregateKind.Average => "x̄",
-        Shaping.AggregateKind.Min => "⌄",
-        Shaping.AggregateKind.Max => "⌃",
-        _ => "#",
-    };
+    private static string AggregateLabel(Shaping.AggregateKind kind)
+        => kind switch
+           {
+               Shaping.AggregateKind.Sum     => "Σ",
+               Shaping.AggregateKind.Average => "x̄",
+               Shaping.AggregateKind.Min     => "⌄",
+               Shaping.AggregateKind.Max     => "⌃",
+               _                             => "#",
+           };
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -103,13 +138,17 @@ public sealed class DataGridSummaryPresenter : UIElement
         // (the template collapses the band via ShowSummaryFooter when unused).
         var cells = CollectCells();
         int height = 1;
+
         if (cells.Count > 0)
         {
             var counts = new Dictionary<int, int>();
+
             foreach (var (entry, _, _) in cells)
                 counts[entry] = counts.GetValueOrDefault(entry) + 1;
+
             height = counts.Values.Max();
         }
+
         return new Size(availableSize.Columns, height);
     }
 
@@ -118,10 +157,12 @@ public sealed class DataGridSummaryPresenter : UIElement
         base.Render(context);
         var owner = _owner;
         var layout = owner?.RowsPresenter?.ColumnLayout;
+
         if (owner is null || layout is null)
             return;
 
         int rows = Math.Max(1, Bounds.Rows);
+
         if (Background is not null)
             context.FillOpaque(new Rect(0, 0, Bounds.Columns, rows), Background);
 
@@ -132,10 +173,13 @@ public sealed class DataGridSummaryPresenter : UIElement
         // frozen region re-fills and draws unshifted on top. Stacking accounting is per-entry, so
         // the two filtered passes keep each entry's cells in collection order.
         DrawCellPass(context, layout, cells, stackRow, rows, frozen: false);
-        if (layout.FrozenWidth > 0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-3)
+
+        if (layout.FrozenWidth >
+            0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-3)
         {
             if (Background is not null && HorizontalOffset > 0)
                 context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, rows), Background);
+
             DrawCellPass(context, layout, cells, stackRow, rows, frozen: true);
         }
     }
@@ -147,17 +191,20 @@ public sealed class DataGridSummaryPresenter : UIElement
         foreach (var (entryIndex, label, value) in cells)
         {
             bool isFrozen = entryIndex < layout.FrozenCount;
+
             if (isFrozen != frozen)
                 continue;
 
             int row = stackRow.GetValueOrDefault(entryIndex);
             stackRow[entryIndex] = row + 1;
+
             if (row >= rows)
                 continue;
 
             var entry = layout.Entries[entryIndex];
             int baseX = isFrozen ? entry.X : entry.X - HorizontalOffset;
             int leftEdge = isFrozen ? 0 : layout.FrozenWidth;
+
             if (baseX + entry.Width + 2 * DataGridColumnLayout.CellPadding <= leftEdge || baseX >= Bounds.Columns)
                 continue;
 
@@ -168,8 +215,8 @@ public sealed class DataGridSummaryPresenter : UIElement
             int contentWidth = labelWidth + 1 + valueWidth;
             int drawX = contentWidth < entry.Width ? x + entry.Width - contentWidth : x;
 
-            context.DrawText(drawX, row, label, LabelBrush);
-            context.DrawText(drawX + labelWidth + 1, row, value, ValueBrush);
+            context.DrawText(drawX, row, label, LabelBrush ?? Brushes.Default);
+            context.DrawText(drawX + labelWidth + 1, row, value, ValueBrush ?? Brushes.Default);
         }
     }
 }

@@ -334,6 +334,92 @@ public sealed class WindowPopupTests
         Assert.True(ownerSawKey); // routed across the PlacementTarget bridge (EventRoute uses UIParent)
     }
 
+    [Fact] // ROUTING-REVIEW PIN (hover isolation, 13b34bb): with the pointer over POPUP content, the popup's
+           // OWNER is not :pointerover — the hover chain is confined to the visual tree of the hit surface
+           // and never crosses the popup→owner seam (the DataGrid-under-context-menu bug class).
+    public void PointerOverPopupContent_OwnerNotPointerOver()
+    {
+        var (host, _, popup, target, inner) = Setup();
+        using var _ = host;
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendMouseMove(surface.Left + 1, surface.Top + 1); // inside the popup content
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(inner.IsPointerOver);   // the popup content hovers…
+        Assert.False(target.IsPointerOver); // …its owner does NOT (no seam crossing)
+        Assert.False(popup.IsPointerOver);  // nor the structural Popup element in the host tree
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (reverse-inherit asymmetry, adjudicated): while focus sits INSIDE popup
+           // content, the owner KEEPS :focuswithin — IsKeyboardFocusWithin rides the bridged focus chain
+           // (open-state gates like Menu/ComboBox depend on it) even though :pointerover deliberately does
+           // not cross the same seam. The asymmetry is a decision, not drift.
+    public void FocusInPopupContent_OwnerKeepsFocusWithin()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        // Placement-target-only (NOT in the logical tree): the focus chain crosses via the placement leg.
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(inner.IsKeyboardFocusWithin);
+        Assert.True(popup.IsKeyboardFocusWithin); // the structural Popup element gates on this
+        Assert.True(owner.IsKeyboardFocusWithin); // and the PLACEMENT owner does too (the bridged chain)
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (gesture reach): a chord bound on the popup's OWNER-side ancestor fires while
+           // focus sits in the popup — stable across the route narrowing (today via the bridged KeyDown route;
+           // post-narrowing via the gesture tail). The user-visible contract is REACH, not mechanism.
+    public void OwnerChord_FiresFromPopupFocus()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+
+        var fired = false;
+        root.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Key.Character, KeyModifiers.Control, "K"),
+            new RelayTestCommand(() => fired = true)));
+
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Key.Character, KeyModifiers.Control, "K");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // the owner-side chord reached from popup-focused content
+    }
+
+    private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => execute();
+    }
+
     [Fact] // a placement-target-only popup's child inherits the owner's DataContext — initially and on live change
     public void StandalonePopup_ChildInheritsOwnerDataContext()
     {

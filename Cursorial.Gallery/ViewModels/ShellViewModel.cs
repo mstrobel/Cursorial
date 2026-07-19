@@ -26,6 +26,7 @@ public sealed class ShellViewModel : ViewModelBase
             new DataGridViewModel(),
             new DateControlsViewModel(),
             new DialogsViewModel(app),
+            new EventRoutingViewModel(),
             new InputsPageViewModel(),
             new MenusViewModel(),
             new BarsViewModel(),

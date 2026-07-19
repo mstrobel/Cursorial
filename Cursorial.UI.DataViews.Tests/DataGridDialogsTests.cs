@@ -364,24 +364,28 @@ public class DataGridDialogsTests
 
         // The first row auto-selects on open (▲▼/✎/✕ always have a target) — and it is Region's
         // LONE rule, so both buttons gray: priority is per-COLUMN, and a silent no-op button was
-        // the live-canary report ("they appear to do nothing").
+        // the live-canary report ("they appear to do nothing"). The enablement is the Move Up /
+        // Move Down BarCommands' CanExecute surfacing through the ButtonBase coupling — asserted
+        // via IsEffectivelyEnabled (IsEnabled is the plain styled property; the command gate lives
+        // in IsEnabledCore).
         Assert.Equal(0, manager.SelectedIndex);
-        Assert.False(manager.UpButton!.IsEnabled);
-        Assert.False(manager.DownButton!.IsEnabled);
+        Assert.False(manager.UpButton!.IsEffectivelyEnabled);
+        Assert.False(manager.DownButton!.IsEffectivelyEnabled);
+        Assert.Null(manager.UpButton.Content); // the explicit glyph-only face beat the label auto-fill
 
         // Amount's first rule: ▼ live (a same-column successor), ▲ gray.
         manager.Select(1);
-        Assert.False(manager.UpButton.IsEnabled);
-        Assert.True(manager.DownButton.IsEnabled);
+        Assert.False(manager.UpButton.IsEffectivelyEnabled);
+        Assert.True(manager.DownButton.IsEffectivelyEnabled);
 
         // Amount's second: ▲ live, ▼ gray; the move works and the enablement follows the rule.
         manager.Select(2);
-        Assert.True(manager.UpButton.IsEnabled);
-        Assert.False(manager.DownButton.IsEnabled);
+        Assert.True(manager.UpButton.IsEffectivelyEnabled);
+        Assert.False(manager.DownButton.IsEffectivelyEnabled);
         manager.MoveSelected(-1);
         Assert.Same(manager.Rows[1].Rule, amountColumn.FormatRules[0]); // it moved up in ITS column
-        Assert.False(manager.UpButton.IsEnabled);  // now first in its column
-        Assert.True(manager.DownButton.IsEnabled);
+        Assert.False(manager.UpButton.IsEffectivelyEnabled);  // now first in its column
+        Assert.True(manager.DownButton.IsEffectivelyEnabled);
 
         manager.CloseWindow();
         host.RunUntilIdle();

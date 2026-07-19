@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Drawing.Media;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
@@ -33,8 +34,12 @@ internal sealed class DataGridRulesManager
     private readonly DataGridRulesManager? _live;
     private DataGridRuleEditor? _activeRuleEditor;
     private int _selectedIndex = -1;
-    private Button? _up;
-    private Button? _down;
+    private BarButton? _up;
+    private BarButton? _down;
+    private BarCommand? _edit;
+    private BarCommand? _delete;
+    private BarCommand? _moveUp;
+    private BarCommand? _moveDown;
 
     public DataGridRulesManager(DataGrid grid)
     {
@@ -57,23 +62,55 @@ internal sealed class DataGridRulesManager
 
         var content = new StackPanel(); // vertical
 
-        // The toolbar band (the mockup's ＋ ✎ ✕ ▲▼ strip).
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        var newRule = new Button { Content = "＋ New Rule" };
-        newRule.Click += (_, _) => _ = NewRuleAsync();
-        var edit = new Button { Content = "✎ Edit" };
-        edit.Click += (_, _) => _ = EditSelectedAsync();
-        var delete = new Button { Content = "✕ Delete" };
-        delete.Click += (_, _) => DeleteSelected();
-        _up = new Button { Content = "▲" };
-        _up.Click += (_, _) => MoveSelected(-1);
-        _down = new Button { Content = "▼" };
-        _down.Click += (_, _) => MoveSelected(+1);
-        toolbar.Children.Add(newRule);
-        toolbar.Children.Add(edit);
-        toolbar.Children.Add(delete);
-        toolbar.Children.Add(_up);
-        toolbar.Children.Add(_down);
+        // The toolbar band (the mockup's ＋ ✎ ✕ ▲▼ strip): a real Toolbar of BarButtons over
+        // BarCommands — the label/icon/rich-help metadata lives ON the command, and the ✎/✕/▲/▼
+        // enablement is the commands' CanExecute (the ButtonBase coupling grays a button whose
+        // command can't run — no hand-rolled IsEnabled writes). Icons are shared IconCarriers
+        // (emoji tier + the guaranteed single-width text floor; the Nerd Font tier is an app
+        // opt-in deliberately left to an icon audit rather than guessed PUA codepoints).
+        var newRule = new BarCommand(() => _ = NewRuleAsync())
+        {
+            Text = "New Rule",
+            Icon = new IconCarrier { Text = "+", Emoji = "➕" },
+            Description = "Add a conditional-formatting rule (opens the rule editor).",
+        };
+        _edit = new BarCommand(() => _ = EditSelectedAsync(), HasSelection)
+        {
+            Text = "Edit",
+            Icon = new IconCarrier { Text = "✎", Emoji = "✏️" },
+            Description = "Edit the selected rule.",
+        };
+        _delete = new BarCommand(DeleteSelected, HasSelection)
+        {
+            Text = "Delete",
+            Icon = new IconCarrier { Text = "✕", Emoji = "🗑️" },
+            Description = "Delete the selected rule.",
+        };
+        _moveUp = new BarCommand(() => MoveSelected(-1), () => HasSelection() && HasSameColumnNeighbor(-1))
+        {
+            Text = "Move Up",
+            Icon = new IconCarrier { Text = "▲", Emoji = "🔼" },
+            Description = "Apply the selected rule earlier — priority is per-column, first match wins.",
+        };
+        _moveDown = new BarCommand(() => MoveSelected(+1), () => HasSelection() && HasSameColumnNeighbor(+1))
+        {
+            Text = "Move Down",
+            Icon = new IconCarrier { Text = "▼", Emoji = "🔽" },
+            Description = "Apply the selected rule later — priority is per-column, first match wins.",
+        };
+
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(new BarButton { Command = newRule });
+        toolbar.Items.Add(new BarButton { Command = _edit });
+        toolbar.Items.Add(new BarButton { Command = _delete });
+        toolbar.Items.Add(new BarSeparator());
+        // The mockup's ▲▼ are glyph-only: an explicit Content (authored BEFORE Command, so the
+        // sync sees an author value and never label-fills) keeps the face to the icon while the
+        // command's Text still titles the SuperTip.
+        _up = new BarButton { Content = null, Command = _moveUp };
+        _down = new BarButton { Content = null, Command = _moveDown };
+        toolbar.Items.Add(_up);
+        toolbar.Items.Add(_down);
         content.Children.Add(toolbar);
 
         // The header strip (fixed cell widths shared with the rows below).
@@ -110,11 +147,12 @@ internal sealed class DataGridRulesManager
     /// <summary>The selected list index (−1 none).</summary>
     internal int SelectedIndex => (_live ?? this)._selectedIndex;
 
-    /// <summary>The ▲ reorder button (tests assert its contextual enablement).</summary>
-    internal Button? UpButton => (_live ?? this)._up;
+    /// <summary>The ▲ reorder button (tests assert its contextual enablement — via
+    /// <see cref="UIElement.IsEffectivelyEnabled"/>, the command-CanExecute-aware gate).</summary>
+    internal BarButton? UpButton => (_live ?? this)._up;
 
     /// <summary>The ▼ reorder button.</summary>
-    internal Button? DownButton => (_live ?? this)._down;
+    internal BarButton? DownButton => (_live ?? this)._down;
 
     /// <summary>The live add/edit dialog (null while none is open; tests reach its panes).</summary>
     internal DataGridRuleEditor? ActiveRuleEditor => (_live ?? this)._activeRuleEditor;
@@ -221,15 +259,18 @@ internal sealed class DataGridRulesManager
                 _rows[i].RowElement.ClearValue(Border.BackgroundProperty);
         }
 
-        // ▲/▼ enable exactly when they can DO something (live-canary fix — priority is per-COLUMN,
-        // so with one rule per column, or no selection, the buttons used to no-op silently; a
-        // grayed button says "nothing to reorder here" instead).
-        bool hasSelection = _selectedIndex >= 0 && _selectedIndex < _rows.Count;
-        if (_up is not null)
-            _up.IsEnabled = hasSelection && HasSameColumnNeighbor(-1);
-        if (_down is not null)
-            _down.IsEnabled = hasSelection && HasSameColumnNeighbor(+1);
+        // ▲/▼/✎/✕ enable exactly when they can DO something (live-canary fix — priority is
+        // per-COLUMN, so with one rule per column, or no selection, ▲▼ used to no-op silently).
+        // The truth lives in each command's CanExecute; this is just the re-query pulse for the
+        // gating state (selection / rule order) those predicates read.
+        _edit?.RaiseCanExecuteChanged();
+        _delete?.RaiseCanExecuteChanged();
+        _moveUp?.RaiseCanExecuteChanged();
+        _moveDown?.RaiseCanExecuteChanged();
     }
+
+    /// <summary>Whether a listed rule is selected (the ✎/✕/▲▼ commands' base gate).</summary>
+    private bool HasSelection() => _selectedIndex >= 0 && _selectedIndex < _rows.Count;
 
     /// <summary>Whether the selected rule has a SAME-COLUMN neighbor in the move direction (the
     /// ▲/▼ enablement truth — a move can only reorder within its column's list).</summary>

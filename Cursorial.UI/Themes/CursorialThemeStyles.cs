@@ -72,7 +72,7 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsUnicodeCheckBoxGlyphs()
     {
-        var style = new Style(".caps-unicode CheckBox") { Key = "Theme.CapsUnicode.CheckBox" };
+        var style = new Style("CheckBox") { Key = "Theme.CapsUnicode.CheckBox", RequiresCapabilities = StyleCapabilities.Unicode };
         style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("[ ]", "[✓]", "[▪]")));
         return style;
     }
@@ -80,7 +80,7 @@ internal static class CursorialThemeStyles
     /// <summary>The caps-unicode RadioButton glyph opt-up (<c>( ) / (●) / (-)</c>; ● accent); see <see cref="CapsUnicodeCheckBoxGlyphs"/>.</summary>
     internal static Style CapsUnicodeRadioGlyphs()
     {
-        var style = new Style(".caps-unicode RadioButton") { Key = "Theme.CapsUnicode.RadioButton" };
+        var style = new Style("RadioButton") { Key = "Theme.CapsUnicode.RadioButton", RequiresCapabilities = StyleCapabilities.Unicode };
         style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("( )", "(●)", "(-)")));
         return style;
     }
@@ -99,9 +99,10 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorInteractiveInverse()
     {
-        var style = new Style(".caps-nocolor :is(ButtonBase), :is(ButtonBase).caps-nocolor")
+        var style = new Style(":is(ButtonBase)")
                     {
                         Key = "Theme.CapsNoColor.Inverse",
+                        RequiresCapabilities = StyleCapabilities.NoColor,
                         Children =
                         {
                             // per-axis (proposal §4.3); delivery = face forward + presenter forward
@@ -115,10 +116,8 @@ internal static class CursorialThemeStyles
 
     internal static Style CapsNoColorInputInteractiveInverse()
     {
-        var style = new Style(".caps-nocolor :is(TextBox), " +
-                              ":is(TextBox).caps-nocolor, " +
-                              ".caps-nocolor :is(ProgressBar), " +
-                              ":is(ProgressBar).caps-nocolor") { Key = "Theme.CapsNoColor.InputInverse" };
+        var style = new Style(":is(TextBox), :is(ProgressBar)")
+                    { Key = "Theme.CapsNoColor.InputInverse", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true)); // per-axis (proposal §4.3); delivery = face forward + presenter forward
         return style;
     }
@@ -132,8 +131,8 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorDisabledFaint()
     {
-        var style = new Style(".caps-nocolor :is(ButtonBase):disabled," +
-                              ":is(ButtonBase).caps-nocolor:disabled") { Key = "Theme.CapsNoColor.DisabledFaint" };
+        var style = new Style(":is(ButtonBase):disabled")
+                    { Key = "Theme.CapsNoColor.DisabledFaint", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Faint)); // the weight AXIS (proposal §1)
         return style;
     }
@@ -152,16 +151,16 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorSelectionInverse()
     {
-        var style = new Style(".caps-nocolor :is(ListBoxItem):focus, " +
-                              ".caps-nocolor :is(ComboBoxItem):selected, " +
-                              ".caps-nocolor :is(ComboBox):focus /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(ComboBox):open /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(DatePicker):focus-within /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(DatePicker):open /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(MenuItem):selected, " +
-                              ".caps-nocolor :is(MenuItem):highlighted, " +
-                              ".caps-nocolor :is(TabItem):focus")
-        { Key = "Theme.CapsNoColor.SelectionInverse" };
+        var style = new Style(":is(ListBoxItem):focus, " +
+                              ":is(ComboBoxItem):selected, " +
+                              ":is(ComboBox):focus /template/ #PART_DropDown, " +
+                              ":is(ComboBox):open /template/ #PART_DropDown, " +
+                              ":is(DatePicker):focus-within /template/ #PART_DropDown, " +
+                              ":is(DatePicker):open /template/ #PART_DropDown, " +
+                              ":is(MenuItem):selected, " +
+                              ":is(MenuItem):highlighted, " +
+                              ":is(TabItem):focus")
+        { Key = "Theme.CapsNoColor.SelectionInverse", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true));
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;
@@ -169,9 +168,10 @@ internal static class CursorialThemeStyles
 
     internal static Style CapsNoColorTreeSelectionInverse()
     {
-        var style = new Style(".caps-nocolor TreeViewItem")
+        var style = new Style("TreeViewItem")
                     {
                         Key = "Theme.CapsNoColor.TreeSelectionInverse",
+                        RequiresCapabilities = StyleCapabilities.NoColor,
                         Children =
                         {
                             new Style("^:selected").Set(TextElement.TextWeightProperty, TextWeight.Bold),
@@ -184,8 +184,8 @@ internal static class CursorialThemeStyles
     
     internal static Style CapsNoColorFocusBlink()
     {
-        var style = new Style(".caps-nocolor Slider:focus /template/ Thumb")
-        { Key = "Theme.CapsNoColor.FocusBlink" };
+        var style = new Style("Slider:focus /template/ Thumb")
+        { Key = "Theme.CapsNoColor.FocusBlink", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.BlinkProperty, true));
         return style;
     }
@@ -200,11 +200,11 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorListFocusCue()
     {
-        var style = new Style(".caps-nocolor :is(ListBoxItem):focus-visible, " +
-                              ".caps-nocolor :is(ComboBoxItem):focus-visible, " +
-                              ".caps-nocolor :is(MenuItem):focus-visible, " +
-                              ".caps-nocolor :is(TabItem):focus-visible")
-        { Key = "Theme.CapsNoColor.ListFocusCue" };
+        var style = new Style(":is(ListBoxItem):focus-visible, " +
+                              ":is(ComboBoxItem):focus-visible, " +
+                              ":is(MenuItem):focus-visible, " +
+                              ":is(TabItem):focus-visible")
+        { Key = "Theme.CapsNoColor.ListFocusCue", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true));
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;
@@ -392,12 +392,11 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderStyle()
     {
-        return new Style(".caps-nocolor :is(Border), " +
-                         ".caps-nocolor :is(Panel), " +
-                         ".caps-nocolor /template/ :is(Border), " +
-                         ".caps-nocolor /template/ :is(Panel), " +
-                         ".caps-nocolor :is(UIElement) /template/ :is(Border), " +
-                         ".caps-nocolor :is(Panel) /template/ :is(Panel)") { Key = "Theme.CapsNoColor.BorderStyle"}
+        return new Style(":is(Border), " +
+                         ":is(Panel), " +
+                         ":is(UIElement) /template/ :is(Border), " +
+                         ":is(UIElement) /template/ :is(Panel)")
+               { Key = "Theme.CapsNoColor.BorderStyle", RequiresCapabilities = StyleCapabilities.NoColor }
            .Set(Panel.OccludesProperty, true)/*
            .Set(Panel.BackgroundProperty, Brushes.Default)*/;
     }
@@ -407,13 +406,11 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsAnsi16BorderStyle()
     {
-        return new Style(".caps-ansi16 :is(Border), " +
-                         ".caps-ansi16 :is(Panel), " +
-                         ".caps-ansi16 /template/ :is(Border), " +
-                         ".caps-ansi16 /template/ :is(Panel), " +
-                         ".caps-ansi16 :is(UIElement) /template/ :is(Border), " +
-                         ".caps-ansi16 :is(Panel) /template/ :is(Panel)") 
-               { Key = "Theme.CapsNoColor.BorderStyle"}
+        return new Style(":is(Border), " +
+                         ":is(Panel), " +
+                         ":is(UIElement) /template/ :is(Border), " +
+                         ":is(UIElement) /template/ :is(Panel)")
+               { Key = "Theme.CapsAnsi16.BorderStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (was a live bug)
            .Set(Panel.OccludesProperty, true)/*
            .Set(Panel.BackgroundProperty, Brushes.Default)*/;
     }
@@ -423,7 +420,8 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderPenStyle()
     {
-        return new Style(":is(Window).caps-nocolor, :is(Popup).caps-nocolor, ContextMenu.caps-nocolor") { Key = "Theme.CapsNoColor.BorderPenStyle"}
+        return new Style(":is(Window), :is(Popup), ContextMenu")
+               { Key = "Theme.CapsNoColor.BorderPenStyle", RequiresCapabilities = StyleCapabilities.NoColor }
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
 
@@ -432,7 +430,8 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsAnsi16BorderPenStyle()
     {
-        return new Style(":is(Window).caps-ansi16, :is(Popup).caps-ansi16, ContextMenu.caps-ansi16") { Key = "Theme.CapsNoColor.BorderPenStyle"}
+        return new Style(":is(Window), :is(Popup), ContextMenu")
+               { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (was a live bug)
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
 }

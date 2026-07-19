@@ -2,9 +2,11 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;
@@ -386,6 +388,104 @@ public class DataGridDialogsTests
         Assert.Same(manager.Rows[1].Rule, amountColumn.FormatRules[0]); // it moved up in ITS column
         Assert.False(manager.UpButton.IsEffectivelyEnabled);  // now first in its column
         Assert.True(manager.DownButton.IsEffectivelyEnabled);
+
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
+    public void Color_scale_previews_step_the_stops_across_the_swatch()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // The editor's Red → Amber → Green preset colors (so the edit seed maps to a preset), plus
+        // a 2-stop scale on Region — the live-canary report: every swatch cell wore the LAST stop.
+        var red = Color.FromRgb(0xF7, 0x76, 0x8E);
+        var amber = Color.FromRgb(0xE0, 0xAF, 0x68);
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        grid.Columns[1].FormatRules.Add(new ColorScaleRule { ColumnKey = grid.Columns[1], Stops = [red, green] });
+        grid.Columns[2].FormatRules.Add(new ColorScaleRule { ColumnKey = grid.Columns[2], Stops = [red, amber, green] });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+
+        // Manager mini-previews: 2 cells per stop for 3 stops, 3 per stop for 2 — in stop order.
+        var threeStop = SwatchRuns(manager.Rows.First(r => r.Rule is ColorScaleRule { Stops.Count: 3 }).RowElement);
+        Assert.Equal(new[] { "▒▒", "▒▒", "▒▒" }, threeStop.Select(r => r.Text));
+        Assert.Equal(new[] { red, amber, green }, threeStop.Select(r => r.Color));
+        var twoStop = SwatchRuns(manager.Rows.First(r => r.Rule is ColorScaleRule { Stops.Count: 2 }).RowElement);
+        Assert.Equal(new[] { "▒▒▒", "▒▒▒" }, twoStop.Select(r => r.Text));
+        Assert.Equal(new[] { red, green }, twoStop.Select(r => r.Color));
+
+        // The editor's preview steps too.
+        manager.Select(manager.Rows.ToList().FindIndex(r => r.Rule is ColorScaleRule { Stops.Count: 3 }));
+        var edit = manager.EditSelectedAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+        var editorSwatch = Assert.IsType<StackPanel>(editor.PreviewBorder.Child);
+        Assert.Equal(new[] { red, amber, green },
+                     editorSwatch.Children.OfType<TextBlock>()
+                                 .Select(t => ((SolidColorBrush)t.Foreground!).Color));
+
+        // Leaving the scale kind restores the plain preview text block.
+        editor.SetKind(RuleEditorKind.Highlight);
+        Assert.IsType<TextBlock>(editor.PreviewBorder.Child);
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(edit.IsCompletedSuccessfully);
+
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+
+        static List<(string Text, Color Color)> SwatchRuns(Border rowElement)
+        {
+            var line = (StackPanel)rowElement.Child!;
+            var preview = (Border)line.Children[2];
+            var swatch = (StackPanel)((StackPanel)preview.Child!).Children[0];
+            return swatch.Children.OfType<TextBlock>()
+                         .Select(t => (t.Text ?? string.Empty, ((SolidColorBrush)t.Foreground!).Color))
+                         .ToList();
+        }
+    }
+
+    [Fact]
+    public void Editing_an_expression_rule_seeds_the_criteria_text()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+
+        // Author an expression rule through the editor (the SourceText carrier's write side).
+        var create = manager.NewRuleAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+        editor.SetKind(RuleEditorKind.Expression);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount owns the rule
+        editor.ExpressionBox!.Text = "[Amount] > 20000";
+        editor.Ok();
+        host.RunUntilIdle();
+        Assert.True(create.IsCompletedSuccessfully);
+        var rule = Assert.IsType<PredicateRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Equal("[Amount] > 20000", rule.SourceText);
+
+        // Re-editing seeds the criteria field (live-canary fix — it used to start empty).
+        var edit = manager.EditSelectedAsync();
+        host.RunUntilIdle();
+        var reopened = manager.ActiveRuleEditor!;
+        Assert.Equal(RuleEditorKind.Expression, reopened.Kind);
+        Assert.Equal("[Amount] > 20000", reopened.ExpressionBox!.Text);
+        reopened.Cancel();
+        host.RunUntilIdle();
+        Assert.True(edit.IsCompletedSuccessfully);
 
         manager.CloseWindow();
         host.RunUntilIdle();

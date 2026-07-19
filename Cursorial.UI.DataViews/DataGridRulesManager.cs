@@ -338,9 +338,16 @@ internal sealed class DataGridRulesManager
                 text.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.CoolBrush);
                 return host;
             case ColorScaleRule scale:
-                text.Text = "▒▒▒ scale";
-                text.Foreground = new SolidColorBrush(scale.Stops[^1]);
-                return host;
+            {
+                // The stepped swatch (shared with the editor's preview) — each stop gets its run,
+                // in order; the caption stays muted so the colors carry the meaning.
+                var line = new StackPanel { Orientation = Orientation.Horizontal };
+                line.Children.Add(DataGridDialogHelpers.ScaleSwatch(scale.Stops));
+                var caption = new TextBlock { Text = " scale" };
+                caption.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+                line.Children.Add(caption);
+                return new Border { Child = line };
+            }
             case ThresholdRule { Entries.Count: > 0 } threshold:
                 format = threshold.Entries[0].Format;
                 break;

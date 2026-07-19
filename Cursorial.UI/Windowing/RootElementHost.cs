@@ -39,7 +39,7 @@ public sealed class RootElementHost : UIElement
         if (obscured && _overlay is null)
         {
             // Hit-test transparent: modal gating is FilterMouseEvent policy, never overlay interception.
-            _overlay = new Border { IsHitTestVisible = false };
+            _overlay = new Border { IsHitTestVisible = false, IsRenderBoundary = true };
             _overlay.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
             AdoptChild(_overlay, index: -1); // adopted after the content ⇒ paints above it
             InvalidateMeasure();

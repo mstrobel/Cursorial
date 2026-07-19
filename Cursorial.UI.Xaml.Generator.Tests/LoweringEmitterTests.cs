@@ -70,6 +70,68 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
     }
 
     [Fact] // Style.When — a <Style.When>/<DataCondition> conjunction lowers to When.Add(new DataCondition{…}) and matches the loader
+    public void Lowered_StyleRequiresCapabilities_MatchesLoader()
+    {
+        // The capability gate must survive FULL lowering — a silently dropped attribute turns a
+        // tier-gated rule into an unconditional one (the occlusion-everywhere regression this pins).
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.CapsView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"CapsStyle\" Selector=\":is(Border)\" RequiresCapabilities=\"NoColor, Motion\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class CapsView : StackPanel { public CapsView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("RequiresCapabilities = global::Cursorial.UI.StyleCapabilities.NoColor | global::Cursorial.UI.StyleCapabilities.Motion", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
+        Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion, loweredStyle.RequiresCapabilities);
+    }
+
+    [Fact] // {x:Static} RequiresCapabilities lowers without evaluation: the frontend folds a const enum
+           // member (→ the typed cast), and an unfolded static bakes as a member-access REFERENCE the C#
+           // compiler resolves — reading a static field is neither parsing nor reflection.
+    public void Lowered_StyleRequiresCapabilities_XStatic_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.CapsStaticView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"CapsStyle\" Selector=\":is(Border)\" RequiresCapabilities=\"{x:Static StyleCapabilities.NoColor}\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class CapsStaticView : StackPanel { public CapsStaticView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        var todoLine = lowered.Split('\n').FirstOrDefault(l => l.Contains("TODO X5"));
+        Assert.True(todoLine is null, $"unexpected TODO: {todoLine}"); // never dropped — the reference bakes
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsStaticView")!)!;
+        var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
+        Assert.Equal(StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
+    }
+
+    [Fact]
     public void Lowered_StyleWhen_MatchesLoader()
     {
         var xaml =

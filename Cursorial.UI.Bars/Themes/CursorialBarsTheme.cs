@@ -1179,9 +1179,10 @@ internal static class CursorialBarsTheme
     /// </summary>
     internal static Style IconToggleStyle()
     {
-        return new Style(".caps-nocolor :is(BarButton), .caps-nocolor :is(BarToggleButton)", TypeResolver)
+        return new Style(":is(BarButton), :is(BarToggleButton)", TypeResolver)
                {
                    Key = "Theme.BarToggleButton.CheckedInverse",
+                   RequiresCapabilities = StyleCapabilities.NoColor,
                    Children =
                    {
                        new Style("^:checked /template/ #PART_Icon > Icon, " +
@@ -1432,8 +1433,8 @@ internal static class CursorialBarsTheme
 
     internal static Style CapsNoColorSelectionInverse()
     {
-        var style = new Style(".caps-nocolor :is(RibbonTab):focus", TypeResolver)
-                    { Key = "BarsTheme.CapsNoColor.SelectionInverse" };
+        var style = new Style(":is(RibbonTab):focus", TypeResolver)
+                    { Key = "BarsTheme.CapsNoColor.SelectionInverse", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true));
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;

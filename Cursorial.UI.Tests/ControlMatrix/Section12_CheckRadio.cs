@@ -30,10 +30,15 @@ public sealed class Section12_CheckRadio
 
     // ───────────────────────────── CheckBox (C207–C210) ─────────────────────────────
 
-    [Theory] // C207 — glyph cell + space + content; ASCII triple renders for each state
-    [InlineData(null, "[ ]")]     // unchecked
-    [InlineData(true, "[x]")]     // checked
-    [InlineData("ind", "[-]")]    // indeterminate
+    [Theory] // C207 (re-pinned, caps-mechanism review) — glyph cell + space + content, UNIFORM at any
+             // subject position: the caps-unicode opt-up is a Requires(Unicode) rule now, so a CheckBox
+             // shown AS the root renders the same glyphs as a nested one (the old ASCII expectation pinned
+             // the top-level-element gap — a root-level control could never match the .caps-* descendant
+             // rule). Unicode is unconditional today (SD14 recorded deferral); the ASCII base returns the
+             // moment a negotiated glyph capability exists.
+    [InlineData(null, "[ ]")]     // unchecked (shared by both glyph sets)
+    [InlineData(true, "[✓]")]     // checked — the caps-unicode mark
+    [InlineData("ind", "[▪]")]    // indeterminate — the caps-unicode mark
     public void C207_CheckBoxGlyphRender(object? state, string glyph)
     {
         var cb = new CheckBox { Content = "Opt", IsThreeState = true };
@@ -42,20 +47,24 @@ public sealed class Section12_CheckRadio
         using var host = Show(cb, HeadlessCapabilities.KittyTruecolor);
         var row = host.GetRowText(0);
 
-        Assert.StartsWith(glyph, row);   // the themed glyph (ASCII default, defense-free)
+        Assert.StartsWith(glyph, row);   // the themed glyph — position-independent
         Assert.Contains("Opt", row);     // glyph + space + content presenter
     }
 
-    [Fact] // C208 — ASCII glyphs render identically under an Ansi16/legacy preset
-    public void C208_CheckBoxAsciiGlyphsEverywhere()
+    [Fact] // C208 (re-pinned, caps-mechanism review) — glyphs render IDENTICALLY under an Ansi16/legacy
+           // preset and at root subject position: caps-unicode is unconditional (SD14 deferral — no
+           // negotiated glyph source), so the opt-up applies on every tier; what this pins is tier- and
+           // position-INDEPENDENCE of the glyph set, and it starts pinning real ASCII fallback the moment
+           // the deferral lifts and the legacy preset stops satisfying Requires(Unicode).
+    public void C208_CheckBoxGlyphsUniformAcrossTiers()
     {
         var cb = new CheckBox { Content = "X" };
         using var host = Show(cb, HeadlessCapabilities.Ansi16Legacy);
-        Assert.StartsWith("[ ]", host.GetRowText(0)); // ASCII, zero ambiguous-width risk
+        Assert.StartsWith("[ ]", host.GetRowText(0)); // unchecked is shared by both glyph sets
 
         cb.IsChecked = true;
         host.RunFrame();
-        Assert.StartsWith("[x]", host.GetRowText(0));
+        Assert.StartsWith("[✓]", host.GetRowText(0)); // same glyph set as truecolor — no tier drift
     }
 
     [Fact] // C209 — Space/click toggles; :checked flips
@@ -97,10 +106,13 @@ public sealed class Section12_CheckRadio
         Assert.Null(rb.GroupName);
 
         using var host = Show(rb);
-        Assert.StartsWith("( )", host.GetRowText(0)); // ASCII ( ) default
+        Assert.StartsWith("( )", host.GetRowText(0)); // unchecked is shared by both glyph sets
         rb.IsChecked = true;
         host.RunFrame();
-        Assert.StartsWith("(*)", host.GetRowText(0));
+        // Re-pinned (caps-mechanism review): the caps-unicode mark, uniform at root subject position —
+        // the old "(*)" pinned the top-level-element gap (a root-level RadioButton could never match the
+        // .caps-* descendant opt-up that every nested RadioButton got).
+        Assert.StartsWith("(●)", host.GetRowText(0));
         Assert.True(rb.HasCustomPseudoClass(":checked"));
     }
 

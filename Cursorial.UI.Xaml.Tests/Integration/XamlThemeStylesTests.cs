@@ -48,13 +48,12 @@ public sealed class XamlThemeStylesTests
 
         Assert.NotNull(dict.Styles);
         Assert.Equal(builtin.Count, dict.Styles!.Count);
-        // The caps-nocolor interactive-state rule is the 7-member selector list — assert its CONTENT, not just
-        // the branch count (a wrong selector could also have 7 branches).
-        var inverseRule = Assert.Single(dict.Styles!, s => s.Selector!.ToString() == ".caps-nocolor :is(ButtonBase), :is(ButtonBase).caps-nocolor");
-        var inverseTextRoot = inverseRule.Selector!.ToString();
+        // The nocolor interactive-state rule (re-pinned, caps-mechanism review): the .caps-* compounds and
+        // the doubled self-form leg are gone — one structural selector + RequiresCapabilities carries the
+        // gate (and the exact class-like specificity the dropped compound contributed).
+        var inverseRule = Assert.Single(dict.Styles!, s => s.Selector!.ToString() == ":is(ButtonBase)" && s.RequiresCapabilities == StyleCapabilities.NoColor);
         var inverseText1 = inverseRule.Children[0].Selector!.ToString();
         var inverseText2 = inverseRule.Children[1].Selector!.ToString();
-        Assert.Contains("caps-nocolor", inverseTextRoot);
         Assert.Contains("^:focus", inverseText1);
         Assert.Contains("^:pointerover", inverseText1);
         Assert.Contains("^:pressed", inverseText2);

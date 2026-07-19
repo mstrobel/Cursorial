@@ -441,6 +441,16 @@ public sealed class InputDispatcher : IInputDispatchTarget
             {
                 EventRouting.RaisePair(target, tunnelEvent, bubbleEvent, args);
                 handled = args.Handled;
+
+                // Step 4b — the gesture TAIL (input-routing review Q2): when the whole route left a KeyDown
+                // unhandled, the InputBindings-ONLY sweep continues along the OWNERSHIP chain past the
+                // route's end. KeyDown-only (ND9 — Up never runs tails of any kind); inside the pooled-args
+                // scope because the sweep needs the live KeyEventArgs (the args-lifetime constraint).
+                if (handled is false && isDown)
+                {
+                    SweepGestureTail(target, args);
+                    handled = args.Handled;
+                }
             }
 
             if (handled is false && PostProcessInput is {} postProcess)
@@ -593,9 +603,81 @@ public sealed class InputDispatcher : IInputDispatchTarget
     /// and opens it — at the pointer (<paramref name="position"/> null, the right-click case) or below the
     /// element (a keyboard-key offset). Returns whether a menu opened.
     /// </summary>
+    /// <summary>
+    /// The gesture TAIL (input-routing review Q2): an InputBindings-ONLY sweep continuing along the
+    /// ownership chain past the route's end — a standalone popup's placement-owner chain, then a window
+    /// root's application root — so owner / window / application chords still fire from popup-focused
+    /// content while raw key HANDLERS stay contained to the route. The tail starts at the route end's
+    /// CONTINUATION (surfaces the route never entered), so no node is ever swept twice; a chain under a
+    /// modal-BLOCKED window contributes nothing (a chord must not commandeer a blocked window). The
+    /// window→app-root leg generalizes <c>EnsureFrameworkBindings</c>' per-root reinstall (windows are
+    /// route islands); the popup leg only activates once the route stops at the Popup element — until the
+    /// route narrowing lands, <see cref="EventRoute.RouteEnd"/> walks past it and the leg is dormant.
+    /// </summary>
+    private void SweepGestureTail(UIElement target, KeyEventArgs args)
+    {
+        var end = EventRoute.RouteEnd(target);
+        var wm = _topology as WindowManager;
+
+        // Leg 1 — a route that ended at a standalone Popup element continues at its placement owner chain.
+        if (end is Popup popup && popup.EffectiveTarget is { IsAttachedToTree: true } anchor)
+        {
+            // The modal gate resolves the anchor's surface TRANSITIVELY through nested popup surfaces
+            // (popup surfaces carry no HostWindow — a nested popup's anchor sits on another popup's
+            // surface, and the walk must reach the ROOT host to learn whether it is blocked).
+            if (wm?.RootHostSurfaceForElement(anchor) is { HostWindow: { } anchorWindow } && !wm.IsInputEnabled(anchorWindow))
+                return; // the owner chain is modal-blocked — no chord delivery at all
+
+            var guard = 0;
+            for (var node = (UIElement?)anchor; node is not null && guard++ < 256; node = node.VisualParent ?? node.UIParent)
+            {
+                node.SweepInputBindings(args);
+                if (args.Handled)
+                    return;
+
+                end = node;
+            }
+        }
+
+        // Leg 2 — a chain that topped out at a WINDOW root continues at the application root.
+        if (end is Window window)
+        {
+            if (wm is not null && !wm.IsInputEnabled(window))
+                return; // focus in a modal-blocked window is anomalous; deliver nothing
+
+            // While a MODAL is up the application root is behind the gate: app-level chords must not
+            // commandeer the blocked main UI from modal focus. Framework chords (Ctrl+L redraw, the
+            // options gesture) are unaffected — EnsureFrameworkBindings installs them on every window
+            // root, the modal included, so they fire on-route.
+            if (wm is { TopmostModal: not null })
+                return;
+
+            if (UIApplication.Current?.RootElement is { IsAttachedToTree: true } appRoot && !ReferenceEquals(appRoot, end))
+            {
+                var guard = 0;
+                for (var node = (UIElement?)appRoot; node is not null && guard++ < 256; node = node.VisualParent ?? node.UIParent)
+                {
+                    node.SweepInputBindings(args);
+                    if (args.Handled)
+                        return;
+                }
+            }
+        }
+    }
+
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
-        for (var node = from; node is not null; node = node.UIParent ?? node.VisualParent)
+        // Clamped to the hit's SURFACE (input-routing review Q1): the in-surface UIParent hops are needed
+        // and correct (a template part's ContextMenu lookup jumps to its templated control), but the walk
+        // never crosses a popup seam — a right-click INSIDE a popup must not open the OWNER's menu. The
+        // seam can hide MID-CHAIN, not only at the surface root: a generated container's LOGICAL parent is
+        // its ItemsControl, which for the ListBox-in-Popup recipe (ComboBox dropdown items, submenu
+        // MenuItems) sits on the OWNER surface — so a UIParent hop is taken only while it stays on the
+        // same surface (VisualRoot), else the walk falls back to the visual leg and ends at the root.
+        for (var node = from; node is not null;
+             node = node.VisualParent is null
+                        ? null
+                        : node.UIParent is { } up && ReferenceEquals(up.VisualRoot, node.VisualRoot) ? up : node.VisualParent)
         {
             if (ContextMenu.GetMenu(node) is {} menu)
             {
@@ -665,12 +747,13 @@ public sealed class InputDispatcher : IInputDispatchTarget
 
         var hit = tree.HitTest(column, row);
 
+        // ND7 — the disabled-element fallback follows the MOUSE route's chain, and mouse routes are
+        // surface-scoped (input-routing review Q1): the walk is VisualParent-only, so a press on disabled
+        // popup content falls back within the popup's own surface (or drops) — it never seeds hover or
+        // routing across the seam into the owner (the disabled-hop variant of the 13b34bb hover bug).
         while (hit is not null && !hit.IsEffectivelyEnabled)
-            hit = hit.VisualParent ?? hit.UIParent; // ND7 — same logical hop as the route walk
+            hit = hit.VisualParent;
 
-        // TODO: ^^^ mouse events probably _shouldn't_ route outside the visual tree, but until that decision
-        //           is adversarially reviewed and put into effect, this should match the logic in EventRoute.
-        
         return hit;
     }
 

@@ -48,35 +48,35 @@ public abstract partial class UIElement : IInteractionStateSink
 
     /// <summary>The tunneling half of the mouse-button-down pair.</summary>
     public static readonly RoutedEvent<MouseButtonEventArgs> PreviewMouseDownEvent =
-        RegisterClassEvent<MouseButtonEventArgs>("PreviewMouseDown", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseDown(a));
+        RegisterClassEvent<MouseButtonEventArgs>("PreviewMouseDown", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseDown(a), surfaceScoped: true);
 
     /// <summary>The bubbling mouse-button-down event (multi-click counts ride this one — <see cref="MouseButtonEventArgs.ClickCount"/>).</summary>
     public static readonly RoutedEvent<MouseButtonEventArgs> MouseDownEvent =
-        RegisterClassEvent<MouseButtonEventArgs>("MouseDown", RoutingStrategy.Bubble, static (e, a) => e.OnMouseDown(a));
+        RegisterClassEvent<MouseButtonEventArgs>("MouseDown", RoutingStrategy.Bubble, static (e, a) => e.OnMouseDown(a), surfaceScoped: true);
 
     /// <summary>The tunneling half of the mouse-button-up pair.</summary>
     public static readonly RoutedEvent<MouseButtonEventArgs> PreviewMouseUpEvent =
-        RegisterClassEvent<MouseButtonEventArgs>("PreviewMouseUp", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseUp(a));
+        RegisterClassEvent<MouseButtonEventArgs>("PreviewMouseUp", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseUp(a), surfaceScoped: true);
 
     /// <summary>The bubbling mouse-button-up event.</summary>
     public static readonly RoutedEvent<MouseButtonEventArgs> MouseUpEvent =
-        RegisterClassEvent<MouseButtonEventArgs>("MouseUp", RoutingStrategy.Bubble, static (e, a) => e.OnMouseUp(a));
+        RegisterClassEvent<MouseButtonEventArgs>("MouseUp", RoutingStrategy.Bubble, static (e, a) => e.OnMouseUp(a), surfaceScoped: true);
 
     /// <summary>The tunneling half of the mouse-move pair (any-event motion is on by default — keep handlers cheap).</summary>
     public static readonly RoutedEvent<MouseEventArgs> PreviewMouseMoveEvent =
-        RegisterClassEvent<MouseEventArgs>("PreviewMouseMove", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseMove(a));
+        RegisterClassEvent<MouseEventArgs>("PreviewMouseMove", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseMove(a), surfaceScoped: true);
 
     /// <summary>The bubbling mouse-move event.</summary>
     public static readonly RoutedEvent<MouseEventArgs> MouseMoveEvent =
-        RegisterClassEvent<MouseEventArgs>("MouseMove", RoutingStrategy.Bubble, static (e, a) => e.OnMouseMove(a));
+        RegisterClassEvent<MouseEventArgs>("MouseMove", RoutingStrategy.Bubble, static (e, a) => e.OnMouseMove(a), surfaceScoped: true);
 
     /// <summary>The tunneling half of the mouse-wheel pair.</summary>
     public static readonly RoutedEvent<MouseWheelEventArgs> PreviewMouseWheelEvent =
-        RegisterClassEvent<MouseWheelEventArgs>("PreviewMouseWheel", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseWheel(a));
+        RegisterClassEvent<MouseWheelEventArgs>("PreviewMouseWheel", RoutingStrategy.Tunnel, static (e, a) => e.OnPreviewMouseWheel(a), surfaceScoped: true);
 
     /// <summary>The bubbling mouse-wheel event (always targets the hit element, never focus — doc §7.6).</summary>
     public static readonly RoutedEvent<MouseWheelEventArgs> MouseWheelEvent =
-        RegisterClassEvent<MouseWheelEventArgs>("MouseWheel", RoutingStrategy.Bubble, static (e, a) => e.OnMouseWheel(a));
+        RegisterClassEvent<MouseWheelEventArgs>("MouseWheel", RoutingStrategy.Bubble, static (e, a) => e.OnMouseWheel(a), surfaceScoped: true);
 
     /// <summary>The pointer entered this element's hover chain (Direct, non-bubbling — WPF semantics).</summary>
     public static readonly RoutedEvent<MouseEventArgs> MouseEnterEvent =
@@ -110,7 +110,8 @@ public abstract partial class UIElement : IInteractionStateSink
     /// </summary>
     public static readonly RoutedEvent<QueryCursorEventArgs> QueryCursorEvent =
         RegisterClassEvent<QueryCursorEventArgs>("QueryCursor", RoutingStrategy.Bubble, static (e, a) => e.OnQueryCursor(a),
-            classStageHandledEventsToo: true); // OnQueryCursor runs on ancestors even after a descendant claimed it, so ForceCursor can override
+            classStageHandledEventsToo: true,  // OnQueryCursor runs on ancestors even after a descendant claimed it, so ForceCursor can override
+            surfaceScoped: true);              // rides the (surface-scoped) hover machinery — an owner's ForceCursor never crosses a popup seam
 
     // ───────────────────────────── focus properties (doc §7.3) ─────────────────────────────
 
@@ -675,13 +676,15 @@ public abstract partial class UIElement : IInteractionStateSink
         RoutingStrategy strategy,
         Action<UIElement, TArgs> classStage,
         bool sweepsInputBindings = false,
-        bool classStageHandledEventsToo = false)
+        bool classStageHandledEventsToo = false,
+        bool surfaceScoped = false)
         where TArgs : RoutedEventArgs
     {
         var routedEvent = RoutedEvent<TArgs>.Register(name, strategy, typeof(UIElement));
         routedEvent.ClassStage = classStage;
         routedEvent.SweepsInputBindings = sweepsInputBindings;
         routedEvent.ClassStageHandledEventsToo = classStageHandledEventsToo;
+        routedEvent.SurfaceScoped = surfaceScoped;
         return routedEvent;
     }
 

@@ -803,7 +803,10 @@ public sealed class FocusManager
 
         try
         {
-            EventRouting.Raise(target, args);
+            // The focus pair bubbles along the OWNERSHIP chain — the same walk BuildFocusChain and the
+            // IsKeyboardFocusWithin gates ride — NOT the event route (review Q2 ruling 4): these are
+            // focus-state notifications, and narrowing the input-event route must never narrow them.
+            EventRouting.RaiseAlongOwnershipChain(target, args);
         }
         finally
         {

@@ -305,8 +305,13 @@ public sealed class WindowPopupTests
         Assert.Equal(PopupCloseReason.Programmatic, reason);
     }
 
-    [Fact] // a placement-target-only popup (no logical parent) routes keys to its owner via the UIParent bridge
-    public void StandalonePopup_RoutesKeysToOwner()
+    [Fact] // ROUTING-REVIEW RE-PIN: a placement-target-only popup's keys are CONTAINED — the event route
+           // continues past a surface root via the LOGICAL parent only, and the PlacementTarget leg is a
+           // hierarchy bridge, never a route (WPF's IgnoreModelParentBuildRoute shape). The owner's raw
+           // KeyDown handler does NOT see keys typed in the popup (the previous assertion pinned the leak:
+           // a DataGrid receiving keys beneath its own filter popup — WPF-impossible behavior). The owner's
+           // CHORDS still fire — via the gesture tail, pinned by OwnerChord_FiresFromPopupFocus.
+    public void StandalonePopup_KeysContained_OwnerHandlerNotDelivered()
     {
         var host = NewHost();
         using var _ = host;
@@ -322,6 +327,8 @@ public sealed class WindowPopupTests
 
         var ownerSawKey = false;
         owner.AddHandler(UIElement.KeyDownEvent, (_, _) => ownerSawKey = true);
+        var popupSawKey = false;
+        popup.AddHandler(UIElement.KeyDownEvent, (_, _) => popupSawKey = true);
 
         popup.Open();
         Assert.True(host.RunUntilIdle());
@@ -331,7 +338,244 @@ public sealed class WindowPopupTests
         host.SendKey(Key.F1); // a plain key, left unhandled — bubbles the full route
         Assert.True(host.RunUntilIdle());
 
-        Assert.True(ownerSawKey); // routed across the PlacementTarget bridge (EventRoute uses UIParent)
+        Assert.True(popupSawKey);  // the route still reaches the Popup ELEMENT (Child's logical parent — Esc etc.)
+        Assert.False(ownerSawKey); // …but never crosses the placement leg into the owner's handlers
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (hover isolation, 13b34bb): with the pointer over POPUP content, the popup's
+           // OWNER is not :pointerover — the hover chain is confined to the visual tree of the hit surface
+           // and never crosses the popup→owner seam (the DataGrid-under-context-menu bug class).
+    public void PointerOverPopupContent_OwnerNotPointerOver()
+    {
+        var (host, _, popup, target, inner) = Setup();
+        using var _ = host;
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendMouseMove(surface.Left + 1, surface.Top + 1); // inside the popup content
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(inner.IsPointerOver);   // the popup content hovers…
+        Assert.False(target.IsPointerOver); // …its owner does NOT (no seam crossing)
+        Assert.False(popup.IsPointerOver);  // nor the structural Popup element in the host tree
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (reverse-inherit asymmetry, adjudicated): while focus sits INSIDE popup
+           // content, the owner KEEPS :focuswithin — IsKeyboardFocusWithin rides the bridged focus chain
+           // (open-state gates like Menu/ComboBox depend on it) even though :pointerover deliberately does
+           // not cross the same seam. The asymmetry is a decision, not drift.
+    public void FocusInPopupContent_OwnerKeepsFocusWithin()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        // Placement-target-only (NOT in the logical tree): the focus chain crosses via the placement leg.
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(inner.IsKeyboardFocusWithin);
+        Assert.True(popup.IsKeyboardFocusWithin); // the structural Popup element gates on this
+        Assert.True(owner.IsKeyboardFocusWithin); // and the PLACEMENT owner does too (the bridged chain)
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (gesture reach): a chord bound on the popup's OWNER-side ancestor fires while
+           // focus sits in the popup — stable across the route narrowing (today via the bridged KeyDown route;
+           // post-narrowing via the gesture tail). The user-visible contract is REACH, not mechanism.
+    public void OwnerChord_FiresFromPopupFocus()
+    {
+        var host = NewHost();
+        using var _ = host;
+        var owner = new UIControls.Button { Width = 10, Height = 1, Content = "owner" };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+
+        var fired = false;
+        root.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Key.Character, KeyModifiers.Control, "K"),
+            new RelayTestCommand(() => fired = true)));
+
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var inner = new UIControls.Button { Width = 8, Height = 1, Content = "x" };
+        var popup = new Popup { Child = inner, PlacementTarget = owner };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Key.Character, KeyModifiers.Control, "K");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // the owner-side chord reached from popup-focused content
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (mouse containment): pointer events are SURFACE-SCOPED — a press, move, or
+           // wheel over popup content never routes across the seam. The owner sees no MouseDown/MouseMove;
+           // the structural Popup element sees none either (mouse routes take no seam hop at all — unlike
+           // keys, which still reach the Popup element for Esc); the popup itself stays open (an inside
+           // press is not a light dismiss). The dead-space bugs (ComboBox/DatePicker padding-press toggles)
+           // die with the crossing.
+    public void PopupMouse_ContainedToSurface_OwnerAndPopupElementSeeNothing()
+    {
+        var (host, _, popup, target, inner) = Setup();
+        using var _ = host;
+
+        var ownerSawMouse = false;
+        target.AddHandler(UIElement.MouseDownEvent, (_, _) => ownerSawMouse = true, handledEventsToo: true);
+        target.AddHandler(UIElement.MouseMoveEvent, (_, _) => ownerSawMouse = true, handledEventsToo: true);
+        var popupElementSawMouse = false;
+        popup.AddHandler(UIElement.MouseDownEvent, (_, _) => popupElementSawMouse = true, handledEventsToo: true);
+        var innerSawMouse = false;
+        inner.AddHandler(UIElement.MouseDownEvent, (_, _) => innerSawMouse = true, handledEventsToo: true);
+
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendMouseMove(surface.Left + 1, surface.Top + 1);
+        host.SendClick(surface.Left + 1, surface.Top + 1);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(innerSawMouse);        // the popup content routes normally within its surface
+        Assert.False(popupElementSawMouse); // no seam hop for mouse — not even to the Popup element
+        Assert.False(ownerSawMouse);        // and never into the owner
+        Assert.True(popup.IsOpen);          // an inside press is not a light dismiss
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (wheel containment): a wheel over popup content never scrolls an OWNER
+           // ScrollViewer beneath it — the wheel route is surface-scoped, so scrolling a dropdown at its
+           // extreme cannot leak into the page under the popup.
+    public void PopupWheel_DoesNotScrollOwnerScrollViewer()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var anchor = new UIControls.Button { Width = 10, Height = 1, Content = "anchor" };
+        var tall = new UIControls.StackPanel();
+        tall.Children.Add(anchor);
+        for (var i = 0; i < 40; i++)
+            tall.Children.Add(new UIControls.TextBlock { Text = $"row {i:000}" });
+        var sv = new UIControls.ScrollViewer { Content = tall };
+        host.ShowRoot(sv);
+        Assert.True(host.RunUntilIdle());
+
+        var popup = new Popup
+        {
+            Child = new UIControls.TextBlock { Text = "flat popup content" },
+            PlacementTarget = anchor,
+        };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        var before = sv.VerticalOffset;
+        host.Application.InputDispatcher.ProcessEvent(new Cursorial.Input.Events.MouseEvent
+        {
+            Kind = MouseEventKind.Wheel, Position = new CellPosition(surface.Left + 1, surface.Top),
+            Button = MouseButton.None, ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None,
+            WheelDeltaY = -3, Timestamp = DateTimeOffset.UnixEpoch,
+        }); // wheel INSIDE the popup
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(before, sv.VerticalOffset); // the owner ScrollViewer beneath never moved
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (right-click router clamp): a right-click INSIDE a popup does not open the
+           // OWNER's context menu — the router's lookup walk stops at the hit's surface root.
+    public void RightClickInsidePopup_DoesNotOpenOwnersContextMenu()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var owner = new UIControls.ContentControl
+        {
+            Width = 12, Height = 1, Content = "owner",
+            ContextMenu = new UIControls.ContextMenu { Items = { new UIControls.MenuItem { Header = "Nope" } } },
+        };
+        var root = new UIControls.StackPanel();
+        root.Children.Add(owner);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        var popup = new Popup
+        {
+            Child = new UIControls.TextBlock { Text = "popup content" },
+            PlacementTarget = owner,
+        };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        var surface = popup.PopupSurface!;
+
+        host.SendClick(surface.Left + 1, surface.Top, MouseButton.Right); // right-click INSIDE the popup
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(owner.ContextMenu!.IsOpen); // the owner's menu did not open across the seam
+    }
+
+    [Fact] // ROUTING-REVIEW PIN (the mid-chain seam): a generated container's LOGICAL parent is its
+           // ItemsControl on the OWNER surface (the ListBox-in-Popup recipe), so the right-click router's
+           // walk meets the seam MID-CHAIN, not at the surface root — a right-click on a ComboBox dropdown
+           // ITEM must not open the ComboBox's own ContextMenu (the UIParent hop is taken only while it
+           // stays on the same surface).
+    public void RightClickComboBoxDropdownItem_DoesNotOpenComboBoxContextMenu()
+    {
+        var host = NewHost();
+        using var _ = host;
+
+        var combo = new UIControls.ComboBox
+        {
+            Width = 14,
+            ContextMenu = new UIControls.ContextMenu { Items = { new UIControls.MenuItem { Header = "Nope" } } },
+        };
+        combo.Items.Add("alpha");
+        combo.Items.Add("beta");
+        var root = new UIControls.StackPanel();
+        root.Children.Add(combo);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        combo.IsDropDownOpen = true;
+        Assert.True(host.RunUntilIdle());
+
+        var item = host.Application.WindowManager!.Surfaces
+            .Where(sf => sf.IsPopup)
+            .SelectMany(sf => AllDescendants<UIControls.ComboBoxItem>(sf.Root))
+            .First();
+        var cell = item.TranslateToScreen(1, 0);
+
+        host.SendClick(cell.Column, cell.Row, MouseButton.Right); // right-click the dropdown ITEM
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(combo.ContextMenu!.IsOpen); // the mid-chain logical hop did not cross the seam
+    }
+
+    private static IEnumerable<T> AllDescendants<T>(UIElement root) where T : UIElement
+    {
+        if (root is T match)
+            yield return match;
+        if (root.VisualChildrenList is { } children)
+            foreach (var child in children)
+                foreach (var found in AllDescendants<T>(child))
+                    yield return found;
+    }
+
+    private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => execute();
     }
 
     [Fact] // IsAncestorOf is the composed OWNERSHIP relation (VisualParent ?? UIParent) — it spans the popup

@@ -310,4 +310,159 @@ public sealed class WindowInputTests
         Assert.True(host.RunUntilIdle());
         Assert.False(rootHost.Classes.Contains("obscured")); // the last modal closed — un-dimmed
     }
+
+    [Fact] // ROUTING-REVIEW: the gesture TAIL's window→app-root leg — an APPLICATION-root chord fires while
+           // focus sits inside a WINDOW. Windows are route islands (a window's key route never reaches the
+           // app root), so before the tail this required per-root reinstalls (EnsureFrameworkBindings); the
+           // tail generalizes that: after the route returns unhandled, the InputBindings-only sweep
+           // continues at the application root.
+    public void AppRootChord_FiresFromWindowFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var content = new UIControls.Button { Width = 6, Height = 1, Content = "in A" };
+        var a = At(host, 2, 2);
+        a.Content = content;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(content.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // the app-root chord reached from window-focused content (the tail's leg 2)
+    }
+
+    [Fact] // ROUTING-REVIEW: the tail's leg-1 → leg-2 HANDOFF — a popup anchored in WINDOW content walks the
+           // owner chain (leg 1) to the window root, then continues at the application root (leg 2): an
+           // app-root chord fires from popup-in-window focus.
+    public void AppRootChord_FiresFromPopupInWindowFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var anchor = new UIControls.Button { Width = 6, Height = 1, Content = "anchor" };
+        var a = At(host, 2, 2);
+        a.Content = anchor;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+
+        var inner = new UIControls.Button { Width = 6, Height = 1, Content = "in popup" };
+        var popup = new Popup { Child = inner, PlacementTarget = anchor };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(inner.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(fired); // leg 1 climbed anchor → window root; leg 2 delivered the app-root chord
+    }
+
+    [Fact] // ROUTING-REVIEW: the tail's leg-2 MODAL gate — app-root chords do NOT fire while a modal holds
+           // focus (modality: an app-level chord must not commandeer the blocked main UI). Framework chords
+           // are unaffected: EnsureFrameworkBindings installs them on the modal's own root, on-route.
+    public void AppRootChord_DoesNotFireFromModalFocus()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+
+        var appRoot = new UIControls.StackPanel();
+        var fired = false;
+        appRoot.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J"),
+            new RelayTestCommand(() => fired = true)));
+        host.ShowRoot(appRoot);
+        Assert.True(host.RunUntilIdle());
+
+        var content = new UIControls.Button { Width = 6, Height = 1, Content = "in modal" };
+        var dialog = At(host, 30, 4);
+        dialog.Content = content;
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(content.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "J");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(fired); // the modal gate held: app chords stay out of modal sessions
+    }
+
+    [Fact] // ROUTING-REVIEW × MODAL-INTEGRITY: a modal push CLOSES popups anchored in the window it
+           // blocks — StaysOpen included (modality outranks StaysOpen) — so the gesture tail's leg-1
+           // "anchor window blocked" gate is unconstructible in normal topology and remains defense-in-
+           // depth. Pinned here: the nested StaysOpen chain closes with the push, and the blocked window's
+           // chord does not fire from post-push focus.
+    public void ModalPush_ClosesStaysOpenPopupChain_BlockedWindowChordDoesNotFire()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
+        using var hostScope = host;
+        host.ShowRoot(new UIControls.StackPanel());
+        Assert.True(host.RunUntilIdle());
+
+        var anchor = new UIControls.Button { Width = 6, Height = 1, Content = "anchor" };
+        var a = At(host, 2, 2);
+        a.Content = anchor;
+        a.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+
+        var fired = false;
+        a.InputBindings.Add(new Cursorial.UI.Input.KeyBinding(
+            new Cursorial.UI.Input.KeyGesture(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "K"),
+            new RelayTestCommand(() => fired = true)));
+
+        // Nested StaysOpen popups: outer anchored in the window, inner anchored in the OUTER's content.
+        var innerAnchor = new UIControls.Button { Width = 6, Height = 1, Content = "sub" };
+        var outer = new Popup { Child = innerAnchor, PlacementTarget = anchor, StaysOpen = true };
+        var innerButton = new UIControls.Button { Width = 6, Height = 1, Content = "x" };
+        var inner = new Popup { Child = innerButton, PlacementTarget = innerAnchor, StaysOpen = true };
+        outer.Open();
+        Assert.True(host.RunUntilIdle());
+        inner.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.True(innerButton.Focus());
+        Assert.True(host.RunUntilIdle());
+
+        // The modal has CONTENT so activation pulls focus into it deterministically.
+        var dialog = At(host, 30, 10);
+        dialog.Content = new UIControls.Button { Width = 6, Height = 1, Content = "modal" };
+        _ = dialog.ShowDialogAsync();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(host.Application.WindowManager!.IsInputEnabled(a));
+        Assert.False(outer.IsOpen); // the push closed the chain, StaysOpen notwithstanding
+        Assert.False(inner.IsOpen);
+
+        host.SendKey(Cursorial.Input.Key.Character, Cursorial.Input.KeyModifiers.Control, "K");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(fired); // the blocked window's chord is unreachable from modal focus
+    }
+
+    private sealed class RelayTestCommand(Action execute) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => execute();
+    }
 }

@@ -886,6 +886,22 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         {
             _blocked.Add(window);
             window.Classes.Add("obscured"); // Fork B composite-dim recipe (Window.obscured { Opacity: 0.7 })
+
+            // Popups anchored (transitively — a nested popup resolves through its outer popup's anchor) in a
+            // window that just became modal-blocked close with it: left open, a context menu / filter popup
+            // stays fully interactive while its owner cannot be — and its keys and bubbled events keep
+            // reaching the BLOCKED owner's handlers through the popup→owner bridge, a modal-bypass hole.
+            // PopupCloseReason.HostBlocked was declared with the enum; this is its first producer. Reverse
+            // iteration with a live-count guard: CloseCore cascades can shrink the list by more than one.
+            if (window.HostSurface is { } hostSurface)
+            {
+                for (var i = _popups.Count - 1; i >= 0; i--)
+                {
+                    if (i < _popups.Count && ReferenceEquals(RootHostSurfaceOfPopup(_popups[i]), hostSurface))
+                        _popups[i].CloseCore(PopupCloseReason.HostBlocked);
+                }
+            }
+
             WindowBlocked?.Invoke(window);        // S3 releases capture held inside (wired at W3)
         }
         else
@@ -893,6 +909,19 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             _blocked.Remove(window);
             window.Classes.Remove("obscured");
         }
+    }
+
+    /// <summary>The non-popup surface a popup's anchor chain ultimately lives on — a nested popup's anchor
+    /// sits on another popup's surface, so the walk continues through each hosting popup's own anchor until a
+    /// window/root surface (or null when a link is unresolvable; the depth guard breaks pathological cycles).</summary>
+    private TopLevelSurface? RootHostSurfaceOfPopup(Popup popup)
+    {
+        var surface = popup.EffectiveTarget is { } anchor ? SurfaceForElement(anchor) : null;
+
+        for (var guard = 0; surface is { IsPopup: true } && guard < 32; guard++)
+            surface = PopupForSurface(surface) is { EffectiveTarget: { } outer } ? SurfaceForElement(outer) : null;
+
+        return surface;
     }
 
     private Window? ResolveHandoff(Window closed)

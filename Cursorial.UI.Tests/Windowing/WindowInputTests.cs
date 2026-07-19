@@ -131,4 +131,78 @@ public sealed class WindowInputTests
 
         Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
     }
+
+    [Fact] // a modal blocking a window closes the popups anchored in it — including NESTED popups, whose
+           // anchors resolve transitively through their outer popup's anchor chain. Left open, a context
+           // menu / filter popup stays fully interactive while its blocked owner cannot be, and its events
+           // keep reaching the blocked owner's handlers through the popup→owner bridge (a modal-bypass
+           // hole). PopupCloseReason.HostBlocked gets its first producer here.
+    public void ModalBlock_ClosesPopupsAnchoredInBlockedWindow_IncludingNested()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var anchorButton = new UIControls.Button { Width = 6, Height = 1, Content = "menu" };
+        var a = At(host, 2, 2);
+        a.Content = anchorButton;
+        a.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        // Outer popup anchored in A; inner popup anchored in the OUTER's content (the submenu shape).
+        var innerAnchor = new UIControls.Button { Width = 6, Height = 1, Content = "sub" };
+        var outerContent = new UIControls.StackPanel { Children = { innerAnchor } };
+        var outer = new Popup { Child = outerContent, PlacementTarget = anchorButton };
+        var inner = new Popup { Child = new UIControls.Button { Width = 6, Height = 1, Content = "x" }, PlacementTarget = innerAnchor };
+
+        PopupCloseReason? outerReason = null, innerReason = null;
+        outer.Closed += (_, e) => outerReason = e.Reason;
+        inner.Closed += (_, e) => innerReason = e.Reason;
+
+        outer.Open();
+        Assert.True(host.RunUntilIdle());
+        inner.Open();
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(2, wm.Popups.Count);
+
+        var dialog = At(host, 30, 2);
+        _ = dialog.ShowDialogAsync(); // blocks A (the modal owns nothing) → A's popup chain closes
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(outer.IsOpen);
+        Assert.False(inner.IsOpen);
+        Assert.Empty(wm.Popups);
+        Assert.Equal(PopupCloseReason.HostBlocked, outerReason);
+        Assert.NotNull(innerReason); // closed with the chain (HostBlocked directly, or the outer's cascade)
+    }
+
+    [Fact] // the migration-review pin: capture held INSIDE a popup anchored in a window that becomes
+           // modal-blocked is released (mid-gesture modal over a filter-popup drag). The popup closes on the
+           // block (HostBlocked) and the surface-close path force-releases the capture — pinned here so a
+           // future narrowing of capture/ancestry walks cannot regress it silently.
+    public void ModalBlock_ReleasesCaptureHeldInPopupOfBlockedWindow()
+    {
+        var (host, wm) = ShownRoot();
+        using var hostScope = host;
+
+        var anchorButton = new UIControls.Button { Width = 6, Height = 1, Content = "menu" };
+        var a = At(host, 2, 2);
+        a.Content = anchorButton;
+        a.Show(wm);
+        Assert.True(host.RunUntilIdle());
+
+        var thumb = new UIControls.Button { Width = 6, Height = 1, Content = "drag" };
+        var popup = new Popup { Child = thumb, PlacementTarget = anchorButton };
+        popup.Open();
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(thumb.CaptureMouse()); // a mid-gesture drag inside the popup
+        Assert.Same(thumb, host.Application.InputDispatcher.MouseCaptureTarget);
+
+        var dialog = At(host, 30, 2);
+        _ = dialog.ShowDialogAsync(); // blocks A → the popup closes → its surface's capture releases
+        Assert.True(host.RunUntilIdle());
+
+        Assert.False(popup.IsOpen);
+        Assert.Null(host.Application.InputDispatcher.MouseCaptureTarget);
+    }
 }

@@ -29,7 +29,11 @@ public sealed class WindowManagerTests
         var wm = host.Application.WindowManager!;
         var surface = Assert.Single(wm.Surfaces);
         Assert.Same(surface, wm.RootSurface);
-        Assert.Same(root, surface.Root);
+        // The WM hosts the assigned root inside a framework RootElementHost (the modal-blocked look's
+        // carrier, W4-c); the public API keeps reflecting the assigned element.
+        var rootHost = Assert.IsType<RootElementHost>(surface.Root);
+        Assert.Same(root, rootHost.Content);
+        Assert.Same(root, host.Application.RootElement);
         Assert.Null(surface.HostWindow);                  // the chrome-less application root (also the inline case)
         Assert.Same(surface.RenderTree, wm.Tree);         // the W0-compat single-tree accessor
         Assert.Equal(new Size(40, 12), surface.Size);     // fills the viewport

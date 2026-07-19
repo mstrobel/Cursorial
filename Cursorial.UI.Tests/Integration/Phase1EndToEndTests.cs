@@ -207,10 +207,13 @@ public sealed class Phase1EndToEndTests
         Assert.Equal("Z", host.GetCell(6, 1).Grapheme);
 
         var tree = host.Application.WindowManager!.Tree!;
+        // The ROOT ZONE's scene belongs to the tree root — the RootElementHost the WM wraps the shown
+        // element in — so the frozen-root-scene pins read it there.
+        var surfaceRoot = host.Application.WindowManager!.RootSurface!.Root;
         var probeScene = tree.GetScene(probe);
         Assert.NotNull(probeScene);
         var probeVersion = probeScene.RasterVersion;
-        var rootVersion = tree.GetScene(root)!.RasterVersion;
+        var rootVersion = tree.GetScene(surfaceRoot)!.RasterVersion;
         var probeRenders = probe.RenderCount;
         var rootRenders = root.RenderCount;
 
@@ -229,7 +232,7 @@ public sealed class Phase1EndToEndTests
         Assert.Equal(rootRenders, root.RenderCount);
         Assert.Same(probeScene, tree.GetScene(probe));
         Assert.Equal(probeVersion, tree.GetScene(probe)!.RasterVersion);
-        Assert.Equal(rootVersion, tree.GetScene(root)!.RasterVersion);
+        Assert.Equal(rootVersion, tree.GetScene(surfaceRoot)!.RasterVersion);
     }
 
     // ───────────────────────────── (b′) same-size content change re-rasters (lane independence) ─────────────────────────────
@@ -273,7 +276,8 @@ public sealed class Phase1EndToEndTests
         Assert.Equal("t", host.GetCell(4, 0).Grapheme);
 
         var tree = host.Application.WindowManager!.Tree!;
-        var rootScene = tree.GetScene(root)!;
+        var surfaceRoot = host.Application.WindowManager!.RootSurface!.Root; // the RootElementHost owns the root zone
+        var rootScene = tree.GetScene(surfaceRoot)!;
         var bounds = label.Bounds;
         var rootVersion = rootScene.RasterVersion;
 
@@ -283,7 +287,7 @@ public sealed class Phase1EndToEndTests
         // The bounds genuinely did not move (so the size-change re-raster path was NOT what saved us)…
         Assert.Equal(bounds, label.Bounds);
         // …yet the zone re-rastered and the cells now show the new text.
-        Assert.Equal(rootVersion + 1, tree.GetScene(root)!.RasterVersion);
+        Assert.Equal(rootVersion + 1, tree.GetScene(surfaceRoot)!.RasterVersion);
         Assert.Equal("t", host.GetCell(0, 0).Grapheme);
         Assert.Equal("h", host.GetCell(1, 0).Grapheme);
         Assert.Equal("d", host.GetCell(4, 0).Grapheme);
@@ -318,11 +322,12 @@ public sealed class Phase1EndToEndTests
         Assert.True(host.RunUntilIdle());
 
         var tree = host.Application.WindowManager!.Tree!;
+        var surfaceRoot = host.Application.WindowManager!.RootSurface!.Root; // the RootElementHost owns the root zone
         var bandScene = tree.GetScene(presenter);
         Assert.NotNull(bandScene);
         Assert.Equal(30, bandScene.Rows); // band-sized, never extent-sized (LD13)
         var bandVersion = bandScene.RasterVersion;
-        var rootVersion = tree.GetScene(root)!.RasterVersion;
+        var rootVersion = tree.GetScene(surfaceRoot)!.RasterVersion;
         var renderSum = probes.Sum(p => p.RenderCount);
 
         // Offsets 1…10: pure composite slides — bytes flow, nothing re-rasters.
@@ -333,7 +338,7 @@ public sealed class Phase1EndToEndTests
 
             Assert.True(host.LastFrameBytes.Length > 0); // the slide reached the wire
             Assert.Equal(bandVersion, bandScene.RasterVersion);
-            Assert.Equal(rootVersion, tree.GetScene(root)!.RasterVersion);
+            Assert.Equal(rootVersion, tree.GetScene(surfaceRoot)!.RasterVersion);
             Assert.Equal(renderSum, probes.Sum(p => p.RenderCount));
             Assert.Equal(0, presenter.BandStartRow);
             for (var row = 0; row < 10; row++)
@@ -349,7 +354,7 @@ public sealed class Phase1EndToEndTests
         Assert.Equal(1, presenter.BandStartRow);
         Assert.Same(bandScene, tree.GetScene(presenter)); // band length unchanged — scene reused
         Assert.Equal(bandVersion + 1, bandScene.RasterVersion);
-        Assert.Equal(rootVersion, tree.GetScene(root)!.RasterVersion);
+        Assert.Equal(rootVersion, tree.GetScene(surfaceRoot)!.RasterVersion);
         Assert.All(probes, p => Assert.Equal(renderSum / probes.Length + 1, p.RenderCount));
         for (var row = 0; row < 10; row++)
             Assert.Equal(((row + 11) % 10).ToString(), host.GetCell(0, row).Grapheme);

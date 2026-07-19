@@ -535,7 +535,7 @@ public sealed class Phase5EndToEndTests
         var tree = host.Application.WindowManager!.Tree!;
         var checkScene = tree.GetScene(check)!;
         var siblingScene = tree.GetScene(sibling)!;
-        var rootScene = tree.GetScene(root)!;
+        var rootScene = tree.GetScene(host.Application.WindowManager!.RootSurface!.Root)!; // the RootElementHost owns the root zone
         var checkVersion = checkScene.RasterVersion;
         var siblingVersion = siblingScene.RasterVersion;
         var rootVersion = rootScene.RasterVersion;

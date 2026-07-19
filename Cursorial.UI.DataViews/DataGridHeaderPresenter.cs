@@ -106,7 +106,8 @@ public sealed class DataGridHeaderPresenter : UIElement
         // (pointer below the band) there is no slot: the ▾/ghost drop out, signalling release=hide.
         bool dragging = _gesture == HeaderGesture.Reordering && _gestureEntry >= 0 && _gestureEntry < entries.Count;
         bool hideZone = dragging && _dragLocal.Row > HideZoneRows;
-        bool slotLive = dragging && !hideZone && DropSlot >= 0 &&
+        bool groupZone = dragging && InGroupZone(_dragLocal, entries[_gestureEntry].Column);
+        bool slotLive = dragging && !hideZone && !groupZone && DropSlot >= 0 &&
                         DropSlot != _gestureEntry && DropSlot != _gestureEntry + 1; // beside-itself = no-op slot
         int ghostIndex = slotLive && DropSlot < entries.Count ? DropSlot : -1;
 
@@ -140,13 +141,17 @@ public sealed class DataGridHeaderPresenter : UIElement
 
             // The floating chip follows the pointer, clamped into the 1-row band (the terminal has
             // no out-of-band overlay to float it in). Muted ink in the hide zone — the visual cue
-            // that release now hides instead of dropping.
-            string chip = "▣ " + entries[_gestureEntry].Column.EffectiveHeader;
+            // that release now hides instead of dropping; the accent ink + "▸ group" suffix in the
+            // GROUP zone (over the panel above) — release adds the grouping level the panel's own
+            // prompt advertises.
+            string chip = "▣ " + entries[_gestureEntry].Column.EffectiveHeader + (groupZone ? " ▸ group" : string.Empty);
             int chipWidth = GraphemeWidth.StringWidth(chip);
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
             if (HoverBackground is not null)
                 context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
-            context.DrawText(chipX, 0, chip, hideZone ? FilterGlyphBrush : Foreground);
+            context.DrawText(chipX, 0, chip,
+                             groupZone ? SortGlyphBrush ?? Foreground
+                                       : hideZone ? FilterGlyphBrush : Foreground);
         }
     }
 
@@ -268,6 +273,17 @@ public sealed class DataGridHeaderPresenter : UIElement
 
     /// <summary>Movement (cells, either axis) that promotes a pending press into a reorder drag.</summary>
     private const int DragThreshold = 2;
+
+    /// <summary>
+    /// Whether a drag position sits in the GROUP zone: above the band while the group panel is
+    /// shown, with a groupable-and-not-yet-grouped drag column (the cue must never promise a
+    /// no-op). Release adds the grouping level; the panel band sits directly above, and the header
+    /// holds capture, so its coordinates simply go negative.
+    /// </summary>
+    private bool InGroupZone(CellPosition local, DataGridColumn column)
+        => local.Row < 0 && _owner is { ShowGroupPanel: true } owner &&
+           column.AllowGroup &&
+           !owner.GroupDescriptions.Any(g => ReferenceEquals(g.ColumnKey, column));
 
     /// <summary>The right CellPadding cell of the entry's span — the resize grab zone.</summary>
     private bool OnResizeEdge(DataGridColumnLayout layout, int index, int localX)
@@ -450,6 +466,13 @@ public sealed class DataGridHeaderPresenter : UIElement
                     _owner.AppendSort(column);
                 else
                     _owner.CycleSort(column);
+                break;
+
+            case HeaderGesture.Reordering when InGroupZone(local, column):
+                // Dropped on the group panel above: add the column as a grouping level — the
+                // gesture the panel's empty prompt advertises (live-canary find: it promised the
+                // drop but nothing handled a release above the band).
+                _owner.GroupBy(column);
                 break;
 
             case HeaderGesture.Reordering when local.Row > HideZoneRows:

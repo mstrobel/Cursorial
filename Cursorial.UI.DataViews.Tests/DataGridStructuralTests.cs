@@ -546,6 +546,62 @@ public class DataGridStructuralTests
         Assert.Empty(grid.SummaryDescriptions);
     }
 
+    [Fact]
+    public void Header_drag_onto_the_group_panel_adds_a_grouping_level()
+    {
+        var (host, grid, _) = Show(columns: 60); // wide enough for the panel's empty prompt
+        using var _ = host;
+
+        grid.ShowGroupPanel = true;
+        host.RunUntilIdle();
+        // Screen bands: group panel row 0, header row 1, data from row 2.
+        Assert.Contains("drag a column header here", Row(host, 0));
+
+        // Press the Region header, move 2 cells (promotes the pending press to a reorder drag),
+        // then up onto the panel band and release — the drop the panel's prompt advertises.
+        void Send(MouseEventKind kind, int x, int y) => host.SendInput(new MouseEvent
+        {
+            Kind = kind,
+            Position = new CellPosition(x, y),
+            Button = MouseButton.Left,
+            ButtonsHeld = kind == MouseEventKind.ButtonUp ? MouseButtons.None : MouseButtons.Left,
+            Modifiers = KeyModifiers.None,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.SendMouseMove(12, 1);
+        Send(MouseEventKind.ButtonDown, 12, 1);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, 1);
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter is not null); // the drag is live header-side
+        Send(MouseEventKind.Move, 14, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.ButtonUp, 14, 0);
+        host.RunUntilIdle();
+
+        var level = Assert.Single(grid.GroupDescriptions);
+        Assert.Same(grid.Columns[1], level.ColumnKey);
+        Assert.True(grid.Columns[1].Visible);            // never the hide path
+        Assert.Empty(grid.SortDescriptions);             // and never the click-sort path
+        Assert.Contains("▲ Region ✕", Row(host, 0));     // the chip renders on the panel
+
+        // With the panel HIDDEN there is no group zone: the same upward drop falls back to the
+        // reorder path and grouping stays untouched.
+        grid.GroupDescriptions.Clear();
+        grid.ShowGroupPanel = false;
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 0);
+        Send(MouseEventKind.ButtonDown, 12, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, 0);
+        host.RunUntilIdle();
+        Send(MouseEventKind.Move, 14, -1);
+        host.RunUntilIdle();
+        Send(MouseEventKind.ButtonUp, 14, -1);
+        host.RunUntilIdle();
+        Assert.Empty(grid.GroupDescriptions);
+    }
+
     // ── The wave-2 audit regressions (W2-N = the confirmed finding index) ────────────────────────
 
     [Fact]

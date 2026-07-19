@@ -202,6 +202,7 @@ public sealed class DataGridAutoFilterRow : UIElement
 
     private Controls.TextBox? _editor;
     private int _editColumnIndex = -1;
+    private bool _editTextTouched;
 
     /// <summary>Whether the roving editor is hosted (tests + the grid's key routing).</summary>
     internal bool IsEditing => _editor is not null;
@@ -217,7 +218,12 @@ public sealed class DataGridAutoFilterRow : UIElement
             ? layout.Entries[_editColumnIndex]
             : null;
 
-    /// <summary>Hosts the editor at a Text-kind filter cell, seeded with the active condition text.</summary>
+    /// <summary>
+    /// Hosts the editor at a Text-kind filter cell, seeded with the active condition text when the
+    /// stored fragment is a grammar <see cref="FilterConditionNode"/> (any other fragment — a
+    /// checklist InSet, a predicate — stores a display digest, not grammar text, and seeds empty).
+    /// Scrolls the cell clear of the frozen region first (§9.2 — the hosted-children policy).
+    /// </summary>
     internal void BeginEdit(int columnIndex)
     {
         var owner = _owner;
@@ -227,8 +233,24 @@ public sealed class DataGridAutoFilterRow : UIElement
 
         EndEdit();
 
+        // §9.2 (the hosted-children policy): the mouse path must land the editor clear of the
+        // frozen region, exactly like the keyboard path (EnterBand/Left/Right) and the rows
+        // editor (DataGrid.BeginEdit) already do. Scrolled BEFORE hosting so the offset tick's
+        // own commit policy never sees a half-hosted editor.
+        owner.ScrollColumnIntoView(columnIndex);
+
         var column = layout.Entries[columnIndex].Column;
-        var editor = new Controls.TextBox { Text = owner.GetColumnFilterSummary(column) ?? string.Empty };
+        // Seed only text that round-trips the operator grammar: a Condition fragment's summary IS
+        // its typed condition text, but a checklist InSet (or any other node) stores a display
+        // digest like "(2)" — re-committing that as Contains("(2)") would destroy the filter.
+        string seed = owner.GetColumnFilter(column) is FilterConditionNode
+            ? owner.GetColumnFilterSummary(column) ?? string.Empty
+            : string.Empty;
+        var editor = new Controls.TextBox { Text = seed };
+        // Untouched-commit tracking: only actually-typed text writes (CommitEdit's dismiss
+        // contract below). Subscribed after the seed is set, so the seed itself never trips it.
+        _editTextTouched = false;
+        editor.TextChanged += (_, _) => _editTextTouched = true;
         // Pin the editor to its cell slot (the rows presenter's idiom): the TextBox theme's own
         // MinWidth would inflate DesiredSize past a narrow filter cell and arrange grows to
         // desired — the editor would paint over the neighboring cells. Min beats Max (LD1), so
@@ -319,6 +341,10 @@ public sealed class DataGridAutoFilterRow : UIElement
     /// <summary>
     /// Parses + validates + writes the editor's condition; false (editor stays open) when the
     /// literal doesn't convert to the column's key type. Empty text clears the column's fragment.
+    /// Exception: when the STORED fragment is non-grammar (a checklist InSet, a predicate — its
+    /// summary is a display digest, so <see cref="BeginEdit"/> seeded empty), an UNTOUCHED commit
+    /// is a pure dismiss — close, keep the fragment — so Enter on a checklist-filtered cell never
+    /// silently clears the checklist filter; only actually-typed text replaces or clears it.
     /// </summary>
     internal bool CommitEdit()
     {
@@ -327,6 +353,17 @@ public sealed class DataGridAutoFilterRow : UIElement
             return false;
 
         var column = entry.Column;
+        if (!_editTextTouched && owner.GetColumnFilter(column) is not (null or FilterConditionNode))
+        {
+            // The untouched-dismiss lane (finding [13]): the seed was empty because the fragment
+            // doesn't round-trip the grammar — the empty-commit-clears contract below must not
+            // fire from a seed the user never typed. A deliberate wipe DID change the text, so a
+            // real clear still works; a grammar Condition (or no filter) keeps the classic
+            // contract, its own condition text having been the seed.
+            EndEdit();
+            return true;
+        }
+
         string text = _editor.Text.Trim();
         if (text.Length == 0)
         {

@@ -1334,16 +1334,42 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var position = e.GetPosition(this);
+
+        // Sweep [19]: the drawn ▲▼ spin steppers are CLICKABLE (the mockup's spinbtns — an
+        // affordance inside the edit cell that users WILL press): ▲ steps +1, ▼ −1, Shift ×10;
+        // focus stays with the editor (the press must never strand the session).
+        if (e.Button == MouseButton.Left && _editor is not null && _editorKind == DataGridEditorKind.Spin &&
+            _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
+        {
+            var editEntry = ColumnLayout.Entries[_editColumnIndex];
+            if (editEntry.Width >= 6 && position.Row == ContentYOf(_editViewIndex))
+            {
+                int zoneStart = DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding + editEntry.Width - 2;
+                if (position.Column == zoneStart || position.Column == zoneStart + 1)
+                {
+                    SpinBy((position.Column == zoneStart ? 1m : -1m) *
+                           ((e.Modifiers & KeyModifiers.Shift) != 0 ? 10m : 1m));
+                    _editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
         var (viewIndex, columnIndex, onExpander) = HitCell(position.Column, position.Row);
 
         // Right-press opens the grid command menu at the pressed cell (the reachability surface:
         // sort/group lanes, the filter dialogs, formatting, summaries, copy). Focus follows the
-        // press like a left-click so the menu's column lanes match what the user sees focused.
+        // press like a left-click — INCLUDING group rows (row focus) and the new-row placeholder
+        // (past-the-end focus) — so the menu's column lanes match what the user sees focused
+        // (sweep [7]/[8]). No position: the menu lands at the POINTER cell (sweep [6] — an
+        // explicit position means bottom-edge placement, which pinned the menu to the screen
+        // bottom regardless of the press row).
         if (e.Button == MouseButton.Right)
         {
-            if (viewIndex >= 0 && columnIndex >= 0)
-                _owner.SetFocusCell(viewIndex, columnIndex);
-            _owner.OpenGridContextMenu(columnIndex, position);
+            if (viewIndex >= 0)
+                _owner.SetContextPressFocus(viewIndex, columnIndex);
+            _owner.OpenGridContextMenu(columnIndex);
             e.Handled = true;
             return;
         }

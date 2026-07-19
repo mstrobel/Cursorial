@@ -25,6 +25,7 @@ internal sealed class DataGridFilterPopup
     private DataGridColumn? _column;
     private readonly List<(object? Raw, string Display, CheckBox Check)> _rows = [];
     private CheckBox? _selectAll;
+    private bool? _selectAllState; // the RECORDED tri-state truth (SyncSelectAllState writes it)
     private TextBox? _search;
     private bool _syncingChecks;
 
@@ -204,9 +205,12 @@ internal sealed class DataGridFilterPopup
         if (_selectAll is null)
             return;
 
-        // The master row's click lands after ToggleButton's own cycle: true = check all,
-        // false/indeterminate = uncheck all.
-        bool target = _selectAll.IsChecked == true;
+        // The target derives from the RECORDED pre-toggle tri-state (ToggleButton's own cycle
+        // already ran null→false before Click reaches us, so the live IsChecked can't tell
+        // partial from none): partial (null) and none (false) both CHECK ALL — the
+        // Excel/DevExpress/Explorer checklist convention — and only a fully-checked master
+        // unchecks. The trailing sync stamps the master over the cycle's landing value.
+        bool target = _selectAllState != true;
         _syncingChecks = true;
         try
         {
@@ -217,10 +221,14 @@ internal sealed class DataGridFilterPopup
         {
             _syncingChecks = false;
         }
-        SyncSelectAllState();
+        SyncSelectAllState(); // recomputes over the settled rows ⇒ records + stamps `target`
     }
 
-    /// <summary>The tri-state master mark: all ⇒ ✓, none ⇒ empty, partial ⇒ indeterminate (▪).</summary>
+    /// <summary>
+    /// The tri-state master mark: all ⇒ ✓, none ⇒ empty, partial ⇒ indeterminate (▪). Records the
+    /// computed state in <see cref="_selectAllState"/> — the pre-toggle truth
+    /// <see cref="OnSelectAllClicked"/> reads — then stamps the CheckBox.
+    /// </summary>
     private void SyncSelectAllState()
     {
         if (_syncingChecks || _selectAll is null)
@@ -233,9 +241,10 @@ internal sealed class DataGridFilterPopup
                 selected++;
         }
 
-        _selectAll.IsChecked = selected == _rows.Count ? true
+        _selectAllState = selected == _rows.Count ? true
             : selected == 0 ? false
             : null;
+        _selectAll.IsChecked = _selectAllState;
     }
 
     /// <summary>OK: writes the InSet fragment (all-checked ⇒ clears) and closes.</summary>

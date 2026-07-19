@@ -87,7 +87,9 @@ public sealed class DataGridEditBar : UIElement
         x = Draw(context, x, "Esc", KeyBrush);
         x = Draw(context, x, " cancel · ", TextBrush);
         x = Draw(context, x, "Tab", KeyBrush);
-        Draw(context, x, " next cell", TextBrush);
+        // The new-row session is one-cell-at-a-time (§3.2): Tab COMMITS the pending row there —
+        // the hint says what the key does (sweep [20]; a hint must never advertise the wrong verb).
+        Draw(context, x, owner.IsNewRowSession ? " commit row" : " next cell", TextBrush);
     }
 
     /// <summary>Draws one segment and returns the advanced x (clipped by the band's own boundary).</summary>

@@ -125,6 +125,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private static readonly double[] NoFractions = [];
     private static readonly CellRun[] NoCells = [];
 
+    // Format-background fills reuse one brush per color (the rule palette is tiny; the paint path
+    // re-inks per hover move and must not allocate per cell).
+    private readonly Dictionary<Color, Cursorial.Drawing.Media.SolidColorBrush> _formatBrushes = [];
+
+    private Cursorial.Drawing.Media.IBrush BrushFor(Color color)
+    {
+        if (!_formatBrushes.TryGetValue(color, out var brush))
+            _formatBrushes[color] = brush = new Cursorial.Drawing.Media.SolidColorBrush(color);
+        return brush;
+    }
+
     /// <summary>A cached cell's text, sliced from the pooled buffer (§9.6).</summary>
     private ReadOnlySpan<char> CellText(in CachedRow row, int c)
     {
@@ -716,8 +727,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // §9.2 paint order: scrolling cells first (shifted — a straddler slides UNDER the
             // frozen boundary), then the frozen region (gutter + fixed columns) re-fills its
             // background and draws its content on top (overpaint instead of a clip stack).
+            bool rowSelected = selection is not null && selection.IsSelected(row.RowId);
             for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
-                DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
 
             if (frozenWidth > 0)
             {
@@ -725,7 +737,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 if (erase is not null && HOffset > 0)
                     context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
-                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn);
+                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
             }
 
             // The §9.3 expander gutter glyph (a data row's ▶/▼ — group rows keep their own ▸/▾).
@@ -759,7 +771,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// <paramref name="view"/> is the view-row index (focus compares), <paramref name="y"/> its
     /// content-y draw row (§9.3).
     /// </summary>
-    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn)
+    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn,
+                              bool rowSelected)
     {
         if (!IsEntryVisible(c))
             return;
@@ -772,6 +785,16 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (_renderCellRange is { } range && view >= range.FirstRow && view <= range.LastRow &&
             c >= range.FirstColumn && c <= range.LastColumn && SelectionBackground is not null)
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+
+        // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill). A
+        // format BACKGROUND is a WHOLE-CELL fill (live-canary fix: the glyph layer's DrawText
+        // overwrites the base style's background with its transparent default, so a style-carried
+        // background never rendered — and cell-wide is the DevExpress look anyway; it also covers
+        // empty cells). A selected row's tint outranks it (the selection must stay legible).
+        var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
+        if (format.Background is { } formatBackground && !rowSelected)
+            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                               BrushFor(formatBackground));
 
         // The focus cell's well-fill (the mockup's focuscell).
         if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
@@ -790,8 +813,6 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             ? cellX + entry.Width - textWidth
             : cellX;
 
-        // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill).
-        var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
         DrawFormattedCell(context, drawX, y, text, entry.Width, format);
 
         if (hasBar)
@@ -898,8 +919,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         CellStyle style = default;
         if (attributes != default)
             style = style.WithAttributes(attributes);
-        if (format.Background is { } background)
-            style = style.WithBackground(background);
+        // Deliberately NO WithBackground: DrawText's background parameter (transparent by default)
+        // OVERWRITES the base style's background per cell, so a style-carried background never
+        // reached the frame — the cell-wide fill in DrawDataCell is the background rendering, and
+        // the transparent glyph background lets it show through under the text.
 
         // Truncate on a grapheme boundary (the DrawClipped contract), then emit through whichever
         // foreground lane the verdict picked.

@@ -519,6 +519,45 @@ public class DataGridSurfacesTests
     }
 
     [Fact]
+    public void Format_background_fills_the_whole_cell()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // Live-canary fix: a format BACKGROUND used to vanish entirely — the glyph layer's
+        // DrawText overwrites the base style's background with its transparent default, so only
+        // the foreground ever changed. The background is now a WHOLE-CELL fill.
+        var wine = Color.FromRgb(90, 30, 50);
+        var amountColumn = grid.Columns[2];
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries = [(FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Background: wine))],
+        });
+        grid.CycleSort(amountColumn); // shape push re-collects rules
+        host.RunUntilIdle();
+
+        // The digits sit on the fill…
+        var hit = FindText(host, "31900");
+        Assert.NotNull(hit);
+        Assert.Equal(wine, host.GetCell(hit.Value.X, hit.Value.Y).Style.Background);
+        // …and so does the EMPTY remainder of the cell (right-aligned numerics leave the left
+        // side blank — a glyph-only tint would miss it).
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        Assert.Equal(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
+
+        // A below-threshold cell keeps the resting background.
+        var miss = FindText(host, "12450");
+        Assert.NotNull(miss);
+        Assert.NotEqual(wine, host.GetCell(miss.Value.X, miss.Value.Y).Style.Background);
+
+        // A SELECTED row's tint outranks the format fill (the selection stays legible).
+        host.SendClick(hit.Value.X, hit.Value.Y);
+        host.RunUntilIdle();
+        Assert.NotEqual(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
+    }
+
+    [Fact]
     public void Predicate_rule_dims_the_whole_matching_row()
     {
         var (host, grid, _) = Show();

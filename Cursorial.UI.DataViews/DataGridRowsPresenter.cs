@@ -129,6 +129,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     // re-inks per hover move and must not allocate per cell).
     private readonly Dictionary<Color, Cursorial.Drawing.Media.SolidColorBrush> _formatBrushes = [];
 
+    // The per-column data-bar text reserve (live-canary fix: the bar used to start right after
+    // EACH row's value text, so the track origin and width shifted with the number's character
+    // count — a per-row scale). The reserve is the band's widest bar-cell value per column: every
+    // bar shares ONE origin and ONE track width, so equal fractions render equal bars. Recomputed
+    // per band fill; 0 = the column has no bars this band.
+    private int[] _barReserve = [];
+
     private Cursorial.Drawing.Media.IBrush BrushFor(Color color)
     {
         if (!_formatBrushes.TryGetValue(color, out var brush))
@@ -650,6 +657,25 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return widest;
         });
 
+        // The data-bar text reserve: per bar-bearing column, the widest bar-cell value in the band
+        // (uniform bar origin/track — equal fractions must render equal bars; see _barReserve).
+        if (_barReserve.Length < columns.Count)
+            _barReserve = new int[columns.Count];
+        Array.Clear(_barReserve, 0, _barReserve.Length);
+        if (hasRules)
+        {
+            foreach (var cached in _band)
+            {
+                if (cached.IsGroup)
+                    continue;
+                for (int c = 0; c < columns.Count && c < cached.BarFractions.Length; c++)
+                {
+                    if (!double.IsNaN(cached.BarFractions[c]))
+                        _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                }
+            }
+        }
+
         // §9.2: the resolved geometry may have shrunk under the current H offset — the grid
         // re-clamps and refreshes its bar (the end-of-arrange re-coercion analog).
         owner.OnColumnGeometryResolved();
@@ -817,7 +843,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         if (hasBar)
         {
-            int used = Math.Min(textWidth, entry.Width);
+            // The bar starts after the COLUMN's text reserve, not this row's text (the live-canary
+            // uniform-scale fix): one origin + one track width per column.
+            int reserve = c < _barReserve.Length && _barReserve[c] > 0 ? _barReserve[c] : textWidth;
+            int used = Math.Min(reserve, entry.Width);
             DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
         }
     }

@@ -335,6 +335,60 @@ public class DataGridDialogsTests
     }
 
     [Fact]
+    public void Rules_manager_up_down_enable_only_when_a_same_column_move_exists()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // Region: ONE rule (lists first — Columns order); Amount: TWO (reorderable pair).
+        var regionColumn = grid.Columns[1];
+        var amountColumn = grid.Columns[2];
+        regionColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = regionColumn,
+            Entries = [(FilterOperator.Equals, "West", new CellFormat(Bold: true))],
+        });
+        amountColumn.FormatRules.Add(new DataBarRule { ColumnKey = amountColumn });
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries = [(FilterOperator.GreaterThan, 20000m, new CellFormat(Bold: true))],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        Assert.Equal(3, manager.Rows.Count);
+
+        // The first row auto-selects on open (▲▼/✎/✕ always have a target) — and it is Region's
+        // LONE rule, so both buttons gray: priority is per-COLUMN, and a silent no-op button was
+        // the live-canary report ("they appear to do nothing").
+        Assert.Equal(0, manager.SelectedIndex);
+        Assert.False(manager.UpButton!.IsEnabled);
+        Assert.False(manager.DownButton!.IsEnabled);
+
+        // Amount's first rule: ▼ live (a same-column successor), ▲ gray.
+        manager.Select(1);
+        Assert.False(manager.UpButton.IsEnabled);
+        Assert.True(manager.DownButton.IsEnabled);
+
+        // Amount's second: ▲ live, ▼ gray; the move works and the enablement follows the rule.
+        manager.Select(2);
+        Assert.True(manager.UpButton.IsEnabled);
+        Assert.False(manager.DownButton.IsEnabled);
+        manager.MoveSelected(-1);
+        Assert.Same(manager.Rows[1].Rule, amountColumn.FormatRules[0]); // it moved up in ITS column
+        Assert.False(manager.UpButton.IsEnabled);  // now first in its column
+        Assert.True(manager.DownButton.IsEnabled);
+
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
     public void Editor_designer_hop_carries_a_structural_draft_without_prompting()
     {
         var (host, grid, _) = Show();

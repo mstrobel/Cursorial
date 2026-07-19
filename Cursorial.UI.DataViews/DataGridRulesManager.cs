@@ -33,6 +33,8 @@ internal sealed class DataGridRulesManager
     private readonly DataGridRulesManager? _live;
     private DataGridRuleEditor? _activeRuleEditor;
     private int _selectedIndex = -1;
+    private Button? _up;
+    private Button? _down;
 
     public DataGridRulesManager(DataGrid grid)
     {
@@ -63,15 +65,15 @@ internal sealed class DataGridRulesManager
         edit.Click += (_, _) => _ = EditSelectedAsync();
         var delete = new Button { Content = "✕ Delete" };
         delete.Click += (_, _) => DeleteSelected();
-        var up = new Button { Content = "▲" };
-        up.Click += (_, _) => MoveSelected(-1);
-        var down = new Button { Content = "▼" };
-        down.Click += (_, _) => MoveSelected(+1);
+        _up = new Button { Content = "▲" };
+        _up.Click += (_, _) => MoveSelected(-1);
+        _down = new Button { Content = "▼" };
+        _down.Click += (_, _) => MoveSelected(+1);
         toolbar.Children.Add(newRule);
         toolbar.Children.Add(edit);
         toolbar.Children.Add(delete);
-        toolbar.Children.Add(up);
-        toolbar.Children.Add(down);
+        toolbar.Children.Add(_up);
+        toolbar.Children.Add(_down);
         content.Children.Add(toolbar);
 
         // The header strip (fixed cell widths shared with the rows below).
@@ -107,6 +109,12 @@ internal sealed class DataGridRulesManager
 
     /// <summary>The selected list index (−1 none).</summary>
     internal int SelectedIndex => (_live ?? this)._selectedIndex;
+
+    /// <summary>The ▲ reorder button (tests assert its contextual enablement).</summary>
+    internal Button? UpButton => (_live ?? this)._up;
+
+    /// <summary>The ▼ reorder button.</summary>
+    internal Button? DownButton => (_live ?? this)._down;
 
     /// <summary>The live add/edit dialog (null while none is open; tests reach its panes).</summary>
     internal DataGridRuleEditor? ActiveRuleEditor => (_live ?? this)._activeRuleEditor;
@@ -185,6 +193,8 @@ internal sealed class DataGridRulesManager
 
         if (_selectedIndex >= _rows.Count)
             _selectedIndex = _rows.Count - 1;
+        if (_selectedIndex < 0 && _rows.Count > 0)
+            _selectedIndex = 0; // the list-dialog convention: ✎/✕/▲▼ always have a target
         ApplySelectionLook();
     }
 
@@ -210,6 +220,25 @@ internal sealed class DataGridRulesManager
             else
                 _rows[i].RowElement.ClearValue(Border.BackgroundProperty);
         }
+
+        // ▲/▼ enable exactly when they can DO something (live-canary fix — priority is per-COLUMN,
+        // so with one rule per column, or no selection, the buttons used to no-op silently; a
+        // grayed button says "nothing to reorder here" instead).
+        bool hasSelection = _selectedIndex >= 0 && _selectedIndex < _rows.Count;
+        if (_up is not null)
+            _up.IsEnabled = hasSelection && HasSameColumnNeighbor(-1);
+        if (_down is not null)
+            _down.IsEnabled = hasSelection && HasSameColumnNeighbor(+1);
+    }
+
+    /// <summary>Whether the selected rule has a SAME-COLUMN neighbor in the move direction (the
+    /// ▲/▼ enablement truth — a move can only reorder within its column's list).</summary>
+    private bool HasSameColumnNeighbor(int delta)
+    {
+        var (column, rule, _, _) = _rows[_selectedIndex];
+        int at = column.FormatRules.IndexOf(rule);
+        int to = at + delta;
+        return at >= 0 && to >= 0 && to < column.FormatRules.Count;
     }
 
     private static TextBlock HeaderCell(string text, int width)

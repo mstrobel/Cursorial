@@ -412,15 +412,19 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         // (NOT the whole view): the static legend and scenario captions contain phrases like "template
         // boundary" and "logical bridge", which would satisfy loose assertions vacuously.
         var view = FindDescendant<EventRoutingView>(root)!;
-        string LogText() => string.Join("\n",
-            AllDescendants<ScrollViewer>(view).SelectMany(AllDescendants<TextBlock>).Select(t => t.Text));
+        // Per-log readers (mouse first, key second — the two log ScrollViewers in grid-row order): post-
+        // narrowing the two logs tell DIFFERENT stories, and the assertions pin exactly that.
+        string LogText(int index) => string.Join("\n",
+            AllDescendants<TextBlock>(AllDescendants<ScrollViewer>(view).ElementAt(index)).Select(t => t.Text));
+        string MouseLog() => LogText(0);
+        string KeyLog() => LogText(1);
 
         var clickMe = AllDescendants<Button>(root).Single(b => b.Name == "ClickMe");
         var buttonCell = clickMe.TranslateToScreen(1, 0);
         Click(host, buttonCell.Column, buttonCell.Row);
         host.RunUntilIdle();
 
-        var log = LogText();
+        var log = MouseLog();
         Assert.Contains("MouseDown", log);
         Assert.Contains("chrome of Button", log);
         Assert.Contains("── template boundary ──", log); // the full rendered line — the legend's phrasing can't match
@@ -432,7 +436,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Click(host, presentedCell.Column, presentedCell.Row);
         host.RunUntilIdle();
 
-        log = LogText();
+        log = MouseLog();
         Assert.Contains("Button \"Presented\"", log);
         Assert.Contains("⟨logical: ContentControl⟩", log);
 
@@ -446,17 +450,40 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         var copyItem = host.Application.WindowManager!.Surfaces
             .SelectMany(s => AllDescendants<MenuItem>(s.Root))
             .Single(m => Equals(m.Header, "_Copy"));
+
+        // KEY route first, while the menu is still open: from inside the menu it takes the LOGICAL seam
+        // hop to the Popup element — and stops there (the placement leg is an ownership relation, never a
+        // route).
+        Assert.True(copyItem.Focus());
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent
+        {
+            Key = Key.F1, Kind = KeyEventKind.Down, Modifiers = KeyModifiers.None,
+            Text = default, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        var keyLog = KeyLog();
+        Assert.Contains("MenuItem", keyLog);
+        Assert.Contains("══ surface → owner · logical bridge ══", keyLog);        // ContextMenu → its hosting Popup: TAKEN
+        Assert.Contains("Popup", keyLog);                                         // the route's last node
+        Assert.Contains("╳═ seam not crossed · placement-target bridge", keyLog); // the placement leg: DECLINED, shown in danger color
+        Assert.DoesNotContain("surface → owner · placement-target bridge", keyLog); // …and never TAKEN
+        Assert.DoesNotContain("RightClickMe", keyLog);
+        // The seam-hop lines must be VISIBLE at the default size: a bridged route auto-scrolls its log.
+        Assert.Contains("══", Screen(host, 40));
+
+        // The closing MOUSE click on the item: pointer routes are SURFACE-SCOPED — contained to the popup,
+        // with the explicit containment marker where the ownership chain continues but the route does not.
         var itemCell = copyItem.TranslateToScreen(1, 0);
         Click(host, itemCell.Column, itemCell.Row);
         host.RunUntilIdle();
 
-        log = LogText();
+        log = MouseLog();
         Assert.Contains("MenuItem", log);
-        Assert.Contains("══ surface → owner · logical bridge ══", log);          // ContextMenu → its hosting Popup
-        Assert.Contains("══ surface → owner · placement-target bridge ══", log); // Popup → RightClickMe
-        // The bridge lines — the pane's headline — must be VISIBLE at the default size, not just present in
-        // the tree: a bridged route auto-scrolls its log to the owner end.
-        Assert.Contains("══", Screen(host, 40));
+        Assert.Contains("ContextMenu", log);                        // the route's LAST node — the popup surface root
+        Assert.Contains("╳═ seam not crossed · logical bridge", log); // the DECLINED hop, rendered in danger color
+        Assert.DoesNotContain("surface → owner", log);              // no TAKEN seam hop, ever (flipped guard)
+        Assert.DoesNotContain("RightClickMe", log);                 // and the owner is unreachable from a mouse route
 
         // Scenario 4 — the in-tree popup: toggle it open, click inside, and the route crosses the seam via
         // the LOGICAL bridge only (the Popup element sits in the host tree — contrast with scenario 3).
@@ -473,10 +500,26 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Click(host, inPopupCell.Column, inPopupCell.Row);
         host.RunUntilIdle();
 
-        log = LogText();
-        Assert.Contains("Popup \"TreePopup\"", log);
-        Assert.Contains("══ surface → owner · logical bridge ══", log);
-        Assert.DoesNotContain("placement-target bridge", log); // no placement hop here — the Popup is in-tree
+        log = MouseLog();
+        Assert.Contains("Button \"InPopup\"", log);
+        Assert.Contains("seam not crossed", log);      // the declined hop is SHOWN (what the event isn't crossing)
+        Assert.DoesNotContain("surface → owner", log); // …but never a taken one
+
+        // The KEY route from popup content hops the LOGICAL seam to the in-tree Popup element and then
+        // CONTINUES visually through the owner chain (contrast scenario 3, where the standalone popup's
+        // route ends at the Popup — the placement leg is never a route).
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent
+        {
+            Key = Key.F1, Kind = KeyEventKind.Down, Modifiers = KeyModifiers.None,
+            Text = default, Timestamp = DateTimeOffset.UnixEpoch,
+        }); // the popup focuses InPopup on open, so the key targets popup content
+        host.RunUntilIdle();
+
+        var keyLog2 = KeyLog();
+        Assert.Contains("Popup \"TreePopup\"", keyLog2);
+        Assert.Contains("══ surface → owner · logical bridge ══", keyLog2);
+        Assert.DoesNotContain("placement-target bridge", keyLog2);
+        Assert.Contains("EventRoutingView", keyLog2); // the in-tree route CONTINUES into the owner chain
 
         // Clicking the checked toggle CLOSES the popup — pins KeepOpenOnAnchorPress (without it, light
         // dismiss fires on the press and the release's Click re-opens: the dismiss/toggle race).
@@ -496,7 +539,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         });
         host.RunUntilIdle();
 
-        log = LogText();
+        log = KeyLog();
         Assert.Contains("KeyDown", log);
         Assert.Contains("TextBox \"Input\"", log);
     }

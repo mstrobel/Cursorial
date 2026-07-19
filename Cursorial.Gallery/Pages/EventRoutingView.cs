@@ -176,18 +176,40 @@ internal sealed class EventRoutingView : UserControl
                     return hasBridge;
                 }
 
-                // The hop annotation describes how the walk reaches the NEXT node. A visual hop needs no line
-                // unless it crosses a template boundary; a null-VisualParent hop is a surface/bridge crossing —
-                // exactly where a visual-only route would stop.
-                if (node.VisualParent is {} visual)
+                // The hop annotation follows the route's ACTUAL adjacency — never the ownership chain the
+                // route declined to take: a surface-scoped (pointer) route ends at its surface root with a
+                // containment marker even though UIParent continues, and a key route ending at a standalone
+                // Popup marks the placement leg as ownership-only (it is never a route).
+                var next = i + 1 < route.Count ? route[i + 1] : null;
+
+                if (next is null)
                 {
-                    if (ReferenceEquals(visual, node.TemplatedParent))
+                    // The seam the route DECLINED: render the hop that exists in the ownership chain but is
+                    // not taken — in the danger color — so the log shows what the event ISN'T crossing.
+                    if (node.UIParent is {} beyond)
+                    {
+                        var notTaken = ReferenceEquals(beyond, node.LogicalParent) ? "logical bridge"
+                                       : ReferenceEquals(beyond, node.TemplatedParent) ? "templated bridge"
+                                       : "placement-target bridge";
+
+                        AddLine(log,
+                                $"     ╳═ seam not crossed · {notTaken} → {beyond.GetType().Name} ═╳",
+                                ThemeKeys.DangerBrush);
+                        hasBridge = true; // scroll the not-taken seam into view too
+                    }
+
+                    continue;
+                }
+
+                if (ReferenceEquals(next, node.VisualParent))
+                {
+                    if (ReferenceEquals(next, node.TemplatedParent))
                         AddLine(log, "     ── template boundary ──", ThemeKeys.InfoBrush);
                 }
-                else if (node.UIParent is {} bridge)
+                else
                 {
-                    var kind = ReferenceEquals(bridge, node.LogicalParent) ? "logical bridge"
-                               : ReferenceEquals(bridge, node.TemplatedParent) ? "templated bridge"
+                    var kind = ReferenceEquals(next, node.LogicalParent) ? "logical bridge"
+                               : ReferenceEquals(next, node.TemplatedParent) ? "templated bridge"
                                : "placement-target bridge";
 
                     AddLine(log, $"     ══ surface → owner · {kind} ══", ThemeKeys.WarningBrush);
@@ -272,7 +294,7 @@ internal sealed class EventRoutingView : UserControl
                 },
             },
         };
-        _scenarios.Children.Add(Group("3 · Context menu · placement bridge", contextHost));
+        _scenarios.Children.Add(Group("3 · Context menu · keys hop to Popup; mouse contained", contextHost));
 
         // 4 · An in-tree Popup: its Child roots a separate surface, but the Child's LogicalParent is the
         // Popup element sitting HERE in the host tree — the logical bridge (contrast with scenario 3).
@@ -308,7 +330,7 @@ internal sealed class EventRoutingView : UserControl
         popup.Opened += (_, _) => UIApplication.Current?.FocusManager.SetFocus(inPopupButton); // keyboard-only:
         // key routes from popup content are producible without a pointer; close restores focus to the toggle
 
-        _scenarios.Children.Add(Group("4 · Popup · logical bridge",
+        _scenarios.Children.Add(Group("4 · In-tree popup · logical seam hop",
             new StackPanel { Orientation = Orientation.Vertical, Children = { toggle, popup } }));
     }
 
@@ -338,7 +360,7 @@ internal sealed class EventRoutingView : UserControl
             Children = { _scenarios },
         };
 
-        var legend = new TextBlock { Text = "dim = template chrome · ── template boundary · ══ surface/bridge hop (a visual-only route stops there)" };
+        var legend = new TextBlock { Text = "dim = template chrome · ── template boundary · ══ seam hop (key routes only — pointer routes stop at their surface)" };
         legend.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
 
         var logColumn = new DockPanel { LastChildFill = true };

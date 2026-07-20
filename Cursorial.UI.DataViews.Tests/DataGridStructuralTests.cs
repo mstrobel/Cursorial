@@ -658,6 +658,41 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void Group_summaries_align_under_their_column_in_in_column_mode()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1]));            // group by Region
+        grid.SummaryDescriptions.Add(new SummaryDescription(grid.Columns[2], AggregateKind.Sum)); // Sum(Amount)/group
+        host.RunUntilIdle();
+
+        // The East group's Amount sum: 12450 + 31900 = 44350.
+        int eastRow = -1;
+        for (int r = 0; r < host.FrameBuffer.Rows; r++)
+        {
+            if (host.GetCell(0, r).Grapheme is "▾" or "▸" && Row(host, r).Contains("East", StringComparison.Ordinal))
+            {
+                eastRow = r;
+                break;
+            }
+        }
+        Assert.True(eastRow >= 0, "no East group banner row");
+
+        var amount = grid.RowsPresenter!.ColumnLayout.Entries[2];
+
+        // Banner mode (default): the sum is right-aligned at the band edge, PAST the Amount column.
+        int bannerCol = Row(host, eastRow).IndexOf("44350", StringComparison.Ordinal);
+        Assert.True(bannerCol > amount.X + amount.Width, $"banner sum should sit at the far edge: '{Row(host, eastRow)}'");
+
+        // In-column mode: the same sum now aligns UNDER the Amount column.
+        grid.GroupSummaryDisplay = GroupSummaryDisplay.InColumn;
+        host.RunUntilIdle();
+        int inColumnCol = Row(host, eastRow).IndexOf("44350", StringComparison.Ordinal);
+        Assert.InRange(inColumnCol, amount.X, amount.X + amount.Width + 2 * DataGridColumnLayout.CellPadding);
+    }
+
+    [Fact]
     public void A_summary_without_its_own_format_inherits_the_column_format()
     {
         var (host, grid, _) = Show(columns: 40);

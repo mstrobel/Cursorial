@@ -28,6 +28,16 @@ namespace Cursorial.UI.DataViews;
 /// <see cref="SortDescriptions"/>/<see cref="GroupDescriptions"/> collections are the ONE source of
 /// truth — gestures edit them, glyphs render them, persistence reads them (panel decision).
 /// </summary>
+/// <summary>How a group row shows its summaries (§2.5).</summary>
+public enum GroupSummaryDisplay
+{
+    /// <summary>One concatenated string right-aligned in the group banner (the compact default).</summary>
+    Banner,
+
+    /// <summary>Each aggregate aligned UNDER its own column (like the footer), scrolling with the columns.</summary>
+    InColumn,
+}
+
 [RequiresDynamicCode("The shaping engine compiles expression trees specialized to the row type.")]
 public class DataGrid : Control
 {
@@ -43,6 +53,19 @@ public class DataGrid : Control
     /// <summary>Whether per-row INPC live updates are tracked (opt-out for static snapshots — §2.1).</summary>
     public static readonly StyledProperty<bool> LiveUpdatesProperty =
         UIProperty.Register<DataGrid, bool>(nameof(LiveUpdates), true);
+
+    /// <summary>How group rows show their summaries — a right-aligned banner string (default) or each
+    /// aggregate aligned under its column, like the footer (§2.5).</summary>
+    public static readonly StyledProperty<GroupSummaryDisplay> GroupSummaryDisplayProperty =
+        UIProperty.Register<DataGrid, GroupSummaryDisplay>(nameof(GroupSummaryDisplay),
+            changed: static (sender, _, _) => ((DataGrid)sender).RowsPresenter?.InvalidateVisual());
+
+    /// <inheritdoc cref="GroupSummaryDisplayProperty"/>
+    public GroupSummaryDisplay GroupSummaryDisplay
+    {
+        get => GetValue(GroupSummaryDisplayProperty);
+        set => SetValue(GroupSummaryDisplayProperty, value);
+    }
 
     /// <summary>Whether the auto-filter row renders (default hidden — opt-in band, §3.4).</summary>
     public static readonly StyledProperty<bool> ShowAutoFilterRowProperty =

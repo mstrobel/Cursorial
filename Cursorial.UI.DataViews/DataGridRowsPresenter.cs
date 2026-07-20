@@ -202,7 +202,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         public required int Level { get; init; }
         public required CellRun[] Cells { get; init; } // per visible column (empty for group rows)
         public required string GroupCaption { get; init; }
-        public required string GroupSummary { get; init; }
+        public required string GroupSummary { get; init; }                    // the concatenated banner string
+        public string[]? GroupSummaries { get; init; }                        // per-summary cells (parallel to SummaryDescriptions) — the in-column lane
         public required bool GroupCollapsed { get; init; }
 
         // Conditional-formatting verdicts, evaluated at BAND-FILL time (§2.7 — never at paint).
@@ -751,6 +752,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                               Cells = NoCells,
                               GroupCaption = $"{caption} ({node.RowCount})",
                               GroupSummary = summary,
+                              GroupSummaries = node.Summaries,
                               GroupCollapsed = node.IsCollapsed,
                               CellFormats = NoFormats,
                               BarFractions = NoFractions,
@@ -918,23 +920,54 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
             if (row.IsGroup)
             {
-                // ▾/▸ expander, indent by level, caption, right-aligned summary. Group rows are
-                // VIEWPORT-anchored (never shifted by the horizontal offset — the banner reads at
-                // any scroll position; §9.2). NoColor tier: the accent/tint resolves to Default, so
-                // the banner wears Bold to stand out (design §4).
+                // ▾/▸ expander, indent by level, caption, then the summary. Group rows are
+                // VIEWPORT-anchored for the caption/banner (never shifted — reads at any scroll
+                // position; §9.2). NoColor tier: the accent/tint resolves to Default, so the banner
+                // wears Bold to stand out (design §4).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
                 CellStyle groupStyle = noColor ? default(CellStyle).WithAttributes(TextAttributes.Bold) : default;
-                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush ?? Brushes.Default, null, groupStyle);
+                var groupBrush = AccentBrush ?? TextBrush ?? Brushes.Default;
+                context.DrawText(x, y, glyph, groupBrush, null, groupStyle);
                 DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default, groupStyle);
 
-                if (row.GroupSummary.Length > 0)
+                if (owner.GroupSummaryDisplay == GroupSummaryDisplay.InColumn && row.GroupSummaries is { Length: > 0 } groupSummaries)
+                {
+                    // Each per-group summary aligns UNDER its column (like the footer), scrolling
+                    // with the columns via DrawXOf — not one right-aligned banner string. Multiple
+                    // summaries on one column join (a group row is a single line; the footer stacks).
+                    // The caption still rides the left; a summary on the group-by column overpaints it
+                    // (author group-by columns leftmost, aggregates on the columns to their right).
+                    var descs = owner.SummaryDescriptions;
+
+                    for (int e = 0; e < entries.Count; e++)
+                    {
+                        string? combined = null;
+
+                        for (int s = 0; s < descs.Count && s < groupSummaries.Length; s++)
+                        {
+                            if (groupSummaries[s].Length == 0 || !ReferenceEquals(descs[s].ColumnKey, entries[e].Column))
+                                continue;
+
+                            combined = combined is null ? groupSummaries[s] : $"{combined} {groupSummaries[s]}";
+                        }
+
+                        if (combined is null)
+                            continue;
+
+                        int drawBase = DrawXOf(e);
+                        int cellX = drawBase + DataGridColumnLayout.CellPadding;
+                        int valWidth = GraphemeWidth.StringWidth(combined);
+                        int drawX = valWidth < entries[e].Width ? cellX + entries[e].Width - valWidth : cellX;
+                        DrawClipped(context, drawX, y, combined, entries[e].Width, groupBrush, groupStyle);
+                    }
+                }
+                else if (row.GroupSummary.Length > 0)
                 {
                     int width = GraphemeWidth.StringWidth(row.GroupSummary);
                     int summaryX = Math.Max(x + 2, viewWidth - width - 1);
 
-                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue,
-                                AccentBrush ?? TextBrush ?? Brushes.Default, groupStyle);
+                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue, groupBrush, groupStyle);
                 }
 
                 continue;

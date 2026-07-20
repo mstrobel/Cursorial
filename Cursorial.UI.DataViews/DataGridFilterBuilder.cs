@@ -65,7 +65,7 @@ internal sealed class DataGridFilterBuilder
 
     /// <summary>One rendered condition row's live controls (tests drive the real cells).</summary>
     internal sealed record ConditionRow(Condition Model, ComboBox Field, ComboBox Operator,
-                                        TextBox Value, TextBox SecondValue);
+                                        ValueEditor Value, ValueEditor SecondValue);
 
     /// <summary>One rendered group row's live controls.</summary>
     internal sealed record GroupRow(Group Model, Button OperatorToggle);
@@ -397,6 +397,7 @@ internal sealed class DataGridFilterBuilder
             {
                 condition.Column = _fieldColumns[field.SelectedIndex];
                 condition.Pristine = false;
+                Rebuild(); // the value inputs are keyed to the column type — refresh them (enum ⇒ dropdown)
             }
         };
         row.Children.Add(field);
@@ -409,32 +410,36 @@ internal sealed class DataGridFilterBuilder
         };
         row.Children.Add(op);
 
-        var value = new TextBox { Text = condition.ValueText, MinWidth = 10 };
-        value.TextChanged += (_, _) =>
+        // The value inputs adapt to the column's key type (§10 value-entry): enum/bool ⇒ a name dropdown.
+        var keyType = condition.Column is null
+            ? null
+            : _grid.Controller?.GetColumnKeyType(condition.Column) ?? condition.Column.KeySelector?.ReturnType;
+        ValueEditor valueEd = null!;
+        valueEd = ValueEditor.Create(keyType, condition.ValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.ValueText = value.Text;
+                condition.ValueText = valueEd.Value;
                 condition.Pristine = false;
             }
-        };
-        row.Children.Add(value);
+        }, minWidth: 10);
+        row.Children.Add(valueEd.Element);
 
         var ellipsis = DataGridDialogHelpers.Caption("…");
-        var second = new TextBox { Text = condition.SecondValueText, MinWidth = 10 };
-        second.TextChanged += (_, _) =>
+        ValueEditor secondEd = null!;
+        secondEd = ValueEditor.Create(keyType, condition.SecondValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.SecondValueText = second.Text;
+                condition.SecondValueText = secondEd.Value;
                 condition.Pristine = false;
             }
-        };
+        }, minWidth: 10);
         bool between = condition.Operator == FilterOperator.Between;
         ellipsis.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
-        second.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+        secondEd.Element.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
         row.Children.Add(ellipsis);
-        row.Children.Add(second);
+        row.Children.Add(secondEd.Element);
 
         op.SelectionChanged += (_, _) =>
         {
@@ -444,7 +449,7 @@ internal sealed class DataGridFilterBuilder
             condition.Pristine = false;
             bool showSecond = condition.Operator == FilterOperator.Between;
             ellipsis.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
-            second.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
+            secondEd.Element.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
         };
 
         var add = new Button { Content = "＋" };
@@ -454,7 +459,7 @@ internal sealed class DataGridFilterBuilder
         remove.Click += (_, _) => Remove(condition);
         row.Children.Add(remove);
 
-        _conditionRows.Add(new ConditionRow(condition, field, op, value, second));
+        _conditionRows.Add(new ConditionRow(condition, field, op, valueEd, secondEd));
         _treeHost.Children.Add(row);
     }
 

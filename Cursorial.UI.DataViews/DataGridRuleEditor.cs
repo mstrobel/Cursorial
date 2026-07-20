@@ -470,16 +470,21 @@ internal sealed class DataGridRuleEditor
             SelectedIndex = Math.Clamp(entry.OpIndex, 0, HighlightOperators.Length - 1),
             MinWidth = 8,
         };
-        var value = new TextBox { Text = entry.Value, MinWidth = 7 };
+        // The value inputs adapt to the column's key type (§10 value-entry): an enum/bool column
+        // gets a prepopulated name dropdown instead of a free-text box.
+        var keyType = _grid.Controller?.GetColumnKeyType(TargetColumn) ?? TargetColumn?.KeySelector?.ReturnType;
+        ValueEditor valueEd = null!;
+        valueEd = ValueEditor.Create(keyType, entry.Value, () => { entry.Value = valueEd.Value; UpdatePreview(); }, minWidth: 7);
         var andCaption = DataGridDialogHelpers.Caption("and");
-        var second = new TextBox { Text = entry.Second, MinWidth = 7 };
+        ValueEditor secondEd = null!;
+        secondEd = ValueEditor.Create(keyType, entry.Second, () => { entry.Second = secondEd.Value; UpdatePreview(); }, minWidth: 7);
         var remove = new Button { Content = "✕", IsEnabled = _highlightEntries.Count > 1 };
 
         void SyncBetween()
         {
             bool between = HighlightOperators[Math.Clamp(entry.OpIndex, 0, HighlightOperators.Length - 1)].Op == FilterOperator.Between;
             andCaption.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
-            second.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+            secondEd.Element.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
         }
 
         op.SelectionChanged += (_, _) =>
@@ -491,8 +496,6 @@ internal sealed class DataGridRuleEditor
                 UpdatePreview();
             }
         };
-        value.TextChanged += (_, _) => { entry.Value = value.Text; UpdatePreview(); };
-        second.TextChanged += (_, _) => { entry.Second = second.Text; UpdatePreview(); };
         int captured = index;
         remove.Click += (_, _) =>
         {
@@ -503,9 +506,9 @@ internal sealed class DataGridRuleEditor
         };
 
         line.Children.Add(op);
-        line.Children.Add(value);
+        line.Children.Add(valueEd.Element);
         line.Children.Add(andCaption);
-        line.Children.Add(second);
+        line.Children.Add(secondEd.Element);
         line.Children.Add(remove);
         block.Children.Add(line);
 
@@ -516,12 +519,12 @@ internal sealed class DataGridRuleEditor
         SyncBetween();
         host.Children.Add(block);
 
-        _highlightRows.Add(new HighlightRowControls(op, value, second, remove, rowFormatCombo!, rowCustom!));
+        _highlightRows.Add(new HighlightRowControls(op, valueEd, secondEd, remove, rowFormatCombo!, rowCustom!));
         if (index == 0)
         {
             OperatorCombo = op;
-            ValueBox = value;
-            SecondValueBox = second;
+            ValueBox = valueEd.AsTextBox;
+            SecondValueBox = secondEd.AsTextBox;
             FormatCombo = rowFormatCombo;
         }
     }
@@ -583,6 +586,10 @@ internal sealed class DataGridRuleEditor
             {
                 _columnIndex = combo.SelectedIndex;
                 _paneTitle.Text = $"{Types.First(t => t.Kind == _kind).Caption[2..]} — {TargetColumn?.EffectiveHeader}";
+                // The Highlight value inputs are keyed to the column type — rebuild them so an
+                // enum/bool column swaps its text boxes for dropdowns (and back).
+                if (_kind == RuleEditorKind.Highlight)
+                    BuildHighlightEntries();
                 UpdatePreview();
             }
         };
@@ -987,8 +994,10 @@ internal sealed class DataGridRuleEditor
         }
     }
 
-    /// <summary>A Highlight condition row's live controls (tests drive multi-entry through these).</summary>
-    internal sealed record HighlightRowControls(ComboBox Operator, TextBox Value, TextBox Second, Button Remove,
+    /// <summary>A Highlight condition row's live controls (tests drive multi-entry through these).
+    /// <see cref="Value"/>/<see cref="Second"/> are <see cref="ValueEditor"/>s — a dropdown for an
+    /// enum/bool column, a text box otherwise.</summary>
+    internal sealed record HighlightRowControls(ComboBox Operator, ValueEditor Value, ValueEditor Second, Button Remove,
                                                 ComboBox Format, CustomFormatControls Custom);
 
     /// <summary>The custom-format reveal's live controls (tests assert §10.6 custom colors).</summary>

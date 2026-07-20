@@ -282,3 +282,68 @@ internal static class DataGridDialogHelpers
         return await window.ShowDialogAsync() is true;
     }
 }
+
+/// <summary>
+/// A value-entry control that adapts to the column's key type (§10 value-entry): an
+/// <see cref="Enum"/> (or <see cref="bool"/>) key gets a prepopulated <see cref="ComboBox"/> of its
+/// valid names — so a user picks from the options instead of typing an enum member and hoping it
+/// parses — while every other type keeps a free-text <see cref="TextBox"/>. Shared by the rule
+/// editor's condition rows and the Filter Builder so their value entry can't drift. The exposed
+/// <see cref="Value"/> string round-trips through the same <c>TryParseLiteral</c> lane either way
+/// (enum names / <c>true|false</c> parse cleanly).
+/// </summary>
+internal sealed class ValueEditor
+{
+    private readonly Func<string> _get;
+    private readonly Action<string> _set;
+
+    private ValueEditor(Control element, bool isChoice, Func<string> get, Action<string> set)
+    {
+        Element = element;
+        IsChoice = isChoice;
+        _get = get;
+        _set = set;
+    }
+
+    /// <summary>The live control — a <see cref="ComboBox"/> for enum/bool, else a <see cref="TextBox"/>.</summary>
+    internal Control Element { get; }
+
+    /// <summary>Whether this editor is the prepopulated dropdown (vs a free-text box).</summary>
+    internal bool IsChoice { get; }
+
+    /// <summary>The current text value (the choice name for a dropdown, the typed text for a box).</summary>
+    internal string Value { get => _get(); set => _set(value); }
+
+    /// <summary>The backing text box, or null when this is a dropdown (tests / back-compat accessors).</summary>
+    internal TextBox? AsTextBox => Element as TextBox;
+
+    /// <summary>
+    /// Builds the editor for <paramref name="keyType"/> seeded with <paramref name="seed"/>, calling
+    /// <paramref name="onChanged"/> on every edit. Enum (incl. <see cref="Nullable{T}"/> of enum) and
+    /// bool key types yield a name dropdown; everything else a text box.
+    /// </summary>
+    internal static ValueEditor Create(Type? keyType, string seed, Action onChanged, int minWidth = 8)
+    {
+        var underlying = keyType is null ? null : Nullable.GetUnderlyingType(keyType) ?? keyType;
+        if (underlying is { IsEnum: true } || underlying == typeof(bool))
+        {
+            var items = underlying is { IsEnum: true }
+                ? Enum.GetNames(underlying).ToList()
+                : ["true", "false"];
+            var combo = new ComboBox
+            {
+                ItemsSource = items,
+                MinWidth = Math.Max(minWidth, 8),
+                SelectedItem = items.Contains(seed) ? seed : null,
+            };
+            combo.SelectionChanged += (_, _) => onChanged();
+            return new ValueEditor(combo, isChoice: true,
+                () => combo.SelectedItem as string ?? string.Empty,
+                v => combo.SelectedItem = items.Contains(v) ? v : null);
+        }
+
+        var box = new TextBox { Text = seed, MinWidth = minWidth };
+        box.TextChanged += (_, _) => onChanged();
+        return new ValueEditor(box, isChoice: false, () => box.Text, v => box.Text = v);
+    }
+}

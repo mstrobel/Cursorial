@@ -390,20 +390,21 @@ public class DataGridDialogsTests
         Assert.Single(builder.GroupRows);
         Assert.Equal(FilterGroupOperator.And, builder.Root.Operator);
         Assert.Equal(2, builder.ConditionRows.Count);
-        Assert.Equal("15000", builder.ConditionRows[0].Value.Text);
-        Assert.Equal("East", builder.ConditionRows[1].Value.Text);
+        Assert.Equal("15000", builder.ConditionRows[0].Value.Value);
+        Assert.Equal("East", builder.ConditionRows[1].Value.Value);
 
         // Edit 1 — flip the Region operator through the real combo: = ⇒ <>.
         var regionRow = builder.ConditionRows[1];
         regionRow.Operator.SelectedIndex = 1; // "<>"
         Assert.Equal(FilterOperator.NotEquals, regionRow.Model.Operator);
 
-        // Edit 2 — add a condition (the structural buttons rebuild the rows; re-fetch).
+        // Edit 2 — add a condition (the structural buttons rebuild the rows; re-fetch). Picking a
+        // field now also rebuilds (the value input is keyed to the column type), so re-fetch again.
         builder.AddCondition(builder.Root);
+        builder.ConditionRows[^1].Field.SelectedIndex = 2; // Amount
         var added = builder.ConditionRows[^1];
-        added.Field.SelectedIndex = 2;    // Amount
         added.Operator.SelectedIndex = 2; // "<"
-        added.Value.Text = "30000";
+        added.Value.Value = "30000";
         Assert.Equal(FilterOperator.LessThan, added.Model.Operator);
         Assert.Equal("30000", added.Model.ValueText);
 
@@ -434,7 +435,7 @@ public class DataGridDialogsTests
         var row = builder.ConditionRows[0];
         row.Field.SelectedIndex = 2;    // Amount (decimal)
         row.Operator.SelectedIndex = 4; // ">"
-        row.Value.Text = "not-a-number";
+        row.Value.Value = "not-a-number";
 
         builder.Ok();
         host.RunUntilIdle();
@@ -640,7 +641,7 @@ public class DataGridDialogsTests
         // The second row's controls.
         var second = editor.HighlightRows[1];
         second.Operator.SelectedIndex = OperatorIndex(editor, "Less than");
-        second.Value.Text = "15000";
+        second.Value.Value = "15000"; // Amount is a decimal column ⇒ a text-box ValueEditor
         editor.Ok();
         host.RunUntilIdle();
 
@@ -856,7 +857,7 @@ public class DataGridDialogsTests
         var builder = grid.ActiveFilterBuilder;
         Assert.NotNull(builder);
         var row = Assert.Single(builder.ConditionRows); // the draft seeded the tree
-        Assert.Equal("East", row.Value.Text);
+        Assert.Equal("East", row.Value.Value);
 
         // The designer's OK is the one write; the ORIGINAL editor entry-point task completes.
         builder.Ok();

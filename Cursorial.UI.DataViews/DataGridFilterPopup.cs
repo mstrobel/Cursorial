@@ -133,12 +133,13 @@ internal sealed class DataGridFilterPopup
         _selectAll.Click += (_, _) => OnSelectAllClicked();
         rowsHost.Children.Add(_selectAll);
 
-        foreach (var (formatted, raw, _) in controller.GetDistinctValues(column, maxCount: 1000))
+        foreach (var (formatted, raw, count) in controller.GetDistinctValues(column, maxCount: 1000))
         {
             string display = raw is null ? "(Blanks)" : formatted;
             var check = new CheckBox
             {
-                Content = display,
+                // The mockup shows each value's row COUNT beside it; search still matches on Display.
+                Content = count > 0 ? $"{display}   {count}" : display,
                 IsChecked = active is null || active.Contains(raw),
             };
             check.Click += (_, _) => SyncSelectAllState();
@@ -155,6 +156,10 @@ internal sealed class DataGridFilterPopup
         });
 
         var ok = new Button { Content = "OK" };
+        // The primary action reads accent-filled (the mockup's OK-in-accent row); the dialog-ground
+        // ink inverts to legible contrast in both themes.
+        ok.SetResourceReference(Control.BackgroundProperty, ThemeKeys.AccentBrush);
+        ok.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.ElevationDialog);
         ok.Click += (_, _) => Apply();
         var cancel = new Button { Content = "Cancel" };
         cancel.Click += (_, _) => Close();

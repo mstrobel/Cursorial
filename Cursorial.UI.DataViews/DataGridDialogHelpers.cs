@@ -219,9 +219,18 @@ internal static class DataGridDialogHelpers
                 Spacing = 1,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };
-            foreach (var (caption, onClick) in buttons)
+            for (int i = 0; i < buttons.Length; i++)
             {
+                var (caption, onClick) = buttons[i];
                 var button = new Button { Content = caption };
+                if (i == 0)
+                {
+                    // The primary action (OK/Apply, by convention first) reads as an accent-filled
+                    // button — accent fill with the dialog-ground ink, which inverts to legible
+                    // contrast in both themes.
+                    button.SetResourceReference(Control.BackgroundProperty, ThemeKeys.AccentBrush);
+                    button.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.ElevationDialog);
+                }
                 var captured = onClick;
                 button.Click += (_, _) => captured();
                 row.Children.Add(button);

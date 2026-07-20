@@ -811,8 +811,11 @@ public class DataGrid : Control
     /// <summary>Banks the active range as a committed one (Ctrl+click — §10.1), keeping its corners.</summary>
     private void CommitActiveRange()
     {
-        if (_cellAnchorRowId >= 0 && _cellLeadRowId >= 0)
-            _committedRanges.Add(new CellRangeCorners(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn));
+        if (_cellAnchorRowId < 0 || _cellLeadRowId < 0)
+            return;
+        var corners = new CellRangeCorners(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn);
+        if (!_committedRanges.Contains(corners)) // an exact re-bank is a no-op (audit fix)
+            _committedRanges.Add(corners);
     }
 
     /// <summary>Moves the active lead corner (Shift+click / Shift+arrow); the anchor + committed stay.</summary>
@@ -931,6 +934,12 @@ public class DataGrid : Control
     {
         if (SelectionUnit != DataGridSelectionUnit.Cell)
             return;
+        // Audit fix: without a resolvable layout (the grid detached / re-templating, so
+        // EntryIndexOfColumnClamped returns −1 for EVERY column) NOTHING can be re-projected —
+        // pruning here would false-drop every committed range permanently. Skip; the next publish
+        // (presenter back) prunes for real.
+        if (RowsPresenter?.ColumnLayout is null)
+            return;
         // §10.1: a committed range that lost a corner just DROPS (only the active range collapses to
         // the focus cell — a dead banked rectangle has no focus to fall back on).
         if (_committedRanges.Count > 0)
@@ -958,8 +967,18 @@ public class DataGrid : Control
         }
         else
         {
-            ClearCellRange();
+            // Audit fix: only the ACTIVE range collapses here — a full ClearCellRange() would ALSO
+            // wipe still-valid committed ranges (e.g. focus parked on a group row when the active
+            // corner is lost). Committed ranges are pruned independently, per corner.
+            ClearActiveCellRange();
         }
+    }
+
+    /// <summary>Clears just the ACTIVE range's corners, keeping the committed ranges (§10.1).</summary>
+    private void ClearActiveCellRange()
+    {
+        _cellAnchorRowId = _cellLeadRowId = -1;
+        _cellAnchorColumn = _cellLeadColumn = null;
     }
 
     /// <summary>Audit W2-12: a corner id being REMOVED collapses immediately — before the freed
@@ -2167,6 +2186,10 @@ public class DataGrid : Control
         if (presenter is null || _controller is null || FocusViewIndex < 0)
             return;
 
+        // Audit fix: a new session must never inherit the prior cell's validation message — the
+        // public BeginEdit bypasses the commit/cancel paths that clear it. (Idempotent when clear.)
+        ClearEditValidationError();
+
         if (FocusOnNewRowPlaceholder)
         {
             BeginNewRowEdit(presenter);
@@ -2314,7 +2337,19 @@ public class DataGrid : Control
     {
         if (column.Validator is not { } validator)
             return false;
-        var message = validator(new DataGridCellValidationContext(column, text, rowId, isNewRow));
+
+        string? message;
+        try
+        {
+            message = validator(new DataGridCellValidationContext(column, text, rowId, isNewRow));
+        }
+        catch (Exception ex)
+        {
+            // Audit fix: a throwing validator must not unwind into the input pipeline (CommitEdit
+            // runs synchronously from key/click handlers). Treat a throw as a rejection surfaced on
+            // the edit bar — the editor stays open, the exception is contained.
+            message = $"Validation error: {ex.Message}";
+        }
         if (string.IsNullOrEmpty(message))
             return false;
 
@@ -2833,6 +2868,7 @@ public class DataGrid : Control
         var snapshot = Snapshot;
         var entries = RowsPresenter.ColumnLayout.Entries;
         var rectangle = new System.Text.StringBuilder();
+        var emitted = new HashSet<(int View, int Column)>(); // audit fix: a cell shared by overlapping ranges is written ONCE
         for (int ri = 0; ri < rects.Count; ri++)
         {
             if (ri > 0)
@@ -2847,7 +2883,10 @@ public class DataGrid : Control
                 {
                     if (c > range.FirstColumn)
                         rectangle.Append('\t');
-                    rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
+                    // A repeat cell (an overlapping range already emitted it) keeps its column slot
+                    // for alignment but re-emits nothing — the value appears once in the payload.
+                    if (emitted.Add((view, c)))
+                        rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
                 }
                 rectangle.Append('\n');
             }

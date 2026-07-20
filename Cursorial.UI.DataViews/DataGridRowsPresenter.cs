@@ -1225,6 +1225,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             picker.SelectedDate = DateOnly.FromDateTime(dateTime);
         }
         picker.SelectedDateChanged += (_, _) => ClearEditorError();
+        // Audit fix: free-typed text that has not yet parsed to a new date raises no
+        // SelectedDateChanged — clear the error cue on the raw keystroke too (parity with the
+        // TextBox/Spin editors), else a rejected commit's message + danger ink persist while the
+        // user types the correction.
+        picker.EditableTextEdited += (_, _) => ClearEditorError();
         return picker;
     }
 

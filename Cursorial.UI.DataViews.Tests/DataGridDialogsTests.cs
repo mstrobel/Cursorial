@@ -144,6 +144,77 @@ public class DataGridDialogsTests
     }
 
     [Fact]
+    public void Completion_replaces_the_whole_token_when_the_caret_is_mid_token()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+
+        // Build "[Amo]" with the caret BEFORE the ']' (mid-token) — the audit's corruption case.
+        host.SendText("[]");
+        host.RunUntilIdle();
+        host.SendKey(Key.LeftArrow); // caret between '[' and ']'
+        host.RunUntilIdle();
+        host.SendText("Amo"); // "[Amo]", caret after "Amo"
+        host.RunUntilIdle();
+        Assert.True(editor.IsCompletionOpen);
+
+        host.SendKey(Key.Enter); // accept "Amount"
+        host.RunUntilIdle();
+        Assert.Equal("[Amount]", editor.TextBox.Text); // whole token replaced — NOT "[Amount]]"
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+    }
+
+    [Fact]
+    public void Icon_set_with_a_blanked_glyph_still_reopens_as_icon_set()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // An icon set with the middle bucket's glyph cleared (Icon = null on that entry only).
+        var amount = grid.Columns[2];
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries =
+            [
+                new ThresholdEntry(FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Foreground: Color.FromRgb(0x9E, 0xCE, 0x6A), Icon: "▲")),
+                new ThresholdEntry(FilterOperator.GreaterThanOrEqual, 15000m, new CellFormat(Foreground: Color.FromRgb(0xE0, 0xAF, 0x68))), // no glyph
+                new ThresholdEntry(FilterOperator.LessThan, 15000m, new CellFormat(Foreground: Color.FromRgb(0xF7, 0x76, 0x8E), Icon: "▼")),
+            ],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        manager.Select(0);
+        var edit = manager.EditSelectedAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+
+        // Audit fix: a blanked glyph used to reclassify the rule as Highlight (the `All(Icon)` test);
+        // it now reopens as the Icon Set it is, glyphs (incl. the blank) preserved.
+        Assert.Equal(RuleEditorKind.IconSet, editor.Kind);
+        Assert.Equal("▲", editor.IconGlyphBoxes[0].Text);
+        Assert.Equal(string.Empty, editor.IconGlyphBoxes[1].Text);
+        Assert.Equal("▼", editor.IconGlyphBoxes[2].Text);
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(edit.IsCompletedSuccessfully);
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
     public void Expression_editor_validates_live_and_apply_lands_the_filter()
     {
         var (host, grid, _) = Show();

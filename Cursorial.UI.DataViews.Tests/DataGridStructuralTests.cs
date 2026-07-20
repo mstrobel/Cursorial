@@ -1004,6 +1004,80 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void Losing_the_active_range_with_invalid_focus_keeps_the_committed_ranges()
+    {
+        var (host, grid, source) = Show(columns: 40);
+        using var _ = host;
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        // Bank Region rows 0..2, then start a fresh active range on Amount row 3 (SO-1047).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 3), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Shift, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+        host.SendMouseMove(24, 4);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(24, 4), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Control, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.CellRangeViewRects().Count); // banked Region + active Amount
+
+        // Clear focus, then remove the ACTIVE range's row (SO-1047). The active corner is lost with
+        // no valid focus cell to collapse onto → the else branch fires. Audit fix: it must clear
+        // ONLY the active range, not wipe the still-valid banked Region range via ClearCellRange().
+        grid.SetFocusCell(-1, -1);
+        source.RemoveAt(3); // SO-1047
+        host.RunUntilIdle();
+
+        var rects = grid.CellRangeViewRects();
+        Assert.Single(rects); // the banked Region range survived
+        Assert.Equal((0, 2, 1, 1), rects[0]);
+    }
+
+    [Fact]
+    public void Overlapping_ranges_write_each_shared_cell_once_in_the_tsv()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        // Range 1: Region rows 0..2 (click + Shift+extend).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 3), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Shift, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // Ctrl+click a cell INSIDE that rectangle (Region row 1) — banks rows 0..2, active is the
+        // interior cell, so the two ranges OVERLAP on Region row 1.
+        host.SendMouseMove(12, 2);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 2), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Control, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // Audit fix: the shared cell (Region row 1 = "East") must appear ONCE, not duplicated across
+        // the two TSV blocks. Rows 0,1 are East, row 2 South ⇒ exactly two "East".
+        var tsv = grid.BuildCellRangeTsv()!;
+        Assert.Equal(2, tsv.Split("East").Length - 1);
+    }
+
+    [Fact]
     public void Range_membership_reprojects_across_a_resort_and_survives_column_moves()
     {
         var (host, grid, _) = Show(columns: 40);

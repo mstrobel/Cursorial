@@ -257,13 +257,18 @@ internal sealed class DataGridRuleEditor
                 break;
 
             case ThresholdRule threshold when threshold.Entries.Count > 0:
-                if (threshold.Entries.Count == 3 && threshold.Entries.All(e => e.Format.Icon is not null))
+                // ANY icon-bearing entry marks the Icon Set shape (a Highlight rule's format editor
+                // never sets an Icon). Audit fix: `All` mis-classified an icon set with one bucket's
+                // glyph blanked as a plain Highlight rule, destroying the other two glyphs on re-edit.
+                if (threshold.Entries.Count == 3 && threshold.Entries.Any(e => e.Format.Icon is not null))
                 {
-                    // The Icon Set shape (a glyph per bucket — the editor's own construction).
+                    // The Icon Set shape (a glyph per bucket — the editor's own construction). A
+                    // null glyph (a bucket the user deliberately blanked) seeds blank, not the
+                    // default — the re-edit must faithfully show what was authored.
                     _kind = RuleEditorKind.IconSet;
-                    _iconHighGlyph = threshold.Entries[0].Format.Icon ?? "▲";
-                    _iconMidGlyph = threshold.Entries[1].Format.Icon ?? "●";
-                    _iconLowGlyph = threshold.Entries[2].Format.Icon ?? "▼";
+                    _iconHighGlyph = threshold.Entries[0].Format.Icon ?? string.Empty;
+                    _iconMidGlyph = threshold.Entries[1].Format.Icon ?? string.Empty;
+                    _iconLowGlyph = threshold.Entries[2].Format.Icon ?? string.Empty;
                     _iconHighText = DataGridDialogHelpers.FormatLiteral(threshold.Entries[0].Value);
                     _iconMidText = DataGridDialogHelpers.FormatLiteral(threshold.Entries[1].Value);
                 }
@@ -681,6 +686,7 @@ internal sealed class DataGridRuleEditor
         else
             _previewBorder.ClearValue(Border.BackgroundProperty);
         _previewText.TextWeight = format.Bold ? TextWeight.Bold : TextWeight.Normal;
+        TextElement.SetInverse(_previewText, format.Inverse); // audit fix: reflect a custom Inverse in the preview
     }
 
     /// <summary>A live sample from the target column (the mockup previews real values), else "Sample".</summary>

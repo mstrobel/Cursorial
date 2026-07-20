@@ -399,6 +399,55 @@ public class DataGridEditingSuiteTests
         Assert.Contains(source, e => e.Name == "Charlie");
     }
 
+    [Fact]
+    public void A_throwing_validator_is_contained_and_surfaced_as_an_error()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // Audit fix: a validator that throws must not unwind into the synchronous commit path.
+        grid.Columns[3].Validator = _ => throw new InvalidOperationException("boom");
+
+        BeginEdit(host, grid, viewIndex: 0, columnIndex: 3); // Hours
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("5");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter); // commit → validator throws → contained, shown as an error
+        host.RunUntilIdle();
+
+        Assert.True(grid.RowsPresenter!.IsEditing); // vetoed, not crashed
+        Assert.Contains("boom", grid.EditValidationError);
+        Assert.Equal(12m, source[0].Hours); // nothing written
+        grid.CancelEdit();
+    }
+
+    [Fact]
+    public void A_new_edit_does_not_inherit_the_prior_cells_validation_message()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+        grid.Columns[3].Validator = ctx => decimal.TryParse(ctx.Text, out var h) && h > 40m ? "too big" : null;
+
+        BeginEdit(host, grid, viewIndex: 0, columnIndex: 3); // Hours
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("99");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("too big", grid.EditValidationError);
+
+        // Audit fix: the public BeginEdit (bypassing commit/cancel) must not carry the stale message
+        // into a fresh session on another cell.
+        grid.SetFocusCell(1, 3);
+        grid.BeginEdit();
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter!.IsEditing);
+        Assert.Null(grid.EditValidationError);
+        grid.CancelEdit();
+    }
+
     private static string AllRows(UIHeadlessHost host)
         => string.Join("\n", Enumerable.Range(0, 14).Select(host.GetRowText));
 

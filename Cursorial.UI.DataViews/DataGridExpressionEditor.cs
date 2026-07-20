@@ -46,6 +46,7 @@ internal sealed class DataGridExpressionEditor
     private readonly List<(string Display, string Insert)> _completionItems = [];
     private int _completionStart;
     private int _completionCaret;
+    private CompletionKind _completionKind;
     private bool _acceptingCompletion;
 
     private enum CompletionKind { Field, Function }
@@ -260,6 +261,7 @@ internal sealed class DataGridExpressionEditor
 
         _completionStart = context.Start;
         _completionCaret = Math.Clamp(_text.CaretIndex, 0, _text.Text.Length);
+        _completionKind = context.Kind;
         EnsureCompletionUi();
         _completionList!.ItemsSource = _completionItems.Select(i => i.Display).ToList();
         _completionList.SelectedIndex = 0;
@@ -288,11 +290,15 @@ internal sealed class DataGridExpressionEditor
         string text = _text.Text;
         int start = Math.Clamp(_completionStart, 0, text.Length);
         int caret = Math.Clamp(_completionCaret, start, text.Length);
+        // Audit fix: replace the WHOLE token, not just [start..caret) — the caret may sit mid-token
+        // (e.g. "[Pr|ce]"), and leaving the "ce]" tail would corrupt the text ("[Price]ce]"). Scan
+        // forward past the token's remaining chars (the insert supplies its own closing ] / '(').
+        int end = TokenEnd(text, caret, _completionKind, insert.EndsWith('('));
 
         _acceptingCompletion = true;
         try
         {
-            _text.Text = text.Remove(start, caret - start).Insert(start, insert);
+            _text.Text = text.Remove(start, end - start).Insert(start, insert);
             _text.CaretIndex = start + insert.Length;
         }
         finally
@@ -302,6 +308,29 @@ internal sealed class DataGridExpressionEditor
         CloseCompletions();
         Revalidate();
         _text.Focus(FocusNavigationMethod.Programmatic);
+    }
+
+    /// <summary>The end offset of the token being completed (from the caret forward past its tail):
+    /// a field runs to its closing <c>]</c> (consumed — the insert supplies one); a function runs to
+    /// the end of its identifier (and a following <c>(</c> the insert supplies).</summary>
+    private static int TokenEnd(string text, int caret, CompletionKind kind, bool insertHasParen)
+    {
+        int end = caret;
+        if (kind == CompletionKind.Field)
+        {
+            while (end < text.Length && text[end] is not (']' or '[' or '\n'))
+                end++;
+            if (end < text.Length && text[end] == ']')
+                end++; // the [Name] insert carries its own close bracket
+        }
+        else
+        {
+            while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
+                end++;
+            if (insertHasParen && end < text.Length && text[end] == '(')
+                end++; // the Name( insert carries its own open paren
+        }
+        return end;
     }
 
     private void CloseCompletions() => _completionPopup?.SetCurrentValue(Popup.IsOpenProperty, false);

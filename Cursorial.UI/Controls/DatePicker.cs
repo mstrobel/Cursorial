@@ -262,10 +262,18 @@ public class DatePicker : Control
         e.Handled = true;
     }
 
+    /// <summary>Raised when the editable text box's text changes from a user keystroke (not our own
+    /// SelectedDate→box sync). Lets a host clear per-keystroke state — an error cue, say — while the
+    /// typed value has not yet parsed to a new <see cref="SelectedDate"/>.</summary>
+    internal event EventHandler? EditableTextEdited;
+
     private void OnEditableTextChanged(object? sender, RoutedEventArgs e)
     {
         if (!_syncing)
+        {
             _editing = true; // a real user keystroke (not our own SelectedDate→box push)
+            EditableTextEdited?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // Parse the editable text (culture-aware) and commit it to SelectedDate; an unparseable value reverts the box to

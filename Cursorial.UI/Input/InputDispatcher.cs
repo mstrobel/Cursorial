@@ -598,12 +598,6 @@ public sealed class InputDispatcher : IInputDispatchTarget
            };
 
     /// <summary>
-    /// The context-menu router default (doc §12.7): walks the styling/event parent chain from
-    /// <paramref name="from"/> for the nearest element carrying a <see cref="ContextMenu.MenuProperty"/>
-    /// and opens it — at the pointer (<paramref name="position"/> null, the right-click case) or below the
-    /// element (a keyboard-key offset). Returns whether a menu opened.
-    /// </summary>
-    /// <summary>
     /// The gesture TAIL (input-routing review Q2): an InputBindings-ONLY sweep continuing along the
     /// ownership chain past the route's end — a standalone popup's placement-owner chain, then a window
     /// root's application root — so owner / window / application chords still fire from popup-focused
@@ -665,6 +659,12 @@ public sealed class InputDispatcher : IInputDispatchTarget
         }
     }
 
+    /// <summary>
+    /// The context-menu router default (doc §12.7): walks the styling/event parent chain from
+    /// <paramref name="from"/> for the nearest element carrying a <see cref="ContextMenu.MenuProperty"/>
+    /// and opens it — at the pointer (<paramref name="position"/> null, the right-click case) or below the
+    /// element (a keyboard-key offset). Returns whether a menu opened.
+    /// </summary>
     private static bool TryOpenContextMenu(UIElement? from, CellPosition? position)
     {
         // Clamped to the hit's SURFACE (input-routing review Q1): the in-surface UIParent hops are needed

@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.DataViews;
+using Cursorial.UI.DataViews.Annotations;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;
 
@@ -78,6 +79,48 @@ public class DataGridAutoGenMetadataTests
         Assert.Equal("0.####", grid.Columns.First(c => c.FieldName == "Ratio").Format);
         // Integers keep plain ToString (no default format).
         Assert.Null(grid.Columns.First(c => c.FieldName == "Quantity").Format);
+    }
+
+    private sealed class Sale
+    {
+        [DefaultSort(SortDirection.Descending)]
+        [DataBar]
+        [Highlight(FilterOperator.GreaterThan, 1000, foreground: "#F7768E", bold: true)]
+        public decimal Amount { get; set; }
+
+        [DefaultGroup]
+        public string Region { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public void DataViews_annotations_configure_sort_group_and_rules()
+    {
+        var grid = new DataGrid
+        {
+            ItemsSource = new ObservableCollection<Sale>
+            {
+                new() { Amount = 1500m, Region = "East" },
+                new() { Amount = 500m, Region = "West" },
+            },
+        };
+
+        // [DefaultSort(Descending)] on Amount.
+        var sort = Assert.Single(grid.SortDescriptions);
+        Assert.Equal(SortDirection.Descending, sort.Direction);
+        Assert.Same(grid.Columns.First(c => c.FieldName == "Amount"), sort.ColumnKey);
+
+        // [DefaultGroup] on Region.
+        var group = Assert.Single(grid.GroupDescriptions);
+        Assert.Same(grid.Columns.First(c => c.FieldName == "Region"), group.ColumnKey);
+
+        // [DataBar] + [Highlight] on Amount.
+        var amountRules = grid.Columns.First(c => c.FieldName == "Amount").FormatRules;
+        Assert.Contains(amountRules, r => r is DataBarRule);
+        var threshold = Assert.IsType<ThresholdRule>(amountRules.First(r => r is ThresholdRule));
+        var entry = Assert.Single(threshold.Entries);
+        Assert.Equal(FilterOperator.GreaterThan, entry.Operator);
+        Assert.True(entry.Format.Bold);
+        Assert.NotNull(entry.Format.Foreground);
     }
 
     [Fact]

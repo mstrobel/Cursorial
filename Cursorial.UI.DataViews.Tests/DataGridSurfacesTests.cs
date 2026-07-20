@@ -515,6 +515,52 @@ public class DataGridSurfacesTests
     }
 
     [Fact]
+    public void Icon_and_data_bar_coexist_on_one_cell()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // §10.7: a bar cell used to SKIP its verdict icon (to keep the track origin column-uniform).
+        // Now a per-column icon reserve lets an icon + bar coexist AND stay uniform. Amount carries
+        // BOTH a DataBarRule and an icon-bearing ThresholdRule.
+        source[0].Amount = 999m;
+        var amount = grid.Columns[2];
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var red = Color.FromRgb(0xF7, 0x76, 0x8E);
+        amount.FormatRules.Add(new DataBarRule { ColumnKey = amount });
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries =
+            [
+                (FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Foreground: green, Icon: "▲")),
+                (FilterOperator.LessThan, 25000m, new CellFormat(Foreground: red, Icon: "▼")),
+            ],
+        });
+        grid.CycleSort(amount); // ascending
+        host.RunUntilIdle();
+
+        // The icon rides the cell's left content edge in the bucket color…
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        int iconX = entry.X + 1;
+        var big = FindText(host, "31900");
+        Assert.NotNull(big);
+        Assert.Equal("▲", host.GetCell(iconX, big.Value.Y).Grapheme);
+        Assert.Equal(green, host.GetCell(iconX, big.Value.Y).Style.Foreground);
+
+        // …and the bar still renders (icons no longer suppress it), with ONE origin per column.
+        static int BarStart(string row)
+        {
+            int fill = row.IndexOf('█');
+            int track = row.IndexOf('░');
+            return fill < 0 ? track : track < 0 ? fill : Math.Min(fill, track);
+        }
+        int[] starts = [BarStart(Row(host, 1)), BarStart(Row(host, 2)), BarStart(Row(host, 3)), BarStart(Row(host, 4))];
+        Assert.All(starts, s => Assert.True(s >= 0, "icon-bearing cells still draw bars"));
+        Assert.All(starts, s => Assert.Equal(starts[0], s));
+    }
+
+    [Fact]
     public void Threshold_rule_colors_the_matching_cells()
     {
         var (host, grid, _) = Show();

@@ -590,15 +590,17 @@ public sealed class DataViewController<TRow> : DataViewController
                     break;
 
                 case ThresholdRule threshold:
-                    foreach (var (op, value, format) in threshold.Entries)
+                    foreach (var thresholdEntry in threshold.Entries)
                     {
                         // Each entry compiles through the column's typed condition builder — the
-                        // FILTER lane, so literal conversion and null ordering can never drift.
+                        // FILTER lane, so literal conversion and null ordering can never drift. The
+                        // SecondValue upper bound feeds Between (null for every other operator).
                         var slot = System.Linq.Expressions.Expression.Parameter(typeof(int), "slot");
-                        var body = column.BuildConditionExpression(slot, op, value, null);
+                        var body = column.BuildConditionExpression(slot, thresholdEntry.Operator,
+                                                                   thresholdEntry.Value, thresholdEntry.SecondValue);
                         entry.Thresholds.Add((
                             System.Linq.Expressions.Expression.Lambda<Func<int, bool>>(body, slot).Compile(),
-                            format));
+                            thresholdEntry.Format));
                     }
                     break;
 

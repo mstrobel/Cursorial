@@ -65,37 +65,37 @@ internal sealed class DataGridRulesManager
         // The toolbar band (the mockup's ＋ ✎ ✕ ▲▼ strip): a real Toolbar of BarButtons over
         // BarCommands — the label/icon/rich-help metadata lives ON the command, and the ✎/✕/▲/▼
         // enablement is the commands' CanExecute (the ButtonBase coupling grays a button whose
-        // command can't run — no hand-rolled IsEnabled writes). Icons are shared IconCarriers
-        // (emoji tier + the guaranteed single-width text floor; the Nerd Font tier is an app
-        // opt-in deliberately left to an icon audit rather than guessed PUA codepoints).
+        // command can't run — no hand-rolled IsEnabled writes). Icons carry all three tiers: the
+        // Nerd Font glyph (documented nf-md codepoints, mirroring Cursorial.Gallery's Icons — shown
+        // only under UIApplication.NerdFontAvailable), the emoji, and the single-width text floor.
         var newRule = new BarCommand(() => _ = NewRuleAsync())
         {
             Text = "New Rule",
-            Icon = new IconCarrier { Text = "+", Emoji = "➕" },
+            Icon = new IconCarrier { Glyph = "\U000F0415", Text = "+", Emoji = "➕" }, // nf-md-plus U+F0415
             Description = "Add a conditional-formatting rule (opens the rule editor).",
         };
         _edit = new BarCommand(() => _ = EditSelectedAsync(), HasSelection)
         {
             Text = "Edit",
-            Icon = new IconCarrier { Text = "✎", Emoji = "✏️" },
+            Icon = new IconCarrier { Glyph = "\U000F03EB", Text = "✎", Emoji = "✏️" }, // nf-md-pencil U+F03EB
             Description = "Edit the selected rule.",
         };
         _delete = new BarCommand(DeleteSelected, HasSelection)
         {
             Text = "Delete",
-            Icon = new IconCarrier { Text = "✕", Emoji = "🗑️" },
+            Icon = new IconCarrier { Glyph = "\U000F01B4", Text = "✕", Emoji = "🗑️" }, // nf-md-delete U+F01B4
             Description = "Delete the selected rule.",
         };
         _moveUp = new BarCommand(() => MoveSelected(-1), () => HasSelection() && HasSameColumnNeighbor(-1))
         {
             Text = "Move Up",
-            Icon = new IconCarrier { Text = "▲", Emoji = "🔼" },
+            Icon = new IconCarrier { Glyph = "\U000F0739", Text = "▲", Emoji = "🔼" }, // nf-md-arrow_up_bold_box_outline U+F0739
             Description = "Apply the selected rule earlier — priority is per-column, first match wins.",
         };
         _moveDown = new BarCommand(() => MoveSelected(+1), () => HasSelection() && HasSameColumnNeighbor(+1))
         {
             Text = "Move Down",
-            Icon = new IconCarrier { Text = "▼", Emoji = "🔽" },
+            Icon = new IconCarrier { Glyph = "\U000F0730", Text = "▼", Emoji = "🔽" }, // nf-md-arrow_down_bold_box_outline U+F0730
             Description = "Apply the selected rule later — priority is per-column, first match wins.",
         };
 

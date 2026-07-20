@@ -136,6 +136,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     // per band fill; 0 = the column has no bars this band.
     private int[] _barReserve = [];
 
+    // The per-column data-bar ICON reserve (§10.7): a bar cell used to suppress its verdict icon
+    // because a per-row icon would shift the column-uniform bar track. The reserve is the widest
+    // icon across the column's bar cells — reserved UNIFORMLY for every bar cell in the column (a
+    // row without an icon leaves the slot blank), so an icon + bar coexist with the track origin
+    // still column-uniform. 0 = no bar cell in the column carries an icon this band.
+    private int[] _barIconReserve = [];
+
     private Cursorial.Drawing.Media.IBrush BrushFor(Color color)
     {
         if (!_formatBrushes.TryGetValue(color, out var brush))
@@ -661,7 +668,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // (uniform bar origin/track — equal fractions must render equal bars; see _barReserve).
         if (_barReserve.Length < columns.Count)
             _barReserve = new int[columns.Count];
+        if (_barIconReserve.Length < columns.Count)
+            _barIconReserve = new int[columns.Count];
         Array.Clear(_barReserve, 0, _barReserve.Length);
+        Array.Clear(_barIconReserve, 0, _barIconReserve.Length);
         if (hasRules)
         {
             foreach (var cached in _band)
@@ -670,8 +680,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     continue;
                 for (int c = 0; c < columns.Count && c < cached.BarFractions.Length; c++)
                 {
-                    if (!double.IsNaN(cached.BarFractions[c]))
-                        _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                    if (double.IsNaN(cached.BarFractions[c]))
+                        continue;
+                    _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                    // A bar cell that also carries a verdict icon widens the column's icon reserve
+                    // (uniform across the column so the bar origin stays fixed).
+                    var overlaid = (c < cached.CellFormats.Length ? cached.CellFormats[c] : default).OverlayOn(cached.RowFormat);
+                    if (overlaid.Icon is { } icon)
+                        _barIconReserve[c] = Math.Max(_barIconReserve[c], GraphemeWidth.StringWidth(icon) + 1);
                 }
             }
         }
@@ -832,24 +848,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         bool hasBar = !double.IsNaN(fraction);
 
         // The verdict's Icon glyph rides the cell's LEFT edge wearing the format foreground (the
-        // editor's ▲●▼ icon sets — live-canary fix: CellFormat had no glyph lane, so icon-set
-        // rules colored values but drew no icons). The value keeps its alignment in the remaining
-        // width. Bar cells skip the icon — the bar owns the cell's spare geometry, and mixing
-        // per-row icon presence would wobble the column-uniform track origin.
-        int iconReserve = 0;
-        if (!hasBar && format.Icon is { } icon)
-        {
-            int iconWidth = GraphemeWidth.StringWidth(icon);
-            if (iconWidth > 0 && iconWidth + 1 < entry.Width)
-            {
-                DrawFormattedCell(context, cellX, y, icon, entry.Width, format);
-                iconReserve = iconWidth + 1;
-            }
-        }
+        // editor's ▲●▼ icon sets). The reserve is UNIFORM per column on a bar cell (§10.7 — the
+        // band's widest bar-cell icon, blank when this row has none) so an icon + bar coexist with
+        // the track origin fixed; on a plain cell it is just this row's own icon width. The value
+        // keeps its alignment in the width that remains.
+        int iconReserve = hasBar
+            ? (c < _barIconReserve.Length ? _barIconReserve[c] : 0)
+            : (format.Icon is { } plainIcon && GraphemeWidth.StringWidth(plainIcon) is var piw && piw > 0 && piw + 1 < entry.Width ? piw + 1 : 0);
+        if (iconReserve > 0 && format.Icon is { } icon && GraphemeWidth.StringWidth(icon) > 0)
+            DrawFormattedCell(context, cellX, y, icon, Math.Max(1, iconReserve), format);
 
         // A data-bar cell pins its value LEFT with the bar filling the remainder (the
         // mockup's amtcell); everything else honors the column alignment.
-        int avail = entry.Width - iconReserve;
+        int avail = Math.Max(0, entry.Width - iconReserve);
         int drawX = !hasBar &&
                     entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
                     textWidth < avail
@@ -860,10 +871,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         if (hasBar)
         {
-            // The bar starts after the COLUMN's text reserve, not this row's text (the live-canary
-            // uniform-scale fix): one origin + one track width per column.
+            // The bar starts after the COLUMN's icon reserve + text reserve, not this row's text
+            // (the live-canary uniform-scale fix): one origin + one track width per column.
             int reserve = c < _barReserve.Length && _barReserve[c] > 0 ? _barReserve[c] : textWidth;
-            int used = Math.Min(reserve, entry.Width);
+            int used = iconReserve + Math.Min(reserve, avail);
             DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
         }
     }

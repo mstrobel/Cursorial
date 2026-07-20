@@ -5,6 +5,14 @@ using Cursorial.UI.DataViews.Shaping;
 
 namespace Cursorial.UI.DataViews;
 
+/// <summary>
+/// The context handed to a <see cref="DataGridColumn.Validator"/> at commit (§10.2): the target
+/// <see cref="Column"/>, the proposed edit's raw <see cref="Text"/>, and the row it applies to
+/// (<see cref="RowId"/> ≥ 0 for an existing row; <see cref="IsNewRow"/> for the new-row template,
+/// where the id is not yet assigned). Cross-cell rules can close over the grid in the delegate.
+/// </summary>
+public readonly record struct DataGridCellValidationContext(DataGridColumn Column, string Text, int RowId, bool IsNewRow);
+
 /// <summary>The auto-filter row's per-column cell kind (design doc §3.4 — the mockup's mixed filter row).</summary>
 public enum FilterCellKind
 {
@@ -191,6 +199,17 @@ public class DataGridColumn : UIObject
     /// column whose rule set owns it, evaluated row-wide).
     /// </summary>
     public IList<FormatRule> FormatRules { get; } = [];
+
+    /// <summary>
+    /// An optional per-column commit-time validator (§10.2): invoked with the proposed edit's raw
+    /// text (and the row context) BEFORE it is written through the compiled setter. Return
+    /// <see langword="null"/> to accept the value, or an error message to REJECT it — the commit is
+    /// vetoed, the hosted editor stays open in the error look, and the message shows on the edit bar.
+    /// A code-only lane (delegates aren't XAML-bindable); it runs on both the existing-row and
+    /// new-row commit paths. Text-level by design — for typed checks, parse
+    /// <see cref="DataGridCellValidationContext.Text"/> against the column's key type in the delegate.
+    /// </summary>
+    public Func<DataGridCellValidationContext, string?>? Validator { get; set; }
 
     /// <summary>The effective header caption.</summary>
     public string EffectiveHeader => Header ?? FieldName ?? string.Empty;

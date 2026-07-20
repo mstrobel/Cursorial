@@ -1297,6 +1297,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private void ClearEditorError()
     {
+        _owner?.ClearEditValidationError(); // §10.2 — a fresh keystroke retires the validation message
         if (!_editorErrorFlagged || _editor is not { } editor)
             return;
         _editorErrorFlagged = false;

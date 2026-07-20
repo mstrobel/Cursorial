@@ -2254,9 +2254,12 @@ public class DataGrid : Control
             return false; // nothing committable yet (a combo with no selection) — keep editing
 
         var column = presenter.ColumnLayout.Entries[columnIndex].Column;
+        ClearEditValidationError(); // fresh attempt — retire any prior message
 
         if (_pendingNewRow is { } newRow)
         {
+            if (RejectedByValidator(column, text, rowId: -1, isNewRow: true))
+                return false; // §10.2 — vetoed on the strip; the editor stays open
             if (!_controller.TrySetRowText(newRow, column, text))
             {
                 presenter.FlagEditorError(); // the ed-err look; the editor stays open for correction
@@ -2289,6 +2292,9 @@ public class DataGrid : Control
             return false;
         }
 
+        if (RejectedByValidator(column, text, editRowId, isNewRow: false))
+            return false; // §10.2 — vetoed on the strip; the editor stays open
+
         if (!_controller.TrySetCellFromText(editRowId, column, text))
         {
             presenter.FlagEditorError(); // unparseable — the editor stays open for correction
@@ -2299,10 +2305,45 @@ public class DataGrid : Control
         return true;
     }
 
+    /// <summary>
+    /// Runs the column's §10.2 <see cref="DataGridColumn.Validator"/> (if any) against the proposed
+    /// text. On rejection: records the message (shown on the edit bar), flags the editor error look,
+    /// and returns true so the caller vetoes the commit and keeps the editor open.
+    /// </summary>
+    private bool RejectedByValidator(DataGridColumn column, string text, int rowId, bool isNewRow)
+    {
+        if (column.Validator is not { } validator)
+            return false;
+        var message = validator(new DataGridCellValidationContext(column, text, rowId, isNewRow));
+        if (string.IsNullOrEmpty(message))
+            return false;
+
+        _editValidationError = message;
+        RowsPresenter?.FlagEditorError();
+        NotifyEditingChanged(); // repaint the edit bar with the message
+        return true;
+    }
+
+    private string? _editValidationError;
+
+    /// <summary>The active commit-time validation message (§10.2), or null. The edit bar renders it.</summary>
+    internal string? EditValidationError => _editValidationError;
+
+    /// <summary>Retires the validation message (the editor's next text/selection change, and each
+    /// fresh commit attempt / edit teardown call this).</summary>
+    internal void ClearEditValidationError()
+    {
+        if (_editValidationError is null)
+            return;
+        _editValidationError = null;
+        NotifyEditingChanged();
+    }
+
     /// <summary>Cancels the hosted editor without writing (a pending new-row instance is discarded).</summary>
     public void CancelEdit()
     {
         _pendingNewRow = null;
+        ClearEditValidationError();
         RowsPresenter?.EndEditVisual();
     }
 

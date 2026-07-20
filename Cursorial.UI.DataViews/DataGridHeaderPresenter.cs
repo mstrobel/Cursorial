@@ -8,6 +8,8 @@ using Cursorial.Text;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
+using CellStyle = Cursorial.Output.Style;
+
 namespace Cursorial.UI.DataViews;
 
 /// <summary>
@@ -249,6 +251,18 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (tinted && HoverBackground is not null)
             context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
 
+        // NoColor tier: the hover tint resolves to Default (invisible), so the FOCUSED header cell
+        // carries a reverse-video + bold cue instead (a solid bar laid down first; the caption/glyphs
+        // then redraw with inverse over it). Keyboard focus only — hover is pointer-transient (§4).
+        bool noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
+        bool focusCue = noColor && !dragging && i == owner.HeaderFocusIndex;
+
+        if (focusCue)
+            FillInverse(context, x, cellWidth);
+
+        CellStyle captionStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse | TextAttributes.Bold) : default;
+        CellStyle glyphStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
+
         // Caption, truncated to leave glyph room on the right.
         string caption = entry.Column.EffectiveHeader;
         int glyphRoom = 2; // "▾" + gap; sort glyph adds another below when present
@@ -258,7 +272,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             glyphRoom += ordinal > 0 ? 3 : 2;
 
         DrawTruncated(context, x + DataGridColumnLayout.CellPadding, caption,
-                      Math.Max(1, entry.Width - glyphRoom), Foreground);
+                      Math.Max(1, entry.Width - glyphRoom), Foreground, captionStyle);
 
         // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
         int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
@@ -268,10 +282,10 @@ public sealed class DataGridHeaderPresenter : UIElement
         {
             bool active = owner.HasColumnFilter(entry.Column);
 
-            context.DrawText(glyphX, 0, "▾", 
-                             active 
-                                 ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground 
-                                 : FilterGlyphBrush ?? foreground);
+            context.DrawText(glyphX, 0, "▾",
+                             active
+                                 ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground
+                                 : FilterGlyphBrush ?? foreground, null, glyphStyle);
             glyphX -= 2;
         }
 
@@ -280,24 +294,35 @@ public sealed class DataGridHeaderPresenter : UIElement
             if (ordinal > 0 && ordinal < 9)
             {
                 context.DrawText(glyphX, 0, (ordinal + 1).ToString(CultureInfo.InvariantCulture),
-                                 SortGlyphBrush ?? foreground);
+                                 SortGlyphBrush ?? foreground, null, glyphStyle);
 
                 glyphX -= 1;
             }
 
-            context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼", 
-                             SortGlyphBrush ?? foreground);
+            context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼",
+                             SortGlyphBrush ?? foreground, null, glyphStyle);
         }
     }
 
-    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush)
+    /// <summary>Reverse-video bar of <paramref name="width"/> space-bearing cells at row 0 — the
+    /// NoColor header focus fill (SGR 7 swaps the terminal's real default fg/bg; §4).</summary>
+    private void FillInverse(RenderContext context, int x, int width)
+    {
+        if (width <= 0)
+            return;
+
+        context.FillOpaque(new Rect(x, 0, width, 1), Foreground ?? Brushes.Default, TextAttributes.Inverse);
+    }
+
+    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush,
+                                      CellStyle style = default)
     {
         if (brush is null)
             return;
 
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
-            context.DrawText(x, 0, text, brush);
+            context.DrawText(x, 0, text, brush, null, style);
             return;
         }
 
@@ -315,8 +340,8 @@ public sealed class DataGridHeaderPresenter : UIElement
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
 
-        context.DrawText(x, 0, text.AsSpan(0, end), brush);
-        context.DrawText(x + width, 0, "…", brush);
+        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
+        context.DrawText(x + width, 0, "…", brush, null, style);
     }
 
     /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>

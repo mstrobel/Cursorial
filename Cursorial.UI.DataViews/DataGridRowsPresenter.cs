@@ -883,6 +883,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         var selection = owner.RowSelection;
         int focusRow = owner.FocusViewIndex;
         int focusColumn = owner.FocusColumnIndex;
+        // NoColor tier: selection/focus background fills resolve to Default (invisible), so the
+        // direct-drawn cells carry the cue as reverse-video (selection/range/focus) + bold (the focus
+        // cell) — the framework's `.caps-nocolor` Inverse styles never reach direct-draw (§4).
+        bool noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
         var entries = ColumnLayout.Entries;
         int frozenCount = ColumnLayout.FrozenCount;
         int frozenWidth = ColumnLayout.FrozenWidth;
@@ -940,7 +944,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             bool rowSelected = selection is not null && selection.IsSelected(row.RowId);
 
             for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
-                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
+                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected, noColor);
 
             if (frozenWidth > 0)
             {
@@ -950,7 +954,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
 
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
-                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
+                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected, noColor);
             }
 
             // The §9.3 expander gutter glyph (a data row's ▶/▼ — group rows keep their own ▸/▾).
@@ -987,7 +991,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow,
                               int focusColumn,
-                              bool rowSelected)
+                              bool rowSelected, bool noColor)
     {
         if (!IsEntryVisible(c))
             return;
@@ -999,18 +1003,36 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // The §9.4/§10.1 cell-range fill (under the focus well + text; group rows never route here) —
         // a cell is in the selection when ANY range's rect contains it (ranges rarely overlap; when
         // they do the fill is idempotent).
-        if (SelectionBackground is not null && _renderCellRanges.Count > 0)
+        bool cellInRange = false;
+        if (_renderCellRanges.Count > 0)
         {
             for (int r = 0; r < _renderCellRanges.Count; r++)
             {
                 var range = _renderCellRanges[r];
                 if (view >= range.FirstRow && view <= range.LastRow && c >= range.FirstColumn && c <= range.LastColumn)
                 {
-                    context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+                    cellInRange = true;
                     break;
                 }
             }
+
+            if (cellInRange && SelectionBackground is not null && !noColor) // NoColor: the reverse-video fill below carries it
+                context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
         }
+
+        // NoColor tier: the row/range/focus background fills above and below all resolve to Default
+        // (invisible), so the cell carries the cue in reverse-video (selection, cell-range) plus a bold
+        // weight on the focus cell to set the cursor position apart from mere selection (§4; the
+        // direct-draw mirror of the framework's `.caps-nocolor` list-focus cue).
+        bool isFocusCell = view == focusRow && c == focusColumn;
+        bool forceInverse = noColor && (rowSelected || cellInRange || isFocusCell);
+        bool forceBold = noColor && isFocusCell;
+
+        // Lay a reverse-video block across the whole cell slot so the cue reads as a SOLID bar (not
+        // reverse-video text islands) — adjacent slots tile without gaps into a row/range bar. The
+        // icon/text then redraw WITH inverse over it so no glyph punches a non-inverse hole.
+        if (forceInverse)
+            FillInverse(context, drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding);
 
         // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill). A
         // format BACKGROUND is a WHOLE-CELL fill (live-canary fix: the glyph layer's DrawText
@@ -1019,14 +1041,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // empty cells). A selected row's tint outranks it (the selection must stay legible).
         var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
 
-        if (format.Background is {} formatBackground && !rowSelected)
+        // These color fills would paint invisibly under NoColor AND clobber the reverse-video bar
+        // laid down above (the fill runs after FillInverse), so they are skipped there — the cue is
+        // carried by the inverse attribute on the cells instead.
+        if (format.Background is {} formatBackground && !rowSelected && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
                                BrushFor(formatBackground));
         }
 
         // The focus cell's well-fill (the mockup's focuscell).
-        if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
+        if (view == focusRow && c == focusColumn && FocusCellBackground is not null && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
                                FocusCellBackground);
@@ -1046,7 +1071,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             ? (c < _barIconReserve.Length ? _barIconReserve[c] : 0)
             : (format.Icon is { } plainIcon && GraphemeWidth.StringWidth(plainIcon) is var piw && piw > 0 && piw + 1 < entry.Width ? piw + 1 : 0);
         if (iconReserve > 0 && format.Icon is { } icon && GraphemeWidth.StringWidth(icon) > 0)
-            DrawFormattedCell(context, cellX, y, icon, Math.Max(1, iconReserve), format);
+            DrawFormattedCell(context, cellX, y, icon, Math.Max(1, iconReserve), format, forceInverse); // glyphs get Inverse-only
 
         // A data-bar cell pins its value LEFT with the bar filling the remainder (the
         // mockup's amtcell); everything else honors the column alignment.
@@ -1057,7 +1082,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                         ? cellX + iconReserve + (avail - textWidth)
                         : cellX + iconReserve;
 
-        DrawFormattedCell(context, drawX, y, text, avail, format);
+        DrawFormattedCell(context, drawX, y, text, avail, format, forceInverse, forceBold);
 
         if (hasBar)
         {
@@ -1166,21 +1191,34 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
     private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
-                                   in CellFormat format)
+                                   in CellFormat format, bool forceInverse = false, bool forceBold = false)
     {
         var textBrush = TextBrush;
+
+        // The NoColor focus/selection cue (§4): reverse-video (and, on the focus cell, bold) folded
+        // over whatever the conditional-format verdict already carries.
+        var forced = default(TextAttributes);
+
+        if (forceInverse)
+            forced |= TextAttributes.Inverse;
+
+        if (forceBold)
+            forced |= TextAttributes.Bold;
 
         if (format.IsEmpty)
         {
             if (textBrush is not null)
-                DrawClipped(context, x, y, text, maxWidth, textBrush);
+            {
+                DrawClipped(context, x, y, text, maxWidth, textBrush,
+                            forced == default ? default : default(CellStyle).WithAttributes(forced));
+            }
             return;
         }
 
         if (text.Length == 0 || (format.Foreground is null && textBrush is null))
             return;
 
-        var attributes = default(TextAttributes);
+        var attributes = forced;
 
         if (format.Bold)
             attributes |= TextAttributes.Bold;
@@ -1240,6 +1278,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         }
     }
 
+    /// <summary>
+    /// Paints a reverse-video bar of <paramref name="width"/> space-bearing cells at (x, y) — the
+    /// NoColor selection/focus fill. SGR 7 swaps the terminal's real default fg/bg, so the bar is
+    /// visible even though every NoColor brush resolves to Default (§4). The text/icon then redraw
+    /// with inverse over it so no glyph punches a non-inverse hole.
+    /// </summary>
+    private void FillInverse(RenderContext context, int x, int y, int width)
+    {
+        if (width <= 0)
+            return;
+
+        context.FillOpaque(new Rect(x, y, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
+    }
+
     /// <summary>The `█░` fill/track run after a data-bar cell's value (glyph shape carries the value in NoColor — §4).</summary>
     private void DrawDataBar(RenderContext context, int x, int y, int width, double fraction)
     {
@@ -1287,7 +1339,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
         }
 
-        context.DrawText(x, y, text, foreground);
+        context.DrawText(x, y, text, foreground, background: null, style);
     }
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────

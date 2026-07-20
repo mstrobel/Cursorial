@@ -275,10 +275,12 @@ public class FilterGestureTests
         host.RunUntilIdle();
         var popup = grid.ActiveFilterPopup!;
 
-        // The row COUNT rides beside each display value (search still matches on the display half).
-        Assert.Equal("East   2", popup.CheckBoxFor("East")!.Content);
-        Assert.Equal("South   1", popup.CheckBoxFor("South")!.Content);
-        Assert.Equal("West   1", popup.CheckBoxFor("West")!.Content);
+        // The checkbox carries just the display value; the COUNT rides a right-docked sibling (aligned
+        // into one column). Search still matches on the display half.
+        Assert.Equal("East", popup.CheckBoxFor("East")!.Content);
+        Assert.Equal("2", popup.CountTextFor("East"));
+        Assert.Equal("1", popup.CountTextFor("South"));
+        Assert.Equal("1", popup.CountTextFor("West"));
 
         host.SendKey(Key.Escape);
         host.RunUntilIdle();

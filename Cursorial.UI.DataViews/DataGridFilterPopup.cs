@@ -23,7 +23,7 @@ internal sealed class DataGridFilterPopup
     private readonly DataGrid _grid;
     private Popup? _popup;
     private DataGridColumn? _column;
-    private readonly List<(object? Raw, string Display, CheckBox Check)> _rows = [];
+    private readonly List<(object? Raw, string Display, CheckBox Check, UIElement Row)> _rows = [];
     private CheckBox? _selectAll;
     private bool? _selectAllState; // the RECORDED tri-state truth (SyncSelectAllState writes it)
     private TextBox? _search;
@@ -35,7 +35,8 @@ internal sealed class DataGridFilterPopup
     internal bool IsOpen { get; private set; }
 
     /// <summary>The distinct entries backing the rows (tests assert the population).</summary>
-    internal IReadOnlyList<(object? Raw, string Display, CheckBox Check)> Rows => _rows;
+    internal IReadOnlyList<(object? Raw, string Display, CheckBox Check)> Rows =>
+        _rows.ConvertAll(r => (r.Raw, r.Display, r.Check));
 
     internal TextBox? SearchBox => _search;
 
@@ -44,12 +45,36 @@ internal sealed class DataGridFilterPopup
     /// <summary>The row checkbox for a raw value (tests toggle through the real control).</summary>
     internal CheckBox? CheckBoxFor(object? raw)
     {
-        foreach (var (rowRaw, _, check) in _rows)
+        foreach (var (rowRaw, _, check, _) in _rows)
         {
             if (Equals(rowRaw, raw))
                 return check;
         }
         return null;
+    }
+
+    /// <summary>The right-docked count text for a raw value's row, or null when the row carries no
+    /// count (the count is a docked <see cref="TextBlock"/> sibling of the checkbox — tests assert it).</summary>
+    internal string? CountTextFor(object? raw)
+    {
+        foreach (var (rowRaw, _, _, row) in _rows)
+        {
+            if (Equals(rowRaw, raw) && row is DockPanel dock)
+                return dock.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
+        }
+        return null;
+    }
+
+    /// <summary>The visibility of a raw value's ROW (checkbox + docked count) — search collapses the
+    /// whole row, so this is the search-hide truth (tests assert it, not the checkbox's own).</summary>
+    internal Visibility RowVisibilityFor(object? raw)
+    {
+        foreach (var (rowRaw, _, _, row) in _rows)
+        {
+            if (Equals(rowRaw, raw))
+                return row.Visibility;
+        }
+        return Visibility.Collapsed;
     }
 
     /// <summary>Opens (or re-anchors) the checklist for <paramref name="column"/> below its header cell.</summary>
@@ -138,13 +163,33 @@ internal sealed class DataGridFilterPopup
             string display = raw is null ? "(Blanks)" : formatted;
             var check = new CheckBox
             {
-                // The mockup shows each value's row COUNT beside it; search still matches on Display.
-                Content = count > 0 ? $"{display}   {count}" : display,
+                Content = display, // search still matches on Display
                 IsChecked = active is null || active.Contains(raw),
             };
             check.Click += (_, _) => SyncSelectAllState();
-            _rows.Add((raw, display, check));
-            rowsHost.Children.Add(check);
+
+            // The value's row COUNT docks to the right (aligned into one column across rows) while the
+            // checkbox fills the rest — not a fixed-space string, which drifted with value width. The
+            // vertical host stretches each row to the widest, so the counts line up (owner note).
+            UIElement rowElement = check;
+
+            if (count > 0)
+            {
+                var rowDock = new DockPanel();
+                var countText = new TextBlock
+                {
+                    Text = count.ToString(System.Globalization.CultureInfo.CurrentCulture),
+                    Margin = new Margins(2, 0, 0, 0),
+                };
+                countText.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                DockPanel.SetDock(countText, Dock.Right);
+                rowDock.Children.Add(countText);
+                rowDock.Children.Add(check); // last child fills the remaining width
+                rowElement = rowDock;
+            }
+
+            _rows.Add((raw, display, check, rowElement));
+            rowsHost.Children.Add(rowElement);
         }
         SyncSelectAllState();
 
@@ -197,11 +242,13 @@ internal sealed class DataGridFilterPopup
     private void ApplySearchFilter()
     {
         string needle = _search?.Text ?? string.Empty;
-        foreach (var (_, display, check) in _rows)
+        foreach (var (_, display, _, row) in _rows)
         {
-            check.Visibility = needle.Length == 0 || display.Contains(needle, StringComparison.OrdinalIgnoreCase)
+            // Hide the whole ROW (checkbox + docked count), not just the checkbox — the count is a
+            // sibling. Hidden rows KEEP their check state (search never unchecks).
+            row.Visibility = needle.Length == 0 || display.Contains(needle, StringComparison.OrdinalIgnoreCase)
                 ? Visibility.Visible
-                : Visibility.Collapsed; // hidden rows KEEP their check state — search never unchecks
+                : Visibility.Collapsed;
         }
     }
 
@@ -219,7 +266,7 @@ internal sealed class DataGridFilterPopup
         _syncingChecks = true;
         try
         {
-            foreach (var (_, _, check) in _rows)
+            foreach (var (_, _, check, _) in _rows)
                 check.IsChecked = target;
         }
         finally
@@ -240,7 +287,7 @@ internal sealed class DataGridFilterPopup
             return;
 
         int selected = 0;
-        foreach (var (_, _, check) in _rows)
+        foreach (var (_, _, check, _) in _rows)
         {
             if (check.IsChecked == true)
                 selected++;
@@ -259,7 +306,7 @@ internal sealed class DataGridFilterPopup
         {
             var raws = new List<object?>();
             string? single = null;
-            foreach (var (raw, display, check) in _rows)
+            foreach (var (raw, display, check, _) in _rows)
             {
                 if (check.IsChecked == true)
                 {

@@ -229,8 +229,8 @@ public class DataGridSurfacesTests
         popup.SearchBox!.Text = "we";
         host.RunUntilIdle();
 
-        Assert.Equal(Visibility.Collapsed, popup.CheckBoxFor("East")!.Visibility);
-        Assert.Equal(Visibility.Visible, popup.CheckBoxFor("West")!.Visibility);
+        Assert.Equal(Visibility.Collapsed, popup.RowVisibilityFor("East")); // search collapses the whole row
+        Assert.Equal(Visibility.Visible, popup.RowVisibilityFor("West"));
         Assert.True(popup.CheckBoxFor("East")!.IsChecked); // hidden ≠ unchecked
 
         popup.Apply();

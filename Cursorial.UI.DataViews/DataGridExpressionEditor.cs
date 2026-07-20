@@ -56,6 +56,7 @@ internal sealed class DataGridExpressionEditor
     [
         "Contains(", "StartsWith(", "EndsWith(", "Upper(", "Lower(",
         "Len(", "Trim(", "Abs(", "Round(", "IsNull(", "IsNullOrEmpty(",
+        "Iif(", "Min(", "Max(", "Floor(", "Ceiling(", "Sqrt(", "Pow(", "Mod(",
     ];
 
     public DataGridExpressionEditor(DataGrid grid, string seedText)

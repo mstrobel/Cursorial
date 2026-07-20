@@ -130,12 +130,56 @@ internal static class DataGridDialogHelpers
     /// <summary>The preset index whose format equals <paramref name="format"/>, or 0 (edit-seed best match).</summary>
     internal static int PresetIndexOf(CellFormat format)
     {
+        int exact = ExactPresetIndexOf(format);
+        return exact >= 0 ? exact : 0;
+    }
+
+    /// <summary>The preset index whose format EXACTLY equals <paramref name="format"/>, or −1 (⇒ a
+    /// custom format the "Custom…" pick must carry rather than silently snapping to preset 0).</summary>
+    internal static int ExactPresetIndexOf(CellFormat format)
+    {
         for (int i = 0; i < FormatPresets.Length; i++)
         {
             if (FormatPresets[i].Format == format)
                 return i;
         }
-        return 0;
+        return -1;
+    }
+
+    // ── Color entry (the custom pickers — §10.6) ─────────────────────────────────────────────────
+
+    private static readonly Dictionary<string, Color> NamedColors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["red"] = Color.FromRgb(0xF7, 0x76, 0x8E), ["green"] = Color.FromRgb(0x9E, 0xCE, 0x6A),
+        ["amber"] = Color.FromRgb(0xE0, 0xAF, 0x68), ["blue"] = Color.FromRgb(0x7A, 0xA2, 0xF7),
+        ["cyan"] = Color.FromRgb(0x7D, 0xCF, 0xFF), ["magenta"] = Color.FromRgb(0xBB, 0x9A, 0xF7),
+        ["white"] = Color.FromRgb(0xC0, 0xCA, 0xF5), ["black"] = Color.FromRgb(0x1A, 0x1B, 0x26),
+        ["gray"] = Color.FromRgb(0x56, 0x5F, 0x89), ["grey"] = Color.FromRgb(0x56, 0x5F, 0x89),
+    };
+
+    /// <summary>
+    /// Parses a custom color: a small named-color set, else a <c>#RGB</c> / <c>#RRGGBB</c> /
+    /// <c>#RRGGBBAA</c> hex through the Core <see cref="Color.TryParseHex"/> (the stack's
+    /// <c>#RRGGBBAA</c> alpha convention). Blank/whitespace ⇒ no color (<see langword="false"/>, an
+    /// unset lane); a malformed value ⇒ <see langword="false"/> too.
+    /// </summary>
+    internal static bool TryParseColor(string? text, out Color color)
+    {
+        color = default;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        var s = text.Trim();
+        return NamedColors.TryGetValue(s, out color) || Color.TryParseHex(s, out color, out _);
+    }
+
+    /// <summary>The <c>#RRGGBB</c>/<c>#RRGGBBAA</c> text for a color (the custom picker's seed), or "" for none.</summary>
+    internal static string ColorToHex(Color? color)
+    {
+        if (color is not { } c || c.Kind != ColorKind.Rgb)
+            return string.Empty;
+        return c.Alpha == 255
+            ? $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}"
+            : $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}{c.Alpha:X2}";
     }
 
     // ── The dialog window scaffold (title/content/buttons — every suite dialog composes this) ────

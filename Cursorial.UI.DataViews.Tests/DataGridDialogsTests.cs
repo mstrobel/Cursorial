@@ -48,6 +48,34 @@ public class DataGridDialogsTests
         new("SO-1047", "West", 27300m),
     ];
 
+    /// <summary>The index of an operator label in a rule-editor operator combo (label-based so the
+    /// Between insertion — or any future reorder — never re-breaks index-hardcoded tests).</summary>
+    private static int OperatorIndex(DataGridRuleEditor editor, string label)
+    {
+        var items = ((System.Collections.IEnumerable)editor.OperatorCombo!.ItemsSource!).Cast<string>().ToList();
+        int i = items.IndexOf(label);
+        Assert.True(i >= 0, $"operator '{label}' present");
+        return i;
+    }
+
+    /// <summary>Opens the rules manager and a fresh ＋ New Rule editor (the §10.4/.5/.6 editor tests' setup).</summary>
+    private static DataGridRuleEditor OpenNewRuleEditor(DataGrid grid, UIHeadlessHost host)
+    {
+        _ = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        _ = manager.NewRuleAsync();
+        host.RunUntilIdle();
+        return manager.ActiveRuleEditor!;
+    }
+
+    /// <summary>Closes the open rules manager (the editor tests' teardown).</summary>
+    private static void CloseManager(DataGrid grid, UIHeadlessHost host)
+    {
+        grid.ActiveRulesManager?.CloseWindow();
+        host.RunUntilIdle();
+    }
+
     private static (UIHeadlessHost Host, DataGrid Grid, ObservableCollection<Order> Source) Show(
         int columns = 80, int rows = 24)
     {
@@ -452,6 +480,204 @@ public class DataGridDialogsTests
                          .Select(t => (t.Text ?? string.Empty, ((SolidColorBrush)t.Foreground!).Color))
                          .ToList();
         }
+    }
+
+    [Fact]
+    public void Highlight_between_operator_lands_a_two_bound_entry()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var editor = OpenNewRuleEditor(grid, host);
+        editor.SetKind(RuleEditorKind.Highlight);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+        editor.OperatorCombo!.SelectedIndex = OperatorIndex(editor, "Between");
+        editor.ValueBox!.Text = "15000";
+        editor.SecondValueBox!.Text = "28000"; // revealed by Between (§10.5)
+        editor.Ok();
+        host.RunUntilIdle();
+
+        var rule = Assert.IsType<ThresholdRule>(Assert.Single(grid.Columns[2].FormatRules));
+        var entry = Assert.Single(rule.Entries);
+        Assert.Equal(FilterOperator.Between, entry.Operator);
+        Assert.Equal(15000m, entry.Value);
+        Assert.Equal(28000m, entry.SecondValue); // the upper bound flowed through
+        CloseManager(grid, host);
+    }
+
+    [Fact]
+    public void Highlight_multi_entry_lands_every_condition_in_order()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var editor = OpenNewRuleEditor(grid, host);
+        editor.SetKind(RuleEditorKind.Highlight);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+
+        // First condition (row 0), then add a second via the ＋ hook (§10.4).
+        editor.OperatorCombo!.SelectedIndex = OperatorIndex(editor, "Greater or equal");
+        editor.ValueBox!.Text = "25000";
+        editor.AddHighlightCondition();
+        host.RunUntilIdle();
+        Assert.Equal(2, editor.HighlightRows.Count);
+
+        // The second row's controls.
+        var second = editor.HighlightRows[1];
+        second.Operator.SelectedIndex = OperatorIndex(editor, "Less than");
+        second.Value.Text = "15000";
+        editor.Ok();
+        host.RunUntilIdle();
+
+        var rule = Assert.IsType<ThresholdRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Equal(2, rule.Entries.Count);
+        Assert.Equal((FilterOperator.GreaterThanOrEqual, (object)25000m), (rule.Entries[0].Operator, rule.Entries[0].Value));
+        Assert.Equal((FilterOperator.LessThan, (object)15000m), (rule.Entries[1].Operator, rule.Entries[1].Value));
+        CloseManager(grid, host);
+    }
+
+    [Fact]
+    public void Editing_a_multi_entry_rule_seeds_a_row_per_entry()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var amount = grid.Columns[2];
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries =
+            [
+                (FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Bold: true)),
+                (FilterOperator.LessThan, 15000m, new CellFormat(Foreground: Color.FromRgb(0xF7, 0x76, 0x8E))),
+            ],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        manager.Select(0);
+        var edit = manager.EditSelectedAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+
+        // Both entries seeded a row (§10.4 — the editor used to seed only entry[0]).
+        Assert.Equal(RuleEditorKind.Highlight, editor.Kind);
+        Assert.Equal(2, editor.HighlightRows.Count);
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(edit.IsCompletedSuccessfully);
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
+
+    [Fact]
+    public void Custom_format_carries_arbitrary_colors()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var editor = OpenNewRuleEditor(grid, host);
+        editor.SetKind(RuleEditorKind.Highlight);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+        editor.OperatorCombo!.SelectedIndex = OperatorIndex(editor, "Greater or equal");
+        editor.ValueBox!.Text = "25000";
+
+        // Pick "Custom…" and enter a hex the presets don't offer (§10.6).
+        var row = editor.HighlightRows[0];
+        row.Format.SelectedIndex = DataGridRuleEditor.CustomFormatIndex;
+        row.Custom.Foreground.Text = "#123456";
+        editor.Ok();
+        host.RunUntilIdle();
+
+        var rule = Assert.IsType<ThresholdRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Equal(Color.FromRgb(0x12, 0x34, 0x56), Assert.Single(rule.Entries).Format.Foreground);
+        CloseManager(grid, host);
+    }
+
+    [Fact]
+    public void Custom_color_scale_lands_its_stops()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var editor = OpenNewRuleEditor(grid, host);
+        editor.SetKind(RuleEditorKind.ColorScale);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+        editor.ScaleCombo!.SelectedIndex = DataGridRuleEditor.CustomScaleIndex; // "Custom…"
+        editor.ScaleStopBoxes[0].Text = "#111111";
+        editor.ScaleStopBoxes[1].Text = "#222222";
+        editor.ScaleStopBoxes[2].Text = string.Empty; // a 2-stop custom scale
+        editor.Ok();
+        host.RunUntilIdle();
+
+        var rule = Assert.IsType<ColorScaleRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Equal(new[] { Color.FromRgb(0x11, 0x11, 0x11), Color.FromRgb(0x22, 0x22, 0x22) }, rule.Stops);
+        CloseManager(grid, host);
+    }
+
+    [Fact]
+    public void Custom_icon_glyphs_land_on_the_rule()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var editor = OpenNewRuleEditor(grid, host);
+        editor.SetKind(RuleEditorKind.IconSet);
+        editor.ColumnCombo!.SelectedIndex = 2; // Amount
+        editor.IconGlyphBoxes[0].Text = "↑"; // ▲ glyph
+        editor.IconGlyphBoxes[1].Text = "→"; // ● glyph
+        editor.IconGlyphBoxes[2].Text = "↓"; // ▼ glyph
+        editor.IconThresholdBoxes[0].Text = "25000"; // ▲ when >=
+        editor.IconThresholdBoxes[1].Text = "15000"; // ● when >=
+        editor.Ok();
+        host.RunUntilIdle();
+
+        var rule = Assert.IsType<ThresholdRule>(Assert.Single(grid.Columns[2].FormatRules));
+        Assert.Equal(3, rule.Entries.Count);
+        Assert.Equal("↑", rule.Entries[0].Format.Icon);
+        Assert.Equal("→", rule.Entries[1].Format.Icon);
+        Assert.Equal("↓", rule.Entries[2].Format.Icon);
+        CloseManager(grid, host);
+    }
+
+    [Fact]
+    public void Code_authored_predicate_rule_with_source_text_reseeds()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // §10.8: a lambda rule authored IN CODE that supplies SourceText re-seeds the field.
+        var amount = grid.Columns[2];
+        System.Linq.Expressions.Expression<Func<Order, bool>> predicate = o => o.Amount > 20000m;
+        amount.FormatRules.Add(new PredicateRule
+        {
+            ColumnKey = amount,
+            RowPredicate = predicate,
+            Format = new CellFormat(Bold: true),
+            SourceText = "[Amount] > 20000",
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        manager.Select(0);
+        var edit = manager.EditSelectedAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+        Assert.Equal(RuleEditorKind.Expression, editor.Kind);
+        Assert.Equal("[Amount] > 20000", editor.ExpressionBox!.Text);
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(edit.IsCompletedSuccessfully);
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
     }
 
     [Fact]
@@ -930,7 +1156,7 @@ public class DataGridDialogsTests
         // ThresholdRule the engine's CompileFormatRules THROWS on — swallowed once in the
         // fire-and-forget click, then re-thrown unhandled on every later rules mutation.
         editor.ColumnCombo!.SelectedIndex = 2;   // Amount
-        editor.OperatorCombo!.SelectedIndex = 6; // "Text contains"
+        editor.OperatorCombo!.SelectedIndex = OperatorIndex(editor, "Text contains"); // label-based (Between insertion shifts indices)
         editor.ValueBox!.Text = "3";
 
         editor.Ok();

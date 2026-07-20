@@ -515,6 +515,38 @@ public class DataGridSurfacesTests
     }
 
     [Fact]
+    public void Between_threshold_colors_only_in_range_cells()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // §10.5: a Between entry carries a SecondValue upper bound through the controller compile.
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var amount = grid.Columns[2];
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries = [new ThresholdEntry(FilterOperator.Between, 15000m, new CellFormat(Foreground: green), 28000m)],
+        });
+        grid.CycleSort(amount);
+        host.RunUntilIdle();
+
+        // 19800 and 27300 are inside [15000, 28000] → green; 12450 and 31900 are outside → not.
+        foreach (var inRange in new[] { "19800", "27300" })
+        {
+            var hit = FindText(host, inRange);
+            Assert.NotNull(hit);
+            Assert.Equal(green, host.GetCell(hit.Value.X, hit.Value.Y).Style.Foreground);
+        }
+        foreach (var outOfRange in new[] { "12450", "31900" })
+        {
+            var miss = FindText(host, outOfRange);
+            Assert.NotNull(miss);
+            Assert.NotEqual(green, host.GetCell(miss.Value.X, miss.Value.Y).Style.Foreground);
+        }
+    }
+
+    [Fact]
     public void Icon_and_data_bar_coexist_on_one_cell()
     {
         var (host, grid, source) = Show();

@@ -122,7 +122,9 @@ public sealed class DataGridSummaryPresenter : UIElement
         return cells;
     }
 
-    private static string AggregateLabel(Shaping.AggregateKind kind)
+    /// <summary>The aggregate's glyph label (shared with the group-row in-column lane so the two
+    /// present identically — one source): Σ / x̄ / ⌄ / ⌃ / # (Count).</summary>
+    internal static string AggregateLabel(Shaping.AggregateKind kind)
         => kind switch
            {
                Shaping.AggregateKind.Sum     => "Σ",

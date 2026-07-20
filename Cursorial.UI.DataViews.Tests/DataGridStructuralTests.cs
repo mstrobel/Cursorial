@@ -718,11 +718,15 @@ public class DataGridStructuralTests
         int bannerCol = Row(host, eastRow).IndexOf("44350", StringComparison.Ordinal);
         Assert.True(bannerCol > amount.X + amount.Width, $"banner sum should sit at the far edge: '{Row(host, eastRow)}'");
 
-        // In-column mode: the same sum now aligns UNDER the Amount column.
+        // In-column mode: the same sum now aligns UNDER the Amount column, prefixed with the Sum
+        // glyph (Σ) — identical to the footer's label.
         grid.GroupSummaryDisplay = GroupSummaryDisplay.InColumn;
         host.RunUntilIdle();
-        int inColumnCol = Row(host, eastRow).IndexOf("44350", StringComparison.Ordinal);
+        string eastText = Row(host, eastRow);
+        int inColumnCol = eastText.IndexOf("44350", StringComparison.Ordinal);
         Assert.InRange(inColumnCol, amount.X, amount.X + amount.Width + 2 * DataGridColumnLayout.CellPadding);
+        int glyphCol = eastText.IndexOf('Σ');
+        Assert.InRange(glyphCol, amount.X, inColumnCol); // Σ precedes the value, within the Amount column
     }
 
     [Fact]

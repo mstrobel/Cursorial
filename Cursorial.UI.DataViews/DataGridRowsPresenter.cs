@@ -949,7 +949,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                             if (groupSummaries[s].Length == 0 || !ReferenceEquals(descs[s].ColumnKey, entries[e].Column))
                                 continue;
 
-                            combined = combined is null ? groupSummaries[s] : $"{combined} {groupSummaries[s]}";
+                            // Prefix the aggregate glyph (Σ/x̄/⌄/⌃/#) — same label the footer draws, so
+                            // the two present identically and stacked aggregates on one column disambiguate.
+                            string labeled = $"{DataGridSummaryPresenter.AggregateLabel(descs[s].Aggregate)} {groupSummaries[s]}";
+                            combined = combined is null ? labeled : $"{combined}  {labeled}";
                         }
 
                         if (combined is null)
@@ -1665,7 +1668,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     private int EditorWidth(in DataGridColumnLayout.Entry entry)
         => _editorKind == DataGridEditorKind.Spin && entry.Width >= 6
-               ? entry.Width - 3
+               ? entry.Width - 2
                : Math.Max(1, entry.Width);
 
     protected override Size ArrangeOverride(Size finalSize)

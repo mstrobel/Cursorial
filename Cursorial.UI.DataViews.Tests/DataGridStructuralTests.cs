@@ -926,6 +926,84 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void Ctrl_click_accumulates_a_second_cell_range()
+    {
+        var (host, grid, source) = Show(columns: 40);
+        using var _ = host;
+
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        static void CtrlClick(UIHeadlessHost host, int x, int y)
+        {
+            host.SendMouseMove(x, y);
+            host.SendInput(new MouseEvent
+            {
+                Kind = MouseEventKind.ButtonDown,
+                Position = new CellPosition(x, y),
+                Button = MouseButton.Left,
+                ButtonsHeld = MouseButtons.Left,
+                Modifiers = KeyModifiers.Control,
+                Timestamp = DateTimeOffset.UnixEpoch,
+            });
+            host.RunUntilIdle();
+        }
+
+        // Range 1: Region rows 0..2 (click + Shift+extend).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(12, 3),
+            Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left,
+            Modifiers = KeyModifiers.Shift,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // §10.1: Ctrl+click banks range 1 and starts a fresh active range on Amount, row 0;
+        // Shift+extend grows the active range to Amount rows 0..1 (so it has a non-focus member).
+        CtrlClick(host, 24, 1);
+        host.SendMouseMove(24, 2);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(24, 2),
+            Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left,
+            Modifiers = KeyModifiers.Shift,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        var rects = grid.CellRangeViewRects();
+        Assert.Equal(2, rects.Count);
+        Assert.Contains((0, 2, 1, 1), rects); // banked Region rows 0..2
+        Assert.Contains((0, 1, 2, 2), rects); // active Amount rows 0..1
+
+        // Both blocks land in the TSV, separated by a blank line.
+        Assert.Equal("East\nEast\nSouth\n\n12450\n31900\n", grid.BuildCellRangeTsv());
+
+        // A banked member and an active member (not the focus cell — focus is Amount row 1) share
+        // the selection fill; a true non-member (Amount row 2) does not.
+        var region = grid.RowsPresenter!.ColumnLayout.Entries[1];
+        var amount = grid.RowsPresenter.ColumnLayout.Entries[2];
+        var memberA = host.GetCell(region.X + 1, 3).Style.Background; // South (banked Region row 2)
+        var memberB = host.GetCell(amount.X + 1, 1).Style.Background; // 12450 (active Amount row 0)
+        var nonMember = host.GetCell(amount.X + 1, 3).Style.Background; // 19800 (outside both)
+        Assert.Equal(memberA, memberB);
+        Assert.NotEqual(memberA, nonMember);
+
+        // A plain click collapses back to ONE range (the committed ones drop).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        Assert.Single(grid.CellRangeViewRects());
+    }
+
+    [Fact]
     public void Range_membership_reprojects_across_a_resort_and_survives_column_moves()
     {
         var (host, grid, _) = Show(columns: 40);

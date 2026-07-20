@@ -89,7 +89,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private DataGrid? _owner;
     private Size _viewport;
     private bool _bandDirty = true;
-    private (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? _renderCellRange; // §9.4, per render pass
+    // §9.4/§10.1 — every cell range's view rect, refilled once per render pass (a reused buffer, so
+    // steady-state paints allocate nothing); a cell is selected when ANY rect contains it.
+    private readonly List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> _renderCellRanges = [];
 
     // The band cache (§3.2): one entry per cached view row. Data cells are (start, length) RUNS
     // into the band-shared pooled char buffer (§9.6 — the span-formatter lane; zero per-cell
@@ -726,7 +728,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         int viewWidth = Math.Max(_viewport.Columns, 1);
 
         int gutterWidth = ColumnLayout.GutterWidth;
-        _renderCellRange = owner.CellRangeViewRect(); // §9.4 — derived once per pass
+        owner.CollectCellRangeViewRects(_renderCellRanges); // §9.4/§10.1 — every rect, derived once per pass
         for (int i = 0; i < _band.Count; i++)
         {
             int view = _bandStart + i;          // view-row space (focus/hover/striping)
@@ -823,10 +825,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         int drawBase = DrawXOf(c);
         int cellX = drawBase + DataGridColumnLayout.CellPadding;
 
-        // The §9.4 cell-range fill (under the focus well + text; group rows never route here).
-        if (_renderCellRange is { } range && view >= range.FirstRow && view <= range.LastRow &&
-            c >= range.FirstColumn && c <= range.LastColumn && SelectionBackground is not null)
-            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+        // The §9.4/§10.1 cell-range fill (under the focus well + text; group rows never route here) —
+        // a cell is in the selection when ANY range's rect contains it (ranges rarely overlap; when
+        // they do the fill is idempotent).
+        if (SelectionBackground is not null && _renderCellRanges.Count > 0)
+        {
+            for (int r = 0; r < _renderCellRanges.Count; r++)
+            {
+                var range = _renderCellRanges[r];
+                if (view >= range.FirstRow && view <= range.LastRow && c >= range.FirstColumn && c <= range.LastColumn)
+                {
+                    context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+                    break;
+                }
+            }
+        }
 
         // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill). A
         // format BACKGROUND is a WHOLE-CELL fill (live-canary fix: the glyph layer's DrawText

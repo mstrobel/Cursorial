@@ -774,26 +774,48 @@ public class DataGrid : Control
 
     // The range IS its corners (§9.4): row ids + COLUMN IDENTITIES (never visible indices — the
     // column UX reorders/hides at runtime). Membership derives per snapshot from the re-projected
-    // corners; reshapes legitimately change membership (the Excel/DevExpress semantic).
+    // corners; reshapes legitimately change membership (the Excel/DevExpress semantic). §10.1:
+    // Ctrl+click BANKS the active range into _committedRanges and starts a fresh active one — the
+    // ACTIVE range stays the four scalar fields (the sole extendable one); committed ranges are
+    // frozen corner tuples, re-projected the same way every publish.
     private int _cellAnchorRowId = -1;
     private int _cellLeadRowId = -1;
     private DataGridColumn? _cellAnchorColumn;
     private DataGridColumn? _cellLeadColumn;
+    private readonly List<CellRangeCorners> _committedRanges = [];
+
+    /// <summary>One banked (non-active) cell range's frozen corners (§10.1).</summary>
+    private readonly record struct CellRangeCorners(int AnchorRowId, int LeadRowId, DataGridColumn? AnchorColumn, DataGridColumn? LeadColumn);
 
     internal void ClearCellRange()
     {
+        _committedRanges.Clear();
         _cellAnchorRowId = _cellLeadRowId = -1;
         _cellAnchorColumn = _cellLeadColumn = null;
     }
 
-    /// <summary>Both corners onto one cell (the plain click / unmodified focus move).</summary>
+    /// <summary>Both active corners onto one cell (the raw setter; keeps committed ranges).</summary>
     private void SetCellRangeAnchor(int rowId, DataGridColumn? column)
     {
         _cellAnchorRowId = _cellLeadRowId = rowId;
         _cellAnchorColumn = _cellLeadColumn = column;
     }
 
-    /// <summary>Moves the lead corner (Shift+click / Shift+arrow); the anchor stays.</summary>
+    /// <summary>A plain click / unmodified move: back to ONE range (drops the committed ones — §10.1).</summary>
+    private void ResetCellRange(int rowId, DataGridColumn? column)
+    {
+        _committedRanges.Clear();
+        SetCellRangeAnchor(rowId, column);
+    }
+
+    /// <summary>Banks the active range as a committed one (Ctrl+click — §10.1), keeping its corners.</summary>
+    private void CommitActiveRange()
+    {
+        if (_cellAnchorRowId >= 0 && _cellLeadRowId >= 0)
+            _committedRanges.Add(new CellRangeCorners(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn));
+    }
+
+    /// <summary>Moves the active lead corner (Shift+click / Shift+arrow); the anchor + committed stay.</summary>
     private void ExtendCellRangeTo(int rowId, DataGridColumn? column)
     {
         if (_cellAnchorRowId < 0)
@@ -807,24 +829,59 @@ public class DataGrid : Control
     }
 
     /// <summary>
-    /// The derived rectangle in the CURRENT snapshot/layout (§9.4): view rows normalized min..max,
-    /// column edges resolved by IDENTITY (a hidden endpoint clamps to its nearest visible neighbor
-    /// in collection order). Null = no range (row mode, no corners, or nothing visible).
+    /// The ACTIVE range's derived rectangle in the CURRENT snapshot/layout (§9.4): view rows
+    /// normalized min..max, column edges resolved by IDENTITY (a hidden endpoint clamps to its
+    /// nearest visible neighbor in collection order). Null = no active range (row mode, no corners,
+    /// or nothing visible). For ALL ranges (committed + active) use <see cref="CollectCellRangeViewRects"/>.
     /// </summary>
     internal (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? CellRangeViewRect()
     {
         if (SelectionUnit != DataGridSelectionUnit.Cell || _cellAnchorRowId < 0 || _cellLeadRowId < 0)
             return null;
+        return ResolveCellRangeRect(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn);
+    }
 
-        int anchorRow = ViewIndexOfRow(_cellAnchorRowId);
-        int leadRow = ViewIndexOfRow(_cellLeadRowId);
-        int anchorColumn = EntryIndexOfColumnClamped(_cellAnchorColumn);
-        int leadColumn = EntryIndexOfColumnClamped(_cellLeadColumn);
-        if (anchorRow < 0 || leadRow < 0 || anchorColumn < 0 || leadColumn < 0)
-            return null; // a lost corner renders nothing this frame; the publish prune collapses it
+    /// <summary>Re-projects one range's corners into a normalized view rectangle (null on any lost corner).</summary>
+    private (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? ResolveCellRangeRect(
+        int anchorRowId, int leadRowId, DataGridColumn? anchorColumn, DataGridColumn? leadColumn)
+    {
+        int anchorRow = ViewIndexOfRow(anchorRowId);
+        int leadRow = ViewIndexOfRow(leadRowId);
+        int anchorCol = EntryIndexOfColumnClamped(anchorColumn);
+        int leadCol = EntryIndexOfColumnClamped(leadColumn);
+        if (anchorRow < 0 || leadRow < 0 || anchorCol < 0 || leadCol < 0)
+            return null; // a lost corner renders nothing this frame; the publish prune collapses/drops it
 
         return (Math.Min(anchorRow, leadRow), Math.Max(anchorRow, leadRow),
-                Math.Min(anchorColumn, leadColumn), Math.Max(anchorColumn, leadColumn));
+                Math.Min(anchorCol, leadCol), Math.Max(anchorCol, leadCol));
+    }
+
+    /// <summary>
+    /// Fills <paramref name="into"/> with EVERY cell range's view rectangle (committed then active —
+    /// §10.1). The caller owns the list (the presenter reuses one field ⇒ zero steady-state alloc);
+    /// empties it in row mode. Lost-corner ranges are skipped (the publish prune retires them).
+    /// </summary>
+    internal void CollectCellRangeViewRects(List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> into)
+    {
+        into.Clear();
+        if (SelectionUnit != DataGridSelectionUnit.Cell)
+            return;
+        foreach (var range in _committedRanges)
+        {
+            if (ResolveCellRangeRect(range.AnchorRowId, range.LeadRowId, range.AnchorColumn, range.LeadColumn) is { } rect)
+                into.Add(rect);
+        }
+        if (CellRangeViewRect() is { } active)
+            into.Add(active);
+    }
+
+    /// <summary>All cell-range rectangles (allocating; test/diagnostic use — the paint path uses
+    /// <see cref="CollectCellRangeViewRects"/> against a reused buffer).</summary>
+    internal IReadOnlyList<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> CellRangeViewRects()
+    {
+        var list = new List<(int, int, int, int)>();
+        CollectCellRangeViewRects(list);
+        return list;
     }
 
     /// <summary>A column's layout-entry index; a hidden endpoint clamps to the nearest visible
@@ -872,7 +929,16 @@ public class DataGrid : Control
     /// entirely (audit W2-15) — collapses the range to the focus cell.</summary>
     private void PruneCellRange()
     {
-        if (SelectionUnit != DataGridSelectionUnit.Cell || _cellAnchorRowId < 0)
+        if (SelectionUnit != DataGridSelectionUnit.Cell)
+            return;
+        // §10.1: a committed range that lost a corner just DROPS (only the active range collapses to
+        // the focus cell — a dead banked rectangle has no focus to fall back on).
+        if (_committedRanges.Count > 0)
+        {
+            _committedRanges.RemoveAll(r =>
+                ResolveCellRangeRect(r.AnchorRowId, r.LeadRowId, r.AnchorColumn, r.LeadColumn) is null);
+        }
+        if (_cellAnchorRowId < 0)
             return;
         if (ViewIndexOfRow(_cellAnchorRowId) >= 0 && ViewIndexOfRow(_cellLeadRowId) >= 0 &&
             EntryIndexOfColumnClamped(_cellAnchorColumn) >= 0 && EntryIndexOfColumnClamped(_cellLeadColumn) >= 0)
@@ -900,16 +966,25 @@ public class DataGrid : Control
     /// slot can recycle onto an unrelated row and silently re-attach the range.</summary>
     private void HandleRowsRemovedForCellRange(IReadOnlyList<int> ids)
     {
+        bool Removed(int rowId)
+        {
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (ids[i] == rowId)
+                    return true;
+            }
+            return false;
+        }
+
+        // §10.1: a committed range whose corner id is removed DROPS (before the slot recycles onto
+        // an unrelated row); the active range collapses to the focus cell.
+        if (_committedRanges.Count > 0)
+            _committedRanges.RemoveAll(r => Removed(r.AnchorRowId) || Removed(r.LeadRowId));
+
         if (_cellAnchorRowId < 0)
             return;
-        for (int i = 0; i < ids.Count; i++)
-        {
-            if (ids[i] == _cellAnchorRowId || ids[i] == _cellLeadRowId)
-            {
-                CollapseCellRangeToFocusCell();
-                return;
-            }
-        }
+        if (Removed(_cellAnchorRowId) || Removed(_cellLeadRowId))
+            CollapseCellRangeToFocusCell();
     }
 
     /// <summary>The column at a layout-entry index, or null.</summary>
@@ -1881,12 +1956,24 @@ public class DataGrid : Control
 
         if (SelectionUnit == DataGridSelectionUnit.Cell)
         {
-            // §9.4: the cell-range lanes — Shift extends the lead corner, a plain press re-anchors.
+            // §9.4/§10.1: Shift extends the active lead corner; Ctrl (no Shift) BANKS the active
+            // range and starts a new one (multi-range accumulation); a plain press re-anchors to one.
             var column = ColumnAtEntry(columnIndex);
-            if ((modifiers & KeyModifiers.Shift) != 0)
+            bool shift = (modifiers & KeyModifiers.Shift) != 0;
+            bool ctrl = (modifiers & KeyModifiers.Control) != 0;
+            if (shift)
+            {
                 ExtendCellRangeTo(row.RowId, column);
-            else
+            }
+            else if (ctrl)
+            {
+                CommitActiveRange();
                 SetCellRangeAnchor(row.RowId, column);
+            }
+            else
+            {
+                ResetCellRange(row.RowId, column);
+            }
         }
         else if ((modifiers & KeyModifiers.Shift) != 0 && _selectionAnchorViewIndex >= 0)
         {
@@ -2511,7 +2598,7 @@ public class DataGrid : Control
                     if (shift)
                         ExtendCellRangeTo(focused.RowId, ColumnAtEntry(next));
                     else
-                        SetCellRangeAnchor(focused.RowId, ColumnAtEntry(next));
+                        ResetCellRange(focused.RowId, ColumnAtEntry(next)); // §10.1: plain navigation → one range
                 }
                 RowsPresenter?.InvalidateBand();
                 e.Handled = true;
@@ -2587,12 +2674,12 @@ public class DataGrid : Control
             if (SelectionUnit == DataGridSelectionUnit.Cell)
             {
                 // §9.4: the lead follows the focus onto data rows (it passes THROUGH group rows
-                // keeping its column — those never update it); a plain move re-anchors.
+                // keeping its column — those never update it); a plain move re-anchors to one range.
                 var column = ColumnAtEntry(FocusColumnIndex);
                 if (shift)
                     ExtendCellRangeTo(row.RowId, column);
                 else if (!ctrl)
-                    SetCellRangeAnchor(row.RowId, column);
+                    ResetCellRange(row.RowId, column); // §10.1
             }
             else if (shift && _selectionAnchorViewIndex >= 0)
             {
@@ -2690,27 +2777,39 @@ public class DataGrid : Control
     }
 
     /// <summary>The §9.4 rectangle as TSV (formatted values, display order, group rows skipped —
-    /// they are never members), or null without a derivable range. The Ctrl+C payload.</summary>
+    /// they are never members), or null without a derivable range. The Ctrl+C payload. With multiple
+    /// ranges (§10.1) each disjoint block is emitted in turn, separated by a blank line (lossless —
+    /// unlike Excel's refuse-to-copy, a terminal grid has no reason to lose the selection).</summary>
     internal string? BuildCellRangeTsv()
     {
-        if (_controller is null || CellRangeViewRect() is not { } range || RowsPresenter is null)
+        if (_controller is null || RowsPresenter is null)
+            return null;
+        var rects = new List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)>();
+        CollectCellRangeViewRects(rects);
+        if (rects.Count == 0)
             return null;
 
         var snapshot = Snapshot;
         var entries = RowsPresenter.ColumnLayout.Entries;
         var rectangle = new System.Text.StringBuilder();
-        for (int view = range.FirstRow; view <= range.LastRow && view < snapshot.Count; view++)
+        for (int ri = 0; ri < rects.Count; ri++)
         {
-            var viewRow = snapshot.GetRow(view);
-            if (viewRow.IsGroup)
-                continue;
-            for (int c = range.FirstColumn; c <= range.LastColumn && c < entries.Count; c++)
+            if (ri > 0)
+                rectangle.Append('\n'); // a blank line between disjoint ranges
+            var range = rects[ri];
+            for (int view = range.FirstRow; view <= range.LastRow && view < snapshot.Count; view++)
             {
-                if (c > range.FirstColumn)
-                    rectangle.Append('\t');
-                rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
+                var viewRow = snapshot.GetRow(view);
+                if (viewRow.IsGroup)
+                    continue;
+                for (int c = range.FirstColumn; c <= range.LastColumn && c < entries.Count; c++)
+                {
+                    if (c > range.FirstColumn)
+                        rectangle.Append('\t');
+                    rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
+                }
+                rectangle.Append('\n');
             }
-            rectangle.Append('\n');
         }
         return rectangle.ToString();
     }

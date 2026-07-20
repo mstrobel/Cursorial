@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Drawing.Media;
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -10,6 +11,7 @@ using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Input;
 
 // ReSharper disable InconsistentNaming
 
@@ -100,6 +102,46 @@ public class DataGridDialogsTests
     }
 
     // ── The expression text editor ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Completion_popup_suggests_fields_and_accepts_the_pick()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+
+        // Typing a field partial inside a bracket opens the completion popup with matching fields.
+        host.SendText("[Amo");
+        host.RunUntilIdle();
+        Assert.True(editor.IsCompletionOpen);
+        Assert.Contains("Amount", editor.CompletionItems);
+        Assert.DoesNotContain("Region", editor.CompletionItems); // prefix-filtered
+
+        // Enter accepts the highlighted candidate (index 0), splicing the full [Amount] token.
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("[Amount]", editor.TextBox.Text);
+        Assert.False(editor.IsCompletionOpen);
+
+        // A bare identifier offers function tokens; Escape dismisses without accepting.
+        host.SendText(" > Con");
+        host.RunUntilIdle();
+        Assert.True(editor.IsCompletionOpen);
+        Assert.Contains("Contains", editor.CompletionItems);
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(editor.IsCompletionOpen);
+        Assert.Equal("[Amount] > Con", editor.TextBox.Text); // Esc left the text as typed
+
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+    }
 
     [Fact]
     public void Expression_editor_validates_live_and_apply_lands_the_filter()

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.ComponentModel.DataAnnotations;
 
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -46,6 +47,74 @@ public class DataGridValueEntryTests
 
     private static int OpIndex(IEnumerable? items, string label)
         => ((IEnumerable)items!).Cast<string>().ToList().IndexOf(label);
+
+    // ── Enum member [Display(Name)] ───────────────────────────────────────────────────────────────
+
+    private enum Priority
+    {
+        [Display(Name = "Low priority")] Low,
+        [Display(Name = "High priority")] High,
+        Normal, // no [Display] → the raw member name
+    }
+
+    private sealed class Ticket
+    {
+        public string Id { get; set; } = string.Empty;
+        public Priority Priority { get; set; }
+    }
+
+    [Fact]
+    public void Enum_member_display_name_renders_in_cells()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(70, 12) });
+        using var _ = host;
+        var grid = new DataGrid
+        {
+            ItemsSource = new ObservableCollection<Ticket>
+            {
+                new() { Id = "T-1", Priority = Priority.Low },
+                new() { Id = "T-2", Priority = Priority.High },
+                new() { Id = "T-3", Priority = Priority.Normal },
+            },
+        };
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+
+        var all = string.Join("\n", Enumerable.Range(0, 12).Select(host.GetRowText));
+        Assert.Contains("Low priority", all);   // the [Display] text, not "Low"
+        Assert.Contains("High priority", all);
+        Assert.Contains("Normal", all);          // no [Display] ⇒ the raw member name
+    }
+
+    [Fact]
+    public void Enum_dropdown_shows_display_names_but_stores_member_names()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(70, 14) });
+        using var disposeHost = host;
+        var grid = new DataGrid { ItemsSource = new ObservableCollection<Ticket> { new() { Id = "T-1", Priority = Priority.Low } } };
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+
+        var managerTask = grid.OpenRulesManagerAsync();
+        host.RunUntilIdle();
+        var manager = grid.ActiveRulesManager!;
+        _ = manager.NewRuleAsync();
+        host.RunUntilIdle();
+        var editor = manager.ActiveRuleEditor!;
+        editor.SetKind(RuleEditorKind.Highlight);
+        editor.ColumnCombo!.SelectedIndex = 1; // Priority
+        host.RunUntilIdle();
+
+        var combo = Assert.IsType<ComboBox>(editor.HighlightRows[0].Value.Element);
+        Assert.Equal(new[] { "Low priority", "High priority", "Normal" }, combo.ItemsSource!.Cast<string>());
+
+        // Picking the "High priority" label yields the raw member name "High" (what parses/filters).
+        combo.SelectedIndex = 1;
+        Assert.Equal("High", editor.HighlightRows[0].Value.Value);
+        manager.CloseWindow();
+        host.RunUntilIdle();
+        Assert.True(managerTask.IsCompleted);
+    }
 
     [Fact]
     public void Rule_editor_offers_an_enum_dropdown_and_lands_the_picked_value()

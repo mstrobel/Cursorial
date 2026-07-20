@@ -236,6 +236,17 @@ internal static class ShapingCodegen
 
         var underlying = Nullable.GetUnderlyingType(type);
         var valueType = underlying ?? type;
+
+        // Enum members with [Display(Name=…)] render their designated text (a closure over the cached
+        // per-type map; parsing/filtering still uses the raw member name). Only when a member declares
+        // one — a plain enum keeps the fast ToString/span lanes below.
+        if (valueType.IsEnum && EnumDisplay.HasDisplayNames(valueType))
+        {
+            if (underlying is null)
+                return value => EnumDisplay.TextOf(valueType, value!);
+            return value => value is null ? string.Empty : EnumDisplay.TextOf(valueType, value);
+        }
+
         var v = Expression.Parameter(type, "v");
 
         Expression formatted;
@@ -316,7 +327,13 @@ internal static class ShapingCodegen
         }
 
         var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
+        // An enum whose members declare [Display(Name)] formats through the string lane (the map
+        // lookup isn't ISpanFormattable) — route it to the ToString-then-copy fallback below; a plain
+        // enum keeps the fast constrained span path.
+        var enumType = underlying ?? type;
+        bool enumDisplay = enumType.IsEnum && EnumDisplay.HasDisplayNames(enumType);
+
+        if (!enumDisplay && underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateNullableSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
@@ -324,7 +341,7 @@ internal static class ShapingCodegen
                 .Invoke(null, [format, culture])!;
         }
 
-        if (typeof(ISpanFormattable).IsAssignableFrom(type))
+        if (!enumDisplay && typeof(ISpanFormattable).IsAssignableFrom(type))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!

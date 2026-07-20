@@ -325,11 +325,26 @@ internal sealed class ValueEditor
     internal static ValueEditor Create(Type? keyType, string seed, Action onChanged, int minWidth = 8)
     {
         var underlying = keyType is null ? null : Nullable.GetUnderlyingType(keyType) ?? keyType;
-        if (underlying is { IsEnum: true } || underlying == typeof(bool))
+        if (underlying is { IsEnum: true })
         {
-            var items = underlying is { IsEnum: true }
-                ? Enum.GetNames(underlying).ToList()
-                : ["true", "false"];
+            // The dropdown shows each member's display text ([Display(Name)] where declared), but
+            // Value round-trips the raw MEMBER name (what TryParseLiteral / the engine parse).
+            var members = Enum.GetNames(underlying);
+            var labels = members.Select(m => EnumDisplay.NameOf(underlying, m)).ToList();
+            var combo = new ComboBox
+            {
+                ItemsSource = labels,
+                MinWidth = Math.Max(minWidth, 8),
+                SelectedIndex = Array.IndexOf(members, seed),
+            };
+            combo.SelectionChanged += (_, _) => onChanged();
+            return new ValueEditor(combo, isChoice: true,
+                () => combo.SelectedIndex >= 0 && combo.SelectedIndex < members.Length ? members[combo.SelectedIndex] : string.Empty,
+                v => combo.SelectedIndex = Array.IndexOf(members, v));
+        }
+        if (underlying == typeof(bool))
+        {
+            List<string> items = ["true", "false"];
             var combo = new ComboBox
             {
                 ItemsSource = items,

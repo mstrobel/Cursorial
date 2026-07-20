@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -7,6 +8,7 @@ using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 using CellStyle = Cursorial.Output.Style;
 
@@ -31,39 +33,66 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 {
     // Styled look properties the theme sets via SetResource (drawn rows can't carry pseudo-classes —
     // §3.2; AffectsRender so a palette flip re-inks).
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> RowBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(RowBackground));
+    public static readonly StyledProperty<IBrush?> RowBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(RowBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.ElevationWell });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> RowAlternationBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(RowAlternationBackground));
+    public static readonly StyledProperty<IBrush?> RowAlternationBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(RowAlternationBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AlternateRowBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> SelectionBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(SelectionBackground));
+    public static readonly StyledProperty<IBrush?> SelectionBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(SelectionBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionActiveBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> HoverBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(HoverBackground));
+    public static readonly StyledProperty<IBrush?> SelectionInactiveBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(SelectionInactiveBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionInactiveBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> GroupRowBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(GroupRowBackground));
+    public static readonly StyledProperty<IBrush?> HoverBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(HoverBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.HoverBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> TextBrushProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(TextBrush));
+    public static readonly StyledProperty<IBrush?> GroupRowBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(GroupRowBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SurfaceBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> AccentBrushProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(AccentBrush));
+    public static readonly StyledProperty<IBrush?> TextBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(TextBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.TextBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> FocusCellBackgroundProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(FocusCellBackground));
+    public static readonly StyledProperty<IBrush?> AccentBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(AccentBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AccentBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarFillBrushProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarFillBrush));
+    public static readonly StyledProperty<IBrush?> FocusCellBackgroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(FocusCellBackground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.WellBrush });
 
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> DataBarTrackBrushProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(DataBarTrackBrush));
+    public static readonly StyledProperty<IBrush?> DataBarFillBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(DataBarFillBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.PurpleBrush });
+
+    public static readonly StyledProperty<IBrush?> DataBarTrackBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(DataBarTrackBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.ProgressTrackBrush });
 
     /// <summary>Ghost ink for the new-row template (the muted * indicator + per-column placeholders — §3.2).</summary>
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> MutedBrushProperty =
-        UIProperty.Register<DataGridRowsPresenter, Cursorial.Drawing.Media.IBrush?>(nameof(MutedBrush));
+    public static readonly StyledProperty<IBrush?> MutedBrushProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(MutedBrush),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.MutedBrush });
 
     static DataGridRowsPresenter()
     {
@@ -74,17 +103,77 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             MutedBrushProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? RowBackground { get => GetValue(RowBackgroundProperty); set => SetValue(RowBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? RowAlternationBackground { get => GetValue(RowAlternationBackgroundProperty); set => SetValue(RowAlternationBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? SelectionBackground { get => GetValue(SelectionBackgroundProperty); set => SetValue(SelectionBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? HoverBackground { get => GetValue(HoverBackgroundProperty); set => SetValue(HoverBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? GroupRowBackground { get => GetValue(GroupRowBackgroundProperty); set => SetValue(GroupRowBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? AccentBrush { get => GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? FocusCellBackground { get => GetValue(FocusCellBackgroundProperty); set => SetValue(FocusCellBackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? DataBarFillBrush { get => GetValue(DataBarFillBrushProperty); set => SetValue(DataBarFillBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? DataBarTrackBrush { get => GetValue(DataBarTrackBrushProperty); set => SetValue(DataBarTrackBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? MutedBrush { get => GetValue(MutedBrushProperty); set => SetValue(MutedBrushProperty, value); }
+    public IBrush? RowBackground
+    {
+        get => GetValue(RowBackgroundProperty);
+        set => SetValue(RowBackgroundProperty, value);
+    }
+
+    public IBrush? RowAlternationBackground
+    {
+        get => GetValue(RowAlternationBackgroundProperty);
+        set => SetValue(RowAlternationBackgroundProperty, value);
+    }
+
+    public IBrush? SelectionBackground
+    {
+        get => GetValue(SelectionBackgroundProperty);
+        set => SetValue(SelectionBackgroundProperty, value);
+    }
+
+    public IBrush? SelectionInactiveBackground
+    {
+        get => GetValue(SelectionInactiveBackgroundProperty);
+        set => SetValue(SelectionInactiveBackgroundProperty, value);
+    }
+
+    public IBrush? HoverBackground
+    {
+        get => GetValue(HoverBackgroundProperty);
+        set => SetValue(HoverBackgroundProperty, value);
+    }
+
+    public IBrush? GroupRowBackground
+    {
+        get => GetValue(GroupRowBackgroundProperty);
+        set => SetValue(GroupRowBackgroundProperty, value);
+    }
+
+    public IBrush? TextBrush
+    {
+        get => GetValue(TextBrushProperty);
+        set => SetValue(TextBrushProperty, value);
+    }
+
+    public IBrush? AccentBrush
+    {
+        get => GetValue(AccentBrushProperty);
+        set => SetValue(AccentBrushProperty, value);
+    }
+
+    public IBrush? FocusCellBackground
+    {
+        get => GetValue(FocusCellBackgroundProperty);
+        set => SetValue(FocusCellBackgroundProperty, value);
+    }
+
+    public IBrush? DataBarFillBrush
+    {
+        get => GetValue(DataBarFillBrushProperty);
+        set => SetValue(DataBarFillBrushProperty, value);
+    }
+
+    public IBrush? DataBarTrackBrush
+    {
+        get => GetValue(DataBarTrackBrushProperty);
+        set => SetValue(DataBarTrackBrushProperty, value);
+    }
+
+    public IBrush? MutedBrush
+    {
+        get => GetValue(MutedBrushProperty);
+        set => SetValue(MutedBrushProperty, value);
+    }
 
     private DataGrid? _owner;
     private Size _viewport;
@@ -129,7 +218,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     // Format-background fills reuse one brush per color (the rule palette is tiny; the paint path
     // re-inks per hover move and must not allocate per cell).
-    private readonly Dictionary<Color, Cursorial.Drawing.Media.SolidColorBrush> _formatBrushes = [];
+    private readonly Dictionary<Color, SolidColorBrush> _formatBrushes = [];
 
     // The per-column data-bar text reserve (live-canary fix: the bar used to start right after
     // EACH row's value text, so the track origin and width shifted with the number's character
@@ -145,10 +234,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     // still column-uniform. 0 = no bar cell in the column carries an icon this band.
     private int[] _barIconReserve = [];
 
-    private Cursorial.Drawing.Media.IBrush BrushFor(Color color)
+    private IBrush BrushFor(Color color)
     {
         if (!_formatBrushes.TryGetValue(color, out var brush))
-            _formatBrushes[color] = brush = new Cursorial.Drawing.Media.SolidColorBrush(color);
+            _formatBrushes[color] = brush = new SolidColorBrush(color);
+
         return brush;
     }
 
@@ -172,11 +262,23 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         {
             if (ReferenceEquals(_owner, value))
                 return;
+
             if (_owner is not null)
+            {
                 _owner.SnapshotChanged -= OnSnapshotChanged;
+                _owner.GotFocus -= OnOwnerFocusChanged;
+                _owner.LostFocus -= OnOwnerFocusChanged;
+            }
+
             _owner = value;
+
             if (_owner is not null)
+            {
                 _owner.SnapshotChanged += OnSnapshotChanged;
+                _owner.GotFocus += OnOwnerFocusChanged;
+                _owner.LostFocus += OnOwnerFocusChanged;
+            }
+
             InvalidateBand();
         }
     }
@@ -188,6 +290,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     internal int HoverViewIndex { get; private set; } = -1;
 
     private void OnSnapshotChanged(object? sender, EventArgs e) => InvalidateBand();
+
+    private void OnOwnerFocusChanged(object? sender, FocusChangedEventArgs focusChangedEventArgs) => InvalidateBand();
 
     /// <summary>Marks the band cache stale (data/shape/selection change) and schedules re-fill + re-ink.</summary>
     internal void InvalidateBand()
@@ -295,13 +399,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         public required int RowId { get; init; }
         public required int ViewIndex { get; init; }
-        public int YStart;  // content y of the pane's first row (anchor row's y + 1)
-        public int Height;  // measured, or the 1-row estimate until first measure (VSP refinement)
+        public int YStart; // content y of the pane's first row (anchor row's y + 1)
+        public int Height; // measured, or the 1-row estimate until first measure (VSP refinement)
     }
 
-    private readonly List<DetailPane> _details = [];              // sorted by ViewIndex
+    private readonly List<DetailPane> _details = [];                  // sorted by ViewIndex
     private readonly Dictionary<int, UIElement> _detailElements = []; // rowId → realized pane
-    private readonly Dictionary<int, int> _detailHeights = [];    // rowId → last measured height
+    private readonly Dictionary<int, int> _detailHeights = [];        // rowId → last measured height
     private int _detailHeightSum;
 
     /// <summary>Whether master-detail is active this pass (the gutter + map engage).</summary>
@@ -318,21 +422,30 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         _details.Clear();
         int sum = 0;
         var owner = _owner;
+
         if (owner?.DetailTemplate is not null && owner.ExpandedDetails.Count > 0)
         {
             foreach (int rowId in owner.ExpandedDetails)
             {
                 int view = owner.ViewIndexOfRow(rowId);
+
                 if (view >= 0)
-                    _details.Add(new DetailPane { RowId = rowId, ViewIndex = view, Height = _detailHeights.GetValueOrDefault(rowId, 1) });
+                    _details.Add(new DetailPane
+                                 {
+                                     RowId = rowId, ViewIndex = view,
+                                     Height = _detailHeights.GetValueOrDefault(rowId, 1)
+                                 });
             }
+
             _details.Sort(static (a, b) => a.ViewIndex.CompareTo(b.ViewIndex));
+
             foreach (var pane in _details)
             {
                 pane.YStart = pane.ViewIndex + sum + 1;
                 sum += pane.Height;
             }
         }
+
         _detailHeightSum = sum;
     }
 
@@ -341,13 +454,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         if (_details.Count == 0)
             return viewIndex;
+
         int sum = 0;
+
         foreach (var pane in _details)
         {
             if (pane.ViewIndex >= viewIndex)
                 break;
+
             sum += pane.Height;
         }
+
         return viewIndex + sum;
     }
 
@@ -356,15 +473,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         if (_details.Count == 0)
             return (y, false);
+
         int offset = 0;
+
         foreach (var pane in _details)
         {
             if (y < pane.YStart)
                 break;
+
             if (y < pane.YStart + pane.Height)
                 return (pane.ViewIndex, true);
+
             offset += pane.Height;
         }
+
         return (y - offset, false);
     }
 
@@ -378,6 +500,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private void RealizeDetails()
     {
         var owner = _owner;
+
         if (owner is null)
             return;
 
@@ -389,9 +512,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (_detailElements.Count > 0)
         {
             List<int>? drop = null;
+
             foreach (var (rowId, element) in _detailElements)
             {
                 bool keep = false;
+
                 foreach (var pane in _details)
                 {
                     if (pane.RowId == rowId)
@@ -400,12 +525,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                         break;
                     }
                 }
+
                 if (!keep)
                 {
                     DisownChild(element);
                     (drop ??= []).Add(rowId);
                 }
             }
+
             if (drop is not null)
             {
                 foreach (int rowId in drop)
@@ -422,8 +549,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
             if (!_detailElements.TryGetValue(pane.RowId, out var element))
             {
-                if (owner.DetailTemplate is not { } template || owner.Controller is not { } controller)
+                if (owner.DetailTemplate is not {} template || owner.Controller is not {} controller)
                     continue;
+
                 element = template.Build(controller.GetRowObject(pane.RowId));
                 _detailElements[pane.RowId] = element;
                 AdoptChild(element, index: -1);
@@ -431,6 +559,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
             element.Measure(new Size(Math.Max(1, _viewport.Columns), LayoutLimits.MaxScrollExtent));
             int measured = Math.Max(1, element.DesiredSize.Rows);
+
             if (measured != pane.Height)
             {
                 _detailHeights[pane.RowId] = measured;
@@ -443,12 +572,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // Re-run the prefix sums with the refined heights, then republish the extent (the
             // height-delta-only republish — §9.3).
             int sum = 0;
+
             foreach (var pane in _details)
             {
                 pane.Height = _detailHeights.GetValueOrDefault(pane.RowId, 1);
                 pane.YStart = pane.ViewIndex + sum + 1;
                 sum += pane.Height;
             }
+
             _detailHeightSum = sum;
             ScrollOwner?.InvalidateScrollExtent();
 
@@ -466,11 +597,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (_detailHeights.Count > 0 && owner.ExpandedDetails.Count < _detailHeights.Count)
         {
             List<int>? stale = null;
+
             foreach (int rowId in _detailHeights.Keys)
             {
                 if (!owner.ExpandedDetails.Contains(rowId))
                     (stale ??= []).Add(rowId);
             }
+
             if (stale is not null)
             {
                 foreach (int rowId in stale)
@@ -487,6 +620,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             if (element.IsKeyboardFocusWithin)
                 return element;
         }
+
         return null;
     }
 
@@ -495,23 +629,27 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         if (!_detailElements.TryGetValue(rowId, out var element))
             return false;
-        if (FindFocusable(element) is { } target)
+
+        if (FindFocusable(element) is {} target)
         {
-            target.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+            target.Focus(FocusNavigationMethod.Programmatic);
             return true;
         }
+
         return false;
     }
 
     private static UIElement? FindFocusable(UIElement root)
     {
-        if (root.Focusable && root.IsEffectivelyEnabled)
+        if (root is { Focusable: true, IsEffectivelyEnabled: true })
             return root;
+
         for (int i = 0; i < root.VisualChildrenCount; i++)
         {
-            if (FindFocusable(root.GetVisualChild(i)) is { } match)
+            if (FindFocusable(root.GetVisualChild(i)) is {} match)
                 return match;
         }
+
         return null;
     }
 
@@ -549,6 +687,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private void FillBandCache()
     {
         var owner = _owner;
+
         if (owner is null)
         {
             _band.Clear();
@@ -574,11 +713,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // (§9.2 — the frozen region leads the layout regardless of declaration order); the stable
         // two-pass keeps each partition in collection order.
         var columns = new List<DataGridColumn>(owner.Columns.Count);
+
         foreach (var column in owner.Columns)
         {
-            if (column.Visible && column.Fixed == DataGridColumnFixed.Left)
+            if (column is { Visible: true, Fixed: DataGridColumnFixed.Left })
                 columns.Add(column);
         }
+
         foreach (var column in owner.Columns)
         {
             if (column.Visible && column.Fixed != DataGridColumnFixed.Left)
@@ -587,44 +728,52 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         _band.Clear();
         _cellCharsUsed = 0; // the pooled buffer resets per fill (§9.6 — runs never outlive the band)
+
         var controller = owner.Controller;
         bool hasRules = controller?.HasFormatRules == true; // the no-rules fast path — static empties
+
         for (int i = 0; i < length; i++)
         {
             var row = snapshot.GetRow(start + i);
+
             if (row.IsGroup)
             {
                 var node = snapshot.Groups[row.GroupNodeIndex];
                 string caption = $"{HeaderOf(owner, node)}: {node.FormattedKey}";
                 string summary = node.Summaries.Length > 0 ? string.Join(" · ", node.Summaries) : string.Empty;
+
                 _band.Add(new CachedRow
-                {
-                    IsGroup = true,
-                    RowId = -1,
-                    GroupNodeIndex = row.GroupNodeIndex,
-                    Level = row.Level,
-                    Cells = NoCells,
-                    GroupCaption = $"{caption} ({node.RowCount})",
-                    GroupSummary = summary,
-                    GroupCollapsed = node.IsCollapsed,
-                    CellFormats = NoFormats,
-                    BarFractions = NoFractions,
-                });
+                          {
+                              IsGroup = true,
+                              RowId = -1,
+                              GroupNodeIndex = row.GroupNodeIndex,
+                              Level = row.Level,
+                              Cells = NoCells,
+                              GroupCaption = $"{caption} ({node.RowCount})",
+                              GroupSummary = summary,
+                              GroupCollapsed = node.IsCollapsed,
+                              CellFormats = NoFormats,
+                              BarFractions = NoFractions,
+                          });
             }
             else
             {
                 var cells = new CellRun[columns.Count];
                 var formats = hasRules ? new CellFormat[columns.Count] : NoFormats;
                 var fractions = hasRules ? new double[columns.Count] : NoFractions;
+
                 for (int c = 0; c < columns.Count; c++)
                 {
                     // §9.6: format into the pooled buffer through the span lane (−1 = grow + retry).
                     int written = 0;
+
                     while (controller is not null &&
-                           (written = controller.FormatCellTo(row.RowId, columns[c], _cellChars.AsSpan(_cellCharsUsed))) < 0)
+                           (written = controller.FormatCellTo(row.RowId, columns[c],
+                                                              _cellChars.AsSpan(_cellCharsUsed))) < 0)
                     {
                         Array.Resize(ref _cellChars, _cellChars.Length * 2);
                     }
+
                     cells[c] = new CellRun(_cellCharsUsed, written);
                     _cellCharsUsed += written;
 
@@ -635,20 +784,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                         fractions[c] = controller.GetDataBarFraction(row.RowId, columns[c]);
                     }
                 }
+
                 _band.Add(new CachedRow
-                {
-                    IsGroup = false,
-                    RowId = row.RowId,
-                    GroupNodeIndex = -1,
-                    Level = row.Level,
-                    Cells = cells,
-                    GroupCaption = string.Empty,
-                    GroupSummary = string.Empty,
-                    GroupCollapsed = false,
-                    CellFormats = formats,
-                    BarFractions = fractions,
-                    RowFormat = hasRules ? controller!.GetRowFormat(row.RowId) : default,
-                });
+                          {
+                              IsGroup = false,
+                              RowId = row.RowId,
+                              GroupNodeIndex = -1,
+                              Level = row.Level,
+                              Cells = cells,
+                              GroupCaption = string.Empty,
+                              GroupSummary = string.Empty,
+                              GroupCollapsed = false,
+                              CellFormats = formats,
+                              BarFractions = fractions,
+                              RowFormat = hasRules ? controller!.GetRowFormat(row.RowId) : default,
+                          });
             }
         }
 
@@ -658,17 +808,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         // Band-limited Auto widths: the widest formatted cell in the cache (monotonic via the layout).
         // The §9.3 expander gutter is a synthetic leading region (2 cells when master-detail is on).
-        ColumnLayout.Resolve(columns, Math.Max(1, _viewport.Columns), gutterWidth: DetailsActive ? 2 : 0, autoWidth: column =>
-        {
-            int index = columns.IndexOf(column);
-            int widest = 0;
-            foreach (var cached in _band)
-            {
-                if (!cached.IsGroup && index < cached.Cells.Length)
-                    widest = Math.Max(widest, GraphemeWidth.StringWidth(CellText(cached, index)));
-            }
-            return widest;
-        });
+        ColumnLayout.Resolve(columns, Math.Max(1, _viewport.Columns), gutterWidth: DetailsActive ? 2 : 0,
+                             autoWidth: column =>
+                                        {
+                                            int index = columns.IndexOf(column);
+                                            int widest = 0;
+
+                                            foreach (var cached in _band)
+                                            {
+                                                if (!cached.IsGroup && index < cached.Cells.Length)
+                                                    widest = Math.Max(
+                                                        widest, GraphemeWidth.StringWidth(CellText(cached, index)));
+                                            }
+
+                                            return widest;
+                                        });
 
         // The data-bar text reserve: per bar-bearing column, the widest bar-cell value in the band
         // (uniform bar origin/track — equal fractions must render equal bars; see _barReserve).
@@ -684,6 +838,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             {
                 if (cached.IsGroup)
                     continue;
+
                 for (int c = 0; c < columns.Count && c < cached.BarFractions.Length; c++)
                 {
                     if (double.IsNaN(cached.BarFractions[c]))
@@ -703,7 +858,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         owner.OnColumnGeometryResolved();
     }
 
-    private static string HeaderOf(DataGrid owner, Shaping.GroupNode node)
+    private static string HeaderOf(DataGrid owner, GroupNode node)
     {
         // The group level's column header: group levels are ordered; node.Level indexes them.
         if (node.Level < owner.GroupDescriptions.Count &&
@@ -711,6 +866,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         {
             return column.EffectiveHeader;
         }
+
         return string.Empty;
     }
 
@@ -720,6 +876,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         base.Render(context);
         var owner = _owner;
+
         if (owner is null)
             return; // (an empty band still draws the new-row template — an empty AllowAddNew grid)
 
@@ -735,20 +892,22 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         owner.CollectCellRangeViewRects(_renderCellRanges); // §9.4/§10.1 — every rect, derived once per pass
         for (int i = 0; i < _band.Count; i++)
         {
-            int view = _bandStart + i;          // view-row space (focus/hover/striping)
-            int y = ContentYOf(view);           // content-y (§9.3 — panes push rows down)
+            int view = _bandStart + i; // view-row space (focus/hover/striping)
+            int y = ContentYOf(view);  // content-y (§9.3 — panes push rows down)
             var row = _band[i];
 
             // Background lanes: group tint > selection > hover > alternation.
-            Cursorial.Drawing.Media.IBrush? background = row.IsGroup
-                ? GroupRowBackground
-                : selection is not null && selection.IsSelected(row.RowId)
-                    ? SelectionBackground
-                    : HoverViewIndex == view
-                        ? HoverBackground
-                        : (view & 1) == 1
-                            ? RowAlternationBackground
-                            : RowBackground;
+            IBrush? background = row.IsGroup
+                                     ? GroupRowBackground
+                                     : selection is not null && selection.IsSelected(row.RowId)
+                                         ? owner.IsKeyboardFocusWithin 
+                                               ? SelectionBackground
+                                               : SelectionInactiveBackground
+                                         : HoverViewIndex == view
+                                             ? HoverBackground
+                                             : (view & 1) == 1
+                                                 ? RowAlternationBackground
+                                                 : RowBackground;
 
             if (background is not null)
                 context.FillOpaque(new Rect(0, y, viewWidth, 1), background);
@@ -760,15 +919,18 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 // any scroll position; §9.2).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
-                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush);
-                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush);
+                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush ?? Brushes.Default);
+                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default);
 
                 if (row.GroupSummary.Length > 0)
                 {
                     int width = GraphemeWidth.StringWidth(row.GroupSummary);
                     int summaryX = Math.Max(x + 2, viewWidth - width - 1);
-                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue, AccentBrush ?? TextBrush);
+
+                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue,
+                                AccentBrush ?? TextBrush ?? Brushes.Default);
                 }
+
                 continue;
             }
 
@@ -776,14 +938,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // frozen boundary), then the frozen region (gutter + fixed columns) re-fills its
             // background and draws its content on top (overpaint instead of a clip stack).
             bool rowSelected = selection is not null && selection.IsSelected(row.RowId);
+
             for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
                 DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
 
             if (frozenWidth > 0)
             {
                 var erase = background ?? owner.Background;
+
                 if (erase is not null && HOffset > 0)
                     context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
                     DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
             }
@@ -792,7 +957,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             if (gutterWidth > 0 && row.RowId >= 0)
             {
                 context.DrawText(0, y, owner.IsDetailExpanded(row.RowId) ? "▼" : "▶",
-                                 AccentBrush ?? TextBrush);
+                                 AccentBrush ?? TextBrush ?? Brushes.Default);
             }
         }
 
@@ -802,10 +967,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             _editColumnIndex >= 0 && _editColumnIndex < entries.Count)
         {
             var entry = entries[_editColumnIndex];
+
             if (entry.Width >= 6)
             {
                 context.DrawText(DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding + entry.Width - 2,
-                                 ContentYOf(_editViewIndex), "▲▼", AccentBrush ?? TextBrush);
+                                 ContentYOf(_editViewIndex), "▲▼", AccentBrush ?? TextBrush ?? Brushes.Default);
             }
         }
 
@@ -819,7 +985,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// <paramref name="view"/> is the view-row index (focus compares), <paramref name="y"/> its
     /// content-y draw row (§9.3).
     /// </summary>
-    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow, int focusColumn,
+    private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow,
+                              int focusColumn,
                               bool rowSelected)
     {
         if (!IsEntryVisible(c))
@@ -851,13 +1018,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // background never rendered — and cell-wide is the DevExpress look anyway; it also covers
         // empty cells). A selected row's tint outranks it (the selection must stay legible).
         var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
-        if (format.Background is { } formatBackground && !rowSelected)
+
+        if (format.Background is {} formatBackground && !rowSelected)
+        {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
                                BrushFor(formatBackground));
+        }
 
         // The focus cell's well-fill (the mockup's focuscell).
         if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
-            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), FocusCellBackground);
+        {
+            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
+                               FocusCellBackground);
+        }
 
         ReadOnlySpan<char> text = CellText(row, c); // §9.6 — sliced from the pooled band buffer
         int textWidth = GraphemeWidth.StringWidth(text);
@@ -879,10 +1052,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // mockup's amtcell); everything else honors the column alignment.
         int avail = Math.Max(0, entry.Width - iconReserve);
         int drawX = !hasBar &&
-                    entry.Column.TextAlignment == Cursorial.Rendering.Text.TextAlignment.Right &&
+                    entry.Column.TextAlignment == Rendering.Text.TextAlignment.Right &&
                     textWidth < avail
-            ? cellX + iconReserve + (avail - textWidth)
-            : cellX + iconReserve;
+                        ? cellX + iconReserve + (avail - textWidth)
+                        : cellX + iconReserve;
 
         DrawFormattedCell(context, drawX, y, text, avail, format);
 
@@ -909,17 +1082,28 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                                     int focusRow, int focusColumn)
     {
         int viewIndex = NewRowViewIndex;
+
         if (viewIndex < 0)
             return;
+
         int y = ContentYOf(viewIndex); // §9.3: panes above push the ghost row down
 
         // Only ink inside the band scene (the SCP band covers the extent tail because the extent
         // includes this row; out-of-band draws would be clipped anyway — skip the work).
         var (windowStart, windowLength) = BandWindow();
+
         if (y < windowStart || y >= windowStart + windowLength)
             return;
 
-        var ghost = MutedBrush ?? TextBrush;
+        var ghost = MutedBrush;
+        var ghostStyle = CellStyle.Default;
+
+        if (ghost is null)
+        {
+            ghost = TextBrush ?? Brushes.Default;
+            ghostStyle = ghostStyle.WithAttributes(TextAttributes.Faint);
+        }
+
         var controller = owner.Controller;
         int frozenCount = ColumnLayout.FrozenCount;
         int frozenWidth = ColumnLayout.FrozenWidth;
@@ -927,6 +1111,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         void DrawGhostCell(int c)
         {
             var entry = entries[c];
+
             if (!IsEntryVisible(c))
                 return;
 
@@ -941,28 +1126,35 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 return;
 
             string hint = owner.ResolveEditorKind(entry.Column) switch
-            {
-                DataGridEditorKind.Combo => "(pick)",
-                DataGridEditorKind.Date => "yyyy-mm-dd",
-                DataGridEditorKind.Spin => "0",
-                DataGridEditorKind.None => string.Empty,
-                _ => "…", // "…" — the text ghost
-            };
+                          {
+                              DataGridEditorKind.Combo => "(pick)",
+                              DataGridEditorKind.Date  => "yyyy-mm-dd",
+                              DataGridEditorKind.Spin  => "0",
+                              DataGridEditorKind.None  => string.Empty,
+                              _                        => "…", // "…" — the text ghost
+                          };
+
             if (hint.Length != 0)
-                DrawClipped(context, DrawXOf(c) + DataGridColumnLayout.CellPadding, y, hint, entry.Width, ghost);
+            {
+                DrawClipped(context, DrawXOf(c) + DataGridColumnLayout.CellPadding, y,
+                            hint, entry.Width, ghost, ghostStyle);
+            }
         }
 
         // §9.2 paint order (audit W2-4 — the data rows' mirror): scrolling ghosts first, then the
         // frozen region re-fills and draws its ghosts unshifted on top.
         for (int c = frozenCount; c < entries.Count; c++)
             DrawGhostCell(c);
+
         if (frozenWidth > 0)
         {
-            if (owner.Background is { } erase && HOffset > 0)
+            if (owner.Background is {} erase && HOffset > 0)
                 context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+
             for (int c = 0; c < frozenCount; c++)
                 DrawGhostCell(c);
         }
+
         context.DrawText(0, y, "*", ghost);
         // (no row fill — the ghost row deliberately stays on the resting background)
     }
@@ -973,26 +1165,34 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// overload (the format's fg wins; Bold/Inverse/bg fold into the base <see cref="CellStyle"/> —
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
-    private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth, in CellFormat format)
+    private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
+                                   in CellFormat format)
     {
+        var textBrush = TextBrush;
+
         if (format.IsEmpty)
         {
-            DrawClipped(context, x, y, text, maxWidth, TextBrush);
+            if (textBrush is not null)
+                DrawClipped(context, x, y, text, maxWidth, textBrush);
             return;
         }
 
-        if (text.Length == 0 || (format.Foreground is null && TextBrush is null))
+        if (text.Length == 0 || (format.Foreground is null && textBrush is null))
             return;
 
         var attributes = default(TextAttributes);
+
         if (format.Bold)
             attributes |= TextAttributes.Bold;
+
         if (format.Inverse)
             attributes |= TextAttributes.Inverse;
 
         CellStyle style = default;
+
         if (attributes != default)
             style = style.WithAttributes(attributes);
+
         // Deliberately NO WithBackground: DrawText's background parameter (transparent by default)
         // OVERWRITES the base style's background per cell, so a style-carried background never
         // reached the frame — the cell-wide fill in DrawDataCell is the background rendering, and
@@ -1003,33 +1203,40 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         ReadOnlySpan<char> span = text;
         int width = GraphemeWidth.StringWidth(text);
         bool truncated = width > maxWidth;
+
         if (truncated)
         {
             var enumerator = text.GetGraphemeEnumerator();
             width = 0;
             int end = 0;
+
             while (enumerator.MoveNext())
             {
                 int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
                 if (next > maxWidth - 1)
                     break;
+
                 width = next;
                 end = enumerator.ElementIndex + enumerator.Current.Length;
             }
+
             span = text[..end];
         }
 
-        if (format.Foreground is { } foreground)
+        if (format.Foreground is {} foreground)
         {
             context.DrawText(x, y, span, foreground, null, style);
+
             if (truncated)
                 context.DrawText(x + width, y, "…", foreground, null, style);
         }
         else
         {
-            context.DrawText(x, y, span, TextBrush!, null, style);
+            context.DrawText(x, y, span, textBrush!, null, style);
+
             if (truncated)
-                context.DrawText(x + width, y, "…", TextBrush!, null, style);
+                context.DrawText(x + width, y, "…", textBrush!, null, style);
         }
     }
 
@@ -1040,18 +1247,21 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         width = Math.Min(width, MaxBarCells);
-        int fill = (int)Math.Round(Math.Clamp(fraction, 0, 1) * width);
-        if (fill > 0 && DataBarFillBrush is { } fillBrush)
+        int fill = (int) Math.Round(Math.Clamp(fraction, 0, 1) * width);
+
+        if (fill > 0 && DataBarFillBrush is {} fillBrush)
             context.DrawText(x, y, BarFillGlyphs.AsSpan(0, fill), fillBrush);
-        if (fill < width && DataBarTrackBrush is { } trackBrush)
+
+        if (fill < width && DataBarTrackBrush is {} trackBrush)
             context.DrawText(x + fill, y, BarTrackGlyphs.AsSpan(0, width - fill), trackBrush);
     }
 
     /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack
     /// inside Render — §3.2). Span-based (§9.6) — string callers convert implicitly.</summary>
-    private static void DrawClipped(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth, Cursorial.Drawing.Media.IBrush? brush)
+    private static void DrawClipped(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
+                                    IBrush? foreground, CellStyle style = default)
     {
-        if (text.Length == 0 || brush is null)
+        if (text.Length == 0 || foreground is null)
             return;
 
         if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)
@@ -1060,20 +1270,24 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             var enumerator = text.GetGraphemeEnumerator();
             int width = 0;
             int end = 0;
+
             while (enumerator.MoveNext())
             {
                 int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
                 if (next > maxWidth - 1)
                     break;
+
                 width = next;
                 end = enumerator.ElementIndex + enumerator.Current.Length;
             }
-            context.DrawText(x, y, text[..end], brush);
-            context.DrawText(x + width, y, "…", brush);
+
+            context.DrawText(x, y, text[..end], foreground, background: null, style);
+            context.DrawText(x + width, y, "…", foreground, background: null, style);
             return;
         }
 
-        context.DrawText(x, y, text, brush);
+        context.DrawText(x, y, text, foreground);
     }
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────
@@ -1112,6 +1326,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         if (_editor is null || _editViewIndex == viewIndex)
             return;
+
         _editViewIndex = viewIndex;
         InvalidateMeasure();
         InvalidateVisual();
@@ -1123,11 +1338,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// one owns them (Enter = pick, Esc = close) — see <c>DataGrid.OnPreviewKeyDown</c>.
     /// </summary>
     internal bool IsEditorDropDownOpen => _editor switch
-    {
-        Cursorial.UI.Controls.ComboBox combo => combo.IsDropDownOpen,
-        Cursorial.UI.Controls.DatePicker picker => picker.IsDropDownOpen,
-        _ => false,
-    };
+                                          {
+                                              ComboBox combo    => combo.IsDropDownOpen,
+                                              DatePicker picker => picker.IsDropDownOpen,
+                                              _                 => false,
+                                          };
 
     /// <summary>
     /// Hosts one editor element at a cell, keyed by <paramref name="kind"/> (the generalized §3.2
@@ -1143,13 +1358,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         _editRowId = rowId;
 
         Control editor = kind switch
-        {
-            DataGridEditorKind.Combo => CreateComboEditor(initialText, comboItems ?? []),
-            DataGridEditorKind.Date => CreateDateEditor(initialText),
-            // Text and Spin share the TextBox face — Spin adds Up/Down stepping (the grid's editing
-            // key branch calls SpinBy; the ▲▼ affordance is drawn by Render beside the editor).
-            _ => CreateTextEditor(initialText),
-        };
+                         {
+                             DataGridEditorKind.Combo => CreateComboEditor(initialText, comboItems ?? []),
+                             DataGridEditorKind.Date  => CreateDateEditor(initialText),
+                             // Text and Spin share the TextBox face — Spin adds Up/Down stepping (the grid's editing
+                             // key branch calls SpinBy; the ▲▼ affordance is drawn by Render beside the editor).
+                             _ => CreateTextEditor(initialText),
+                         };
 
         _editor = editor;
         _editorKind = kind;
@@ -1174,26 +1389,27 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         // Focus after the editor materializes (measure/arrange run first) — the parked-work idiom.
         UIApplication.Current?.Dispatcher.Post(() =>
-        {
-            if (ReferenceEquals(_editor, editor))
-            {
-                editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
-                (editor as Cursorial.UI.Controls.TextBox)?.SelectAll();
-            }
-        });
+                                               {
+                                                   if (ReferenceEquals(_editor, editor))
+                                                   {
+                                                       editor.Focus(FocusNavigationMethod.Programmatic);
+                                                       (editor as TextBox)?.SelectAll();
+                                                   }
+                                               });
     }
 
-    private Cursorial.UI.Controls.TextBox CreateTextEditor(string initialText)
+    private TextBox CreateTextEditor(string initialText)
     {
-        var editor = new Cursorial.UI.Controls.TextBox { Text = initialText };
+        var editor = new TextBox { Text = initialText, Padding = Margins.Zero };
         // The ed-err recovery contract: the danger ink clears on the NEXT text change (§3.2).
-        editor.AddHandler(Cursorial.UI.Controls.TextBox.TextChangedEvent, (_, _) => ClearEditorError());
+        editor.AddHandler(TextBox.TextChangedEvent, (_, _) => ClearEditorError());
         return editor;
     }
 
-    private Cursorial.UI.Controls.ComboBox CreateComboEditor(string initialText, IReadOnlyList<string> items)
+    private ComboBox CreateComboEditor(string initialText, IReadOnlyList<string> items)
     {
-        var combo = new Cursorial.UI.Controls.ComboBox { ItemsSource = items };
+        var combo = new ComboBox { ItemsSource = items };
+
         // Preset to the current formatted value (the mockup's selected "East"); no match ⇒ no
         // selection, and commit refuses until the user picks (TryGetEditorText's Combo contract).
         foreach (var item in items)
@@ -1204,14 +1420,16 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 break;
             }
         }
+
         combo.SelectionChanged += (_, _) => ClearEditorError();
         return combo;
     }
 
-    private Cursorial.UI.Controls.DatePicker CreateDateEditor(string initialText)
+    private DatePicker CreateDateEditor(string initialText)
     {
         // Editable: the face is a typed-text box + the calendar drop-down (the mockup's ed-date).
-        var picker = new Cursorial.UI.Controls.DatePicker { IsEditable = true };
+        var picker = new DatePicker { IsEditable = true };
+
         // SelectedDate preset by parsing the current cell text — DateOnly first, then DateTime
         // (a DateTime-keyed column formats through its own formatter; FromDateTime folds it).
         if (DateOnly.TryParse(initialText, System.Globalization.CultureInfo.CurrentCulture,
@@ -1224,6 +1442,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         {
             picker.SelectedDate = DateOnly.FromDateTime(dateTime);
         }
+
         picker.SelectedDateChanged += (_, _) => ClearEditorError();
         // Audit fix: free-typed text that has not yet parsed to a new date raises no
         // SelectedDateChanged — clear the error cue on the raw keystroke too (parity with the
@@ -1246,18 +1465,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         switch (_editor)
         {
-            case Cursorial.UI.Controls.TextBox box:
+            case TextBox box:
                 text = box.Text;
                 return true;
 
-            case Cursorial.UI.Controls.ComboBox combo:
+            case ComboBox combo:
                 text = combo.SelectedItem as string;
                 return text is not null;
 
-            case Cursorial.UI.Controls.DatePicker picker:
-                text = FindDescendant<Cursorial.UI.Controls.TextBox>(picker)?.Text
+            case DatePicker picker:
+                text = FindDescendant<TextBox>(picker)?.Text
                        ?? picker.SelectedDate?.ToString("d", System.Globalization.CultureInfo.CurrentCulture)
                        ?? string.Empty;
+
                 return true;
 
             default:
@@ -1273,11 +1493,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     internal void SpinBy(decimal delta)
     {
-        if (_editorKind != DataGridEditorKind.Spin || _editor is not Cursorial.UI.Controls.TextBox box)
+        if (_editorKind != DataGridEditorKind.Spin || _editor is not TextBox box)
             return;
 
         string current = box.Text.Trim();
         decimal value = 0m;
+
         if (current.Length != 0 &&
             !decimal.TryParse(current, System.Globalization.NumberStyles.Number,
                               System.Globalization.CultureInfo.CurrentCulture, out value))
@@ -1298,17 +1519,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     internal void FlagEditorError()
     {
-        if (_editor is not { } editor)
+        if (_editor is not {} editor)
             return;
+
         _editorErrorFlagged = true;
-        editor.SetResourceReference(Control.ForegroundProperty, Cursorial.UI.Themes.ThemeKeys.DangerBrush);
+        editor.SetResourceReference(Control.ForegroundProperty, ThemeKeys.DangerBrush);
     }
 
     private void ClearEditorError()
     {
         _owner?.ClearEditValidationError(); // §10.2 — a fresh keystroke retires the validation message
-        if (!_editorErrorFlagged || _editor is not { } editor)
+        if (!_editorErrorFlagged || _editor is not {} editor)
             return;
+
         _editorErrorFlagged = false;
         editor.ClearValue(Control.ForegroundProperty); // back to the inherited/themed resting ink
     }
@@ -1318,11 +1541,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         for (int i = 0; i < root.VisualChildrenCount; i++)
         {
             var child = root.GetVisualChild(i);
+
             if (child is T match)
                 return match;
-            if (FindDescendant<T>(child) is { } nested)
+
+            if (FindDescendant<T>(child) is {} nested)
                 return nested;
         }
+
         return null;
     }
 
@@ -1331,6 +1557,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         if (_editor is null)
             return;
+
         DisownChild(_editor);
         _editor = null;
         _editorKind = DataGridEditorKind.Auto;
@@ -1341,7 +1568,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         InvalidateMeasure();
         InvalidateVisual();
         _owner?.NotifyEditingChanged();
-        _owner?.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+        _owner?.Focus(FocusNavigationMethod.Programmatic);
     }
 
     /// <summary>
@@ -1351,8 +1578,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     private int EditorWidth(in DataGridColumnLayout.Entry entry)
         => _editorKind == DataGridEditorKind.Spin && entry.Width >= 6
-            ? entry.Width - 3
-            : Math.Max(1, entry.Width);
+               ? entry.Width - 3
+               : Math.Max(1, entry.Width);
 
     protected override Size ArrangeOverride(Size finalSize)
     {
@@ -1368,6 +1595,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // policy commits an editor before it would slide under the frozen region. The arrange
             // row maps through the §9.3 content-y map.
             var entry = ColumnLayout.Entries[_editColumnIndex];
+
             _editor.Arrange(new Rect(DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding,
                                      ContentYOf(_editViewIndex), EditorWidth(entry), 1));
         }
@@ -1380,6 +1608,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             if (_detailElements.TryGetValue(pane.RowId, out var element))
                 element.Arrange(new Rect(0, pane.YStart, Math.Max(1, _viewport.Columns), pane.Height));
         }
+
         return finalSize;
     }
 
@@ -1394,12 +1623,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     internal (int ViewIndex, int ColumnIndex, bool OnExpander) HitCell(int x, int y)
     {
         var owner = _owner;
+
         if (owner is null)
             return (-1, -1, false);
 
         // §9.3: content-y → view row first; a y inside a pane belongs to the pane's own hosted
         // children (elements take their hits before the presenter leaf — nothing for us).
         var (viewIndex, inDetail) = ViewIndexAtY(y);
+
         if (inDetail)
             return (-1, -1, false);
 
@@ -1409,10 +1640,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             // snapshot — every snapshot read above stays guarded).
             if (viewIndex >= 0 && viewIndex == NewRowViewIndex)
                 return (viewIndex, ColumnLayout.EntryAt(ContentXAt(x)), false);
+
             return (-1, -1, false);
         }
 
         var row = owner.Snapshot.GetRow(viewIndex);
+
         if (row.IsGroup)
         {
             int expanderX = row.Level * 2;
@@ -1433,6 +1666,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
+
         if (e.Handled || _owner is null)
             return;
 
@@ -1445,14 +1679,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             _editColumnIndex >= 0 && _editColumnIndex < ColumnLayout.Entries.Count)
         {
             var editEntry = ColumnLayout.Entries[_editColumnIndex];
+
             if (editEntry.Width >= 6 && position.Row == ContentYOf(_editViewIndex))
             {
                 int zoneStart = DrawXOf(_editColumnIndex) + DataGridColumnLayout.CellPadding + editEntry.Width - 2;
+
                 if (position.Column == zoneStart || position.Column == zoneStart + 1)
                 {
                     SpinBy((position.Column == zoneStart ? 1m : -1m) *
                            ((e.Modifiers & KeyModifiers.Shift) != 0 ? 10m : 1m));
-                    _editor.Focus(Cursorial.UI.Input.FocusNavigationMethod.Programmatic);
+
+                    _editor.Focus(FocusNavigationMethod.Programmatic);
                     e.Handled = true;
                     return;
                 }
@@ -1472,6 +1709,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         {
             if (viewIndex >= 0)
                 _owner.SetContextPressFocus(viewIndex, columnIndex);
+
             _owner.OpenGridContextMenu(columnIndex);
             e.Handled = true;
             return;
@@ -1494,6 +1732,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         var position = e.GetPosition(this);
         var (viewIndex, inDetail) = ViewIndexAtY(position.Row); // §9.3: pane rows never hover-highlight
         int hover = !inDetail && viewIndex >= 0 && viewIndex < ItemCount ? viewIndex : -1;
+
         if (hover != HoverViewIndex)
         {
             HoverViewIndex = hover;
@@ -1504,6 +1743,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
+
         if (HoverViewIndex != -1)
         {
             HoverViewIndex = -1;

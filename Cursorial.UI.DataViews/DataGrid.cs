@@ -2444,10 +2444,11 @@ public class DataGrid : Control
         if (e.Handled)
             return;
 
-        // While the checklist popup is open its content owns the keyboard: the popup's route
-        // crosses back through its anchor into the grid, and a search-box Space / checklist arrow
-        // must not select rows here — unhandled arrows fall through to the dispatcher's directional
-        // navigation inside the popup instead (§3.4).
+        // While the checklist popup is open its content owns the keyboard. Historically the popup's
+        // route crossed back through its anchor into the grid (the placement-leg leak), making this
+        // stand-down load-bearing; since the input-routing narrowing the route ENDS at the popup and
+        // the grid never sees those keys — the guard remains as defense-in-depth for keys raised on
+        // the grid itself while the popup is up (§3.4).
         if (ActiveFilterPopup is not null)
             return;
 

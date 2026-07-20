@@ -197,7 +197,8 @@ public sealed class Phase3EndToEndTests
         Assert.True(host.RunUntilIdle());
 
         var tree = host.Application.WindowManager!.Tree!;
-        var versionRoot = tree.GetScene(root)!.RasterVersion;
+        var surfaceRoot = host.Application.WindowManager!.RootSurface!.Root; // the RootElementHost owns the root zone
+        var versionRoot = tree.GetScene(surfaceRoot)!.RasterVersion;
         var versionA = tree.GetScene(cardA)!.RasterVersion;
         var versionB = tree.GetScene(cardB)!.RasterVersion;
         var versionC = tree.GetScene(cardC)!.RasterVersion;
@@ -211,7 +212,7 @@ public sealed class Phase3EndToEndTests
         Assert.Equal(versionB + 1, tree.GetScene(cardB)!.RasterVersion);
         Assert.Equal(versionA, tree.GetScene(cardA)!.RasterVersion);     // frozen
         Assert.Equal(versionC, tree.GetScene(cardC)!.RasterVersion);     // frozen
-        Assert.Equal(versionRoot, tree.GetScene(root)!.RasterVersion);   // frozen
+        Assert.Equal(versionRoot, tree.GetScene(surfaceRoot)!.RasterVersion);   // frozen
 
         // Hover OFF: the retraction restyles B back — again only B's zone re-rasters.
         host.SendMouseMove(50, 10);
@@ -222,7 +223,7 @@ public sealed class Phase3EndToEndTests
         Assert.Equal(versionB + 2, tree.GetScene(cardB)!.RasterVersion);
         Assert.Equal(versionA, tree.GetScene(cardA)!.RasterVersion);
         Assert.Equal(versionC, tree.GetScene(cardC)!.RasterVersion);
-        Assert.Equal(versionRoot, tree.GetScene(root)!.RasterVersion);
+        Assert.Equal(versionRoot, tree.GetScene(surfaceRoot)!.RasterVersion);
     }
 
     // ───────────────────────────── (c) retraction promotes the runner-up ─────────────────────────────

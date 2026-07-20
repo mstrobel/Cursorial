@@ -107,12 +107,13 @@ public class DataGridViewModel : PageViewModel
         private decimal _amount;
         private string _status = "";
 
-        public required string Order { get; init; }
-        public required string Region { get; init; }
-        public required string Rep { get; init; }
+        public required string Order { get; init => Set(ref field, value); }
+        public required string Region { get; init => Set(ref field, value); }
+
+        public required string Rep { get; init => Set(ref field, value); }
 
         public decimal Amount { get => _amount; set => Set(ref _amount, value); }
-        public double Margin { get; init; }
+        public double Margin { get; init => Set(ref field, value); }
         public string Status { get => _status; set => Set(ref _status, value); }
 
         public event PropertyChangedEventHandler? PropertyChanged;

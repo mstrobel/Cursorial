@@ -115,7 +115,7 @@ internal abstract class ShapedColumn
 /// the controller knows <typeparamref name="TRow"/> but not the key type, so the struct-row lanes
 /// (attach-time extraction, the id-keyed edit commit) dispatch through here.
 /// </summary>
-internal abstract class ShapedColumn<TRow> : ShapedColumn
+internal abstract class ShapedColumn<TRow> : ShapedColumn where TRow : notnull
 {
     /// <summary>The typed extract (the hot path — the untyped override is the INCC boundary).</summary>
     public abstract void ExtractKey(TRow row, int slot);
@@ -131,7 +131,7 @@ internal abstract class ShapedColumn<TRow> : ShapedColumn
 }
 
 /// <summary>The typed column (see <see cref="ShapedColumn"/>).</summary>
-internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
+internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow> where TRow : notnull
 {
     // Read via Expression.Field by compiled comparers so vector growth (re-allocation) is always
     // observed — never capture the array itself into a compiled tree.
@@ -233,7 +233,7 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
     private static readonly Action<object, TRow>? BoxWriter =
         typeof(TRow).IsValueType
             ? (Action<object, TRow>)typeof(ShapedColumn)
-                .GetMethod(nameof(WriteBox), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+                .GetMethod(nameof(WriteBox), BindingFlags.NonPublic | BindingFlags.Static)!
                 .MakeGenericMethod(typeof(TRow))
                 .CreateDelegate(typeof(Action<object, TRow>))
             : null;
@@ -323,6 +323,8 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
            type == typeof(sbyte) || type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) ||
            type == typeof(double) || type == typeof(float) || type == typeof(decimal);
 
+#pragma warning disable CS8714 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match 'notnull' constraint.
+    
     public override IReadOnlyList<(string Formatted, object? Raw, int Count)> GetDistinctValues(
         ReadOnlySpan<int> slots, int maxCount)
     {
@@ -330,6 +332,7 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
         // a Dictionary cannot hold them and "(Blanks)" is its own row anyway).
         var counts = new Dictionary<TKey, int>();
         int nullCount = 0;
+
         foreach (int slot in slots)
         {
             var key = Keys[slot];
@@ -355,6 +358,8 @@ internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow>
         return result;
     }
 
+#pragma warning restore CS8714 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match 'notnull' constraint.
+    
     internal override Expression BuildCompareExpression(ParameterExpression a, ParameterExpression b, bool descending)
     {
         if (_collation is { } collation)

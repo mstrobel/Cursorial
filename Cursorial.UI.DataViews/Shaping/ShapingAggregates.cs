@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using System.Numerics;
 using System.Reflection;
 
 namespace Cursorial.UI.DataViews.Shaping;
@@ -81,12 +80,14 @@ internal abstract class ColumnAggregator
            type == typeof(sbyte) || type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) ||
            type == typeof(double) || type == typeof(float) || type == typeof(decimal);
 
-    private static ColumnAggregator CreateCore<TRow, TKey>(ShapedColumn<TRow, TKey> column, AggregateKind kind, string? format)
+    private static ColumnAggregator CreateCore<TRow, TKey>(ShapedColumn<TRow, TKey> column, AggregateKind kind,
+                                                           string? format) where TRow : notnull
         => kind switch
-        {
-            AggregateKind.Min or AggregateKind.Max => new MinMaxAggregator<TRow, TKey>(column, format) { Kind = kind },
-            _ => NumericAggregator<TRow, TKey>.Create(column, kind, format),
-        };
+           {
+               AggregateKind.Min or AggregateKind.Max => new MinMaxAggregator<TRow, TKey>(column, format)
+                                                         { Kind = kind },
+               _ => NumericAggregator<TRow, TKey>.Create(column, kind, format)
+           };
 
     private sealed class CountAggregator : ColumnAggregator
     {
@@ -95,7 +96,8 @@ internal abstract class ColumnAggregator
         public override int CompareValues(in AggregateValue a, in AggregateValue b) => a.AsDouble.CompareTo(b.AsDouble);
     }
 
-    private sealed class MinMaxAggregator<TRow, TKey>(ShapedColumn<TRow, TKey> column, string? format) : ColumnAggregator
+    private sealed class MinMaxAggregator<TRow, TKey>(ShapedColumn<TRow, TKey> column, string? format)
+        : ColumnAggregator where TRow : notnull
     {
         private readonly Func<TKey, string> _formatter =
             ShapingCodegen.CreateFormatter<TKey>(format);
@@ -133,8 +135,10 @@ internal abstract class ColumnAggregator
     /// Sum/Average over numeric keys via a compiled accumulator loop: decimal keys accumulate in
     /// decimal, everything else in double (the widened lanes; no per-row boxing).
     /// </summary>
-    private sealed class NumericAggregator<TRow, TKey> : ColumnAggregator
+    private sealed class NumericAggregator<TRow, TKey> : ColumnAggregator where TRow : notnull
     {
+        private const double Epsilon = 0.000001;
+
         private readonly ShapedColumn<TRow, TKey> _column;
         private readonly Func<TKey[], int[], int, int, (double Sum, int Count)>? _doubleLoop;
         private readonly Func<TKey[], int[], int, int, (decimal Sum, int Count)>? _decimalLoop;
@@ -257,7 +261,7 @@ internal abstract class ColumnAggregator
 
             double v = value.AsDouble;
             if (Kind == AggregateKind.Sum && IsIntegral(underlying) && v is >= long.MinValue and <= long.MaxValue &&
-                v == Math.Floor(v))
+                Math.Abs(v - Math.Floor(v)) < Epsilon)
             {
                 return FormatIntegral((long)v, underlying);
             }

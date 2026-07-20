@@ -123,12 +123,24 @@ public abstract partial class UIElement : UIObject
         _visualChildren ?? (IReadOnlyList<UIElement>)NoChildren;
 
     /// <summary>
-    /// Evaluates whether this element is a logical or visual ancestor of <paramref name="element"/>.
+    /// Evaluates whether this element is an ancestor of <paramref name="element"/> along the composed
+    /// <b>ownership</b> chain — <c>VisualParent ?? UIParent</c>, the same walk the focus chain, access-key
+    /// scope resolution, and window-manager dismissal ancestry use. The <see cref="UIParent"/> fallback fires
+    /// only where the visual chain ends, which is what lets the relation span a popup seam: content on a
+    /// popup surface connects to its owner through visual hops <i>within</i> the surface, one bridge hop at
+    /// its root (logical/templated parent, or a <c>Popup</c>'s placement target), then visual hops again.
     /// </summary>
     /// <param name="element">The element to evaluate.</param>
-    /// <returns><c>true</c> if <paramref name="element"/> is a logical or visual descendant of this element.</returns>
-    /// <remarks>For purposes of this method, an element is considered its own ancestor.</remarks>
-    public bool IsAncestorOf(UIElement? element) => IsLogicalAncestorOf(element) || IsVisualAncestorOf(element);
+    /// <returns><c>true</c> if <paramref name="element"/> is an ownership-chain descendant of this element.</returns>
+    /// <remarks>
+    /// For purposes of this method, an element is considered its own ancestor. This is <b>not</b> the same
+    /// relation as <see cref="IsLogicalAncestorOf"/> OR'd with <see cref="IsVisualAncestorOf"/>: the popup
+    /// seam is spanned only by the <i>alternating</i> chain — the pure-visual walk stops at the popup surface
+    /// root, and the pure-logical walk breaks inside template chrome whose parts carry no logical link of
+    /// their own. Use the specialized forms when a single-tree relation is the actual question.
+    /// </remarks>
+    public bool IsAncestorOf(UIElement? element) =>
+        element != null && (element == this || IsAncestorOf(element.VisualParent ?? element.UIParent));
 
     /// <summary>
     /// Evaluates whether this element is a logical ancestor of <paramref name="element"/>.

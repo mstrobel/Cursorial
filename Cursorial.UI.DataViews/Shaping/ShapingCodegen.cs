@@ -12,7 +12,7 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// §2.2 panel amendment): no per-cell string allocation. Built by
 /// <see cref="ShapingCodegen.CreateSpanFormatter{TKey}"/>.
 /// </summary>
-internal delegate int SpanFormat<TKey>(TKey value, Span<char> destination);
+internal delegate int SpanFormat<in TKey>(TKey value, Span<char> destination);
 
 /// <summary>
 /// The engine's single code-generation site (design doc §2.2 / invariant 8): every typed delegate the
@@ -350,9 +350,14 @@ internal static class ShapingCodegen
     /// null check is JIT-eliminated for structs).</summary>
     private static SpanFormat<TValue> CreateSpanFormatterCore<TValue>(string? format, CultureInfo culture)
         where TValue : ISpanFormattable
-        => (value, destination) => value is null
-            ? 0
-            : value.TryFormat(destination, out int written, format, culture) ? written : -1;
+    {
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+        return (value, destination) => value is null
+                                           ? 0
+                                           : value.TryFormat(destination, out int written, format, culture)
+                                               ? written
+                                               : -1;
+    }
 
     /// <summary>The <see cref="Nullable{T}"/> lane: unwrap without boxing; null → 0 chars.</summary>
     private static SpanFormat<TValue?> CreateNullableSpanFormatterCore<TValue>(string? format, CultureInfo culture)
@@ -445,7 +450,7 @@ internal static class ShapingCodegen
     private static Expression GuardedAssign(MemberExpression leaf, ParameterExpression value)
     {
         Expression assign = Expression.Assign(leaf, value);
-        if (leaf.Expression is MemberExpression owner && !owner.Type.IsValueType)
+        if (leaf.Expression is MemberExpression { Type.IsValueType: false } owner)
             assign = Expression.IfThen(Expression.NotEqual(owner, Expression.Constant(null, owner.Type)), assign);
         return assign;
     }
@@ -468,29 +473,30 @@ internal static class ShapingCodegen
     }
 
     private static ShapedColumn CreateColumnCore<TRow, TKey>(
-        object identity, LambdaExpression selector, StringComparison stringComparison, string? format, CultureInfo? culture)
+        object identity, LambdaExpression selector, StringComparison stringComparison, string? format,
+        CultureInfo? culture) where TRow : notnull
         => new ShapedColumn<TRow, TKey>(
-            ((Expression<Func<TRow, TKey>>)selector).Compile(),
-            CreateKeyComparison<TKey>(stringComparison),
-            CreateFormatter<TKey>(format, culture),
-            // Culture-mode string columns get the §2.2 collation-key blob (culture order at memcmp
-            // speed); Ordinal/OrdinalIgnoreCase skip it — ordinal compare is already memcmp-speed.
-            typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
-                ? new CollationKeyStore(stringComparison)
-                : null)
-        {
-            Identity = identity,
-            // The §9.6 span-format lane: the band cache formats into pooled char buffers through
-            // this (no per-cell string); the string _formatter stays the cold/diagnostic lane.
-            SpanFormatter = CreateSpanFormatter<TKey>(format, culture),
-            // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
-            // computed keys stay read-only (the editor won't open on them). Value-type rows compile
-            // the copy-returning mutator instead (§9.6 — an Action on a struct copy is a silent no-op).
-            Setter = !typeof(TRow).IsValueType && TryBuildSetter(selector) is { } setter
-                ? (Action<TRow, TKey>)setter.Compile()
-                : null,
-            StructSetter = typeof(TRow).IsValueType && TryBuildStructSetter(selector) is { } mutator
-                ? (Func<TRow, TKey, TRow>)mutator.Compile()
-                : null,
-        };
+               ((Expression<Func<TRow, TKey>>) selector).Compile(),
+               CreateKeyComparison<TKey>(stringComparison),
+               CreateFormatter<TKey>(format, culture),
+               // Culture-mode string columns get the §2.2 collation-key blob (culture order at memcmp
+               // speed); Ordinal/OrdinalIgnoreCase skip it — ordinal compare is already memcmp-speed.
+               typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
+                   ? new CollationKeyStore(stringComparison)
+                   : null)
+           {
+               Identity = identity,
+               // The §9.6 span-format lane: the band cache formats into pooled char buffers through
+               // this (no per-cell string); the string _formatter stays the cold/diagnostic lane.
+               SpanFormatter = CreateSpanFormatter<TKey>(format, culture),
+               // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
+               // computed keys stay read-only (the editor won't open on them). Value-type rows compile
+               // the copy-returning mutator instead (§9.6 — an Action on a struct copy is a silent no-op).
+               Setter = !typeof(TRow).IsValueType && TryBuildSetter(selector) is {} setter
+                            ? (Action<TRow, TKey>) setter.Compile()
+                            : null,
+               StructSetter = typeof(TRow).IsValueType && TryBuildStructSetter(selector) is {} mutator
+                                  ? (Func<TRow, TKey, TRow>) mutator.Compile()
+                                  : null,
+           };
 }

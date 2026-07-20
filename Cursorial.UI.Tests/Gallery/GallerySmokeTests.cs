@@ -363,4 +363,184 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Equal(3, host.LineStep(11, -1, vertical: false));
         Assert.Equal(8, host.LineStep(8, -1, vertical: false));
     }
+
+    private static void Click(UIHeadlessHost host, int column, int row, MouseButton button = MouseButton.Left)
+    {
+        // Move first: a real pointer is over the cell before it presses. Under motion-reporting caps the
+        // hover chain is maintained by Move events alone, and ButtonBase's release-click requires
+        // IsPointerOver at the Up (C187/C188) — a bare Down/Up pair never clicks.
+        var dispatcher = host.Application.InputDispatcher;
+        dispatcher.ProcessEvent(new MouseEvent
+        {
+            Kind = MouseEventKind.Move, Position = new CellPosition(column, row), Button = MouseButton.None,
+            ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        dispatcher.ProcessEvent(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(column, row), Button = button,
+            ButtonsHeld = button == MouseButton.Left ? MouseButtons.Left : MouseButtons.Right,
+            Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        dispatcher.ProcessEvent(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonUp, Position = new CellPosition(column, row), Button = button,
+            ButtonsHeld = MouseButtons.None, Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+    }
+
+    [Fact] // the Event Routing page: interactions render live route logs — a button click's route shows the
+           // template chrome + boundary; a context-menu item click shows the popup→owner bridge hop (the menu
+           // content lives on a separate surface); a key press logs the route from the focused element.
+    public void EventRouting_Page_LogsMouseAndKeyRoutes()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(120, 40) });
+        var root = GalleryApp.BuildRoot(host.Application);
+        host.ShowRoot(root);
+        var shell = (ShellViewModel)root.DataContext!;
+        shell.SelectedPage = shell.Pages.OfType<EventRoutingViewModel>().Single();
+        host.RunUntilIdle();
+
+        var screen = Screen(host, 40);
+        Assert.Contains("Event Routing", screen);
+        Assert.Contains("Mouse-down route", screen);
+        Assert.Contains("Key-down route", screen);
+
+        // A left-click on "Click Me": the down's route passes the Button's template chrome (dimmed, badged)
+        // and crosses the template boundary into the Button itself.
+        // Route-content assertions read the LOG panels' TextBlocks directly — immune to the log ScrollViewer's
+        // viewport clipping and to column wrapping on the rendered screen. Scoped to the two log ScrollViewers
+        // (NOT the whole view): the static legend and scenario captions contain phrases like "template
+        // boundary" and "logical bridge", which would satisfy loose assertions vacuously.
+        var view = FindDescendant<EventRoutingView>(root)!;
+        // Per-log readers (mouse first, key second — the two log ScrollViewers in grid-row order): post-
+        // narrowing the two logs tell DIFFERENT stories, and the assertions pin exactly that.
+        string LogText(int index) => string.Join("\n",
+            AllDescendants<TextBlock>(AllDescendants<ScrollViewer>(view).ElementAt(index)).Select(t => t.Text));
+        string MouseLog() => LogText(0);
+        string KeyLog() => LogText(1);
+
+        var clickMe = AllDescendants<Button>(root).Single(b => b.Name == "ClickMe");
+        var buttonCell = clickMe.TranslateToScreen(1, 0);
+        Click(host, buttonCell.Column, buttonCell.Row);
+        host.RunUntilIdle();
+
+        var log = MouseLog();
+        Assert.Contains("MouseDown", log);
+        Assert.Contains("chrome of Button", log);
+        Assert.Contains("── template boundary ──", log); // the full rendered line — the legend's phrasing can't match
+
+        // Scenario 2 — presented content: the route follows the VISUAL chain (through the ContentPresenter),
+        // and the ⟨logical: …⟩ badge marks the divergent logical parent on the presented Button.
+        var presented = AllDescendants<Button>(root).Single(b => b.Name == "Presented");
+        var presentedCell = presented.TranslateToScreen(1, 0);
+        Click(host, presentedCell.Column, presentedCell.Row);
+        host.RunUntilIdle();
+
+        log = MouseLog();
+        Assert.Contains("Button \"Presented\"", log);
+        Assert.Contains("⟨logical: ContentControl⟩", log);
+
+        // A right-click release opens the context menu (router default); clicking an item then logs a route
+        // that crosses the popup surface back to the owner — the ══ bridge line.
+        var rightClickMe = AllDescendants<ContentControl>(root).Single(c => c.Name == "RightClickMe");
+        var hostCell = rightClickMe.TranslateToScreen(1, 0);
+        Click(host, hostCell.Column, hostCell.Row, MouseButton.Right);
+        host.RunUntilIdle();
+
+        var copyItem = host.Application.WindowManager!.Surfaces
+            .SelectMany(s => AllDescendants<MenuItem>(s.Root))
+            .Single(m => Equals(m.Header, "_Copy"));
+
+        // KEY route first, while the menu is still open: from inside the menu it takes the LOGICAL seam
+        // hop to the Popup element — and stops there (the placement leg is an ownership relation, never a
+        // route).
+        Assert.True(copyItem.Focus());
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent
+        {
+            Key = Key.F1, Kind = KeyEventKind.Down, Modifiers = KeyModifiers.None,
+            Text = default, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        var keyLog = KeyLog();
+        Assert.Contains("MenuItem", keyLog);
+        Assert.Contains("══ surface → owner · logical bridge ══", keyLog);        // ContextMenu → its hosting Popup: TAKEN
+        Assert.Contains("Popup", keyLog);                                         // the route's last node
+        Assert.Contains("╳═ seam not crossed · placement-target bridge", keyLog); // the placement leg: DECLINED, shown in danger color
+        Assert.DoesNotContain("surface → owner · placement-target bridge", keyLog); // …and never TAKEN
+        Assert.DoesNotContain("RightClickMe", keyLog);
+        // The seam-hop lines must be VISIBLE at the default size: a bridged route auto-scrolls its log.
+        Assert.Contains("══", Screen(host, 40));
+
+        // The closing MOUSE click on the item: pointer routes are SURFACE-SCOPED — contained to the popup,
+        // with the explicit containment marker where the ownership chain continues but the route does not.
+        var itemCell = copyItem.TranslateToScreen(1, 0);
+        Click(host, itemCell.Column, itemCell.Row);
+        host.RunUntilIdle();
+
+        log = MouseLog();
+        Assert.Contains("MenuItem", log);
+        Assert.Contains("ContextMenu", log);                        // the route's LAST node — the popup surface root
+        Assert.Contains("╳═ seam not crossed · logical bridge", log); // the DECLINED hop, rendered in danger color
+        Assert.DoesNotContain("surface → owner", log);              // no TAKEN seam hop, ever (flipped guard)
+        Assert.DoesNotContain("RightClickMe", log);                 // and the owner is unreachable from a mouse route
+
+        // Scenario 4 — the in-tree popup: toggle it open, click inside, and the route crosses the seam via
+        // the LOGICAL bridge only (the Popup element sits in the host tree — contrast with scenario 3).
+        var toggle = AllDescendants<ToggleButton>(root).Single(t => t.Name == "PopupToggle");
+        var toggleCell = toggle.TranslateToScreen(1, 0);
+        Click(host, toggleCell.Column, toggleCell.Row);
+        host.RunUntilIdle();
+        Assert.True(toggle.IsChecked == true, "first toggle click should open the popup");
+
+        var inPopup = host.Application.WindowManager.Surfaces
+            .SelectMany(s => AllDescendants<Button>(s.Root))
+            .Single(b => b.Name == "InPopup");
+        var inPopupCell = inPopup.TranslateToScreen(1, 0);
+        Click(host, inPopupCell.Column, inPopupCell.Row);
+        host.RunUntilIdle();
+
+        log = MouseLog();
+        Assert.Contains("Button \"InPopup\"", log);
+        Assert.Contains("seam not crossed", log);      // the declined hop is SHOWN (what the event isn't crossing)
+        Assert.DoesNotContain("surface → owner", log); // …but never a taken one
+
+        // The KEY route from popup content hops the LOGICAL seam to the in-tree Popup element and then
+        // CONTINUES visually through the owner chain (contrast scenario 3, where the standalone popup's
+        // route ends at the Popup — the placement leg is never a route).
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent
+        {
+            Key = Key.F1, Kind = KeyEventKind.Down, Modifiers = KeyModifiers.None,
+            Text = default, Timestamp = DateTimeOffset.UnixEpoch,
+        }); // the popup focuses InPopup on open, so the key targets popup content
+        host.RunUntilIdle();
+
+        var keyLog2 = KeyLog();
+        Assert.Contains("Popup \"TreePopup\"", keyLog2);
+        Assert.Contains("══ surface → owner · logical bridge ══", keyLog2);
+        Assert.DoesNotContain("placement-target bridge", keyLog2);
+        Assert.Contains("EventRoutingView", keyLog2); // the in-tree route CONTINUES into the owner chain
+
+        // Clicking the checked toggle CLOSES the popup — pins KeepOpenOnAnchorPress (without it, light
+        // dismiss fires on the press and the release's Click re-opens: the dismiss/toggle race).
+        Click(host, toggleCell.Column, toggleCell.Row);
+        host.RunUntilIdle();
+        Assert.True(toggle.IsChecked == false, "second toggle click should close the popup, not re-open it");
+        Assert.DoesNotContain(host.Application.WindowManager.Surfaces,
+            s => AllDescendants<Button>(s.Root).Any(b => b.Name == "InPopup"));
+
+        // A key press routes from the focused element — focus the scenario TextBox and type.
+        var input = AllDescendants<TextBox>(root).Single(t => t.Name == "Input");
+        host.Application.FocusManager.SetFocus(input);
+        host.Application.InputDispatcher.ProcessEvent(new KeyEvent
+        {
+            Key = Key.Character, Text = "x".AsMemory(), Kind = KeyEventKind.Down,
+            Modifiers = KeyModifiers.None, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        log = KeyLog();
+        Assert.Contains("KeyDown", log);
+        Assert.Contains("TextBox \"Input\"", log);
+    }
 }

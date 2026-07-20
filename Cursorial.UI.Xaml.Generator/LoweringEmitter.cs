@@ -404,6 +404,7 @@ internal static class LoweringEmitter
         string? selectorText = null;
         string? basedOnExpr = null;
         string? keyExpr = null;
+        string? requiresExpr = null;
         int settersMember = -1;
         int childrenMember = -1;
         int whenMember = -1;
@@ -443,6 +444,43 @@ internal static class LoweringEmitter
                 case "When":
                     whenMember = m;
                     break;
+                case "RequiresCapabilities" when member.Kind == XamlValueKind.Text:
+                    requiresExpr = BakeCapabilities(c, c.Doc.Strings[member.ValueIndex]);
+                    if (requiresExpr is null)
+                    {
+                        // Fail CLOSED like the unbaked-selector path: emitting the style WITHOUT its gate
+                        // would turn a tier-conditional rule into an unconditional one (the unsafe
+                        // degradation direction — the occlusion-everywhere failure class).
+                        c.Todo($"<Style> RequiresCapabilities \"{Escape(c.Doc.Strings[member.ValueIndex])}\" has an unknown member");
+                        return;
+                    }
+                    break;
+                case "RequiresCapabilities" when member.Kind == XamlValueKind.Folded:
+                    // A parse-folded {x:Static} constant (enum members are consts) → the typed cast.
+                    requiresExpr = BakeFoldedCapabilities(c, c.Doc.Constants[member.ValueIndex]);
+                    if (requiresExpr is null)
+                    {
+                        c.Todo("<Style> RequiresCapabilities folded to a value outside StyleCapabilities");
+                        return;
+                    }
+                    break;
+                case "RequiresCapabilities" when member.Kind == XamlValueKind.Extension &&
+                                                 c.Doc.Extensions[member.ValueIndex] is { Kind: ExtensionKind.Static, PayloadIsParsedExtension: false }:
+                    // An unfolded {x:Static Type.Member} (e.g. a static readonly): emit the member-access
+                    // REFERENCE — no generate-time evaluation; the C# compiler resolves it (and constant-
+                    // folds a const). Type resolution mirrors the resource-key x:Static path.
+                    requiresExpr = ResolveStaticPath(c, c.Doc.Strings[c.Doc.Extensions[member.ValueIndex].Payload]);
+                    if (requiresExpr is null)
+                    {
+                        c.Todo("<Style> RequiresCapabilities {x:Static} target could not be resolved");
+                        return;
+                    }
+                    break;
+                case "RequiresCapabilities":
+                    // Any other form (a non-Static extension, a property element with a live object) —
+                    // fail closed rather than silently dropping the capability gate.
+                    c.Todo("<Style> RequiresCapabilities uses a form not yet baked");
+                    return;
             }
         }
 
@@ -470,6 +508,7 @@ internal static class LoweringEmitter
         var inits = new List<string>();
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
+        if (requiresExpr is not null) inits.Add($"RequiresCapabilities = {requiresExpr}");
         c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
 
         // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger equivalent).
@@ -490,6 +529,117 @@ internal static class LoweringEmitter
                 c.Line($"{varExpr}.Children.Add({childVar});");
             }
     }
+
+    // Bakes a RequiresCapabilities attribute ("NoColor" / "NoColor, Motion") into a StyleCapabilities
+    // flags expression — names case-insensitive (XAML enum parity); an unknown member returns null (→ TODO
+    // diagnostic at the call site, mirroring the unbaked-selector path). The member names and bit coverage
+    // derive from the COMPILATION's StyleCapabilities symbol, so a future flag bakes without touching the
+    // generator; the hardcoded fallback only serves a resolver miss.
+    private static string? BakeCapabilities(Context c, string text)
+    {
+        var (names, allBits) = CapabilityMembers(c);
+
+        // Loader parity: a bare integral value is legal XAML for an enum (X90/X92) — bake the cast when
+        // the bits are covered by the defined members (the same rule the runtime converter applies).
+        if (long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out long numeric))
+        {
+            return numeric != 0 && (numeric & ~allBits) == 0
+                       ? $"(global::Cursorial.UI.StyleCapabilities){numeric}"
+                       : null;
+        }
+
+        var terms = new List<string>();
+
+        foreach (var raw in text.Split(','))
+        {
+            var name = raw.Trim();
+            string? match = null;
+
+            foreach (var candidate in names)
+            {
+                if (string.Equals(candidate, name, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    match = candidate;
+                    break;
+                }
+            }
+
+            if (match is null)
+                return null;
+
+            terms.Add($"global::Cursorial.UI.StyleCapabilities.{match}");
+        }
+
+        return terms.Count == 0 ? null : string.Join(" | ", terms);
+    }
+
+    // A parse-folded {x:Static}: the frontend folds to a XamlStaticReference PLACEHOLDER carrying the
+    // member path — bake the member-access REFERENCE and let the C# compiler resolve it (and constant-fold
+    // a const; reading a static field is neither parsing nor reflection). A genuinely numeric constant
+    // bakes as the typed cast under the coverage rule.
+    private static string? BakeFoldedCapabilities(Context c, object? constant)
+    {
+        if (constant is XamlStaticReference staticRef)
+            return ResolveStaticPath(c, staticRef.MemberPath);
+
+        if (constant is null)
+            return null;
+
+        long bits;
+
+        try
+        {
+            bits = System.Convert.ToInt64(constant, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (System.Exception)
+        {
+            return null;
+        }
+
+        var (_, allBits) = CapabilityMembers(c);
+        return bits != 0 && (bits & ~allBits) == 0
+                   ? $"(global::Cursorial.UI.StyleCapabilities){bits}"
+                   : null;
+    }
+
+    /// <summary>The StyleCapabilities member names + folded bit mask, resolved from the referenced
+    /// compilation (a future flag bakes automatically); the literal fallback covers a resolver miss.</summary>
+    private static (IReadOnlyList<string> Names, long AllBits) CapabilityMembers(Context c)
+    {
+        if (c.Resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, "StyleCapabilities", out _) is { } symbol)
+        {
+            var names = new List<string>();
+            long bits = 0;
+
+            foreach (var member in symbol.GetMembers())
+            {
+                if (member is IFieldSymbol { HasConstantValue: true } field)
+                {
+                    names.Add(field.Name);
+
+                    try
+                    {
+                        bits |= System.Convert.ToInt64(field.ConstantValue, System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                    catch (System.Exception)
+                    {
+                        // an exotic underlying value — leave it out of the coverage mask
+                    }
+                }
+            }
+
+            if (names.Count > 0)
+                return (names, bits);
+        }
+
+        return (FallbackCapabilityNames, 0xFFF);
+    }
+
+    private static readonly string[] FallbackCapabilityNames =
+    [
+        "None", "Truecolor", "Ansi256", "Ansi16", "NoColor", "Motion", "KittyKeyboard",
+        "Images", "ImageClipping", "ImageOcclusion", "NerdFont", "Emoji", "Unicode",
+    ];
 
     // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, value)). A Text value
     // is converted to the property's value type via the converter ladder — the reflection frontend folds a

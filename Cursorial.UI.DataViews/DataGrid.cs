@@ -420,9 +420,11 @@ public class DataGrid : Control
 
             void AddSummaryChoice(string caption, AggregateKind kind)
             {
+                // The mockup shows each aggregate's live value beside its name ("Sum  $171,900").
+                var value = _controller.ComputeSummaryText(column, kind);
                 var item = new MenuItem
                 {
-                    Header = caption,
+                    Header = value is { Length: > 0 } ? $"{caption}   {value}" : caption,
                     IsCheckable = true,
                     IsChecked = SummaryDescriptions.Any(s =>
                         ReferenceEquals(s.ColumnKey, column) && s.Aggregate == kind),
@@ -439,9 +441,16 @@ public class DataGrid : Control
             }
             AddSummaryChoice("Min", AggregateKind.Min);
             AddSummaryChoice("Max", AggregateKind.Max);
+
+            // The full editor (§2.5): aggregate + format string + display template + live preview.
+            summaryMenu.Items.Add(new Separator());
+            var editSummary = new MenuItem { Header = "⛭ Edit / Format…" };
+            var summaryColumn = column;
+            editSummary.Click += (_, _) => _ = OpenSummaryEditorAsync(summaryColumn);
+            summaryMenu.Items.Add(editSummary);
+
             if (SummaryDescriptions.Any(s => ReferenceEquals(s.ColumnKey, column)))
             {
-                summaryMenu.Items.Add(new Separator());
                 var clear = new MenuItem { Header = "None" };
                 clear.Click += (_, _) =>
                 {
@@ -3381,6 +3390,38 @@ public class DataGrid : Control
         }
     }
 
+    private DataGridSummaryEditor? _summaryEditor;
+
+    /// <summary>The live summary editor (null while none is open; tests reach its fields).</summary>
+    internal DataGridSummaryEditor? ActiveSummaryEditor => _summaryEditor;
+
+    /// <summary>Opens the summary editor for <paramref name="column"/> (§2.5 — aggregate, format
+    /// string, display template, live preview). Marshaled through the UI dispatcher (the dialog
+    /// entry-point idiom).</summary>
+    public Task OpenSummaryEditorAsync(DataGridColumn column)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        var application = UIApplication.Current;
+        if (application?.WindowManager is null || _controller is null)
+            return Task.CompletedTask;
+        return application.Dispatcher.InvokeAsync(() => OpenSummaryEditorCoreAsync(column));
+    }
+
+    private async Task OpenSummaryEditorCoreAsync(DataGridColumn column)
+    {
+        var editor = new DataGridSummaryEditor(this, column);
+        _summaryEditor = editor;
+        try
+        {
+            await editor.ShowAsync();
+        }
+        finally
+        {
+            if (ReferenceEquals(_summaryEditor, editor))
+                _summaryEditor = null;
+        }
+    }
+
     // ── Teardown ─────────────────────────────────────────────────────────────────────────────────
 
     protected override void OnTearDown()
@@ -3390,6 +3431,7 @@ public class DataGrid : Control
         _expressionEditor?.CloseWindow(); // the dialog windows read the grid/controller — close first
         _filterBuilder?.CloseWindow();
         _rulesManager?.CloseWindow();
+        _summaryEditor?.CloseWindow();
         _controller?.Dispose();
         _controller = null;
         base.OnTearDown();

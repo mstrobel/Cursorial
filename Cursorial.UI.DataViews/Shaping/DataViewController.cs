@@ -195,6 +195,15 @@ public abstract class DataViewController : IDisposable
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
+    /// <summary>
+    /// Computes one aggregate over the CURRENT filtered view on demand — the summary editor's live
+    /// preview and the summary menu's per-aggregate values. Formatted through the SAME lane as the
+    /// footer totals (<paramref name="format"/> and <paramref name="displayTemplate"/> optional).
+    /// Null when the column is unknown, the view is empty, or the aggregate doesn't apply (e.g. Sum
+    /// on a non-numeric column).
+    /// </summary>
+    public abstract string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null);
+
     /// <summary>Drains any pending coalesced ticks synchronously (tests + frame-boundary flushes).</summary>
     public abstract void Flush();
 
@@ -415,6 +424,23 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
         }
 
         return null;
+    }
+
+    public override string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null)
+    {
+        var column = FindColumn(columnKey);
+        if (column is null || _sortedLength == 0)
+            return null;
+        try
+        {
+            var aggregator = ColumnAggregator.Create(column, kind, format);
+            var value = aggregator.Aggregate(_sortedView, 0, _sortedLength);
+            return ApplyTemplate(displayTemplate, aggregator.Format(value));
+        }
+        catch (Exception) // an aggregate that doesn't apply to the column type (e.g. Sum on a string)
+        {
+            return null;
+        }
     }
 
     public override string FormatCell(int rowId, object columnKey)

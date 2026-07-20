@@ -472,7 +472,9 @@ internal sealed class DataGridRuleEditor
         };
         // The value inputs adapt to the column's key type (§10 value-entry): an enum/bool column
         // gets a prepopulated name dropdown instead of a free-text box.
-        var keyType = _grid.Controller?.GetColumnKeyType(TargetColumn) ?? TargetColumn?.KeySelector?.ReturnType;
+        var keyType = TargetColumn is { } target
+            ? _grid.Controller?.GetColumnKeyType(target) ?? target.KeySelector?.ReturnType
+            : null;
         ValueEditor valueEd = null!;
         valueEd = ValueEditor.Create(keyType, entry.Value, () => { entry.Value = valueEd.Value; UpdatePreview(); }, minWidth: 7);
         var andCaption = DataGridDialogHelpers.Caption("and");

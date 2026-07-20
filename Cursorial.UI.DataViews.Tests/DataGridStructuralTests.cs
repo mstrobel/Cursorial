@@ -549,6 +549,60 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void Summary_menu_shows_live_values_and_the_edit_entry()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.OpenGridContextMenu(2); // Amount
+        host.RunUntilIdle();
+        var menu = grid.ActiveGridMenu!;
+        var summarySub = menu.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
+        var captions = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                 .Select(i => i.Header?.ToString() ?? string.Empty).ToList();
+
+        // Each aggregate carries its live value (§2.5): Sum of 12450+31900+19800+27300 = 91450.
+        Assert.Contains(captions, c => c.StartsWith("Sum", StringComparison.Ordinal) && c.Contains("91450", StringComparison.Ordinal));
+        // …and the ⛭ editor entry is present.
+        Assert.Contains(captions, c => c.Contains("Edit / Format", StringComparison.Ordinal));
+        menu.Close();
+        host.RunUntilIdle();
+    }
+
+    [Fact]
+    public async Task Summary_editor_sets_the_format_and_display_template()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]); // Amount
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+        Assert.True(editor.IsOpen);
+
+        // Sum (index 1: Count, Sum, Average, Min, Max), with a format + display template.
+        editor.AggregateCombo.SelectedIndex = 1;
+        editor.FormatBox.Text = "N0";
+        editor.TemplateBox.Text = "Σ {0}";
+        host.RunUntilIdle();
+        Assert.StartsWith("Σ", editor.Preview.Text);       // the live preview composes them
+        Assert.Contains("91,450", editor.Preview.Text);     // N0 groups the sum
+
+        editor.Ok();
+        host.RunUntilIdle();
+        await task; // the dialog task completes on OK
+
+        var s = Assert.Single(grid.SummaryDescriptions,
+            d => ReferenceEquals(d.ColumnKey, grid.Columns[2]) && d.Aggregate == AggregateKind.Sum);
+        Assert.Equal("N0", s.Format);
+        Assert.Equal("Σ {0}", s.DisplayTemplate);
+
+        // The footer renders the templated + formatted total.
+        Assert.Contains("Σ 91,450", string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y))));
+    }
+
+    [Fact]
     public void Grid_context_menu_toggles_the_group_panel_and_summary_footer()
     {
         var (host, grid, _) = Show(columns: 60, rows: 16);

@@ -10,7 +10,7 @@ namespace Cursorial.UI.DataViews;
 /// <summary>How the Filter Builder dialog closed (the grid's entry point dispatches on it).</summary>
 internal enum FilterBuilderOutcome
 {
-    Cancelled,
+    Canceled,
     Applied,
     /// <summary>The "ƒ Edit as Text" hop: reopen as the expression editor seeded with the tree's text.</summary>
     EditAsText,
@@ -192,22 +192,22 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // A duplicate open rides the live dialog and completes with ITS outcome. EditAsText
-            // maps to Cancelled for the rider: the live call's owner chains the expression-editor
+            // maps to Canceled for the rider: the live call's owner chains the expression-editor
             // hop — chaining it from both entry tasks would stack two editors.
             var ridden = await live._outcome.Task;
-            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Cancelled : ridden;
+            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Canceled : ridden;
         }
 
         try
         {
             var result = await _window.ShowDialogAsync();
-            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Cancelled;
+            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Canceled;
             _outcome.TrySetResult(outcome);
             return outcome;
         }
         finally
         {
-            _outcome.TrySetResult(FilterBuilderOutcome.Cancelled); // the throw path (dialog cancellation)
+            _outcome.TrySetResult(FilterBuilderOutcome.Canceled); // the throw path (dialog cancellation)
         }
     }
 
@@ -748,7 +748,7 @@ internal sealed class DataGridFilterBuilder
         _window.Close(FilterBuilderOutcome.Applied);
     }
 
-    internal void Cancel() => _window.Close(FilterBuilderOutcome.Cancelled);
+    internal void Cancel() => _window.Close(FilterBuilderOutcome.Canceled);
 
     /// <summary>
     /// "ƒ Edit as Text": lower the CURRENT model to criteria text and close with the hop outcome
@@ -760,7 +760,7 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // The hop must land its seed on the LIVE instance — its owning entry task is the one
-            // that chains into the expression editor (the rider maps EditAsText to Cancelled).
+            // that chains into the expression editor (the rider maps EditAsText to Canceled).
             live.RequestEditAsText();
             return;
         }
@@ -786,6 +786,6 @@ internal sealed class DataGridFilterBuilder
     internal void CloseWindow()
     {
         if (_window.IsShown)
-            _window.Close(FilterBuilderOutcome.Cancelled);
+            _window.Close(FilterBuilderOutcome.Canceled);
     }
 }

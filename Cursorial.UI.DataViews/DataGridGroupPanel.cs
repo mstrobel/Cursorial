@@ -201,7 +201,7 @@ public sealed class DataGridGroupPanel : UIElement
     // the cue keeps it honest — the ▾ slot drops out and the floating chip re-inks muted the
     // moment the pointer leaves the band, and Esc always bails. Above the band (local.Row < 0)
     // there is nothing to target — release there cancels.
-    private enum ChipGesture { None, Pending, Dragging, Cancelled }
+    private enum ChipGesture { None, Pending, Dragging, Canceled }
 
     private ChipGesture _gesture;
     private DataGridColumn? _pressColumn;   // the pressed chip's column (indices re-resolve at release)
@@ -275,7 +275,7 @@ public sealed class DataGridGroupPanel : UIElement
                     // A ✕ press that moves is a CANCELLED click, never a drag: promoting the
                     // destructive affordance into a reorder would put a remove-or-move under an
                     // accidental twitch's release. Capture holds until the up (which does nothing).
-                    _gesture = ChipGesture.Cancelled;
+                    _gesture = ChipGesture.Canceled;
                     return;
                 }
 
@@ -358,7 +358,7 @@ public sealed class DataGridGroupPanel : UIElement
                 break;
             }
 
-            // ChipGesture.Cancelled: the dragged-away ✕ press — release does nothing.
+            // ChipGesture.Canceled: the dragged-away ✕ press — release does nothing.
         }
     }
 

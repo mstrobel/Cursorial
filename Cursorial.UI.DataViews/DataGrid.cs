@@ -444,8 +444,14 @@ public class DataGrid : Control
             AddSummaryChoice("Max", AggregateKind.Max);
 
             // The full editor (§2.5): aggregate + format string + display template + live preview.
+            // The gear rides MenuItem.Icon (the tiered Icon class — Nerd Font → emoji → Unicode floor),
+            // not the header text, so it aligns in the menu's icon tray.
             summaryMenu.Items.Add(new Separator());
-            var editSummary = new MenuItem { Header = "⛭ Edit / Format…" };
+            var editSummary = new MenuItem
+            {
+                Header = "Edit / Format…",
+                Icon = new Icon { Glyph = "\U000F0493", Text = "⛭", Emoji = "⚙️" }, // nf-md-cog U+F0493
+            };
             var summaryColumn = column;
             editSummary.Click += (_, _) => _ = OpenSummaryEditorAsync(summaryColumn);
             summaryMenu.Items.Add(editSummary);

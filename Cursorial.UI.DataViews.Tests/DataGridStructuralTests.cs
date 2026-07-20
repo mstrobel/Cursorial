@@ -564,8 +564,13 @@ public class DataGridStructuralTests
 
         // Each aggregate carries its live value (§2.5): Sum of 12450+31900+19800+27300 = 91450.
         Assert.Contains(captions, c => c.StartsWith("Sum", StringComparison.Ordinal) && c.Contains("91450", StringComparison.Ordinal));
-        // …and the ⛭ editor entry is present.
-        Assert.Contains(captions, c => c.Contains("Edit / Format", StringComparison.Ordinal));
+
+        // …and the editor entry is present, carrying the gear on MenuItem.Icon (the tiered Icon
+        // class), NOT embedded in the header text.
+        var editEntry = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                  .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Edit / Format", StringComparison.Ordinal));
+        Assert.DoesNotContain("⛭", editEntry.Header?.ToString() ?? string.Empty);
+        Assert.IsType<Cursorial.UI.Controls.Icon>(editEntry.Icon);
         menu.Close();
         host.RunUntilIdle();
     }

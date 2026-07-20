@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
+using Cursorial.Input;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
@@ -10,14 +11,18 @@ namespace Cursorial.UI.DataViews;
 
 /// <summary>
 /// The criteria text editor (design doc §9.1; the mockup's "Filter — text editor"): a modal window
-/// carrying a multi-line criteria <see cref="TextBox"/>, Columns/Functions token inserters, and the
-/// LIVE validation strip — every text change re-parses AND re-compiles against the grid's fields
-/// (green "✓ Valid boolean expression" / red "✕ &lt;message&gt; — column N", the mockup's vstrip),
-/// so Apply can never land an invalid tree. Apply lowers through
+/// carrying a multi-line criteria <see cref="TextBox"/>, Columns/Functions token inserters, a LIVE
+/// completion popup (§10.3), and the LIVE validation strip — every text change re-parses AND
+/// re-compiles against the grid's fields (green "✓ Valid boolean expression" / red "✕ &lt;message&gt;
+/// — column N", the mockup's vstrip), so Apply can never land an invalid tree. Apply lowers through
 /// <see cref="DataGrid.TryApplyFilterExpression"/> — the ONE authority that stores the tree in
 /// <c>Filter</c> and the SOURCE TEXT in <c>FilterExpressionText</c> (the §9.1 amendment: a
-/// Custom-lowered filter keeps its original text grid-side). Syntax highlighting and IntelliSense
-/// are recorded polish deferrals — the strip + inserters are the v2 surface.
+/// Custom-lowered filter keeps its original text grid-side). The completion popup (§10.3) offers
+/// field names inside a <c>[…]</c> bracket and function tokens for a bare identifier, filtered by
+/// the partial token under the caret; ↑/↓ move, Enter/Tab accept, Esc dismisses. LIVE SYNTAX
+/// HIGHLIGHTING stays deferred — it needs a second orthogonal colored-run dimension on the
+/// TextBox/TextPresenter (they render one brush, splitting runs only at the selection), which is
+/// genuine text-tier surgery; the completion popup is the tractable slice.
 /// </summary>
 [RequiresDynamicCode("Criteria expressions compile against the grid's row type.")]
 internal sealed class DataGridExpressionEditor
@@ -35,11 +40,23 @@ internal sealed class DataGridExpressionEditor
     private bool _valid;
     private bool _syncingInsert;
 
+    // §10.3 completion popup state (on the live instance; a duplicate rider adopts its _text).
+    private Popup? _completionPopup;
+    private ListBox? _completionList;
+    private readonly List<(string Display, string Insert)> _completionItems = [];
+    private int _completionStart;
+    private int _completionCaret;
+    private CompletionKind _completionKind;
+    private bool _acceptingCompletion;
+
+    private enum CompletionKind { Field, Function }
+
     /// <summary>The insertable function tokens (the §9.1 grammar's function set, call-shaped).</summary>
     private static readonly string[] FunctionTokens =
     [
         "Contains(", "StartsWith(", "EndsWith(", "Upper(", "Lower(",
         "Len(", "Trim(", "Abs(", "Round(", "IsNull(", "IsNullOrEmpty(",
+        "Iif(", "Min(", "Max(", "Floor(", "Ceiling(", "Sqrt(", "Pow(", "Mod(",
     ];
 
     public DataGridExpressionEditor(DataGrid grid, string seedText)
@@ -91,7 +108,12 @@ internal sealed class DataGridExpressionEditor
             MinWidth = 48,
             Text = seedText,
         };
-        _text.TextChanged += (_, _) => Revalidate();
+        _text.TextChanged += (_, _) =>
+        {
+            Revalidate();
+            UpdateCompletions(); // §10.3 — refresh the completion popup for the token under the caret
+        };
+        _text.PreviewKeyDown += OnTextPreviewKeyDown;
         content.Children.Add(_text);
 
         _strip = new TextBlock();
@@ -165,6 +187,179 @@ internal sealed class DataGridExpressionEditor
             _syncingInsert = false;
         }
         _text.Focus(FocusNavigationMethod.Programmatic);
+    }
+
+    // ── §10.3 completion popup ────────────────────────────────────────────────────────────────────
+
+    /// <summary>Whether the completion popup is open (test hook).</summary>
+    internal bool IsCompletionOpen => (_live ?? this)._completionPopup?.IsOpen == true;
+
+    /// <summary>The current completion candidates' display labels (test hook).</summary>
+    internal IReadOnlyList<string> CompletionItems => (_live ?? this)._completionItems.Select(i => i.Display).ToList();
+
+    /// <summary>The token under the caret (a field partial inside <c>[…]</c>, or a bare-identifier
+    /// function partial) + where its replacement begins, or null when there is nothing to complete.</summary>
+    private (int Start, string Prefix, CompletionKind Kind)? CompletionContext()
+    {
+        string text = _text.Text;
+        int caret = Math.Clamp(_text.CaretIndex, 0, text.Length);
+
+        // A field bracket: walk back to an unmatched '[' on the same line (stop at ']' / newline).
+        int j = caret - 1;
+        while (j >= 0 && text[j] is not ('[' or ']' or '\n'))
+            j--;
+        if (j >= 0 && text[j] == '[')
+            return (j, text.Substring(j + 1, caret - (j + 1)), CompletionKind.Field);
+
+        // A bare identifier run ending at the caret ⇒ a function/keyword partial.
+        int k = caret;
+        while (k > 0 && (char.IsLetterOrDigit(text[k - 1]) || text[k - 1] == '_'))
+            k--;
+        if (k < caret)
+            return (k, text.Substring(k, caret - k), CompletionKind.Function);
+
+        return null;
+    }
+
+    private void UpdateCompletions()
+    {
+        if (_acceptingCompletion)
+            return;
+        if (CompletionContext() is not { } context)
+        {
+            CloseCompletions();
+            return;
+        }
+
+        _completionItems.Clear();
+        if (context.Kind == CompletionKind.Field)
+        {
+            foreach (var field in _fields)
+            {
+                var display = field.DisplayName ?? field.Name;
+                if (display.StartsWith(context.Prefix, StringComparison.OrdinalIgnoreCase) ||
+                    field.Name.StartsWith(context.Prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    _completionItems.Add((display, $"[{field.Name}]"));
+                }
+            }
+        }
+        else
+        {
+            foreach (var token in FunctionTokens)
+            {
+                var display = token.TrimEnd('(');
+                if (display.StartsWith(context.Prefix, StringComparison.OrdinalIgnoreCase))
+                    _completionItems.Add((display, token));
+            }
+        }
+
+        if (_completionItems.Count == 0)
+        {
+            CloseCompletions();
+            return;
+        }
+
+        _completionStart = context.Start;
+        _completionCaret = Math.Clamp(_text.CaretIndex, 0, _text.Text.Length);
+        _completionKind = context.Kind;
+        EnsureCompletionUi();
+        _completionList!.ItemsSource = _completionItems.Select(i => i.Display).ToList();
+        _completionList.SelectedIndex = 0;
+        _completionPopup!.PlacementTarget = _text;
+        _completionPopup.Placement = PlacementMode.Bottom;
+        _completionPopup.SetCurrentValue(Popup.IsOpenProperty, true);
+    }
+
+    private void EnsureCompletionUi()
+    {
+        if (_completionPopup is not null)
+            return;
+        // Non-focusable: the popup is a hint overlay — focus stays in the text box so typing keeps
+        // driving it, and the box's PreviewKeyDown owns ↑/↓/Enter/Tab/Esc while it is open.
+        _completionList = new ListBox { MinWidth = 16, MaxHeight = 6, Focusable = false, IsTabStop = false };
+        _completionList.SetResourceReference(Control.BackgroundProperty, ThemeKeys.ElevationDialog);
+        _completionPopup = new Popup { StaysOpen = true, Child = _completionList }; // lifecycle owned here, not light-dismiss
+    }
+
+    /// <summary>Accepts a candidate: splice its insert text over the token under the caret (test hook).</summary>
+    internal void AcceptCompletion(int index)
+    {
+        if (index < 0 || index >= _completionItems.Count)
+            return;
+        string insert = _completionItems[index].Insert;
+        string text = _text.Text;
+        int start = Math.Clamp(_completionStart, 0, text.Length);
+        int caret = Math.Clamp(_completionCaret, start, text.Length);
+        // Audit fix: replace the WHOLE token, not just [start..caret) — the caret may sit mid-token
+        // (e.g. "[Pr|ce]"), and leaving the "ce]" tail would corrupt the text ("[Price]ce]"). Scan
+        // forward past the token's remaining chars (the insert supplies its own closing ] / '(').
+        int end = TokenEnd(text, caret, _completionKind, insert.EndsWith('('));
+
+        _acceptingCompletion = true;
+        try
+        {
+            _text.Text = text.Remove(start, end - start).Insert(start, insert);
+            _text.CaretIndex = start + insert.Length;
+        }
+        finally
+        {
+            _acceptingCompletion = false;
+        }
+        CloseCompletions();
+        Revalidate();
+        _text.Focus(FocusNavigationMethod.Programmatic);
+    }
+
+    /// <summary>The end offset of the token being completed (from the caret forward past its tail):
+    /// a field runs to its closing <c>]</c> (consumed — the insert supplies one); a function runs to
+    /// the end of its identifier (and a following <c>(</c> the insert supplies).</summary>
+    private static int TokenEnd(string text, int caret, CompletionKind kind, bool insertHasParen)
+    {
+        int end = caret;
+        if (kind == CompletionKind.Field)
+        {
+            while (end < text.Length && text[end] is not (']' or '[' or '\n'))
+                end++;
+            if (end < text.Length && text[end] == ']')
+                end++; // the [Name] insert carries its own close bracket
+        }
+        else
+        {
+            while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
+                end++;
+            if (insertHasParen && end < text.Length && text[end] == '(')
+                end++; // the Name( insert carries its own open paren
+        }
+        return end;
+    }
+
+    private void CloseCompletions() => _completionPopup?.SetCurrentValue(Popup.IsOpenProperty, false);
+
+    private void OnTextPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_completionPopup?.IsOpen != true || _completionList is null)
+            return;
+        switch (e.Key)
+        {
+            case Key.DownArrow:
+                _completionList.SelectedIndex = Math.Min(_completionItems.Count - 1, _completionList.SelectedIndex + 1);
+                e.Handled = true;
+                break;
+            case Key.UpArrow:
+                _completionList.SelectedIndex = Math.Max(0, _completionList.SelectedIndex - 1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+            case Key.Tab:
+                AcceptCompletion(_completionList.SelectedIndex);
+                e.Handled = true; // Enter accepts the completion instead of inserting a newline
+                break;
+            case Key.Escape:
+                CloseCompletions();
+                e.Handled = true; // swallow — Esc dismisses the popup, not the dialog
+                break;
+        }
     }
 
     /// <summary>
@@ -252,7 +447,11 @@ internal sealed class DataGridExpressionEditor
     }
 
     /// <summary>Cancel: close without writing.</summary>
-    internal void Cancel() => _window.Close(false);
+    internal void Cancel()
+    {
+        CloseCompletions();
+        _window.Close(false);
+    }
 
     /// <summary>Set when the dialog closed via the ⧉ Designer hop (the grid's entry point chains
     /// into the Filter Builder seeded from <see cref="BuilderSeedFilter"/>/<see cref="BuilderSeedText"/>).</summary>
@@ -340,6 +539,7 @@ internal sealed class DataGridExpressionEditor
     /// <summary>The teardown funnel (the grid closes an open dialog when it tears down).</summary>
     internal void CloseWindow()
     {
+        CloseCompletions();
         if (_window.IsShown)
             _window.Close(false);
     }

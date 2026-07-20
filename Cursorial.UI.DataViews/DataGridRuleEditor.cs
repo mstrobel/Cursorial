@@ -5,6 +5,7 @@ using Cursorial.Output;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
+using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.DataViews;
@@ -12,7 +13,7 @@ namespace Cursorial.UI.DataViews;
 /// <summary>The add/edit dialog's rule-type axis (the mockup's left-pane list).</summary>
 internal enum RuleEditorKind
 {
-    /// <summary>Single-condition cell highlight ⇒ a one-entry <see cref="ThresholdRule"/>.</summary>
+    /// <summary>Condition → cell highlight ⇒ a multi-entry <see cref="ThresholdRule"/> (§10.4).</summary>
     Highlight,
     /// <summary>Top/bottom-N ⇒ <see cref="TopBottomRule"/> (grayed out until the engine's TopK seam lands).</summary>
     TopBottom,
@@ -20,7 +21,7 @@ internal enum RuleEditorKind
     DataBar,
     /// <summary>Heat gradient ⇒ <see cref="ColorScaleRule"/>.</summary>
     ColorScale,
-    /// <summary>▲●▼ badge colors ⇒ a three-entry <see cref="ThresholdRule"/> convenience preset.</summary>
+    /// <summary>▲●▼ badge glyphs ⇒ a three-entry <see cref="ThresholdRule"/> convenience preset.</summary>
     IconSet,
     /// <summary>Row-level criteria expression ⇒ <see cref="PredicateRule"/>.</summary>
     Expression,
@@ -31,11 +32,11 @@ internal enum RuleEditorKind
 /// rule types listed left (Highlight Cell / Top/Bottom / Data Bar / Color Scale / Icon Set /
 /// Expression), the right pane reconfiguring per type with a live preview line sampled from the
 /// target column. OK constructs the immutable <see cref="FormatRule"/> into <see cref="Result"/>;
-/// the rules manager lands it on <see cref="TargetColumn"/>. Notes: Icon Set is a
-/// <see cref="ThresholdRule"/> convenience preset — <see cref="CellFormat"/> carries colors, not
-/// glyphs, so the ▲●▼ marks themselves stay with the column's text formatting (documented
-/// limitation); Top/Bottom is disabled while <see cref="TopBottomRule.EngineSupportsTopK"/> is
-/// false (the §9.5 TopK stats seam belongs to the engine workstream).
+/// the rules manager lands it on <see cref="TargetColumn"/>. The §10 deferred items land here: the
+/// Highlight pane is a MULTI-ENTRY condition list (§10.4) with a Between two-bound operator (§10.5),
+/// every format picker offers a "Custom…" reveal (arbitrary fg/bg/bold/inverse — §10.6), the color
+/// scale takes custom stops, and the icon set's glyphs are editable. Top/Bottom is disabled while
+/// <see cref="TopBottomRule.EngineSupportsTopK"/> is false (the §9.5 TopK stats seam).
 /// </summary>
 [RequiresDynamicCode("Expression rules compile against the grid's row type.")]
 internal sealed class DataGridRuleEditor
@@ -50,7 +51,7 @@ internal sealed class DataGridRuleEditor
         (RuleEditorKind.Expression, "ƒ Expression"),
     ];
 
-    /// <summary>The Highlight pane's operators (Between is a recorded polish deferral — two-bound UI).</summary>
+    /// <summary>The Highlight pane's operators — Between (§10.5) reveals a second value box.</summary>
     private static readonly (FilterOperator Op, string Label)[] HighlightOperators =
     [
         (FilterOperator.GreaterThan, "Greater than"),
@@ -59,6 +60,7 @@ internal sealed class DataGridRuleEditor
         (FilterOperator.LessThanOrEqual, "Less or equal"),
         (FilterOperator.Equals, "Equals"),
         (FilterOperator.NotEquals, "Not equal"),
+        (FilterOperator.Between, "Between"),
         (FilterOperator.Contains, "Text contains"),
         (FilterOperator.StartsWith, "Text starts with"),
     ];
@@ -88,16 +90,25 @@ internal sealed class DataGridRuleEditor
     // The per-kind state (fields, not controls — panes are rebuilt per type switch and re-seed from here).
     private RuleEditorKind _kind = RuleEditorKind.Highlight;
     private int _columnIndex;
-    private int _highlightOpIndex;
-    private string _highlightValue = string.Empty;
-    private int _formatIndex; // shared by Highlight / TopBottom / Expression
+    // Highlight: a list of condition entries (multi-entry — §10.4). Each carries its own format slot.
+    private readonly List<HighlightEntry> _highlightEntries = [];
+    private readonly List<HighlightRowControls> _highlightRows = [];
+    // TopBottom / Expression: one shared format slot (preset or custom — §10.6).
+    private readonly FormatSlot _sharedFormat = new();
     private bool _top = true;
     private string _countText = "3";
     private bool _percent;
+    // ColorScale: a preset index (== ScalePresets.Length ⇒ custom) + the custom stop hex list (§10.6).
     private int _scaleIndex;
+    private readonly List<string> _customStops = ["#F7768E", "#E0AF68", "#9ECE6A"];
+    // IconSet: editable glyphs + thresholds (§10.6).
+    private string _iconHighGlyph = "▲", _iconMidGlyph = "●", _iconLowGlyph = "▼";
     private string _iconHighText = string.Empty;
     private string _iconMidText = string.Empty;
+    // Expression
     private string _expressionText = string.Empty;
+    // The Highlight pane's live entries host (rebuilt on add/remove).
+    private StackPanel? _highlightHost;
 
     public DataGridRuleEditor(DataGrid grid, FormatRule? seed = null, DataGridColumn? seedColumn = null)
     {
@@ -106,6 +117,8 @@ internal sealed class DataGridRuleEditor
         if (seedColumn is not null)
             _columnIndex = Math.Max(0, _columns.IndexOf(seedColumn));
         SeedFrom(seed);
+        if (_highlightEntries.Count == 0)
+            _highlightEntries.Add(new HighlightEntry());
 
         // Two panes side by side: the type list left, the configurator right.
         var body = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
@@ -127,7 +140,7 @@ internal sealed class DataGridRuleEditor
         }
         body.Children.Add(typeList);
 
-        var right = new StackPanel { MinWidth = 30 };
+        var right = new StackPanel { MinWidth = 34 };
         _paneTitle.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         right.Children.Add(_paneTitle);
         right.Children.Add(_pane);
@@ -172,9 +185,36 @@ internal sealed class DataGridRuleEditor
     internal ComboBox? ColumnCombo { get; private set; }
     internal ComboBox? OperatorCombo { get; private set; }
     internal TextBox? ValueBox { get; private set; }
+    internal TextBox? SecondValueBox { get; private set; }
     internal ComboBox? FormatCombo { get; private set; }
+    internal ComboBox? ScaleCombo { get; private set; }
     internal TextBox? ExpressionBox { get; private set; }
     internal TextBox? CountBox { get; private set; }
+
+    /// <summary>The Highlight pane's condition rows (§10.4 — tests drive multi-entry through them).</summary>
+    internal IReadOnlyList<HighlightRowControls> HighlightRows => _highlightRows;
+
+    /// <summary>The custom fg/bg/attr controls of the shared (TopBottom/Expression) format slot (§10.6).</summary>
+    internal CustomFormatControls? SharedFormatControls { get; private set; }
+
+    /// <summary>The color-scale custom-stop hex boxes (ColorScale pane; §10.6).</summary>
+    internal IReadOnlyList<TextBox> ScaleStopBoxes => _scaleStopBoxes;
+
+    /// <summary>The icon-set glyph boxes ▲/●/▼ (IconSet pane; §10.6).</summary>
+    internal IReadOnlyList<TextBox> IconGlyphBoxes => _iconGlyphBoxes;
+
+    /// <summary>The icon-set threshold boxes (▲ when ≥ / ● when ≥).</summary>
+    internal IReadOnlyList<TextBox> IconThresholdBoxes => _iconThresholdBoxes;
+
+    /// <summary>The format combo's "Custom…" index (== the preset count).</summary>
+    internal static int CustomFormatIndex => DataGridDialogHelpers.FormatPresets.Length;
+
+    /// <summary>The scale combo's "Custom…" index (== the preset count).</summary>
+    internal static int CustomScaleIndex => ScalePresets.Length;
+
+    private readonly List<TextBox> _scaleStopBoxes = [];
+    private readonly List<TextBox> _iconGlyphBoxes = [];
+    private readonly List<TextBox> _iconThresholdBoxes = [];
 
     internal async Task<bool> ShowAsync()
     {
@@ -193,39 +233,71 @@ internal sealed class DataGridRuleEditor
 
             case ColorScaleRule scale:
                 _kind = RuleEditorKind.ColorScale;
+                int presetIndex = -1;
                 for (int i = 0; i < ScalePresets.Length; i++)
                 {
                     if (ScalePresets[i].Stops.SequenceEqual(scale.Stops))
                     {
-                        _scaleIndex = i;
+                        presetIndex = i;
                         break;
+                    }
+                }
+                if (presetIndex >= 0)
+                {
+                    _scaleIndex = presetIndex;
+                }
+                else
+                {
+                    // A non-preset scale seeds the Custom… stops (§10.6).
+                    _scaleIndex = ScalePresets.Length;
+                    _customStops.Clear();
+                    foreach (var stop in scale.Stops)
+                        _customStops.Add(DataGridDialogHelpers.ColorToHex(stop));
+                }
+                break;
+
+            case ThresholdRule threshold when threshold.Entries.Count > 0:
+                // ANY icon-bearing entry marks the Icon Set shape (a Highlight rule's format editor
+                // never sets an Icon). Audit fix: `All` mis-classified an icon set with one bucket's
+                // glyph blanked as a plain Highlight rule, destroying the other two glyphs on re-edit.
+                if (threshold.Entries.Count == 3 && threshold.Entries.Any(e => e.Format.Icon is not null))
+                {
+                    // The Icon Set shape (a glyph per bucket — the editor's own construction). A
+                    // null glyph (a bucket the user deliberately blanked) seeds blank, not the
+                    // default — the re-edit must faithfully show what was authored.
+                    _kind = RuleEditorKind.IconSet;
+                    _iconHighGlyph = threshold.Entries[0].Format.Icon ?? string.Empty;
+                    _iconMidGlyph = threshold.Entries[1].Format.Icon ?? string.Empty;
+                    _iconLowGlyph = threshold.Entries[2].Format.Icon ?? string.Empty;
+                    _iconHighText = DataGridDialogHelpers.FormatLiteral(threshold.Entries[0].Value);
+                    _iconMidText = DataGridDialogHelpers.FormatLiteral(threshold.Entries[1].Value);
+                }
+                else
+                {
+                    // A plain (icon-less) threshold seeds the multi-entry Highlight list (§10.4).
+                    _kind = RuleEditorKind.Highlight;
+                    _highlightEntries.Clear();
+                    foreach (var e in threshold.Entries)
+                    {
+                        var entry = new HighlightEntry
+                        {
+                            OpIndex = Math.Max(0, Array.FindIndex(HighlightOperators, o => o.Op == e.Operator)),
+                            Value = DataGridDialogHelpers.FormatLiteral(e.Value),
+                            Second = DataGridDialogHelpers.FormatLiteral(e.SecondValue),
+                        };
+                        entry.Format.Seed(e.Format);
+                        _highlightEntries.Add(entry);
                     }
                 }
                 break;
 
-            case ThresholdRule { Entries.Count: 3 } icons:
-                // The 3-entry shape reads as the Icon Set preset (the one the editor itself makes).
-                _kind = RuleEditorKind.IconSet;
-                _iconHighText = DataGridDialogHelpers.FormatLiteral(icons.Entries[0].Value);
-                _iconMidText = DataGridDialogHelpers.FormatLiteral(icons.Entries[1].Value);
-                break;
-
-            case ThresholdRule threshold when threshold.Entries.Count > 0:
-                // Multi-entry thresholds edit their FIRST entry (full multi-entry editing is a
-                // recorded polish deferral — the manager still lists and orders them).
-                _kind = RuleEditorKind.Highlight;
-                _highlightOpIndex = Math.Max(0, Array.FindIndex(HighlightOperators,
-                    o => o.Op == threshold.Entries[0].Operator));
-                _highlightValue = DataGridDialogHelpers.FormatLiteral(threshold.Entries[0].Value);
-                _formatIndex = DataGridDialogHelpers.PresetIndexOf(threshold.Entries[0].Format);
-                break;
-
             case PredicateRule predicate:
-                // Seeds from the rule's carried SourceText (live-canary fix — the field used to
-                // start empty; a hand-built lambda rule still has no text to offer).
+                // Seeds from the rule's carried SourceText (§10.8 — the field used to start empty;
+                // a hand-built lambda rule with no SourceText still offers none). The row format is
+                // seeded too, custom colors included (§10.6).
                 _kind = RuleEditorKind.Expression;
                 _expressionText = predicate.SourceText ?? string.Empty;
-                _formatIndex = DataGridDialogHelpers.PresetIndexOf(predicate.Format);
+                _sharedFormat.Seed(predicate.Format);
                 break;
 
             case TopBottomRule topBottom:
@@ -233,7 +305,7 @@ internal sealed class DataGridRuleEditor
                 _top = topBottom.Top;
                 _countText = topBottom.Count.ToString();
                 _percent = topBottom.Percent;
-                _formatIndex = DataGridDialogHelpers.PresetIndexOf(topBottom.Format);
+                _sharedFormat.Seed(topBottom.Format);
                 break;
         }
     }
@@ -254,9 +326,13 @@ internal sealed class DataGridRuleEditor
         _pane.Children.Clear();
         OperatorCombo = null;
         ValueBox = null;
+        SecondValueBox = null;
         FormatCombo = null;
+        ScaleCombo = null;
         ExpressionBox = null;
         CountBox = null;
+        SharedFormatControls = null;
+        _highlightRows.Clear();
         _strip.Text = string.Empty;
 
         _paneTitle.Text = $"{Types.First(t => t.Kind == kind).Caption[2..]} — {TargetColumn?.EffectiveHeader ?? "(no column)"}";
@@ -265,22 +341,23 @@ internal sealed class DataGridRuleEditor
         switch (kind)
         {
             case RuleEditorKind.Highlight:
-                AddCombo("Condition", HighlightOperators.Select(o => o.Label).ToList(), _highlightOpIndex,
-                         i => _highlightOpIndex = i, combo => OperatorCombo = combo);
-                AddText("Value", _highlightValue, t => _highlightValue = t, box => ValueBox = box);
-                AddFormatPicker();
+            {
+                if (_highlightEntries.Count == 0)
+                    _highlightEntries.Add(new HighlightEntry());
+                _highlightHost = new StackPanel();
+                BuildHighlightEntries();
+                _pane.Children.Add(_highlightHost);
                 break;
+            }
 
             case RuleEditorKind.TopBottom:
                 AddCombo("Rank", ["Top", "Bottom"], _top ? 0 : 1, i => _top = i == 0);
                 AddText("Count", _countText, t => _countText = t, box => CountBox = box);
                 AddCombo("Measure", ["Items", "Percent"], _percent ? 1 : 0, i => _percent = i == 1);
-                AddFormatPicker();
+                AppendFormatEditor(_pane, _sharedFormat, UpdatePreview, combo => FormatCombo = combo,
+                                   controls => SharedFormatControls = controls);
                 if (!TopBottomRule.EngineSupportsTopK)
-                {
-                    var note = DataGridDialogHelpers.Caption("(inert until the engine's TopK stats seam lands)");
-                    _pane.Children.Add(note);
-                }
+                    _pane.Children.Add(DataGridDialogHelpers.Caption("(inert until the engine's TopK stats seam lands)"));
                 break;
 
             case RuleEditorKind.DataBar:
@@ -288,14 +365,48 @@ internal sealed class DataGridRuleEditor
                 break;
 
             case RuleEditorKind.ColorScale:
-                AddCombo("Scale", ScalePresets.Select(p => p.Name).ToList(), _scaleIndex, i => _scaleIndex = i);
+            {
+                var names = ScalePresets.Select(p => p.Name).Append("Custom…").ToList();
+                var scaleCombo = new ComboBox { ItemsSource = names, SelectedIndex = Math.Clamp(_scaleIndex, 0, names.Count - 1), MinWidth = 14 };
+                var custom = new StackPanel();
+                _scaleStopBoxes.Clear();
+                for (int s = 0; s < 3; s++)
+                {
+                    int si = s;
+                    while (_customStops.Count <= si)
+                        _customStops.Add(string.Empty);
+                    var box = new TextBox { Text = _customStops[si], MinWidth = 9 };
+                    box.TextChanged += (_, _) => { _customStops[si] = box.Text; UpdatePreview(); };
+                    _scaleStopBoxes.Add(box);
+                    custom.Children.Add(LabeledRow($"Stop {si + 1} #", box));
+                }
+                custom.Children.Add(DataGridDialogHelpers.Caption("2 or 3 #RRGGBB stops, low → high (leave stop 3 blank for a 2-stop scale)."));
+                void SyncScaleCustom() => custom.Visibility = _scaleIndex >= ScalePresets.Length ? Visibility.Visible : Visibility.Collapsed;
+                scaleCombo.SelectionChanged += (_, _) =>
+                {
+                    if (scaleCombo.SelectedIndex >= 0)
+                    {
+                        _scaleIndex = scaleCombo.SelectedIndex;
+                        SyncScaleCustom();
+                        UpdatePreview();
+                    }
+                };
+                SyncScaleCustom();
+                ScaleCombo = scaleCombo;
+                AddLabeled("Scale", scaleCombo);
+                _pane.Children.Add(custom);
                 break;
+            }
 
             case RuleEditorKind.IconSet:
-                _pane.Children.Add(DataGridDialogHelpers.Caption("Style: ▲●▼ (glyph + color per bucket)"));
-                AddText("▲ when >=", _iconHighText, t => _iconHighText = t, box => ValueBox = box);
-                AddText("● when >=", _iconMidText, t => _iconMidText = t);
-                _pane.Children.Add(DataGridDialogHelpers.Caption("▼ otherwise"));
+                _iconGlyphBoxes.Clear();
+                _iconThresholdBoxes.Clear();
+                _pane.Children.Add(DataGridDialogHelpers.Caption("A glyph + threshold per bucket (▼ otherwise)."));
+                AddText("▲ glyph", _iconHighGlyph, t => _iconHighGlyph = t, box => _iconGlyphBoxes.Add(box));
+                AddText("▲ when >=", _iconHighText, t => _iconHighText = t, box => { ValueBox = box; _iconThresholdBoxes.Add(box); });
+                AddText("● glyph", _iconMidGlyph, t => _iconMidGlyph = t, box => _iconGlyphBoxes.Add(box));
+                AddText("● when >=", _iconMidText, t => _iconMidText = t, box => _iconThresholdBoxes.Add(box));
+                AddText("▼ glyph", _iconLowGlyph, t => _iconLowGlyph = t, box => _iconGlyphBoxes.Add(box));
                 break;
 
             case RuleEditorKind.Expression:
@@ -308,12 +419,159 @@ internal sealed class DataGridRuleEditor
                 };
                 ExpressionBox = expression;
                 _pane.Children.Add(expression);
-                AddFormatPicker();
+                AppendFormatEditor(_pane, _sharedFormat, UpdatePreview, combo => FormatCombo = combo,
+                                   controls => SharedFormatControls = controls);
                 ValidateExpressionLive();
                 break;
         }
 
         UpdatePreview();
+    }
+
+    // ── The Highlight multi-entry list (§10.4) ────────────────────────────────────────────────────
+
+    /// <summary>Appends a blank condition row (the ＋ button; also the tests' multi-entry hook — §10.4).</summary>
+    internal void AddHighlightCondition()
+    {
+        if (_kind != RuleEditorKind.Highlight || _highlightHost is null)
+            return;
+        _highlightEntries.Add(new HighlightEntry());
+        BuildHighlightEntries();
+        UpdatePreview();
+    }
+
+    private void BuildHighlightEntries()
+    {
+        if (_highlightHost is not { } host)
+            return;
+        host.Children.Clear();
+        _highlightRows.Clear();
+        OperatorCombo = null;
+        ValueBox = null;
+        SecondValueBox = null;
+        FormatCombo = null;
+        for (int i = 0; i < _highlightEntries.Count; i++)
+            BuildHighlightRow(host, i);
+
+        var add = new Button { Content = "＋ Add condition", HorizontalAlignment = HorizontalAlignment.Left };
+        add.Click += (_, _) => AddHighlightCondition();
+        host.Children.Add(add);
+    }
+
+    private void BuildHighlightRow(StackPanel host, int index)
+    {
+        var entry = _highlightEntries[index];
+        var block = new StackPanel { Spacing = 0 };
+
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+        var op = new ComboBox
+        {
+            ItemsSource = HighlightOperators.Select(o => o.Label).ToList(),
+            SelectedIndex = Math.Clamp(entry.OpIndex, 0, HighlightOperators.Length - 1),
+            MinWidth = 8,
+        };
+        // The value inputs adapt to the column's key type (§10 value-entry): an enum/bool column
+        // gets a prepopulated name dropdown instead of a free-text box.
+        var keyType = TargetColumn is { } target
+            ? _grid.Controller?.GetColumnKeyType(target) ?? target.KeySelector?.ReturnType
+            : null;
+        ValueEditor valueEd = null!;
+        valueEd = ValueEditor.Create(keyType, entry.Value, () => { entry.Value = valueEd.Value; UpdatePreview(); }, minWidth: 7);
+        var andCaption = DataGridDialogHelpers.Caption("and");
+        ValueEditor secondEd = null!;
+        secondEd = ValueEditor.Create(keyType, entry.Second, () => { entry.Second = secondEd.Value; UpdatePreview(); }, minWidth: 7);
+        var remove = new Button { Content = "✕", IsEnabled = _highlightEntries.Count > 1 };
+
+        void SyncBetween()
+        {
+            bool between = HighlightOperators[Math.Clamp(entry.OpIndex, 0, HighlightOperators.Length - 1)].Op == FilterOperator.Between;
+            andCaption.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+            secondEd.Element.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        op.SelectionChanged += (_, _) =>
+        {
+            if (op.SelectedIndex >= 0)
+            {
+                entry.OpIndex = op.SelectedIndex;
+                SyncBetween();
+                UpdatePreview();
+            }
+        };
+        int captured = index;
+        remove.Click += (_, _) =>
+        {
+            if (captured < _highlightEntries.Count && _highlightEntries.Count > 1)
+                _highlightEntries.RemoveAt(captured);
+            BuildHighlightEntries();
+            UpdatePreview();
+        };
+
+        line.Children.Add(op);
+        line.Children.Add(valueEd.Element);
+        line.Children.Add(andCaption);
+        line.Children.Add(secondEd.Element);
+        line.Children.Add(remove);
+        block.Children.Add(line);
+
+        ComboBox? rowFormatCombo = null;
+        CustomFormatControls? rowCustom = null;
+        AppendFormatEditor(block, entry.Format, UpdatePreview,
+                           combo => rowFormatCombo = combo, custom => rowCustom = custom);
+        SyncBetween();
+        host.Children.Add(block);
+
+        _highlightRows.Add(new HighlightRowControls(op, valueEd, secondEd, remove, rowFormatCombo!, rowCustom!));
+        if (index == 0)
+        {
+            OperatorCombo = op;
+            ValueBox = valueEd.AsTextBox;
+            SecondValueBox = secondEd.AsTextBox;
+            FormatCombo = rowFormatCombo;
+        }
+    }
+
+    // ── The format editor (preset + Custom… reveal — §10.6) ───────────────────────────────────────
+
+    private void AppendFormatEditor(Panel host, FormatSlot slot, Action onChange,
+                                    Action<ComboBox>? exposeCombo = null, Action<CustomFormatControls>? exposeCustom = null)
+    {
+        int customIndex = DataGridDialogHelpers.FormatPresets.Length;
+        var names = DataGridDialogHelpers.FormatPresets.Select(p => p.Name).Append("Custom…").ToList();
+        var combo = new ComboBox { ItemsSource = names, SelectedIndex = Math.Clamp(slot.Index, 0, names.Count - 1), MinWidth = 10 };
+
+        var custom = new StackPanel();
+        var fg = new TextBox { Text = DataGridDialogHelpers.ColorToHex(slot.Fg), MinWidth = 9 };
+        fg.TextChanged += (_, _) => { slot.Fg = DataGridDialogHelpers.TryParseColor(fg.Text, out var c) ? c : null; onChange(); };
+        var bg = new TextBox { Text = DataGridDialogHelpers.ColorToHex(slot.Bg), MinWidth = 9 };
+        bg.TextChanged += (_, _) => { slot.Bg = DataGridDialogHelpers.TryParseColor(bg.Text, out var c) ? c : null; onChange(); };
+        var bold = new CheckBox { Content = "Bold", IsChecked = slot.Bold };
+        bold.AddHandler(ToggleButton.IsCheckedChangedEvent, (object? _, RoutedEventArgs _) => { slot.Bold = bold.IsChecked == true; onChange(); });
+        var inverse = new CheckBox { Content = "Inverse", IsChecked = slot.Inverse };
+        inverse.AddHandler(ToggleButton.IsCheckedChangedEvent, (object? _, RoutedEventArgs _) => { slot.Inverse = inverse.IsChecked == true; onChange(); });
+        custom.Children.Add(LabeledRow("Text #", fg));
+        custom.Children.Add(LabeledRow("Fill #", bg));
+        var attrRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        attrRow.Children.Add(bold);
+        attrRow.Children.Add(inverse);
+        custom.Children.Add(attrRow);
+
+        void SyncCustom() => custom.Visibility = slot.Index >= customIndex ? Visibility.Visible : Visibility.Collapsed;
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex >= 0)
+            {
+                slot.Index = combo.SelectedIndex;
+                SyncCustom();
+                onChange();
+            }
+        };
+        SyncCustom();
+
+        host.Children.Add(LabeledRow("Format", combo));
+        host.Children.Add(custom);
+        exposeCombo?.Invoke(combo);
+        exposeCustom?.Invoke(new CustomFormatControls(fg, bg, bold, inverse));
     }
 
     private void AddColumnPicker()
@@ -330,31 +588,15 @@ internal sealed class DataGridRuleEditor
             {
                 _columnIndex = combo.SelectedIndex;
                 _paneTitle.Text = $"{Types.First(t => t.Kind == _kind).Caption[2..]} — {TargetColumn?.EffectiveHeader}";
+                // The Highlight value inputs are keyed to the column type — rebuild them so an
+                // enum/bool column swaps its text boxes for dropdowns (and back).
+                if (_kind == RuleEditorKind.Highlight)
+                    BuildHighlightEntries();
                 UpdatePreview();
             }
         };
         ColumnCombo = combo;
         AddLabeled(_kind == RuleEditorKind.Expression ? "Owner column" : "Apply to column", combo);
-    }
-
-    private void AddFormatPicker()
-    {
-        var combo = new ComboBox
-        {
-            ItemsSource = DataGridDialogHelpers.FormatPresets.Select(p => p.Name).ToList(),
-            SelectedIndex = _formatIndex,
-            MinWidth = 10,
-        };
-        combo.SelectionChanged += (_, _) =>
-        {
-            if (combo.SelectedIndex >= 0)
-            {
-                _formatIndex = combo.SelectedIndex;
-                UpdatePreview();
-            }
-        };
-        FormatCombo = combo;
-        AddLabeled("Format", combo);
     }
 
     private void AddCombo(string label, IReadOnlyList<string> items, int selected, Action<int> onPick,
@@ -376,17 +618,19 @@ internal sealed class DataGridRuleEditor
     private void AddText(string label, string seed, Action<string> onChange, Action<TextBox>? expose = null)
     {
         var box = new TextBox { Text = seed, MinWidth = 10 };
-        box.TextChanged += (_, _) => onChange(box.Text);
+        box.TextChanged += (_, _) => { onChange(box.Text); UpdatePreview(); };
         expose?.Invoke(box);
         AddLabeled(label, box);
     }
 
-    private void AddLabeled(string label, UIElement control)
+    private void AddLabeled(string label, UIElement control) => _pane.Children.Add(LabeledRow(label, control));
+
+    private static StackPanel LabeledRow(string label, UIElement control)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         row.Children.Add(DataGridDialogHelpers.Caption($"{label}:"));
         row.Children.Add(control);
-        _pane.Children.Add(row);
+        return row;
     }
 
     // ── Live preview + expression validation ──────────────────────────────────────────────────────
@@ -408,22 +652,35 @@ internal sealed class DataGridRuleEditor
                 return;
 
             case RuleEditorKind.ColorScale:
-            {
-                var stops = ScalePresets[Math.Clamp(_scaleIndex, 0, ScalePresets.Length - 1)].Stops;
-                _previewBorder.Child = DataGridDialogHelpers.ScaleSwatch(stops);
+                _previewBorder.Child = DataGridDialogHelpers.ScaleSwatch(PreviewScaleStops());
                 _previewBorder.ClearValue(Border.BackgroundProperty);
                 return;
-            }
+
+            case RuleEditorKind.Highlight:
+                ApplyFormatToPreview(SampleText(), _highlightEntries.Count > 0 ? _highlightEntries[0].Format.ToFormat() : default);
+                return;
 
             case RuleEditorKind.IconSet:
-                ApplyFormatToPreview("▲ 41%  ● 18%  ▼ 8%", IconHighFormat);
+                ApplyFormatToPreview($"{_iconHighGlyph} 41%  {_iconMidGlyph} 18%  {_iconLowGlyph} 8%", IconHighFormat);
                 return;
 
             default:
-                ApplyFormatToPreview(SampleText(), DataGridDialogHelpers.FormatPresets[
-                    Math.Clamp(_formatIndex, 0, DataGridDialogHelpers.FormatPresets.Length - 1)].Format);
+                ApplyFormatToPreview(SampleText(), _sharedFormat.ToFormat());
                 return;
         }
+    }
+
+    private Color[] PreviewScaleStops()
+    {
+        if (_scaleIndex < ScalePresets.Length)
+            return ScalePresets[Math.Clamp(_scaleIndex, 0, ScalePresets.Length - 1)].Stops;
+        var parsed = new List<Color>();
+        foreach (var s in _customStops)
+        {
+            if (DataGridDialogHelpers.TryParseColor(s, out var c))
+                parsed.Add(c);
+        }
+        return parsed.Count >= 2 ? parsed.ToArray() : ScalePresets[0].Stops; // preview fallback on an incomplete custom scale
     }
 
     private void ApplyFormatToPreview(string text, CellFormat format)
@@ -438,6 +695,7 @@ internal sealed class DataGridRuleEditor
         else
             _previewBorder.ClearValue(Border.BackgroundProperty);
         _previewText.TextWeight = format.Bold ? TextWeight.Bold : TextWeight.Normal;
+        TextElement.SetInverse(_previewText, format.Inverse); // audit fix: reflect a custom Inverse in the preview
     }
 
     /// <summary>A live sample from the target column (the mockup previews real values), else "Sample".</summary>
@@ -513,49 +771,19 @@ internal sealed class DataGridRuleEditor
         {
             case RuleEditorKind.Highlight:
             {
-                var (op, opLabel) = HighlightOperators[Math.Clamp(_highlightOpIndex, 0, HighlightOperators.Length - 1)];
-                object? value;
-                if (op is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith)
+                if (_highlightEntries.Count == 0)
                 {
-                    // Text operators apply to string keys only (the Filter Builder's gate,
-                    // mirrored): the engine's condition builder has no text lane for other key
-                    // types and THROWS — inside CompileFormatRules, after the dialog closed,
-                    // poisoning every later rules recompile. Veto on the strip instead.
-                    var underlying = keyType is null ? typeof(string) : Nullable.GetUnderlyingType(keyType) ?? keyType;
-                    if (underlying != typeof(string))
-                    {
-                        SetStrip(valid: false, $"✕ '{opLabel}' needs a text column — {column.EffectiveHeader}");
-                        return;
-                    }
-                    value = _highlightValue; // text operators carry the raw text
-                }
-                else if (!DataGridDialogHelpers.TryParseLiteral(keyType, _highlightValue, out value))
-                {
-                    SetStrip(valid: false, $"✕ '{_highlightValue}' is not a valid value for {column.EffectiveHeader}");
+                    SetStrip(valid: false, "✕ Add at least one condition");
                     return;
                 }
-                if (value is null)
+                var built = new List<ThresholdEntry>(_highlightEntries.Count);
+                foreach (var entry in _highlightEntries)
                 {
-                    SetStrip(valid: false, "✕ Enter a condition value");
-                    return;
+                    if (!TryBuildThresholdEntry(column, keyType, entry, out var thresholdEntry))
+                        return; // the veto is on the strip
+                    built.Add(thresholdEntry);
                 }
-
-                // Belt-and-braces: a threshold entry compiles through the same per-column condition
-                // builder as a filter fragment — probe it (the auto-filter row's pre-write idiom)
-                // so OK can never land a rule the engine's rules recompile throws on. Gated on the
-                // column being SHAPED: an unshaped column is the engine's documented silent skip.
-                if (_grid.Controller is { } controller && controller.GetColumnKeyType(column) is not null &&
-                    !controller.CanCompileFilter(FilterNode.Condition(column, op, value)))
-                {
-                    SetStrip(valid: false, $"✕ '{_highlightValue}' does not apply to {column.EffectiveHeader}");
-                    return;
-                }
-
-                Result = new ThresholdRule
-                {
-                    ColumnKey = column,
-                    Entries = [(op, value, CurrentPresetFormat())],
-                };
+                Result = new ThresholdRule { ColumnKey = column, Entries = built };
                 break;
             }
 
@@ -572,7 +800,7 @@ internal sealed class DataGridRuleEditor
                     Top = _top,
                     Count = count,
                     Percent = _percent,
-                    Format = CurrentPresetFormat(),
+                    Format = _sharedFormat.ToFormat(),
                 };
                 break;
             }
@@ -582,12 +810,35 @@ internal sealed class DataGridRuleEditor
                 break;
 
             case RuleEditorKind.ColorScale:
-                Result = new ColorScaleRule
+            {
+                Color[] stops;
+                if (_scaleIndex < ScalePresets.Length)
                 {
-                    ColumnKey = column,
-                    Stops = ScalePresets[Math.Clamp(_scaleIndex, 0, ScalePresets.Length - 1)].Stops,
-                };
+                    stops = ScalePresets[Math.Clamp(_scaleIndex, 0, ScalePresets.Length - 1)].Stops;
+                }
+                else
+                {
+                    var parsed = new List<Color>();
+                    foreach (var s in _customStops)
+                    {
+                        if (!string.IsNullOrWhiteSpace(s) && DataGridDialogHelpers.TryParseColor(s, out var c))
+                            parsed.Add(c);
+                        else if (!string.IsNullOrWhiteSpace(s))
+                        {
+                            SetStrip(valid: false, $"✕ '{s}' is not a valid #RRGGBB color");
+                            return;
+                        }
+                    }
+                    if (parsed.Count is < 2 or > 3)
+                    {
+                        SetStrip(valid: false, "✕ A custom scale needs 2 or 3 valid stops (low → high)");
+                        return;
+                    }
+                    stops = parsed.ToArray();
+                }
+                Result = new ColorScaleRule { ColumnKey = column, Stops = stops };
                 break;
+            }
 
             case RuleEditorKind.IconSet:
             {
@@ -597,14 +848,17 @@ internal sealed class DataGridRuleEditor
                     SetStrip(valid: false, "✕ Both thresholds need values");
                     return;
                 }
+                var highFormat = IconHighFormat with { Icon = NullIfBlank(_iconHighGlyph) };
+                var midFormat = IconMidFormat with { Icon = NullIfBlank(_iconMidGlyph) };
+                var lowFormat = IconLowFormat with { Icon = NullIfBlank(_iconLowGlyph) };
                 Result = new ThresholdRule
                 {
                     ColumnKey = column,
                     Entries =
                     [
-                        (FilterOperator.GreaterThanOrEqual, high, IconHighFormat),
-                        (FilterOperator.GreaterThanOrEqual, mid, IconMidFormat),
-                        (FilterOperator.LessThan, mid, IconLowFormat),
+                        new ThresholdEntry(FilterOperator.GreaterThanOrEqual, high, highFormat),
+                        new ThresholdEntry(FilterOperator.GreaterThanOrEqual, mid, midFormat),
+                        new ThresholdEntry(FilterOperator.LessThan, mid, lowFormat),
                     ],
                 };
                 break;
@@ -622,7 +876,7 @@ internal sealed class DataGridRuleEditor
                 {
                     ColumnKey = column,
                     RowPredicate = compiled.Predicate,
-                    Format = CurrentPresetFormat(),
+                    Format = _sharedFormat.ToFormat(),
                     SourceText = _expressionText,
                 };
                 break;
@@ -632,9 +886,62 @@ internal sealed class DataGridRuleEditor
         _window.Close(true);
     }
 
-    private CellFormat CurrentPresetFormat()
-        => DataGridDialogHelpers.FormatPresets[
-            Math.Clamp(_formatIndex, 0, DataGridDialogHelpers.FormatPresets.Length - 1)].Format;
+    /// <summary>Builds one Highlight condition entry, vetoing on the strip (returns false on any failure).</summary>
+    private bool TryBuildThresholdEntry(DataGridColumn column, Type? keyType, HighlightEntry entry, out ThresholdEntry result)
+    {
+        result = default;
+        var (op, opLabel) = HighlightOperators[Math.Clamp(entry.OpIndex, 0, HighlightOperators.Length - 1)];
+
+        object? value;
+        if (op is FilterOperator.Contains or FilterOperator.StartsWith or FilterOperator.EndsWith)
+        {
+            // Text operators apply to string keys only (the Filter Builder's gate, mirrored): the
+            // engine's condition builder has no text lane for other key types and THROWS inside the
+            // rules recompile after the dialog closed. Veto on the strip instead.
+            var underlying = keyType is null ? typeof(string) : Nullable.GetUnderlyingType(keyType) ?? keyType;
+            if (underlying != typeof(string))
+            {
+                SetStrip(valid: false, $"✕ '{opLabel}' needs a text column — {column.EffectiveHeader}");
+                return false;
+            }
+            value = entry.Value; // text operators carry the raw text
+        }
+        else if (!DataGridDialogHelpers.TryParseLiteral(keyType, entry.Value, out value))
+        {
+            SetStrip(valid: false, $"✕ '{entry.Value}' is not a valid value for {column.EffectiveHeader}");
+            return false;
+        }
+        if (value is null)
+        {
+            SetStrip(valid: false, "✕ Enter a condition value");
+            return false;
+        }
+
+        object? second = null;
+        if (op == FilterOperator.Between)
+        {
+            if (!DataGridDialogHelpers.TryParseLiteral(keyType, entry.Second, out second) || second is null)
+            {
+                SetStrip(valid: false, $"✕ 'Between' needs an upper bound for {column.EffectiveHeader}");
+                return false;
+            }
+        }
+
+        // Belt-and-braces: a threshold entry compiles through the same per-column condition builder
+        // as a filter fragment — probe it (the auto-filter row's pre-write idiom) so OK can never
+        // land a rule the engine's rules recompile throws on. Gated on the column being SHAPED.
+        if (_grid.Controller is { } controller && controller.GetColumnKeyType(column) is not null &&
+            !controller.CanCompileFilter(FilterNode.Condition(column, op, value, second)))
+        {
+            SetStrip(valid: false, $"✕ '{entry.Value}' does not apply to {column.EffectiveHeader}");
+            return false;
+        }
+
+        result = new ThresholdEntry(op, value, entry.Format.ToFormat(), second);
+        return true;
+    }
+
+    private static string? NullIfBlank(string glyph) => string.IsNullOrEmpty(glyph) ? null : glyph;
 
     internal void Cancel() => _window.Close(false);
 
@@ -644,4 +951,57 @@ internal sealed class DataGridRuleEditor
         if (_window.IsShown)
             _window.Close(false);
     }
+
+    // ── State holders ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>One Highlight condition entry's mutable state (§10.4).</summary>
+    private sealed class HighlightEntry
+    {
+        public int OpIndex;
+        public string Value = string.Empty;
+        public string Second = string.Empty;
+        public readonly FormatSlot Format = new();
+    }
+
+    /// <summary>
+    /// A format choice: a preset index, or (when <see cref="Index"/> == the preset count) a custom
+    /// fg/bg/bold/inverse (§10.6). <see cref="ToFormat"/> yields the immutable <see cref="CellFormat"/>.
+    /// </summary>
+    private sealed class FormatSlot
+    {
+        public int Index;
+        public Color? Fg;
+        public Color? Bg;
+        public bool Bold;
+        public bool Inverse;
+
+        public CellFormat ToFormat() => Index < DataGridDialogHelpers.FormatPresets.Length
+            ? DataGridDialogHelpers.FormatPresets[Index].Format
+            : new CellFormat(Fg, Bg, Bold, Inverse);
+
+        /// <summary>Seeds from an existing format: an exact preset match, else Custom… with its lanes.</summary>
+        public void Seed(CellFormat format)
+        {
+            int exact = DataGridDialogHelpers.ExactPresetIndexOf(format);
+            if (exact >= 0)
+            {
+                Index = exact;
+                return;
+            }
+            Index = DataGridDialogHelpers.FormatPresets.Length;
+            Fg = format.Foreground;
+            Bg = format.Background;
+            Bold = format.Bold;
+            Inverse = format.Inverse;
+        }
+    }
+
+    /// <summary>A Highlight condition row's live controls (tests drive multi-entry through these).
+    /// <see cref="Value"/>/<see cref="Second"/> are <see cref="ValueEditor"/>s — a dropdown for an
+    /// enum/bool column, a text box otherwise.</summary>
+    internal sealed record HighlightRowControls(ComboBox Operator, ValueEditor Value, ValueEditor Second, Button Remove,
+                                                ComboBox Format, CustomFormatControls Custom);
+
+    /// <summary>The custom-format reveal's live controls (tests assert §10.6 custom colors).</summary>
+    internal sealed record CustomFormatControls(TextBox Foreground, TextBox Background, CheckBox Bold, CheckBox Inverse);
 }

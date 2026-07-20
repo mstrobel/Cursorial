@@ -221,6 +221,37 @@ internal static class ShapingCodegen
     // ── Formatters ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Whether <paramref name="format"/> is a usable <c>ToString</c> spec for <paramref name="type"/>.
+    /// A mistyped standard specifier (e.g. <c>"N2x"</c>, <c>"Q0"</c>) throws
+    /// <see cref="FormatException"/> at format time; validating ONCE per formatter build (against a
+    /// sample value — numeric/date format validity is value-independent) lets a bad user- or
+    /// metadata-supplied format degrade to the unformatted <c>ToString</c> instead of crashing the
+    /// render/summary path. Null/empty formats and non-<see cref="IFormattable"/> types are always
+    /// valid (the format is unused). Reference <see cref="IFormattable"/> types can't be sampled here
+    /// and are reported valid (the codegen null-guards them; a throw there is the caller's contract).
+    /// </summary>
+    internal static bool IsFormatStringValid(Type type, string? format, CultureInfo? culture = null)
+    {
+        if (string.IsNullOrEmpty(format))
+            return true;
+
+        var valueType = Nullable.GetUnderlyingType(type) ?? type;
+        if (!valueType.IsValueType || !typeof(IFormattable).IsAssignableFrom(valueType))
+            return true;
+
+        try
+        {
+            var sample = (IFormattable)Activator.CreateInstance(valueType)!;
+            sample.ToString(format, culture ?? CultureInfo.CurrentCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The display formatter for a key type: <see cref="IFormattable"/> keys call
     /// <c>ToString(format, culture)</c> directly on the typed value (no box for value types);
     /// <see cref="Nullable{T}"/>/reference nulls format as <c>""</c>. Default culture is
@@ -231,11 +262,28 @@ internal static class ShapingCodegen
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
 
+        // An invalid ToString spec (a mistyped standard specifier) throws FormatException at format
+        // time — which would crash the summary/render path. Degrade a bad format to the unformatted
+        // ToString once here instead (design §2.5 — user/metadata formats are never trusted blind).
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
+
         if (type == typeof(string))
             return (Func<TKey, string>)(object)new Func<string?, string>(static v => v ?? string.Empty);
 
         var underlying = Nullable.GetUnderlyingType(type);
         var valueType = underlying ?? type;
+
+        // Enum members with [Display(Name=…)] render their designated text (a closure over the cached
+        // per-type map; parsing/filtering still uses the raw member name). Only when a member declares
+        // one — a plain enum keeps the fast ToString/span lanes below.
+        if (valueType.IsEnum && EnumDisplay.HasDisplayNames(valueType))
+        {
+            if (underlying is null)
+                return value => EnumDisplay.TextOf(valueType, value!);
+            return value => value is null ? string.Empty : EnumDisplay.TextOf(valueType, value);
+        }
+
         var v = Expression.Parameter(type, "v");
 
         Expression formatted;
@@ -301,6 +349,11 @@ internal static class ShapingCodegen
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
 
+        // Degrade an invalid ToString spec to the unformatted lane (CreateFormatter parity) — an
+        // uncaught FormatException here would crash per-cell rendering.
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
+
         if (type == typeof(string))
         {
             // String cells copy; null → 0 chars (the null-key display convention — CreateFormatter parity).
@@ -316,7 +369,13 @@ internal static class ShapingCodegen
         }
 
         var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
+        // An enum whose members declare [Display(Name)] formats through the string lane (the map
+        // lookup isn't ISpanFormattable) — route it to the ToString-then-copy fallback below; a plain
+        // enum keeps the fast constrained span path.
+        var enumType = underlying ?? type;
+        bool enumDisplay = enumType.IsEnum && EnumDisplay.HasDisplayNames(enumType);
+
+        if (!enumDisplay && underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateNullableSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
@@ -324,7 +383,7 @@ internal static class ShapingCodegen
                 .Invoke(null, [format, culture])!;
         }
 
-        if (typeof(ISpanFormattable).IsAssignableFrom(type))
+        if (!enumDisplay && typeof(ISpanFormattable).IsAssignableFrom(type))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!

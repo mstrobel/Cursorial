@@ -548,6 +548,248 @@ public class DataGridStructuralTests
         Assert.Empty(grid.SummaryDescriptions);
     }
 
+    /// <summary>A menu item's header text — a plain string, or the caption+value of a two-part
+    /// <see cref="Cursorial.UI.Controls.DockPanel"/> header (the label + right-docked value), read in
+    /// visual order (caption first).</summary>
+    private static string MenuHeaderText(Cursorial.UI.Controls.MenuItem item) => item.Header switch
+    {
+        string s => s,
+        Cursorial.UI.Controls.DockPanel dock => string.Join(
+            " ", dock.Children.OfType<Cursorial.UI.Controls.TextBlock>().Reverse().Select(t => t.Text ?? string.Empty)),
+        _ => item.Header?.ToString() ?? string.Empty,
+    };
+
+    [Fact]
+    public void Summary_menu_shows_live_values_and_the_edit_entry()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.OpenGridContextMenu(2); // Amount
+        host.RunUntilIdle();
+        var menu = grid.ActiveGridMenu!;
+        var summarySub = menu.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
+        var captions = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                 .Select(MenuHeaderText).ToList();
+
+        // Each aggregate carries its live value (§2.5): Sum of 12450+31900+19800+27300 = 91450.
+        Assert.Contains(captions, c => c.StartsWith("Sum", StringComparison.Ordinal) && c.Contains("91450", StringComparison.Ordinal));
+
+        // The value rides a right-docked DockPanel cell (uniform alignment), not a fixed-space string.
+        var sumItem = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                .First(i => MenuHeaderText(i).StartsWith("Sum", StringComparison.Ordinal));
+        var sumDock = Assert.IsType<Cursorial.UI.Controls.DockPanel>(sumItem.Header);
+        Assert.Equal(Cursorial.UI.Controls.Dock.Right, Cursorial.UI.Controls.DockPanel.GetDock(sumDock.Children[0]));
+
+        // …and the editor entry is present, carrying the gear on MenuItem.Icon (the tiered Icon
+        // class), NOT embedded in the header text.
+        var editEntry = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                  .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Edit / Format", StringComparison.Ordinal));
+        Assert.DoesNotContain("⛭", editEntry.Header?.ToString() ?? string.Empty);
+        Assert.IsType<Cursorial.UI.Controls.Icon>(editEntry.Icon);
+        menu.Close();
+        host.RunUntilIdle();
+    }
+
+    [Fact]
+    public async Task Summary_editor_sets_the_format_and_display_template()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]); // Amount
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+        Assert.True(editor.IsOpen);
+
+        // Sum (index 1: Count, Sum, Average, Min, Max), with a format + display template.
+        editor.AggregateCombo.SelectedIndex = 1;
+        editor.FormatBox.Text = "N0";
+        editor.TemplateBox.Text = "Σ {0}";
+        host.RunUntilIdle();
+        Assert.StartsWith("Σ", editor.Preview.Text);       // the live preview composes them
+        Assert.Contains("91,450", editor.Preview.Text);     // N0 groups the sum
+
+        editor.Ok();
+        host.RunUntilIdle();
+        await task; // the dialog task completes on OK
+
+        var s = Assert.Single(grid.SummaryDescriptions,
+            d => ReferenceEquals(d.ColumnKey, grid.Columns[2]) && d.Aggregate == AggregateKind.Sum);
+        Assert.Equal("N0", s.Format);
+        Assert.Equal("Σ {0}", s.DisplayTemplate);
+
+        // The footer renders the templated + formatted total.
+        Assert.Contains("Σ 91,450", string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y))));
+    }
+
+    [Fact]
+    public async Task Summary_editor_rejects_an_invalid_format_and_stays_open()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]); // Amount
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+
+        editor.AggregateCombo.SelectedIndex = 1; // Sum
+        editor.FormatBox.Text = "Q2";            // an unrecognized standard specifier (throws at format time)
+        host.RunUntilIdle();
+
+        editor.Ok();
+        host.RunUntilIdle();
+
+        // Rejected: the dialog stays open, the error explains, and nothing was committed.
+        Assert.True(editor.IsOpen);
+        Assert.False(task.IsCompleted);
+        Assert.Contains("Invalid format", editor.Error.Text);
+        Assert.DoesNotContain(grid.SummaryDescriptions, d => ReferenceEquals(d.ColumnKey, grid.Columns[2]));
+
+        // Correcting the format clears the error and commits.
+        editor.FormatBox.Text = "N0";
+        host.RunUntilIdle();
+        Assert.Equal(string.Empty, editor.Error.Text);
+        editor.Ok();
+        host.RunUntilIdle();
+        await task;
+        Assert.Equal("N0", Assert.Single(grid.SummaryDescriptions, d => ReferenceEquals(d.ColumnKey, grid.Columns[2])).Format);
+    }
+
+    [Fact]
+    public void Summary_menu_show_in_columns_toggles_the_group_summary_display()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        static System.Collections.Generic.IEnumerable<Cursorial.UI.Controls.MenuItem> SummaryItems(DataGrid g) =>
+            g.ActiveGridMenu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal))
+             .Items.OfType<Cursorial.UI.Controls.MenuItem>();
+
+        // Ungrouped: the toggle is absent — there are no group rows to position summaries in.
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        Assert.DoesNotContain(SummaryItems(grid), i => (i.Header?.ToString() ?? string.Empty) == "Show in Columns");
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+
+        // Grouped: the toggle appears, checkable, unchecked (Banner is the default).
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1]));
+        host.RunUntilIdle();
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        var showInColumns = SummaryItems(grid).First(i => (i.Header?.ToString() ?? string.Empty) == "Show in Columns");
+        Assert.True(showInColumns.IsCheckable);
+        Assert.False(showInColumns.IsChecked);
+        Assert.Equal(GroupSummaryDisplay.Banner, grid.GroupSummaryDisplay);
+
+        // Clicking flips the grid-wide display mode.
+        showInColumns.RaiseEvent(new ClickEventArgs(Cursorial.UI.Controls.MenuItem.ClickEvent, showInColumns));
+        Assert.Equal(GroupSummaryDisplay.InColumn, grid.GroupSummaryDisplay);
+    }
+
+    [Fact]
+    public void Group_summaries_align_under_their_column_in_in_column_mode()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1]));            // group by Region
+        grid.SummaryDescriptions.Add(new SummaryDescription(grid.Columns[2], AggregateKind.Sum)); // Sum(Amount)/group
+        host.RunUntilIdle();
+
+        // The East group's Amount sum: 12450 + 31900 = 44350.
+        int eastRow = -1;
+        for (int r = 0; r < host.FrameBuffer.Rows; r++)
+        {
+            if (host.GetCell(0, r).Grapheme is "▾" or "▸" && Row(host, r).Contains("East", StringComparison.Ordinal))
+            {
+                eastRow = r;
+                break;
+            }
+        }
+        Assert.True(eastRow >= 0, "no East group banner row");
+
+        var amount = grid.RowsPresenter!.ColumnLayout.Entries[2];
+
+        // Banner mode (default): the sum is right-aligned at the band edge, PAST the Amount column.
+        int bannerCol = Row(host, eastRow).IndexOf("44350", StringComparison.Ordinal);
+        Assert.True(bannerCol > amount.X + amount.Width, $"banner sum should sit at the far edge: '{Row(host, eastRow)}'");
+
+        // In-column mode: the same sum now aligns UNDER the Amount column, prefixed with the Sum
+        // glyph (Σ) — identical to the footer's label.
+        grid.GroupSummaryDisplay = GroupSummaryDisplay.InColumn;
+        host.RunUntilIdle();
+        string eastText = Row(host, eastRow);
+        int inColumnCol = eastText.IndexOf("44350", StringComparison.Ordinal);
+        Assert.InRange(inColumnCol, amount.X, amount.X + amount.Width + 2 * DataGridColumnLayout.CellPadding);
+        int glyphCol = eastText.IndexOf('Σ');
+        Assert.InRange(glyphCol, amount.X, inColumnCol); // Σ precedes the value, within the Amount column
+    }
+
+    [Fact]
+    public void A_summary_without_its_own_format_inherits_the_column_format()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.Columns[2].Format = "#,0"; // the Amount column's own display format (grouped)
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum); // added with NO explicit format
+        host.RunUntilIdle();
+
+        // The footer's Sum is formatted with the COLUMN's format (grouped) — not the raw "91450".
+        Assert.Contains("91,450", string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y))));
+
+        // The context-menu live value uses the same format (the menu ≡ footer ≡ editor formatting).
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        var summarySub = grid.ActiveGridMenu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
+        var sumCaption = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                   .Select(MenuHeaderText)
+                                   .First(h => h.StartsWith("Sum", StringComparison.Ordinal));
+        Assert.Contains("91,450", sumCaption);
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+    }
+
+    [Fact]
+    public async Task Summary_editor_seeds_its_format_from_the_column()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        grid.Columns[2].Format = "C0"; // a directly-set column format
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]);
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+
+        Assert.Equal("C0", editor.FormatBox.Text); // inherited from the column when no summary exists yet
+
+        editor.Ok();
+        host.RunUntilIdle();
+        await task;
+    }
+
+    [Fact]
+    public void An_invalid_summary_format_or_template_degrades_instead_of_crashing()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        // Formats/templates can also arrive from metadata or code (bypassing the editor's rejection),
+        // so the engine must never throw on a bad one — it degrades to the unformatted value. "Q2" is
+        // an unrecognized standard specifier (throws at format time); "{1}" is an out-of-range template.
+        grid.SummaryDescriptions.Add(new SummaryDescription(grid.Columns[2], AggregateKind.Sum, "Q2", "Σ {1}"));
+        host.RunUntilIdle(); // must NOT throw
+
+        // The footer still renders — the bad format drops (raw sum) and the bad template drops.
+        var footer = string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y)));
+        Assert.Contains("91450", footer);
+    }
+
     [Fact]
     public void Grid_context_menu_toggles_the_group_panel_and_summary_footer()
     {
@@ -923,6 +1165,158 @@ public class DataGridStructuralTests
 
         // Row selection stayed empty (cell mode never writes the row controller).
         Assert.True(grid.RowSelection.IsEmpty);
+    }
+
+    [Fact]
+    public void Ctrl_click_accumulates_a_second_cell_range()
+    {
+        var (host, grid, source) = Show(columns: 40);
+        using var _ = host;
+
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        static void CtrlClick(UIHeadlessHost host, int x, int y)
+        {
+            host.SendMouseMove(x, y);
+            host.SendInput(new MouseEvent
+            {
+                Kind = MouseEventKind.ButtonDown,
+                Position = new CellPosition(x, y),
+                Button = MouseButton.Left,
+                ButtonsHeld = MouseButtons.Left,
+                Modifiers = KeyModifiers.Control,
+                Timestamp = DateTimeOffset.UnixEpoch,
+            });
+            host.RunUntilIdle();
+        }
+
+        // Range 1: Region rows 0..2 (click + Shift+extend).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(12, 3),
+            Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left,
+            Modifiers = KeyModifiers.Shift,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // §10.1: Ctrl+click banks range 1 and starts a fresh active range on Amount, row 0;
+        // Shift+extend grows the active range to Amount rows 0..1 (so it has a non-focus member).
+        CtrlClick(host, 24, 1);
+        host.SendMouseMove(24, 2);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(24, 2),
+            Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left,
+            Modifiers = KeyModifiers.Shift,
+            Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        var rects = grid.CellRangeViewRects();
+        Assert.Equal(2, rects.Count);
+        Assert.Contains((0, 2, 1, 1), rects); // banked Region rows 0..2
+        Assert.Contains((0, 1, 2, 2), rects); // active Amount rows 0..1
+
+        // Both blocks land in the TSV, separated by a blank line.
+        Assert.Equal("East\nEast\nSouth\n\n12450\n31900\n", grid.BuildCellRangeTsv());
+
+        // A banked member and an active member (not the focus cell — focus is Amount row 1) share
+        // the selection fill; a true non-member (Amount row 2) does not.
+        var region = grid.RowsPresenter!.ColumnLayout.Entries[1];
+        var amount = grid.RowsPresenter.ColumnLayout.Entries[2];
+        var memberA = host.GetCell(region.X + 1, 3).Style.Background; // South (banked Region row 2)
+        var memberB = host.GetCell(amount.X + 1, 1).Style.Background; // 12450 (active Amount row 0)
+        var nonMember = host.GetCell(amount.X + 1, 3).Style.Background; // 19800 (outside both)
+        Assert.Equal(memberA, memberB);
+        Assert.NotEqual(memberA, nonMember);
+
+        // A plain click collapses back to ONE range (the committed ones drop).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        Assert.Single(grid.CellRangeViewRects());
+    }
+
+    [Fact]
+    public void Losing_the_active_range_with_invalid_focus_keeps_the_committed_ranges()
+    {
+        var (host, grid, source) = Show(columns: 40);
+        using var _ = host;
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        // Bank Region rows 0..2, then start a fresh active range on Amount row 3 (SO-1047).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 3), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Shift, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+        host.SendMouseMove(24, 4);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(24, 4), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Control, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+        Assert.Equal(2, grid.CellRangeViewRects().Count); // banked Region + active Amount
+
+        // Clear focus, then remove the ACTIVE range's row (SO-1047). The active corner is lost with
+        // no valid focus cell to collapse onto → the else branch fires. Audit fix: it must clear
+        // ONLY the active range, not wipe the still-valid banked Region range via ClearCellRange().
+        grid.SetFocusCell(-1, -1);
+        source.RemoveAt(3); // SO-1047
+        host.RunUntilIdle();
+
+        var rects = grid.CellRangeViewRects();
+        Assert.Single(rects); // the banked Region range survived
+        Assert.Equal((0, 2, 1, 1), rects[0]);
+    }
+
+    [Fact]
+    public void Overlapping_ranges_write_each_shared_cell_once_in_the_tsv()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+        grid.SelectionUnit = DataGridSelectionUnit.Cell;
+        host.RunUntilIdle();
+
+        // Range 1: Region rows 0..2 (click + Shift+extend).
+        host.SendClick(12, 1);
+        host.RunUntilIdle();
+        host.SendMouseMove(12, 3);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 3), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Shift, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // Ctrl+click a cell INSIDE that rectangle (Region row 1) — banks rows 0..2, active is the
+        // interior cell, so the two ranges OVERLAP on Region row 1.
+        host.SendMouseMove(12, 2);
+        host.SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown, Position = new CellPosition(12, 2), Button = MouseButton.Left,
+            ButtonsHeld = MouseButtons.Left, Modifiers = KeyModifiers.Control, Timestamp = DateTimeOffset.UnixEpoch,
+        });
+        host.RunUntilIdle();
+
+        // Audit fix: the shared cell (Region row 1 = "East") must appear ONCE, not duplicated across
+        // the two TSV blocks. Rows 0,1 are East, row 2 South ⇒ exactly two "East".
+        var tsv = grid.BuildCellRangeTsv()!;
+        Assert.Equal(2, tsv.Split("East").Length - 1);
     }
 
     [Fact]

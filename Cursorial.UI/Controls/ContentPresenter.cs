@@ -49,7 +49,17 @@ public sealed class ContentPresenter : UIElement
     /// <summary>Whether the <see cref="TextElement.InverseProperty"/> is forwarded to the realized content.</summary>
     public static readonly StyledProperty<bool> ForwardTextInverseProperty =
         UIProperty.Register<ContentPresenter, bool>(nameof(ForwardTextInverse),
-                                                    changed: OnForwardTextInverseChanged,
+                                                    changed: OnForwardingDetailsChanged,
+                                                    defaultValue: true);
+
+    /// <summary>
+    /// When <c>false</c>, <see cref="TextElement">text formatting</see> and other forwarded properties will
+    /// always be forwarded from the host <see cref="ContentPresenter"/> itself, rather than the host's
+    /// <see cref="UIElement.TemplatedParent">TemplatedParent</see> when available. Defaults to <c>true</c>.
+    /// </summary>
+    public static readonly StyledProperty<bool> ForwardsFromTemplatedParentProperty =
+        UIProperty.Register<ContentPresenter, bool>(nameof(ForwardsFromTemplatedParent),
+                                                    changed: OnForwardingDetailsChanged,
                                                     defaultValue: true);
 
     static ContentPresenter()
@@ -77,6 +87,9 @@ public sealed class ContentPresenter : UIElement
 
     /// <inheritdoc cref="ForwardTextInverseProperty"/>
     public bool ForwardTextInverse { get => GetValue(ForwardTextInverseProperty); set => SetValue(ForwardTextInverseProperty, value); }
+
+    /// <inheritdoc cref="ForwardsFromTemplatedParentProperty"/>
+    public bool ForwardsFromTemplatedParent { get => GetValue(ForwardsFromTemplatedParentProperty); set => SetValue(ForwardsFromTemplatedParentProperty, value); }
 
     /// <summary>The realized visual child (diagnostic; null before first measure / empty content).</summary>
     public UIElement? Child => _child;
@@ -343,8 +356,7 @@ public sealed class ContentPresenter : UIElement
                                                template,
                                                RecognizesAccessKey,
                                                RecognizesMarkup,
-                                               stringFormat,
-                                               ForwardTextInverse);
+                                               stringFormat);
 
         _realizedContent = content;
         _realizedTemplate = template;
@@ -426,7 +438,7 @@ public sealed class ContentPresenter : UIElement
         }
     }
 
-    private static void OnForwardTextInverseChanged(UIObject sender, bool oldValue, bool newValue)
+    private static void OnForwardingDetailsChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is ContentPresenter presenter)
         {

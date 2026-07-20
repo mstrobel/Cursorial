@@ -1,10 +1,13 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
+
+using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.DataViews;
 
@@ -178,9 +181,16 @@ public sealed class DataGridAutoFilterRow : UIElement
             return; // the hosted editor paints this cell
 
         // The §3.3 virtual band focus: the focused filter cell wears the well fill (drawn before
-        // the kind branches so the walk stays visible even over disabled cells).
-        if (i == owner.FilterCellFocusIndex && WellBackground is not null)
+        // the kind branches so the walk stays visible even over disabled cells). NoColor tier: the
+        // well brush resolves to Default (invisible) — a reverse-video bar carries the cue instead,
+        // and the (now-invisible) well fills below are skipped so they don't clobber the bar (§4).
+        bool noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
+        bool focusCue = noColor && i == owner.FilterCellFocusIndex;
+
+        if (i == owner.FilterCellFocusIndex && WellBackground is not null && !noColor)
             context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
+        else if (focusCue)
+            FillInverse(context, x + DataGridColumnLayout.CellPadding, entry.Width);
 
         var column = entry.Column;
 
@@ -191,31 +201,42 @@ public sealed class DataGridAutoFilterRow : UIElement
         int contentX = x + DataGridColumnLayout.CellPadding;
 
         var placeholderBrush = PlaceholderBrush ?? Brushes.Default;
+        CellStyle contentStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
 
         if (column.FilterCellKind == FilterCellKind.DistinctPicker)
         {
             // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
-            if (summary is not null && WellBackground is not null)
+            if (summary is not null && WellBackground is not null && !noColor)
                 context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
 
             string text = summary ?? "(All)";
 
             DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
-                        summary is not null ? TextBrush : PlaceholderBrush);
+                        summary is not null ? TextBrush : PlaceholderBrush, contentStyle);
 
-            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", placeholderBrush);
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", placeholderBrush, null, contentStyle);
         }
         else if (summary is not null)
         {
-            if (WellBackground is not null)
+            if (WellBackground is not null && !noColor)
                 context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
 
-            DrawClipped(context, contentX, summary, entry.Width, TextBrush);
+            DrawClipped(context, contentX, summary, entry.Width, TextBrush, contentStyle);
         }
         else
         {
-            context.DrawText(contentX, 0, "⌕", placeholderBrush); // the idle affordance
+            context.DrawText(contentX, 0, "⌕", placeholderBrush, null, contentStyle); // the idle affordance
         }
+    }
+
+    /// <summary>Reverse-video bar of <paramref name="width"/> space-bearing cells at row 0 — the
+    /// NoColor filter-cell focus fill (SGR 7 swaps the terminal's real default fg/bg; §4).</summary>
+    private void FillInverse(RenderContext context, int x, int width)
+    {
+        if (width <= 0)
+            return;
+
+        context.FillOpaque(new Rect(x, 0, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
     }
 
     /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>
@@ -226,14 +247,14 @@ public sealed class DataGridAutoFilterRow : UIElement
     }
 
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
-                                    IBrush? brush)
+                                    IBrush? brush, CellStyle style = default)
     {
         if (brush is null || text.Length == 0)
             return;
 
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
-            context.DrawText(x, 0, text, brush);
+            context.DrawText(x, 0, text, brush, null, style);
             return;
         }
 
@@ -251,8 +272,8 @@ public sealed class DataGridAutoFilterRow : UIElement
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
 
-        context.DrawText(x, 0, text.AsSpan(0, end), brush);
-        context.DrawText(x + width, 0, "…", brush);
+        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
+        context.DrawText(x + width, 0, "…", brush, null, style);
     }
 
     // ── The roving editor (the §3.2 element-hosting idiom, one cell at a time — panel Q4) ────────

@@ -250,12 +250,13 @@
               <MenuItem Header="Fi_nd">
                 <MenuItem Header="Find _Next"     InputGestureText="F3" />
                 <MenuItem Header="Find _Previous" InputGestureText="Shift+F3" />
+                <MenuItem Header="Case _Sensitive" Icon="{Icon Glyph='&#x0000eab1;', Emoji='🔡', Text='Aa'}" IsCheckable="true" />
               </MenuItem>
             </MenuItem>
             <MenuItem Header="_View">
               <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" />
-              <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" />
-              <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" />
+              <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" IsCheckable="True" />
+              <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" IsCheckable="True" />
             </MenuItem>
           </Menu>
           

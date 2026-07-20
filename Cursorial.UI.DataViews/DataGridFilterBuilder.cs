@@ -10,7 +10,7 @@ namespace Cursorial.UI.DataViews;
 /// <summary>How the Filter Builder dialog closed (the grid's entry point dispatches on it).</summary>
 internal enum FilterBuilderOutcome
 {
-    Cancelled,
+    Canceled,
     Applied,
     /// <summary>The "ƒ Edit as Text" hop: reopen as the expression editor seeded with the tree's text.</summary>
     EditAsText,
@@ -65,7 +65,7 @@ internal sealed class DataGridFilterBuilder
 
     /// <summary>One rendered condition row's live controls (tests drive the real cells).</summary>
     internal sealed record ConditionRow(Condition Model, ComboBox Field, ComboBox Operator,
-                                        TextBox Value, TextBox SecondValue);
+                                        ValueEditor Value, ValueEditor SecondValue);
 
     /// <summary>One rendered group row's live controls.</summary>
     internal sealed record GroupRow(Group Model, Button OperatorToggle);
@@ -192,22 +192,22 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // A duplicate open rides the live dialog and completes with ITS outcome. EditAsText
-            // maps to Cancelled for the rider: the live call's owner chains the expression-editor
+            // maps to Canceled for the rider: the live call's owner chains the expression-editor
             // hop — chaining it from both entry tasks would stack two editors.
             var ridden = await live._outcome.Task;
-            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Cancelled : ridden;
+            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Canceled : ridden;
         }
 
         try
         {
             var result = await _window.ShowDialogAsync();
-            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Cancelled;
+            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Canceled;
             _outcome.TrySetResult(outcome);
             return outcome;
         }
         finally
         {
-            _outcome.TrySetResult(FilterBuilderOutcome.Cancelled); // the throw path (dialog cancellation)
+            _outcome.TrySetResult(FilterBuilderOutcome.Canceled); // the throw path (dialog cancellation)
         }
     }
 
@@ -397,6 +397,7 @@ internal sealed class DataGridFilterBuilder
             {
                 condition.Column = _fieldColumns[field.SelectedIndex];
                 condition.Pristine = false;
+                Rebuild(); // the value inputs are keyed to the column type — refresh them (enum ⇒ dropdown)
             }
         };
         row.Children.Add(field);
@@ -409,32 +410,36 @@ internal sealed class DataGridFilterBuilder
         };
         row.Children.Add(op);
 
-        var value = new TextBox { Text = condition.ValueText, MinWidth = 10 };
-        value.TextChanged += (_, _) =>
+        // The value inputs adapt to the column's key type (§10 value-entry): enum/bool ⇒ a name dropdown.
+        var keyType = condition.Column is null
+            ? null
+            : _grid.Controller?.GetColumnKeyType(condition.Column) ?? condition.Column.KeySelector?.ReturnType;
+        ValueEditor valueEd = null!;
+        valueEd = ValueEditor.Create(keyType, condition.ValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.ValueText = value.Text;
+                condition.ValueText = valueEd.Value;
                 condition.Pristine = false;
             }
-        };
-        row.Children.Add(value);
+        }, minWidth: 10);
+        row.Children.Add(valueEd.Element);
 
         var ellipsis = DataGridDialogHelpers.Caption("…");
-        var second = new TextBox { Text = condition.SecondValueText, MinWidth = 10 };
-        second.TextChanged += (_, _) =>
+        ValueEditor secondEd = null!;
+        secondEd = ValueEditor.Create(keyType, condition.SecondValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.SecondValueText = second.Text;
+                condition.SecondValueText = secondEd.Value;
                 condition.Pristine = false;
             }
-        };
+        }, minWidth: 10);
         bool between = condition.Operator == FilterOperator.Between;
         ellipsis.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
-        second.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+        secondEd.Element.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
         row.Children.Add(ellipsis);
-        row.Children.Add(second);
+        row.Children.Add(secondEd.Element);
 
         op.SelectionChanged += (_, _) =>
         {
@@ -444,7 +449,7 @@ internal sealed class DataGridFilterBuilder
             condition.Pristine = false;
             bool showSecond = condition.Operator == FilterOperator.Between;
             ellipsis.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
-            second.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
+            secondEd.Element.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
         };
 
         var add = new Button { Content = "＋" };
@@ -454,7 +459,7 @@ internal sealed class DataGridFilterBuilder
         remove.Click += (_, _) => Remove(condition);
         row.Children.Add(remove);
 
-        _conditionRows.Add(new ConditionRow(condition, field, op, value, second));
+        _conditionRows.Add(new ConditionRow(condition, field, op, valueEd, secondEd));
         _treeHost.Children.Add(row);
     }
 
@@ -743,7 +748,7 @@ internal sealed class DataGridFilterBuilder
         _window.Close(FilterBuilderOutcome.Applied);
     }
 
-    internal void Cancel() => _window.Close(FilterBuilderOutcome.Cancelled);
+    internal void Cancel() => _window.Close(FilterBuilderOutcome.Canceled);
 
     /// <summary>
     /// "ƒ Edit as Text": lower the CURRENT model to criteria text and close with the hop outcome
@@ -755,7 +760,7 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // The hop must land its seed on the LIVE instance — its owning entry task is the one
-            // that chains into the expression editor (the rider maps EditAsText to Cancelled).
+            // that chains into the expression editor (the rider maps EditAsText to Canceled).
             live.RequestEditAsText();
             return;
         }
@@ -781,6 +786,6 @@ internal sealed class DataGridFilterBuilder
     internal void CloseWindow()
     {
         if (_window.IsShown)
-            _window.Close(FilterBuilderOutcome.Cancelled);
+            _window.Close(FilterBuilderOutcome.Canceled);
     }
 }

@@ -26,7 +26,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"                      Color="#16161e"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"                 Color="#33467c"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#30364d"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"                   Color="#c0caf5"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#272b41"/>
+      <x:Null          x:Key="{x:Static ThemeKeys.AlternateRowInk}"                               />
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#414868"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#343b58"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#c0caf5"/>
@@ -107,7 +109,8 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"                      Color="#f6f6f8"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"                 Color="#a8aecb"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"         Color="#d3d5dd"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#e1e2e7"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"                   Color="#343b58"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"              Color="#f0f0f0"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"                     Color="#bfc0c6"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#c0caf5"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"                      Color="#343b58"/>
@@ -115,7 +118,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.MutedBrush}"                     Color="#9699a3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.FaintBrush}"                     Color="#818392"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledBackgroundBrush}"        Color="#dcdde2"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}"        Color="#757985"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.DisabledForegroundBrush}"        Color="#9699a3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentBrush}"                    Color="#34548a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AccentInverseBrush}"             Color="#7aa2f7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.Accent2Brush}"                   Color="#0f4b6e"/>
@@ -176,6 +179,9 @@
     <ResourceDictionary x:Key="Ansi256">
       <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">▍</x:String>
 
+      <DynamicResource x:Key="{x:Static ThemeKeys.SelectionInk}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.OnHoverBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
+      
       <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
       <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.SelectionActiveBrush}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
@@ -236,10 +242,15 @@
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuBarBackground}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionInk}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionInk}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconCheckedForeground}" ResourceKey="{x:Static ThemeKeys.SuccessBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconUncheckedForeground}" ResourceKey="{x:Static ThemeKeys.MenuAcceleratorForeground}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconUncheckedHoverForeground}" ResourceKey="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" />
 
       <!--  TabItem — gallery: inactive ink = -text-dim, active = -surface fill + -text ink + an -accent -->
       <!--  underline bar (#103, was a -sel fill with -text ink on every tab). -->
@@ -288,7 +299,9 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WellBrush}"               Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionBrush}"          Color="Palette(12)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInactiveBrush}"  Color="Palette(8)"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"       Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.SelectionInk}"            Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowBrush}"       Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AlternateRowInk}"         Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.HoverBrush}"              Color="Palette(7)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"            Color="Palette(0)"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.TextBrush}"               Color="Palette(15)"/>
@@ -438,11 +451,17 @@
 
       <!--  Menu (MenuBar / MenuItem / ContextMenu). -->
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundNormal}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuBarBackground}" ResourceKey="{x:Static ThemeKeys.SurfaceBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundHover}" ResourceKey="{x:Static ThemeKeys.SelectionInk}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuBackgroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundHighlighted}" ResourceKey="{x:Static ThemeKeys.SelectionInk}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorForeground}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" ResourceKey="{x:Static ThemeKeys.TextDimBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.MenuForegroundDisabled}" ResourceKey="{x:Static ThemeKeys.MutedBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconCheckedForeground}" ResourceKey="{x:Static ThemeKeys.SuccessBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconUncheckedForeground}" ResourceKey="{x:Static ThemeKeys.MenuAcceleratorForeground}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.MenuIconUncheckedHoverForeground}" ResourceKey="{x:Static ThemeKeys.MenuAcceleratorHoverForeground}" />
 
       <!--  TabItem — gallery: inactive ink = -text-dim, active = -surface fill + -text ink + an -accent -->
       <!--  underline bar (#103, was a -sel fill with -text ink on every tab). -->

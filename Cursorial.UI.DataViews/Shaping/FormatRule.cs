@@ -77,7 +77,33 @@ public sealed class DataBarRule : FormatRule;
 public sealed class ThresholdRule : FormatRule
 {
     /// <summary>The ordered entries (evaluation stops at the first operator match).</summary>
-    public required IReadOnlyList<(FilterOperator Operator, object Value, CellFormat Format)> Entries { get; init; }
+    public required IReadOnlyList<ThresholdEntry> Entries { get; init; }
+}
+
+/// <summary>
+/// One <see cref="ThresholdRule"/> entry: an operator + value (+ an optional <see cref="SecondValue"/>
+/// upper bound for <see cref="FilterOperator.Between"/>) → the <see cref="CellFormat"/> applied when
+/// it matches. A readonly record struct so entry lists allocate as one array with no per-entry
+/// boxing beyond the already-boxed literal. An implicit conversion from the 3-tuple keeps the
+/// existing <c>Entries = [(op, value, format)]</c> authoring form (and every test) compiling.
+/// </summary>
+public readonly record struct ThresholdEntry(
+    FilterOperator Operator,
+    object Value,
+    CellFormat Format,
+    object? SecondValue = null)
+{
+    /// <summary>The 3-tuple authoring form (no second bound) — the pre-Between shape.</summary>
+    public static implicit operator ThresholdEntry((FilterOperator Operator, object Value, CellFormat Format) tuple)
+        => new(tuple.Operator, tuple.Value, tuple.Format);
+
+    /// <summary>The 3-field deconstruction (the pre-Between <c>foreach (var (op, value, format) …)</c> form).</summary>
+    public void Deconstruct(out FilterOperator op, out object value, out CellFormat format)
+    {
+        op = Operator;
+        value = Value;
+        format = Format;
+    }
 }
 
 /// <summary>

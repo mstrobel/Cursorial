@@ -122,7 +122,9 @@ public sealed class DataGridSummaryPresenter : UIElement
         return cells;
     }
 
-    private static string AggregateLabel(Shaping.AggregateKind kind)
+    /// <summary>The aggregate's glyph label (shared with the group-row in-column lane so the two
+    /// present identically — one source): Σ / x̄ / ⌄ / ⌃ / # (Count).</summary>
+    internal static string AggregateLabel(Shaping.AggregateKind kind)
         => kind switch
            {
                Shaping.AggregateKind.Sum     => "Σ",
@@ -218,5 +220,33 @@ public sealed class DataGridSummaryPresenter : UIElement
             context.DrawText(drawX, row, label, LabelBrush ?? Brushes.Default);
             context.DrawText(drawX + labelWidth + 1, row, value, ValueBrush ?? Brushes.Default);
         }
+    }
+
+    /// <summary>§2.5: right-clicking the footer band opens the grid's command menu for the column
+    /// under the cursor — the summary submenu (aggregate values, ⛭ Edit / Format…) reads there.</summary>
+    protected override void OnMouseDown(Cursorial.UI.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Handled || e.Button != Cursorial.Input.MouseButton.Right ||
+            _owner?.RowsPresenter?.ColumnLayout is not { Entries.Count: > 0 } layout)
+        {
+            return;
+        }
+
+        int x = e.GetPosition(this).Column;
+        var entries = layout.Entries;
+        int columnIndex = 0;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            int drawX = i < layout.FrozenCount ? entries[i].X : entries[i].X - HorizontalOffset;
+            if (x >= drawX && x < drawX + entries[i].Width + 2 * DataGridColumnLayout.CellPadding)
+            {
+                columnIndex = i;
+                break;
+            }
+        }
+
+        _owner.OpenGridContextMenu(columnIndex);
+        e.Handled = true;
     }
 }

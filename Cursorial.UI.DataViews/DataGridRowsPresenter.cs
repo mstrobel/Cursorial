@@ -178,7 +178,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     private DataGrid? _owner;
     private Size _viewport;
     private bool _bandDirty = true;
-    private (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? _renderCellRange; // §9.4, per render pass
+    // §9.4/§10.1 — every cell range's view rect, refilled once per render pass (a reused buffer, so
+    // steady-state paints allocate nothing); a cell is selected when ANY rect contains it.
+    private readonly List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> _renderCellRanges = [];
 
     // The band cache (§3.2): one entry per cached view row. Data cells are (start, length) RUNS
     // into the band-shared pooled char buffer (§9.6 — the span-formatter lane; zero per-cell
@@ -200,7 +202,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         public required int Level { get; init; }
         public required CellRun[] Cells { get; init; } // per visible column (empty for group rows)
         public required string GroupCaption { get; init; }
-        public required string GroupSummary { get; init; }
+        public required string GroupSummary { get; init; }                    // the concatenated banner string
+        public string[]? GroupSummaries { get; init; }                        // per-summary cells (parallel to SummaryDescriptions) — the in-column lane
         public required bool GroupCollapsed { get; init; }
 
         // Conditional-formatting verdicts, evaluated at BAND-FILL time (§2.7 — never at paint).
@@ -224,6 +227,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     // bar shares ONE origin and ONE track width, so equal fractions render equal bars. Recomputed
     // per band fill; 0 = the column has no bars this band.
     private int[] _barReserve = [];
+
+    // The per-column data-bar ICON reserve (§10.7): a bar cell used to suppress its verdict icon
+    // because a per-row icon would shift the column-uniform bar track. The reserve is the widest
+    // icon across the column's bar cells — reserved UNIFORMLY for every bar cell in the column (a
+    // row without an icon leaves the slot blank), so an icon + bar coexist with the track origin
+    // still column-uniform. 0 = no bar cell in the column carries an icon this band.
+    private int[] _barIconReserve = [];
 
     private IBrush BrushFor(Color color)
     {
@@ -664,11 +674,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private (int Start, int Length) BandWindow()
     {
-        // The SCP's public realization window (the §9 seam promotion — no IVT reach-through).
-        // Without an adopting SCP (a bare presenter in tests), the window is the viewport.
-        if (ScrollOwner is {} scp)
-            return (scp.BandStartRow, scp.BandLength);
-
+        // The SCP's public realization window (§9.6 — the promoted seam, no IVT reach-through; the
+        // GetRealizationWindow() accessor bundles the pair). Without an adopting SCP (a bare
+        // presenter in tests), the window is the viewport.
+        if (ScrollOwner is { } scp)
+        {
+            var window = scp.GetRealizationWindow();
+            return (window.Start, window.Length);
+        }
         return (0, Math.Max(_viewport.Rows, 1));
     }
 
@@ -739,6 +752,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                               Cells = NoCells,
                               GroupCaption = $"{caption} ({node.RowCount})",
                               GroupSummary = summary,
+                              GroupSummaries = node.Summaries,
                               GroupCollapsed = node.IsCollapsed,
                               CellFormats = NoFormats,
                               BarFractions = NoFractions,
@@ -816,9 +830,10 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // (uniform bar origin/track — equal fractions must render equal bars; see _barReserve).
         if (_barReserve.Length < columns.Count)
             _barReserve = new int[columns.Count];
-
+        if (_barIconReserve.Length < columns.Count)
+            _barIconReserve = new int[columns.Count];
         Array.Clear(_barReserve, 0, _barReserve.Length);
-
+        Array.Clear(_barIconReserve, 0, _barIconReserve.Length);
         if (hasRules)
         {
             foreach (var cached in _band)
@@ -828,8 +843,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
                 for (int c = 0; c < columns.Count && c < cached.BarFractions.Length; c++)
                 {
-                    if (!double.IsNaN(cached.BarFractions[c]))
-                        _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                    if (double.IsNaN(cached.BarFractions[c]))
+                        continue;
+                    _barReserve[c] = Math.Max(_barReserve[c], GraphemeWidth.StringWidth(CellText(cached, c)));
+                    // A bar cell that also carries a verdict icon widens the column's icon reserve
+                    // (uniform across the column so the bar origin stays fixed).
+                    var overlaid = (c < cached.CellFormats.Length ? cached.CellFormats[c] : default).OverlayOn(cached.RowFormat);
+                    if (overlaid.Icon is { } icon)
+                        _barIconReserve[c] = Math.Max(_barIconReserve[c], GraphemeWidth.StringWidth(icon) + 1);
                 }
             }
         }
@@ -864,14 +885,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         var selection = owner.RowSelection;
         int focusRow = owner.FocusViewIndex;
         int focusColumn = owner.FocusColumnIndex;
+        // NoColor tier: selection/focus background fills resolve to Default (invisible), so the
+        // direct-drawn cells carry the cue as reverse-video (selection/range/focus) + bold (the focus
+        // cell) — the framework's `.caps-nocolor` Inverse styles never reach direct-draw (§4).
+        bool noColor = context.Capabilities.Color.Depth == ColorDepth.NoColor;
         var entries = ColumnLayout.Entries;
         int frozenCount = ColumnLayout.FrozenCount;
         int frozenWidth = ColumnLayout.FrozenWidth;
         int viewWidth = Math.Max(_viewport.Columns, 1);
 
         int gutterWidth = ColumnLayout.GutterWidth;
-        _renderCellRange = owner.CellRangeViewRect(); // §9.4 — derived once per pass
-
+        owner.CollectCellRangeViewRects(_renderCellRanges); // §9.4/§10.1 — every rect, derived once per pass
         for (int i = 0; i < _band.Count; i++)
         {
             int view = _bandStart + i; // view-row space (focus/hover/striping)
@@ -896,21 +920,57 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
             if (row.IsGroup)
             {
-                // ▾/▸ expander, indent by level, caption, right-aligned summary. Group rows are
-                // VIEWPORT-anchored (never shifted by the horizontal offset — the banner reads at
-                // any scroll position; §9.2).
+                // ▾/▸ expander, indent by level, caption, then the summary. Group rows are
+                // VIEWPORT-anchored for the caption/banner (never shifted — reads at any scroll
+                // position; §9.2). NoColor tier: the accent/tint resolves to Default, so the banner
+                // wears Bold to stand out (design §4).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
-                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush ?? Brushes.Default);
-                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default);
+                CellStyle groupStyle = noColor ? default(CellStyle).WithAttributes(TextAttributes.Bold) : default;
+                var groupBrush = AccentBrush ?? TextBrush ?? Brushes.Default;
+                context.DrawText(x, y, glyph, groupBrush, null, groupStyle);
+                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default, groupStyle);
 
-                if (row.GroupSummary.Length > 0)
+                if (owner.GroupSummaryDisplay == GroupSummaryDisplay.InColumn && row.GroupSummaries is { Length: > 0 } groupSummaries)
+                {
+                    // Each per-group summary aligns UNDER its column (like the footer), scrolling
+                    // with the columns via DrawXOf — not one right-aligned banner string. Multiple
+                    // summaries on one column join (a group row is a single line; the footer stacks).
+                    // The caption still rides the left; a summary on the group-by column overpaints it
+                    // (author group-by columns leftmost, aggregates on the columns to their right).
+                    var descs = owner.SummaryDescriptions;
+
+                    for (int e = 0; e < entries.Count; e++)
+                    {
+                        string? combined = null;
+
+                        for (int s = 0; s < descs.Count && s < groupSummaries.Length; s++)
+                        {
+                            if (groupSummaries[s].Length == 0 || !ReferenceEquals(descs[s].ColumnKey, entries[e].Column))
+                                continue;
+
+                            // Prefix the aggregate glyph (Σ/x̄/⌄/⌃/#) — same label the footer draws, so
+                            // the two present identically and stacked aggregates on one column disambiguate.
+                            string labeled = $"{DataGridSummaryPresenter.AggregateLabel(descs[s].Aggregate)} {groupSummaries[s]}";
+                            combined = combined is null ? labeled : $"{combined}  {labeled}";
+                        }
+
+                        if (combined is null)
+                            continue;
+
+                        int drawBase = DrawXOf(e);
+                        int cellX = drawBase + DataGridColumnLayout.CellPadding;
+                        int valWidth = GraphemeWidth.StringWidth(combined);
+                        int drawX = valWidth < entries[e].Width ? cellX + entries[e].Width - valWidth : cellX;
+                        DrawClipped(context, drawX, y, combined, entries[e].Width, groupBrush, groupStyle);
+                    }
+                }
+                else if (row.GroupSummary.Length > 0)
                 {
                     int width = GraphemeWidth.StringWidth(row.GroupSummary);
                     int summaryX = Math.Max(x + 2, viewWidth - width - 1);
 
-                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue,
-                                AccentBrush ?? TextBrush ?? Brushes.Default);
+                    DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue, groupBrush, groupStyle);
                 }
 
                 continue;
@@ -922,7 +982,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             bool rowSelected = selection is not null && selection.IsSelected(row.RowId);
 
             for (int c = frozenCount; c < entries.Count && c < row.Cells.Length; c++)
-                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
+                DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected, noColor);
 
             if (frozenWidth > 0)
             {
@@ -932,7 +992,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
 
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
-                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected);
+                    DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected, noColor);
             }
 
             // The §9.3 expander gutter glyph (a data row's ▶/▼ — group rows keep their own ▸/▾).
@@ -969,7 +1029,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow,
                               int focusColumn,
-                              bool rowSelected)
+                              bool rowSelected, bool noColor)
     {
         if (!IsEntryVisible(c))
             return;
@@ -978,11 +1038,39 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         int drawBase = DrawXOf(c);
         int cellX = drawBase + DataGridColumnLayout.CellPadding;
 
-        // The §9.4 cell-range fill (under the focus well + text; group rows never route here).
-        if (_renderCellRange is {} range && view >= range.FirstRow && view <= range.LastRow &&
-            c >= range.FirstColumn && c <= range.LastColumn && SelectionBackground is not null)
-            context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
-                               SelectionBackground);
+        // The §9.4/§10.1 cell-range fill (under the focus well + text; group rows never route here) —
+        // a cell is in the selection when ANY range's rect contains it (ranges rarely overlap; when
+        // they do the fill is idempotent).
+        bool cellInRange = false;
+        if (_renderCellRanges.Count > 0)
+        {
+            for (int r = 0; r < _renderCellRanges.Count; r++)
+            {
+                var range = _renderCellRanges[r];
+                if (view >= range.FirstRow && view <= range.LastRow && c >= range.FirstColumn && c <= range.LastColumn)
+                {
+                    cellInRange = true;
+                    break;
+                }
+            }
+
+            if (cellInRange && SelectionBackground is not null && !noColor) // NoColor: the reverse-video fill below carries it
+                context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+        }
+
+        // NoColor tier: the row/range/focus background fills above and below all resolve to Default
+        // (invisible), so the cell carries the cue in reverse-video (selection, cell-range) plus a bold
+        // weight on the focus cell to set the cursor position apart from mere selection (§4; the
+        // direct-draw mirror of the framework's `.caps-nocolor` list-focus cue).
+        bool isFocusCell = view == focusRow && c == focusColumn;
+        bool forceInverse = noColor && (rowSelected || cellInRange || isFocusCell);
+        bool forceBold = noColor && isFocusCell;
+
+        // Lay a reverse-video block across the whole cell slot so the cue reads as a SOLID bar (not
+        // reverse-video text islands) — adjacent slots tile without gaps into a row/range bar. The
+        // icon/text then redraw WITH inverse over it so no glyph punches a non-inverse hole.
+        if (forceInverse)
+            FillInverse(context, drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding);
 
         // The cell verdict overlays the row verdict (§2.7 — both pre-computed at band fill). A
         // format BACKGROUND is a WHOLE-CELL fill (live-canary fix: the glyph layer's DrawText
@@ -991,14 +1079,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // empty cells). A selected row's tint outranks it (the selection must stay legible).
         var format = (c < row.CellFormats.Length ? row.CellFormats[c] : default).OverlayOn(row.RowFormat);
 
-        if (format.Background is {} formatBackground && !rowSelected)
+        // These color fills would paint invisibly under NoColor AND clobber the reverse-video bar
+        // laid down above (the fill runs after FillInverse), so they are skipped there — the cue is
+        // carried by the inverse attribute on the cells instead.
+        if (format.Background is {} formatBackground && !rowSelected && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
                                BrushFor(formatBackground));
         }
 
         // The focus cell's well-fill (the mockup's focuscell).
-        if (view == focusRow && c == focusColumn && FocusCellBackground is not null)
+        if (view == focusRow && c == focusColumn && FocusCellBackground is not null && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
                                FocusCellBackground);
@@ -1010,41 +1101,33 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         bool hasBar = !double.IsNaN(fraction);
 
         // The verdict's Icon glyph rides the cell's LEFT edge wearing the format foreground (the
-        // editor's ▲●▼ icon sets — live-canary fix: CellFormat had no glyph lane, so icon-set
-        // rules colored values but drew no icons). The value keeps its alignment in the remaining
-        // width. Bar cells skip the icon — the bar owns the cell's spare geometry, and mixing
-        // per-row icon presence would wobble the column-uniform track origin.
-        int iconReserve = 0;
-
-        if (!hasBar && format.Icon is {} icon)
-        {
-            int iconWidth = GraphemeWidth.StringWidth(icon);
-
-            if (iconWidth > 0 && iconWidth + 1 < entry.Width)
-            {
-                DrawFormattedCell(context, cellX, y, icon, entry.Width, format);
-                iconReserve = iconWidth + 1;
-            }
-        }
+        // editor's ▲●▼ icon sets). The reserve is UNIFORM per column on a bar cell (§10.7 — the
+        // band's widest bar-cell icon, blank when this row has none) so an icon + bar coexist with
+        // the track origin fixed; on a plain cell it is just this row's own icon width. The value
+        // keeps its alignment in the width that remains.
+        int iconReserve = hasBar
+            ? (c < _barIconReserve.Length ? _barIconReserve[c] : 0)
+            : (format.Icon is { } plainIcon && GraphemeWidth.StringWidth(plainIcon) is var piw && piw > 0 && piw + 1 < entry.Width ? piw + 1 : 0);
+        if (iconReserve > 0 && format.Icon is { } icon && GraphemeWidth.StringWidth(icon) > 0)
+            DrawFormattedCell(context, cellX, y, icon, Math.Max(1, iconReserve), format, forceInverse); // glyphs get Inverse-only
 
         // A data-bar cell pins its value LEFT with the bar filling the remainder (the
         // mockup's amtcell); everything else honors the column alignment.
-        int avail = entry.Width - iconReserve;
-
+        int avail = Math.Max(0, entry.Width - iconReserve);
         int drawX = !hasBar &&
                     entry.Column.TextAlignment == Rendering.Text.TextAlignment.Right &&
                     textWidth < avail
                         ? cellX + iconReserve + (avail - textWidth)
                         : cellX + iconReserve;
 
-        DrawFormattedCell(context, drawX, y, text, avail, format);
+        DrawFormattedCell(context, drawX, y, text, avail, format, forceInverse, forceBold);
 
         if (hasBar)
         {
-            // The bar starts after the COLUMN's text reserve, not this row's text (the live-canary
-            // uniform-scale fix): one origin + one track width per column.
+            // The bar starts after the COLUMN's icon reserve + text reserve, not this row's text
+            // (the live-canary uniform-scale fix): one origin + one track width per column.
             int reserve = c < _barReserve.Length && _barReserve[c] > 0 ? _barReserve[c] : textWidth;
-            int used = Math.Min(reserve, entry.Width);
+            int used = iconReserve + Math.Min(reserve, avail);
             DrawDataBar(context, cellX + used + 1, y, entry.Width - used - 1, fraction);
         }
     }
@@ -1146,21 +1229,34 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
     private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
-                                   in CellFormat format)
+                                   in CellFormat format, bool forceInverse = false, bool forceBold = false)
     {
         var textBrush = TextBrush;
+
+        // The NoColor focus/selection cue (§4): reverse-video (and, on the focus cell, bold) folded
+        // over whatever the conditional-format verdict already carries.
+        var forced = default(TextAttributes);
+
+        if (forceInverse)
+            forced |= TextAttributes.Inverse;
+
+        if (forceBold)
+            forced |= TextAttributes.Bold;
 
         if (format.IsEmpty)
         {
             if (textBrush is not null)
-                DrawClipped(context, x, y, text, maxWidth, textBrush);
+            {
+                DrawClipped(context, x, y, text, maxWidth, textBrush,
+                            forced == default ? default : default(CellStyle).WithAttributes(forced));
+            }
             return;
         }
 
         if (text.Length == 0 || (format.Foreground is null && textBrush is null))
             return;
 
-        var attributes = default(TextAttributes);
+        var attributes = forced;
 
         if (format.Bold)
             attributes |= TextAttributes.Bold;
@@ -1220,6 +1316,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         }
     }
 
+    /// <summary>
+    /// Paints a reverse-video bar of <paramref name="width"/> space-bearing cells at (x, y) — the
+    /// NoColor selection/focus fill. SGR 7 swaps the terminal's real default fg/bg, so the bar is
+    /// visible even though every NoColor brush resolves to Default (§4). The text/icon then redraw
+    /// with inverse over it so no glyph punches a non-inverse hole.
+    /// </summary>
+    private void FillInverse(RenderContext context, int x, int y, int width)
+    {
+        if (width <= 0)
+            return;
+
+        context.FillOpaque(new Rect(x, y, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
+    }
+
     /// <summary>The `█░` fill/track run after a data-bar cell's value (glyph shape carries the value in NoColor — §4).</summary>
     private void DrawDataBar(RenderContext context, int x, int y, int width, double fraction)
     {
@@ -1267,7 +1377,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
         }
 
-        context.DrawText(x, y, text, foreground);
+        context.DrawText(x, y, text, foreground, background: null, style);
     }
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────
@@ -1424,6 +1534,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         }
 
         picker.SelectedDateChanged += (_, _) => ClearEditorError();
+        // Audit fix: free-typed text that has not yet parsed to a new date raises no
+        // SelectedDateChanged — clear the error cue on the raw keystroke too (parity with the
+        // TextBox/Spin editors), else a rejected commit's message + danger ink persist while the
+        // user types the correction.
+        picker.EditableTextEdited += (_, _) => ClearEditorError();
         return picker;
     }
 
@@ -1503,6 +1618,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private void ClearEditorError()
     {
+        _owner?.ClearEditValidationError(); // §10.2 — a fresh keystroke retires the validation message
         if (!_editorErrorFlagged || _editor is not {} editor)
             return;
 
@@ -1552,7 +1668,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// </summary>
     private int EditorWidth(in DataGridColumnLayout.Entry entry)
         => _editorKind == DataGridEditorKind.Spin && entry.Width >= 6
-               ? entry.Width - 3
+               ? entry.Width - 2
                : Math.Max(1, entry.Width);
 
     protected override Size ArrangeOverride(Size finalSize)

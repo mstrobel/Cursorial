@@ -195,6 +195,15 @@ public abstract class DataViewController : IDisposable
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
+    /// <summary>
+    /// Computes one aggregate over the CURRENT filtered view on demand — the summary editor's live
+    /// preview and the summary menu's per-aggregate values. Formatted through the SAME lane as the
+    /// footer totals (<paramref name="format"/> and <paramref name="displayTemplate"/> optional).
+    /// Null when the column is unknown, the view is empty, or the aggregate doesn't apply (e.g. Sum
+    /// on a non-numeric column).
+    /// </summary>
+    public abstract string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null);
+
     /// <summary>Drains any pending coalesced ticks synchronously (tests + frame-boundary flushes).</summary>
     public abstract void Flush();
 
@@ -417,6 +426,23 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
         return null;
     }
 
+    public override string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null)
+    {
+        var column = FindColumn(columnKey);
+        if (column is null || _sortedLength == 0)
+            return null;
+        try
+        {
+            var aggregator = ColumnAggregator.Create(column, kind, format);
+            var value = aggregator.Aggregate(_sortedView, 0, _sortedLength);
+            return ApplyTemplate(displayTemplate, aggregator.Format(value));
+        }
+        catch (Exception) // an aggregate that doesn't apply to the column type (e.g. Sum on a string)
+        {
+            return null;
+        }
+    }
+
     public override string FormatCell(int rowId, object columnKey)
         => FindColumn(columnKey)?.FormatSlot(rowId) ?? string.Empty;
 
@@ -612,17 +638,17 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
                     break;
 
                 case ThresholdRule threshold:
-                    foreach (var (op, value, format) in threshold.Entries)
+                    foreach (var thresholdEntry in threshold.Entries)
                     {
                         // Each entry compiles through the column's typed condition builder — the
-                        // FILTER lane, so literal conversion and null ordering can never drift.
+                        // FILTER lane, so literal conversion and null ordering can never drift. The
+                        // SecondValue upper bound feeds Between (null for every other operator).
                         var slot = System.Linq.Expressions.Expression.Parameter(typeof(int), "slot");
-                        var body = column.BuildConditionExpression(slot, op, value, null);
-
+                        var body = column.BuildConditionExpression(slot, thresholdEntry.Operator,
+                                                                   thresholdEntry.Value, thresholdEntry.SecondValue);
                         entry.Thresholds.Add((
-                                                 System.Linq.Expressions.Expression.Lambda<Func<int, bool>>(body, slot)
-                                                       .Compile(),
-                                                 format));
+                            System.Linq.Expressions.Expression.Lambda<Func<int, bool>>(body, slot).Compile(),
+                            thresholdEntry.Format));
                     }
 
                     break;
@@ -1444,7 +1470,22 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
     }
 
     private static string ApplyTemplate(string? template, string value)
-        => template is null ? value : string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+    {
+        if (template is null)
+            return value;
+
+        // A malformed composite-format template ("{0" unclosed, "{1}" out of range) throws
+        // FormatException — a user/metadata display template must never crash the summary path, so a
+        // bad one degrades to the bare formatted value.
+        try
+        {
+            return string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
+    }
 
     private void CompileShape()
     {

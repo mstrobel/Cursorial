@@ -262,4 +262,27 @@ public class FilterGestureTests
         host.RunUntilIdle();
         Assert.Null(grid.ActiveFilterPopup);
     }
+
+    // ── The checklist shows each distinct value's row count (the mockup's "value   N" rows) ────────
+
+    [Fact]
+    public void Checklist_rows_show_the_distinct_value_counts()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        grid.OpenFilterPopup(grid.Columns[1]); // Region: East ×2, South ×1, West ×1
+        host.RunUntilIdle();
+        var popup = grid.ActiveFilterPopup!;
+
+        // The checkbox carries just the display value; the COUNT rides a right-docked sibling (aligned
+        // into one column). Search still matches on the display half.
+        Assert.Equal("East", popup.CheckBoxFor("East")!.Content);
+        Assert.Equal("2", popup.CountTextFor("East"));
+        Assert.Equal("1", popup.CountTextFor("South"));
+        Assert.Equal("1", popup.CountTextFor("West"));
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+    }
 }

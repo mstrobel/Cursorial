@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Input;
@@ -1560,7 +1562,12 @@ public class DataGrid : Control
     /// <summary>
     /// Auto-generation (design doc §1): when <see cref="Columns"/> is empty and
     /// <see cref="AutoGenerateColumns"/>, public instance properties of the row type generate
-    /// columns in declaration order; <c>[Browsable(false)]</c> skips; numerics right-align.
+    /// columns. Reads <c>System.ComponentModel.DataAnnotations</c> so the row type declares its own
+    /// metadata: <c>[Display(Name/Order/AutoGenerateField)]</c> / <c>[DisplayName]</c> → header +
+    /// order + skip, <c>[DisplayFormat(DataFormatString)]</c> → format, alongside the honored
+    /// <c>[Browsable(false)]</c>. When no format is declared, a per-type default rounds floating
+    /// values (the "[panel] per-type format defaults") so <c>double</c>/<c>decimal</c> don't render
+    /// at full "G" precision. Numerics right-align.
     /// </summary>
     private void EnsureColumns()
     {
@@ -1570,6 +1577,8 @@ public class DataGrid : Control
         _columnsFromAutoGeneration = true;
         try
         {
+            var generated = new List<(int Order, int Sequence, DataGridColumn Column)>();
+            int sequence = 0;
             foreach (var property in _rowType.GetProperties(System.Reflection.BindingFlags.Public |
                                                             System.Reflection.BindingFlags.Instance))
             {
@@ -1579,23 +1588,64 @@ public class DataGrid : Control
                     [BrowsableAttribute { Browsable: false }, ..])
                     continue;
 
+                var display = property.GetCustomAttribute<DisplayAttribute>(inherit: true);
+                if (display?.GetAutoGenerateField() == false) // [Display(AutoGenerateField=false)] — the annotations peer of [Browsable(false)]
+                    continue;
+
                 var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
                 bool numeric = type == typeof(int) || type == typeof(long) || type == typeof(short) ||
                                type == typeof(byte) || type == typeof(double) || type == typeof(float) ||
                                type == typeof(decimal) || type == typeof(uint) || type == typeof(ulong) ||
                                type == typeof(ushort);
 
-                Columns.Add(new DataGridColumn
+                // Header: [Display(Name)] wins, then [DisplayName], else null (⇒ the property name).
+                string? header = display?.GetName()
+                                 ?? property.GetCustomAttribute<DisplayNameAttribute>(inherit: true)?.DisplayName;
+                // Format: [DisplayFormat(DataFormatString)] wins, else the per-type rounding default.
+                string? format = ExtractDisplayFormat(property.GetCustomAttribute<DisplayFormatAttribute>(inherit: true)?.DataFormatString)
+                                 ?? DefaultFormatFor(type);
+
+                var column = new DataGridColumn
                 {
                     FieldName = property.Name,
+                    Header = header,
+                    Format = format,
                     TextAlignment = numeric ? TextAlignment.Right : TextAlignment.Left,
-                });
+                };
+                generated.Add((display?.GetOrder() ?? int.MaxValue, sequence++, column));
             }
+
+            // [Display(Order)] first (stable), then declaration order for the un-ordered remainder.
+            foreach (var (_, _, column) in generated.OrderBy(g => g.Order).ThenBy(g => g.Sequence))
+                Columns.Add(column);
         }
         finally
         {
             _columnsFromAutoGeneration = false;
         }
+    }
+
+    /// <summary>The per-type default display format when a column declares none (§1 "[panel] per-type
+    /// format defaults"): floating values round to ≤4 trimmed decimals so a grid never shows "G"
+    /// full precision / floating-point noise. Integers and everything else keep their plain
+    /// <c>ToString</c> (a per-column <see cref="DataGridColumn.Format"/> or <c>[DisplayFormat]</c>
+    /// overrides — e.g. currency wants <c>"N2"</c>).</summary>
+    private static string? DefaultFormatFor(Type type)
+        => type == typeof(double) || type == typeof(float) || type == typeof(decimal) ? "0.####" : null;
+
+    /// <summary>Turns a <see cref="DisplayFormatAttribute.DataFormatString"/> into a raw
+    /// <c>ToString</c> format: the common composite <c>"{0:N2}"</c> yields <c>"N2"</c>, a bare
+    /// <c>"{0}"</c> yields null (no format), and a value that is already a raw format passes through.
+    /// (A composite string with literal text around the placeholder can't map to a per-value
+    /// <c>ToString</c> format — author a raw format there instead.)</summary>
+    private static string? ExtractDisplayFormat(string? dataFormatString)
+    {
+        if (string.IsNullOrEmpty(dataFormatString))
+            return null;
+        var match = System.Text.RegularExpressions.Regex.Match(dataFormatString, @"^\{0(?::(?<f>[^}]*))?\}$");
+        if (match.Success)
+            return match.Groups["f"].Success && match.Groups["f"].Value.Length > 0 ? match.Groups["f"].Value : null;
+        return dataFormatString; // already a raw format the author wrote directly
     }
 
     // ── Shape push (the one funnel from the observable state into the engine) ────────────────────

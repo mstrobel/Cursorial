@@ -143,6 +143,27 @@
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
     </Style>
 
+    <Style Selector=":is(MenuItem)" RequiresCapabilities="NoColor">
+      <Style.Children>
+        <Style Selector="^:checked /template/ #PART_Icon > Icon, 
+                         ^:checked /template/ #PART_IconTray,
+                         ^:focus /template/ #PART_Icon > Icon,
+                         ^:focus /template/ #PART_IconTray,
+                         ^:pointerover /template/ #PART_Icon > Icon,
+                         ^:pointerover /template/ #PART_IconTray">
+          <Setter Property="TextElement.Inverse" Value="True"/>
+        </Style>
+        <Style Selector="^:focus:checked /template/ #PART_Icon > Icon, 
+                         ^:focus:checked /template/ #PART_IconTray,
+                         ^:pointerover:checked /template/ #PART_Icon > Icon,
+                         ^:pointerover:checked /template/ #PART_IconTray,
+                         ^:focus:pressed /template/ #PART_Icon > Icon,
+                         ^:focus:pressed /template/ #PART_IconTray">
+          <Setter Property="TextElement.Inverse" Value="False"/>
+        </Style>
+      </Style.Children>
+    </Style>
+
     <Style Selector=":is(Border),
                      :is(Panel),
                      :is(UIElement) /template/ :is(Border),

@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Rendering.Imaging;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -49,11 +50,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Whether the item shows a check column and toggles <see cref="IsChecked"/> on click.</summary>
     public static readonly StyledProperty<bool> IsCheckableProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable));
+        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable), changed: OnCheckStateChanged);
 
     /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it).</summary>
     public static readonly StyledProperty<bool> IsCheckedProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsChecked));
+        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), changed: OnCheckStateChanged);
 
     /// <summary>Whether this item's submenu is open (<c>:open</c>; two-way with the submenu <see cref="Popup"/>).</summary>
     public static readonly DirectProperty<MenuItem, bool> IsSubmenuOpenProperty =
@@ -88,12 +89,14 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(250);
 
+    protected static readonly IconCarrier CheckmarkIcon = BuildCheckmarkIcon();
+
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
     // private bool _isPointerOver;
     private bool _hasItemsCached;
     private bool _isTopLevelCached;
-    private bool _isIconTrayVisibleCached;
+    private bool? _isIconTrayVisibleCached;
     private ItemsControl? _iconTrayOwner; // the owner at attach — detach must refresh the group it LEFT
     private char _registeredAccessKey;
     private Popup? _popup;
@@ -106,6 +109,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         AffectsParentMeasure<MenuItem>(IconProperty);
 
         PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+        PseudoClassMapping.Register<MenuItem>(IsCheckableProperty, ":checkable");
         PseudoClassMapping.Register<UIElement>(IsWithinMenuProperty, ":within-menu");
         PseudoClassMapping.Register<UIElement>(IsTopLevelProperty, ":top-level");
 
@@ -153,19 +157,18 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public bool IsTopLevel => OwnerItemsControl is Menu;
 
     /// <inheritdoc cref="IsIconTrayVisibleProperty"/>
-    public bool IsIconTrayVisible
-    {
-        get
-        {
-            if (OwnerItemsControl is not {} owner)
-                return HasValidIcon(Icon); // standalone (no popup): its own icon decides
+    public bool IsIconTrayVisible => _isIconTrayVisibleCached ??= ComputeIsIconTrayVisible();
 
-            return owner is not Menu && AnyContainerHasIcon(owner);
-        }
+    private bool ComputeIsIconTrayVisible()
+    {
+        if (OwnerItemsControl is not {} owner)
+            return ShouldDisplayIconTray(this); // standalone (no popup): its own icon decides
+
+        return owner is not Menu && AnyContainerHasIcon(owner);
     }
 
     // 'Valid' is simply non-null for now — one place to tighten if that ever changes.
-    private static bool HasValidIcon(object? icon) => icon is not null;
+    private static bool HasValidIcon(MenuItem? item) => item?.Icon is not null;
 
     private static bool AnyContainerHasIcon(ItemsControl owner)
     {
@@ -173,12 +176,14 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         for (var i = 0; i < generator.ContainerCount; i++)
         {
-            if (generator.ContainerFromIndex(i) is MenuItem sibling && HasValidIcon(sibling.Icon))
+            if (generator.ContainerFromIndex(i) is MenuItem sibling && ShouldDisplayIconTray(sibling))
                 return true;
         }
 
         return false;
     }
+
+    private static bool ShouldDisplayIconTray(MenuItem item) => item.IsCheckable || HasValidIcon(item);
 
     /// <summary>CLR sugar over <see cref="ClickEvent"/>.</summary>
     public event EventHandler<ClickEventArgs>? Click
@@ -405,7 +410,8 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (Command is { } command && command.CanExecute(CommandParameter))
             command.Execute(CommandParameter);
 
-        CloseMenuChain();
+        if (IsCheckable is false)
+            CloseMenuChain();
     }
 
     private void RefreshHighlight() => SetHighlighted(IsFocused/* || _isPointerOver*/); // highlighted = focused or hovered
@@ -659,13 +665,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     private void UpdateIsIconTrayVisible()
     {
         var was = _isIconTrayVisibleCached;
+
+        _isIconTrayVisibleCached = null;
+
         var now = IsIconTrayVisible;
 
         if (was != now)
-        {
-            _isIconTrayVisibleCached = now;
             DispatchPropertyChanged(IsIconTrayVisibleProperty, null, was, now, BindingPriority.LocalValue);
-        }
     }
 
     /// <summary>
@@ -700,6 +706,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         {
             _icon.Content = icon;
             _icon.Visibility = Visibility.Visible;
+        } 
+        else if (Icon is IconCarrier carrier)
+        {
+            _icon.Content = carrier;
+            _icon.Visibility = Visibility.Visible;
         }
         else if (Icon is ImageData image)
         {
@@ -709,6 +720,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         else if (Icon is {} other)
         {
             _icon.Content = other.ToString();
+            _icon.Visibility = Visibility.Visible;
+        }
+        else if (IsChecked)
+        {
+            _icon.Content = CheckmarkIcon;
             _icon.Visibility = Visibility.Visible;
         }
         else
@@ -795,6 +811,17 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         item.RefreshIconTrayGroup();
     }
 
+    private static void OnCheckStateChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        item.UpdateIconSite();
+
+        // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
+        item.RefreshIconTrayGroup();
+    }
+
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)
     {
         if (sender is MenuItem item)
@@ -803,4 +830,15 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     public static bool GetIsWithinMenu(UIElement element) => element.GetValue(IsWithinMenuProperty);
+    
+    private static IconCarrier BuildCheckmarkIcon()
+    {
+        return new IconCarrier
+               {
+                   Glyph = "",
+                   GlyphWidth = 2,
+                   Emoji = "✅",
+                   Text = "✓"
+               };
+    }
 }

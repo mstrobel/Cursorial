@@ -51,11 +51,17 @@ public static class ThemeKeys
     /// <summary>Selection fill (selected item/text) in a focused container.</summary>
     public const string SelectionBrush = "Theme.SelectionBrush";
 
+    /// <summary>Selection ink (selected item/text) in a focused container.</summary>
+    public const string SelectionInk = "Theme.SelectionInk";
+
     /// <summary>Selection fill in an <b>unfocused</b> container (the neutral-grey inactive selection, spec --sel-inactive).</summary>
     public const string SelectionInactiveBrush = "Theme.SelectionInactiveBrush";
 
     /// <summary>Even-row zebra fill in lists/grids (spec --altrow; consumed by the opt-in <c>:alternate</c> row look).</summary>
     public const string AlternateRowBrush = "Theme.AlternateRowBrush";
+
+    /// <summary>Even-row zebra ink in lists/grids (spec --altrow-ink; consumed by the opt-in <c>:alternate</c> row look).</summary>
+    public const string AlternateRowInk = "Theme.AlternateRowInk";
 
     /// <summary>Shared pointer-over (hover) fill.</summary>
     public const string HoverBrush = "Theme.HoverBrush";
@@ -392,14 +398,24 @@ public static class ThemeKeys
     public const string MenuBarBackground = "Theme.MenuBarBackground";
     /// <summary>Hovered menu-item fill (--hover).</summary>
     public const string MenuBackgroundHover = "Theme.MenuBackgroundHover";
+    /// <summary>Hovered menu-item fill (--hover).</summary>
+    public const string MenuForegroundHover = "Theme.MenuForegroundHover";
     /// <summary>Highlighted / open menu-item fill (--sel).</summary>
     public const string MenuBackgroundHighlighted = "Theme.MenuBackgroundHighlighted";
+    /// <summary>Highlighted / open menu-item ink</summary>
+    public const string MenuForegroundHighlighted = "Theme.MenuForegroundHighlighted";
     /// <summary>The ^X accelerator/gesture hint text (--muted).</summary>
     public const string MenuAcceleratorForeground = "Theme.MenuAcceleratorForeground";
     /// <summary>The ^X accelerator/gesture hint text when hovered (--text-dim).</summary>
     public const string MenuAcceleratorHoverForeground = "Theme.MenuAcceleratorHoverForeground";
     /// <summary>Disabled menu-item ink (--muted).</summary>
     public const string MenuForegroundDisabled = "Theme.MenuForegroundDisabled";
+    /// <summary>ink for <em>checkable</em> menu-item's checkmark/icon when <em>checked</em>.</summary>
+    public const string MenuIconCheckedForeground = "Theme.MenuIconCheckedForeground";
+    /// <summary>ink for <em>checkable</em> menu-item's checkmark/icon when <em>unchecked</em>.</summary>
+    public const string MenuIconUncheckedForeground = "Theme.MenuIconUncheckedForeground";
+    /// <summary>ink for <em>checkable, hovered</em> menu-item's checkmark/icon when <em>unchecked</em>.</summary>
+    public const string MenuIconUncheckedHoverForeground = "Theme.MenuIconUncheckedHoverForeground";
 
     // TabItem.
     /// <summary>Inactive tab-header ink (--text-dim; the gallery dims unselected tabs).</summary>

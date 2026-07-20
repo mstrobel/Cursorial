@@ -236,9 +236,12 @@ public class Icon : Control
 
         if (tier is IconTier.Glyph)
         {
-            var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = GlyphWidth };
+            var text = new TextBlock { TextAlignment = TextAlignment.Center, Width = GlyphWidth };
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
+            if (GlyphWidth > 1)
+                text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this, StringFormat = "{0}" + new string(' ', GlyphWidth - 1)});
+            else
+                text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
             text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
@@ -280,8 +283,10 @@ public class Icon : Control
     // style/underline are meaningless on a symbol (owner rule 2026-07-13). The Icon itself receives
     // Inverse via the presenting template's forward (or ContentRealization's chain-③-Icon forward).
     private void ForwardTextAxesToGlyph(TextBlock glyph)
-        => glyph.SetBinding(TextElement.InverseProperty,
-                            new Binding(TextElement.InverseProperty) { Source = this });
+    {
+        foreach (var axis in TextElement.AllAxisProperties)
+            glyph.SetBinding(axis, new Binding(axis) { Source = this });
+    }
 
     // Whether the EFFECTIVE capabilities (negotiated ∘ user overrides — FB-5) include a graphics protocol that can
     // carry an inline image (mirrors the protocol gate in ImagePresenter.IsImageVisible; the per-image format check

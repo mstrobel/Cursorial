@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 using Cursorial.Input;
 using Cursorial.Rendering;
@@ -17,16 +18,18 @@ using Cursorial.UI.DataViews.Shaping.Expressions;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
+// ReSharper disable GrammarMistakeInComment
+// ReSharper disable ForCanBeConvertedToForeach
+
 namespace Cursorial.UI.DataViews;
 
 /// <summary>
-/// The DevExpress-style data grid (design doc §3; visual spec
-/// <c>tokyo-night-terminal-datagrid.html</c>): a non-generic <see cref="Control"/> over the typed
-/// shaping engine — columns (explicit + auto-generated), multi-level sorting and grouping with
-/// summaries, criteria-tree filtering, direct-drawn virtualized rows, row-id-keyed selection, and
-/// in-row editing via the element-hosting special case. The observable
-/// <see cref="SortDescriptions"/>/<see cref="GroupDescriptions"/> collections are the ONE source of
-/// truth — gestures edit them, glyphs render them, persistence reads them (panel decision).
+/// The DevExpress-style data grid (design doc §3; visual spec <c>tokyo-night-terminal-datagrid.html</c>):
+/// a non-generic <see cref="Control"/> over the typed shaping engine — columns (explicit and auto-generated),
+/// multi-level sorting and grouping with summaries, criteria-tree filtering, direct-drawn virtualized rows,
+/// row-id-keyed selection, and in-row editing via the element-hosting special case. The observable
+/// <see cref="DataGrid.SortDescriptions"/>/<see cref="DataGrid.GroupDescriptions"/> collections are the ONE
+/// source of truth — gestures edit them, glyphs render them, persistence reads them (panel decision).
 /// </summary>
 /// <summary>How a group row shows its summaries (§2.5).</summary>
 public enum GroupSummaryDisplay
@@ -130,8 +133,8 @@ public class DataGrid : Control
     /// content-y map); detail elements are hosted children built fresh per expansion with
     /// <c>DataContext</c> = the row object.
     /// </summary>
-    public static readonly StyledProperty<Controls.DataTemplate?> DetailTemplateProperty =
-        UIProperty.Register<DataGrid, Controls.DataTemplate?>(nameof(DetailTemplate),
+    public static readonly StyledProperty<DataTemplate?> DetailTemplateProperty =
+        UIProperty.Register<DataGrid, DataTemplate?>(nameof(DetailTemplate),
             changed: static (sender, _, _) =>
             {
                 var grid = (DataGrid)sender;
@@ -300,7 +303,7 @@ public class DataGrid : Control
     }
 
     /// <inheritdoc cref="DetailTemplateProperty"/>
-    public Controls.DataTemplate? DetailTemplate
+    public DataTemplate? DetailTemplate
     {
         get => GetValue(DetailTemplateProperty);
         set => SetValue(DetailTemplateProperty, value);
@@ -1333,6 +1336,7 @@ public class DataGrid : Control
     public const string PartEditBar = "PART_EditBar";
     public const string PartHScrollBar = "PART_HScrollBar";
 
+    // ReSharper disable once NotAccessedField.Local
     private ScrollViewer? _scrollViewer;
     private DataGridHeaderPresenter? _header;
     private DataGridSummaryPresenter? _footer;
@@ -1454,6 +1458,7 @@ public class DataGrid : Control
             return;
         }
 
+        // ReSharper disable once PossibleMultipleEnumeration
         _rowType = DiscoverRowType(source);
         _rowTypeHasParameterlessCtor = _rowType?.GetConstructor(Type.EmptyTypes) is not null;
         if (_rowType is null)
@@ -1475,6 +1480,7 @@ public class DataGrid : Control
         EnsureColumns();
         _controller.SetColumns(Columns.Where(c => c.FieldName is not null || c.KeySelector is not null)
                                       .Select(c => c.ToShapingDescription()).ToList());
+        // ReSharper disable once PossibleMultipleEnumeration
         _controller.AttachSource(source, EffectiveLiveUpdates);
         ApplyPendingAnnotationShape(); // annotation-declared default sort/group, now that columns are registered
         _controller.SnapshotChanged += (_, _) => RaiseSnapshotChanged();
@@ -1494,7 +1500,7 @@ public class DataGrid : Control
             }
             if (_focusRowId >= 0 && Contains(ids, _focusRowId))
                 _focusRowId = -1; // the view-space fallback carries the focus (audit W2-13)
-            if (RowsPresenter is { IsEditing: true } editing && editing.EditRowId >= 0 &&
+            if (RowsPresenter is { IsEditing: true, EditRowId: >= 0 } editing &&
                 Contains(ids, editing.EditRowId))
             {
                 CancelEdit(); // the edited row was removed — discard before its slot can recycle
@@ -1661,8 +1667,8 @@ public class DataGrid : Control
             var pendingSorts = new List<(int Level, DataGridColumn Column, SortDirection Direction)>();
             var pendingGroups = new List<(int Level, DataGridColumn Column)>();
             int sequence = 0;
-            foreach (var property in _rowType.GetProperties(System.Reflection.BindingFlags.Public |
-                                                            System.Reflection.BindingFlags.Instance))
+            foreach (var property in _rowType.GetProperties(BindingFlags.Public |
+                                                            BindingFlags.Instance))
             {
                 if (property.GetMethod is null || property.GetIndexParameters().Length > 0)
                     continue;
@@ -1765,7 +1771,7 @@ public class DataGrid : Control
 
         if (property.GetCustomAttribute<ColorScaleAttribute>() is { Stops.Length: >= 2 } scale)
         {
-            var stops = new List<Cursorial.Output.Color>();
+            var stops = new List<Output.Color>();
             foreach (var hex in scale.Stops)
             {
                 if (DataGridDialogHelpers.TryParseColor(hex, out var color))
@@ -1821,7 +1827,7 @@ public class DataGrid : Control
     {
         get
         {
-            int digits = System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalDigits;
+            int digits = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalDigits;
             return digits > 0 ? "#,0." + new string('#', digits) : "#,0";
         }
     }
@@ -2533,7 +2539,7 @@ public class DataGrid : Control
         if (presenter is null || !presenter.IsEditing || _controller is null)
             return false;
 
-        var (viewIndex, columnIndex) = presenter.EditCell;
+        var (_, columnIndex) = presenter.EditCell;
         if (!presenter.TryGetEditorText(out string? text))
             return false; // nothing committable yet (a combo with no selection) — keep editing
 
@@ -2930,7 +2936,7 @@ public class DataGrid : Control
                 // Audit W2-11: `focused` is the DEFAULT carrier on the placeholder / with no focus
                 // row (RowId 0 would alias a real slot) — the range writes need a REAL data row.
                 bool focusedIsData = !onPlaceholder && FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count &&
-                                     !focused.IsGroup && focused.RowId >= 0;
+                                     focused is { IsGroup: false, RowId: >= 0 };
                 if (SelectionUnit == DataGridSelectionUnit.Cell && focusedIsData)
                 {
                     if (shift)
@@ -2944,7 +2950,7 @@ public class DataGrid : Control
             }
 
             // Enter on a data row (or the new-row template) begins editing the focused cell (§3.2).
-            case Key.Enter when onPlaceholder || (!focused.IsGroup && focused.RowId >= 0):
+            case Key.Enter when onPlaceholder || focused is { IsGroup: false, RowId: >= 0 }:
                 BeginEdit();
                 e.Handled = RowsPresenter is { IsEditing: true }; // read-only cells leave Enter unhandled
                 return;
@@ -2977,7 +2983,7 @@ public class DataGrid : Control
             // placeholder: its default `focused` carries RowId 0, which would alias a real row.
             // ROW mode only (audit W2-14): cell mode keeps its one rectangle — a row-selection
             // write would re-create the mixed state the §9.4 mode switch exists to clear.
-            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && !focused.IsGroup && focused.RowId >= 0 &&
+            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && focused is { IsGroup: false, RowId: >= 0 } &&
                                                  SelectionUnit == DataGridSelectionUnit.Row:
                 if (ctrl)
                     RowSelection.Toggle(focused.RowId);

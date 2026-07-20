@@ -442,4 +442,31 @@ internal static class CursorialThemeStyles
                { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic — see the nocolor twin's note)
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
+    
+    internal static Style CapsNoColorMenuIconToggleStyle()
+    {
+        return new Style(":is(MenuItem)")
+               {
+                   Key = "Theme.BarToggleButton.CheckedInverse",
+                   RequiresCapabilities = StyleCapabilities.NoColor,
+                   Children =
+                   {
+                       new Style("^:checked /template/ #PART_Icon > Icon, " +
+                                 "^:checked /template/ #PART_IconTray, " +
+                                 "^:focus /template/ #PART_Icon > Icon, " +
+                                 "^:focus /template/ #PART_IconTray, " +
+                                 "^:pointerover /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover /template/ #PART_IconTray")
+                          .Set(TextElement.InverseProperty, true),
+                       new Style("^:focus:checked /template/ #PART_Icon > Icon, " +
+                                 "^:focus:checked /template/ #PART_IconTray, " +
+                                 "^:pointerover:checked /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover:checked /template/ #PART_IconTray, " +
+                                 "^:focus:pressed /template/ #PART_Icon > Icon, " +
+                                 "^:focus:pressed /template/ #PART_IconTray")
+                          .Set(TextElement.InverseProperty, false)
+                   }
+               };
+    }
+
 }

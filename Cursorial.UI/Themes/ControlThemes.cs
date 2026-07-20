@@ -1262,9 +1262,14 @@ internal static class ControlThemes
                      header.SetBinding(ContentPresenter.ContentProperty,
                                        new TemplateBinding(HeaderedItemsControl.HeaderProperty));
 
-                     var icon = new ContentPresenter { Visibility = Visibility.Collapsed };
+                     var icon = new ContentPresenter
+                                {
+                                    Visibility = Visibility.Collapsed,
+                                    ForwardsFromTemplatedParent = false
+                                };
+
                      var iconTray = new Border { Width = 2, Height = 1, Child = icon, Margin = new Margins(0, 0, 1, 0) };
-                     
+
                      ctx.RegisterName("PART_IconTray", iconTray);
                      ctx.RegisterName("PART_Icon", icon);
                      
@@ -1338,12 +1343,61 @@ internal static class ControlThemes
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":highlighted").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_GestureText"))
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator")))
-               .SetResource(Control.ForegroundProperty, ThemeKeys.MenuAcceleratorHoverForeground)
+               .SetResource(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorHoverForeground)
         );
 
         t.Styles.Add(
             new Style(Selectors.OfType<MenuItem>().PseudoClass(":top-level").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
                .Set(UIElement.VisibilityProperty, Visibility.Collapsed)
+        );
+
+        // By default, dim the foreground of the icon/checkmark when checkable but unchecked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checkable").Template().OfType<Border>().Name("PART_IconTray"))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconUncheckedForeground)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checkable").PseudoClass(":highlighted").Template().OfType<Border>().Name("PART_IconTray")
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":checkable").PseudoClass(":open").Template().OfType<Border>().Name("PART_IconTray")))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconUncheckedHoverForeground)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").PseudoClass(":highlighted").Template().OfType<Border>().Name("PART_IconTray")
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":checked").PseudoClass(":open").Template().OfType<Border>().Name("PART_IconTray")))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+        );
+
+        // By default, toggle the foreground ONLY of the icon/checkmark when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+        );
+
+        // By default, toggle text weight of icon/checkmark to BOLD when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<ContentPresenter>().Name("PART_Icon"))
+               .Set(TextElement.TextWeightProperty, TextWeight.Bold)
+        );
+
+        // If emoji are enabled but NOT nerd fonts, toggle the foreground AND background of the icon/checkmark when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+                {
+                    RequiresCapabilities = StyleCapabilities.Emoji
+                }
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+               .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessInverseBrush)
+        );
+        // If nerd fonts are enabled, toggle the foreground ONLY of the icon/checkmark when checked (overrides the emoji rule when both are present)
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+                {
+                    RequiresCapabilities = StyleCapabilities.NerdFont
+                }
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+               .Set(Border.BackgroundProperty, null)
         );
 
         // t.Styles.Add(
@@ -1364,9 +1418,15 @@ internal static class ControlThemes
         var theme = new Style { Key = "Theme.MenuItem" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundNormal)
             .Set(Control.TemplateProperty, MenuItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHover));
-        theme.Children.Add(new Style("^:highlighted").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
-        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHover));
+        theme.Children.Add(new Style("^:highlighted")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHighlighted));
+        theme.Children.Add(new Style("^:open")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHighlighted));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundDisabled));
         return theme;
     }

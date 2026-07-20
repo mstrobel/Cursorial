@@ -73,7 +73,7 @@ public class DataGridRenderTests
         // Data rows (insertion order — no sort yet).
         Assert.Contains("SO-1042", Row(host, 1));
         Assert.Contains("East", Row(host, 1));
-        Assert.Contains("12450", Row(host, 1));
+        Assert.Contains("12,450", Row(host, 1));
         Assert.Contains("SO-1044", Row(host, 2));
         Assert.Contains("SO-1046", Row(host, 3));
         Assert.Contains("SO-1047", Row(host, 4));
@@ -89,15 +89,15 @@ public class DataGridRenderTests
         host.RunUntilIdle();
 
         Assert.Contains("▲", Row(host, 0));
-        Assert.Contains("12450", Row(host, 1));
-        Assert.Contains("19800", Row(host, 2));
-        Assert.Contains("27300", Row(host, 3));
-        Assert.Contains("31900", Row(host, 4));
+        Assert.Contains("12,450", Row(host, 1));
+        Assert.Contains("19,800", Row(host, 2));
+        Assert.Contains("27,300", Row(host, 3));
+        Assert.Contains("31,900", Row(host, 4));
 
         grid.CycleSort(grid.Columns[2]); // descending
         host.RunUntilIdle();
         Assert.Contains("▼", Row(host, 0));
-        Assert.Contains("31900", Row(host, 1));
+        Assert.Contains("31,900", Row(host, 1));
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class DataGridRenderTests
 
         Assert.Contains("SO-1046", Row(host, 1)); // 19800 now smallest
         Assert.Contains("SO-1042", Row(host, 4));
-        Assert.Contains("99999", Row(host, 4));
+        Assert.Contains("99,999", Row(host, 4));
     }
 
     [Fact]

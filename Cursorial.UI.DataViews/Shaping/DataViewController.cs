@@ -1470,7 +1470,22 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
     }
 
     private static string ApplyTemplate(string? template, string value)
-        => template is null ? value : string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+    {
+        if (template is null)
+            return value;
+
+        // A malformed composite-format template ("{0" unclosed, "{1}" out of range) throws
+        // FormatException — a user/metadata display template must never crash the summary path, so a
+        // bad one degrades to the bare formatted value.
+        try
+        {
+            return string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
+    }
 
     private void CompileShape()
     {

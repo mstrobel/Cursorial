@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 
 using Cursorial.Input;
 using Cursorial.Output;
@@ -25,12 +23,11 @@ namespace Cursorial.Tests.UI.DataViews;
 /// </summary>
 public class DataGridNoColorCueTests
 {
-    private sealed class Order(string id, string region, decimal amount) : INotifyPropertyChanged
+    private sealed class Order(string id, string region, decimal amount)
     {
         public string Id { get; } = id;
         public string Region { get; } = region;
         public decimal Amount { get; } = amount;
-        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     private static ObservableCollection<Order> SampleOrders() =>

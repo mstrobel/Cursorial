@@ -1180,7 +1180,7 @@ public class DataGridDialogsTests
         grid.RefreshFormatRules();
         host.RunUntilIdle();
 
-        var hit = FindText(host, "31900");
+        var hit = FindText(host, "31,900");
         Assert.NotNull(hit);
         Assert.Equal(red, host.GetCell(hit.Value.X, hit.Value.Y).Style.Foreground);
 
@@ -1202,7 +1202,7 @@ public class DataGridDialogsTests
         host.RunUntilIdle();
         Assert.True(task.IsCompleted);
 
-        hit = FindText(host, "31900");
+        hit = FindText(host, "31,900");
         Assert.NotNull(hit);
         var cell = host.GetCell(hit.Value.X, hit.Value.Y);
         Assert.NotEqual(red, cell.Style.Foreground);
@@ -1212,7 +1212,7 @@ public class DataGridDialogsTests
         row.Rule.Enabled = true;
         grid.RefreshFormatRules();
         host.RunUntilIdle();
-        hit = FindText(host, "31900");
+        hit = FindText(host, "31,900");
         Assert.NotNull(hit);
         Assert.Equal(red, host.GetCell(hit.Value.X, hit.Value.Y).Style.Foreground);
     }

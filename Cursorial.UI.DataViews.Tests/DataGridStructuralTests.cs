@@ -608,6 +608,74 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public async Task Summary_editor_rejects_an_invalid_format_and_stays_open()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]); // Amount
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+
+        editor.AggregateCombo.SelectedIndex = 1; // Sum
+        editor.FormatBox.Text = "Q2";            // an unrecognized standard specifier (throws at format time)
+        host.RunUntilIdle();
+
+        editor.Ok();
+        host.RunUntilIdle();
+
+        // Rejected: the dialog stays open, the error explains, and nothing was committed.
+        Assert.True(editor.IsOpen);
+        Assert.False(task.IsCompleted);
+        Assert.Contains("Invalid format", editor.Error.Text);
+        Assert.DoesNotContain(grid.SummaryDescriptions, d => ReferenceEquals(d.ColumnKey, grid.Columns[2]));
+
+        // Correcting the format clears the error and commits.
+        editor.FormatBox.Text = "N0";
+        host.RunUntilIdle();
+        Assert.Equal(string.Empty, editor.Error.Text);
+        editor.Ok();
+        host.RunUntilIdle();
+        await task;
+        Assert.Equal("N0", Assert.Single(grid.SummaryDescriptions, d => ReferenceEquals(d.ColumnKey, grid.Columns[2])).Format);
+    }
+
+    [Fact]
+    public async Task Summary_editor_seeds_its_format_from_the_column()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        await using var _ = host;
+
+        grid.Columns[2].Format = "C0"; // a directly-set column format
+        var task = grid.OpenSummaryEditorAsync(grid.Columns[2]);
+        host.RunUntilIdle();
+        var editor = grid.ActiveSummaryEditor!;
+
+        Assert.Equal("C0", editor.FormatBox.Text); // inherited from the column when no summary exists yet
+
+        editor.Ok();
+        host.RunUntilIdle();
+        await task;
+    }
+
+    [Fact]
+    public void An_invalid_summary_format_or_template_degrades_instead_of_crashing()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        // Formats/templates can also arrive from metadata or code (bypassing the editor's rejection),
+        // so the engine must never throw on a bad one — it degrades to the unformatted value. "Q2" is
+        // an unrecognized standard specifier (throws at format time); "{1}" is an out-of-range template.
+        grid.SummaryDescriptions.Add(new SummaryDescription(grid.Columns[2], AggregateKind.Sum, "Q2", "Σ {1}"));
+        host.RunUntilIdle(); // must NOT throw
+
+        // The footer still renders — the bad format drops (raw sum) and the bad template drops.
+        var footer = string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y)));
+        Assert.Contains("91450", footer);
+    }
+
+    [Fact]
     public void Grid_context_menu_toggles_the_group_panel_and_summary_footer()
     {
         var (host, grid, _) = Show(columns: 60, rows: 16);

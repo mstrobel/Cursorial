@@ -221,6 +221,37 @@ internal static class ShapingCodegen
     // ── Formatters ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Whether <paramref name="format"/> is a usable <c>ToString</c> spec for <paramref name="type"/>.
+    /// A mistyped standard specifier (e.g. <c>"N2x"</c>, <c>"Q0"</c>) throws
+    /// <see cref="FormatException"/> at format time; validating ONCE per formatter build (against a
+    /// sample value — numeric/date format validity is value-independent) lets a bad user- or
+    /// metadata-supplied format degrade to the unformatted <c>ToString</c> instead of crashing the
+    /// render/summary path. Null/empty formats and non-<see cref="IFormattable"/> types are always
+    /// valid (the format is unused). Reference <see cref="IFormattable"/> types can't be sampled here
+    /// and are reported valid (the codegen null-guards them; a throw there is the caller's contract).
+    /// </summary>
+    internal static bool IsFormatStringValid(Type type, string? format, CultureInfo? culture = null)
+    {
+        if (string.IsNullOrEmpty(format))
+            return true;
+
+        var valueType = Nullable.GetUnderlyingType(type) ?? type;
+        if (!valueType.IsValueType || !typeof(IFormattable).IsAssignableFrom(valueType))
+            return true;
+
+        try
+        {
+            var sample = (IFormattable)Activator.CreateInstance(valueType)!;
+            sample.ToString(format, culture ?? CultureInfo.CurrentCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The display formatter for a key type: <see cref="IFormattable"/> keys call
     /// <c>ToString(format, culture)</c> directly on the typed value (no box for value types);
     /// <see cref="Nullable{T}"/>/reference nulls format as <c>""</c>. Default culture is
@@ -230,6 +261,12 @@ internal static class ShapingCodegen
     {
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
+
+        // An invalid ToString spec (a mistyped standard specifier) throws FormatException at format
+        // time — which would crash the summary/render path. Degrade a bad format to the unformatted
+        // ToString once here instead (design §2.5 — user/metadata formats are never trusted blind).
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
 
         if (type == typeof(string))
             return (Func<TKey, string>)(object)new Func<string?, string>(static v => v ?? string.Empty);
@@ -311,6 +348,11 @@ internal static class ShapingCodegen
     {
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
+
+        // Degrade an invalid ToString spec to the unformatted lane (CreateFormatter parity) — an
+        // uncaught FormatException here would crash per-cell rendering.
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
 
         if (type == typeof(string))
         {

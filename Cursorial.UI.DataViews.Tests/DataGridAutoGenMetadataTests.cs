@@ -29,7 +29,7 @@ public class DataGridAutoGenMetadataTests
         [DisplayFormat(DataFormatString = "{0:N2}")]
         public decimal UnitPrice { get; set; }
 
-        public double Ratio { get; set; } // no annotation → per-type default "0.####"
+        public double Ratio { get; set; } // no annotation → per-type default "N"
 
         public int Quantity { get; set; } // integer → no default format
 
@@ -75,8 +75,11 @@ public class DataGridAutoGenMetadataTests
 
         // [DisplayFormat("{0:N2}")] → the raw "N2" format.
         Assert.Equal("N2", grid.Columns.First(c => c.FieldName == "UnitPrice").Format);
-        // No annotation on a double → the per-type rounding default.
-        Assert.Equal("0.####", grid.Columns.First(c => c.FieldName == "Ratio").Format);
+        // No annotation on a double → the per-type float default: separators + up to the culture's
+        // fraction digits as OPTIONAL places (no forced trailing zeros).
+        int digits = System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalDigits;
+        string expectedFloat = digits > 0 ? "#,0." + new string('#', digits) : "#,0";
+        Assert.Equal(expectedFloat, grid.Columns.First(c => c.FieldName == "Ratio").Format);
         // Integers keep plain ToString (no default format).
         Assert.Null(grid.Columns.First(c => c.FieldName == "Quantity").Format);
     }
@@ -151,16 +154,29 @@ public class DataGridAutoGenMetadataTests
     }
 
     [Fact]
-    public void A_double_column_rounds_by_default_instead_of_showing_G_precision()
+    public void A_double_column_rounds_by_default_but_never_forces_trailing_zeros()
     {
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 10) });
         using var _ = host;
-        var grid = new DataGrid { ItemsSource = new ObservableCollection<Product> { new() { Name = "A", Ratio = 1.0 / 3.0 } } };
+        var grid = new DataGrid
+        {
+            ItemsSource = new ObservableCollection<Product>
+            {
+                new() { Name = "A", Ratio = 1.0 / 3.0 },  // fractional → rounds to the culture digits
+                new() { Name = "B", Ratio = 5.0 },        // integer-valued → NO trailing ".00" (not harsh)
+                new() { Name = "C", Ratio = 12000.0 },    // thousands read with a group separator
+            },
+        };
         host.ShowRoot(grid);
         host.RunUntilIdle();
 
+        int digits = System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalDigits;
+        string fmt = digits > 0 ? "#,0." + new string('#', digits) : "#,0";
+
         var all = string.Join("\n", Enumerable.Range(0, 10).Select(host.GetRowText));
-        Assert.Contains("0.3333", all);            // rounded to ≤4 decimals
-        Assert.DoesNotContain("0.33333", all);      // NOT full "G" precision (0.3333333333333333)
+        Assert.Contains((1.0 / 3.0).ToString(fmt), all);   // rounded to the culture's fraction digits
+        Assert.DoesNotContain("0.33333", all);              // NOT full "G" precision (0.3333333333333333)
+        Assert.DoesNotContain("5.00", all);                 // integer-valued double: optional (#) ⇒ no forced ".00"
+        Assert.Contains((12000.0).ToString(fmt), all);      // grouped per the culture
     }
 }

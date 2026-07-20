@@ -548,6 +548,17 @@ public class DataGridStructuralTests
         Assert.Empty(grid.SummaryDescriptions);
     }
 
+    /// <summary>A menu item's header text — a plain string, or the caption+value of a two-part
+    /// <see cref="Cursorial.UI.Controls.DockPanel"/> header (the label + right-docked value), read in
+    /// visual order (caption first).</summary>
+    private static string MenuHeaderText(Cursorial.UI.Controls.MenuItem item) => item.Header switch
+    {
+        string s => s,
+        Cursorial.UI.Controls.DockPanel dock => string.Join(
+            " ", dock.Children.OfType<Cursorial.UI.Controls.TextBlock>().Reverse().Select(t => t.Text ?? string.Empty)),
+        _ => item.Header?.ToString() ?? string.Empty,
+    };
+
     [Fact]
     public void Summary_menu_shows_live_values_and_the_edit_entry()
     {
@@ -560,10 +571,16 @@ public class DataGridStructuralTests
         var summarySub = menu.Items.OfType<Cursorial.UI.Controls.MenuItem>()
                              .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
         var captions = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
-                                 .Select(i => i.Header?.ToString() ?? string.Empty).ToList();
+                                 .Select(MenuHeaderText).ToList();
 
         // Each aggregate carries its live value (§2.5): Sum of 12450+31900+19800+27300 = 91450.
         Assert.Contains(captions, c => c.StartsWith("Sum", StringComparison.Ordinal) && c.Contains("91450", StringComparison.Ordinal));
+
+        // The value rides a right-docked DockPanel cell (uniform alignment), not a fixed-space string.
+        var sumItem = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                .First(i => MenuHeaderText(i).StartsWith("Sum", StringComparison.Ordinal));
+        var sumDock = Assert.IsType<Cursorial.UI.Controls.DockPanel>(sumItem.Header);
+        Assert.Equal(Cursorial.UI.Controls.Dock.Right, Cursorial.UI.Controls.DockPanel.GetDock(sumDock.Children[0]));
 
         // …and the editor entry is present, carrying the gear on MenuItem.Icon (the tiered Icon
         // class), NOT embedded in the header text.
@@ -659,9 +676,9 @@ public class DataGridStructuralTests
         var summarySub = grid.ActiveGridMenu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
                              .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
         var sumCaption = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
-                                   .First(i => (i.Header?.ToString() ?? string.Empty).StartsWith("Sum", StringComparison.Ordinal))
-                                   .Header!.ToString();
-        Assert.Contains("91,450", sumCaption!);
+                                   .Select(MenuHeaderText)
+                                   .First(h => h.StartsWith("Sum", StringComparison.Ordinal));
+        Assert.Contains("91,450", sumCaption);
         grid.ActiveGridMenu!.Close();
         host.RunUntilIdle();
     }

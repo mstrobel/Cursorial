@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Input;
+using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -14,6 +15,7 @@ using Cursorial.UI.DataViews.Annotations;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.DataViews;
 
@@ -426,7 +428,9 @@ public class DataGrid : Control
                 var value = _controller.ComputeSummaryText(column, kind, column.Format);
                 var item = new MenuItem
                 {
-                    Header = value is { Length: > 0 } ? $"{caption}   {value}" : caption,
+                    // A DockPanel row (label fills, value docked right) so the values right-align into
+                    // one column regardless of label width — not a fixed-space string.
+                    Header = value is { Length: > 0 } ? MenuValueRow(caption, value) : caption,
                     IsCheckable = true,
                     IsChecked = SummaryDescriptions.Any(s =>
                         ReferenceEquals(s.ColumnKey, column) && s.Aggregate == kind),
@@ -494,6 +498,24 @@ public class DataGrid : Control
             item.Click += (_, _) => toggle();
             menu.Items.Add(item);
         }
+    }
+
+    /// <summary>A two-part menu-item header: <paramref name="caption"/> fills the row while
+    /// <paramref name="trailing"/> (a live value / count / preview) docks to the right, so trailing
+    /// text right-aligns into one column across sibling items regardless of caption width — the menu
+    /// stretches every item to the widest, so the fill child yields a uniform gutter (owner note,
+    /// 2026-07-20; the uneven fixed-space spacing it replaces).</summary>
+    private static DockPanel MenuValueRow(string caption, string trailing)
+    {
+        var dock = new DockPanel();
+
+        var value = new TextBlock { Text = trailing, Margin = new Margins(3, 0, 0, 0) };
+        value.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        DockPanel.SetDock(value, Dock.Right);
+        dock.Children.Add(value);
+
+        dock.Children.Add(new TextBlock { Text = caption }); // last child fills the remaining width
+        return dock;
     }
 
     /// <summary>Adds the (column, kind) summary, or removes it when already present (the menu's checkable toggle).</summary>

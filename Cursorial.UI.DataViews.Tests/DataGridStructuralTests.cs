@@ -641,6 +641,32 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void A_summary_without_its_own_format_inherits_the_column_format()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        grid.Columns[2].Format = "#,0"; // the Amount column's own display format (grouped)
+        grid.ToggleSummary(grid.Columns[2], AggregateKind.Sum); // added with NO explicit format
+        host.RunUntilIdle();
+
+        // The footer's Sum is formatted with the COLUMN's format (grouped) — not the raw "91450".
+        Assert.Contains("91,450", string.Join("\n", Enumerable.Range(0, 14).Select(y => Row(host, y))));
+
+        // The context-menu live value uses the same format (the menu ≡ footer ≡ editor formatting).
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        var summarySub = grid.ActiveGridMenu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal));
+        var sumCaption = summarySub.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+                                   .First(i => (i.Header?.ToString() ?? string.Empty).StartsWith("Sum", StringComparison.Ordinal))
+                                   .Header!.ToString();
+        Assert.Contains("91,450", sumCaption!);
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+    }
+
+    [Fact]
     public async Task Summary_editor_seeds_its_format_from_the_column()
     {
         var (host, grid, _) = Show(columns: 40);

@@ -421,8 +421,9 @@ public class DataGrid : Control
 
             void AddSummaryChoice(string caption, AggregateKind kind)
             {
-                // The mockup shows each aggregate's live value beside its name ("Sum  $171,900").
-                var value = _controller.ComputeSummaryText(column, kind);
+                // The mockup shows each aggregate's live value beside its name ("Sum  $171,900"),
+                // formatted the same as the footer/group summary — the column's own format by default.
+                var value = _controller.ComputeSummaryText(column, kind, column.Format);
                 var item = new MenuItem
                 {
                     Header = value is { Length: > 0 } ? $"{caption}   {value}" : caption,
@@ -1815,7 +1816,25 @@ public class DataGrid : Control
 
         FilterNode? effective = BuildEffectiveFilter();
         _controller.SetShape(SortDescriptions.ToList(), GroupDescriptions.ToList(),
-                             SummaryDescriptions.ToList(), effective);
+                             ResolveSummaryFormats(), effective);
+    }
+
+    /// <summary>The summary descriptions pushed to the engine, each with its <see cref="SummaryDescription.Format"/>
+    /// defaulted to the column's own display format when it declares none — so a footer/group summary matches its
+    /// column's formatting (thousands separators, currency, …) unless the summary carries an explicit override
+    /// (owner note, 2026-07-20).</summary>
+    private List<SummaryDescription> ResolveSummaryFormats()
+    {
+        var list = new List<SummaryDescription>(SummaryDescriptions.Count);
+
+        foreach (var s in SummaryDescriptions)
+        {
+            list.Add(s.Format is null && s.ColumnKey is DataGridColumn { Format: { Length: > 0 } columnFormat }
+                         ? s with { Format = columnFormat }
+                         : s);
+        }
+
+        return list;
     }
 
     private List<FormatRule> CollectFormatRules()

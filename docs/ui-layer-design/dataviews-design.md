@@ -568,32 +568,45 @@ through it). Span formatters wire into the band cache (pooled char buffers repla
 strings). The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as a
 `GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).
 
-## 10. Open deferrals (live-canary addendum, 2026-07-19)
+## 10. §10 deferred items — CLEARED (autonomous sweep, 2026-07-19)
 
-The still-open remainder of §1's "Deferred" list plus the gaps recorded since, each with where it
-is recorded. (Independent group `Direction` is NOT here — it shipped, §9.5, pinned by test.)
+The §10 open-deferral list is now **all shipped** (the 2026-07-19 autonomous sweep). Each item and
+where it landed. (Independent group `Direction` was never here — it shipped at §9.5, pinned by test.)
 
-1. **Multi-range cell selection** — `SelectionUnit.Cell` is ONE rectangle (the DevExpress
-   default); Ctrl-accumulated additional ranges later (§9.4).
-2. **Cell validation hooks** — the one editor-suite slice that never shipped: commit refuses
-   unparseable text, but there is no `CellValidating`-style event, per-column validator, or
-   error-cue UX.
-3. **Expression-editor syntax highlighting + IntelliSense** — v1 is the live validation strip +
-   Columns/Functions token inserters (`DataGridExpressionEditor` header doc: "the v2 surface").
-4. **Multi-entry `ThresholdRule` editing** — the rule editor edits the FIRST entry only (a
-   3-entry shape deliberately reads as the Icon Set preset); the rules manager still lists and
-   orders every entry (`DataGridRuleEditor` seed logic).
-5. **`Between` in the Highlight pane** — the engine and criteria language support it; the pane
-   lacks the two-bound UI (`DataGridRuleEditor` operator table).
-6. **Preset-only formatting pickers** — the rule editor offers 4 fixed color-scale presets and
-   the fixed ▲●▼ icon set; the ENGINE accepts arbitrary 2/3-stop lists and any `CellFormat.Icon`
-   glyph, so this is dialog surface only.
-7. **Icon glyphs on data-bar cells** — a cell showing a bar skips its verdict's icon: per-row
-   icon presence would wobble the column-uniform track origin (`DrawDataCell`).
-8. **Hand-built `PredicateRule` re-edit** — a code-authored lambda rule has no `SourceText`, so
-   the expression field seeds empty; text-authored rules round-trip (`PredicateRule.SourceText`).
-9. **Nerd Font icon tier** — the rules-manager toolbar `IconCarrier`s ship the emoji + text-floor
-   tiers only, pending a verified glyph audit (no guessed PUA codepoints).
-10. **The SCP band-window IVT promotion** — `BandStartRow`/`BandLength` reach the presenter via
-    `InternalsVisibleTo`; the recorded follow-up is a `GetRealizationWindow()`-style
-    `IScrollContentHost` surface (solution-wide change, §9.6).
+1. **Multi-range cell selection ✅** — `SelectionUnit.Cell` accumulates disjoint ranges: the active
+   range stays the four scalar corner fields, Ctrl+click BANKS it into `_committedRanges` and starts
+   a fresh one (a plain click/arrow drops the banked ones). Every range re-projects through the same
+   `ViewIndexOfRow`/`EntryIndexOfColumnClamped` path; the prune + RowsRemoved hygiene DROP a committed
+   range that loses a corner (only the active collapses to focus). The presenter fills a cell when ANY
+   range contains it (reused buffer, zero steady-state alloc); Ctrl+C TSV emits each block separated
+   by a blank line (`DataGrid.CollectCellRangeViewRects`).
+2. **Cell validation hooks ✅** — `DataGridColumn.Validator` (`Func<DataGridCellValidationContext,
+   string?>`, null = accept) runs in `CommitEdit` before the setter write on BOTH commit lanes; a
+   rejection vetoes the commit, keeps the editor in the danger ink, and shows the message on the edit
+   bar (retired on the next keystroke).
+3. **Expression-editor completion ✅ (highlighting still deferred)** — the criteria editor gains a
+   live completion popup (field names inside `[…]`, function tokens for a bare identifier; ↑/↓/Enter/
+   Tab/Esc). LIVE SYNTAX HIGHLIGHTING remains deferred with a sharper reason: it needs a second
+   orthogonal colored-run dimension on `TextBox`/`TextPresenter` (they render one brush, splitting
+   runs only at the selection) — genuine text-tier surgery, not an editor-local change.
+4. **Multi-entry `ThresholdRule` editing ✅** — the Highlight pane is a list of condition rows with
+   ＋ Add / ✕ Remove; SeedFrom populates one row per entry; Ok builds the whole ordered list.
+5. **`Between` in the Highlight pane ✅** — a two-bound operator revealing a second value box; Ok
+   carries the upper bound as `ThresholdEntry.SecondValue`, which the controller compile threads into
+   `BuildConditionExpression`.
+6. **Custom formatting pickers ✅** — every format combo offers a "Custom…" reveal (fg/bg `#hex` via
+   `DataGridDialogHelpers.TryParseColor`, + Bold/Inverse); the color scale takes 2/3 custom stops; the
+   icon set's ▲●▼ glyphs are editable.
+7. **Icon glyphs on data-bar cells ✅** — a per-column icon reserve (`_barIconReserve`, computed like
+   `_barReserve`) reserves the band's widest bar-cell icon uniformly, so an icon + bar coexist with
+   the track origin still fixed.
+8. **`PredicateRule` re-edit ✅ (as designed)** — `PredicateRule.SourceText` is settable by code
+   authors, so a code-authored lambda rule that supplies it re-seeds the field (pinned by test); the
+   residual empty-seed case is only a lambda with no text, which is inherent.
+9. **Nerd Font icon tier ✅** — the rules-manager toolbar `IconCarrier`s carry documented nf-md glyph
+   codepoints (mirroring `Cursorial.Gallery`'s `Icons`; shown only under `UIApplication.NerdFontAvailable`).
+10. **SCP band-window accessor ✅** — the visibility promotion had already shipped (`BandStartRow`/
+    `BandLength` are public since wave 2); this adds the clean shape — a public `RealizationWindow`
+    record + `ScrollContentPresenter.GetRealizationWindow()` bundling the pair, which
+    `DataGridRowsPresenter.BandWindow()` now calls (NOT a solution-wide change — the earlier "IVT
+    reach-through / solution-wide" framing was stale).

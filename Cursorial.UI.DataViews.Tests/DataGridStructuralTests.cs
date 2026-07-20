@@ -658,6 +658,39 @@ public class DataGridStructuralTests
     }
 
     [Fact]
+    public void Summary_menu_show_in_columns_toggles_the_group_summary_display()
+    {
+        var (host, grid, _) = Show(columns: 40);
+        using var _ = host;
+
+        static System.Collections.Generic.IEnumerable<Cursorial.UI.Controls.MenuItem> SummaryItems(DataGrid g) =>
+            g.ActiveGridMenu!.Items.OfType<Cursorial.UI.Controls.MenuItem>()
+             .First(i => (i.Header?.ToString() ?? string.Empty).Contains("Summary for", StringComparison.Ordinal))
+             .Items.OfType<Cursorial.UI.Controls.MenuItem>();
+
+        // Ungrouped: the toggle is absent — there are no group rows to position summaries in.
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        Assert.DoesNotContain(SummaryItems(grid), i => (i.Header?.ToString() ?? string.Empty) == "Show in Columns");
+        grid.ActiveGridMenu!.Close();
+        host.RunUntilIdle();
+
+        // Grouped: the toggle appears, checkable, unchecked (Banner is the default).
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1]));
+        host.RunUntilIdle();
+        grid.OpenGridContextMenu(2);
+        host.RunUntilIdle();
+        var showInColumns = SummaryItems(grid).First(i => (i.Header?.ToString() ?? string.Empty) == "Show in Columns");
+        Assert.True(showInColumns.IsCheckable);
+        Assert.False(showInColumns.IsChecked);
+        Assert.Equal(GroupSummaryDisplay.Banner, grid.GroupSummaryDisplay);
+
+        // Clicking flips the grid-wide display mode.
+        showInColumns.RaiseEvent(new ClickEventArgs(Cursorial.UI.Controls.MenuItem.ClickEvent, showInColumns));
+        Assert.Equal(GroupSummaryDisplay.InColumn, grid.GroupSummaryDisplay);
+    }
+
+    [Fact]
     public void Group_summaries_align_under_their_column_in_in_column_mode()
     {
         var (host, grid, _) = Show(columns: 40);

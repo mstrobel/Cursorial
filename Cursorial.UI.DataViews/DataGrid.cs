@@ -471,10 +471,27 @@ public class DataGrid : Control
             AddSummaryChoice("Min", AggregateKind.Min);
             AddSummaryChoice("Max", AggregateKind.Max);
 
+            summaryMenu.Items.Add(new Separator());
+
+            // Group-summary placement (only meaningful while grouped): checked ⇒ each aggregate aligns
+            // UNDER its column in the group rows (like the footer); unchecked ⇒ the concatenated banner
+            // string. A grid-wide toggle over GroupSummaryDisplay.
+            if (GroupDescriptions.Count > 0)
+            {
+                var inColumns = new MenuItem
+                {
+                    Header = "Show in Columns",
+                    IsCheckable = true,
+                    IsChecked = GroupSummaryDisplay == GroupSummaryDisplay.InColumn,
+                };
+                inColumns.Click += (_, _) => GroupSummaryDisplay =
+                    GroupSummaryDisplay == GroupSummaryDisplay.InColumn ? GroupSummaryDisplay.Banner : GroupSummaryDisplay.InColumn;
+                summaryMenu.Items.Add(inColumns);
+            }
+
             // The full editor (§2.5): aggregate + format string + display template + live preview.
             // The gear rides MenuItem.Icon (the tiered Icon class — Nerd Font → emoji → Unicode floor),
             // not the header text, so it aligns in the menu's icon tray.
-            summaryMenu.Items.Add(new Separator());
             var editSummary = new MenuItem
             {
                 Header = "Edit / Format…",

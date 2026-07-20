@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
@@ -121,15 +122,18 @@ internal sealed class DataGridRuleEditor
             _highlightEntries.Add(new HighlightEntry());
 
         // Two panes side by side: the type list left, the configurator right.
-        var body = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        var body = new DockPanel { LastChildFill = true };
+        var typeList = new StackPanel { Margin = new Margins(0, 0, 2, 0) };
 
-        var typeList = new StackPanel();
+        DockPanel.SetDock(typeList, Dock.Left);
+
         foreach (var (kind, caption) in Types)
         {
             var button = new Button
             {
                 Content = caption,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
                 IsEnabled = kind != RuleEditorKind.TopBottom || TopBottomRule.EngineSupportsTopK ||
                             _kind == RuleEditorKind.TopBottom, // an EDIT of an authored TopBottom stays reachable
             };
@@ -154,8 +158,14 @@ internal sealed class DataGridRuleEditor
         right.Children.Add(_strip);
         body.Children.Add(right);
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Edit Formatting Rule", body,
-            ("OK", Ok), ("Cancel", Cancel));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Edit Formatting Rule",
+            body,
+            defaultButton: "_OK",
+            cancelButton: "_Cancel",
+            minSize: new Size(60, 12),
+            maxSize: new Size(60, 0),
+            ("_OK", Ok), ("_Cancel", Cancel));
 
         SetKind(_kind);
     }
@@ -318,9 +328,15 @@ internal sealed class DataGridRuleEditor
         foreach (var (buttonKind, button) in _typeButtons)
         {
             if (buttonKind == kind)
-                button.SetResourceReference(Control.BackgroundProperty, ThemeKeys.SelectionBrush);
+            {
+                button.SetResourceReference(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected);
+                button.SetResourceReference(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelected);
+            }
             else
+            {
                 button.ClearValue(Control.BackgroundProperty);
+                button.ClearValue(Control.ForegroundProperty);
+            }
         }
 
         _pane.Children.Clear();

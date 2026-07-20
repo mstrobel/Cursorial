@@ -163,8 +163,14 @@ internal sealed class DataGridFilterBuilder
 
         content.Children.Add(_strip);
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Filter Builder", content,
-            ("OK", Ok), ("Cancel", Cancel));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Filter Builder",
+            content,
+            defaultButton: "_OK",
+            cancelButton: "_Cancel",
+            minSize: new(0, 12),
+            maxSize: null,
+            ("_OK", Ok), ("_Cancel", Cancel));
 
         Rebuild();
     }

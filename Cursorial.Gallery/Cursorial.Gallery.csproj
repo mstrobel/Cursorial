@@ -42,6 +42,10 @@
         <InternalsVisibleTo Include="Cursorial.UI.Tests" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
+    </ItemGroup>
+
     <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
     <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
 

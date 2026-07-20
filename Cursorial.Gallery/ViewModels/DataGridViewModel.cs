@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Gallery.Infrastructure;
@@ -14,12 +15,19 @@ namespace Cursorial.Gallery.ViewModels;
 /// </summary>
 public class DataGridViewModel : PageViewModel
 {
+    private const int Capacity = 300;
+    
     public override string Title => "Data Grid";
-    public override string Summary => "Sortable, groupable, live-shaping DataGrid over the DataViews engine. Click headers to sort (Ctrl+click adds levels — terminals eat Shift+click), right-click rows for the command menu (filters, formatting, summaries), F6 walks the bands (header: Enter sorts, Space adds a level, Ctrl+G groups, Alt+Down filters), F2/Enter edits.";
+    public override string Summary => "Sortable, groupable, live-shaping DataGrid over the DataViews engine. " +
+                                      "Click headers to sort (Ctrl+click adds levels); " +
+                                      "right-click rows for the command menu; " +
+                                      "F6 walks the bands (header: ⏎ sorts, ␣ adds a level, ^G groups, ⌥↓ filters); " +
+                                      "F2/⏎ edits.";
 
     private static readonly string[] Regions = ["East", "West", "North", "South"];
     private static readonly string[] Reps = ["A. Chen", "K. Brooks", "M. Ortiz", "S. Kim", "R. Patel"];
-    private static readonly string[] Statuses = ["Shipped", "Processing", "On Hold", "Cancelled"];
+    public enum Status { Shipped, Processing, [Display(Name = "On Hold")] OnHold, Canceled };
+    private Status[] Statuses = Enum.GetValues<Status>();
 
     private readonly Random _random = new(2026);
     private UITimer? _feed;
@@ -27,8 +35,8 @@ public class DataGridViewModel : PageViewModel
 
     public DataGridViewModel()
     {
-        var rows = new List<OrderRow>(capacity: 300);
-        for (int i = 0; i < 300; i++)
+        var rows = new List<OrderRow>(capacity: Capacity);
+        for (int i = 0; i < Capacity; i++)
         {
             rows.Add(new OrderRow
             {
@@ -73,7 +81,7 @@ public class DataGridViewModel : PageViewModel
     private void Tick()
     {
         // A small burst of value changes per tick — the incremental-repair path's live profile.
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < Capacity / 20; i++)
         {
             var row = Orders[_random.Next(Orders.Count)];
             row.Amount = Math.Max(500, row.Amount + _random.Next(-4_000, 4_500));
@@ -82,7 +90,7 @@ public class DataGridViewModel : PageViewModel
         // Occasionally churn membership (insert/remove — the INCC lanes).
         if (_random.Next(10) == 0)
         {
-            if (Orders.Count > 250 && _random.Next(2) == 0)
+            if (Orders.Count > (Capacity - 1) / 50 * 50 && _random.Next(2) == 0)
             {
                 Orders.RemoveAt(_random.Next(Orders.Count));
             }
@@ -104,17 +112,14 @@ public class DataGridViewModel : PageViewModel
     /// <summary>One order (INPC — the live-update contract; Amount/Status are editable).</summary>
     public sealed class OrderRow : INotifyPropertyChanged
     {
-        private decimal _amount;
-        private string _status = "";
-
         public required string Order { get; init => Set(ref field, value); }
         public required string Region { get; init => Set(ref field, value); }
 
         public required string Rep { get; init => Set(ref field, value); }
 
-        public decimal Amount { get => _amount; set => Set(ref _amount, value); }
+        public decimal Amount { get => field; set => Set(ref field, value); }
         public double Margin { get; init => Set(ref field, value); }
-        public string Status { get => _status; set => Set(ref _status, value); }
+        public Status Status { get => field; set => Set(ref field, value); }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 

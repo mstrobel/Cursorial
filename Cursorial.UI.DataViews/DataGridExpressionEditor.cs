@@ -119,8 +119,16 @@ internal sealed class DataGridExpressionEditor
         _strip = new TextBlock();
         content.Children.Add(_strip);
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Filter Editor — text mode", content,
-            ("⧉ Designer", () => _ = RequestEditInBuilderAsync()), ("Apply", Apply), ("Cancel", Cancel));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Filter Editor — text mode",
+            content,
+            defaultButton: "_Apply",
+            cancelButton: "_Cancel",
+            minSize: new(0, 12),
+            maxSize: null,
+            ("⧉ _Designer", () => _ = RequestEditInBuilderAsync()),
+            ("_Apply", Apply),
+            ("_Cancel", Cancel));
 
         // Focus the criteria box once the dialog surface materializes (the parked-work idiom).
         _window.ContentRendered += (_, _) => UIApplication.Current?.Dispatcher.Post(() =>

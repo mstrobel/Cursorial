@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
@@ -193,23 +194,52 @@ internal static class DataGridDialogHelpers
     internal static Window CreateDialogWindow(string title, UIElement content,
                                               params (string Caption, Action OnClick)[] buttons)
     {
-        var panel = new StackPanel(); // vertical
+        return CreateDialogWindow(title, content, null, null, null, null, buttons);
+    }
+
+    /// <summary>
+    /// Builds the suite's standard dialog window: framework chrome (title bar, ✕), the content
+    /// panel, and a right-aligned button row, painted on <see cref="ThemeKeys.ElevationDialog"/>.
+    /// Button actions are the dialog's own (an Apply that fails validation simply doesn't close —
+    /// the veto lives with the dialog, not the scaffold).
+    /// </summary>
+    internal static Window CreateDialogWindow(string title, UIElement content,
+                                              string? defaultButton = null, string? cancelButton = null,
+                                              Size? minSize = null,
+                                              Size? maxSize = null,
+                                              params (string Caption, Action OnClick)[] buttons)
+    {
+        var root = new DockPanel { LastChildFill = true };
+        var panel = new StackPanel { TabIndex = 0 }; // vertical
         panel.Children.Add(content);
 
         var window = new Window
         {
             Title = title,
             CanResize = false,
-            Padding = new Margins(1, 0, 1, 0),
+            Padding = new Margins(2, 1),
             SizeToContent = SizeToContent.WidthAndHeight,
             SizeToContentMode = SizeToContentMode.Always,
             AutoFitToViewport = true, // a rebuilt pane must keep the dialog on-screen (the TaskDialog policy)
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Shadow = WindowShadow.Default,
-            Content = panel,
+            Content = root,
         };
+
+        if (minSize is { Columns: var minCols and > 0 })
+            window.MinWidth = minCols;
+
+        if (minSize is { Rows: var minRows and > 0 })
+            window.MinHeight = minRows;
+
+        if (maxSize is { Columns: var maxCols and > 0 })
+            window.MaxWidth = maxCols;
+
+        if (maxSize is { Rows: var maxRows and > 0 })
+            window.MaxHeight = maxRows;
+
         window.SetResourceReference(Control.BackgroundProperty, ThemeKeys.ElevationDialog);
-        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+        KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Cycle);
 
         if (buttons.Length > 0)
         {
@@ -218,33 +248,37 @@ internal static class DataGridDialogHelpers
                 Orientation = Orientation.Horizontal,
                 Spacing = 1,
                 HorizontalAlignment = HorizontalAlignment.Right,
+                TabIndex = 1
             };
+            
+            DockPanel.SetDock(row, Dock.Bottom);
+            root.Children.Add(row);
+
             for (int i = 0; i < buttons.Length; i++)
             {
                 var (caption, onClick) = buttons[i];
                 var button = new Button { Content = caption };
-                if (i == 0)
-                {
-                    // The primary action (OK/Apply, by convention first) reads as an accent-filled
-                    // button — accent fill with the dialog-ground ink, which inverts to legible
-                    // contrast in both themes.
-                    button.SetResourceReference(Control.BackgroundProperty, ThemeKeys.AccentBrush);
-                    button.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.ElevationDialog);
-                }
                 var captured = onClick;
+
+                if (caption == defaultButton || defaultButton is null)
+                    button.IsDefault = true;
+
+                if (caption == cancelButton)
+                    button.IsCancel = true;
+
                 button.Click += (_, _) => captured();
                 row.Children.Add(button);
             }
-            panel.Children.Add(row);
         }
 
+        root.Children.Add(panel);
         return window;
     }
 
     /// <summary>A muted section-label TextBlock (the dialogs' field captions).</summary>
     internal static TextBlock Caption(string text)
     {
-        var block = new TextBlock { Text = text };
+        var block = new TextBlock { Text = text, TextWrapping = WrapMode.WordWrap };
         block.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
         return block;
     }

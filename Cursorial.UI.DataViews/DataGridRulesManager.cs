@@ -128,8 +128,14 @@ internal sealed class DataGridRulesManager
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         });
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Conditional Formatting Rules Manager", content,
-            ("Close", () => _window?.Close(true)));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Conditional Formatting Rules Manager",
+            content,
+            defaultButton: "_Close",
+            cancelButton: "_Close",
+            minSize: new(0, 12),
+            maxSize: null,
+            ("_Close", () => _window?.Close(true)));
 
         RefreshRows();
     }

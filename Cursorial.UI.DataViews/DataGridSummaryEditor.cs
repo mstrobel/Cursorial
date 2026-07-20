@@ -64,8 +64,14 @@ internal sealed class DataGridSummaryEditor
         FormatBox.TextChanged += (_, _) => OnInputChanged();
         TemplateBox.TextChanged += (_, _) => OnInputChanged();
 
-        _window = DataGridDialogHelpers.CreateDialogWindow($"Edit Summary — {column.EffectiveHeader}", content,
-            ("OK", Ok), ("Cancel", Cancel));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            $"Edit Summary — {column.EffectiveHeader}",
+            content,
+            defaultButton: "_OK",
+            cancelButton: "_Cancel",
+            minSize: new(0, 12),
+            maxSize: new(72, 0),
+            ("_OK", Ok), ("_Cancel", Cancel));
         UpdatePreview();
     }
 

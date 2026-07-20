@@ -43,10 +43,20 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             nameof(RowAlternationBackground),
             new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AlternateRowBrush });
 
+    public static readonly StyledProperty<IBrush?> RowAlternationForegroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(RowAlternationForeground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AlternateRowInk });
+
     public static readonly StyledProperty<IBrush?> SelectionBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
             nameof(SelectionBackground),
             new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionActiveBrush });
+
+    public static readonly StyledProperty<IBrush?> SelectionForegroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(SelectionForeground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.SelectionInk });
 
     public static readonly StyledProperty<IBrush?> SelectionInactiveBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
@@ -57,6 +67,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
             nameof(HoverBackground),
             new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.HoverBrush });
+
+    public static readonly StyledProperty<IBrush?> HoverForegroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(HoverForeground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.OnHoverBrush });
 
     public static readonly StyledProperty<IBrush?> GroupRowBackgroundProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
@@ -77,6 +92,11 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
             nameof(FocusCellBackground),
             new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.WellBrush });
+
+    public static readonly StyledProperty<IBrush?> FocusCellForegroundProperty =
+        UIProperty.Register<DataGridRowsPresenter, IBrush?>(
+            nameof(FocusCellForeground),
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.TextBrush });
 
     public static readonly StyledProperty<IBrush?> DataBarFillBrushProperty =
         UIProperty.Register<DataGridRowsPresenter, IBrush?>(
@@ -115,10 +135,22 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         set => SetValue(RowAlternationBackgroundProperty, value);
     }
 
+    public IBrush? RowAlternationForeground
+    {
+        get => GetValue(RowAlternationForegroundProperty);
+        set => SetValue(RowAlternationForegroundProperty, value);
+    }
+
     public IBrush? SelectionBackground
     {
         get => GetValue(SelectionBackgroundProperty);
         set => SetValue(SelectionBackgroundProperty, value);
+    }
+
+    public IBrush? SelectionForeground
+    {
+        get => GetValue(SelectionForegroundProperty);
+        set => SetValue(SelectionForegroundProperty, value);
     }
 
     public IBrush? SelectionInactiveBackground
@@ -131,6 +163,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         get => GetValue(HoverBackgroundProperty);
         set => SetValue(HoverBackgroundProperty, value);
+    }
+
+    public IBrush? HoverForeground
+    {
+        get => GetValue(HoverForegroundProperty);
+        set => SetValue(HoverForegroundProperty, value);
     }
 
     public IBrush? GroupRowBackground
@@ -155,6 +193,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     {
         get => GetValue(FocusCellBackgroundProperty);
         set => SetValue(FocusCellBackgroundProperty, value);
+    }
+
+    public IBrush? FocusCellForeground
+    {
+        get => GetValue(FocusCellForegroundProperty);
+        set => SetValue(FocusCellForegroundProperty, value);
     }
 
     public IBrush? DataBarFillBrush
@@ -1028,11 +1072,22 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// content-y draw row (§9.3).
     /// </summary>
     private void DrawDataCell(RenderContext context, in CachedRow row, int c, int view, int y, int focusRow,
-                              int focusColumn,
-                              bool rowSelected, bool noColor)
+                              int focusColumn, bool rowSelected, bool noColor)
     {
         if (!IsEntryVisible(c))
             return;
+
+        IBrush defaultBrush = TextBrush ?? Brushes.Default;
+
+        IBrush textBrush = rowSelected
+                               ? c == focusColumn
+                                     ? FocusCellForeground ?? SelectionForeground ?? defaultBrush
+                                     : SelectionForeground ?? defaultBrush
+                               : HoverViewIndex == view
+                                   ? HoverForeground ?? defaultBrush
+                                   : (view & 1) == 1
+                                       ? RowAlternationForeground ?? defaultBrush
+                                       : defaultBrush;
 
         var entry = ColumnLayout.Entries[c];
         int drawBase = DrawXOf(c);
@@ -1109,7 +1164,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             ? (c < _barIconReserve.Length ? _barIconReserve[c] : 0)
             : (format.Icon is { } plainIcon && GraphemeWidth.StringWidth(plainIcon) is var piw && piw > 0 && piw + 1 < entry.Width ? piw + 1 : 0);
         if (iconReserve > 0 && format.Icon is { } icon && GraphemeWidth.StringWidth(icon) > 0)
-            DrawFormattedCell(context, cellX, y, icon, Math.Max(1, iconReserve), format, forceInverse); // glyphs get Inverse-only
+            DrawFormattedCell(context, textBrush, cellX, y, icon, Math.Max(1, iconReserve), format, forceInverse); // glyphs get Inverse-only
 
         // A data-bar cell pins its value LEFT with the bar filling the remainder (the
         // mockup's amtcell); everything else honors the column alignment.
@@ -1120,7 +1175,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                         ? cellX + iconReserve + (avail - textWidth)
                         : cellX + iconReserve;
 
-        DrawFormattedCell(context, drawX, y, text, avail, format, forceInverse, forceBold);
+        DrawFormattedCell(context, textBrush, drawX, y, text, avail, format, forceInverse, forceBold);
 
         if (hasBar)
         {
@@ -1228,11 +1283,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// overload (the format's fg wins; Bold/Inverse/bg fold into the base <see cref="CellStyle"/> —
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
-    private void DrawFormattedCell(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
+    private void DrawFormattedCell(RenderContext context, IBrush textBrush, int x, int y, ReadOnlySpan<char> text, int maxWidth,
                                    in CellFormat format, bool forceInverse = false, bool forceBold = false)
     {
-        var textBrush = TextBrush;
-
         // The NoColor focus/selection cue (§4): reverse-video (and, on the focus cell, bold) folded
         // over whatever the conditional-format verdict already carries.
         var forced = default(TextAttributes);
@@ -1245,15 +1298,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
         if (format.IsEmpty)
         {
-            if (textBrush is not null)
-            {
-                DrawClipped(context, x, y, text, maxWidth, textBrush,
-                            forced == default ? default : default(CellStyle).WithAttributes(forced));
-            }
+            DrawClipped(context, x, y, text, maxWidth, textBrush,
+                        forced == default ? default : default(CellStyle).WithAttributes(forced));
             return;
         }
 
-        if (text.Length == 0 || (format.Foreground is null && textBrush is null))
+        if (text.Length == 0)
             return;
 
         var attributes = forced;

@@ -47,6 +47,13 @@ namespace Cursorial.UI.Controls;
 /// the templating parent (S8's <c>ScrollViewer</c>), not to a <c>Render</c> override here.
 /// </para>
 /// </remarks>
+/// <summary>
+/// The realization window a virtualizing <see cref="IScrollContentHost"/> fills (§9.6): the content
+/// row the zone scene's row 0 maps to (<see cref="Start"/>) and the window length in rows
+/// (<see cref="Length"/>). Returned by <see cref="ScrollContentPresenter.GetRealizationWindow"/>.
+/// </summary>
+public readonly record struct RealizationWindow(int Start, int Length);
+
 public class ScrollContentPresenter : UIElement
 {
     /// <summary>The minimum band padding in rows — <c>K = max(viewportRows, 8)</c> (matrix LD11).</summary>
@@ -217,6 +224,13 @@ public class ScrollContentPresenter : UIElement
     /// <summary>The banded scene height <c>min(contentRows, viewportRows + 2K)</c> — the realization
     /// window's length (public for hosts; see <see cref="BandStartRow"/>).</summary>
     public int BandLength => Math.Min(ArrangedContentRows, _viewport.Rows + 2 * BandPadding);
+
+    /// <summary>
+    /// The current realization window — <see cref="BandStartRow"/> + <see cref="BandLength"/> as one
+    /// value (the §9.6 public band-window accessor a virtualizing <see cref="IScrollContentHost"/>
+    /// reads at band-fill time; prefer it over the two properties so the pair can't drift).
+    /// </summary>
+    public RealizationWindow GetRealizationWindow() => new(BandStartRow, BandLength);
 
     /// <summary>The content's arranged height — <c>max(Extent, Viewport)</c> rows when vertically scrollable, else the viewport.</summary>
     private int ArrangedContentRows => CanScrollVertically ? Math.Max(_extent.Rows, _viewport.Rows) : _viewport.Rows;

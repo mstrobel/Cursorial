@@ -535,10 +535,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     private (int Start, int Length) BandWindow()
     {
-        // The SCP's public realization window (the §9 seam promotion — no IVT reach-through).
-        // Without an adopting SCP (a bare presenter in tests), the window is the viewport.
+        // The SCP's public realization window (§9.6 — the promoted seam, no IVT reach-through; the
+        // GetRealizationWindow() accessor bundles the pair). Without an adopting SCP (a bare
+        // presenter in tests), the window is the viewport.
         if (ScrollOwner is { } scp)
-            return (scp.BandStartRow, scp.BandLength);
+        {
+            var window = scp.GetRealizationWindow();
+            return (window.Start, window.Length);
+        }
         return (0, Math.Max(_viewport.Rows, 1));
     }
 

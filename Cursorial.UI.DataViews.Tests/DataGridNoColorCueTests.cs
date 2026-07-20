@@ -8,6 +8,7 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.DataViews;
+using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;
 
 // ReSharper disable InconsistentNaming
@@ -146,6 +147,34 @@ public class DataGridNoColorCueTests
         // The focused header caption is reverse-video; an unfocused header column is not.
         Assert.True(Inverse(host, idCol, 0), "focused header caption is not reverse-video");
         Assert.False(Inverse(host, regionCol, 0), "unfocused header column must not be reverse-video");
+    }
+
+    [Theory]
+    [InlineData(true)]   // NoColor: the group banner wears Bold (the accent resolves to Default)
+    [InlineData(false)]  // color tier: no forced bold (the accent tint carries it)
+    public void Group_banner_is_bold_only_under_no_color(bool noColor)
+    {
+        var (host, grid) = ShowFixed(noColor ? HeadlessCapabilities.GenericVt : HeadlessCapabilities.KittyTruecolor);
+        using var _ = host;
+
+        grid.GroupDescriptions.Add(new GroupDescription(grid.Columns[1])); // group by Region
+        host.RunUntilIdle();
+
+        // Find a top-level group banner: its ▾/▸ expander sits at column 0 in a data-area row (the
+        // header's filter ▾ is right-aligned, so col 0 disambiguates from it). Skip the header row.
+        int bannerRow = -1;
+        for (int r = 1; r < host.FrameBuffer.Rows; r++)
+        {
+            if (host.GetCell(0, r).Grapheme is "▾" or "▸")
+            {
+                bannerRow = r;
+                break;
+            }
+        }
+        Assert.True(bannerRow >= 0, "no group banner row found");
+
+        Assert.Equal(noColor, Bold(host, 0, bannerRow)); // the expander glyph
+        Assert.Equal(noColor, Bold(host, 2, bannerRow)); // the caption (drawn at glyph + 2)
     }
 
     [Fact]

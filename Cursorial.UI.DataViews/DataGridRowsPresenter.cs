@@ -920,11 +920,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             {
                 // ▾/▸ expander, indent by level, caption, right-aligned summary. Group rows are
                 // VIEWPORT-anchored (never shifted by the horizontal offset — the banner reads at
-                // any scroll position; §9.2).
+                // any scroll position; §9.2). NoColor tier: the accent/tint resolves to Default, so
+                // the banner wears Bold to stand out (design §4).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
-                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush ?? Brushes.Default);
-                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default);
+                CellStyle groupStyle = noColor ? default(CellStyle).WithAttributes(TextAttributes.Bold) : default;
+                context.DrawText(x, y, glyph, AccentBrush ?? TextBrush ?? Brushes.Default, null, groupStyle);
+                DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default, groupStyle);
 
                 if (row.GroupSummary.Length > 0)
                 {
@@ -932,7 +934,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                     int summaryX = Math.Max(x + 2, viewWidth - width - 1);
 
                     DrawClipped(context, summaryX, y, row.GroupSummary, int.MaxValue,
-                                AccentBrush ?? TextBrush ?? Brushes.Default);
+                                AccentBrush ?? TextBrush ?? Brushes.Default, groupStyle);
                 }
 
                 continue;

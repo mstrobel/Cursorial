@@ -56,7 +56,7 @@ internal static class LoweringEmitter
         string className = dot > 0 ? rootClass.Substring(dot + 1) : rootClass;
         string indent = ns is null ? "    " : "        ";
 
-        var ctx = new Context(document, indent, resolver) { SourceUri = sourceUri, HasRootElement = true };
+        var ctx = new Context(document, indent, resolver) { SourceUri = sourceUri, HasRootElement = true, HasDocumentScope = named.Count > 0 };
 
         // Build the InitializeComponent body first (it determines whether a name scope is needed).
         if (named.Count > 0)
@@ -453,9 +453,10 @@ internal static class LoweringEmitter
                     {
                         // Fail CLOSED (the RequiresCapabilities precedent): emitting the style WITHOUT its
                         // base silently drops every inherited setter — the one outcome neither lane may
-                        // have. Reached only where the live-chain probe has no anchor (a
-                        // ResourceDictionary-builder document) or the value is an unsupported form.
-                        DropStyle(c, varExpr, "<Style> BasedOn is not lowerable here (no same-dictionary entry, and no root element to anchor the live-chain probe) — style dropped");
+                        // have. Reached for a forward/intra-document base (the inline probe can't defer an
+                        // init-only property), an anchorless document (a ResourceDictionary builder), or an
+                        // unsupported value form.
+                        DropStyle(c, varExpr, "<Style> BasedOn is not lowerable here (a forward/intra-document base, or no root element to anchor the live-chain probe) — style dropped");
                         return;
                     }
                     break;
@@ -548,6 +549,14 @@ internal static class LoweringEmitter
         {
             whenBuf = new StringBuilder();
             var savedBuffer = c.SwapBuffer(whenBuf);
+            // Snapshot the deferred-work lists: a condition subtree can record end-of-scope work
+            // ({x:Reference}, a deferred {StaticResource}, a Source={x:Reference} install) whose target
+            // LOCAL lives in whenBuf. If we drop the style, whenBuf is discarded — so those records must
+            // roll back too, else the document-end flush emits a reference to a never-declared local (CS0103).
+            var savedRefs = c.References.Count;
+            var savedStatics = c.StaticResources.Count;
+            var savedScopeLines = c.DeferredScopeLines.Count;
+
             var conditionsOk = true;
             foreach (int idx in ResourceItems(c, c.Doc.Members[whenMember]))
                 conditionsOk &= EmitDataCondition(c, varExpr, idx);
@@ -555,6 +564,9 @@ internal static class LoweringEmitter
 
             if (!conditionsOk)
             {
+                Truncate(c.References, savedRefs);
+                Truncate(c.StaticResources, savedStatics);
+                Truncate(c.DeferredScopeLines, savedScopeLines);
                 // The specific condition Todo was recorded (its marker was buffered away); this marker
                 // states the consequence at the style site.
                 DropStyle(c, varExpr, "<Style> dropped: a <Style.When> condition is not lowerable (the conditions gate the whole style)");
@@ -1004,14 +1016,22 @@ internal static class LoweringEmitter
                 return srcVar;
             }
 
-            // Not a same-dictionary entry: the base lives in an outer dictionary or the ambient theme
-            // tiers (App.Resources → App.Theme → ThemeContributions → CursorialTheme.BuiltIn — the
-            // BasedOn="{StaticResource {x:Type ListBoxItem}}" app pattern). Probe the LIVE chain at build
-            // time, anchored on the view root: eager + throw-on-miss (ResourceNotFoundException names the
-            // searched chain), matching the loader's ambient tail + ResourceNotFound. Only an x:Class
-            // document has the `this` anchor — a ResourceDictionary builder stays fenced (null → TODO).
-            // Known narrowing vs the loader's full lexical stack: a base in an INTERMEDIATE enclosing
-            // dictionary (neither root-level nor ambient) misses here — loudly, never silently.
+            // A key that IS defined in this document but hasn't been built yet is a FORWARD (or
+            // outer-dictionary-forward) reference. The loader resolves it — it defers every entry and
+            // realizes lazily against the captured lexical stack, so intra-document order doesn't matter
+            // (matrix X115). The lowered probe can't: BasedOn is init-only, so it resolves inline during
+            // the derived style's construction — before the base entry is built or added — and the probe
+            // would walk a still-empty tree and throw. Fail closed (loud) rather than crash at runtime;
+            // a document-order-independent lowering of forward BasedOn is a follow-up.
+            if (DocumentResourceKeys(c).Contains(keyExpr))
+                return null;
+
+            // Otherwise the base lives OUTSIDE the document — an app/theme tier (App.Resources →
+            // App.Theme → ThemeContributions → CursorialTheme.BuiltIn — the
+            // BasedOn="{StaticResource {x:Type ListBoxItem}}" app pattern) or a merged dictionary.
+            // Probe the LIVE chain at build time, anchored on the view root: eager + throw-on-miss
+            // (ResourceNotFoundException names the searched chain), matching the loader's ambient tail.
+            // Only an x:Class document has the `this` anchor — a ResourceDictionary builder stays fenced.
             if (c.HasRootElement)
             {
                 if (c.InTemplate) c.CurrentFactoryCaptures = true; // captures `this`
@@ -1020,6 +1040,24 @@ internal static class LoweringEmitter
         }
 
         return null;
+    }
+
+    // Every resource key EXPRESSION defined anywhere in this document (a keyed object's x:Key lowered the
+    // same way ResourceKeyExpr lowers it — a string literal / typeof(...) / {x:Static} ref). Used to tell a
+    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't)
+    // from a genuinely external one (probe it). Computed once, lazily.
+    private static HashSet<string> DocumentResourceKeys(Context c)
+    {
+        if (c.DocumentResourceKeysCache is { } cached)
+            return cached;
+
+        var keys = new HashSet<string>(System.StringComparer.Ordinal);
+        for (int i = 0; i < c.Doc.Objects.Length; i++)
+            if (ResourceKeyExpr(c, i) is { } keyExpr)
+                keys.Add(keyExpr);
+
+        c.DocumentResourceKeysCache = keys;
+        return keys;
     }
 
     // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──
@@ -1902,6 +1940,15 @@ internal static class LoweringEmitter
     // automatic since the factory list never reaches the document flush).
     private static void EmitReference(Context c, string varExpr, XamlMember xm, string name)
     {
+        // A document-level reference resolves through __scope, which exists only when the document
+        // declares document-scope x:Names. Without one, the reference can never resolve (the loader
+        // Fatals too) — fence rather than emit a reference to an undeclared __scope (CS0103).
+        if (!c.InTemplate && !c.HasDocumentScope)
+        {
+            c.Todo($"{{x:Reference {name}}} for '{xm.Name}' cannot resolve — the document declares no name scope");
+            return;
+        }
+
         var owner = RegisteredOwner(xm);
         var clrType = owner is null ? ValueTypeSymbol(xm.ValueType) : null;
         c.References.Add(new ReferenceResolution(varExpr, owner, xm.Name, name, clrType));
@@ -2039,15 +2086,28 @@ internal static class LoweringEmitter
         for (int i = fromIndex; i < c.References.Count; i++)
         {
             var r = c.References[i];
-            var find = $"{scopeExpr}.Find(\"{Escape(r.Name)}\")";
+            // Require, not Find: by flush time the scope's names are all registered, so a miss is a
+            // genuine unresolved reference — throw-on-miss matches the loader's ReferenceNotFound Fatal
+            // instead of silently assigning null (which, for a Binding source, rebinds to DataContext).
+            // Static-call form — the generated code carries no `using`, so the extension can't be
+            // invoked instance-style.
+            var find = $"global::Cursorial.UI.NameScopeExtensions.Require({scopeExpr}, \"{Escape(r.Name)}\")";
 
             if (r.Owner is { } owner)
                 c.Line($"{r.Var}.SetValue({Global(owner)}.{r.Property}Property, {find});");
             else if (r.ClrType is { } ct)
-                c.Line($"{r.Var}.{r.Property} = ({Global(ct)}){find}!;");
+                c.Line($"{r.Var}.{r.Property} = ({Global(ct)}){find};");
             else
                 c.Line($"{r.Var}.{r.Property} = {find};");
         }
+    }
+
+    // Drops trailing list entries recorded past a saved count (rolls back deferred work whose target
+    // locals were emitted into a discarded buffer).
+    private static void Truncate<T>(List<T> list, int count)
+    {
+        if (list.Count > count)
+            list.RemoveRange(count, list.Count - count);
     }
 
     // Flushes deferred whole-line emissions (scope-embedding Installs) recorded past fromIndex.
@@ -2244,9 +2304,21 @@ internal static class LoweringEmitter
                 return false;
             }
 
+            // A document-level anchor needs the document name scope (__scope); it only exists when the
+            // document declares document-scope x:Names. Without one, no name can resolve — the loader
+            // Fatals identically — so fence rather than emit a reference to an undeclared __scope (CS0103).
+            if (!c.InTemplate && !c.HasDocumentScope)
+            {
+                c.Todo($"{{Binding Source={{x:Reference {refName}}}}} for '{xm.Name}' cannot resolve — the document declares no name scope");
+                return false;
+            }
+
             var scopeExpr = c.InTemplate ? "__ctx.NameScope" : "__scope";
+            // Require, not Find — deferred to the scope-complete flush, so a miss is genuine (the loader's
+            // DeferNameResolution → ReferenceNotFound Fatal), never a silent null Source rebinding to
+            // DataContext. Static-call form (the generated code carries no `using` for the extension).
             if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'",
-                    sourceOverrideExpr: $"{scopeExpr}.Find(\"{Escape(refName)}\")") is not { } anchored)
+                    sourceOverrideExpr: $"global::Cursorial.UI.NameScopeExtensions.Require({scopeExpr}, \"{Escape(refName)}\")") is not { } anchored)
                 return false;
 
             c.DeferredScopeLines.Add(
@@ -2712,6 +2784,15 @@ internal static class LoweringEmitter
         /// <summary>True for an x:Class code-behind document (the root is <c>this</c>, a UIElement — the
         /// anchor for live-chain resource probes); false for a ResourceDictionary-builder document.</summary>
         public bool HasRootElement { get; set; }
+
+        /// <summary>True when the document declares a document-scope name scope (<c>__scope</c> — emitted
+        /// when it has document-scope x:Names). A document-level <c>{x:Reference}</c> can only resolve
+        /// through it; without one, such a reference is fenced (it can never resolve — the loader Fatals too).</summary>
+        public bool HasDocumentScope { get; set; }
+
+        /// <summary>Lazily-computed set of every resource key expression defined in the document (see
+        /// <c>DocumentResourceKeys</c>) — distinguishes a forward intra-document BasedOn from an external one.</summary>
+        public HashSet<string>? DocumentResourceKeysCache { get; set; }
         public XamlSymbolResolver Resolver { get; } = resolver;
         public string Indent { get; } = indent;
         public StringBuilder Body { get; } = new();

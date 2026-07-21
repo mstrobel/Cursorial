@@ -326,6 +326,140 @@ namespace GenApp { public partial class BasedOnMissView : StackPanel { public Ba
         Assert.Throws<XamlParseException>(() => runtime.Resources["Orphan"]);
     }
 
+    [Fact] // A FORWARD same-dictionary BasedOn — base defined AFTER the derived style — the loader resolves
+           // (it realizes entries lazily, order-independent, matrix X115), but the inline probe would run
+           // during construction before the base is built and CRASH. Fail closed (drop + marker), never a
+           // runtime ResourceNotFoundException on a document the loader loads. (Regression pin: the probe
+           // must distinguish a forward intra-document key from a genuinely external one.)
+    public void Lowered_StyleBasedOn_ForwardReference_FailsClosed()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.BasedOnFwdView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Derived\" Selector=\":is(Border)\" BasedOn=\"{StaticResource Base}\">" +
+                "<Setter Property=\"TextElement.Strikethrough\" Value=\"True\"/>" +
+              "</Style>" +
+              "<Style x:Key=\"Base\" Selector=\":is(Border)\">" + // defined AFTER the derived — forward ref
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class BasedOnFwdView : StackPanel { public BasedOnFwdView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("TODO X5", lowered); // fenced, not probed (a probe here would crash at runtime)
+        Assert.DoesNotContain("FindResource(this, \"Base\")", lowered);
+
+        // Derived drops (empty placeholder); Base still builds; construction does NOT throw.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnFwdView")!)!;
+        Assert.Null(Assert.IsType<Style>(view.Resources["Derived"]).BasedOn); // dropped-whole placeholder, never crashed
+        Assert.IsType<Style>(view.Resources["Base"]);
+    }
+
+    [Fact] // A missing {x:Reference} in a template THROWS at build time (the loader's ReferenceNotFound
+           // Fatal) instead of silently assigning null — the regression the review caught: my new template
+           // and deferred-Install lanes had reintroduced the silent-null rebind.
+    public void Lowered_XReference_Missing_ThrowsNotSilentNull()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.RefMissView\">" +
+            "<StackPanel.Resources>" +
+              "<DataTemplate x:Key=\"Tpl\">" +
+                "<Label Content=\"lbl\" Target=\"{x:Reference Nope}\"/>" + // no element named Nope
+              "</DataTemplate>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class RefMissView : StackPanel { public RefMissView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("NameScopeExtensions.Require(__ctx.NameScope, \"Nope\")", lowered); // throw-on-miss, not Find
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.RefMissView")!)!;
+        var tpl = Assert.IsType<DataTemplate>(view.Resources["Tpl"]);
+        // Building the template resolves x:References — the miss throws (never a silent null Target).
+        Assert.ThrowsAny<System.Exception>(() => tpl.Build(null));
+    }
+
+    [Fact] // A document-level {Binding Source={x:Reference X}} in a document with NO document-scope x:Names
+           // has no __scope to resolve through — the reference can never resolve (the loader Fatals too).
+           // Fence at build time instead of emitting a reference to an undeclared __scope (CS0103).
+    public void Lowered_XReference_NoDocumentScope_FencesNotCS0103()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.NoScopeView\">" +
+            "<TextBlock Text=\"{Binding Source={x:Reference Ghost}, Path=Text}\"/>" + // no x:Name anywhere
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class NoScopeView : StackPanel { public NoScopeView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("TODO X5", lowered);
+        Assert.DoesNotContain("__scope", lowered); // never references an undeclared scope
+
+        // And the generated source compiles + instantiates (the binding is dropped, not mangled).
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.NoScopeView")!));
+    }
+
+    [Fact] // A <Style.When> whose condition subtree records deferred end-of-scope work ({x:Reference}) and
+           // then DROPS must roll that work back — else the document-end flush references a local that was
+           // emitted into the discarded When buffer (CS0103). The whole document must still compile.
+    public void Lowered_StyleWhenDrop_RollsBackDeferredSideState()
+    {
+        // The FIRST condition lowers fine and records a deferred {x:Reference} whose target local lives in
+        // the When buffer; the SECOND condition (no Binding) fails, dropping the whole style — so the
+        // recorded reference must roll back, else the document-end flush references the discarded local.
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.WhenLeakView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Gated\" TargetType=\"DatePicker\">" +
+                "<Style.When>" +
+                  "<DataCondition Binding=\"{Binding IsEditable}\">" +
+                    "<DataCondition.Value>" +
+                      "<Label Target=\"{x:Reference Ok}\"/>" + // records a deferred reference into the When buffer
+                    "</DataCondition.Value>" +
+                  "</DataCondition>" +
+                  "<DataCondition/>" + // no Binding → unlowerable → the whole style drops
+                "</Style.When>" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"Red\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class WhenLeakView : StackPanel { public WhenLeakView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("TODO X5", lowered); // style dropped
+
+        // The document must still COMPILE — the discarded reference must not survive into the flush.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.WhenLeakView")!));
+    }
+
     [Fact] // One unlowerable <Style.When> condition drops the WHOLE style: a partially-gated style would
            // apply more broadly than authored (fail-open) — the inverse of the RequiresCapabilities rule.
     public void Lowered_StyleWhen_UnlowerableCondition_DropsWholeStyle()
@@ -429,10 +563,10 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
         var lowered = Lower(xaml, compilation);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("__scope.Find(\"Src\")", lowered);
+        Assert.Contains("NameScopeExtensions.Require(__scope, \"Src\")", lowered);
         // The Install embedding the scope lookup comes AFTER the name registration.
         Assert.True(lowered.IndexOf("__scope.Register(\"Src\"", System.StringComparison.Ordinal) <
-                    lowered.IndexOf("__scope.Find(\"Src\")", System.StringComparison.Ordinal));
+                    lowered.IndexOf("NameScopeExtensions.Require(__scope, \"Src\")", System.StringComparison.Ordinal));
 
         // And the emitted view compiles + instantiates.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(

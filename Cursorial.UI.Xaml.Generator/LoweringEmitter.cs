@@ -1961,12 +1961,21 @@ internal static class LoweringEmitter
         if (CustomExtensionExpr(c, node, varExpr, targetPropExpr) is not { } provideValue)
             return; // a specific TODO was emitted
 
+        // A string ProvideValue result destined for a typed (non-string/object) slot runs the converter ladder
+        // — the loader's AssignResolvedValue (X121). A no-op for object/string targets, so only wrapped when
+        // the slot is a concrete non-string type.
+        var valueType = ValueTypeSymbol(xm.ValueType);
+        var coerceTyped = valueType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_String) };
+        var value = coerceTyped
+            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType!)}))"
+            : provideValue;
+
         if (owner is { } owner2)
-            c.Line($"{varExpr}.SetValue({Global(owner2)}.{xm.Name}Property, {provideValue});");
-        else if (ValueTypeSymbol(xm.ValueType) is { SpecialType: not SpecialType.System_Object } ct)
-            c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){provideValue}!;"); // ProvideValue returns object? — cast to a concrete CLR target
+            c.Line($"{varExpr}.SetValue({Global(owner2)}.{xm.Name}Property, {value});");
+        else if (valueType is { SpecialType: not SpecialType.System_Object } ct)
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){value}!;"); // cast object? to a concrete CLR target (string included)
         else
-            c.Line($"{varExpr}.{xm.Name} = {provideValue};"); // object target
+            c.Line($"{varExpr}.{xm.Name} = {value};"); // object target
     }
 
     // Builds `new FooExtension { named/positional args }.ProvideValue(new LoweredExtensionServices(…))` for a
@@ -1996,6 +2005,11 @@ internal static class LoweringEmitter
             }
             for (int i = 0; i < order.Length; i++)
             {
+                if (!IsInitializerSettable(order[i]))
+                {
+                    c.Todo($"custom markup extension '{node.Name}' positional arg {i} targets a read-only member — not lowered");
+                    return null;
+                }
                 if (CustomExtensionArgValue(c, node.PositionalArguments[i], XamlDataTypeScope.MemberType(order[i])) is not { } v)
                 {
                     c.Todo($"custom markup extension '{node.Name}' positional arg {i} value not lowerable");
@@ -2013,6 +2027,13 @@ internal static class LoweringEmitter
                 c.Todo($"custom markup extension '{node.Name}' has no member '{named.Name}'");
                 return null;
             }
+            if (!IsInitializerSettable(memberSym))
+            {
+                // A get-only property / readonly field can't be set in the object initializer (CS0200/CS0191);
+                // the loader raises a clean "no setter" diagnostic — fence rather than emit non-compiling C#.
+                c.Todo($"custom markup extension '{node.Name}' arg '{named.Name}' targets a read-only member — not lowered");
+                return null;
+            }
             if (CustomExtensionArgValue(c, named.Value, XamlDataTypeScope.MemberType(memberSym)) is not { } v)
             {
                 c.Todo($"custom markup extension '{node.Name}' arg '{named.Name}' value not lowerable");
@@ -2021,10 +2042,17 @@ internal static class LoweringEmitter
             inits.Add($"{named.Name} = {v}");
         }
 
+        // The services carry the document root (`this`) — inside a template factory that forces the factory
+        // non-static so it may reference `this`, exactly as the FindResource-anchored `this` capture does.
+        if (c.HasRootElement && c.InTemplate)
+            c.CurrentFactoryCaptures = true;
+
         var root = c.HasRootElement ? "this" : "null";
         var scope = c.InTemplate ? "__ctx.NameScope" : c.HasDocumentScope ? "__scope" : "null";
         var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices({targetObjectExpr ?? "null"}, {targetPropertyExpr ?? "null"}, {root}, {scope})";
-        return $"new {Global(extType)}{Initializers(inits)}.ProvideValue({services})";
+        // An empty initializer needs explicit `()` — `new Foo.ProvideValue(…)` would parse ProvideValue as a nested type.
+        var ctor = inits.Count > 0 ? $"new {Global(extType)}{Initializers(inits)}" : $"new {Global(extType)}()";
+        return $"{ctor}.ProvideValue({services})";
     }
 
     // A custom-extension argument value as a C# expression: a nested {x:Static}/{x:Type}/{x:Null}/same-dict
@@ -2043,7 +2071,10 @@ internal static class LoweringEmitter
                 return "null";
             if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
                 c.ResourceVarsByKeyExpr.TryGetValue($"\"{Escape(key)}\"", out var srcVar))
+            {
+                if (c.InTemplate) c.CurrentFactoryCaptures = true; // the arg references an enclosing entry var ⇒ factory not static
                 return srcVar;
+            }
             return null; // {Binding} / other nested — no standalone value in this position
         }
 
@@ -2073,6 +2104,12 @@ internal static class LoweringEmitter
         return c.Resolver.Resolve(ns, name + "Extension", out _)
                ?? c.Resolver.Resolve(ns, name, out _);
     }
+
+    // True when a member can be set in an object initializer (new T { Member = v }): a public settable or
+    // init-only property, or a non-readonly/non-const field. A get-only property (CS0200) or readonly field
+    // (CS0191) can't — the caller fences (the loader raises its own "no setter" diagnostic).
+    private static bool IsInitializerSettable(ISymbol member)
+        => XamlDataTypeScope.IsWritable(member) || XamlDataTypeScope.IsInitOnlySettable(member);
 
     private static bool DerivesFromMarkupExtension(INamedTypeSymbol type)
     {

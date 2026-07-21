@@ -1238,10 +1238,13 @@ internal static class ControlThemes
             .Set(UIElement.MinWidthProperty, 12)
             .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionInactive)
             .Set(Control.TemplateProperty, TextBoxTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundHover));
         theme.Children.Add(new Style("^:focus")
                               .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundFocus));
         theme.Children.Add(new Style("^:disabled")
             .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundDisabled)
             .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundDisabled));
@@ -1456,7 +1459,9 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:pointerover")
                               .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
                               .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive));
+        theme.Children.Add(new Style("^:selected")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
         // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
         // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
         // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
@@ -1494,7 +1499,7 @@ internal static class ControlThemes
         theme.Children.Add(
             new Style("^:default")
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDefault));
 
         theme.Children.Add(
             new Style("^:pointerover")
@@ -1985,7 +1990,8 @@ internal static class ControlThemes
                           {
                               Name = "PART_ObscuredOverlay",
                               Visibility = Visibility.Collapsed,
-                              IsRenderBoundary = true
+                              IsRenderBoundary = true,
+                              IsHitTestVisible = true
                           };
 
         overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);

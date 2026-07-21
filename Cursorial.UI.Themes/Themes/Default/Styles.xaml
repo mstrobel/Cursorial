@@ -164,6 +164,14 @@
       </Style.Children>
     </Style>
 
+    <Style RequiresCapabilities="NoColor"
+           Selector=":is(Window) /template/ Border#PART_ObscuredOverlay, 
+                     :is(RootElementHost) > Border#PART_ObscuredOverlay">
+      <Setter Property="Border.Occludes" Value="False" />
+      <Setter Property="Border.Background" Value="Transparent" />
+      <Setter Property="TextElement.TextWeight" Value="Faint" />
+    </Style>
+
     <Style Selector=":is(Border),
                      :is(Panel),
                      :is(UIElement) /template/ :is(Border),
@@ -175,6 +183,14 @@
 
     <Style Selector=":is(Window), ContextMenu" RequiresCapabilities="Ansi16">
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.BorderPen}}"/>
+    </Style>
+
+    <Style RequiresCapabilities="Ansi16"
+           Selector=":is(Window) /template/ Border#PART_ObscuredOverlay, 
+                     :is(RootElementHost) > Border#PART_ObscuredOverlay">
+      <Setter Property="Border.Occludes" Value="False" />
+      <Setter Property="Border.Background" Value="Transparent" />
+      <Setter Property="TextElement.TextWeight" Value="Faint" />
     </Style>
 
     <Style Selector="MenuItem Separator, Menu Separator">

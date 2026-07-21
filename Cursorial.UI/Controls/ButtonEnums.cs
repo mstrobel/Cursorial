@@ -15,6 +15,24 @@ public enum ClickMode
     Hover
 }
 
+public enum InvokeMethod : byte
+{
+    /// <summary>A direct call to an invoke/toggle method or assignment to a toggle property.</summary>
+    Programmatic,
+
+    /// <summary>A pointer press.</summary>
+    Pointer,
+
+    /// <summary>A press of the 'Enter' key.</summary>
+    KeyboardEnter,
+
+    /// <summary>A press of the 'Space' key.</summary>
+    KeyboardSpace,
+
+    /// <summary>Access-key (mnemonic) activation.</summary>
+    AccessKey
+}
+
 /// <summary>The args for <see cref="ButtonBase.ClickEvent"/> (a bubbling routed event, S8-owned — doc §12.7).</summary>
 public sealed class ClickEventArgs : RoutedEventArgs
 {

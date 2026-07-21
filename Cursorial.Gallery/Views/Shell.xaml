@@ -8,7 +8,7 @@
            xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            xmlns:pages="clr-namespace:Cursorial.Gallery.Pages;assembly=Cursorial.Gallery"
-           Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
+           Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
            d:DataContext="vm:ShellViewModel">
@@ -606,25 +606,27 @@
             <Grid VerticalAlignment="Top">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="1" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="1" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
               </Grid.RowDefinitions>
-            </Grid>
-            
-            <Label Content="_Non-Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
-                   Target="{x:Reference NonEditableDatePicker}" />
-            <DatePicker x:Name="NonEditableDatePicker" Grid.Column="1" IsEditable="False"
-                        VerticalAlignment="Top" Watermark="birthday" /> 
 
-            <Label Grid.Row="1" Content="_Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
-                   Target="{x:Reference EditableDatePicker}"/>
-            <DatePicker x:Name="EditableDatePicker" Grid.Row="1" Grid.Column="1" IsEditable="True"
-                        VerticalAlignment="Top" Watermark="birthday" /> 
+              <Label Grid.Column="0" Grid.Row="0" Content="_Non-Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                     Target="{x:Reference NonEditableDatePicker}" />
+              <DatePicker x:Name="NonEditableDatePicker" Grid.Column="2" Grid.Row="0" IsEditable="False"
+                          VerticalAlignment="Top" Watermark="birthday" />
+
+              <Label Grid.Column="0" Grid.Row="2" Content="_Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                     Target="{x:Reference EditableDatePicker}"/>
+              <DatePicker x:Name="EditableDatePicker" Grid.Column="2" Grid.Row="2" IsEditable="True"
+                          VerticalAlignment="Top" Watermark="birthday" />
+            </Grid>
           </StackPanel>
         </DockPanel>
       </DataTemplate>
@@ -749,9 +751,10 @@
       <DockPanel LastChildFill="True">
         <Label DockPanel.Dock="Top"
                Content="Select a _Page:"
-               Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"
                Padding="1,0"
                Target="{x:Reference PageList}" />
+           <!--Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"-->
+
         <ListBox x:Name="PageList"
                  Width="22"
                  ItemsSource="{Binding Pages}"
@@ -764,7 +767,7 @@
           </ListBox.ItemTemplate>
         </ListBox>
       </DockPanel>
-    </Border>
+    </Border> 
 
     <StatusBar DockPanel.Dock="Bottom">
     <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->

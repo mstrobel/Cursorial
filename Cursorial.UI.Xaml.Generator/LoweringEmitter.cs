@@ -1868,11 +1868,18 @@ internal static class LoweringEmitter
         if (value.Kind == XamlValueKind.Folded)
             return FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]);
 
+        ref readonly var ext = ref c.Doc.Extensions[value.ValueIndex];
+
+        // A custom extension standalone (a dictionary/collection entry) provides its value with a null target —
+        // the loader's ProvideStandaloneCustomValue shape.
+        if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } node)
+            return CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null);
+
         // Reuse the same *Resource value lowering the curly Setter.Value form uses: a DynamicResource
         // carrier (literal OR a nested {x:Static}/{x:Type} key — the common theme-key alias), and a
-        // same-dictionary StaticResource (the already-built entry's var). Binding/TemplateBinding/custom
+        // same-dictionary StaticResource (the already-built entry's var). Binding/TemplateBinding
         // have no standalone value expression and return null (the caller degrades to CURG3001).
-        return ResourceValueExpr(c, in c.Doc.Extensions[value.ValueIndex]);
+        return ResourceValueExpr(c, in ext);
     }
 
     /// <summary>The value slot of an element-form markup-extension object (the single Extension/Folded member;
@@ -1927,10 +1934,196 @@ internal static class LoweringEmitter
                 EmitReference(c, varExpr, xm, c.Doc.Strings[ext.Payload]);
                 return;
 
+            case ExtensionKind.Custom when c.Doc.ParsedExtensions[ext.Payload] is { } node:
+                EmitCustomExtension(c, varExpr, xm, node);
+                return;
+
             default:
                 c.Todo($"extension {ext.Kind} for '{xm.Name}' not yet lowered");
                 return;
         }
+    }
+
+    // A custom {Foo …} markup extension as a member value → new FooExtension { args }.ProvideValue(services),
+    // the result assigned to the target — the AOT-clean twin of the loader's ActivateCustomExtension +
+    // XamlServiceProvider. The service bundle carries the provide-value target (this element + the target
+    // property), the document root, and the enclosing name scope.
+    private static void EmitCustomExtension(Context c, string varExpr, XamlMember xm, MarkupExtensionNode node)
+    {
+        // TargetProperty mirrors the loader: the UIProperty for a registered target, else the CLR member's
+        // runtime type (the loader passes a XamlMember carrying that type; LoweredExtensionServices + the
+        // extensions' Type arm read it the same way).
+        var owner = RegisteredOwner(xm);
+        string targetPropExpr = owner is { } o ? $"{Global(o)}.{xm.Name}Property"
+            : ValueTypeSymbol(xm.ValueType) is { } vt ? $"typeof({Global(vt)})"
+            : "null";
+
+        if (CustomExtensionExpr(c, node, varExpr, targetPropExpr) is not { } provideValue)
+            return; // a specific TODO was emitted
+
+        if (owner is { } owner2)
+            c.Line($"{varExpr}.SetValue({Global(owner2)}.{xm.Name}Property, {provideValue});");
+        else if (ValueTypeSymbol(xm.ValueType) is { SpecialType: not SpecialType.System_Object } ct)
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){provideValue}!;"); // ProvideValue returns object? — cast to a concrete CLR target
+        else
+            c.Line($"{varExpr}.{xm.Name} = {provideValue};"); // object target
+    }
+
+    // Builds `new FooExtension { named/positional args }.ProvideValue(new LoweredExtensionServices(…))` for a
+    // custom extension node, or null (a specific TODO was emitted). targetObjectExpr/targetPropertyExpr are null
+    // for a standalone entry (the loader's ProvideStandaloneCustomValue passes a null target).
+    private static string? CustomExtensionExpr(Context c, MarkupExtensionNode node, string? targetObjectExpr, string? targetPropertyExpr)
+    {
+        var extType = ResolveCustomExtensionType(c, node);
+        if (extType is null || !DerivesFromMarkupExtension(extType))
+        {
+            c.Todo($"custom markup extension '{node.Name}' could not be resolved to a MarkupExtension type");
+            return null;
+        }
+
+        var inits = new List<string>();
+
+        // Positional args → writable public properties by the WPF [ConstructorArgument] convention (the only
+        // ordering that lowers PARITY-safe; declaration order is not guaranteed to match reflection's, so an
+        // unannotated positional extension fences rather than risk a wrong mapping).
+        if (node.PositionalArguments.Count > 0)
+        {
+            var order = ConstructorArgumentOrder(extType, node.PositionalArguments.Count);
+            if (order is null)
+            {
+                c.Todo($"custom markup extension '{node.Name}' has positional args without the [ConstructorArgument] convention — not yet lowered");
+                return null;
+            }
+            for (int i = 0; i < order.Length; i++)
+            {
+                if (CustomExtensionArgValue(c, node.PositionalArguments[i], XamlDataTypeScope.MemberType(order[i])) is not { } v)
+                {
+                    c.Todo($"custom markup extension '{node.Name}' positional arg {i} value not lowerable");
+                    return null;
+                }
+                inits.Add($"{order[i].Name} = {v}");
+            }
+        }
+
+        // Named args → members on the extension.
+        foreach (var named in node.NamedArguments)
+        {
+            if (XamlDataTypeScope.FindMember(extType, named.Name) is not { } memberSym)
+            {
+                c.Todo($"custom markup extension '{node.Name}' has no member '{named.Name}'");
+                return null;
+            }
+            if (CustomExtensionArgValue(c, named.Value, XamlDataTypeScope.MemberType(memberSym)) is not { } v)
+            {
+                c.Todo($"custom markup extension '{node.Name}' arg '{named.Name}' value not lowerable");
+                return null;
+            }
+            inits.Add($"{named.Name} = {v}");
+        }
+
+        var root = c.HasRootElement ? "this" : "null";
+        var scope = c.InTemplate ? "__ctx.NameScope" : c.HasDocumentScope ? "__scope" : "null";
+        var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices({targetObjectExpr ?? "null"}, {targetPropertyExpr ?? "null"}, {root}, {scope})";
+        return $"new {Global(extType)}{Initializers(inits)}.ProvideValue({services})";
+    }
+
+    // A custom-extension argument value as a C# expression: a nested {x:Static}/{x:Type}/{x:Null}/same-dict
+    // {StaticResource}, or a text value converted to the member type (the converter ladder). Null = not lowerable.
+    private static string? CustomExtensionArgValue(Context c, MarkupExtensionArgumentValue arg, ITypeSymbol? memberType)
+    {
+        if (arg.IsNested)
+        {
+            var nested = arg.Nested!;
+            if (nested.Name is "x:Static" or "Static" && FirstPositionalText(nested) is { Length: > 0 } sp)
+                return ResolveStaticPath(c, sp);
+            if (nested.Name is "x:Type" or "Type" && FirstPositionalText(nested) is { Length: > 0 } tt &&
+                XamlDataTypeScope.ResolveToken(c.Doc, tt, c.Resolver) is { } ts)
+                return $"typeof({Global(ts)})";
+            if (nested.Name is "x:Null" or "Null")
+                return "null";
+            if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
+                c.ResourceVarsByKeyExpr.TryGetValue($"\"{Escape(key)}\"", out var srcVar))
+                return srcVar;
+            return null; // {Binding} / other nested — no standalone value in this position
+        }
+
+        // A text value → the typed member expression (an object-initializer assignment needs the concrete
+        // type, so the converter result is cast — unlike the object-typed Setter.Value lane).
+        var text = arg.Text ?? string.Empty;
+        if (memberType is null || memberType.SpecialType is SpecialType.System_String or SpecialType.System_Object)
+            return $"\"{Escape(text)}\"";
+        if (IsSystemType(memberType))
+            return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved ? $"typeof({Global(resolved)})" : null;
+
+        c.UsesConverter = true;
+        return $"({Global(memberType)})__ConvertXamlValue(typeof({Global(memberType)}), \"{Escape(text)}\")!";
+    }
+
+    // Resolves a custom extension's type symbol (mirrors the loader's ResolveExtensionType): the name binds
+    // through its stamped xmlns (the default UI uri for an unprefixed / hand-built node), preferring the WPF
+    // "Extension"-suffixed twin so a `{Icon}` beside an `Icon` CONTROL binds `IconExtension`.
+    private static INamedTypeSymbol? ResolveCustomExtensionType(Context c, MarkupExtensionNode node)
+    {
+        var name = node.Name;
+        int colon = name.IndexOf(':');
+        if (colon >= 0)
+            name = name.Substring(colon + 1);
+
+        var ns = node.ResolvedNamespace ?? XamlSymbolResolver.CursorialUiNamespace;
+        return c.Resolver.Resolve(ns, name + "Extension", out _)
+               ?? c.Resolver.Resolve(ns, name, out _);
+    }
+
+    private static bool DerivesFromMarkupExtension(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? t = type; t is not null; t = t.BaseType)
+            if (t.ToDisplayString() == "Cursorial.UI.Xaml.MarkupExtension")
+                return true;
+        return false;
+    }
+
+    // The property symbols an extension's positional args map to, by the [ConstructorArgument] convention: the
+    // public constructor whose arity matches, each parameter resolved to the property carrying
+    // [ConstructorArgument(paramName)]. Null when no constructor matches or any parameter is unannotated (the
+    // caller fences — declaration order is not parity-safe). Mirrors the loader's ResolveConstructorArgumentOrder.
+    private static ISymbol[]? ConstructorArgumentOrder(INamedTypeSymbol extType, int count)
+    {
+        IMethodSymbol? ctor = null;
+        foreach (var candidate in extType.InstanceConstructors)
+            if (candidate.DeclaredAccessibility == Accessibility.Public && candidate.Parameters.Length == count)
+            {
+                ctor = candidate;
+                break;
+            }
+        if (ctor is null)
+            return null;
+
+        var result = new ISymbol[count];
+        for (int i = 0; i < count; i++)
+        {
+            var paramName = ctor.Parameters[i].Name;
+            ISymbol? match = null;
+            for (var t = extType; t is not null && match is null; t = t.BaseType)
+                foreach (var member in t.GetMembers())
+                {
+                    if (member is not (IPropertySymbol or IFieldSymbol))
+                        continue;
+                    foreach (var attr in member.GetAttributes())
+                        if (attr.AttributeClass?.Name == "ConstructorArgumentAttribute" &&
+                            attr.ConstructorArguments.Length > 0 &&
+                            attr.ConstructorArguments[0].Value as string == paramName)
+                        {
+                            match = member;
+                            break;
+                        }
+                    if (match is not null)
+                        break;
+                }
+            if (match is null)
+                return null;
+            result[i] = match;
+        }
+        return result;
     }
 
     // {x:Reference Name} → a deferred assignment from the ACTIVE name scope, emitted after every x:Name in

@@ -2400,18 +2400,29 @@ internal static class LoweringEmitter
         return present.Count == 0 ? string.Empty : " { " + string.Join(", ", present) + " }";
     }
 
-    // Resolves an {x:Static Type.Member} path to a C# static reference. The type token (before the last dot)
-    // is resolved through the same symbol resolver the parse used (default UI xmlns); the member is appended.
+    // Resolves an {x:Static [prefix:]Type.Member} path to a C# static reference. The prefix binds through
+    // the document xmlns table (P1C — a prefix maps to its declared namespace, a bare token to the default
+    // xmlns), then ClosedTypeSet.ResolveStaticExpr bakes the expression — the SAME helper the generated
+    // provider's switch bakes through, so the lowered and loaded lanes resolve identically (a miss degrades
+    // to the caller's TODO, never non-compiling code).
     private static string? ResolveStaticPath(Context c, string memberPath)
     {
-        int dot = memberPath.LastIndexOf('.');
-        if (dot <= 0)
-            return null;
+        string path;
+        string? ns;
+        int colon = memberPath.IndexOf(':');
+        if (colon > 0)
+        {
+            path = memberPath.Substring(colon + 1);
+            if (!c.Doc.Namespaces.TryGetValue(memberPath.Substring(0, colon), out ns))
+                return null;
+        }
+        else
+        {
+            path = memberPath;
+            ns = c.Doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSymbolResolver.CursorialUiNamespace;
+        }
 
-        var typeName = memberPath.Substring(0, dot);
-        var member = memberPath.Substring(dot + 1);
-        var typeSymbol = c.Resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, typeName, out _);
-        return typeSymbol is null ? null : $"{Global(typeSymbol)}.{member}"; // Global() already prefixes global::
+        return ClosedTypeSet.ResolveStaticExpr(c.Resolver, ns, path);
     }
 
     private static INamedTypeSymbol? RegisteredOwner(XamlMember member) => member.Property as INamedTypeSymbol;

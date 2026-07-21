@@ -968,8 +968,36 @@ internal sealed class XamlObjectGraphBuilder
         // the X5 generated provider via a baked switch. No hard-cast to a concrete provider type, so x:Static
         // works under the generated/AOT provider too (and the loader no longer statically references the
         // reflection provider here — one of the two AOT blocker sites closed).
-        if (_options.MetadataProvider is IXamlStaticResolver resolver
-            && resolver.TryResolveStatic(memberPath, out var resolved))
+        var provider = _options.MetadataProvider;
+
+        if (provider is IXamlQualifiedStaticResolver qualified)
+        {
+            // The xmlns-aware seam (P1C): bind the document prefix here — {x:Static co:Colors.Red}
+            // resolves Colors.Red under the co: declaration's namespace, an unprefixed path under the
+            // document default xmlns — and hand the provider a prefix-free path.
+            string path;
+            string ns;
+            int colon = memberPath.IndexOf(':');
+            if (colon > 0)
+            {
+                var prefix = memberPath.Substring(0, colon);
+                path = memberPath.Substring(colon + 1);
+                if (!_doc.Namespaces.TryGetValue(prefix, out ns!))
+                {
+                    throw Fatal(XamlDiagnosticCodes.MemberNotFound,
+                        $"Could not resolve {{x:Static {memberPath}}}: xmlns prefix '{prefix}' is not declared.", line, column);
+                }
+            }
+            else
+            {
+                path = memberPath;
+                ns = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
+            }
+
+            if (qualified.TryResolveStatic(ns, path, out var qualifiedResolved))
+                return qualifiedResolved;
+        }
+        else if (provider is IXamlStaticResolver resolver && resolver.TryResolveStatic(memberPath, out var resolved))
         {
             return resolved;
         }

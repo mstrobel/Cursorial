@@ -111,5 +111,5 @@ public class ClosedTypeSetTests
     }
 
     private static string? ResolveStaticOf(XamlSymbolResolver resolver, string path)
-        => ClosedTypeSet.ResolveStaticExpr(resolver, path);
+        => ClosedTypeSet.ResolveStaticExpr(resolver, XamlSymbolResolver.CursorialUiNamespace, path);
 }

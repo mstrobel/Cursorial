@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlQualifiedStaticResolver
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -237,10 +237,16 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
     /// <summary>
     /// Resolves an <c>{x:Static Type.Member}</c> path to its value (matrix X26/X122): a public static
     /// field or property on a type the schema can resolve (<c>Colors.Red</c>, <c>Brushes.Red</c>, …).
-    /// Returns false on an unresolvable path.
+    /// The raw-path form scopes to the default Cursorial uri; the loader normally calls the
+    /// xmlns-qualified overload with the document-bound namespace (P1C). Returns false on an
+    /// unresolvable path.
     /// </summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x:Static reflects a static member on a resolved type; X5 generator supplies trim-clean values.")]
     public bool TryResolveStatic(string memberPath, out object? value)
+        => TryResolveStatic(XamlSchemaContext.CursorialUiNamespace, memberPath, out value);
+
+    /// <inheritdoc cref="TryResolveStatic(string, out object?)"/>
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x:Static reflects a static member on a resolved type; X5 generator supplies trim-clean values.")]
+    public bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value)
     {
         value = null;
         int dot = memberPath.LastIndexOf('.');
@@ -250,7 +256,7 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         var typeName = memberPath.Substring(0, dot);
         var memberName = memberPath.Substring(dot + 1);
 
-        var type = _schema.Resolve(XamlSchemaContext.CursorialUiNamespace, typeName, out _);
+        var type = _schema.Resolve(xmlNamespace, typeName, out _);
         if (type is null)
             return false;
 

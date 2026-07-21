@@ -63,6 +63,24 @@ public interface IXamlStaticResolver
 }
 
 /// <summary>
+/// The xmlns-aware widening of <see cref="IXamlStaticResolver"/> (P1C): resolves an <c>{x:Static}</c> path
+/// whose type token binds under <c>xmlNamespace</c>. The loader resolves the document prefix itself
+/// (<c>{x:Static co:Colors.Red}</c> → the <c>co:</c> declaration's namespace) and passes the prefix-FREE
+/// path, so providers never see raw prefixes — two documents binding the same prefix to different
+/// namespaces cannot collide. A separate derived interface for the same reason as its base:
+/// netstandard2.0 has no default interface methods, so widening in place would break existing providers.
+/// </summary>
+public interface IXamlQualifiedStaticResolver : IXamlStaticResolver
+{
+    /// <summary>
+    /// Resolves a prefix-free <c>Type.Member</c> path whose type is declared under
+    /// <paramref name="xmlNamespace"/> (a Cursorial uri or <c>clr-namespace:</c> form), or returns
+    /// <c>false</c> on an unresolvable path.
+    /// </summary>
+    bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value);
+}
+
+/// <summary>
 /// The outcome of a type resolution: the resolved type, an ambiguity, or a miss.
 /// </summary>
 public readonly struct XamlTypeResolution

@@ -1379,6 +1379,10 @@ internal static class LoweringEmitter
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
         }
 
+        // This object's <X.Resources> (pushed by EmitResourcesMember below) is visible to its whole subtree,
+        // then popped — the loader's scope Push / PopDownTo(depth) around a resources hop.
+        int ambientDepth = c.AmbientScopeStack.Count;
+
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
@@ -1514,6 +1518,9 @@ internal static class LoweringEmitter
                     break;
             }
         }
+
+        if (c.AmbientScopeStack.Count > ambientDepth)
+            c.AmbientScopeStack.RemoveRange(ambientDepth, c.AmbientScopeStack.Count - ambientDepth);
     }
 
     // The XAML2009 built-in (CLR basic) type local names — the set a primitive element initializes from its
@@ -1631,6 +1638,8 @@ internal static class LoweringEmitter
         var savedCaptures = c.CurrentFactoryCaptures;
         var savedReferences = c.References.Count;       // {x:Reference} recorded inside this factory flush HERE,
         var savedScopeLines = c.DeferredScopeLines.Count; // against ITS scope — never the document's (isolation)
+        var savedAmbientFloor = c.AmbientScopeFloor;    // the factory is a separate C# local function: its custom
+        c.AmbientScopeFloor = c.AmbientScopeStack.Count; // extensions see only template dictionaries, not outer ones
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
         c.TemplatedParentType = templatedParentType;
@@ -1656,6 +1665,7 @@ internal static class LoweringEmitter
         c.TemplateContextVar = savedCtxVar;
         c.TemplatedParentType = savedTpt;
         c.CurrentFactoryCaptures = savedCaptures;
+        c.AmbientScopeFloor = savedAmbientFloor;
         c.SwapBuffer(savedBuffer);
 
         var fn = new StringBuilder();
@@ -1841,6 +1851,7 @@ internal static class LoweringEmitter
     {
         var dictVar = c.NextVar();
         c.Line($"var {dictVar} = {varExpr}.{xm.Name};"); // the get-object dictionary — read, never assign
+        c.AmbientScopeStack.Add(dictVar); // the lexical resource scope for this element's subtree (the loader's Push)
         foreach (int idx in ResourceItems(c, member))
             EmitDictionaryEntry(c, dictVar, idx);
     }
@@ -2102,7 +2113,22 @@ internal static class LoweringEmitter
 
         var root = c.HasRootElement ? "this" : "null";
         var scope = c.InTemplate ? "__ctx.NameScope" : c.HasDocumentScope ? "__scope" : "null";
-        var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices({targetObjectExpr ?? "null"}, {targetPropertyExpr ?? "null"}, {root}, {scope})";
+
+        // The lexical ambient resource chain (IAmbientResources): the enclosing <X.Resources> dictionary locals
+        // in the current C# method scope, INNERMOST-first — mirroring XamlResourceScopeStack.TryResolve. A
+        // lowered document has no external XamlLoadContext ambient tail, so this is the whole ambient scope.
+        string ambient = "null";
+        if (c.AmbientScopeStack.Count > c.AmbientScopeFloor)
+        {
+            var visible = new List<string>();
+            for (int i = c.AmbientScopeStack.Count - 1; i >= c.AmbientScopeFloor; i--)
+                visible.Add(c.AmbientScopeStack[i]);
+            ambient = $"new global::Cursorial.UI.ResourceDictionary[] {{ {string.Join(", ", visible)} }}";
+        }
+
+        // IXamlLineInfo — the node's 1-based author position (harmless 0,0 for a hand-built node).
+        var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices(" +
+                       $"{targetObjectExpr ?? "null"}, {targetPropertyExpr ?? "null"}, {root}, {scope}, {ambient}, {node.Line}, {node.Column})";
         // An empty initializer needs explicit `()` — `new Foo.ProvideValue(…)` would parse ProvideValue as a nested type.
         var ctor = inits.Count > 0 ? $"new {Global(extType)}{Initializers(inits)}" : $"new {Global(extType)}()";
         return $"{ctor}.ProvideValue({services})";
@@ -3077,6 +3103,17 @@ internal static class LoweringEmitter
         /// <summary>Lazily-computed set of every resource key expression defined in the document (see
         /// <c>DocumentResourceKeys</c>) — distinguishes a forward intra-document BasedOn from an external one.</summary>
         public HashSet<string>? DocumentResourceKeysCache { get; set; }
+
+        /// <summary>The enclosing <c>&lt;X.Resources&gt;</c> dictionary locals (outermost-first) in scope at the
+        /// current emit point — the lexical ambient resource stack a custom extension's
+        /// <c>LoweredExtensionServices</c> resolves against, mirroring the loader's <c>XamlResourceScopeStack</c>.
+        /// Pushed by <c>EmitResourcesMember</c>; save/restored (depth) around each object's member loop.</summary>
+        public List<string> AmbientScopeStack { get; } = [];
+
+        /// <summary>The lowest visible index in <see cref="AmbientScopeStack"/> — dictionaries below it are out of
+        /// the current C# method scope (a template factory is a separate local function, so its custom
+        /// extensions see only its own template dictionaries). Save/restored around a template factory.</summary>
+        public int AmbientScopeFloor { get; set; }
         public XamlSymbolResolver Resolver { get; } = resolver;
         public string Indent { get; } = indent;
         public StringBuilder Body { get; } = new();

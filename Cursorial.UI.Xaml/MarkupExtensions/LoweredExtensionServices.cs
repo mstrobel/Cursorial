@@ -5,17 +5,16 @@ namespace Cursorial.UI.Xaml;
 /// <summary>
 /// The <see cref="IServiceProvider"/> full-lowering hands a custom <see cref="MarkupExtension"/> at its
 /// <see cref="MarkupExtension.ProvideValue"/> call — the AOT-clean twin of the loader's
-/// <c>XamlServiceProvider</c>. It carries the four services a lowered document can supply from static
-/// knowledge: the provide-value target (<see cref="IProvideValueTarget"/>), the document root
-/// (<see cref="IRootObjectProvider"/>), and the enclosing name scope (<see cref="INameScopeProvider"/>).
+/// <c>XamlServiceProvider</c>. It supplies the provide-value target (<see cref="IProvideValueTarget"/>), the
+/// document root (<see cref="IRootObjectProvider"/>), the enclosing name scope
+/// (<see cref="INameScopeProvider"/>), the lexical ambient resource chain
+/// (<see cref="IAmbientResources"/>), and the author position (<see cref="IXamlLineInfo"/>).
 ///
-/// <para><see cref="IAmbientResources"/> and <see cref="IXamlLineInfo"/> are absent: there is no lowered
-/// ambient resource stack and no runtime author-position, so an extension that probes either gets
-/// <see langword="null"/>. Under full-lowering there is NO loader to fall back to — the document is emitted as
-/// straight-line C# — so an extension whose <see cref="MarkupExtension.ProvideValue"/> depends on ambient
-/// resource resolution would diverge from the loader here. The emitter fences such an extension only when it
-/// can prove the dependency; a custom extension that consumes <see cref="IAmbientResources"/> is a known
-/// lowering gap (tracked separately) and should stay on the loader path (a non-lowered document).</para>
+/// <para>The ambient chain is the enclosing <c>&lt;X.Resources&gt;</c> dictionaries, innermost-first — the
+/// same lexical stack the loader's <c>XamlResourceScopeStack</c> walks (and, like it, forward-reference-free:
+/// a key defined later in a dictionary is not yet present at the provide-value point). A lowered document is a
+/// plain load with no external <c>XamlLoadContext</c> ambient scope, so this document chain is the whole
+/// ambient scope — matching the loader exactly.</para>
 ///
 /// <para><see cref="TargetProperty"/> mirrors the loader: a registered <c>UIProperty</c> for a styled target,
 /// or the target member's runtime <see cref="Type"/> for a CLR member (where the loader passes a
@@ -26,15 +25,24 @@ public sealed class LoweredExtensionServices :
     IServiceProvider,
     IProvideValueTarget,
     IRootObjectProvider,
-    INameScopeProvider
+    INameScopeProvider,
+    IAmbientResources,
+    IXamlLineInfo
 {
+    private readonly IReadOnlyList<ResourceDictionary>? _ambientScopes; // innermost-first
+
     /// <summary>Creates the service bundle for a lowered <see cref="MarkupExtension.ProvideValue"/> call.</summary>
-    public LoweredExtensionServices(object? targetObject, object? targetProperty, object? rootObject, INameScope? nameScope)
+    public LoweredExtensionServices(
+        object? targetObject, object? targetProperty, object? rootObject, INameScope? nameScope,
+        IReadOnlyList<ResourceDictionary>? ambientScopes = null, int lineNumber = 0, int linePosition = 0)
     {
         TargetObject = targetObject;
         TargetProperty = targetProperty;
         RootObject = rootObject;
         NameScope = nameScope;
+        _ambientScopes = ambientScopes;
+        LineNumber = lineNumber;
+        LinePosition = linePosition;
     }
 
     /// <inheritdoc/>
@@ -50,11 +58,31 @@ public sealed class LoweredExtensionServices :
     public INameScope? NameScope { get; }
 
     /// <inheritdoc/>
+    public int LineNumber { get; }
+
+    /// <inheritdoc/>
+    public int LinePosition { get; }
+
+    /// <inheritdoc/>
+    public bool TryFindResource(object key, out object? value)
+    {
+        if (_ambientScopes is not null)
+            foreach (var dictionary in _ambientScopes) // innermost-first, mirroring XamlResourceScopeStack.TryResolve
+                if (dictionary.TryGetValue(key, out value))
+                    return true;
+
+        value = null;
+        return false;
+    }
+
+    /// <inheritdoc/>
     public object? GetService(Type serviceType)
     {
         if (serviceType == typeof(IProvideValueTarget)) return this;
         if (serviceType == typeof(IRootObjectProvider)) return this;
         if (serviceType == typeof(INameScopeProvider)) return this;
+        if (serviceType == typeof(IAmbientResources)) return this;
+        if (serviceType == typeof(IXamlLineInfo)) return this;
         return null;
     }
 

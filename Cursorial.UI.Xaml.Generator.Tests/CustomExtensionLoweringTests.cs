@@ -207,4 +207,86 @@ namespace GenApp { public partial class NumView : StackPanel { public NumView() 
         var button = Assert.IsType<Button>(view.Children[0]);
         Assert.Equal(42, button.Width); // "42" → 42 via the converter ladder, not an InvalidCastException
     }
+
+    [Fact] // A custom extension that probes IAmbientResources resolves an enclosing <X.Resources> key — the
+           // lexical ambient chain is reconstructed from the enclosing dictionary locals (innermost-first),
+           // matching the loader's XamlResourceScopeStack instead of returning a fail-open null.
+    public void Lowered_CustomExtension_AmbientResources_ResolvesEnclosingResource()
+    {
+        var extension = @"
+using Cursorial.UI.Xaml;
+namespace GenApp
+{
+    public sealed class AmbientExtension : MarkupExtension
+    {
+        public string? Key { get; set; }
+        public override object? ProvideValue(System.IServiceProvider sp)
+            => sp.GetService(typeof(IAmbientResources)) is IAmbientResources ar && ar.TryFindResource(Key!, out var v) ? v : ""MISS"";
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.AmbView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Accent\" Color=\"Red\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\" Content=\"{g:Ambient Key=Accent}\"/>" + // resolves Accent from the enclosing Resources
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class AmbView : StackPanel { public AmbView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(extension), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("new global::Cursorial.UI.ResourceDictionary[] {", lowered); // the ambient chain is passed
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.AmbView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+        Assert.Same(view.Resources["Accent"], button.Content); // resolved via IAmbientResources, NOT a fail-open null/"MISS"
+    }
+
+    [Fact] // Ambient scope isolation: a custom extension INSIDE a template sees the template's own <X.Resources>,
+           // not the outer document's — the factory is a separate C# method (the outer dict locals aren't in
+           // scope), so the ambient chain floor is reset at the factory boundary.
+    public void Lowered_CustomExtension_AmbientResources_TemplateScopeIsolated()
+    {
+        var extension = @"
+using Cursorial.UI.Xaml;
+namespace GenApp
+{
+    public sealed class ProbeExtension : MarkupExtension
+    {
+        public string? Key { get; set; }
+        public override object? ProvideValue(System.IServiceProvider sp)
+            => sp.GetService(typeof(IAmbientResources)) is IAmbientResources ar && ar.TryFindResource(Key!, out var v) ? v : ""MISS"";
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.AmbTplView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"OuterOnly\" Color=\"Red\"/>" + // in the OUTER document scope only
+              "<DataTemplate x:Key=\"Tpl\">" +
+                "<Button Content=\"{g:Probe Key=OuterOnly}\"/>" + // must NOT see the outer resource
+              "</DataTemplate>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class AmbTplView : StackPanel { public AmbTplView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(extension), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.AmbTplView")!)!;
+        var built = Assert.IsType<Button>(Assert.IsType<DataTemplate>(view.Resources["Tpl"]).Build(null));
+        Assert.Equal("MISS", built.Content); // the outer document resource is NOT in the template's ambient scope
+    }
 }

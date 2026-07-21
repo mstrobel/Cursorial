@@ -72,10 +72,12 @@ namespace GenApp { public partial class StaticView : StackPanel { public StaticV
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The dict was populated via Add(key, value); a same-document {StaticResource} (define-before-use)
-        // resolves to the entry's var directly — the load-time snapshot, the same instance FindResource would
-        // find, with no runtime ancestor walk (consistent with the top-level dictionary var shortcut).
-        Assert.Contains(".Resources.Add(\"Accent\", ", lowered);
+        // The get-object Resources dictionary is read into a local, then populated via Add(key, value) — the
+        // same entry machinery the top-level <ResourceDictionary> uses. A same-document {StaticResource}
+        // (define-before-use) resolves to the entry's var directly — the load-time snapshot, the same instance
+        // FindResource would find, with no runtime ancestor walk.
+        Assert.Contains(".Resources;", lowered);            // read into a local
+        Assert.Contains(".Add(\"Accent\", ", lowered);       // populated on that local
         Assert.DoesNotContain("global::Cursorial.UI.ResourceExtensions.FindResource(", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
@@ -142,5 +144,158 @@ namespace GenApp { public partial class DynBadView : StackPanel { public DynBadV
         Assert.Contains("TODO X5", lowered);
         // The TODO is a comment — the rest compiles.
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
+
+    [Fact] // Inline <X.Resources> now routes through the top-level entry machinery: an UNKEYED Style keys by
+           // its implicit "Style:<TargetType>" form (the loader's TryGetImplicitKey) — previously a // TODO.
+    public void Lowered_InlineResources_ImplicitStyleKey_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ImplStyleView\">" +
+            "<StackPanel.Resources>" +
+              "<Style TargetType=\"Button\"><Setter Property=\"TextElement.Foreground\" Value=\"Red\"/></Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ImplStyleView : StackPanel { public ImplStyleView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".Add(\"Style:Button\", ", lowered); // the implicit key, raw target-type text
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.ImplStyleView")!)!;
+        Assert.True(view.Resources.TryGetValue("Style:Button", out var styled));
+        Assert.IsType<Cursorial.UI.Style>(styled);
+
+        // The loader keys it identically.
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.ImplStyleView\"", ""));
+        Assert.True(runtime.Resources.TryGetValue("Style:Button", out _));
+    }
+
+    [Fact] // An UNKEYED DataTemplate keys by new DataTemplateKey(typeof(DataType)) — the Shell.xaml
+           // view-resolution-template pattern, previously a // TODO.
+    public void Lowered_InlineResources_ImplicitDataTemplateKey_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ImplTplView\">" +
+            "<StackPanel.Resources>" +
+              "<DataTemplate DataType=\"Button\"><TextBlock Text=\"x\"/></DataTemplate>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ImplTplView : StackPanel { public ImplTplView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("new global::Cursorial.UI.DataTemplateKey(typeof(global::Cursorial.UI.Controls.Button))", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.ImplTplView")!)!;
+        Assert.True(view.Resources.TryGetValue(new Cursorial.UI.DataTemplateKey(typeof(Button)), out var tpl));
+        Assert.IsType<DataTemplate>(tpl);
+
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.ImplTplView\"", ""));
+        Assert.True(runtime.Resources.TryGetValue(new Cursorial.UI.DataTemplateKey(typeof(Button)), out _));
+    }
+
+    [Fact] // An {x:Type} key in inline Resources resolves to a typeof(...) dictionary key (control-theme shape),
+           // previously fenced by the plain-string-key-only inline path.
+    public void Lowered_InlineResources_XTypeKey_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.XTypeKeyView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"{x:Type Button}\" Color=\"Red\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class XTypeKeyView : StackPanel { public XTypeKeyView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".Add(typeof(global::Cursorial.UI.Controls.Button), ", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.XTypeKeyView")!)!;
+        Assert.True(view.Resources.TryGetValue(typeof(Button), out var brush));
+        Assert.IsType<SolidColorBrush>(brush);
+    }
+
+    [Fact] // A nested <ResourceDictionary Source="rel.xaml"/> inside <X.Resources> FOLDS into the host's
+           // Resources with the relative URI resolved against the document — previously the RD was pre-built
+           // generically (Source unresolved) and dropped, losing every shared resource.
+    public void Lowered_InlineResources_NestedSourceDictionary_FoldsWithResolvedUri()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.MergeView\">" +
+            "<StackPanel.Resources>" +
+              "<ResourceDictionary Source=\"Shared.xaml\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        // Folded into the host Resources local, Source assigned as a resolved Uri (not routed through the
+        // scalar converter, not dropped).
+        Assert.Contains(".Source = new global::System.Uri(", lowered);
+        Assert.Contains("Shared.xaml", lowered);
+    }
+
+    [Fact] // A non-same-dictionary {StaticResource {x:Type …}} on a UIElement resolves through the end-of-tree
+           // FindResource anchor with a typeof(...) key — previously fenced because the anchor was string-only.
+    public void Lowered_StaticResource_MarkupExtensionKey_ResolvesViaFindResource()
+    {
+        // The {x:Type Button} key is NOT a document entry — it lives in an ambient tier (App.Resources) — so it
+        // takes the deferred FindResource anchor rather than a same-dictionary var hit.
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.MeKeyView\">" +
+            "<Button x:Name=\"Ok\" Foreground=\"{StaticResource {x:Type Button}}\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class MeKeyView : StackPanel { public MeKeyView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("FindResource(", lowered);
+        Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var brush = new SolidColorBrush { Color = Colors.Red };
+            host.Application.Resources[typeof(Button)] = brush;
+
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.MeKeyView")!)!;
+            var button = Assert.IsType<Button>(view.Children[0]);
+            Assert.Same(brush, button.Foreground); // resolved through the deferred FindResource anchor, ambient tier
+        }
+        finally
+        {
+            host.Dispose();
+        }
     }
 }

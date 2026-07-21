@@ -355,7 +355,7 @@ internal static class LoweringEmitter
     private static string? ResourceKeyExpr(Context c, int objectIndex)
     {
         if (RawKey(c, objectIndex) is not { } raw)
-            return null;
+            return ImplicitResourceKeyExpr(c, objectIndex); // no x:Key → an implicit Style/DataTemplate key, or null
 
         if (!raw.StartsWith("{", System.StringComparison.Ordinal))
             return $"\"{Escape(raw)}\"";
@@ -370,6 +370,73 @@ internal static class LoweringEmitter
             return $"typeof({Global(typeSym)})";
 
         return null;
+    }
+
+    // The implicit dictionary key for an unkeyed entry (matrix X137/X138 — the loader's TryGetImplicitKey):
+    // a Style with a TargetType keys by its type-selector form "Style:<raw target-type text>" (the RAW
+    // attribute text, so the key matches the loader's byte-for-byte — the styling engine matches on Selector,
+    // the key is only the dictionary identity); a DataTemplate with a DataType keys by
+    // new DataTemplateKey(typeof(DataType)). Null when the entry has neither an x:Key nor an implicit key.
+    private static string? ImplicitResourceKeyExpr(Context c, int objectIndex)
+    {
+        ref readonly var obj = ref c.Doc.Objects[objectIndex];
+        var type = TypeSymbolOf(c.Doc, obj.TypeId);
+
+        if (IsStyleType(type) && RawTextMember(c, in obj, "TargetType") is { } targetText)
+            return $"\"Style:{Escape(targetText)}\"";
+
+        if (IsDataTemplateSymbol(type) && DataTemplateDataType(c, in obj) is { } dataType)
+            return $"new global::Cursorial.UI.DataTemplateKey(typeof({Global(dataType)}))";
+
+        return null;
+    }
+
+    // The raw text of a Text-valued member by name (mirrors the loader's TryGetStyleStringMember Kind==Text
+    // guard — a non-Text form is not a string member), or null.
+    private static string? RawTextMember(Context c, in ObjectRecord obj, string memberName)
+    {
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.Kind != XamlValueKind.Text || member.MemberId < 0)
+                continue;
+            if (c.Doc.ResolvedMembers[member.MemberId]?.Name == memberName)
+                return c.Doc.Strings[member.ValueIndex];
+        }
+        return null;
+    }
+
+    // The DataTemplate's DataType as a resolved symbol (mirrors the loader's TryGetDataType): the x:DataType
+    // directive, or a CLR DataType member (a folded Type constant or a Text token), resolved via the document
+    // xmlns. Null when absent / unresolvable.
+    private static INamedTypeSymbol? DataTemplateDataType(Context c, in ObjectRecord obj)
+    {
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+
+            if (member is { Kind: XamlValueKind.Directive, DirectiveKind: (int) XamlDirectiveKind.DataType })
+                return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
+
+            if (member.MemberId >= 0 && c.Doc.ResolvedMembers[member.MemberId]?.Name == "DataType")
+            {
+                if (member.Kind == XamlValueKind.Folded && c.Doc.Constants[member.ValueIndex] is System.Type)
+                    return null; // a folded System.Type constant isn't a Roslyn symbol here — fall through to fence
+                if (member.Kind == XamlValueKind.Text)
+                    return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
+            }
+        }
+        return null;
+    }
+
+    // True when the symbol is DataTemplate or derives from it (the loader's typeof(DataTemplate).IsAssignableFrom
+    // — HierarchicalDataTemplate etc. also key by DataType).
+    private static bool IsDataTemplateSymbol(INamedTypeSymbol? type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+            if (t is { Name: "DataTemplate", ContainingNamespace.Name: "Controls" })
+                return true;
+        return false;
     }
 
     // Pulls the argument out of a single-intrinsic markup-extension string "{name arg}" (e.g. "{x:Static A.B}").
@@ -1350,6 +1417,17 @@ internal static class LoweringEmitter
 
                 case XamlValueKind.Object:
                 {
+                    // A <Foo.Resources> body — a nested <ResourceDictionary> or a run of keyed entries — folds
+                    // through the SAME entry machinery the top-level dictionary uses (the loader's
+                    // AddOrMergeResourceChild): nested-RD fold, {x:Static}/{x:Type}/implicit keys, aliasing.
+                    // Intercept BEFORE the generic child build (a half-built dict with an unresolved Source
+                    // would otherwise leak into the tree).
+                    if (IsResourceDictionaryMember(xm))
+                    {
+                        EmitResourcesMember(c, varExpr, xm, in member);
+                        break;
+                    }
+
                     // A markup extension in element form as a scalar member value (<Setter.Value><DynamicResource
                     // …/></Setter.Value>): lower it exactly as the curly attribute form.
                     ref readonly var childObj = ref c.Doc.Objects[member.ValueIndex];
@@ -1375,6 +1453,12 @@ internal static class LoweringEmitter
 
                 case XamlValueKind.Items:
                 {
+                    if (IsResourceDictionaryMember(xm))
+                    {
+                        EmitResourcesMember(c, varExpr, xm, in member);
+                        break;
+                    }
+
                     int childIndex = member.ValueIndex;
                     for (int i = 0; i < member.ItemCount; i++)
                     {
@@ -1723,12 +1807,6 @@ internal static class LoweringEmitter
     // (SetValue for a UIProperty, else the CLR setter).
     private static void EmitChildAssign(Context c, string varExpr, XamlMember xm, string childVar, int childObjectIndex, bool single)
     {
-        if (IsResourceDictionaryMember(xm))
-        {
-            EmitResourceEntry(c, varExpr, xm, childObjectIndex, childVar);
-            return;
-        }
-
         if (!single)
         {
             c.Line($"{varExpr}.{xm.Name}.Add({childVar});");
@@ -1754,42 +1832,17 @@ internal static class LoweringEmitter
         c.Line($"{varExpr}.{xm.Name} = {childVar};");
     }
 
-    // A keyed resource entry: read the child's x:Key directive and emit `parent.<Member>.Add("key", child)`
-    // (the Resources getter is a get-object dictionary — read it, never assign). A {x:Type}/{x:Static}/escaped
-    // key (anything not a plain string literal) is deferred to a // TODO X5; so is a key-less entry.
-    private static void EmitResourceEntry(Context c, string varExpr, XamlMember xm, int childObjectIndex, string childVar)
+    // A <Foo.Resources> body: read the get-object Resources dictionary into a local and route every child
+    // through the SAME entry machinery the top-level <ResourceDictionary> uses (EmitDictionaryEntry) — the
+    // loader's AddOrMergeResourceChild. This gives inline Resources the full surface: a nested
+    // <ResourceDictionary Source="…"/> folds (relative URI resolved), {x:Static}/{x:Type}/implicit
+    // Style/DataTemplate keys, and aliasing entries — instead of the old plain-string-key-only Add.
+    private static void EmitResourcesMember(Context c, string varExpr, XamlMember xm, in MemberRecord member)
     {
-        if (ResourceKeyOf(c, childObjectIndex) is not { } key)
-        {
-            c.Todo($"resource entry in '{xm.Name}' has no plain-string x:Key (markup-extension keys not yet lowered)");
-            return;
-        }
-
-        c.Line($"{varExpr}.{xm.Name}.Add(\"{Escape(key)}\", {childVar});");
-
-        // Track the built entry so a same-dictionary {StaticResource key} (incl. a {Binding} Converter) resolves to
-        // its var — the inline <X.Resources> twin of the top-level dictionary-entry tracking (EmitDictionaryEntry).
-        c.ResourceVars[key] = childVar;
-        c.ResourceVarsByKeyExpr[$"\"{Escape(key)}\""] = childVar;
-    }
-
-    // The plain-string x:Key on an object (the dictionary key), or null when absent / an extension-syntax key.
-    private static string? ResourceKeyOf(Context c, int objectIndex)
-    {
-        ref readonly var obj = ref c.Doc.Objects[objectIndex];
-
-        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
-        {
-            ref readonly var member = ref c.Doc.Members[m];
-
-            if (member.Kind == XamlValueKind.Directive && member.DirectiveKind == (int) XamlDirectiveKind.Key)
-            {
-                var key = c.Doc.Strings[member.ValueIndex];
-                return key.StartsWith("{", System.StringComparison.Ordinal) ? null : key; // an extension key isn't a literal
-            }
-        }
-
-        return null;
+        var dictVar = c.NextVar();
+        c.Line($"var {dictVar} = {varExpr}.{xm.Name};"); // the get-object dictionary — read, never assign
+        foreach (int idx in ResourceItems(c, member))
+            EmitDictionaryEntry(c, dictVar, idx);
     }
 
     private static bool IsResourceDictionaryMember(XamlMember xm)
@@ -2229,15 +2282,16 @@ internal static class LoweringEmitter
             return;
         }
 
-        if (ext.PayloadIsParsedExtension)
+        // Not a same-dictionary entry: defer to the end-of-tree FindResource anchor. The key is rendered as a
+        // C# EXPRESSION (a string literal, a typeof(...) for {x:Type}, or an {x:Static} ref) — FindResource
+        // takes an object key, so a nested {x:Type}/{x:Static}-keyed StaticResource resolves the same way a
+        // string-keyed one does (the loader is forward-reference-free for live members, so the anchor is
+        // strictly more permissive).
+        if (ResourceKeyArgExpr(c, in ext) is not { } deferredKeyExpr)
         {
-            // A nested {x:Type}/{x:Static} key that isn't a same-dictionary entry: there's no string anchor for the
-            // end-of-tree FindResource fallback (which is string-keyed), so defer.
-            c.Todo($"{{StaticResource}} with a markup-extension key for '{xm.Name}' is not a same-dictionary entry — not yet lowered");
+            c.Todo($"{{StaticResource}} key for '{xm.Name}' is an unsupported markup extension — not yet lowered");
             return;
         }
-
-        var key = c.Doc.Strings[ext.Payload];
 
         if (c.InTemplate)
         {
@@ -2257,7 +2311,7 @@ internal static class LoweringEmitter
         // For a CLR (non-UIProperty) target, remember the value type so the assignment casts FindResource's
         // object? to the property type — needed even for a `string` target (object? → string is not implicit).
         var clrType = owner is null ? ValueTypeSymbol(xm.ValueType) : null;
-        c.StaticResources.Add(new StaticResourceResolution(varExpr, owner, xm.Name, key, clrType));
+        c.StaticResources.Add(new StaticResourceResolution(varExpr, owner, xm.Name, deferredKeyExpr, clrType));
     }
 
     // Assigns an already-resolved resource value expression (a built entry's var) to a member: SetValue for a
@@ -2284,7 +2338,7 @@ internal static class LoweringEmitter
         c.Line("// X5.4 — resolve {StaticResource}s now the tree is built + attached and resources are populated.");
         foreach (var sr in c.StaticResources)
         {
-            string find = $"global::Cursorial.UI.ResourceExtensions.FindResource({sr.Var}, \"{Escape(sr.Key)}\")";
+            string find = $"global::Cursorial.UI.ResourceExtensions.FindResource({sr.Var}, {sr.KeyExpr})";
 
             if (sr.Owner is { } owner)
                 c.Line($"{sr.Var}.SetValue({Global(owner)}.{sr.Property}Property, {find});");
@@ -3176,13 +3230,14 @@ internal static class LoweringEmitter
     }
 
     // A {StaticResource} to resolve at end-of-InitializeComponent. Owner non-null ⇒ SetValue(Owner.<Prop>Property);
-    // else a CLR set (cast to ClrType when non-null, i.e. a typed non-object/string CLR target).
-    private readonly struct StaticResourceResolution(string var, INamedTypeSymbol? owner, string property, string key, ITypeSymbol? clrType)
+    // else a CLR set (cast to ClrType when non-null, i.e. a typed non-object/string CLR target). KeyExpr is a
+    // pre-rendered C# key expression (a string literal / typeof(...) / {x:Static} ref) — FindResource's object key.
+    private readonly struct StaticResourceResolution(string var, INamedTypeSymbol? owner, string property, string keyExpr, ITypeSymbol? clrType)
     {
         public string Var { get; } = var;
         public INamedTypeSymbol? Owner { get; } = owner;
         public string Property { get; } = property;
-        public string Key { get; } = key;
+        public string KeyExpr { get; } = keyExpr;
         public ITypeSymbol? ClrType { get; } = clrType;
     }
 

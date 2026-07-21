@@ -245,6 +245,10 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
             foreach (var note in lowered.Unlowered)
                 spc.ReportDiagnostic(Diagnostic.Create(LoweringGap, LocationFor(input, note.Line, note.Column), note.Message));
 
+            // CURG3002 — error-level: input the runtime loader would reject; the lowered build fails too.
+            foreach (var note in lowered.Errors)
+                spc.ReportDiagnostic(Diagnostic.Create(LoweringInvalidInput, LocationFor(input, note.Line, note.Column), note.Message));
+
             // CURG2002 — info-level "works, but not the AOT-optimal compiled form" notes (reflective-fallback bindings).
             foreach (var note in lowered.Infos)
                 spc.ReportDiagnostic(Diagnostic.Create(ReflectiveBindingInfo, LocationFor(input, note.Line, note.Column), note.Message));
@@ -404,6 +408,17 @@ public sealed class XamlSourceGenerator : IIncrementalGenerator
         messageFormat: "Full-lowering could not emit this member, so it has no runtime effect: {0}",
         category: "Cursorial.Xaml",
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    // A construct the RUNTIME LOADER rejects (a Fatal on the identical document) — the lowered build must
+    // fail as loudly, not warn-and-skip: the emitter being more lenient than the loader would let an
+    // invalid document ship under `full` that no other mode could ever run.
+    private static readonly DiagnosticDescriptor LoweringInvalidInput = new(
+        id: "CURG3002",
+        title: "XAML construct is invalid (the runtime loader rejects it)",
+        messageFormat: "{0}",
+        category: "Cursorial.Xaml",
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     // Builds a Roslyn Location on the .xaml file from the frontend's 1-based line/column.

@@ -238,33 +238,121 @@ internal static class ClosedTypeSet
     }
 
     /// <summary>
-    /// The distinct <c>{x:Static}</c> references across <paramref name="texts"/>, each resolved to a baked
-    /// <c>global::FullType.Member</c> C# expression for the generated provider's <c>TryResolveStatic</c> switch.
-    /// Unresolvable paths are dropped (the runtime then misses identically — no drift). The single source both
-    /// <c>XamlSourceGenerator.EmitProvider</c> and the dual-run test use, so they can't diverge.
+    /// The distinct <c>{x:Static}</c> references across <paramref name="texts"/>, each bound to its declared
+    /// xml namespace (a prefixed path binds through the document's <c>xmlns:</c> declarations — P1C) and
+    /// resolved to a baked <c>global::FullType.Member</c> C# expression for the generated provider's
+    /// <c>TryResolveStatic</c> switch. Keys are (namespace, prefix-free path) pairs, matching what the loader
+    /// hands <c>IXamlQualifiedStaticResolver</c> — the same prefix bound to different namespaces in two
+    /// documents bakes two distinct cases. Unresolvable paths are dropped (the runtime then misses
+    /// identically — no drift). The single source both <c>XamlSourceGenerator.EmitProvider</c> and the
+    /// dual-run test use, so they can't diverge.
     /// </summary>
-    public static List<(string Path, string Expr)> CollectStatics(XamlSymbolResolver resolver, IEnumerable<string> texts)
+    public static List<(string Namespace, string Path, string Expr)> CollectStatics(XamlSymbolResolver resolver, IEnumerable<string> texts)
     {
-        var statics = new List<(string Path, string Expr)>();
-        var seen = new HashSet<string>(System.StringComparer.Ordinal);
+        var statics = new List<(string Namespace, string Path, string Expr)>();
+        var seen = new HashSet<(string, string)>();
 
         foreach (var text in texts)
-            foreach (var path in CollectStaticPaths(text))
-                if (seen.Add(path) && ResolveStaticExpr(resolver, path) is { } expr)
-                    statics.Add((path, expr));
+        {
+            Dictionary<string, string>? xmlns = null;
+
+            foreach (var raw in CollectStaticPaths(text))
+            {
+                xmlns ??= CollectXmlnsDeclarations(text);
+
+                string path;
+                string? ns;
+                int colon = raw.IndexOf(':');
+                if (colon > 0)
+                {
+                    path = raw.Substring(colon + 1);
+                    // An undeclared prefix isn't baked — the loader throws member-not-found identically.
+                    if (!xmlns.TryGetValue(raw.Substring(0, colon), out ns))
+                        continue;
+                }
+                else
+                {
+                    path = raw;
+                    ns = xmlns.TryGetValue(string.Empty, out var dns) ? dns : XamlSymbolResolver.CursorialUiNamespace;
+                }
+
+                if (seen.Add((ns, path)) && ResolveStaticExpr(resolver, ns, path) is { } expr)
+                    statics.Add((ns, path, expr));
+            }
+        }
 
         return statics;
     }
 
     /// <summary>
-    /// Resolves an <c>{x:Static "Type.Member"}</c> path to a baked <c>global::FullType.Member</c> expression, or
-    /// null when it can't resolve through the default UI xmlns. Mirrors <c>ReflectionXamlMetadata.TryResolveStatic</c>
-    /// EXACTLY (default-xmlns scope; the xmlns-prefixed widening is P1C): a public static field / readable property
+    /// The document's <c>xmlns</c> / <c>xmlns:prefix</c> declarations, text-scanned like
+    /// <see cref="CollectStaticPaths"/> (robust to parse failures; first declaration wins — prefixes are
+    /// root-declared in practice, and a mid-document REBINDING of the same prefix is the one shape this
+    /// scan cannot scope; such a path simply isn't baked when the first binding fails to resolve).
+    /// </summary>
+    public static Dictionary<string, string> CollectXmlnsDeclarations(string xaml)
+    {
+        var map = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        const string marker = "xmlns";
+
+        int i = 0;
+        while ((i = xaml.IndexOf(marker, i, System.StringComparison.Ordinal)) >= 0)
+        {
+            int p = i + marker.Length;
+            i = p;
+
+            // Require attribute position: preceded by whitespace, followed by ':prefix=' or '='.
+            if (i - marker.Length > 0 && !char.IsWhiteSpace(xaml[i - marker.Length - 1]))
+                continue;
+
+            var prefix = string.Empty;
+            if (p < xaml.Length && xaml[p] == ':')
+            {
+                int start = ++p;
+                while (p < xaml.Length && xaml[p] != '=' && !char.IsWhiteSpace(xaml[p]))
+                    p++;
+                prefix = xaml.Substring(start, p - start);
+                if (prefix.Length == 0)
+                    continue;
+            }
+
+            while (p < xaml.Length && char.IsWhiteSpace(xaml[p]))
+                p++;
+            if (p >= xaml.Length || xaml[p] != '=')
+                continue;
+            p++;
+            while (p < xaml.Length && char.IsWhiteSpace(xaml[p]))
+                p++;
+            if (p >= xaml.Length || (xaml[p] != '"' && xaml[p] != '\''))
+                continue;
+
+            char quote = xaml[p];
+            int valueStart = ++p;
+            while (p < xaml.Length && xaml[p] != quote)
+                p++;
+            if (p >= xaml.Length)
+                break;
+
+            if (!map.ContainsKey(prefix))
+                map[prefix] = xaml.Substring(valueStart, p - valueStart);
+
+            i = p;
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Resolves a prefix-free <c>Type.Member</c> path under <paramref name="xmlNamespace"/> to a baked
+    /// <c>global::FullType.Member</c> expression, or null when it can't resolve. Mirrors
+    /// <c>ReflectionXamlMetadata.TryResolveStatic</c> EXACTLY: a public static field / readable property
     /// declared DIRECTLY on the type — NOT inherited, because the reflection side uses
     /// <c>GetField/GetProperty(Public|Static)</c> with no <c>FlattenHierarchy</c>, so baking an inherited static
     /// would resolve under the generated provider but throw <c>MemberNotFound</c> under reflection (X174 drift).
+    /// The lowering emitter bakes member values through this same helper, so the lowered and loaded lanes
+    /// cannot drift either.
     /// </summary>
-    public static string? ResolveStaticExpr(XamlSymbolResolver resolver, string memberPath)
+    public static string? ResolveStaticExpr(XamlSymbolResolver resolver, string xmlNamespace, string memberPath)
     {
         int dot = memberPath.LastIndexOf('.');
         if (dot <= 0)
@@ -273,7 +361,7 @@ internal static class ClosedTypeSet
         var typeName = memberPath.Substring(0, dot);
         var memberName = memberPath.Substring(dot + 1);
 
-        var type = resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, typeName, out _);
+        var type = resolver.Resolve(xmlNamespace, typeName, out _);
         if (type is null)
             return null;
 

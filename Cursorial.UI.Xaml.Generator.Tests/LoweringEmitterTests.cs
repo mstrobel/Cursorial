@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using Cursorial.Drawing.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -129,6 +130,68 @@ namespace GenApp { public partial class CapsStaticView : StackPanel { public Cap
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsStaticView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
         Assert.Equal(StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
+    }
+
+    [Fact] // A PREFIXED {x:Static co:Colors.Red} member value bakes as a member-access reference: the type
+           // token binds through the document xmlns table (like x:DataType), not just the default UI uri —
+           // the palette's tier dictionaries author every Ansi16 color this way.
+    public void Lowered_PrefixedXStaticMemberValue_MatchesLoader()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticColorView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static co:Colors.Red}\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class StaticColorView : StackPanel { public StaticColorView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("global::Cursorial.Output.Colors.Red", lowered);
+        var todoLine = lowered.Split('\n').FirstOrDefault(l => l.Contains("TODO X5"));
+        Assert.True(todoLine is null, $"unexpected TODO: {todoLine}");
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.StaticColorView")!)!;
+        var loweredBrush = Assert.IsType<SolidColorBrush>(view.Resources["Ink"]);
+
+        var runtime = (StackPanel)new XamlLoader(
+            new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml.Replace(" x:Class=\"GenApp.StaticColorView\"", ""));
+        var runtimeBrush = Assert.IsType<SolidColorBrush>(runtime.Resources["Ink"]);
+        Assert.Equal(runtimeBrush.Color, loweredBrush.Color);
+        Assert.Equal(Cursorial.Output.Colors.Red, loweredBrush.Color);
+    }
+
+    [Fact] // An {x:Static} naming a member the type doesn't have degrades to the fail-closed TODO — the
+           // generator must never emit a member access the C# compile of the view would then reject.
+    public void Lowered_XStaticUnknownMember_FailsClosed()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticMissView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static co:Colors.NotAColor}\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class StaticMissView : StackPanel { public StaticMissView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("TODO X5", lowered);
+        Assert.DoesNotContain("NotAColor", string.Join("\n", lowered.Split('\n').Where(l => !l.Contains("TODO"))));
+
+        // The lowered source still compiles and instantiates (the entry is dropped, not mangled).
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.StaticMissView")!));
     }
 
     [Fact]

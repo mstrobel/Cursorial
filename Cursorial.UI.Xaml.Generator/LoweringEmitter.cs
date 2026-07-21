@@ -56,7 +56,7 @@ internal static class LoweringEmitter
         string className = dot > 0 ? rootClass.Substring(dot + 1) : rootClass;
         string indent = ns is null ? "    " : "        ";
 
-        var ctx = new Context(document, indent, resolver) { SourceUri = sourceUri };
+        var ctx = new Context(document, indent, resolver) { SourceUri = sourceUri, HasRootElement = true, HasDocumentScope = named.Count > 0 };
 
         // Build the InitializeComponent body first (it determines whether a name scope is needed).
         if (named.Count > 0)
@@ -127,7 +127,7 @@ internal static class LoweringEmitter
         if (ns is not null)
             sb.AppendLine("}");
 
-        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos);
+        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos, ctx.Errors);
     }
 
     // ── WS-X5.4f — ResourceDictionary-root lowering (no x:Class) ──────────────────────────────────────
@@ -194,7 +194,7 @@ internal static class LoweringEmitter
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos);
+        return new LoweringResult(sb.ToString(), ctx.Unlowered, ctx.Infos, ctx.Errors);
     }
 
     // Mirrors XamlObjectGraphBuilder.FillResourceDictionaryMembers: Source / MergedDictionaries /
@@ -259,6 +259,14 @@ internal static class LoweringEmitter
 
                 default:
                     // The implicit content: keyed entries (or a nested <ResourceDictionary> that folds in).
+                    // A resolved NON-object member reaching here (a Text attribute this pass doesn't know)
+                    // has no items to enumerate — fence it rather than silently dropping (the
+                    // never-silently-drop invariant); the object funnel below matches the loader's.
+                    if (xm is not null && member.Kind is not (XamlValueKind.Object or XamlValueKind.Items))
+                    {
+                        c.Todo($"<ResourceDictionary> member '{xm.Name}' ({member.Kind}) not yet lowered");
+                        break;
+                    }
                     foreach (int idx in ResourceItems(c, member))
                         EmitDictionaryEntry(c, dictVar, idx);
                     break;
@@ -417,6 +425,10 @@ internal static class LoweringEmitter
             {
                 if (member.DirectiveKind == (int) XamlDirectiveKind.Key)
                 {
+                    // Style.Key is string? (diagnostics/placement identity). LOADER PARITY: only a literal
+                    // key transfers — the loader leaves Key null for extension-form keys (x:Key="{x:Static …}"),
+                    // and the structural-parity gate compares Key, so baking the resolved static here would
+                    // make the lowered lane observably differ.
                     var k = c.Doc.Strings[member.ValueIndex];
                     keyExpr = k.StartsWith("{", System.StringComparison.Ordinal) ? null : $"\"{Escape(k)}\""; // Style.Key is string?
                 }
@@ -432,8 +444,21 @@ internal static class LoweringEmitter
                 case "Selector" when member.Kind == XamlValueKind.Text:
                     selectorText = c.Doc.Strings[member.ValueIndex];
                     break;
+                case "TargetType":
+                case "Selector":
+                    break; // non-Text forms: the loader's TryGetStyleStringMember has the identical Kind==Text guard — ignored in both lanes
                 case "BasedOn":
                     basedOnExpr = BasedOnExpr(c, in member);
+                    if (basedOnExpr is null)
+                    {
+                        // Fail CLOSED (the RequiresCapabilities precedent): emitting the style WITHOUT its
+                        // base silently drops every inherited setter — the one outcome neither lane may
+                        // have. Reached for a forward/intra-document base (the inline probe can't defer an
+                        // init-only property), an anchorless document (a ResourceDictionary builder), or an
+                        // unsupported value form.
+                        DropStyle(c, varExpr, "<Style> BasedOn is not lowerable here (a forward/intra-document base, or no root element to anchor the live-chain probe) — style dropped");
+                        return;
+                    }
                     break;
                 case "Setters":
                     settersMember = m;
@@ -451,7 +476,7 @@ internal static class LoweringEmitter
                         // Fail CLOSED like the unbaked-selector path: emitting the style WITHOUT its gate
                         // would turn a tier-conditional rule into an unconditional one (the unsafe
                         // degradation direction — the occlusion-everywhere failure class).
-                        c.Todo($"<Style> RequiresCapabilities \"{Escape(c.Doc.Strings[member.ValueIndex])}\" has an unknown member");
+                        DropStyle(c, varExpr, $"<Style> RequiresCapabilities \"{Escape(c.Doc.Strings[member.ValueIndex])}\" has an unknown member");
                         return;
                     }
                     break;
@@ -460,7 +485,7 @@ internal static class LoweringEmitter
                     requiresExpr = BakeFoldedCapabilities(c, c.Doc.Constants[member.ValueIndex]);
                     if (requiresExpr is null)
                     {
-                        c.Todo("<Style> RequiresCapabilities folded to a value outside StyleCapabilities");
+                        DropStyle(c, varExpr, "<Style> RequiresCapabilities folded to a value outside StyleCapabilities");
                         return;
                     }
                     break;
@@ -472,15 +497,25 @@ internal static class LoweringEmitter
                     requiresExpr = ResolveStaticPath(c, c.Doc.Strings[c.Doc.Extensions[member.ValueIndex].Payload]);
                     if (requiresExpr is null)
                     {
-                        c.Todo("<Style> RequiresCapabilities {x:Static} target could not be resolved");
+                        DropStyle(c, varExpr, "<Style> RequiresCapabilities {x:Static} target could not be resolved");
                         return;
                     }
                     break;
                 case "RequiresCapabilities":
                     // Any other form (a non-Static extension, a property element with a live object) —
                     // fail closed rather than silently dropping the capability gate.
-                    c.Todo("<Style> RequiresCapabilities uses a form not yet baked");
+                    DropStyle(c, varExpr, "<Style> RequiresCapabilities uses a form not yet baked");
                     return;
+                default:
+                    if (xm is not null)
+                    {
+                        // A future XAML-authorable Style member (an Enter/Exit action collection, say) must
+                        // fence, never silently drop — the style would apply with different behavior than
+                        // authored. Unknown-name members surface the frontend's own diagnostics.
+                        DropStyle(c, varExpr, $"<Style> member '{xm.Name}' not yet lowered — style dropped");
+                        return;
+                    }
+                    break;
             }
         }
 
@@ -491,7 +526,7 @@ internal static class LoweringEmitter
         {
             if (BakeSelector(c, st) is not { } sel)
             {
-                c.Todo($"<Style> selector \"{Escape(st)}\" uses a construct not yet baked");
+                DropStyle(c, varExpr, $"<Style> selector \"{Escape(st)}\" uses a construct not yet baked");
                 return;
             }
             ctor = $"new global::Cursorial.UI.Style({sel})";
@@ -505,16 +540,48 @@ internal static class LoweringEmitter
             ctor = "new global::Cursorial.UI.Style()"; // selector-less (an explicit element Style)
         }
 
+        // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger
+        // equivalent). Buffered BEFORE the ctor line so one unlowerable condition drops the WHOLE style
+        // (fail closed): a style missing one of its When conditions applies more broadly than authored —
+        // the fail-open direction, inconsistent with the RequiresCapabilities/BasedOn discipline.
+        StringBuilder? whenBuf = null;
+        if (whenMember >= 0)
+        {
+            whenBuf = new StringBuilder();
+            var savedBuffer = c.SwapBuffer(whenBuf);
+            // Snapshot the deferred-work lists: a condition subtree can record end-of-scope work
+            // ({x:Reference}, a deferred {StaticResource}, a Source={x:Reference} install) whose target
+            // LOCAL lives in whenBuf. If we drop the style, whenBuf is discarded — so those records must
+            // roll back too, else the document-end flush emits a reference to a never-declared local (CS0103).
+            var savedRefs = c.References.Count;
+            var savedStatics = c.StaticResources.Count;
+            var savedScopeLines = c.DeferredScopeLines.Count;
+
+            var conditionsOk = true;
+            foreach (int idx in ResourceItems(c, c.Doc.Members[whenMember]))
+                conditionsOk &= EmitDataCondition(c, varExpr, idx);
+            c.SwapBuffer(savedBuffer);
+
+            if (!conditionsOk)
+            {
+                Truncate(c.References, savedRefs);
+                Truncate(c.StaticResources, savedStatics);
+                Truncate(c.DeferredScopeLines, savedScopeLines);
+                // The specific condition Todo was recorded (its marker was buffered away); this marker
+                // states the consequence at the style site.
+                DropStyle(c, varExpr, "<Style> dropped: a <Style.When> condition is not lowerable (the conditions gate the whole style)");
+                return;
+            }
+        }
+
         var inits = new List<string>();
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
         if (requiresExpr is not null) inits.Add($"RequiresCapabilities = {requiresExpr}");
         c.Line($"var {varExpr} = {ctor}{Initializers(inits)};");
 
-        // <Style.When> — the DataCondition conjunction that gates the whole style (the DataTrigger equivalent).
-        if (whenMember >= 0)
-            foreach (int idx in ResourceItems(c, c.Doc.Members[whenMember]))
-                EmitDataCondition(c, varExpr, idx);
+        if (whenBuf is not null)
+            c.Flush(whenBuf); // condition locals precede their When.Add within the buffer; all follow the ctor here
 
         if (settersMember >= 0)
             foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
@@ -737,8 +804,20 @@ internal static class LoweringEmitter
     // A <DataCondition> inside <Style.When> → styleVar.When.Add(new DataCondition { Binding = <descriptor>,
     // Value = <v>, Negate = <b> }). Binding is a {Binding} DESCRIPTOR (ReflectiveBindingExpr — the object, not a
     // live install); Value is a typed element (<x:Boolean>…</> → an object local), a folded {x:Null}, or a literal;
+    // A style the lowering must DROP (fail closed) still declares its pre-allocated var as an EMPTY,
+    // selector-less placeholder: callers reference the var unconditionally (entry .Add / Styles.Add), and a
+    // zero-setter style emits zero compiled rules — inert in every channel, exactly as absent would behave
+    // except the key exists. The // TODO + CURG3001 mark the gap; behavior never ships half-lowered.
+    private static void DropStyle(Context c, string varExpr, string message)
+    {
+        c.Todo(message);
+        c.Line($"var {varExpr} = new global::Cursorial.UI.Style();");
+    }
+
     // Negate is a bool literal. Only the equality form is XAML-expressible (a predicate needs a Func — code-only).
-    private static void EmitDataCondition(Context c, string styleVar, int objectIndex)
+    // Returns FALSE when the condition isn't lowerable (a specific // TODO was emitted) — the caller drops the
+    // whole style, never shipping it partially gated.
+    private static bool EmitDataCondition(Context c, string styleVar, int objectIndex)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
         c.CurrentLineInfo = obj.PackedLineInfo;
@@ -772,7 +851,7 @@ internal static class LoweringEmitter
         if (bindingExpr is null)
         {
             c.Todo("DataCondition without a lowerable {Binding} descriptor");
-            return;
+            return false;
         }
 
         // A PRESENT Value/Negate that can't be lowered is a // TODO (never silently dropped — that would flip the
@@ -784,7 +863,7 @@ internal static class LoweringEmitter
             if (valueExpr is null)
             {
                 c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} supported)");
-                return;
+                return false;
             }
         }
 
@@ -795,7 +874,7 @@ internal static class LoweringEmitter
             if (negateExpr is null)
             {
                 c.Todo("DataCondition Negate must be a boolean literal");
-                return;
+                return false;
             }
         }
 
@@ -804,6 +883,7 @@ internal static class LoweringEmitter
         if (negateExpr is not null) inits.Add($"Negate = {negateExpr}");
 
         c.Line($"{styleVar}.When.Add(new global::Cursorial.UI.DataCondition{Initializers(inits)});");
+        return true;
     }
 
     // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
@@ -928,14 +1008,56 @@ internal static class LoweringEmitter
 
         if (member.Kind == XamlValueKind.Extension &&
             c.Doc.Extensions[member.ValueIndex] is { Kind: ExtensionKind.StaticResource } ext &&
-            ResourceKeyArgExpr(c, in ext) is { } keyExpr &&
-            c.ResourceVarsByKeyExpr.TryGetValue(keyExpr, out var srcVar))
+            ResourceKeyArgExpr(c, in ext) is { } keyExpr)
         {
-            if (c.InTemplate) c.CurrentFactoryCaptures = true; // the factory references an enclosing entry var ⇒ not static
-            return srcVar;
+            if (c.ResourceVarsByKeyExpr.TryGetValue(keyExpr, out var srcVar))
+            {
+                if (c.InTemplate) c.CurrentFactoryCaptures = true; // the factory references an enclosing entry var ⇒ not static
+                return srcVar;
+            }
+
+            // A key that IS defined in this document but hasn't been built yet is a FORWARD (or
+            // outer-dictionary-forward) reference. The loader resolves it — it defers every entry and
+            // realizes lazily against the captured lexical stack, so intra-document order doesn't matter
+            // (matrix X115). The lowered probe can't: BasedOn is init-only, so it resolves inline during
+            // the derived style's construction — before the base entry is built or added — and the probe
+            // would walk a still-empty tree and throw. Fail closed (loud) rather than crash at runtime;
+            // a document-order-independent lowering of forward BasedOn is a follow-up.
+            if (DocumentResourceKeys(c).Contains(keyExpr))
+                return null;
+
+            // Otherwise the base lives OUTSIDE the document — an app/theme tier (App.Resources →
+            // App.Theme → ThemeContributions → CursorialTheme.BuiltIn — the
+            // BasedOn="{StaticResource {x:Type ListBoxItem}}" app pattern) or a merged dictionary.
+            // Probe the LIVE chain at build time, anchored on the view root: eager + throw-on-miss
+            // (ResourceNotFoundException names the searched chain), matching the loader's ambient tail.
+            // Only an x:Class document has the `this` anchor — a ResourceDictionary builder stays fenced.
+            if (c.HasRootElement)
+            {
+                if (c.InTemplate) c.CurrentFactoryCaptures = true; // captures `this`
+                return $"(global::Cursorial.UI.Style)global::Cursorial.UI.ResourceExtensions.FindResource(this, {keyExpr})!";
+            }
         }
 
         return null;
+    }
+
+    // Every resource key EXPRESSION defined anywhere in this document (a keyed object's x:Key lowered the
+    // same way ResourceKeyExpr lowers it — a string literal / typeof(...) / {x:Static} ref). Used to tell a
+    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't)
+    // from a genuinely external one (probe it). Computed once, lazily.
+    private static HashSet<string> DocumentResourceKeys(Context c)
+    {
+        if (c.DocumentResourceKeysCache is { } cached)
+            return cached;
+
+        var keys = new HashSet<string>(System.StringComparer.Ordinal);
+        for (int i = 0; i < c.Doc.Objects.Length; i++)
+            if (ResourceKeyExpr(c, i) is { } keyExpr)
+                keys.Add(keyExpr);
+
+        c.DocumentResourceKeysCache = keys;
+        return keys;
     }
 
     // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──
@@ -1123,7 +1245,16 @@ internal static class LoweringEmitter
             var expr = MarkupExtensionEntryExpr(c, in obj);
             if (expr is null)
             {
-                c.Todo("element-form markup extension in this position (Binding/TemplateBinding/custom entry) not yet lowered");
+                // A standalone element-form <Binding>/<TemplateBinding> is input the LOADER hard-rejects
+                // (XamlObjectGraphBuilder.Assign Fatal) — the lowered build must fail as loudly, not ship a
+                // null placeholder the runtime would never have produced. Other extensions (custom, resource
+                // refs) are valid XAML with no standalone lowering yet — a warning-level gap.
+                var extValue = ExtensionValueMember(c, in obj);
+                if (extValue.Kind == XamlValueKind.Extension &&
+                    c.Doc.Extensions[extValue.ValueIndex].Kind is ExtensionKind.Binding or ExtensionKind.TemplateBinding)
+                    c.Error("a standalone element-form <Binding>/<TemplateBinding> in a value position is invalid XAML (the runtime loader rejects it)");
+                else
+                    c.Todo("element-form markup extension in this position (custom/resource entry) not yet lowered");
                 expr = "default(object)";
             }
 
@@ -1414,12 +1545,25 @@ internal static class LoweringEmitter
         var savedCtxVar = c.TemplateContextVar;
         var savedTpt = c.TemplatedParentType;
         var savedCaptures = c.CurrentFactoryCaptures;
+        var savedReferences = c.References.Count;       // {x:Reference} recorded inside this factory flush HERE,
+        var savedScopeLines = c.DeferredScopeLines.Count; // against ITS scope — never the document's (isolation)
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
         c.TemplatedParentType = templatedParentType;
         c.CurrentFactoryCaptures = false;
 
         EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: null);
+
+        // {x:Reference} + scope-embedding Installs recorded in this factory body resolve against the
+        // per-build template scope, after the whole slice registered its names — the loader's end-of-slice
+        // ResolveDeferredReferences point (forward references included).
+        if (c.References.Count > savedReferences || c.DeferredScopeLines.Count > savedScopeLines)
+        {
+            c.Line("// {x:Reference} — resolve against this template build's now-complete name scope.");
+            EmitReferenceResolutions(c, savedReferences, "__ctx.NameScope");
+            c.References.RemoveRange(savedReferences, c.References.Count - savedReferences);
+            FlushDeferredScopeLines(c, savedScopeLines);
+        }
 
         // A factory that referenced an enclosing local (a same-dict {StaticResource} var) can't be `static` — it
         // must capture. One that didn't stays `static` (cleaner generated code; matches the non-capturing tests).
@@ -1789,14 +1933,19 @@ internal static class LoweringEmitter
         }
     }
 
-    // {x:Reference Name} → a deferred assignment from the document name scope, emitted at the end of
-    // InitializeComponent (after every x:Name is registered) so a forward reference resolves. Document-level only:
-    // a template factory has its own scope (no __scope), so it degrades to reflective.
+    // {x:Reference Name} → a deferred assignment from the ACTIVE name scope, emitted after every x:Name in
+    // that scope is registered so a forward reference resolves: the document scope at end-of-
+    // InitializeComponent, or — inside a template factory — the per-build template scope flushed before the
+    // factory's return (the loader's end-of-slice ResolveDeferredReferences point; scope isolation is
+    // automatic since the factory list never reaches the document flush).
     private static void EmitReference(Context c, string varExpr, XamlMember xm, string name)
     {
-        if (c.InTemplate)
+        // A document-level reference resolves through __scope, which exists only when the document
+        // declares document-scope x:Names. Without one, the reference can never resolve (the loader
+        // Fatals too) — fence rather than emit a reference to an undeclared __scope (CS0103).
+        if (!c.InTemplate && !c.HasDocumentScope)
         {
-            c.Todo($"{{x:Reference}} for '{xm.Name}' inside a template not yet lowered (no document name scope)");
+            c.Todo($"{{x:Reference {name}}} for '{xm.Name}' cannot resolve — the document declares no name scope");
             return;
         }
 
@@ -1920,21 +2069,53 @@ internal static class LoweringEmitter
     // reference (the named element appears later) resolves against the now-complete document name scope.
     private static void EmitDeferredReferences(Context c)
     {
-        if (c.References.Count == 0)
-            return;
-
-        c.Line("// {x:Reference} — resolve against the now-fully-populated document name scope (forward refs included).");
-        foreach (var r in c.References)
+        if (c.References.Count > 0)
         {
-            var find = $"__scope.Find(\"{Escape(r.Name)}\")";
+            c.Line("// {x:Reference} — resolve against the now-fully-populated document name scope (forward refs included).");
+            EmitReferenceResolutions(c, fromIndex: 0, scopeExpr: "__scope");
+            c.References.Clear();
+        }
+
+        FlushDeferredScopeLines(c, fromIndex: 0);
+    }
+
+    // The shared assign emission for recorded {x:Reference} resolutions — the document flush and the
+    // per-template-factory flush differ only in the scope lookup expression.
+    private static void EmitReferenceResolutions(Context c, int fromIndex, string scopeExpr)
+    {
+        for (int i = fromIndex; i < c.References.Count; i++)
+        {
+            var r = c.References[i];
+            // Require, not Find: by flush time the scope's names are all registered, so a miss is a
+            // genuine unresolved reference — throw-on-miss matches the loader's ReferenceNotFound Fatal
+            // instead of silently assigning null (which, for a Binding source, rebinds to DataContext).
+            // Static-call form — the generated code carries no `using`, so the extension can't be
+            // invoked instance-style.
+            var find = $"global::Cursorial.UI.NameScopeExtensions.Require({scopeExpr}, \"{Escape(r.Name)}\")";
 
             if (r.Owner is { } owner)
                 c.Line($"{r.Var}.SetValue({Global(owner)}.{r.Property}Property, {find});");
             else if (r.ClrType is { } ct)
-                c.Line($"{r.Var}.{r.Property} = ({Global(ct)}){find}!;");
+                c.Line($"{r.Var}.{r.Property} = ({Global(ct)}){find};");
             else
                 c.Line($"{r.Var}.{r.Property} = {find};");
         }
+    }
+
+    // Drops trailing list entries recorded past a saved count (rolls back deferred work whose target
+    // locals were emitted into a discarded buffer).
+    private static void Truncate<T>(List<T> list, int count)
+    {
+        if (list.Count > count)
+            list.RemoveRange(count, list.Count - count);
+    }
+
+    // Flushes deferred whole-line emissions (scope-embedding Installs) recorded past fromIndex.
+    private static void FlushDeferredScopeLines(Context c, int fromIndex)
+    {
+        for (int i = fromIndex; i < c.DeferredScopeLines.Count; i++)
+            c.Line(c.DeferredScopeLines[i]);
+        c.DeferredScopeLines.RemoveRange(fromIndex, c.DeferredScopeLines.Count - fromIndex);
     }
 
     // B3a/B3b — {Binding} lowering. The compiled lane (zero reflection, AOT-clean) is taken for an
@@ -2111,6 +2292,40 @@ internal static class LoweringEmitter
     // — the caller uses this to decide whether a CURG2002 "works-but-reflective" info is appropriate.
     private static bool EmitReflectiveBinding(Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node)
     {
+        // {Binding Source={x:Reference name}} anchors on a named element (the loader's NamedElementAnchor
+        // path): Binding.Source is init-only, so the WHOLE Install defers to the scope-complete point — the
+        // document flush, or this factory's end-of-slice flush — exactly the loader's DeferNameResolution.
+        if (node.FindNamed("Source") is { IsNested: true } src &&
+            src.Nested!.Name is "x:Reference" or "Reference")
+        {
+            if (FirstPositionalText(src.Nested!) is not { Length: > 0 } refName)
+            {
+                c.Todo($"{{Binding}} Source {{x:Reference}} for '{xm.Name}' has no element name");
+                return false;
+            }
+
+            // A document-level anchor needs the document name scope (__scope); it only exists when the
+            // document declares document-scope x:Names. Without one, no name can resolve — the loader
+            // Fatals identically — so fence rather than emit a reference to an undeclared __scope (CS0103).
+            if (!c.InTemplate && !c.HasDocumentScope)
+            {
+                c.Todo($"{{Binding Source={{x:Reference {refName}}}}} for '{xm.Name}' cannot resolve — the document declares no name scope");
+                return false;
+            }
+
+            var scopeExpr = c.InTemplate ? "__ctx.NameScope" : "__scope";
+            // Require, not Find — deferred to the scope-complete flush, so a miss is genuine (the loader's
+            // DeferNameResolution → ReferenceNotFound Fatal), never a silent null Source rebinding to
+            // DataContext. Static-call form (the generated code carries no `using` for the extension).
+            if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'",
+                    sourceOverrideExpr: $"global::Cursorial.UI.NameScopeExtensions.Require({scopeExpr}, \"{Escape(refName)}\")") is not { } anchored)
+                return false;
+
+            c.DeferredScopeLines.Add(
+                $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {anchored});");
+            return true;
+        }
+
         if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'") is not { } bindingExpr)
             return false; // a specific // TODO X5 was already emitted
 
@@ -2124,7 +2339,7 @@ internal static class LoweringEmitter
     // install lane (<see cref="EmitReflectiveBinding"/>, wrapped in BindingOperations.Install) and the Binding-
     // DESCRIPTOR lane (a Binding-typed slot such as DataCondition.Binding, used as an initializer value). Returns
     // null when a piece isn't lowerable, having emitted a specific // TODO X5 naming it via <paramref name="diagName"/>.
-    private static string? ReflectiveBindingExpr(Context c, MarkupExtensionNode node, string diagName)
+    private static string? ReflectiveBindingExpr(Context c, MarkupExtensionNode node, string diagName, string? sourceOverrideExpr = null)
     {
         if (CanonicalMode(node) is not { } modeName)
         {
@@ -2157,19 +2372,57 @@ internal static class LoweringEmitter
             prefixedOwners = [];
         }
 
+        // Source: an override (the install lane's resolved {x:Reference} anchor), a nested {x:Static}/
+        // same-dict {StaticResource} resolved eagerly (the loader's ResolveNestedExtension), the bare string
+        // (mirrors the handler), or — the previously-SILENT shape — an unlowerable nested extension, fenced:
+        // reading its Text as null used to drop the Source and silently rebind against DataContext.
+        string sourceInit;
+        if (sourceOverrideExpr is not null)
+            sourceInit = $"Source = {sourceOverrideExpr}";
+        else if (node.FindNamed("Source") is { IsNested: true } nestedSource)
+        {
+            if (NestedSourceExpr(c, nestedSource.Nested!) is not { } sourceExpr)
+            {
+                c.Todo($"{{Binding}} Source {diagName} is a nested {{{nestedSource.Nested!.Name}}} not lowerable in this position");
+                return null;
+            }
+            sourceInit = $"Source = {sourceExpr}";
+        }
+        else
+            sourceInit = StringInit("Source", NamedText(node, "Source"));
+
         string path = Escape(rawPath);
         var inits = new List<string>(ModeInit(modeName))
         {
             relSource,
             converterInit,
             StringInit("ElementName", NamedText(node, "ElementName")),
-            StringInit("Source", NamedText(node, "Source")),       // mirrors the handler: Source = the bare string
+            sourceInit,
             StringInit("StringFormat", NamedText(node, "StringFormat")),
             StringInit("FallbackValue", NamedText(node, "FallbackValue")),
             PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
 
         return $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)}";
+    }
+
+    // A nested Source={x:Static}/{StaticResource} value, resolved eagerly like the loader's
+    // ResolveNestedExtension: the static member reference, or a same-dictionary entry's var. {x:Reference}
+    // returns null here — the INSTALL lane defers the whole Install for it; in a descriptor position
+    // (DataCondition.Binding) it stays fenced. Other extensions: null (fenced by the caller).
+    private static string? NestedSourceExpr(Context c, MarkupExtensionNode nested)
+    {
+        if (nested.Name is "x:Static" or "Static" && FirstPositionalText(nested) is { Length: > 0 } staticPath)
+            return ResolveStaticPath(c, staticPath);
+
+        if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
+            c.ResourceVarsByKeyExpr.TryGetValue($"\"{Escape(key)}\"", out var srcVar))
+        {
+            if (c.InTemplate) c.CurrentFactoryCaptures = true; // references an enclosing entry var
+            return srcVar;
+        }
+
+        return null;
     }
 
     // {TemplateBinding SourceProp} (inside a template body) → a one-way TemplateBinding tracking the templated
@@ -2190,15 +2443,47 @@ internal static class LoweringEmitter
             return;
         }
 
-        if (FirstPositionalText(node) is not { Length: > 0 } sourceName)
+        // The source name: positional, or the named Property= (WPF parity — the loader accepts both, so the
+        // element form <TemplateBinding Property="Header"/> lowers too).
+        if ((FirstPositionalText(node) ?? NamedText(node, "Property")) is not { Length: > 0 } rawSourceName)
         {
             c.Todo($"{{TemplateBinding}} for '{xm.Name}' has no source property name");
             return;
         }
 
-        if (SymbolXamlModel.FindRegisteredPropertyOwner(parentType, sourceName) is not { } sourceOwner)
+        // Mirrors the loader's ResolveTemplateBindingSource: optional WPF parens, a type-qualified
+        // `Owner.Prop` / `ns:Owner.Prop` (an attached or other-type property) resolved through the document
+        // xmlns, else the templated parent's type, the target part's type, and finally the target property
+        // itself when the name matches (Background→Background).
+        var sourceName = rawSourceName.Trim();
+        if (sourceName.Length > 1 && sourceName[0] == '(' && sourceName[sourceName.Length - 1] == ')')
+            sourceName = sourceName.Substring(1, sourceName.Length - 2).Trim();
+
+        INamedTypeSymbol? sourceOwner;
+        int dot = sourceName.LastIndexOf('.');
+        if (dot > 0 && dot < sourceName.Length - 1)
         {
-            c.Todo($"{{TemplateBinding {sourceName}}} — '{sourceName}' is not a registered property on '{parentType.Name}'");
+            var ownerToken = sourceName.Substring(0, dot);
+            sourceName = sourceName.Substring(dot + 1);
+            if (XamlDataTypeScope.ResolveToken(c.Doc, ownerToken, c.Resolver) is not { } ownerType)
+            {
+                c.Todo($"{{TemplateBinding {rawSourceName}}} — owner type '{ownerToken}' could not be resolved");
+                return;
+            }
+            sourceOwner = SymbolXamlModel.FindRegisteredPropertyOwner(ownerType, sourceName);
+        }
+        else
+        {
+            // Declared-TargetType resolution vs the loader's runtime templated-parent type: registration
+            // walks the base chain, so the UIProperty identity matches in every normal case.
+            sourceOwner = SymbolXamlModel.FindRegisteredPropertyOwner(parentType, sourceName)
+                          ?? (c.CurrentObjectType is { } partType ? SymbolXamlModel.FindRegisteredPropertyOwner(partType, sourceName) : null)
+                          ?? (sourceName == xm.Name ? targetOwner : null);
+        }
+
+        if (sourceOwner is null)
+        {
+            c.Todo($"{{TemplateBinding {rawSourceName}}} — '{sourceName}' is not a registered property on '{parentType.Name}'");
             return;
         }
 
@@ -2495,11 +2780,34 @@ internal static class LoweringEmitter
 
         /// <summary>The document's machine-independent source URI (cursorial://…), when known.</summary>
         public string? SourceUri { get; set; }
+
+        /// <summary>True for an x:Class code-behind document (the root is <c>this</c>, a UIElement — the
+        /// anchor for live-chain resource probes); false for a ResourceDictionary-builder document.</summary>
+        public bool HasRootElement { get; set; }
+
+        /// <summary>True when the document declares a document-scope name scope (<c>__scope</c> — emitted
+        /// when it has document-scope x:Names). A document-level <c>{x:Reference}</c> can only resolve
+        /// through it; without one, such a reference is fenced (it can never resolve — the loader Fatals too).</summary>
+        public bool HasDocumentScope { get; set; }
+
+        /// <summary>Lazily-computed set of every resource key expression defined in the document (see
+        /// <c>DocumentResourceKeys</c>) — distinguishes a forward intra-document BasedOn from an external one.</summary>
+        public HashSet<string>? DocumentResourceKeysCache { get; set; }
         public XamlSymbolResolver Resolver { get; } = resolver;
         public string Indent { get; } = indent;
         public StringBuilder Body { get; } = new();
         public bool UsesConverter { get; set; }
         public List<UnloweredMember> Unlowered { get; } = [];
+
+        /// <summary>Error-level gaps (CURG3002): the INPUT is invalid — the runtime loader would Fatal on the
+        /// identical document — so a lowered build must fail as loudly, not warn-and-skip.</summary>
+        public List<UnloweredMember> Errors { get; } = [];
+
+        /// <summary>Lines that need the COMPLETE name scope (a deferred <c>BindingOperations.Install</c> whose
+        /// descriptor embeds a scope lookup). Document level: flushed at end-of-InitializeComponent after
+        /// <see cref="References"/>. Inside a template factory: saved/restored per factory and flushed before
+        /// its <c>return</c> — the loader's end-of-slice <c>ResolveDeferredReferences</c> point.</summary>
+        public List<string> DeferredScopeLines { get; } = [];
 
         /// <summary>Info-level notes (CURG2002): the member emitted a WORKING but non-optimal form (a binding that
         /// stayed reflective when it could have been a zero-reflection compiled binding). No <c>// TODO</c> marker.</summary>
@@ -2598,19 +2906,35 @@ internal static class LoweringEmitter
             Unlowered.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
         }
 
+        /// <summary>Records an error-level gap (CURG3002): the identical document makes the runtime loader
+        /// throw, so the lowered build must FAIL, not warn — the emitter being more lenient than the loader
+        /// would let an invalid document ship. Leaves the marker line like <see cref="Todo"/>.</summary>
+        public void Error(string message)
+        {
+            Line("// ERROR X5: " + message);
+            Errors.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
+        }
+
+        /// <summary>Appends a buffered emission (e.g. pre-validated <c>Style.When</c> conditions) to the
+        /// CURRENT target — Body, or the active template-factory buffer.</summary>
+        public void Flush(StringBuilder buffer) => Current.Append(buffer);
+
         /// <summary>Records a CURG2002 info note for an emitted-but-non-optimal member (no <c>// TODO</c> marker —
         /// the member works). Stamped at the current member's source position.</summary>
         public void Info(string message)
             => Infos.Add(new UnloweredMember(message, LineInfo.Line(CurrentLineInfo), LineInfo.Column(CurrentLineInfo)));
     }
 
-    /// <summary>The lowered source, the members it couldn't emit (build-warning candidates), and info-level notes
-    /// for members emitted in a non-optimal form (CURG2002 — e.g. a binding that stayed reflective).</summary>
-    public readonly struct LoweringResult(string source, IReadOnlyList<UnloweredMember> unlowered, IReadOnlyList<UnloweredMember> infos)
+    /// <summary>The lowered source, the members it couldn't emit (build-warning candidates), error-level gaps
+    /// (input the runtime loader would reject — the build must fail), and info-level notes for members emitted
+    /// in a non-optimal form (CURG2002 — e.g. a binding that stayed reflective).</summary>
+    public readonly struct LoweringResult(
+        string source, IReadOnlyList<UnloweredMember> unlowered, IReadOnlyList<UnloweredMember> infos, IReadOnlyList<UnloweredMember> errors)
     {
         public string Source { get; } = source;
         public IReadOnlyList<UnloweredMember> Unlowered { get; } = unlowered;
         public IReadOnlyList<UnloweredMember> Infos { get; } = infos;
+        public IReadOnlyList<UnloweredMember> Errors { get; } = errors;
     }
 
     /// <summary>A member the full-lowering couldn't emit, with its 1-based source position (0 if unknown).</summary>

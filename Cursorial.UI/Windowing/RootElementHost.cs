@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
@@ -44,13 +45,19 @@ public sealed class RootElementHost : UIElement
             // root band's glyphs instead of dimming them — the same self-protection the WindowManager's
             // own chrome carries. The scrim's contract is readable-but-dimmed, on every tier.
             // IsRenderBoundary=true keeps the scrim's alpha blend compositing correctly (develop 9474a3f).
-            _overlay = new Border { IsHitTestVisible = false, Occludes = false, IsRenderBoundary = true };
+            _overlay = new Border
+                       {
+                           Name = "PART_ObscuredOverlay",
+                           IsHitTestVisible = true,
+                           Occludes = false,
+                           IsRenderBoundary = true
+                       };
             _overlay.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
             AdoptChild(_overlay, index: -1); // adopted after the content ⇒ paints above it
             InvalidateMeasure();
         }
 
-        if (_overlay is { } overlay)
+        if (_overlay is {} overlay)
             overlay.Visibility = obscured ? Visibility.Visible : Visibility.Collapsed;
 
         if (obscured)

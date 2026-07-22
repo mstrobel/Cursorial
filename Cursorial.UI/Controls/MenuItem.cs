@@ -289,7 +289,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         }
         else
         {
-            Invoke(); // a leaf invokes + dismisses
+            Invoke(InvokeMethod.Pointer); // a leaf invokes + dismisses
         }
 
         e.Handled = true;
@@ -387,7 +387,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
                 if (HasItems)
                     OpenSubmenuWithFocus();
                 else
-                    Invoke();
+                    Invoke(InvokeMethod.KeyboardEnter);
+                break;
+            case Key.Space or Key.Character when e.Text.Span is " ":
+                if (IsCheckable)
+                    Invoke(InvokeMethod.KeyboardSpace);
+                else if (HasItems)
+                    OpenSubmenuWithFocus();
                 break;
             default:
                 return; // not a menu-nav key — leave unhandled. A focused submenu item's Escape is the submenu
@@ -400,17 +406,17 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Invokes a leaf item: raise <see cref="Click"/>, toggle <see cref="IsChecked"/> (if checkable),
     /// execute <see cref="Command"/>, then dismiss the whole menu.</summary>
-    protected virtual void Invoke()
+    protected virtual void Invoke(InvokeMethod method = InvokeMethod.Programmatic)
     {
         RaiseEvent(RentEvent(ClickEvent));
 
         if (IsCheckable)
             SetCurrentValue(IsCheckedProperty, !IsChecked); // SetCurrentValue preserves a two-way IsChecked binding
 
-        if (Command is { } command && command.CanExecute(CommandParameter))
+        if (Command is {} command && command.CanExecute(CommandParameter))
             command.Execute(CommandParameter);
 
-        if (IsCheckable is false)
+        if (method is InvokeMethod.KeyboardEnter || IsCheckable is false)
             CloseMenuChain();
     }
 
@@ -751,7 +757,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (HasItems)
             OpenSubmenuWithFocus();
         else
-            Invoke();
+            Invoke(InvokeMethod.AccessKey);
     }
 
     private AccessText GetAccessText()

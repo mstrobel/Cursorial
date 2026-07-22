@@ -36,12 +36,12 @@ public class DialogsViewModel : PageViewModel
         set => Set(ref field, value);
     }
     
-    public bool TaskDialogIncludeContent { get; set => Set(ref field, value); } = false;
-    public bool TaskDialogIncludeCommandLinks { get; set => Set(ref field, value); } = false;
-    public bool TaskDialogIncludeButtons { get; set => Set(ref field, value); } = false;
-    public bool TaskDialogIncludeExpandedContent { get; set => Set(ref field, value); } = false;
-    public bool TaskDialogIncludeVerification { get; set => Set(ref field, value); } = false;
-    public bool TaskDialogIncludeProgressBar { get; set => Set(ref field, value); } = false;
+    public bool TaskDialogIncludeContent { get; set => Set(ref field, value); } = true;
+    public bool TaskDialogIncludeCommandLinks { get; set => Set(ref field, value); } = true;
+    public bool TaskDialogIncludeButtons { get; set => Set(ref field, value); } = true;
+    public bool TaskDialogIncludeExpandedContent { get; set => Set(ref field, value); } = true;
+    public bool TaskDialogIncludeVerification { get; set => Set(ref field, value); } = true;
+    public bool TaskDialogIncludeProgressBar { get; set => Set(ref field, value); } = true;
 
     private async void ShowMessageDialog()
     {

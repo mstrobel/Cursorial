@@ -27,7 +27,7 @@ public sealed class Section43_StyleGuideReconcile
     // Dark (Truecolor) palette hex the gallery pins.
     private static readonly Color Text = Color.FromHex("#c0caf5");      // --text
     private static readonly Color TextDim = Color.FromHex("#8d9fed");   // --text-dim
-    private static readonly Color Surface = Color.FromHex("#24283b");   // --surface
+    private static readonly Color Surface = Color.FromHex("#30364f");   // --surface
     private static readonly Color Panel = Color.FromHex("#171A26");     // --panel
     private static readonly Color Accent = Color.FromHex("#7aa2f7");    // --accent
     private static readonly Color Faint = Color.FromHex("#414868");     // --faint

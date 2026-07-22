@@ -374,9 +374,11 @@
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ListBoxItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
       </Style>
       <Style Selector="^:selected" TargetType="ListBoxItem">
-        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}"/>
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelectedInactive}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelectedInactive}}"/>
       </Style>
       <Style Selector="^:focus-visible" TargetType="ListBoxItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>

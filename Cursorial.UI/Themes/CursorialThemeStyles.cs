@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -226,13 +227,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Accent2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)
                    }
                };
@@ -253,13 +254,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Info2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush)
                    }
                };
@@ -281,13 +282,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Cool2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)
                    }
                };
@@ -309,13 +310,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Danger2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)
                    }
                };
@@ -337,13 +338,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Success2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
                    }
                };
@@ -365,13 +366,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Warning2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush)
                    }
                };
@@ -400,9 +401,19 @@ internal static class CursorialThemeStyles
                          ":is(UIElement) /template/ :is(Border), " +
                          ":is(Panel) /template/ :is(Panel), " +
                          ".caps-nocolor /template/ :is(Panel)")
-               { Key = "Theme.CapsNoColor.BorderStyle", RequiresCapabilities = StyleCapabilities.NoColor }
-           .Set(Panel.OccludesProperty, true)/*
-           .Set(Panel.BackgroundProperty, Brushes.Default)*/;
+               {
+                   Key = "Theme.CapsNoColor.BorderStyle",
+                   RequiresCapabilities = StyleCapabilities.NoColor,
+                   // Children =
+                   // {
+                   //     new Style("^#PART_ObscuredOverlay")
+                   //        .Set(Panel.OccludesProperty, false)
+                   //        .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                   //        .Set(Panel.BackgroundProperty, Brushes.Transparent)
+                   // }
+               }
+              .Set(Panel.OccludesProperty, true)
+              .Set(Panel.BackgroundProperty, Brushes.Default);
     }
 
     /// <summary>
@@ -442,7 +453,7 @@ internal static class CursorialThemeStyles
                { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic — see the nocolor twin's note)
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
-    
+
     internal static Style CapsNoColorMenuIconToggleStyle()
     {
         return new Style(":is(MenuItem)")
@@ -469,4 +480,39 @@ internal static class CursorialThemeStyles
                };
     }
 
+    /// <summary>
+    /// Replaces the translucent obscured root/window overlay with 'faint' content on <c>.caps-nocolor</c>.
+    /// </summary>
+    internal static Style CapsNoColorObscuredOverlayStyle()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Window) /template/ Border#PART_ObscuredOverlay, " +
+                         ":is(RootElementHost) > Border#PART_ObscuredOverlay")
+               {
+                   Key = "Theme.NoColor.ObscuredOverlayStyle",
+                   RequiresCapabilities = StyleCapabilities.NoColor
+               }.Set(Panel.OccludesProperty, false)
+                .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                .Set(Panel.BackgroundProperty, Brushes.Transparent);
+    }
+
+    /// <summary>
+    /// Replaces the translucent obscured root/window overlay with 'faint' content on <c>.caps-ansi16</c>.
+    /// </summary>
+    internal static Style CapsAnsi16ObscuredOverlayStyle()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Window) /template/ Border#PART_ObscuredOverlay, " +
+                         ":is(RootElementHost) > Border#PART_ObscuredOverlay")
+               {
+                   Key = "Theme.CapsAnsi16.ObscuredOverlayStyle",
+                   RequiresCapabilities = StyleCapabilities.Ansi16
+               }.Set(Panel.OccludesProperty, false)
+                .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                .Set(Panel.BackgroundProperty, Brushes.Transparent);
+    }
 }

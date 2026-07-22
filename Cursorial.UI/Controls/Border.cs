@@ -144,7 +144,7 @@ public class Border : Decorator
         var occludes = Occludes;
         var resolved = TextElement.ComposeAttributes(this);
         var attrs = resolved.Flags;
-        var forceOpaque = UIApplication.Current?.ActualThemeVariant is { Tier: ColorDepth.NoColor };
+        // var forceOpaque = UIApplication.Current?.ActualThemeVariant is { Tier: ColorDepth.NoColor };
 
         // An effective TextElement Inverse (e.g., the caps-nocolor reverse-video cue) needs an OPAQUE
         // fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
@@ -153,15 +153,15 @@ public class Border : Decorator
         var inverse = resolved.Inverse;
         var background = Background;
 
-        if (forceOpaque) background ??= Brushes.Default;
+        // if (forceOpaque) background ??= Brushes.Default;
 
         // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
         if (background is not null)
         {
-            if (occludes || forceOpaque)
-                context.FillOpaque(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None, overwrite: false);
+            if (occludes/* || forceOpaque*/)
+                context.FillOpaque(bounds, background, attrs, overwrite: false);
             else
-                context.PaintRectangle(bounds, background, inverse ? TextAttributes.Inverse : TextAttributes.None, overwrite: true);
+                context.PaintRectangle(bounds, background, attrs, overwrite: true);
         }
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface

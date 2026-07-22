@@ -33,6 +33,10 @@ namespace Cursorial.Drawing;
 /// </remarks>
 public sealed class SceneCompositor
 {
+    private const TextAttributes PassthroughAttributes = TextAttributes.Faint | 
+                                                         TextAttributes.Hidden | 
+                                                         TextAttributes.Inverse;
+
     private readonly Style _baseStyle;
     private readonly CellBuffer? _baseLayer;
 
@@ -399,7 +403,14 @@ public sealed class SceneCompositor
         if (string.IsNullOrEmpty(source.Grapheme))
         {
             var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
-            var tinted = dst.Style with { Foreground = blendedForeground, Background = mergedBackground };
+
+            var tinted = dst.Style with
+                         {
+                             Foreground = blendedForeground,
+                             Background = mergedBackground,
+                             // Let certain attributes (like 'Faint') pass through, but no others.
+                             Attributes = dst.Style.Attributes | (source.Style.Attributes & PassthroughAttributes)
+                         };
 
             // Background-only contribution: keep the target's glyph, fg, and hyperlink; merge
             // bg — the cross-layer tint contract that lets TEXT ghost through translucent chrome

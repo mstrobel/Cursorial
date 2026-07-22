@@ -34,9 +34,9 @@ public sealed class Section05_VariantFlipReSkin
     // Foreground = WindowBackground). No border (controls are fill-bounded).
     private static readonly Color DarkText = Color.FromRgb(0xC0, 0xCA, 0xF5);     // (Dark,Ansi256)  TextBrush
     private static readonly Color LightText = Color.FromRgb(0x34, 0x3B, 0x58);    // (Light,Ansi256) TextBrush
-    private static readonly Color DarkFill = Color.FromRgb(0x24, 0x28, 0x3B);     // (Dark,Ansi256)  SurfaceBrush
+    private static readonly Color DarkFill = Color.FromRgb(0x30, 0x36, 0x4F);     // (Dark,Ansi256)  SurfaceBrush
     private static readonly Color LightFill = Color.FromRgb(0x9E, 0xA0, 0xA8);    // (Light,Ansi256) SurfaceBrush
-    private static readonly Color DarkWindowBg = Color.FromRgb(0x1f, 0x23, 0x35); // (Dark,Ansi256)  WindowBackground (focus ink)
+    private static readonly Color DarkWindowBg = Color.FromRgb(0x1f, 0x22, 0x33); // (Dark,Ansi256)  WindowBackground (focus ink)
 
     // ───────────────────────────── C113 — the dark/light flip changes a default-themed control's cells ─────────────────────────────
 
@@ -231,7 +231,7 @@ public sealed class Section05_VariantFlipReSkin
         Assert.Equal(ColorDepth.Ansi16, host.Application.ActualThemeVariant.Tier);
         var ansi16Ink = FindForeground(host, "OK");
         Assert.Equal(ColorKind.Palette, ansi16Ink.Kind);       // a palette index, not RGB — the KIND changed
-        Assert.Equal(Color.FromPalette(8), ansi16Ink);        // the (Dark,Ansi16) hand-picked TextBrush = Palette(8)
+        Assert.Equal(Color.FromPalette(7), ansi16Ink);        // the (Dark,Ansi16) hand-picked TextBrush = Palette(8)
 
         // Clear the override → back to the negotiated truecolor tier → RGB again.
         host.Application.RequestedColorTier = null;
@@ -274,7 +274,7 @@ public sealed class Section05_VariantFlipReSkin
         // Positive: the re-resolution reached the cell buffer (TextBrush → the hand-picked palette index),
         // and the wire no longer carries the 24-bit RGB ink (a regression dropping fg to Default would fail
         // the buffer assert rather than silently pass the wire-absence one).
-        Assert.Equal(Color.FromPalette(8), FindForeground(host, "OK"));
+        Assert.Equal(Color.FromPalette(7), FindForeground(host, "OK"));
         Assert.False(Contains(host.LastFrameBytes, "38;2;192;202;245"u8), "the dark RGB foreground SGR was emitted on an Ansi16 tier");
         var ansi16Version = rgbScene.RasterVersion;
 

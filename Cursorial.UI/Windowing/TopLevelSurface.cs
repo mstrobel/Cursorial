@@ -176,7 +176,7 @@ public sealed class TopLevelSurface
     // to the source (the translucent shadow would paint SOLID). So they emit only when the EFFECTIVE color tier
     // is truecolor — the same gate RenderTree applies to surface opacity. (A non-RGB shadow Color is its own
     // no-op inside DrawDropShadow, so a palette accent never leaks through.)
-    private static bool ShadowsEnabled => UIApplication.Current?.ActualThemeVariant is not { Tier: not ColorDepth.Truecolor };
+    private static bool ShadowsEnabled => UIApplication.Current?.ActualThemeVariant is not { Tier: < ColorDepth.Ansi256 };
 
     /// <summary>
     /// Reconciles the pooled shadow-fringe scene with the current <see cref="Shadow"/> + content size: rents and

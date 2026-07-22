@@ -367,20 +367,22 @@ internal static class LoweringEmitter
         return dicts;
     }
 
-    // Resolves a {StaticResource} key expression to a same-document entry's local var, walking the enclosing
-    // scopes INNERMOST-FIRST (correct lexical shadowing) — an inner-scope entry has already been popped by the
-    // time an outer/sibling element is emitted. Returns the entry var when the INNERMOST scope holding the key is
+    // Resolves a {StaticResource} key to a same-document entry's local var, walking the enclosing scopes
+    // INNERMOST-FIRST (correct lexical shadowing) — an inner-scope entry has already been popped by the time an
+    // outer/sibling element is emitted. <paramref name="keyIdentity"/> is the CANONICAL key form (const-string
+    // {x:Static} collapsed to its value), matching how KeyExprToVar is populated, so a plain-string / {x:Static}
+    // cross-form key resolves the same entry. Returns the entry var when the INNERMOST scope holding the key is
     // reachable. Returns null when no scope holds the key. Sets <paramref name="fenceRequired"/> and returns null
     // when the innermost holder is UNREACHABLE (a sibling/enclosing-factory scope the flat factory can't close
     // over): the loader resolves that hop, so the lowered code must fence loudly — never skip past it to a farther
     // reachable match, which would silently bind the wrong (shadowed) value.
-    private static string? ResolveVisibleResourceVar(Context c, string keyExpr, out bool fenceRequired)
+    private static string? ResolveVisibleResourceVar(Context c, string keyIdentity, out bool fenceRequired)
     {
         fenceRequired = false;
         for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
         {
             var scope = c.AmbientScopeStack[i];
-            if (!scope.KeyExprToVar.TryGetValue(keyExpr, out var v))
+            if (!scope.KeyExprToVar.TryGetValue(keyIdentity, out var v))
                 continue;
             // First (innermost) scope that holds the key — this is the hop the loader resolves.
             if (!IsScopeReachable(c, scope))
@@ -407,10 +409,12 @@ internal static class LoweringEmitter
     // loader's XamlResourceScopeStack.TryResolve — including, inside a template, the captured definition-site
     // document dicts). Returns null (the caller fences) for a key that IS a not-yet-built intra-document entry
     // (a forward/init-only reference the eager build can't reproduce, or one that lives only in an unreachable
-    // sibling-factory scope).
-    private static string? ExternalStaticResolveExpr(Context c, string keyExpr)
+    // sibling-factory scope). <paramref name="keyExpr"/> is the RUNTIME key argument (symbolic member reference for
+    // an {x:Static}); <paramref name="keyIdentity"/> is its CANONICAL form for the DocumentResourceKeys check (a
+    // const-string {x:Static} collapsed to its value, so a cross-form intra-document key still matches and fences).
+    private static string? ExternalStaticResolveExpr(Context c, string keyExpr, string keyIdentity)
     {
-        if (DocumentResourceKeys(c).Contains(keyExpr))
+        if (DocumentResourceKeys(c).Contains(keyIdentity))
             return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
 
         // An unreachable enclosing-factory dict populated from a Source has compile-time-opaque own keys the
@@ -457,11 +461,12 @@ internal static class LoweringEmitter
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
         c.Line($"{dictVar}.Add({keyExpr}, {childVar});");
 
-        // Track the built entry by its lowered KEY EXPRESSION in the CURRENT (innermost) scope, so a
-        // same-dictionary {StaticResource key} — a string, or a nested {x:Type}/{x:Static} (control themes;
-        // Style.BasedOn) — resolves to this var, and an outer/sibling scope does NOT see it (lexical shadowing).
-        if (c.AmbientScopeStack.Count > 0)
-            c.AmbientScopeStack[c.AmbientScopeStack.Count - 1].KeyExprToVar[keyExpr] = childVar;
+        // Track the built entry by its CANONICAL key IDENTITY in the CURRENT (innermost) scope, so a same-dictionary
+        // {StaticResource key} — a string, or a nested {x:Type}/{x:Static} (control themes; Style.BasedOn) —
+        // resolves to this var, and an outer/sibling scope does NOT see it (lexical shadowing). The canonical form
+        // (const-string {x:Static} → its value) matches the lookup across the plain-string / {x:Static} forms.
+        if (c.AmbientScopeStack.Count > 0 && ResourceKeyExpr(c, childIndex, canonical: true) is { } keyIdentity)
+            c.AmbientScopeStack[c.AmbientScopeStack.Count - 1].KeyExprToVar[keyIdentity] = childVar;
     }
 
     // The object indices of a member's value run (Items → each; Object → the one), else empty.
@@ -497,7 +502,14 @@ internal static class LoweringEmitter
 
     // The C# key expression for a dictionary entry's x:Key: a string literal, an {x:Static} global:: reference,
     // or a {x:Type} typeof(...). Null when there's no key or an unsupported extension key.
-    private static string? ResourceKeyExpr(Context c, int objectIndex)
+    // The C# key expression for a resource ENTRY / lookup. <paramref name="canonical"/> selects the compile-time
+    // IDENTITY form (used for KeyExprToVar / DocumentResourceKeys and their lookups): a const-string {x:Static}
+    // collapses to its literal VALUE so it matches a plain-string key of the same value (the loader resolves an
+    // x:Static key to the member's value, so the two forms are the SAME runtime key — matching them here is what
+    // keeps a cross-form key from silently diverging under an unreachable scope). The default (non-canonical) form
+    // is the RUNTIME emission (the `.Add(key, …)` / `new ResourceReference(key)` argument) — a const-string
+    // {x:Static} stays the symbolic `global::Type.Member` reference (runtime-equal, and the established codegen).
+    private static string? ResourceKeyExpr(Context c, int objectIndex, bool canonical = false)
     {
         if (RawKey(c, objectIndex) is not { } raw)
             return ImplicitResourceKeyExpr(c, objectIndex); // no x:Key → an implicit Style/DataTemplate key, or null
@@ -507,7 +519,7 @@ internal static class LoweringEmitter
 
         // {x:Static Type.Member} → the resolved static reference (the actual key object, not a string).
         if (TryExtractIntrinsic(raw, "x:Static", out var staticPath))
-            return ResolveStaticPath(c, staticPath);
+            return canonical ? ResolveStaticKeyExpr(c, staticPath) : ResolveStaticPath(c, staticPath);
 
         // {x:Type T} → typeof(global::T).
         if (TryExtractIntrinsic(raw, "x:Type", out var typeToken) &&
@@ -1173,9 +1185,10 @@ internal static class LoweringEmitter
         // in-template key returns null (the caller fences).
         if (ext.Kind == ExtensionKind.StaticResource && ResourceKeyArgExpr(c, in ext) is { } srcKeyExpr)
         {
-            if (ResolveVisibleResourceVar(c, srcKeyExpr, out var fenceRequired) is { } srcVar)
+            var srcKeyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? srcKeyExpr;
+            if (ResolveVisibleResourceVar(c, srcKeyId, out var fenceRequired) is { } srcVar)
                 return srcVar;
-            return fenceRequired ? null : ExternalStaticResolveExpr(c, srcKeyExpr);
+            return fenceRequired ? null : ExternalStaticResolveExpr(c, srcKeyExpr, srcKeyId);
         }
 
         return null;
@@ -1184,7 +1197,10 @@ internal static class LoweringEmitter
     // The key of a *Resource extension as a C# expression: a literal string, an {x:Static} global:: member, or an
     // {x:Type} typeof(...) (the nested-extension key forms — control themes key by {x:Type}). Null when the key is
     // an unsupported nested extension.
-    private static string? ResourceKeyArgExpr(Context c, in ExtensionRecord ext)
+    // The key of a *Resource extension. <paramref name="canonical"/> selects the compile-time IDENTITY form (a
+    // const-string {x:Static} collapses to its literal value — see ResourceKeyExpr) for KeyExprToVar /
+    // DocumentResourceKeys lookups; the default is the RUNTIME emission (symbolic member reference).
+    private static string? ResourceKeyArgExpr(Context c, in ExtensionRecord ext, bool canonical = false)
     {
         if (!ext.PayloadIsParsedExtension)
             return $"\"{Escape(c.Doc.Strings[ext.Payload])}\"";
@@ -1194,7 +1210,7 @@ internal static class LoweringEmitter
             node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } arg)
         {
             if (node.Name is "x:Static" or "Static")
-                return ResolveStaticPath(c, arg);
+                return canonical ? ResolveStaticKeyExpr(c, arg) : ResolveStaticPath(c, arg);
 
             if (node.Name is "x:Type" or "Type" &&
                 XamlDataTypeScope.ResolveToken(c.Doc, arg, c.Resolver) is { } typeSym)
@@ -1221,7 +1237,8 @@ internal static class LoweringEmitter
             c.Doc.Extensions[member.ValueIndex] is { Kind: ExtensionKind.StaticResource } ext &&
             ResourceKeyArgExpr(c, in ext) is { } keyExpr)
         {
-            if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
+            var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
+            if (ResolveVisibleResourceVar(c, keyId, out var fenceRequired) is { } srcVar)
                 return srcVar;
             if (fenceRequired)
                 return null; // innermost holder is an unreachable enclosing-factory scope — fence, never fall through
@@ -1238,17 +1255,17 @@ internal static class LoweringEmitter
             // the enclosing lexical dictionaries + the application tail — the loader's XamlResourceScopeStack
             // exactly (no `this` anchor needed, so it works in a rootless ResourceDictionary builder too). A
             // forward/not-yet-built intra-document key or an in-template reference fences here.
-            if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+            if (ExternalStaticResolveExpr(c, keyExpr, keyId) is { } resolve)
                 return $"(global::Cursorial.UI.Style){resolve}!";
         }
 
         return null;
     }
 
-    // Every resource key EXPRESSION defined anywhere in this document (a keyed object's x:Key lowered the
-    // same way ResourceKeyExpr lowers it — a string literal / typeof(...) / {x:Static} ref). Used to tell a
-    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't)
-    // from a genuinely external one (probe it). Computed once, lazily.
+    // Every resource key IDENTITY defined anywhere in this document (a keyed object's x:Key in its CANONICAL form —
+    // a string literal / typeof(...) / const-string {x:Static} collapsed to its value). Used to tell a
+    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't) from
+    // a genuinely external one (probe it) — so it must be compared against a CANONICAL lookup key. Computed once.
     private static HashSet<string> DocumentResourceKeys(Context c)
     {
         if (c.DocumentResourceKeysCache is { } cached)
@@ -1256,8 +1273,8 @@ internal static class LoweringEmitter
 
         var keys = new HashSet<string>(System.StringComparer.Ordinal);
         for (int i = 0; i < c.Doc.Objects.Length; i++)
-            if (ResourceKeyExpr(c, i) is { } keyExpr)
-                keys.Add(keyExpr);
+            if (ResourceKeyExpr(c, i, canonical: true) is { } keyIdentity)
+                keys.Add(keyIdentity);
 
         c.DocumentResourceKeysCache = keys;
         return keys;
@@ -2476,6 +2493,7 @@ internal static class LoweringEmitter
             c.Todo($"{{StaticResource}} key for '{xm.Name}' is an unsupported markup extension — not yet lowered");
             return;
         }
+        var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
 
         // A {StaticResource} on a NON-UIElement object (a brush inside another resource) may target an
         // init-only slot (SolidColorBrush.Color) that must be set in the object initializer — the eager-assign
@@ -2495,7 +2513,7 @@ internal static class LoweringEmitter
         }
 
         // A same-dictionary visible entry → its var (a typed local, the load-time snapshot).
-        if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
+        if (ResolveVisibleResourceVar(c, keyId, out var fenceRequired) is { } srcVar)
         {
             AssignResolvedResource(c, varExpr, xm, srcVar, valueIsObject: false);
             return;
@@ -2507,7 +2525,7 @@ internal static class LoweringEmitter
         // live-tree over-resolution. A forward/not-yet-built intra-document key or an in-template reference fences.
         // fenceRequired (the innermost holder is an unreachable enclosing-factory scope) skips the external path:
         // ResolveStatic would resolve a farther/app value the loader shadows, so fence loudly instead.
-        if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+        if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyId) is { } resolve)
         {
             AssignResolvedResource(c, varExpr, xm, resolve, valueIsObject: true);
             return;
@@ -3122,10 +3140,10 @@ internal static class LoweringEmitter
             // through (the caller degrades to the reflective binding lane).
             if (inner.Name is "StaticResource")
             {
-                var keyExpr = $"\"{Escape(first)}\"";
+                var keyExpr = $"\"{Escape(first)}\""; // a plain-string key is its own canonical identity
                 if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
                     return $"Converter = {srcVar}";
-                if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+                if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyExpr) is { } resolve)
                     // RequireConverter (not a bare cast): a null/non-converter resource must throw like the
                     // loader's ResolveConverter, never a silent null converter binding unconverted.
                     return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({resolve}, {keyExpr})";
@@ -3171,23 +3189,40 @@ internal static class LoweringEmitter
     // provider's switch bakes through, so the lowered and loaded lanes resolve identically (a miss degrades
     // to the caller's TODO, never non-compiling code).
     private static string? ResolveStaticPath(Context c, string memberPath)
+        => SplitStaticPath(c, memberPath, out var ns, out var path)
+               ? ClosedTypeSet.ResolveStaticExpr(c.Resolver, ns, path)
+               : null;
+
+    // As ResolveStaticPath, but for a {StaticResource} / x:Key KEY: when the {x:Static} member is a compile-time
+    // CONST STRING, return its VALUE as a string literal instead of the `global::Type.Member` access. The loader
+    // resolves an x:Static key to the member's value, so a const-string x:Static key and a plain-string key with
+    // that value are the SAME runtime key — canonicalizing to the literal makes their lowered key EXPRESSIONS
+    // textually identical too, so KeyExprToVar / DocumentResourceKeys / the {StaticResource} lookup match by value
+    // across the two forms. Without this, a cross-form key silently DIVERGES under an unreachable scope: the var
+    // lookup misses (different text), the DocumentResourceKeys backstop misses (external key not enumerated), and
+    // the ResolveStatic chain — which drops the unreachable scope — resolves a farther/app value the loader shadows.
+    private static string? ResolveStaticKeyExpr(Context c, string memberPath)
     {
-        string path;
-        string? ns;
+        if (SplitStaticPath(c, memberPath, out var ns, out var path) &&
+            ClosedTypeSet.ResolveStaticConstString(c.Resolver, ns, path) is { } literal)
+            return $"\"{Escape(literal)}\"";
+        return ResolveStaticPath(c, memberPath);
+    }
+
+    // Splits an {x:Static} member path into its resolved xmlns + prefix-free path. Returns false when a declared
+    // prefix is present but unbound (the caller then resolves to null, matching the loader's member-not-found).
+    private static bool SplitStaticPath(Context c, string memberPath, out string ns, out string path)
+    {
         int colon = memberPath.IndexOf(':');
         if (colon > 0)
         {
             path = memberPath.Substring(colon + 1);
-            if (!c.Doc.Namespaces.TryGetValue(memberPath.Substring(0, colon), out ns))
-                return null;
-        }
-        else
-        {
-            path = memberPath;
-            ns = c.Doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSymbolResolver.CursorialUiNamespace;
+            return c.Doc.Namespaces.TryGetValue(memberPath.Substring(0, colon), out ns!);
         }
 
-        return ClosedTypeSet.ResolveStaticExpr(c.Resolver, ns, path);
+        path = memberPath;
+        ns = c.Doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSymbolResolver.CursorialUiNamespace;
+        return true;
     }
 
     private static INamedTypeSymbol? RegisteredOwner(XamlMember member) => member.Property as INamedTypeSymbol;

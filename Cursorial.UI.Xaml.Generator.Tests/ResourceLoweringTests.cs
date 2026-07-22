@@ -529,11 +529,9 @@ namespace GenApp { public partial class ThemeChildView : StackPanel { public The
     }
 
     [Fact] // A {StaticResource} INSIDE a merged/theme child that forward-references a later SIBLING of the same
-           // child is a genuine same-document forward reference (the sub-dict's own entries are visible to it) —
-           // it must still FENCE (the eager inline build can't reproduce the not-yet-built sibling), NOT resolve
-           // the app tail. Guards the scope-relative forward-key set: merged/theme keys are excluded only for
-           // references from OUTSIDE the sub-dict.
-    public void Lowered_StaticResource_ForwardSiblingInsideMergedChild_Fences()
+           // child now RESOLVES: the child has a forward reference, so it DEFERS (lazy slots), and the reference
+           // realizes against the sibling's slot — matching the loader's lazy realization. (Previously fenced.)
+    public void Lowered_StaticResource_ForwardSiblingInsideMergedChild_ResolvesViaDeferredEntry()
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.FwdInMergedView\">" +
@@ -558,12 +556,72 @@ namespace GenApp { public partial class FwdInMergedView : StackPanel { public Fw
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // Fences — never a ResolveStatic that would resolve a farther/app value the loader (resolving the merged
-        // sibling lazily) shadows. The document still compiles + constructs.
-        Assert.Contains("TODO X5", lowered);
-        Assert.DoesNotContain("ResolveStatic(\"FwdInk\"", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered);            // the merged child defers to resolve the forward ref
+        Assert.Contains("ResolveStatic(\"FwdInk\"", lowered); // resolved against the later sibling's slot
+
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        System.Activator.CreateInstance(assembly.GetType("GenApp.FwdInMergedView")!); // constructs (no false crash)
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.FwdInMergedView")!)!;
+        var merged = view.Resources.MergedDictionaries[0];
+        var s2 = Assert.IsType<Cursorial.UI.Style>(merged["S2"]);
+        Assert.Same(merged["FwdInk"], Assert.Single(s2.Setters).Value); // the forward sibling (the Blue brush)
+    }
+
+    [Fact] // A forward same-dict {StaticResource} (a Setter.Value referencing a brush defined LATER) resolves via
+           // the deferred dictionary — the headline forward-reference case, matching the loader's lazy realization.
+    public void Lowered_StaticResource_ForwardSetterValue_ResolvesViaDeferredEntry()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.FwdSetterView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Themed\" Selector=\":is(Button)\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource FwdBrush}\"/>" + // forward ref
+              "</Style>" +
+              "<SolidColorBrush x:Key=\"FwdBrush\" Color=\"Red\"/>" + // defined AFTER — the later sibling
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class FwdSetterView : StackPanel { public FwdSetterView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.FwdSetterView")!)!;
+        var themed = Assert.IsType<Cursorial.UI.Style>(view.Resources["Themed"]);
+        Assert.Same(view.Resources["FwdBrush"], Assert.Single(themed.Setters).Value); // forward reference resolved
+    }
+
+    [Fact] // A cyclic {StaticResource} (A BasedOn B, B BasedOn A) DEFERS (the forward A→B ref) and throws at
+           // REALIZATION — the loader's per-slot Realizing guard, reproduced for free by the deferred dictionary.
+           // Construction does NOT throw (entries are lazy slots, never realized during InitializeComponent).
+    public void Lowered_StaticResource_Cycle_ThrowsAtRealizationNotConstruction()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.CycleView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"A\" Selector=\":is(Button)\" BasedOn=\"{StaticResource B}\"/>" + // A → B (forward)
+              "<Style x:Key=\"B\" Selector=\":is(Button)\" BasedOn=\"{StaticResource A}\"/>" + // B → A (cycle)
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class CycleView : StackPanel { public CycleView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CycleView")!)!; // constructs (lazy)
+        Assert.ThrowsAny<System.Exception>(() => _ = view.Resources["A"]); // the cycle throws at realization
     }
 
     [Fact] // Documented eager-resolution divergence (consistent with BasedOn): a Setter.Value external

@@ -613,9 +613,10 @@ namespace GenApp { public partial class ClrStrView : StackPanel { public ClrStrV
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS0266)
     }
 
-    [Fact] // An external {StaticResource} on a UIElement INIT-ONLY CLR member fences (a post-construction assign
-           // is CS8852) — the compile-break guard, not uncompilable code.
-    public void Lowered_StaticResource_UIElementInitOnlyClrMember_Fences()
+    [Fact] // An external {StaticResource} on an INIT-ONLY CLR member routes into the construction object initializer
+           // (new T { RoLabel = (string)ResolveStatic(…) }) — a post-construction assign would be CS8852, so it used
+           // to fence; now it resolves eagerly, exactly like the loader sets init-only slots at construction.
+    public void Lowered_StaticResource_UIElementInitOnlyClrMember_ResolvesViaInitializer()
     {
         var xaml =
             $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.ClrRoView\">" +
@@ -629,9 +630,49 @@ namespace GenApp { public partial class ClrRoView : StackPanel { public ClrRoVie
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(ClrControl), CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        Assert.Contains("TODO X5", lowered);
-        Assert.Contains("init-only", lowered);
-        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS8852)
+        Assert.DoesNotContain("TODO X5", lowered);
+        // Set in the object initializer (init-only), cast to the slot type — not a post-construction assign (CS8852).
+        Assert.Contains("RoLabel = (string)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        using var host = UIHeadlessHost.Create();
+        host.Application.Resources["S"] = "resolved!";
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.ClrRoView")!)!;
+        var ctl = view.Children[0];
+        Assert.Equal("resolved!", ctl.GetType().GetProperty("RoLabel")!.GetValue(ctl)); // resolved at construction
+    }
+
+    [Fact] // Init-only {StaticResource} on a NON-UIElement — the common <SolidColorBrush Color="{StaticResource …}"/>
+           // theme pattern. SolidColorBrush.Color is init-only, so it routes into the brush's construction
+           // initializer; this used to fence ("on a non-UIElement target not yet lowered").
+    public void Lowered_StaticResource_NonUIElementInitOnlyColorSlot_ResolvesViaInitializer()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.BrushView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"AccentBrush\" Color=\"{StaticResource AccentColor}\"/>" + // init-only Color slot
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\" Background=\"{StaticResource AccentBrush}\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class BrushView : StackPanel { public BrushView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered); // no longer fenced on the non-UIElement target
+        Assert.Contains("Color = (global::Cursorial.Output.Color)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AccentColor\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        using var host = UIHeadlessHost.Create();
+        var accent = Color.FromRgb(0x30, 0x50, 0xC0);
+        host.Application.Resources["AccentColor"] = accent; // app-tier Color, resolved at the brush's construction
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BrushView")!)!;
+
+        var brush = Assert.IsType<SolidColorBrush>(view.Resources["AccentBrush"]);
+        Assert.Equal(accent, brush.Color);                                          // init-only Color from the resource
+        Assert.Same(brush, Assert.IsType<Button>(view.Children[0]).Background);     // and the brush itself wired through
     }
 
     [Fact] // Phase 4 — an in-template {StaticResource} resolves against the CAPTURED definition-site scope: a

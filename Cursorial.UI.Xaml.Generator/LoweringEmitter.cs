@@ -1872,8 +1872,9 @@ internal static class LoweringEmitter
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
-            // An init-only CLR member arrives as an attribute (Text/Folded) or a property element (a single Object).
-            if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded or XamlValueKind.Object))
+            // An init-only CLR member arrives as an attribute (Text/Folded), a property element (a single Object),
+            // or a markup extension ({StaticResource} — e.g. <SolidColorBrush Color="{StaticResource Accent}"/>).
+            if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded or XamlValueKind.Object or XamlValueKind.Extension))
                 continue;
 
             var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
@@ -1884,12 +1885,14 @@ internal static class LoweringEmitter
                 continue;
 
             // A property element builds its child subtree into a local FIRST (emitted before the enclosing
-            // `new T { Member = <var> }` that references it); an attribute converts its literal/folded value inline.
+            // `new T { Member = <var> }` that references it); an attribute converts its literal/folded value inline;
+            // a {StaticResource} resolves to the entry var / an eager ResolveStatic, cast to the slot type.
             var expr = member.Kind switch
             {
                 XamlValueKind.Text => ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex]),
                 XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
                 XamlValueKind.Object => BuildInitOnlyObjectChild(c, member.ValueIndex, hasScope, dataType),
+                XamlValueKind.Extension => InitOnlyStaticResourceExpr(c, in member, xm),
                 _ => null,
             };
 
@@ -1911,6 +1914,26 @@ internal static class LoweringEmitter
         var childVar = c.NextVar();
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope, dataType);
         return childVar;
+    }
+
+    // An init-only CLR slot fed by a {StaticResource} (e.g. <SolidColorBrush Color="{StaticResource Accent}"/>): the
+    // resolved resource cast to the slot type, for the construction object initializer (a post-construction assign
+    // would be CS8852). A same-dict visible entry → its var; an external key → an eager ResolveStatic. Returns null
+    // — the member loop then TODOs it — for a non-StaticResource extension ({DynamicResource}/custom), an unsupported
+    // key, or a forward/unreachable reference the initializer can't resolve at construction. Resolving here (before
+    // the enclosing `new T { … }`) captures any referenced document local, exactly like a same-dict var elsewhere.
+    private static string? InitOnlyStaticResourceExpr(Context c, in MemberRecord member, XamlMember xm)
+    {
+        if (c.Doc.Extensions[member.ValueIndex] is not { Kind: ExtensionKind.StaticResource } ext ||
+            ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
+            return null;
+
+        var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
+        if (ResolveVisibleResourceVar(c, keyId, out var fenceRequired) is { } srcVar)
+            return ResolvedResourceExpr(xm, srcVar, valueIsObject: false);
+        if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyId) is { } resolve)
+            return ResolvedResourceExpr(xm, resolve, valueIsObject: true);
+        return null;
     }
 
     // A Text value: an object/string member takes the string literal directly; any other typed member runs
@@ -2548,12 +2571,21 @@ internal static class LoweringEmitter
             return;
         }
 
+        c.Line($"{varExpr}.{xm.Name} = {ResolvedResourceExpr(xm, valueExpr, valueIsObject)};");
+    }
+
+    // The RHS expression for an already-resolved resource value assigned to a CLR member — the shared core of the
+    // post-construction assignment (AssignResolvedResource) and the object-initializer entry (an init-only slot fed
+    // by a {StaticResource}). A TYPED value (a built entry's var) casts only for a base/interface-typed slot; an
+    // object?-typed value (ResolveStatic) casts to ANY concrete member type — string included, since object? →
+    // string is not implicit.
+    private static string ResolvedResourceExpr(XamlMember xm, string valueExpr, bool valueIsObject)
+    {
         if (valueIsObject && ValueTypeSymbol(xm.ValueType) is { SpecialType: not SpecialType.System_Object } ot)
-            c.Line($"{varExpr}.{xm.Name} = ({Global(ot)}){valueExpr}!;");
-        else if (!valueIsObject && !IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
-            c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){valueExpr};");
-        else
-            c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
+            return $"({Global(ot)}){valueExpr}!";
+        if (!valueIsObject && !IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
+            return $"({Global(ct)}){valueExpr}";
+        return valueExpr;
     }
 
     // Emits the recorded {StaticResource} resolutions at the end of InitializeComponent. By here the whole tree

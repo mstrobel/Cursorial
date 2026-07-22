@@ -248,10 +248,11 @@ namespace GenApp { public partial class AmbView : StackPanel { public AmbView() 
         Assert.Same(view.Resources["Accent"], button.Content); // resolved via IAmbientResources, NOT a fail-open null/"MISS"
     }
 
-    [Fact] // Ambient scope isolation: a custom extension INSIDE a template sees the template's own <X.Resources>,
-           // not the outer document's — the factory is a separate C# method (the outer dict locals aren't in
-           // scope), so the ambient chain floor is reset at the factory boundary.
-    public void Lowered_CustomExtension_AmbientResources_TemplateScopeIsolated()
+    [Fact] // Captured definition-site scope: a custom extension INSIDE a template SEES the enclosing document's
+           // <X.Resources> — the loader re-pushes the template's captured chain at build time
+           // (BuildTemplateSlice → PushChain(CapturedTemplateScope)), and the lowered factory captures the
+           // document dict locals as closures. (Earlier this asserted the opposite, an under-resolution bug.)
+    public void Lowered_CustomExtension_AmbientResources_SeesCapturedOuterScope()
     {
         var extension = @"
 using Cursorial.UI.Xaml;
@@ -267,9 +268,9 @@ namespace GenApp
         var xaml =
             $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.AmbTplView\">" +
             "<StackPanel.Resources>" +
-              "<SolidColorBrush x:Key=\"OuterOnly\" Color=\"Red\"/>" + // in the OUTER document scope only
+              "<SolidColorBrush x:Key=\"Outer\" Color=\"Red\"/>" + // in the enclosing document scope
               "<DataTemplate x:Key=\"Tpl\">" +
-                "<Button Content=\"{g:Probe Key=OuterOnly}\"/>" + // must NOT see the outer resource
+                "<Button Content=\"{g:Probe Key=Outer}\"/>" + // resolves the captured outer resource
               "</DataTemplate>" +
             "</StackPanel.Resources>" +
             "<Button x:Name=\"Ok\"/>" +
@@ -287,7 +288,7 @@ namespace GenApp { public partial class AmbTplView : StackPanel { public AmbTplV
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.AmbTplView")!)!;
         var built = Assert.IsType<Button>(Assert.IsType<DataTemplate>(view.Resources["Tpl"]).Build(null));
-        Assert.Equal("MISS", built.Content); // the outer document resource is NOT in the template's ambient scope
+        Assert.Same(view.Resources["Outer"], built.Content); // the captured outer document resource, NOT "MISS"
     }
 
     [Fact] // IAmbientResources also walks the APPLICATION tail (App.Resources → Theme → Contributions → BuiltIn),

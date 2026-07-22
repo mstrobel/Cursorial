@@ -633,4 +633,40 @@ namespace GenApp { public partial class ClrRoView : StackPanel { public ClrRoVie
         Assert.Contains("init-only", lowered);
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS8852)
     }
+
+    [Fact] // Phase 4 — an in-template {StaticResource} resolves against the CAPTURED definition-site scope: a
+           // Button inside a DataTemplate references a brush in the enclosing document Resources. The lowered
+           // factory captures the document dict local (a closure); the loader re-pushes the captured chain.
+    public void Lowered_StaticResource_InsideTemplate_ResolvesCapturedOuterResource()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.TplStaticView\">" +
+            "<StackPanel.Resources>" +
+              "<SolidColorBrush x:Key=\"Ink\" Color=\"Red\"/>" +
+              "<DataTemplate x:Key=\"Tpl\">" +
+                "<Button Foreground=\"{StaticResource Ink}\"/>" + // captured from the enclosing StackPanel.Resources
+              "</DataTemplate>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class TplStaticView : StackPanel { public TplStaticView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered); // resolves — no longer fenced in-template
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.TplStaticView")!)!;
+        var built = Assert.IsType<Button>(Assert.IsType<DataTemplate>(view.Resources["Tpl"]).Build(null));
+        Assert.Same(view.Resources["Ink"], built.Foreground); // the captured outer brush
+
+        // The loader resolves the identical shape through its re-pushed CapturedTemplateScope.
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.TplStaticView\"", ""));
+        var runtimeBuilt = Assert.IsType<Button>(Assert.IsType<DataTemplate>(runtime.Resources["Tpl"]).Build(null));
+        Assert.Same(runtime.Resources["Ink"], runtimeBuilt.Foreground);
+    }
 }

@@ -137,7 +137,7 @@ internal static class LoweringEmitter
     {
         var ctx = new Context(document, "            ", resolver) { SourceUri = sourceUri }; // namespace(0) → class(4) → method(8) → body(12)
         ctx.Line("var __root = new global::Cursorial.UI.ResourceDictionary();");
-        ctx.AmbientScopeStack.Add(new ResourceScope("__root")); // the root dictionary's own lexical scope (same-dict {StaticResource}/BasedOn vars)
+        ctx.AmbientScopeStack.Add(new ResourceScope("__root", ctx.CurrentFactoryId)); // the root dictionary's own lexical scope (same-dict {StaticResource}/BasedOn vars)
         EmitResourceDictionaryBody(ctx, "__root", objectIndex: 0);
         foreach (var factory in ctx.Factories)
             ctx.Body.Append(factory);
@@ -276,59 +276,84 @@ internal static class LoweringEmitter
     // scope's map and a host-level key wrongly resolved to a merged/theme child.
     private static void EmitSubDictionaryBody(Context c, string sub, int objectIndex)
     {
-        c.AmbientScopeStack.Add(new ResourceScope(sub));
+        c.AmbientScopeStack.Add(new ResourceScope(sub, c.CurrentFactoryId));
         EmitResourceDictionaryBody(c, sub, objectIndex);
         c.AmbientScopeStack.RemoveAt(c.AmbientScopeStack.Count - 1);
     }
 
-    // A lexical resource scope: the dictionary's local var, plus the key-expression → entry-var map for its own
-    // entries. Pushed innermost-last onto Context.AmbientScopeStack, popped when the scope's subtree is done.
-    private sealed class ResourceScope(string dictVar)
+    // A lexical resource scope: the dictionary's local var + its key-expression → entry-var map, and the FACTORY
+    // it belongs to (0 = document-level, an InitializeComponent local; >0 = a specific template factory's body).
+    // Pushed innermost-last onto Context.AmbientScopeStack, popped when the scope's subtree is done.
+    private sealed class ResourceScope(string dictVar, int factoryId)
     {
         public string DictVar { get; } = dictVar;
+        public int FactoryId { get; } = factoryId;
         public Dictionary<string, string> KeyExprToVar { get; } = new(System.StringComparer.Ordinal);
     }
 
-    // Resolves a {StaticResource} key expression to a same-document entry's local var, walking the enclosing
-    // resource scopes INNERMOST-FIRST (correct lexical shadowing) over the scopes CURRENTLY in effect — an
-    // inner-scope entry has already been popped by the time an outer/sibling element is emitted, so it is not
-    // visible. Null when no visible scope holds the key. Referencing an entry below the template-factory floor
-    // (an outer method's local) forces the factory non-static so it may capture it.
+    // A scope is REACHABLE from the current emit point iff its dictionary local is in the current C# method's
+    // scope: a document-level local (factory 0) is capturable from ANY factory closure; the current factory's
+    // own body local is directly in scope. An ENCLOSING/sibling factory's body local is NOT reachable (the
+    // factories are flat sibling local functions), so a {StaticResource} needing it fences.
+    private static bool IsScopeReachable(Context c, ResourceScope scope)
+        => scope.FactoryId == 0 || scope.FactoryId == c.CurrentFactoryId;
+
+    // The reachable enclosing <X.Resources> dictionary locals, INNERMOST-first — the loader's re-pushed
+    // CapturedTemplateScope (definition-site document dicts) + the template body's own dicts. Referencing a
+    // document-level local from inside a factory forces that factory non-static (it captures the local).
+    private static List<string> ReachableAmbientDicts(Context c)
+    {
+        var dicts = new List<string>();
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
+        {
+            var scope = c.AmbientScopeStack[i];
+            if (!IsScopeReachable(c, scope))
+                continue;
+            if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
+                c.CurrentFactoryCaptures = true; // captures a document local from within the factory
+            dicts.Add(scope.DictVar);
+        }
+        return dicts;
+    }
+
+    // Resolves a {StaticResource} key expression to a same-document entry's local var, walking the REACHABLE
+    // enclosing scopes INNERMOST-FIRST (correct lexical shadowing) — an inner-scope entry has already been popped
+    // by the time an outer/sibling element is emitted, and an unreachable sibling-factory scope is skipped. Null
+    // when no reachable scope holds the key.
     private static string? ResolveVisibleResourceVar(Context c, string keyExpr)
     {
         for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
-            if (c.AmbientScopeStack[i].KeyExprToVar.TryGetValue(keyExpr, out var v))
+        {
+            var scope = c.AmbientScopeStack[i];
+            if (!IsScopeReachable(c, scope))
+                continue;
+            if (scope.KeyExprToVar.TryGetValue(keyExpr, out var v))
             {
-                if (c.InTemplate) c.CurrentFactoryCaptures = true; // references an enclosing entry var ⇒ factory not static
+                if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
+                    c.CurrentFactoryCaptures = true; // references a document local from within the factory ⇒ not static
                 return v;
             }
+        }
         return null;
     }
 
-    // The visible ambient <X.Resources> dictionary locals as trailing `, __inner, …, __outer` params-args for
-    // ResourceScopes.ResolveStatic — innermost-first, above the template-factory floor. "" when none.
+    // The reachable ambient dicts as trailing `, __inner, …, __outer` params-args for ResourceScopes.ResolveStatic.
     private static string AmbientDictsArgs(Context c)
     {
-        if (c.AmbientScopeStack.Count <= c.AmbientScopeFloor)
-            return string.Empty;
-
-        var sb = new StringBuilder();
-        for (int i = c.AmbientScopeStack.Count - 1; i >= c.AmbientScopeFloor; i--)
-            sb.Append(", ").Append(c.AmbientScopeStack[i].DictVar);
-        return sb.ToString();
+        var dicts = ReachableAmbientDicts(c);
+        return dicts.Count == 0 ? string.Empty : ", " + string.Join(", ", dicts);
     }
 
     // An EAGER {StaticResource} whose key is NOT a same-document visible entry var → a runtime
-    // ResourceScopes.ResolveStatic call against the enclosing lexical dictionaries + the application tail (the
-    // loader's XamlResourceScopeStack.TryResolve, exactly). Returns null (the caller fences) for a key that IS a
-    // not-yet-built intra-document entry (a forward/init-only reference the eager build can't reproduce) or one
-    // reached inside a template factory (whose full captured chain — outer document dicts — is a later phase).
+    // ResourceScopes.ResolveStatic call against the reachable lexical dictionaries + the application tail (the
+    // loader's XamlResourceScopeStack.TryResolve — including, inside a template, the captured definition-site
+    // document dicts). Returns null (the caller fences) for a key that IS a not-yet-built intra-document entry
+    // (a forward/init-only reference the eager build can't reproduce, or one that lives only in an unreachable
+    // sibling-factory scope).
     private static string? ExternalStaticResolveExpr(Context c, string keyExpr)
     {
         if (DocumentResourceKeys(c).Contains(keyExpr))
-            return null; // forward/not-yet-built intra-document — fence, never fail-open
-        if (c.InTemplate)
-            return null; // in-template external needs the full captured chain (deferred to a later phase)
+            return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
 
         return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
     }
@@ -1692,7 +1717,8 @@ internal static class LoweringEmitter
         var rootVar = c.NextVar();
 
         // Redirect emission into the factory body + enter template mode (x:Name → __ctx.RegisterName, {StaticResource}
-        // → TODO since there's no end-of-tree FindResource anchor, {TemplateBinding} → the template's target type).
+        // → resolves against the captured definition-site chain (document dicts, via closure capture),
+        // {TemplateBinding} → the template's target type).
         // Save/restore for correct nesting.
         var bodyBuf = new StringBuilder();
         var savedBuffer = c.SwapBuffer(bodyBuf);
@@ -1702,8 +1728,8 @@ internal static class LoweringEmitter
         var savedCaptures = c.CurrentFactoryCaptures;
         var savedReferences = c.References.Count;       // {x:Reference} recorded inside this factory flush HERE,
         var savedScopeLines = c.DeferredScopeLines.Count; // against ITS scope — never the document's (isolation)
-        var savedAmbientFloor = c.AmbientScopeFloor;    // the factory is a separate C# local function: its custom
-        c.AmbientScopeFloor = c.AmbientScopeStack.Count; // extensions see only template dictionaries, not outer ones
+        var savedFactoryId = c.CurrentFactoryId;         // this factory's own body dicts get a fresh factory id;
+        c.CurrentFactoryId = c.NextFactoryScopeId();     // document dicts (id 0) stay reachable (captured as closures)
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
         c.TemplatedParentType = templatedParentType;
@@ -1729,7 +1755,7 @@ internal static class LoweringEmitter
         c.TemplateContextVar = savedCtxVar;
         c.TemplatedParentType = savedTpt;
         c.CurrentFactoryCaptures = savedCaptures;
-        c.AmbientScopeFloor = savedAmbientFloor;
+        c.CurrentFactoryId = savedFactoryId;
         c.SwapBuffer(savedBuffer);
 
         var fn = new StringBuilder();
@@ -1915,7 +1941,7 @@ internal static class LoweringEmitter
     {
         var dictVar = c.NextVar();
         c.Line($"var {dictVar} = {varExpr}.{xm.Name};"); // the get-object dictionary — read, never assign
-        c.AmbientScopeStack.Add(new ResourceScope(dictVar)); // the lexical resource scope for this element's subtree (the loader's Push)
+        c.AmbientScopeStack.Add(new ResourceScope(dictVar, c.CurrentFactoryId)); // the lexical resource scope for this element's subtree (the loader's Push)
         foreach (int idx in ResourceItems(c, member))
             EmitDictionaryEntry(c, dictVar, idx);
     }
@@ -2181,14 +2207,10 @@ internal static class LoweringEmitter
         // The lexical ambient resource chain (IAmbientResources): the enclosing <X.Resources> dictionary locals
         // in the current C# method scope, INNERMOST-first. LoweredExtensionServices.TryFindResource appends the
         // application tail (App→Theme→Contributions→BuiltIn) at runtime, mirroring XamlResourceScopeStack.
-        string ambient = "null";
-        if (c.AmbientScopeStack.Count > c.AmbientScopeFloor)
-        {
-            var visible = new List<string>();
-            for (int i = c.AmbientScopeStack.Count - 1; i >= c.AmbientScopeFloor; i--)
-                visible.Add(c.AmbientScopeStack[i].DictVar);
-            ambient = $"new global::Cursorial.UI.ResourceDictionary[] {{ {string.Join(", ", visible)} }}";
-        }
+        var reachable = ReachableAmbientDicts(c);
+        string ambient = reachable.Count == 0
+            ? "null"
+            : $"new global::Cursorial.UI.ResourceDictionary[] {{ {string.Join(", ", reachable)} }}";
 
         // IXamlLineInfo — the node's 1-based author position (harmless 0,0 for a hand-built node).
         var services = $"new global::Cursorial.UI.Xaml.LoweredExtensionServices(" +
@@ -2405,7 +2427,7 @@ internal static class LoweringEmitter
         }
 
         c.Todo(c.InTemplate
-            ? $"{{StaticResource}} for '{xm.Name}' inside a template not yet lowered (needs the captured lexical scope)"
+            ? $"{{StaticResource}} for '{xm.Name}' inside a template is a forward/not-yet-built reference, or lives in an unreachable enclosing-factory scope — not yet lowered"
             : $"{{StaticResource}} for '{xm.Name}' is a forward/not-yet-built intra-document reference — not yet lowered");
     }
 
@@ -3174,10 +3196,13 @@ internal static class LoweringEmitter
         /// each object's member loop, so a scope pops when its subtree is done.</summary>
         public List<ResourceScope> AmbientScopeStack { get; } = [];
 
-        /// <summary>The lowest visible index in <see cref="AmbientScopeStack"/> — dictionaries below it are out of
-        /// the current C# method scope (a template factory is a separate local function, so its custom
-        /// extensions see only its own template dictionaries). Save/restored around a template factory.</summary>
-        public int AmbientScopeFloor { get; set; }
+        /// <summary>The factory the emit point is currently inside — 0 at document level, a fresh id per template
+        /// factory. A resource scope pushed here is tagged with it, so resolution can tell a reachable
+        /// document/own-factory scope from an unreachable sibling-factory one (see <c>IsScopeReachable</c>).
+        /// Save/restored around a template factory.</summary>
+        public int CurrentFactoryId { get; set; } // 0 = document level; a template factory's body scopes get a fresh id
+        private int _factoryScopeCounter;
+        public int NextFactoryScopeId() => ++_factoryScopeCounter;
         public XamlSymbolResolver Resolver { get; } = resolver;
         public string Indent { get; } = indent;
         public StringBuilder Body { get; } = new();

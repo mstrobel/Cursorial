@@ -9,10 +9,11 @@ namespace Cursorial.Tests.UI.Xaml.Generator;
 
 /// <summary>
 /// WS-X5.4 — resource lowering. <c>{DynamicResource}</c> lowers to a live
-/// <c>ResourceExtensions.SetResourceReference</c> producer; <c>{StaticResource}</c> resolves eagerly at the
-/// end of <c>InitializeComponent</c> against the now-attached element; <c>&lt;X.Resources&gt;</c> populates the
-/// element's <c>ResourceDictionary</c> with its <c>x:Key</c>'d entries. These tests lower a real view, compile
-/// + instantiate it, and assert the resources resolve live through the runtime engine via <c>UITestHost</c>.
+/// <c>ResourceExtensions.SetResourceReference</c> producer; <c>{StaticResource}</c> resolves eagerly at its
+/// use site — a same-document visible entry to the entry's local var, an external key through
+/// <c>ResourceScopes.ResolveStatic</c> (the lexical chain + application tail); <c>&lt;X.Resources&gt;</c>
+/// populates the element's <c>ResourceDictionary</c> with its <c>x:Key</c>'d entries. These tests lower a real
+/// view, compile + instantiate it, and assert the resources resolve identically to the runtime loader.
 /// </summary>
 public class ResourceLoweringTests
 {
@@ -263,10 +264,11 @@ namespace GenApp { public partial class XTypeKeyView : StackPanel { public XType
 
     [Fact] // A non-same-dictionary {StaticResource {x:Type …}} on a UIElement resolves through the end-of-tree
            // FindResource anchor with a typeof(...) key — previously fenced because the anchor was string-only.
-    public void Lowered_StaticResource_MarkupExtensionKey_ResolvesViaFindResource()
+    public void Lowered_StaticResource_MarkupExtensionKey_ResolvesViaResolveStatic()
     {
-        // The {x:Type Button} key is NOT a document entry — it lives in an ambient tier (App.Resources) — so it
-        // takes the deferred FindResource anchor rather than a same-dictionary var hit.
+        // The {x:Type Button} key is NOT a document entry — it lives in an ambient tier (App.Resources) — so a
+        // UIElement-member StaticResource resolves eagerly via ResolveStatic (the lexical chain + app tail),
+        // NOT the retired end-of-tree FindResource anchor.
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.MeKeyView\">" +
             "<Button x:Name=\"Ok\" Foreground=\"{StaticResource {x:Type Button}}\"/>" +
@@ -279,8 +281,8 @@ namespace GenApp { public partial class MeKeyView : StackPanel { public MeKeyVie
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("FindResource(", lowered);
-        Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", lowered);
+        Assert.Contains("global::Cursorial.UI.ResourceScopes.ResolveStatic(typeof(global::Cursorial.UI.Controls.Button)", lowered);
+        Assert.DoesNotContain("FindResource(", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
@@ -291,7 +293,7 @@ namespace GenApp { public partial class MeKeyView : StackPanel { public MeKeyVie
 
             var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.MeKeyView")!)!;
             var button = Assert.IsType<Button>(view.Children[0]);
-            Assert.Same(brush, button.Foreground); // resolved through the deferred FindResource anchor, ambient tier
+            Assert.Same(brush, button.Foreground); // resolved eagerly via ResolveStatic, ambient tier
         }
         finally
         {

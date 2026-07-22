@@ -300,6 +300,34 @@ internal static class LoweringEmitter
         return null;
     }
 
+    // The visible ambient <X.Resources> dictionary locals as trailing `, __inner, …, __outer` params-args for
+    // ResourceScopes.ResolveStatic — innermost-first, above the template-factory floor. "" when none.
+    private static string AmbientDictsArgs(Context c)
+    {
+        if (c.AmbientScopeStack.Count <= c.AmbientScopeFloor)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        for (int i = c.AmbientScopeStack.Count - 1; i >= c.AmbientScopeFloor; i--)
+            sb.Append(", ").Append(c.AmbientScopeStack[i].DictVar);
+        return sb.ToString();
+    }
+
+    // An EAGER {StaticResource} whose key is NOT a same-document visible entry var → a runtime
+    // ResourceScopes.ResolveStatic call against the enclosing lexical dictionaries + the application tail (the
+    // loader's XamlResourceScopeStack.TryResolve, exactly). Returns null (the caller fences) for a key that IS a
+    // not-yet-built intra-document entry (a forward/init-only reference the eager build can't reproduce) or one
+    // reached inside a template factory (whose full captured chain — outer document dicts — is a later phase).
+    private static string? ExternalStaticResolveExpr(Context c, string keyExpr)
+    {
+        if (DocumentResourceKeys(c).Contains(keyExpr))
+            return null; // forward/not-yet-built intra-document — fence, never fail-open
+        if (c.InTemplate)
+            return null; // in-template external needs the full captured chain (deferred to a later phase)
+
+        return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
+    }
+
     private static void EmitDictionaryEntry(Context c, string dictVar, int childIndex)
     {
         if (TypeSymbolOf(c.Doc, c.Doc.Objects[childIndex].TypeId) is { } t && SymbolXamlModel.IsResourceDictionary(t))
@@ -1046,14 +1074,12 @@ internal static class LoweringEmitter
                 ? $"new global::Cursorial.UI.ResourceReference({keyExpr})"
                 : null;
 
-        // A same-dictionary {StaticResource key} → the already-built entry's var (its load-time snapshot); the key
-        // may be a string or a nested {x:Type}/{x:Static} (control themes key by {x:Type}).
-        if (ext.Kind == ExtensionKind.StaticResource &&
-            ResourceKeyArgExpr(c, in ext) is { } srcKeyExpr &&
-            ResolveVisibleResourceVar(c, srcKeyExpr) is { } srcVar)
-        {
-            return srcVar;
-        }
+        // A {StaticResource key}: a same-dictionary visible entry → its var (the load-time snapshot); else an
+        // external key → an eager ResolveStatic against the lexical chain + app tail (the Setter.Value /
+        // DataCondition.Value / standalone-entry slot is object-typed, so no cast). A forward intra-document /
+        // in-template key returns null (the caller fences).
+        if (ext.Kind == ExtensionKind.StaticResource && ResourceKeyArgExpr(c, in ext) is { } srcKeyExpr)
+            return ResolveVisibleResourceVar(c, srcKeyExpr) ?? ExternalStaticResolveExpr(c, srcKeyExpr);
 
         return null;
     }
@@ -1108,20 +1134,13 @@ internal static class LoweringEmitter
             // the derived style's construction — before the base entry is built or added — and the probe
             // would walk a still-empty tree and throw. Fail closed (loud) rather than crash at runtime;
             // a document-order-independent lowering of forward BasedOn is a follow-up.
-            if (DocumentResourceKeys(c).Contains(keyExpr))
-                return null;
-
-            // Otherwise the base lives OUTSIDE the document — an app/theme tier (App.Resources →
-            // App.Theme → ThemeContributions → CursorialTheme.BuiltIn — the
-            // BasedOn="{StaticResource {x:Type ListBoxItem}}" app pattern) or a merged dictionary.
-            // Probe the LIVE chain at build time, anchored on the view root: eager + throw-on-miss
-            // (ResourceNotFoundException names the searched chain), matching the loader's ambient tail.
-            // Only an x:Class document has the `this` anchor — a ResourceDictionary builder stays fenced.
-            if (c.HasRootElement)
-            {
-                if (c.InTemplate) c.CurrentFactoryCaptures = true; // captures `this`
-                return $"(global::Cursorial.UI.Style)global::Cursorial.UI.ResourceExtensions.FindResource(this, {keyExpr})!";
-            }
+            // Otherwise the base lives OUTSIDE the document (an outer/merged dictionary or the app/theme
+            // tail — the BasedOn="{StaticResource {x:Type ListBoxItem}}" app pattern). Resolve eagerly against
+            // the enclosing lexical dictionaries + the application tail — the loader's XamlResourceScopeStack
+            // exactly (no `this` anchor needed, so it works in a rootless ResourceDictionary builder too). A
+            // forward/not-yet-built intra-document key or an in-template reference fences here.
+            if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+                return $"(global::Cursorial.UI.Style){resolve}!";
         }
 
         return null;
@@ -2964,10 +2983,18 @@ internal static class LoweringEmitter
         if (arg.IsNested && arg.Nested is { } inner &&
             inner.PositionalArguments.Count > 0 && inner.PositionalArguments[0].Text is { } first)
         {
-            // {StaticResource Key} — a same-dictionary converter resource (the var holds the built instance; the
-            // loader's ResolveConverter resolves the same nested {StaticResource}).
-            if (inner.Name is "StaticResource" && ResolveVisibleResourceVar(c, $"\"{Escape(first)}\"") is { } srcVar)
-                return $"Converter = {srcVar}";
+            // {StaticResource Key} — a converter resource. A same-dictionary visible entry → its var; an
+            // external key → an eager ResolveStatic (cast to IValueConverter). The loader's ResolveConverter
+            // resolves the same nested {StaticResource}. A forward intra-document / in-template key falls
+            // through (the caller degrades to the reflective binding lane).
+            if (inner.Name is "StaticResource")
+            {
+                var keyExpr = $"\"{Escape(first)}\"";
+                if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+                    return $"Converter = {srcVar}";
+                if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+                    return $"Converter = (global::Cursorial.UI.Data.IValueConverter){resolve}!";
+            }
 
             // {x:Static Member} — the static converter instance.
             if (inner.Name is "x:Static" or "Static" && ResolveStaticPath(c, first) is { } expr)

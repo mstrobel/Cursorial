@@ -271,12 +271,15 @@ namespace GenApp { public partial class BasedOnAmbientView : StackPanel { public
         var lowered = Lower(xaml, compilation);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("FindResource(this, \"AppBase\")", lowered);
+        // Resolved eagerly against the lexical chain + app tail (ResourceScopes.ResolveStatic — the loader's
+        // XamlResourceScopeStack), NOT the live-tree FindResource walk.
+        Assert.Contains("global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AppBase\"", lowered);
+        Assert.DoesNotContain("FindResource(this,", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
 
-        // The probe walks the app tiers — host the instantiation so UIApplication.Resources carries the base.
+        // The resolve walks the app tiers — host the instantiation so UIApplication.Resources carries the base.
         var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
             new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
         try

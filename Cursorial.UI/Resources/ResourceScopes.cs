@@ -23,6 +23,50 @@ public static class ResourceScopes
     public static IResourceScope ForApplication()
         => new ApplicationScope();
 
+    /// <summary>
+    /// Resolves a <c>{StaticResource}</c> key against a lexical ambient chain — the enclosing
+    /// <c>&lt;X.Resources&gt;</c> dictionaries <paramref name="ambientInnermostFirst"/> probed
+    /// variant-agnostically (own entries only), then the application tail
+    /// (<c>App.Resources → App.Theme → ThemeContributions → BuiltIn</c>). This is the exact structural twin of
+    /// the loader's <c>XamlResourceScopeStack.TryResolve</c> with its default <see cref="ForApplication"/>
+    /// ambient — the resolver full-lowering emits for a <c>{StaticResource}</c> whose key is not a
+    /// same-document entry local. Returns <see langword="false"/> on a miss.
+    /// </summary>
+    public static bool TryResolveStatic(object key, IReadOnlyList<ResourceDictionary>? ambientInnermostFirst, out object? value)
+    {
+        if (ambientInnermostFirst is not null)
+            for (var i = 0; i < ambientInnermostFirst.Count; i++)
+                if (ambientInnermostFirst[i].TryGetValue(key, out value))
+                    return true;
+
+        for (var scope = (IResourceScope?)ForApplication(); scope is not null; scope = scope.Parent)
+            if (scope.TryGetResource(key, out value))
+                return true;
+
+        value = null;
+        return false;
+    }
+
+    /// <summary>
+    /// As <see cref="TryResolveStatic"/>, returning the resolved value (which may itself be
+    /// <see langword="null"/>, e.g. an <c>{x:Null}</c> resource) and throwing
+    /// <see cref="ResourceNotFoundException"/> on a miss — the loader's eager <c>{StaticResource}</c>
+    /// resolution. The <c>params</c> array carries the ambient chain innermost-first.
+    /// </summary>
+    public static object? ResolveStatic(object key, params ResourceDictionary[] ambientInnermostFirst)
+        => TryResolveStatic(key, ambientInnermostFirst, out var value)
+               ? value
+               : throw new ResourceNotFoundException(key, DescribeStaticChain(ambientInnermostFirst));
+
+    private static string[] DescribeStaticChain(ResourceDictionary[] ambient)
+    {
+        var chain = new string[ambient.Length + 1];
+        for (var i = 0; i < ambient.Length; i++)
+            chain[i] = $"resource dictionary (hop {i + 1})";
+        chain[ambient.Length] = "application (App.Resources → Theme → ThemeContributions → BuiltIn)";
+        return chain;
+    }
+
     private sealed class DictionaryScope(ResourceDictionary dictionary, IResourceScope? parent) : IResourceScope
     {
         public IResourceScope? Parent => parent;

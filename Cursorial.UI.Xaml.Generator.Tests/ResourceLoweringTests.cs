@@ -333,4 +333,88 @@ namespace GenApp { public partial class ShadowView : StackPanel { public ShadowV
         Assert.Equal(Colors.Red, loweredFg.Color);        // NOT the inner Blue
         Assert.Equal(runtimeFg.Color, loweredFg.Color);   // and identical to the loader
     }
+
+    [Fact] // An external {StaticResource} in a Setter.Value resolves eagerly through ResourceScopes.ResolveStatic
+           // (the lexical chain + app tail) — previously fenced. Pinned against the app-tier resource.
+    public void Lowered_SetterValue_ExternalStaticResource_ResolvesViaResolveStatic()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.SetterExtView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"S\" Selector=\":is(Button)\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource AppInk}\"/>" + // AppInk lives in App.Resources
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class SetterExtView : StackPanel { public SetterExtView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AppInk\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var appInk = new SolidColorBrush { Color = Colors.Red };
+            host.Application.Resources["AppInk"] = appInk;
+
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.SetterExtView")!)!;
+            var style = Assert.IsType<Cursorial.UI.Style>(view.Resources["S"]);
+            var setter = Assert.Single(style.Setters);
+            Assert.Same(appInk, setter.Value); // the Setter captured the app-tier resource at construction
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact] // An external {Binding Converter={StaticResource …}} resolves eagerly through ResolveStatic — the
+           // converter lives in App.Resources; previously the whole binding fenced.
+    public void Lowered_BindingConverter_ExternalStaticResource_ResolvesViaResolveStatic()
+    {
+        var converter = @"
+using Cursorial.UI.Data;
+namespace GenApp
+{
+    public sealed class UpperConverter : IValueConverter
+    {
+        public object? Convert(object? value, System.Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+            => value?.ToString()?.ToUpperInvariant();
+        public object? ConvertBack(object? value, System.Type targetType, object? parameter, System.Globalization.CultureInfo culture) => value;
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ConvExtView\">" +
+            "<TextBlock x:Name=\"T\" Text=\"{Binding Name, Converter={StaticResource Up}}\"/>" + // Up lives in App.Resources
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ConvExtView : StackPanel { public ConvExtView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(converter), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("Converter = (global::Cursorial.UI.Data.IValueConverter)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"Up\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            host.Application.Resources["Up"] = System.Activator.CreateInstance(assembly.GetType("GenApp.UpperConverter")!);
+            Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.ConvExtView")!)); // the binding installs; the converter resolved
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
 }

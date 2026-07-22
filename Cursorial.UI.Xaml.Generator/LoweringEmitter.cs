@@ -66,12 +66,7 @@ internal static class LoweringEmitter
         }
         EmitObject(ctx, objectIndex: 0, varExpr: "this", isRoot: true, hasScope: named.Count > 0, dataType: null);
 
-        // {StaticResource} resolves EAGERLY but only once the whole tree is built + attached and every
-        // <X.Resources> is populated — for a self-contained inline document the lexical scope chain IS the
-        // live ancestor chain, so el.FindResource (a throw-on-miss live walk, matching the loader) is faithful.
-        // Deferring to the end of InitializeComponent is the single point where both invariants hold.
-        EmitDeferredStaticResources(ctx);
-        EmitDeferredReferences(ctx); // {x:Reference} — same end-of-tree point (the name scope is now complete)
+        EmitDeferredReferences(ctx); // {x:Reference} — resolved at end-of-tree, once the name scope is complete
 
         // Template factory local functions go at the end of InitializeComponent (hoisted — the
         // FuncTemplateContent(...) references emitted above resolve to them).
@@ -144,7 +139,6 @@ internal static class LoweringEmitter
         ctx.Line("var __root = new global::Cursorial.UI.ResourceDictionary();");
         ctx.AmbientScopeStack.Add(new ResourceScope("__root")); // the root dictionary's own lexical scope (same-dict {StaticResource}/BasedOn vars)
         EmitResourceDictionaryBody(ctx, "__root", objectIndex: 0);
-        EmitDeferredStaticResources(ctx); // RD entries aren't UIElements ⇒ {StaticResource} bails to TODO, not here
         foreach (var factory in ctx.Factories)
             ctx.Body.Append(factory);
 
@@ -682,7 +676,6 @@ internal static class LoweringEmitter
             // LOCAL lives in whenBuf. If we drop the style, whenBuf is discarded — so those records must
             // roll back too, else the document-end flush emits a reference to a never-declared local (CS0103).
             var savedRefs = c.References.Count;
-            var savedStatics = c.StaticResources.Count;
             var savedScopeLines = c.DeferredScopeLines.Count;
 
             var conditionsOk = true;
@@ -693,7 +686,6 @@ internal static class LoweringEmitter
             if (!conditionsOk)
             {
                 Truncate(c.References, savedRefs);
-                Truncate(c.StaticResources, savedStatics);
                 Truncate(c.DeferredScopeLines, savedScopeLines);
                 // The specific condition Todo was recorded (its marker was buffered away); this marker
                 // states the consequence at the style site.
@@ -1427,15 +1419,39 @@ internal static class LoweringEmitter
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
         }
 
-        // This object's <X.Resources> (pushed by EmitResourcesMember below) is visible to its whole subtree,
-        // then popped — the loader's scope Push / PopDownTo(depth) around a resources hop.
+        // This object's <X.Resources> (pushed by EmitResourcesMember) is visible to its whole subtree, then
+        // popped — the loader's scope Push / PopDownTo(depth) around a resources hop.
         int ambientDepth = c.AmbientScopeStack.Count;
+
+        // Resources-FIRST (the loader's ApplyResourcesFirst, XamlObjectGraphBuilder Pass 1): emit this element's
+        // <X.Resources> BEFORE its other members, so a {StaticResource} on an OWN member sees the element's own
+        // scope. An attribute member (Background="{StaticResource K}") precedes the <Element.Resources> property
+        // element in document order, so without this an own-scope key would resolve to an enclosing shadowed
+        // entry (wrong value) or fence as a forward reference (dropped) — both loader divergences.
+        int hoistedResources = -1;
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var rmember = ref c.Doc.Members[m];
+            if (rmember.Kind is not (XamlValueKind.Object or XamlValueKind.Items))
+                continue;
+            var rxm = rmember.MemberId >= 0 ? c.Doc.ResolvedMembers[rmember.MemberId] : null;
+            if (rxm is not null && IsResourceDictionaryMember(rxm) && (initMembers is null || !initMembers.Indices.Contains(m)))
+            {
+                c.CurrentObjectType = objType;
+                EmitResourcesMember(c, varExpr, rxm, in rmember);
+                hoistedResources = m;
+                break; // one <X.Resources> per element
+            }
+        }
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
             c.CurrentLineInfo = member.PackedLineInfo;
             c.CurrentObjectType = objType; // re-assert per member (child recursion clobbers it)
+
+            if (m == hoistedResources)
+                continue; // already emitted resources-first, above
 
             if (initMembers is not null && initMembers.Indices.Contains(m))
                 continue; // already emitted in the construction object initializer
@@ -2337,61 +2353,77 @@ internal static class LoweringEmitter
         c.Line($"global::Cursorial.UI.ResourceExtensions.SetResourceReference({varExpr}, {Global(owner)}.{xm.Name}Property, {keyExpr});");
     }
 
-    // {StaticResource Key} — eager, but deferred to end-of-InitializeComponent (see EmitDeferredStaticResources):
-    // record (element, target, key). A markup-extension key, or a StaticResource inside a template factory
-    // (where there is no end-of-tree FindResource anchor — it needs the captured lexical scope), stays a // TODO.
+    // {StaticResource Key} on an element member — resolved EAGERLY (the loader resolves a live-member
+    // StaticResource eagerly too): a same-dictionary visible entry → its var; an external key → an inline
+    // ResourceScopes.ResolveStatic against the lexical chain + application tail (exact parity, replacing the
+    // former end-of-tree FindResource anchor). A non-UIElement target, a forward/not-yet-built intra-document
+    // key, or an in-template reference stays a // TODO.
     private static void EmitStaticResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
     {
         // Same-dictionary key (string OR nested {x:Type}/{x:Static}, lexically built before this use): reference the
         // entry's var directly — StaticResource's exact load-time-snapshot semantics, and the only form that works
         // inside a template factory (a non-static local function captures the var). Works inline too (the var is in
         // the same Build() scope).
-        if (ResourceKeyArgExpr(c, in ext) is { } keyExpr && ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
-        {
-            AssignResolvedResource(c, varExpr, xm, srcVar);
-            return;
-        }
-
-        // Not a same-dictionary entry: defer to the end-of-tree FindResource anchor. The key is rendered as a
-        // C# EXPRESSION (a string literal, a typeof(...) for {x:Type}, or an {x:Static} ref) — FindResource
-        // takes an object key, so a nested {x:Type}/{x:Static}-keyed StaticResource resolves the same way a
-        // string-keyed one does (the loader is forward-reference-free for live members, so the anchor is
-        // strictly more permissive).
-        if (ResourceKeyArgExpr(c, in ext) is not { } deferredKeyExpr)
+        if (ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
         {
             c.Todo($"{{StaticResource}} key for '{xm.Name}' is an unsupported markup extension — not yet lowered");
             return;
         }
 
-        if (c.InTemplate)
-        {
-            c.Todo($"{{StaticResource}} for '{xm.Name}' inside a template not yet lowered (needs the captured lexical scope)");
-            return;
-        }
-
-        // FindResource is a UIElement extension; a {StaticResource} on a non-element object (e.g. a brush inside a
-        // resource value) can't use the end-of-tree FindResource anchor — bail rather than emit an uncompilable call.
+        // A {StaticResource} on a NON-UIElement object (a brush inside another resource) may target an
+        // init-only slot (SolidColorBrush.Color) that must be set in the object initializer — the eager-assign
+        // form here would be CS8852. Fence (the object-initializer routing is a later phase).
         if (!XamlDataTypeScope.IsUIElement(c.CurrentObjectType))
         {
             c.Todo($"{{StaticResource}} on a non-UIElement target ('{xm.Name}') not yet lowered");
             return;
         }
 
-        var owner = RegisteredOwner(xm);
-        // For a CLR (non-UIProperty) target, remember the value type so the assignment casts FindResource's
-        // object? to the property type — needed even for a `string` target (object? → string is not implicit).
-        var clrType = owner is null ? ValueTypeSymbol(xm.ValueType) : null;
-        c.StaticResources.Add(new StaticResourceResolution(varExpr, owner, xm.Name, deferredKeyExpr, clrType));
+        // An init-only / read-only CLR member (not a UIProperty) can't be assigned post-construction (CS8852) —
+        // fence rather than emit non-compiling code (both the var and the ResolveStatic assign are post-ctor).
+        if (RegisteredOwner(xm) is null && ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"{{StaticResource}} target '{xm.Name}' is init-only/read-only — can't be assigned post-construction");
+            return;
+        }
+
+        // A same-dictionary visible entry → its var (a typed local, the load-time snapshot).
+        if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+        {
+            AssignResolvedResource(c, varExpr, xm, srcVar, valueIsObject: false);
+            return;
+        }
+
+        // External key → resolve EAGERLY against the lexical chain + application tail. A {StaticResource} on a
+        // LIVE element is resolved eagerly by the loader too (during member application), so this is exact
+        // parity — and ResourceScopes.ResolveStatic drops FindResource's alias-chase / variant-aware /
+        // live-tree over-resolution. A forward/not-yet-built intra-document key or an in-template reference fences.
+        if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+        {
+            AssignResolvedResource(c, varExpr, xm, resolve, valueIsObject: true);
+            return;
+        }
+
+        c.Todo(c.InTemplate
+            ? $"{{StaticResource}} for '{xm.Name}' inside a template not yet lowered (needs the captured lexical scope)"
+            : $"{{StaticResource}} for '{xm.Name}' is a forward/not-yet-built intra-document reference — not yet lowered");
     }
 
-    // Assigns an already-resolved resource value expression (a built entry's var) to a member: SetValue for a
-    // registered UIProperty target; else a CLR set (cast to the member value type when it's a concrete type, so a
-    // base/interface-typed target accepts the concrete-typed var — and object/string targets need no cast).
-    private static void AssignResolvedResource(Context c, string varExpr, XamlMember xm, string valueExpr)
+    // Assigns an already-resolved resource value to a member: SetValue for a registered UIProperty (object? param,
+    // no cast). For a CLR target, a TYPED value (a built entry's var) casts only for a base/interface-typed slot;
+    // an object?-typed value (ResolveStatic) casts to ANY concrete member type — string included, since
+    // object? → string is not implicit (the CS0266 the deferred FindResource path used to cast away).
+    private static void AssignResolvedResource(Context c, string varExpr, XamlMember xm, string valueExpr, bool valueIsObject)
     {
         if (RegisteredOwner(xm) is { } owner)
+        {
             c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
-        else if (!IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
+            return;
+        }
+
+        if (valueIsObject && ValueTypeSymbol(xm.ValueType) is { SpecialType: not SpecialType.System_Object } ot)
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ot)}){valueExpr}!;");
+        else if (!valueIsObject && !IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
             c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){valueExpr};");
         else
             c.Line($"{varExpr}.{xm.Name} = {valueExpr};");
@@ -2400,25 +2432,6 @@ internal static class LoweringEmitter
     // Emits the recorded {StaticResource} resolutions at the end of InitializeComponent. By here the whole tree
     // is constructed + attached and every <X.Resources> is populated, so el.FindResource walks the full ancestor
     // chain (throw-on-miss, matching the loader's eager resolution). Lexical == live for an inline document.
-    private static void EmitDeferredStaticResources(Context c)
-    {
-        if (c.StaticResources.Count == 0)
-            return;
-
-        c.Line("// X5.4 — resolve {StaticResource}s now the tree is built + attached and resources are populated.");
-        foreach (var sr in c.StaticResources)
-        {
-            string find = $"global::Cursorial.UI.ResourceExtensions.FindResource({sr.Var}, {sr.KeyExpr})";
-
-            if (sr.Owner is { } owner)
-                c.Line($"{sr.Var}.SetValue({Global(owner)}.{sr.Property}Property, {find});");
-            else if (sr.ClrType is { } ct)
-                c.Line($"{sr.Var}.{sr.Property} = ({Global(ct)}){find}!;");
-            else
-                c.Line($"{sr.Var}.{sr.Property} = {find};");
-        }
-    }
-
     // {x:Reference} resolutions, emitted after the tree is built + every x:Name registered, so a forward
     // reference (the named element appears later) resolves against the now-complete document name scope.
     private static void EmitDeferredReferences(Context c)
@@ -3185,8 +3198,6 @@ internal static class LoweringEmitter
         /// stayed reflective when it could have been a zero-reflection compiled binding). No <c>// TODO</c> marker.</summary>
         public List<UnloweredMember> Infos { get; } = [];
 
-        public List<StaticResourceResolution> StaticResources { get; } = [];
-
         public List<ReferenceResolution> References { get; } = []; // {x:Reference} deferred assignments
 
         private INamedTypeSymbol? _control;
@@ -3303,15 +3314,6 @@ internal static class LoweringEmitter
     // A {StaticResource} to resolve at end-of-InitializeComponent. Owner non-null ⇒ SetValue(Owner.<Prop>Property);
     // else a CLR set (cast to ClrType when non-null, i.e. a typed non-object/string CLR target). KeyExpr is a
     // pre-rendered C# key expression (a string literal / typeof(...) / {x:Static} ref) — FindResource's object key.
-    private readonly struct StaticResourceResolution(string var, INamedTypeSymbol? owner, string property, string keyExpr, ITypeSymbol? clrType)
-    {
-        public string Var { get; } = var;
-        public INamedTypeSymbol? Owner { get; } = owner;
-        public string Property { get; } = property;
-        public string KeyExpr { get; } = keyExpr;
-        public ITypeSymbol? ClrType { get; } = clrType;
-    }
-
     private readonly struct ReferenceResolution(string var, INamedTypeSymbol? owner, string property, string name, ITypeSymbol? clrType)
     {
         public string Var { get; } = var;

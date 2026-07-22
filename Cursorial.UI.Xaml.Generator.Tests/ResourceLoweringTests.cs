@@ -766,4 +766,43 @@ namespace GenApp { public partial class NestedShadowView : StackPanel { public N
         var runtimeInner = Assert.IsType<Button>(runtimeOuter.ContentTemplate!.Build(null));
         Assert.NotSame(runtime.Resources["K"], runtimeInner.Foreground); // NOT the document Red — the shadow won
     }
+
+    [Fact] // Review follow-up (depth-2) — a plain {StaticResource} inside a NESTED template must FENCE when an
+           // unreachable enclosing-factory dict is populated from a Source. The Source-loaded keys fold into that
+           // dict's OWN entries (visible to the loader's TryGetValue) but are opaque at compile time, so the
+           // reachable-only ResolveStatic chain — which drops the unreachable dict — could miss a key the loader
+           // resolves against it. Fence rather than emit a ResolveStatic that binds a farther / app-tail value.
+    public void Lowered_StaticResource_NestedTemplate_UnreachableSourceScope_Fences()
+    {
+        var xaml =
+            $"<ContentControl {Ns} x:Class=\"GenApp.NestSrcView\">" + // root: NO <Resources>
+            "<ContentControl.ContentTemplate>" +
+              "<DataTemplate>" +                                      // outer factory F1
+                "<ContentControl>" +
+                  "<ContentControl.Resources>" +
+                    "<ResourceDictionary Source=\"Shared.xaml\"/>" +  // opaque (Source-loaded) keys, unreachable from F2
+                  "</ContentControl.Resources>" +
+                  "<ContentControl.ContentTemplate>" +
+                    "<DataTemplate>" +                                // inner factory F2
+                      "<Button Foreground=\"{StaticResource K}\"/>" + // K could be a Source-loaded key → fence, don't guess
+                    "</DataTemplate>" +
+                  "</ContentControl.ContentTemplate>" +
+                "</ContentControl>" +
+              "</DataTemplate>" +
+            "</ContentControl.ContentTemplate>" +
+            "</ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class NestSrcView : ContentControl { public NestSrcView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The Source still lowers; the in-template {StaticResource K} fences (an unreachable opaque scope could hold
+        // K) rather than emitting an unfaithful ResolveStatic. The generated code still compiles.
+        Assert.Contains(".Source = new global::System.Uri(", lowered); // the enclosing Source is lowered, not dropped
+        Assert.Contains("TODO X5", lowered);
+        Assert.DoesNotContain("ResolveStatic(\"K\"", lowered); // never emit a ResolveStatic that drops the opaque scope
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
 }

@@ -338,4 +338,55 @@ namespace GenApp { public partial class AppAmbView : StackPanel { public AppAmbV
             host.Dispose();
         }
     }
+
+    [Fact] // Review follow-up (depth-2) — a custom extension inside a NESTED template must FENCE when an
+           // enclosing-factory <X.Resources> scope is unreachable, even when it is the OUTERMOST scope on the
+           // ambient stack (the root has no <Resources>, so no document scope encloses it). The IAmbientResources
+           // chain we could hand the extension (reachable dicts only) silently DROPS that scope, so a probed key
+           // defined there resolves to the app tail instead of the enclosing dict — a fail-open. Fencing is the
+           // only faithful option; the extension probes arbitrary keys, so we can't fence per-key.
+    public void Lowered_CustomExtension_NestedTemplate_UnreachableEnclosingScope_Fences()
+    {
+        var extension = @"
+using Cursorial.UI.Xaml;
+namespace GenApp
+{
+    public sealed class NestProbeExtension : MarkupExtension
+    {
+        public string? Key { get; set; }
+        public override object? ProvideValue(System.IServiceProvider sp)
+            => sp.GetService(typeof(IAmbientResources)) is IAmbientResources ar && ar.TryFindResource(Key!, out var v) ? v : ""MISS"";
+    }
+}";
+        var xaml =
+            $"<ContentControl {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.NestAmbView\">" + // root: NO <Resources>
+            "<ContentControl.ContentTemplate>" +
+              "<DataTemplate>" +                                      // outer factory F1
+                "<ContentControl>" +
+                  "<ContentControl.Resources>" +
+                    "<SolidColorBrush x:Key=\"K\" Color=\"Red\"/>" +  // F1-scope K — unreachable AND outermost (no doc scope)
+                  "</ContentControl.Resources>" +
+                  "<ContentControl.ContentTemplate>" +
+                    "<DataTemplate>" +                                // inner factory F2
+                      "<Button Content=\"{g:NestProbe Key=K}\"/>" +   // loader → F1's Red; the chain would miss it → fence
+                    "</DataTemplate>" +
+                  "</ContentControl.ContentTemplate>" +
+                "</ContentControl>" +
+              "</DataTemplate>" +
+            "</ContentControl.ContentTemplate>" +
+            "</ContentControl>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class NestAmbView : ContentControl { public NestAmbView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(extension), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // Fences (the ambient chain would drop the unreachable enclosing scope) — NEVER emitted with a truncated
+        // ambient that silently mis-resolves. The rest of the generated code still compiles.
+        Assert.Contains("TODO X5", lowered);
+        Assert.DoesNotContain("NestProbeExtension", lowered); // not lowered at all — fenced, not emitted with ambient:null
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
 }

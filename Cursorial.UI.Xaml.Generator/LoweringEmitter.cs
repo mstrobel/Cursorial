@@ -215,6 +215,9 @@ internal static class LoweringEmitter
                         c.Line($"{dictVar}.Source = new global::System.Uri(\"{Escape(ResolveSourceUri(c.Doc.Strings[member.ValueIndex], c.SourceUri))}\", global::System.UriKind.RelativeOrAbsolute);");
                     else
                         c.Todo("<ResourceDictionary.Source> with a non-literal value not yet lowered");
+                    // The Source folds external keys into this dict's OWN entries (invisible to KeyExprToVar) — mark
+                    // the scope opaque so an unreachable copy of it forces the external {StaticResource} path to fence.
+                    MarkScopeOpaque(c, dictVar);
                     break;
 
                 case "MergedDictionaries":
@@ -289,6 +292,12 @@ internal static class LoweringEmitter
         public string DictVar { get; } = dictVar;
         public int FactoryId { get; } = factoryId;
         public Dictionary<string, string> KeyExprToVar { get; } = new(System.StringComparer.Ordinal);
+
+        // The dictionary is populated from a Source (an external RD load): its own entries are NOT fully known at
+        // compile time (KeyExprToVar holds only the inline entries). A {StaticResource} whose key we can't find
+        // inline can't be proven absent from this scope, so if it is UNREACHABLE (dropped from the ResolveStatic
+        // chain) any external resolution must fence — the loader would resolve the Source-loaded key it can't see.
+        public bool HasOpaqueKeys { get; set; }
     }
 
     // A scope is REACHABLE from the current emit point iff its dictionary local is in the current C# method's
@@ -298,22 +307,46 @@ internal static class LoweringEmitter
     private static bool IsScopeReachable(Context c, ResourceScope scope)
         => scope.FactoryId == 0 || scope.FactoryId == c.CurrentFactoryId;
 
-    // True when an UNREACHABLE scope (a sibling/enclosing-factory dictionary local not in the current C# method
-    // scope) sits INNER to a reachable one on the ambient stack. The custom-extension IAmbientResources chain
-    // (ReachableAmbientDicts) silently drops such an interposed scope, so a runtime key the loader would resolve
-    // against it instead resolves a farther dict / the app tail — a fail-open. When this holds, the extension
-    // can't be handed a faithful ambient chain, so it fences.
-    private static bool HasInterposedUnreachableScope(Context c)
+    // True when ANY scope on the ambient stack is UNREACHABLE (a sibling/enclosing-factory dictionary local not in
+    // the current C# method scope). The custom-extension IAmbientResources chain (ReachableAmbientDicts) silently
+    // DROPS every unreachable scope, and the extension probes ARBITRARY runtime keys — so a key the loader would
+    // resolve against a dropped scope instead resolves a farther dict / the app tail (a fail-open). We can't fence
+    // per-key (the probed keys aren't known at compile time), so the whole extension fences whenever the chain we
+    // could hand it is missing any scope the loader's captured chain includes — regardless of that scope's
+    // position (an outermost dropped scope is just as unfaithful as an interposed one).
+    private static bool HasUnreachableAmbientScope(Context c)
     {
-        var seenUnreachable = false;
-        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--) // innermost → outermost
-        {
+        for (int i = 0; i < c.AmbientScopeStack.Count; i++)
             if (!IsScopeReachable(c, c.AmbientScopeStack[i]))
-                seenUnreachable = true;
-            else if (seenUnreachable)
-                return true; // a reachable scope OUTER to an already-seen inner unreachable one → interposed
+                return true;
+        return false;
+    }
+
+    // True when an UNREACHABLE scope on the stack has compile-time-opaque own keys (a Source load). A key not found
+    // inline can't be proven absent from such a scope, so the reachable-only ResolveStatic chain — which drops the
+    // unreachable scope — might miss a key the loader resolves against it. The external {StaticResource} path fences.
+    private static bool HasUnreachableOpaqueScope(Context c)
+    {
+        for (int i = 0; i < c.AmbientScopeStack.Count; i++)
+        {
+            var scope = c.AmbientScopeStack[i];
+            if (scope.HasOpaqueKeys && !IsScopeReachable(c, scope))
+                return true;
         }
         return false;
+    }
+
+    // Marks the scope backing <paramref name="dictVar"/> as having compile-time-opaque own keys (populated from a
+    // Source). Called at the `.Source =` emit; the target is normally the innermost pushed scope, but match by
+    // DictVar so a fold that reuses an outer dict's var still marks the right scope.
+    private static void MarkScopeOpaque(Context c, string dictVar)
+    {
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
+            if (c.AmbientScopeStack[i].DictVar == dictVar)
+            {
+                c.AmbientScopeStack[i].HasOpaqueKeys = true;
+                return;
+            }
     }
 
     // The reachable enclosing <X.Resources> dictionary locals, INNERMOST-first — the loader's re-pushed
@@ -379,6 +412,13 @@ internal static class LoweringEmitter
     {
         if (DocumentResourceKeys(c).Contains(keyExpr))
             return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
+
+        // An unreachable enclosing-factory dict populated from a Source has compile-time-opaque own keys the
+        // reachable-only ResolveStatic chain drops. This key wasn't found inline, so it could be one of those
+        // Source-loaded keys the loader resolves against the captured chain — fence rather than resolve a farther /
+        // app-tail value it would shadow.
+        if (HasUnreachableOpaqueScope(c))
+            return null;
 
         return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
     }
@@ -2178,13 +2218,14 @@ internal static class LoweringEmitter
             return null;
         }
 
-        // The IAmbientResources chain we can hand the extension (ReachableAmbientDicts) silently drops any
-        // unreachable enclosing-factory scope. If one is interposed inner to a reachable scope, a runtime key the
-        // loader resolves against it would resolve a farther dict / the app tail instead — a fail-open. The
-        // extension probes arbitrary keys, so we can't fence per-key: fence the whole extension.
-        if (HasInterposedUnreachableScope(c))
+        // The IAmbientResources chain we can hand the extension (ReachableAmbientDicts) silently drops EVERY
+        // unreachable enclosing-factory scope. A runtime key the loader resolves against a dropped scope would
+        // resolve a farther dict / the app tail instead — a fail-open. The extension probes arbitrary keys, so we
+        // can't fence per-key: if the chain would be missing any scope the loader's captured chain includes, fence
+        // the whole extension.
+        if (HasUnreachableAmbientScope(c))
         {
-            c.Todo($"custom markup extension '{node.Name}' can't be lowered inside a nested template: an unreachable enclosing-factory resource scope is interposed in the ambient chain");
+            c.Todo($"custom markup extension '{node.Name}' can't be lowered inside a nested template: an enclosing-factory resource scope is unreachable from the ambient chain");
             return null;
         }
 

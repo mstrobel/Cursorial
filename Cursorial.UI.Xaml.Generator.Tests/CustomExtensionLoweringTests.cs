@@ -289,4 +289,52 @@ namespace GenApp { public partial class AmbTplView : StackPanel { public AmbTplV
         var built = Assert.IsType<Button>(Assert.IsType<DataTemplate>(view.Resources["Tpl"]).Build(null));
         Assert.Equal("MISS", built.Content); // the outer document resource is NOT in the template's ambient scope
     }
+
+    [Fact] // IAmbientResources also walks the APPLICATION tail (App.Resources → Theme → Contributions → BuiltIn),
+           // exactly like the loader's XamlResourceScopeStack (ambient defaults to ForApplication()). A key in NO
+           // document dictionary but in App.Resources resolves — previously it fail-open MISSed (the ambient
+           // bundle omitted the app tail).
+    public void Lowered_CustomExtension_AmbientResources_WalksApplicationTail()
+    {
+        var extension = @"
+using Cursorial.UI.Xaml;
+namespace GenApp
+{
+    public sealed class AppProbeExtension : MarkupExtension
+    {
+        public string? Key { get; set; }
+        public override object? ProvideValue(System.IServiceProvider sp)
+            => sp.GetService(typeof(IAmbientResources)) is IAmbientResources ar && ar.TryFindResource(Key!, out var v) ? v : ""MISS"";
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.AppAmbView\">" +
+            "<Button x:Name=\"Ok\" Content=\"{g:AppProbe Key=AppKey}\"/>" + // AppKey is in NO document dictionary
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class AppAmbView : StackPanel { public AppAmbView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(extension), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var appResource = new Cursorial.Drawing.Media.SolidColorBrush { Color = Cursorial.Output.Colors.Red };
+            host.Application.Resources["AppKey"] = appResource;
+
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.AppAmbView")!)!;
+            var button = Assert.IsType<Button>(view.Children[0]);
+            Assert.Same(appResource, button.Content); // resolved through the application tail, NOT a fail-open "MISS"
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
 }

@@ -10,11 +10,13 @@ namespace Cursorial.UI.Xaml;
 /// (<see cref="INameScopeProvider"/>), the lexical ambient resource chain
 /// (<see cref="IAmbientResources"/>), and the author position (<see cref="IXamlLineInfo"/>).
 ///
-/// <para>The ambient chain is the enclosing <c>&lt;X.Resources&gt;</c> dictionaries, innermost-first — the
-/// same lexical stack the loader's <c>XamlResourceScopeStack</c> walks (and, like it, forward-reference-free:
-/// a key defined later in a dictionary is not yet present at the provide-value point). A lowered document is a
-/// plain load with no external <c>XamlLoadContext</c> ambient scope, so this document chain is the whole
-/// ambient scope — matching the loader exactly.</para>
+/// <para>The ambient chain is the enclosing <c>&lt;X.Resources&gt;</c> dictionaries, innermost-first,
+/// terminated by the application tier (<c>App.Resources → App.Theme → ThemeContributions → BuiltIn</c>) —
+/// a line-for-line twin of the loader's <c>XamlResourceScopeStack.TryResolve</c>, whose ambient tail
+/// defaults to <see cref="ResourceScopes.ForApplication"/> for a plain load
+/// (<c>XamlObjectGraphBuilder</c> constructs it as <c>ambient ?? ForApplication()</c>). The document
+/// dictionaries are probed variant-agnostically (own entries only, via <c>ResourceDictionary.TryGetValue</c>);
+/// the application tail is variant-aware, exactly as the loader.</para>
 ///
 /// <para><see cref="TargetProperty"/> mirrors the loader: a registered <c>UIProperty</c> for a styled target,
 /// or the target member's runtime <see cref="Type"/> for a CLR member (where the loader passes a
@@ -66,10 +68,16 @@ public sealed class LoweredExtensionServices :
     /// <inheritdoc/>
     public bool TryFindResource(object key, out object? value)
     {
+        // Mirror XamlResourceScopeStack.TryResolve exactly: the enclosing document dictionaries
+        // innermost-first (variant-agnostic own-entry lookup), then the application ambient tail.
         if (_ambientScopes is not null)
-            foreach (var dictionary in _ambientScopes) // innermost-first, mirroring XamlResourceScopeStack.TryResolve
+            foreach (var dictionary in _ambientScopes)
                 if (dictionary.TryGetValue(key, out value))
                     return true;
+
+        for (var scope = ResourceScopes.ForApplication(); scope is not null; scope = scope.Parent)
+            if (scope.TryGetResource(key, out value))
+                return true;
 
         value = null;
         return false;

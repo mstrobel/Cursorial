@@ -55,6 +55,7 @@ public sealed class IconExtension : MarkupExtension
                        {
                            UIProperty { PropertyType: {} uiType }                     => uiType,
                            XamlMember { ValueType.UnderlyingSystemType: {} xamlType } => xamlType,
+                           Type clrType                                               => clrType, // full-lowering passes the CLR target's runtime type directly
                            _                                                          => typeof(object)
                        };
 

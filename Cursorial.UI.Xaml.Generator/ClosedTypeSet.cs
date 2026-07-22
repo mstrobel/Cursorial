@@ -383,6 +383,30 @@ internal static class ClosedTypeSet
     }
 
     /// <summary>
+    /// The compile-time CONST STRING value of an <c>{x:Static}</c> member, or <see langword="null"/> when the
+    /// member is absent / non-const / not a string. Used to canonicalize a resource KEY to its runtime value (the
+    /// loader resolves an x:Static key to the member's value), so a const-string x:Static key and a plain-string
+    /// key with that value share one lowered key expression. Directly-declared members only (no inherited), matching
+    /// <see cref="ResolveStaticExpr"/>.
+    /// </summary>
+    public static string? ResolveStaticConstString(XamlSymbolResolver resolver, string xmlNamespace, string memberPath)
+    {
+        int dot = memberPath.LastIndexOf('.');
+        if (dot <= 0)
+            return null;
+
+        var type = resolver.Resolve(xmlNamespace, memberPath.Substring(0, dot), out _);
+        if (type is null)
+            return null;
+
+        foreach (var m in type.GetMembers(memberPath.Substring(dot + 1)))
+            if (m is IFieldSymbol { IsConst: true, DeclaredAccessibility: Accessibility.Public, ConstantValue: string s })
+                return s;
+
+        return null;
+    }
+
+    /// <summary>
     /// Records every <c>(xmlns, localName)</c> the parser asks about and always reports a miss — so the
     /// parser keeps descending (recording children) without ever building a tree.
     /// </summary>

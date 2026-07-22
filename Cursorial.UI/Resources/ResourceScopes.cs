@@ -7,7 +7,8 @@ namespace Cursorial.UI;
 /// <summary>
 /// Factory for the lexical <see cref="IResourceScope"/>s Fork C captures for StaticResource /
 /// deferred-entry resolution (design doc §11.1). These resolve against an explicit ambient stack,
-/// not the runtime chain walk (StaticResource is load-order explicit, forward-reference-free).
+/// not the runtime chain walk. Resolution is NOT order-sensitive within a dictionary: entries are deferred
+/// slots that realize lazily, so a forward reference (a key defined later in the same dictionary) resolves.
 /// </summary>
 public static class ResourceScopes
 {

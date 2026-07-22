@@ -1262,22 +1262,50 @@ internal static class LoweringEmitter
         return null;
     }
 
-    // Every resource key IDENTITY defined anywhere in this document (a keyed object's x:Key in its CANONICAL form —
-    // a string literal / typeof(...) / const-string {x:Static} collapsed to its value). Used to tell a
-    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't) from
-    // a genuinely external one (probe it) — so it must be compared against a CANONICAL lookup key. Computed once.
+    // Every resource key IDENTITY a {StaticResource} could resolve to a same-document own entry (a keyed object's
+    // x:Key in its CANONICAL form — a string literal / typeof(...) / const-string {x:Static} collapsed to its
+    // value). Used to tell a forward/intra-document {StaticResource}/BasedOn (the loader resolves it lazily; the
+    // inline probe can't) from a genuinely external one (probe it via ResolveStatic). EXCLUDES MergedDictionaries /
+    // ThemeDictionaries child keys: those are invisible to a {StaticResource} own-entry lookup (own-entries-only,
+    // the loader's TryResolve), so a key that lives ONLY in a merged/theme child is not a forward intra-document
+    // reference — it resolves through the application tail, exactly like the loader. Computed once.
     private static HashSet<string> DocumentResourceKeys(Context c)
     {
         if (c.DocumentResourceKeysCache is { } cached)
             return cached;
 
+        var merged = MergedThemeChildObjects(c);
         var keys = new HashSet<string>(System.StringComparer.Ordinal);
         for (int i = 0; i < c.Doc.Objects.Length; i++)
-            if (ResourceKeyExpr(c, i, canonical: true) is { } keyIdentity)
+            if (!merged.Contains(i) && ResourceKeyExpr(c, i, canonical: true) is { } keyIdentity)
                 keys.Add(keyIdentity);
 
         c.DocumentResourceKeysCache = keys;
         return keys;
+    }
+
+    // The object indices inside any MergedDictionaries / ThemeDictionaries member (each sub-dictionary and its whole
+    // subtree). A key found only among these is invisible to a {StaticResource} own-entry lookup, so it must not
+    // count as a same-document key for the forward-reference guard (a key present ALSO as a top-level own entry is
+    // still collected via that other occurrence, so it stays a same-document key).
+    private static HashSet<int> MergedThemeChildObjects(Context c)
+    {
+        var excluded = new HashSet<int>();
+        for (int i = 0; i < c.Doc.Objects.Length; i++)
+        {
+            ref readonly var obj = ref c.Doc.Objects[i];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref c.Doc.Members[m];
+                var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+                if (xm?.Name is not ("MergedDictionaries" or "ThemeDictionaries"))
+                    continue;
+                foreach (int sub in ResourceItems(c, member))
+                    for (int j = sub; j < sub + c.Doc.Objects[sub].SubtreeLength; j++)
+                        excluded.Add(j);
+            }
+        }
+        return excluded;
     }
 
     // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──

@@ -333,4 +333,195 @@ namespace GenApp { public partial class ShadowView : StackPanel { public ShadowV
         Assert.Equal(Colors.Red, loweredFg.Color);        // NOT the inner Blue
         Assert.Equal(runtimeFg.Color, loweredFg.Color);   // and identical to the loader
     }
+
+    [Fact] // An external {StaticResource} in a Setter.Value resolves eagerly through ResourceScopes.ResolveStatic
+           // (the lexical chain + app tail) — previously fenced. Pinned against the app-tier resource.
+    public void Lowered_SetterValue_ExternalStaticResource_ResolvesViaResolveStatic()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.SetterExtView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"S\" Selector=\":is(Button)\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource AppInk}\"/>" + // AppInk lives in App.Resources
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class SetterExtView : StackPanel { public SetterExtView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AppInk\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            var appInk = new SolidColorBrush { Color = Colors.Red };
+            host.Application.Resources["AppInk"] = appInk;
+
+            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.SetterExtView")!)!;
+            var style = Assert.IsType<Cursorial.UI.Style>(view.Resources["S"]);
+            var setter = Assert.Single(style.Setters);
+            Assert.Same(appInk, setter.Value); // the Setter captured the app-tier resource at construction
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact] // An external {Binding Converter={StaticResource …}} resolves eagerly through ResolveStatic — the
+           // converter lives in App.Resources; previously the whole binding fenced.
+    public void Lowered_BindingConverter_ExternalStaticResource_ResolvesViaResolveStatic()
+    {
+        var converter = @"
+using Cursorial.UI.Data;
+namespace GenApp
+{
+    public sealed class UpperConverter : IValueConverter
+    {
+        public object? Convert(object? value, System.Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+            => value?.ToString()?.ToUpperInvariant();
+        public object? ConvertBack(object? value, System.Type targetType, object? parameter, System.Globalization.CultureInfo culture) => value;
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ConvExtView\">" +
+            "<TextBlock x:Name=\"T\" Text=\"{Binding Name, Converter={StaticResource Up}}\"/>" + // Up lives in App.Resources
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ConvExtView : StackPanel { public ConvExtView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(converter), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("Converter = global::Cursorial.UI.ResourceScopes.RequireConverter(global::Cursorial.UI.ResourceScopes.ResolveStatic(\"Up\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            host.Application.Resources["Up"] = System.Activator.CreateInstance(assembly.GetType("GenApp.UpperConverter")!);
+            Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.ConvExtView")!)); // the binding installs; the converter resolved
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact] // A Converter={StaticResource} resolving to a NULL (or non-converter) resource THROWS, like the
+           // loader's ResolveConverter — never a silent null converter (fail-open). RequireConverter closes it.
+    public void Lowered_BindingConverter_NullResource_ThrowsNotSilentNull()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ConvNullView\">" +
+            "<TextBlock x:Name=\"T\" Text=\"{Binding Name, Converter={StaticResource Nope}}\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ConvNullView : StackPanel { public ConvNullView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.Contains("RequireConverter(", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+        try
+        {
+            host.Application.Resources["Nope"] = null; // resolves to null — the loader throws ConversionFailed
+            var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
+                () => System.Activator.CreateInstance(assembly.GetType("GenApp.ConvNullView")!));
+            Assert.IsType<System.InvalidOperationException>(ex.InnerException); // loud, not a silent null converter
+        }
+        finally
+        {
+            host.Dispose();
+        }
+    }
+
+    [Fact] // A MergedDictionaries child's key is INVISIBLE to a host-level {StaticResource} (own-entries-only,
+           // the loader's scope semantics). Regression guard for the confirmed fail-open: the merged child's
+           // entry var used to LEAK into the host scope's map, so a host key resolved to the merged child (a
+           // silent wrong value). Now the sub-dict is scope-isolated, so the host reference does NOT wire the
+           // merged child — it fences instead (fail-CLOSED; exact app-tail resolution of an also-merged key is
+           // a follow-up refinement to the forward-key guard).
+    public void Lowered_StaticResource_MergedDictionaryChild_NotVisibleToHost()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.MergedView\">" +
+            "<StackPanel.Resources>" +
+              "<ResourceDictionary>" +
+                "<ResourceDictionary.MergedDictionaries>" +
+                  "<ResourceDictionary><SolidColorBrush x:Key=\"Accent\" Color=\"Blue\"/></ResourceDictionary>" +
+                "</ResourceDictionary.MergedDictionaries>" +
+                "<Style x:Key=\"S\" Selector=\":is(Button)\">" +
+                  "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource Accent}\"/>" +
+                "</Style>" +
+              "</ResourceDictionary>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class MergedView : StackPanel { public MergedView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The Setter does NOT resolve to the merged child (the closed fail-open) — it fences instead.
+        Assert.Contains("TODO X5", lowered);
+        var setterLine = System.Array.Find(lowered.Split('\n'), l => l.Contains(".Setters.Add"));
+        Assert.Null(setterLine); // no setter wired to the merged Blue brush
+
+        // The document still compiles + constructs; the Style has no merged-child setter.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.MergedView")!)!;
+        Assert.Empty(Assert.IsType<Cursorial.UI.Style>(view.Resources["S"]).Setters);
+    }
+
+    [Fact] // Documented eager-resolution divergence (consistent with BasedOn): a Setter.Value external
+           // {StaticResource} that resolves NOWHERE throws at construction, where the loader — which defers
+           // dictionary-entry realization — loads the (never-realized) document without error. Fail-CLOSED
+           // (a loud throw, not a silent wrong value); the resolve-success case is the common one.
+    public void Lowered_SetterValue_MissingKey_ThrowsAtConstruction()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.SetterMissView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Unused\" Selector=\":is(Border)\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource MissingInk}\"/>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class SetterMissView : StackPanel { public SetterMissView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.Contains("ResolveStatic(\"MissingInk\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        // Lowered: throws at construction (eager, like BasedOn). No host, so MissingInk misses the app tail too.
+        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => System.Activator.CreateInstance(assembly.GetType("GenApp.SetterMissView")!));
+        Assert.IsType<Cursorial.UI.ResourceNotFoundException>(ex.InnerException);
+
+        // Loader: the keyed Style is a deferred entry never realized (no Border), so Load succeeds.
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.SetterMissView\"", ""));
+        Assert.NotNull(runtime); // constructs without error — the divergence is the eager-vs-deferred timing
+    }
 }

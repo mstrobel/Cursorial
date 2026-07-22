@@ -298,6 +298,24 @@ internal static class LoweringEmitter
     private static bool IsScopeReachable(Context c, ResourceScope scope)
         => scope.FactoryId == 0 || scope.FactoryId == c.CurrentFactoryId;
 
+    // True when an UNREACHABLE scope (a sibling/enclosing-factory dictionary local not in the current C# method
+    // scope) sits INNER to a reachable one on the ambient stack. The custom-extension IAmbientResources chain
+    // (ReachableAmbientDicts) silently drops such an interposed scope, so a runtime key the loader would resolve
+    // against it instead resolves a farther dict / the app tail — a fail-open. When this holds, the extension
+    // can't be handed a faithful ambient chain, so it fences.
+    private static bool HasInterposedUnreachableScope(Context c)
+    {
+        var seenUnreachable = false;
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--) // innermost → outermost
+        {
+            if (!IsScopeReachable(c, c.AmbientScopeStack[i]))
+                seenUnreachable = true;
+            else if (seenUnreachable)
+                return true; // a reachable scope OUTER to an already-seen inner unreachable one → interposed
+        }
+        return false;
+    }
+
     // The reachable enclosing <X.Resources> dictionary locals, INNERMOST-first — the loader's re-pushed
     // CapturedTemplateScope (definition-site document dicts) + the template body's own dicts. Referencing a
     // document-level local from inside a factory forces that factory non-static (it captures the local).
@@ -316,23 +334,30 @@ internal static class LoweringEmitter
         return dicts;
     }
 
-    // Resolves a {StaticResource} key expression to a same-document entry's local var, walking the REACHABLE
-    // enclosing scopes INNERMOST-FIRST (correct lexical shadowing) — an inner-scope entry has already been popped
-    // by the time an outer/sibling element is emitted, and an unreachable sibling-factory scope is skipped. Null
-    // when no reachable scope holds the key.
-    private static string? ResolveVisibleResourceVar(Context c, string keyExpr)
+    // Resolves a {StaticResource} key expression to a same-document entry's local var, walking the enclosing
+    // scopes INNERMOST-FIRST (correct lexical shadowing) — an inner-scope entry has already been popped by the
+    // time an outer/sibling element is emitted. Returns the entry var when the INNERMOST scope holding the key is
+    // reachable. Returns null when no scope holds the key. Sets <paramref name="fenceRequired"/> and returns null
+    // when the innermost holder is UNREACHABLE (a sibling/enclosing-factory scope the flat factory can't close
+    // over): the loader resolves that hop, so the lowered code must fence loudly — never skip past it to a farther
+    // reachable match, which would silently bind the wrong (shadowed) value.
+    private static string? ResolveVisibleResourceVar(Context c, string keyExpr, out bool fenceRequired)
     {
+        fenceRequired = false;
         for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
         {
             var scope = c.AmbientScopeStack[i];
-            if (!IsScopeReachable(c, scope))
+            if (!scope.KeyExprToVar.TryGetValue(keyExpr, out var v))
                 continue;
-            if (scope.KeyExprToVar.TryGetValue(keyExpr, out var v))
+            // First (innermost) scope that holds the key — this is the hop the loader resolves.
+            if (!IsScopeReachable(c, scope))
             {
-                if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
-                    c.CurrentFactoryCaptures = true; // references a document local from within the factory ⇒ not static
-                return v;
+                fenceRequired = true; // holds the key but the flat factory can't reach it → the caller fences
+                return null;
             }
+            if (c.CurrentFactoryId != 0 && scope.FactoryId == 0)
+                c.CurrentFactoryCaptures = true; // references a document local from within the factory ⇒ not static
+            return v;
         }
         return null;
     }
@@ -1107,7 +1132,11 @@ internal static class LoweringEmitter
         // DataCondition.Value / standalone-entry slot is object-typed, so no cast). A forward intra-document /
         // in-template key returns null (the caller fences).
         if (ext.Kind == ExtensionKind.StaticResource && ResourceKeyArgExpr(c, in ext) is { } srcKeyExpr)
-            return ResolveVisibleResourceVar(c, srcKeyExpr) ?? ExternalStaticResolveExpr(c, srcKeyExpr);
+        {
+            if (ResolveVisibleResourceVar(c, srcKeyExpr, out var fenceRequired) is { } srcVar)
+                return srcVar;
+            return fenceRequired ? null : ExternalStaticResolveExpr(c, srcKeyExpr);
+        }
 
         return null;
     }
@@ -1152,8 +1181,10 @@ internal static class LoweringEmitter
             c.Doc.Extensions[member.ValueIndex] is { Kind: ExtensionKind.StaticResource } ext &&
             ResourceKeyArgExpr(c, in ext) is { } keyExpr)
         {
-            if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+            if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
                 return srcVar;
+            if (fenceRequired)
+                return null; // innermost holder is an unreachable enclosing-factory scope — fence, never fall through
 
             // A key that IS defined in this document but hasn't been built yet is a FORWARD (or
             // outer-dictionary-forward) reference. The loader resolves it — it defers every entry and
@@ -1754,7 +1785,10 @@ internal static class LoweringEmitter
         c.InTemplate = savedInTemplate;
         c.TemplateContextVar = savedCtxVar;
         c.TemplatedParentType = savedTpt;
-        c.CurrentFactoryCaptures = savedCaptures;
+        // Propagate capture UP: the enclosing scope references this factory via `new FuncTemplateContent(name)`,
+        // and a static local function can't delegate-convert a capturing sibling (CS8421) — so an enclosing
+        // factory that contains a capturing one must itself be non-static.
+        c.CurrentFactoryCaptures = savedCaptures || captures;
         c.CurrentFactoryId = savedFactoryId;
         c.SwapBuffer(savedBuffer);
 
@@ -2144,6 +2178,16 @@ internal static class LoweringEmitter
             return null;
         }
 
+        // The IAmbientResources chain we can hand the extension (ReachableAmbientDicts) silently drops any
+        // unreachable enclosing-factory scope. If one is interposed inner to a reachable scope, a runtime key the
+        // loader resolves against it would resolve a farther dict / the app tail instead — a fail-open. The
+        // extension probes arbitrary keys, so we can't fence per-key: fence the whole extension.
+        if (HasInterposedUnreachableScope(c))
+        {
+            c.Todo($"custom markup extension '{node.Name}' can't be lowered inside a nested template: an unreachable enclosing-factory resource scope is interposed in the ambient chain");
+            return null;
+        }
+
         var inits = new List<string>();
 
         // Positional args → writable public properties by the WPF [ConstructorArgument] convention (the only
@@ -2235,9 +2279,9 @@ internal static class LoweringEmitter
             if (nested.Name is "x:Null" or "Null")
                 return "null";
             if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
-                ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"") is { } srcVar)
+                ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"", out _) is { } srcVar)
                 return srcVar;
-            return null; // {Binding} / other nested — no standalone value in this position
+            return null; // {Binding} / other nested / unreachable-scope key — no standalone value in this position
         }
 
         // A text value → the typed member expression (an object-initializer assignment needs the concrete
@@ -2410,7 +2454,7 @@ internal static class LoweringEmitter
         }
 
         // A same-dictionary visible entry → its var (a typed local, the load-time snapshot).
-        if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+        if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
         {
             AssignResolvedResource(c, varExpr, xm, srcVar, valueIsObject: false);
             return;
@@ -2420,7 +2464,9 @@ internal static class LoweringEmitter
         // LIVE element is resolved eagerly by the loader too (during member application), so this is exact
         // parity — and ResourceScopes.ResolveStatic drops FindResource's alias-chase / variant-aware /
         // live-tree over-resolution. A forward/not-yet-built intra-document key or an in-template reference fences.
-        if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+        // fenceRequired (the innermost holder is an unreachable enclosing-factory scope) skips the external path:
+        // ResolveStatic would resolve a farther/app value the loader shadows, so fence loudly instead.
+        if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
         {
             AssignResolvedResource(c, varExpr, xm, resolve, valueIsObject: true);
             return;
@@ -2805,7 +2851,7 @@ internal static class LoweringEmitter
             return ResolveStaticPath(c, staticPath);
 
         if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
-            ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"") is { } srcVar)
+            ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"", out _) is { } srcVar)
             return srcVar;
 
         return null;
@@ -3036,9 +3082,9 @@ internal static class LoweringEmitter
             if (inner.Name is "StaticResource")
             {
                 var keyExpr = $"\"{Escape(first)}\"";
-                if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+                if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
                     return $"Converter = {srcVar}";
-                if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
+                if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
                     // RequireConverter (not a bare cast): a null/non-converter resource must throw like the
                     // loader's ResolveConverter, never a silent null converter binding unconverted.
                     return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({resolve}, {keyExpr})";

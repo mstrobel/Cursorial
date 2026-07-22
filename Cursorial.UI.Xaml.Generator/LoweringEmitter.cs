@@ -280,7 +280,9 @@ internal static class LoweringEmitter
     private static void EmitSubDictionaryBody(Context c, string sub, int objectIndex)
     {
         c.AmbientScopeStack.Add(new ResourceScope(sub, c.CurrentFactoryId));
-        EmitResourceDictionaryBody(c, sub, objectIndex);
+        c.MergedThemeDepth++; // a {StaticResource} emitted HERE sees this sub-dict's own entries (a forward sibling
+        EmitResourceDictionaryBody(c, sub, objectIndex); // is a real same-document forward ref — must still fence)
+        c.MergedThemeDepth--;
         c.AmbientScopeStack.RemoveAt(c.AmbientScopeStack.Count - 1);
     }
 
@@ -410,11 +412,11 @@ internal static class LoweringEmitter
     // document dicts). Returns null (the caller fences) for a key that IS a not-yet-built intra-document entry
     // (a forward/init-only reference the eager build can't reproduce, or one that lives only in an unreachable
     // sibling-factory scope). <paramref name="keyExpr"/> is the RUNTIME key argument (symbolic member reference for
-    // an {x:Static}); <paramref name="keyIdentity"/> is its CANONICAL form for the DocumentResourceKeys check (a
+    // an {x:Static}); <paramref name="keyIdentity"/> is its CANONICAL form for the forward-key check (a
     // const-string {x:Static} collapsed to its value, so a cross-form intra-document key still matches and fences).
     private static string? ExternalStaticResolveExpr(Context c, string keyExpr, string keyIdentity)
     {
-        if (DocumentResourceKeys(c).Contains(keyIdentity))
+        if (ForwardKeyGuardSet(c).Contains(keyIdentity))
             return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
 
         // An unreachable enclosing-factory dict populated from a Source has compile-time-opaque own keys the
@@ -1262,13 +1264,23 @@ internal static class LoweringEmitter
         return null;
     }
 
-    // Every resource key IDENTITY defined anywhere in this document (a keyed object's x:Key in its CANONICAL form —
-    // a string literal / typeof(...) / const-string {x:Static} collapsed to its value). Used to tell a
-    // forward/intra-document {StaticResource} BasedOn (the loader resolves it lazily; the inline probe can't) from
-    // a genuinely external one (probe it) — so it must be compared against a CANONICAL lookup key. Computed once.
-    private static HashSet<string> DocumentResourceKeys(Context c)
+    // The forward-reference guard set for a {StaticResource}/BasedOn at the CURRENT emit site: a key in it is a
+    // same-document entry the eager inline build can't reproduce (the loader defers realization; the inline probe
+    // can't), so the caller fences rather than emit a farther/app-tail resolution the loader shadows.
+    //
+    // A MergedDictionaries/ThemeDictionaries child entry is INVISIBLE to a {StaticResource} own-entry lookup from
+    // OUTSIDE its sub-dict (own-entries-only, the loader's TryResolve), yet VISIBLE to one from INSIDE the same
+    // sub-dict (a forward sibling is a real same-document reference). So the guard is SCOPE-RELATIVE: inside a
+    // merged/theme sub-dict, use every document key (fence a forward sibling); outside, exclude merged/theme child
+    // keys (a merged-only key isn't reachable — it resolves through the application tail, exactly like the loader).
+    private static HashSet<string> ForwardKeyGuardSet(Context c)
+        => c.MergedThemeDepth > 0 ? AllDocumentResourceKeys(c) : HostVisibleDocumentKeys(c);
+
+    // Every keyed object's canonical key identity, anywhere in the document (the guard from inside a merged/theme
+    // sub-dict — a forward sibling there is a genuine same-document reference).
+    private static HashSet<string> AllDocumentResourceKeys(Context c)
     {
-        if (c.DocumentResourceKeysCache is { } cached)
+        if (c.AllDocumentResourceKeysCache is { } cached)
             return cached;
 
         var keys = new HashSet<string>(System.StringComparer.Ordinal);
@@ -1276,8 +1288,50 @@ internal static class LoweringEmitter
             if (ResourceKeyExpr(c, i, canonical: true) is { } keyIdentity)
                 keys.Add(keyIdentity);
 
-        c.DocumentResourceKeysCache = keys;
+        c.AllDocumentResourceKeysCache = keys;
         return keys;
+    }
+
+    // As above but EXCLUDING keys defined only inside a MergedDictionaries/ThemeDictionaries child — the guard for
+    // a reference from OUTSIDE any such child (a merged/theme-only key is invisible there, so it is NOT a forward
+    // reference; a key present ALSO as a top-level own entry stays in via that other occurrence).
+    private static HashSet<string> HostVisibleDocumentKeys(Context c)
+    {
+        if (c.HostVisibleDocumentKeysCache is { } cached)
+            return cached;
+
+        var merged = MergedThemeChildObjects(c);
+        var keys = new HashSet<string>(System.StringComparer.Ordinal);
+        for (int i = 0; i < c.Doc.Objects.Length; i++)
+            if (!merged.Contains(i) && ResourceKeyExpr(c, i, canonical: true) is { } keyIdentity)
+                keys.Add(keyIdentity);
+
+        c.HostVisibleDocumentKeysCache = keys;
+        return keys;
+    }
+
+    // The object indices inside any MergedDictionaries / ThemeDictionaries member (each sub-dictionary and its whole
+    // subtree). A key found only among these is invisible to a {StaticResource} own-entry lookup, so it must not
+    // count as a same-document key for the forward-reference guard (a key present ALSO as a top-level own entry is
+    // still collected via that other occurrence, so it stays a same-document key).
+    private static HashSet<int> MergedThemeChildObjects(Context c)
+    {
+        var excluded = new HashSet<int>();
+        for (int i = 0; i < c.Doc.Objects.Length; i++)
+        {
+            ref readonly var obj = ref c.Doc.Objects[i];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref c.Doc.Members[m];
+                var xm = member.MemberId >= 0 ? c.Doc.ResolvedMembers[member.MemberId] : null;
+                if (xm?.Name is not ("MergedDictionaries" or "ThemeDictionaries"))
+                    continue;
+                foreach (int sub in ResourceItems(c, member))
+                    for (int j = sub; j < sub + c.Doc.Objects[sub].SubtreeLength; j++)
+                        excluded.Add(j);
+            }
+        }
+        return excluded;
     }
 
     // ── WS-X5.4h — baked selectors (an explicit Selector="…" → a reflection-free Selectors fluent chain) ──
@@ -3362,9 +3416,17 @@ internal static class LoweringEmitter
         /// through it; without one, such a reference is fenced (it can never resolve — the loader Fatals too).</summary>
         public bool HasDocumentScope { get; set; }
 
-        /// <summary>Lazily-computed set of every resource key expression defined in the document (see
-        /// <c>DocumentResourceKeys</c>) — distinguishes a forward intra-document BasedOn from an external one.</summary>
-        public HashSet<string>? DocumentResourceKeysCache { get; set; }
+        /// <summary>Lazily-computed forward-key guard sets (see <c>ForwardKeyGuardSet</c>): every document key
+        /// (<c>AllDocumentResourceKeys</c>, the guard from inside a merged/theme sub-dict) and that set minus
+        /// merged/theme child keys (<c>HostVisibleDocumentKeys</c>, the guard from outside).</summary>
+        public HashSet<string>? AllDocumentResourceKeysCache { get; set; }
+
+        public HashSet<string>? HostVisibleDocumentKeysCache { get; set; }
+
+        /// <summary>How many MergedDictionaries/ThemeDictionaries sub-dictionaries the emit point is currently
+        /// nested inside — a {StaticResource} here sees that sub-dict's own entries, so a forward sibling is a real
+        /// same-document reference (the forward-key guard must include merged/theme keys). 0 = host scope.</summary>
+        public int MergedThemeDepth { get; set; }
 
         /// <summary>The enclosing resource scopes (outermost-first) in scope at the current emit point — the
         /// lexical ambient resource stack, mirroring the loader's <c>XamlResourceScopeStack</c>. Each scope

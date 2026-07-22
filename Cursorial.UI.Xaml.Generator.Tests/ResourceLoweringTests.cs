@@ -298,4 +298,39 @@ namespace GenApp { public partial class MeKeyView : StackPanel { public MeKeyVie
             host.Dispose();
         }
     }
+
+    [Fact] // Lexical shadowing: an inner <X.Resources> redefinition of a key must NOT leak to an outer/sibling
+           // scope. A sibling of the inner element resolves {StaticResource} to the OUTER definition — the flat,
+           // never-popped var map used to return the inner (last-writer) var (a confirmed fail-open).
+    public void Lowered_StaticResource_LexicalShadowing_ResolvesOuterNotInner()
+    {
+        // Outer K = Red (StackPanel scope); inner K = Blue (Border scope). The Button is a SIBLING of the
+        // Border, so only the OUTER K is in its scope.
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.ShadowView\">" +
+            "<StackPanel.Resources><SolidColorBrush x:Key=\"K\" Color=\"Red\"/></StackPanel.Resources>" +
+            "<Border><Border.Resources><SolidColorBrush x:Key=\"K\" Color=\"Blue\"/></Border.Resources></Border>" +
+            "<Button x:Name=\"Ok\" Foreground=\"{StaticResource K}\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ShadowView : StackPanel { public ShadowView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.ShadowView")!)!;
+        var loweredFg = (SolidColorBrush)Assert.IsType<Button>(view.Children[1]).Foreground!;
+
+        // The loader oracle resolves the OUTER K (Red).
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.ShadowView\"", ""));
+        var runtimeFg = (SolidColorBrush)Assert.IsType<Button>(runtime.Children[1]).Foreground!;
+
+        Assert.Equal(Colors.Red, loweredFg.Color);        // NOT the inner Blue
+        Assert.Equal(runtimeFg.Color, loweredFg.Color);   // and identical to the loader
+    }
 }

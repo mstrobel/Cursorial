@@ -526,4 +526,111 @@ namespace GenApp { public partial class SetterMissView : StackPanel { public Set
             .Load(xaml.Replace(" x:Class=\"GenApp.SetterMissView\"", ""));
         Assert.NotNull(runtime); // constructs without error — the divergence is the eager-vs-deferred timing
     }
+
+    [Fact] // Resources-FIRST: a {StaticResource} on an element's OWN attribute member sees the element's OWN
+           // <X.Resources>, even though the attribute precedes the <Element.Resources> property element in
+           // document order (the loader's ApplyResourcesFirst). Shadowing case: an enclosing K is redefined in
+           // the element's own Resources — the element's own value wins, matching the loader.
+    public void Lowered_StaticResource_OwnAttributeSeesOwnResources_Shadowing()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.OwnResView\">" +
+            "<StackPanel.Resources><SolidColorBrush x:Key=\"K\" Color=\"Red\"/></StackPanel.Resources>" +
+            "<Border Background=\"{StaticResource K}\">" +           // attribute precedes Border.Resources
+              "<Border.Resources><SolidColorBrush x:Key=\"K\" Color=\"Blue\"/></Border.Resources>" +
+            "</Border>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class OwnResView : StackPanel { public OwnResView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.OwnResView")!)!;
+        var loweredBg = (SolidColorBrush)Assert.IsType<Border>(view.Children[0]).Background!;
+
+        var runtime = (StackPanel)new Cursorial.UI.Xaml.XamlLoader(
+            new Cursorial.UI.Xaml.XamlLoaderOptions { MetadataProvider = Cursorial.UI.Xaml.ReflectionXamlMetadata.Instance })
+            .Load(xaml.Replace(" x:Class=\"GenApp.OwnResView\"", ""));
+        var runtimeBg = (SolidColorBrush)Assert.IsType<Border>(runtime.Children[0]).Background!;
+
+        Assert.Equal(Colors.Blue, loweredBg.Color);       // the element's OWN K, NOT the enclosing Red
+        Assert.Equal(runtimeBg.Color, loweredBg.Color);   // identical to the loader
+    }
+
+    [Fact] // Resources-FIRST regression guard: a {StaticResource} on an own attribute member referencing a key
+           // defined ONLY in the element's own Resources resolves (the retired deferred FindResource used to
+           // catch this at end-of-tree; the hoist makes the own scope visible at the attribute's emit point).
+    public void Lowered_StaticResource_OwnAttribute_OwnResourceOnlyKey_Resolves()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.OwnOnlyView\">" +
+            "<Border x:Name=\"B\" Background=\"{StaticResource K}\">" +
+              "<Border.Resources><SolidColorBrush x:Key=\"K\" Color=\"Red\"/></Border.Resources>" +
+            "</Border>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class OwnOnlyView : StackPanel { public OwnOnlyView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+        Assert.DoesNotContain("TODO X5", lowered); // resolves — NOT dropped
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.OwnOnlyView")!)!;
+        var border = Assert.IsType<Border>(view.Children[0]);
+        Assert.Same(border.Resources["K"], border.Background); // the own-Resources brush, resolved onto Background
+    }
+
+    // A control with plain CLR (non-UIProperty) members — a settable string, and an init-only string.
+    private const string ClrControl = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public class ClrCtl : StackPanel { public string? Label { get; set; } public string? RoLabel { get; init; } } }";
+
+    [Fact] // An external {StaticResource} on a UIElement CLR STRING property casts the object? result to string —
+           // object? → string is not implicit (CS0266 the deleted deferred-FindResource path used to cast away).
+    public void Lowered_StaticResource_UIElementClrStringProperty_Casts()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.ClrStrView\">" +
+            "<g:ClrCtl Label=\"{StaticResource S}\"/>" + // S is external (app tier); Label is a CLR string property
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ClrStrView : StackPanel { public ClrStrView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(ClrControl), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".Label = (string)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered); // cast, not a bare object?
+
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS0266)
+    }
+
+    [Fact] // An external {StaticResource} on a UIElement INIT-ONLY CLR member fences (a post-construction assign
+           // is CS8852) — the compile-break guard, not uncompilable code.
+    public void Lowered_StaticResource_UIElementInitOnlyClrMember_Fences()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.ClrRoView\">" +
+            "<g:ClrCtl RoLabel=\"{StaticResource S}\"/>" + // RoLabel is init-only
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class ClrRoView : StackPanel { public ClrRoView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(ClrControl), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("TODO X5", lowered);
+        Assert.Contains("init-only", lowered);
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS8852)
+    }
 }

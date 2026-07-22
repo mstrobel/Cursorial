@@ -1419,15 +1419,39 @@ internal static class LoweringEmitter
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
         }
 
-        // This object's <X.Resources> (pushed by EmitResourcesMember below) is visible to its whole subtree,
-        // then popped — the loader's scope Push / PopDownTo(depth) around a resources hop.
+        // This object's <X.Resources> (pushed by EmitResourcesMember) is visible to its whole subtree, then
+        // popped — the loader's scope Push / PopDownTo(depth) around a resources hop.
         int ambientDepth = c.AmbientScopeStack.Count;
+
+        // Resources-FIRST (the loader's ApplyResourcesFirst, XamlObjectGraphBuilder Pass 1): emit this element's
+        // <X.Resources> BEFORE its other members, so a {StaticResource} on an OWN member sees the element's own
+        // scope. An attribute member (Background="{StaticResource K}") precedes the <Element.Resources> property
+        // element in document order, so without this an own-scope key would resolve to an enclosing shadowed
+        // entry (wrong value) or fence as a forward reference (dropped) — both loader divergences.
+        int hoistedResources = -1;
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var rmember = ref c.Doc.Members[m];
+            if (rmember.Kind is not (XamlValueKind.Object or XamlValueKind.Items))
+                continue;
+            var rxm = rmember.MemberId >= 0 ? c.Doc.ResolvedMembers[rmember.MemberId] : null;
+            if (rxm is not null && IsResourceDictionaryMember(rxm) && (initMembers is null || !initMembers.Indices.Contains(m)))
+            {
+                c.CurrentObjectType = objType;
+                EmitResourcesMember(c, varExpr, rxm, in rmember);
+                hoistedResources = m;
+                break; // one <X.Resources> per element
+            }
+        }
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
             c.CurrentLineInfo = member.PackedLineInfo;
             c.CurrentObjectType = objType; // re-assert per member (child recursion clobbers it)
+
+            if (m == hoistedResources)
+                continue; // already emitted resources-first, above
 
             if (initMembers is not null && initMembers.Indices.Contains(m))
                 continue; // already emitted in the construction object initializer
@@ -2346,13 +2370,6 @@ internal static class LoweringEmitter
             return;
         }
 
-        // A same-dictionary visible entry → its var (the load-time snapshot).
-        if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
-        {
-            AssignResolvedResource(c, varExpr, xm, srcVar);
-            return;
-        }
-
         // A {StaticResource} on a NON-UIElement object (a brush inside another resource) may target an
         // init-only slot (SolidColorBrush.Color) that must be set in the object initializer — the eager-assign
         // form here would be CS8852. Fence (the object-initializer routing is a later phase).
@@ -2362,13 +2379,28 @@ internal static class LoweringEmitter
             return;
         }
 
+        // An init-only / read-only CLR member (not a UIProperty) can't be assigned post-construction (CS8852) —
+        // fence rather than emit non-compiling code (both the var and the ResolveStatic assign are post-ctor).
+        if (RegisteredOwner(xm) is null && ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"{{StaticResource}} target '{xm.Name}' is init-only/read-only — can't be assigned post-construction");
+            return;
+        }
+
+        // A same-dictionary visible entry → its var (a typed local, the load-time snapshot).
+        if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
+        {
+            AssignResolvedResource(c, varExpr, xm, srcVar, valueIsObject: false);
+            return;
+        }
+
         // External key → resolve EAGERLY against the lexical chain + application tail. A {StaticResource} on a
         // LIVE element is resolved eagerly by the loader too (during member application), so this is exact
         // parity — and ResourceScopes.ResolveStatic drops FindResource's alias-chase / variant-aware /
         // live-tree over-resolution. A forward/not-yet-built intra-document key or an in-template reference fences.
         if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
         {
-            AssignResolvedResource(c, varExpr, xm, resolve);
+            AssignResolvedResource(c, varExpr, xm, resolve, valueIsObject: true);
             return;
         }
 
@@ -2377,14 +2409,21 @@ internal static class LoweringEmitter
             : $"{{StaticResource}} for '{xm.Name}' is a forward/not-yet-built intra-document reference — not yet lowered");
     }
 
-    // Assigns an already-resolved resource value expression (a built entry's var) to a member: SetValue for a
-    // registered UIProperty target; else a CLR set (cast to the member value type when it's a concrete type, so a
-    // base/interface-typed target accepts the concrete-typed var — and object/string targets need no cast).
-    private static void AssignResolvedResource(Context c, string varExpr, XamlMember xm, string valueExpr)
+    // Assigns an already-resolved resource value to a member: SetValue for a registered UIProperty (object? param,
+    // no cast). For a CLR target, a TYPED value (a built entry's var) casts only for a base/interface-typed slot;
+    // an object?-typed value (ResolveStatic) casts to ANY concrete member type — string included, since
+    // object? → string is not implicit (the CS0266 the deferred FindResource path used to cast away).
+    private static void AssignResolvedResource(Context c, string varExpr, XamlMember xm, string valueExpr, bool valueIsObject)
     {
         if (RegisteredOwner(xm) is { } owner)
+        {
             c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {valueExpr});");
-        else if (!IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
+            return;
+        }
+
+        if (valueIsObject && ValueTypeSymbol(xm.ValueType) is { SpecialType: not SpecialType.System_Object } ot)
+            c.Line($"{varExpr}.{xm.Name} = ({Global(ot)}){valueExpr}!;");
+        else if (!valueIsObject && !IsObjectOrString(xm.ValueType) && ValueTypeSymbol(xm.ValueType) is { } ct)
             c.Line($"{varExpr}.{xm.Name} = ({Global(ct)}){valueExpr};");
         else
             c.Line($"{varExpr}.{xm.Name} = {valueExpr};");

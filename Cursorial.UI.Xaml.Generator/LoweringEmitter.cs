@@ -1869,6 +1869,14 @@ internal static class LoweringEmitter
         if (objType is null)
             return scan;
 
+        // An init-only slot is set in the CONSTRUCTION initializer — before the object's own <X.Resources> is
+        // hoisted (the dict is a member of the not-yet-built object). The loader sets init-only members via
+        // reflection in Pass 2, AFTER ApplyResourcesFirst pushes the own scope, so it resolves an init-only
+        // {StaticResource} against the own scope too. We can't: if this object has its own Resources, that scope
+        // could shadow an enclosing same-named key — so DON'T route an init-only {StaticResource} here; let it fall
+        // to the member loop and fence (never bind the enclosing, possibly-shadowed, value).
+        var hasOwnResources = ObjectHasOwnResources(c, in obj);
+
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
@@ -1892,7 +1900,7 @@ internal static class LoweringEmitter
                 XamlValueKind.Text => ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex]),
                 XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
                 XamlValueKind.Object => BuildInitOnlyObjectChild(c, member.ValueIndex, hasScope, dataType),
-                XamlValueKind.Extension => InitOnlyStaticResourceExpr(c, in member, xm),
+                XamlValueKind.Extension => hasOwnResources ? null : InitOnlyStaticResourceExpr(c, in member, xm),
                 _ => null,
             };
 
@@ -1929,11 +1937,28 @@ internal static class LoweringEmitter
             return null;
 
         var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
+        // Both forms cast an object?-typed value (a same-dict entry var boxed through object?, the external
+        // ResolveStatic result already object?) to the slot type — so an entry whose static type has no C#
+        // conversion to the slot casts through object rather than emitting a CS0030 `(Slot)var` (a compile break
+        // that would fail the whole assembly); this matches the external path and the loader's runtime coercion.
         if (ResolveVisibleResourceVar(c, keyId, out var fenceRequired) is { } srcVar)
-            return ResolvedResourceExpr(xm, srcVar, valueIsObject: false);
+            return ResolvedResourceExpr(xm, $"((object?){srcVar})", valueIsObject: true);
         if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyId) is { } resolve)
             return ResolvedResourceExpr(xm, resolve, valueIsObject: true);
         return null;
+    }
+
+    // True when this object has its own <X.Resources> member — its lexical scope isn't available in the object
+    // initializer (it is hoisted AFTER construction), so an init-only {StaticResource} on it can't be routed here.
+    private static bool ObjectHasOwnResources(Context c, in ObjectRecord obj)
+    {
+        for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+        {
+            ref readonly var member = ref c.Doc.Members[m];
+            if (member.MemberId >= 0 && c.Doc.ResolvedMembers[member.MemberId] is { } xm && IsResourceDictionaryMember(xm))
+                return true;
+        }
+        return false;
     }
 
     // A Text value: an object/string member takes the string literal directly; any other typed member runs

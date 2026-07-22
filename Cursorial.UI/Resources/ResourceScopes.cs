@@ -58,6 +58,17 @@ public static class ResourceScopes
                ? value
                : throw new ResourceNotFoundException(key, DescribeStaticChain(ambientInnermostFirst));
 
+    /// <summary>
+    /// Casts a resolved resource to <see cref="Data.IValueConverter"/> for a <c>Converter={StaticResource}</c>
+    /// binding, throwing when it is <see langword="null"/> or the wrong type — the loud twin of the loader's
+    /// <c>ResolveConverter</c> type check (so a null/non-converter resource fails identically, never a
+    /// silent null converter that would bind unconverted).
+    /// </summary>
+    public static Data.IValueConverter RequireConverter(object? resolved, object key)
+        => resolved as Data.IValueConverter
+           ?? throw new InvalidOperationException(
+               $"The binding Converter resource '{key}' resolved to '{resolved?.GetType().Name ?? "null"}', not an IValueConverter.");
+
     private static string[] DescribeStaticChain(ResourceDictionary[] ambient)
     {
         var chain = new string[ambient.Length + 1];

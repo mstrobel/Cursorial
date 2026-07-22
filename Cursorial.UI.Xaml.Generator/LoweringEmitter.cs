@@ -228,7 +228,7 @@ internal static class LoweringEmitter
                     {
                         var sub = c.NextVar();
                         c.Line($"var {sub} = new global::Cursorial.UI.ResourceDictionary();");
-                        EmitResourceDictionaryBody(c, sub, idx);
+                        EmitSubDictionaryBody(c, sub, idx);
                         c.Line($"{dictVar}.MergedDictionaries.Add({sub});");
                     }
                     break;
@@ -243,7 +243,7 @@ internal static class LoweringEmitter
                         }
                         var sub = c.NextVar();
                         c.Line($"var {sub} = new global::Cursorial.UI.ResourceDictionary();");
-                        EmitResourceDictionaryBody(c, sub, idx);
+                        EmitSubDictionaryBody(c, sub, idx);
                         c.Line($"{dictVar}.ThemeDictionaries[\"{Escape(variantKey)}\"] = {sub}; // ThemeVariantKey.Parse");
                     }
                     break;
@@ -275,7 +275,18 @@ internal static class LoweringEmitter
         }
     }
 
-    // One implicit-content child: a nested <ResourceDictionary> folds into dictVar; otherwise it's a keyed entry.
+    // Fills a MergedDictionaries / ThemeDictionaries sub-dictionary in its OWN pushed resource scope, so its
+    // entries are lexically isolated — a {StaticResource} in the HOST dictionary does not see them
+    // (own-entries-only, mirroring the loader's LoadResourceDictionary push/pop), while the sub's own
+    // back-references resolve against [sub, …outer]. Without this the sub's entry vars leaked into the host
+    // scope's map and a host-level key wrongly resolved to a merged/theme child.
+    private static void EmitSubDictionaryBody(Context c, string sub, int objectIndex)
+    {
+        c.AmbientScopeStack.Add(new ResourceScope(sub));
+        EmitResourceDictionaryBody(c, sub, objectIndex);
+        c.AmbientScopeStack.RemoveAt(c.AmbientScopeStack.Count - 1);
+    }
+
     // A lexical resource scope: the dictionary's local var, plus the key-expression → entry-var map for its own
     // entries. Pushed innermost-last onto Context.AmbientScopeStack, popped when the scope's subtree is done.
     private sealed class ResourceScope(string dictVar)
@@ -2993,7 +3004,9 @@ internal static class LoweringEmitter
                 if (ResolveVisibleResourceVar(c, keyExpr) is { } srcVar)
                     return $"Converter = {srcVar}";
                 if (ExternalStaticResolveExpr(c, keyExpr) is { } resolve)
-                    return $"Converter = (global::Cursorial.UI.Data.IValueConverter){resolve}!";
+                    // RequireConverter (not a bare cast): a null/non-converter resource must throw like the
+                    // loader's ResolveConverter, never a silent null converter binding unconverted.
+                    return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({resolve}, {keyExpr})";
             }
 
             // {x:Static Member} — the static converter instance.

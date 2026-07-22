@@ -528,6 +528,44 @@ namespace GenApp { public partial class ThemeChildView : StackPanel { public The
         Assert.Same(appInk, Assert.IsType<Button>(view.Children[0]).Background); // application-tail Ink, not the theme Blue
     }
 
+    [Fact] // A {StaticResource} INSIDE a merged/theme child that forward-references a later SIBLING of the same
+           // child is a genuine same-document forward reference (the sub-dict's own entries are visible to it) —
+           // it must still FENCE (the eager inline build can't reproduce the not-yet-built sibling), NOT resolve
+           // the app tail. Guards the scope-relative forward-key set: merged/theme keys are excluded only for
+           // references from OUTSIDE the sub-dict.
+    public void Lowered_StaticResource_ForwardSiblingInsideMergedChild_Fences()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.FwdInMergedView\">" +
+            "<StackPanel.Resources>" +
+              "<ResourceDictionary>" +
+                "<ResourceDictionary.MergedDictionaries>" +
+                  "<ResourceDictionary>" +
+                    "<Style x:Key=\"S2\" Selector=\":is(Button)\">" +
+                      "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource FwdInk}\"/>" + // forward ref
+                    "</Style>" +
+                    "<SolidColorBrush x:Key=\"FwdInk\" Color=\"Blue\"/>" +   // ...to this LATER sibling in the same child
+                  "</ResourceDictionary>" +
+                "</ResourceDictionary.MergedDictionaries>" +
+              "</ResourceDictionary>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class FwdInMergedView : StackPanel { public FwdInMergedView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // Fences — never a ResolveStatic that would resolve a farther/app value the loader (resolving the merged
+        // sibling lazily) shadows. The document still compiles + constructs.
+        Assert.Contains("TODO X5", lowered);
+        Assert.DoesNotContain("ResolveStatic(\"FwdInk\"", lowered);
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        System.Activator.CreateInstance(assembly.GetType("GenApp.FwdInMergedView")!); // constructs (no false crash)
+    }
+
     [Fact] // Documented eager-resolution divergence (consistent with BasedOn): a Setter.Value external
            // {StaticResource} that resolves NOWHERE throws at construction, where the loader — which defers
            // dictionary-entry realization — loads the (never-realized) document without error. Fail-CLOSED

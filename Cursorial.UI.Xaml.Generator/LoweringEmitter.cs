@@ -502,11 +502,15 @@ internal static class LoweringEmitter
     // resolves against the slot at access time instead of fencing. An ordinary dictionary stays eager (unchanged).
     private static void EmitDictionaryEntries(Context c, string dictVar, List<int> entries)
     {
-        var defer = EntriesHaveForwardReference(c, entries);
+        var scope = System.Array.Find(c.AmbientScopeStack.ToArray(), s => s.DictVar == dictVar)
+                    ?? c.AmbientScopeStack[c.AmbientScopeStack.Count - 1];
+
+        // Defer when this run of entries has a forward reference OR the dictionary is ALREADY deferring (a nested
+        // <ResourceDictionary> folding into a host that defers — its entries land in the same, already-deferred,
+        // dict, so they must be lazy slots too, not eager Adds that could resolve a host key before its slot is set).
+        var defer = scope.DeferredKeys is not null || EntriesHaveForwardReference(c, entries);
         if (defer)
         {
-            var scope = System.Array.Find(c.AmbientScopeStack.ToArray(), s => s.DictVar == dictVar)
-                        ?? c.AmbientScopeStack[c.AmbientScopeStack.Count - 1];
             scope.DeferredKeys ??= new(System.StringComparer.Ordinal);
             foreach (var e in entries)
                 if (ResourceKeyExpr(c, e, canonical: true) is { } k)
@@ -558,7 +562,19 @@ internal static class LoweringEmitter
         {
             c.Line($"{dictVar}.SetDeferred({keyExpr}, new global::Cursorial.UI.FuncDeferredResourceEntry(() =>");
             c.Line("{");
+            var savedRefs = c.References.Count;
+            var savedScopeLines = c.DeferredScopeLines.Count;
             EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
+            // {x:Reference} / {Binding Source={x:Reference}} recorded here target this entry's local (childVar),
+            // which is scoped INSIDE this lambda — flush them HERE (against the document name scope __scope, captured
+            // by the closure), not at document end where childVar is out of scope (CS0103). Realization is
+            // post-construction, so __scope is complete — the loader resolves a deferred entry's reference lazily too.
+            if (c.References.Count > savedRefs || c.DeferredScopeLines.Count > savedScopeLines)
+            {
+                EmitReferenceResolutions(c, savedRefs, "__scope");
+                c.References.RemoveRange(savedRefs, c.References.Count - savedRefs);
+                FlushDeferredScopeLines(c, savedScopeLines);
+            }
             c.Line($"    return {childVar};");
             c.Line("}));");
             return;

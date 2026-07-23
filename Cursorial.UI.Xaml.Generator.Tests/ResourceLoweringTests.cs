@@ -624,6 +624,37 @@ namespace GenApp { public partial class CycleView : StackPanel { public CycleVie
         Assert.ThrowsAny<System.Exception>(() => _ = view.Resources["A"]); // the cycle throws at realization
     }
 
+    [Fact] // Review regression: an {x:Reference} inside a DEFERRED entry must flush its resolution INSIDE the
+           // entry's closure — the entry's local is scoped there, so a document-end flush would reference an
+           // out-of-scope local (CS0103, failing the whole assembly). The dict defers due to an unrelated forward ref.
+    public void Lowered_StaticResource_DeferredEntryWithXReference_Compiles()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.RefInDeferView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"A\" Selector=\":is(Button)\" BasedOn=\"{StaticResource B}\"/>" + // forward → the dict defers
+              "<Style x:Key=\"B\" Selector=\":is(Button)\"/>" +
+              "<Label x:Key=\"Lbl\" Content=\"hi\" Target=\"{x:Reference Named}\"/>" +          // x:Reference in a deferred entry
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Named\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class RefInDeferView : StackPanel { public RefInDeferView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered);
+        // The KEY assertion: it COMPILES — without the in-closure flush the x:Reference resolution targets a local
+        // scoped inside the lambda from document-end code (CS0103), failing the whole assembly build.
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.RefInDeferView")!)!;
+        var label = Assert.IsType<Cursorial.UI.Controls.Label>(view.Resources["Lbl"]);
+        Assert.Same(view.Children[0], label.Target); // the x:Reference resolved to the named Button
+    }
+
     [Fact] // Documented eager-resolution divergence (consistent with BasedOn): a Setter.Value external
            // {StaticResource} that resolves NOWHERE throws at construction, where the loader — which defers
            // dictionary-entry realization — loads the (never-realized) document without error. Fail-CLOSED

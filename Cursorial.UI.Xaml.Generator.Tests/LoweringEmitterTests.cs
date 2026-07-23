@@ -334,7 +334,7 @@ namespace GenApp { public partial class BasedOnMissView : StackPanel { public Ba
            // during construction before the base is built and CRASH. Fail closed (drop + marker), never a
            // runtime ResourceNotFoundException on a document the loader loads. (Regression pin: the probe
            // must distinguish a forward intra-document key from a genuinely external one.)
-    public void Lowered_StyleBasedOn_ForwardReference_FailsClosed()
+    public void Lowered_StyleBasedOn_ForwardReference_ResolvesViaDeferredEntry()
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.BasedOnFwdView\">" +
@@ -355,15 +355,17 @@ namespace GenApp { public partial class BasedOnFwdView : StackPanel { public Bas
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
 
-        Assert.Contains("TODO X5", lowered); // fenced, not probed (a probe here would crash at runtime)
-        Assert.DoesNotContain("FindResource(this, \"Base\")", lowered);
+        // The dict has a forward reference, so it defers (lazy slots) — the forward BasedOn resolves at realize
+        // time, matching the loader's lazy entry realization; no longer fenced.
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered);
 
-        // Derived drops (empty placeholder); Base still builds; construction does NOT throw.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnFwdView")!)!;
-        Assert.Null(Assert.IsType<Style>(view.Resources["Derived"]).BasedOn); // dropped-whole placeholder, never crashed
-        Assert.IsType<Style>(view.Resources["Base"]);
+        var derived = Assert.IsType<Style>(view.Resources["Derived"]);
+        var baseStyle = Assert.IsType<Style>(view.Resources["Base"]);
+        Assert.Same(baseStyle, derived.BasedOn); // forward reference resolved to the later sibling
     }
 
     [Fact] // A missing {x:Reference} in a template THROWS at build time (the loader's ReferenceNotFound

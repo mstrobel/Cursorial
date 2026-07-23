@@ -265,8 +265,7 @@ internal static class LoweringEmitter
                         c.Todo($"<ResourceDictionary> member '{xm.Name}' ({member.Kind}) not yet lowered");
                         break;
                     }
-                    foreach (int idx in ResourceItems(c, member))
-                        EmitDictionaryEntry(c, dictVar, idx);
+                    EmitDictionaryEntries(c, dictVar, new List<int>(ResourceItems(c, member)));
                     break;
             }
         }
@@ -300,6 +299,12 @@ internal static class LoweringEmitter
         // inline can't be proven absent from this scope, so if it is UNREACHABLE (dropped from the ResolveStatic
         // chain) any external resolution must fence — the loader would resolve the Source-loaded key it can't see.
         public bool HasOpaqueKeys { get; set; }
+
+        // For a DEFERRED dictionary (one that contains a forward {StaticResource}), the canonical keys of every
+        // entry — the dict is populated with lazy FuncDeferredResourceEntry slots, so a reference to any of these
+        // keys (from within this scope) resolves via ResolveStatic at realize/access time (all slots exist by
+        // then) rather than fencing as a forward reference. Null for an ordinary (eager) dictionary.
+        public HashSet<string>? DeferredKeys { get; set; }
     }
 
     // A scope is REACHABLE from the current emit point iff its dictionary local is in the current C# method's
@@ -416,7 +421,9 @@ internal static class LoweringEmitter
     // const-string {x:Static} collapsed to its value, so a cross-form intra-document key still matches and fences).
     private static string? ExternalStaticResolveExpr(Context c, string keyExpr, string keyIdentity)
     {
-        if (ForwardKeyGuardSet(c).Contains(keyIdentity))
+        // A key of a DEFERRED dictionary on the ambient stack resolves via its lazy slot (ResolveStatic realizes it
+        // at access time, when every sibling slot exists) — so a forward reference to it must NOT fence.
+        if (!KeyInDeferredAmbientScope(c, keyIdentity) && ForwardKeyGuardSet(c).Contains(keyIdentity))
             return null; // forward/not-yet-built intra-document (or unreachable sibling-factory) — fence, never fail-open
 
         // An unreachable enclosing-factory dict populated from a Source has compile-time-opaque own keys the
@@ -429,11 +436,96 @@ internal static class LoweringEmitter
         return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
     }
 
-    private static void EmitDictionaryEntry(Context c, string dictVar, int childIndex)
+    // True when a dictionary's entries contain a FORWARD same-dict {StaticResource}: an entry references, by
+    // {StaticResource}, a sibling key defined LATER in document order. The eager var build can't reproduce that
+    // (the sibling var isn't declared yet); a deferred-slot dictionary can (all slots exist before any realizes).
+    // Conservative both ways — a missed reference (a nested Converter/Binding key) just keeps the dict eager (the
+    // forward ref fences, as before); an over-detection defers a dict that a backward ref would have built fine
+    // (still correct, only more codegen). Only DIRECT {StaticResource} extension members are scanned.
+    private static bool EntriesHaveForwardReference(Context c, List<int> entryIndices)
+    {
+        var keyPosition = new Dictionary<string, int>(System.StringComparer.Ordinal);
+        for (int i = 0; i < entryIndices.Count; i++)
+            if (ResourceKeyExpr(c, entryIndices[i], canonical: true) is { } key)
+                keyPosition[key] = i;
+
+        for (int i = 0; i < entryIndices.Count; i++)
+            foreach (var refKey in StaticResourceRefsInSubtree(c, entryIndices[i]))
+                if (keyPosition.TryGetValue(refKey, out var pos) && pos > i)
+                    return true; // references a sibling defined later → forward
+
+        return false;
+    }
+
+    // The canonical keys of every DIRECT {StaticResource} extension member anywhere in an object's subtree (its own
+    // members + descendants), for the forward-reference scan. Nested Converter/Binding keys aren't reached — a
+    // missed key only keeps the dict eager (safe), never a wrong resolution.
+    private static IEnumerable<string> StaticResourceRefsInSubtree(Context c, int rootObjectIndex)
+    {
+        int end = rootObjectIndex + c.Doc.Objects[rootObjectIndex].SubtreeLength;
+        for (int j = rootObjectIndex; j < end; j++)
+        {
+            var obj = c.Doc.Objects[j];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                var member = c.Doc.Members[m];
+                if (member.Kind != XamlValueKind.Extension)
+                    continue;
+                if (StaticResourceRefKey(c, member.ValueIndex) is { } key)
+                    yield return key;
+            }
+        }
+    }
+
+    // The canonical key of a {StaticResource} extension record, or null for a different extension. Factored out so
+    // StaticResourceRefsInSubtree (a yield iterator) never holds a `ref` local across the yield.
+    private static string? StaticResourceRefKey(Context c, int extensionIndex)
+    {
+        ref readonly var ext = ref c.Doc.Extensions[extensionIndex];
+        return ext.Kind == ExtensionKind.StaticResource ? ResourceKeyArgExpr(c, in ext, canonical: true) : null;
+    }
+
+    // True when <paramref name="keyIdentity"/> is a key of a DEFERRED dictionary whose scope is on the current
+    // ambient stack (enclosing this reference) — so it resolves via a lazy slot (ResolveStatic realizes it) and
+    // must NOT be fenced as a forward reference. Scope-relative: a reference from OUTSIDE the deferred dict's scope
+    // does not see the key and falls through to the ordinary guard.
+    private static bool KeyInDeferredAmbientScope(Context c, string keyIdentity)
+    {
+        for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
+            if (c.AmbientScopeStack[i].DeferredKeys is { } dk && dk.Contains(keyIdentity))
+                return true;
+        return false;
+    }
+
+    // Emits a dictionary's entries, deferring the whole dictionary (each keyed-object entry as a lazy
+    // FuncDeferredResourceEntry slot) when it contains a forward {StaticResource} — so the forward reference
+    // resolves against the slot at access time instead of fencing. An ordinary dictionary stays eager (unchanged).
+    private static void EmitDictionaryEntries(Context c, string dictVar, List<int> entries)
+    {
+        var scope = System.Array.Find(c.AmbientScopeStack.ToArray(), s => s.DictVar == dictVar)
+                    ?? c.AmbientScopeStack[c.AmbientScopeStack.Count - 1];
+
+        // Defer when this run of entries has a forward reference OR the dictionary is ALREADY deferring (a nested
+        // <ResourceDictionary> folding into a host that defers — its entries land in the same, already-deferred,
+        // dict, so they must be lazy slots too, not eager Adds that could resolve a host key before its slot is set).
+        var defer = scope.DeferredKeys is not null || EntriesHaveForwardReference(c, entries);
+        if (defer)
+        {
+            scope.DeferredKeys ??= new(System.StringComparer.Ordinal);
+            foreach (var e in entries)
+                if (ResourceKeyExpr(c, e, canonical: true) is { } k)
+                    scope.DeferredKeys.Add(k);
+        }
+
+        foreach (var idx in entries)
+            EmitDictionaryEntry(c, dictVar, idx, defer);
+    }
+
+    private static void EmitDictionaryEntry(Context c, string dictVar, int childIndex, bool defer = false)
     {
         if (TypeSymbolOf(c.Doc, c.Doc.Objects[childIndex].TypeId) is { } t && SymbolXamlModel.IsResourceDictionary(t))
         {
-            EmitResourceDictionaryBody(c, dictVar, childIndex); // <Foo.Resources><ResourceDictionary>…: fold
+            EmitResourceDictionaryBody(c, dictVar, childIndex); // <Foo.Resources><ResourceDictionary>…: fold (re-decides)
             return;
         }
 
@@ -460,6 +552,34 @@ internal static class LoweringEmitter
         }
 
         var childVar = c.NextVar();
+
+        // A DEFERRED entry: build inside a FuncDeferredResourceEntry closure so it realizes lazily and a forward
+        // {StaticResource} (resolved via ResolveStatic against this dict) sees every sibling slot. The closure
+        // captures the dict + enclosing dicts (locals); its {StaticResource} resolves at runtime (no eager var), so
+        // KeyExprToVar is NOT populated — ResolveVisibleResourceVar misses and the ResolveStatic path resolves the
+        // slot. (Current is a linear buffer, so EmitObject's build lines land textually inside the lambda body.)
+        if (defer)
+        {
+            c.Line($"{dictVar}.SetDeferred({keyExpr}, new global::Cursorial.UI.FuncDeferredResourceEntry(() =>");
+            c.Line("{");
+            var savedRefs = c.References.Count;
+            var savedScopeLines = c.DeferredScopeLines.Count;
+            EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
+            // {x:Reference} / {Binding Source={x:Reference}} recorded here target this entry's local (childVar),
+            // which is scoped INSIDE this lambda — flush them HERE (against the document name scope __scope, captured
+            // by the closure), not at document end where childVar is out of scope (CS0103). Realization is
+            // post-construction, so __scope is complete — the loader resolves a deferred entry's reference lazily too.
+            if (c.References.Count > savedRefs || c.DeferredScopeLines.Count > savedScopeLines)
+            {
+                EmitReferenceResolutions(c, savedRefs, "__scope");
+                c.References.RemoveRange(savedRefs, c.References.Count - savedRefs);
+                FlushDeferredScopeLines(c, savedScopeLines);
+            }
+            c.Line($"    return {childVar};");
+            c.Line("}));");
+            return;
+        }
+
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope: false, dataType: null);
         c.Line($"{dictVar}.Add({keyExpr}, {childVar});");
 
@@ -2135,8 +2255,7 @@ internal static class LoweringEmitter
         var dictVar = c.NextVar();
         c.Line($"var {dictVar} = {varExpr}.{xm.Name};"); // the get-object dictionary — read, never assign
         c.AmbientScopeStack.Add(new ResourceScope(dictVar, c.CurrentFactoryId)); // the lexical resource scope for this element's subtree (the loader's Push)
-        foreach (int idx in ResourceItems(c, member))
-            EmitDictionaryEntry(c, dictVar, idx);
+        EmitDictionaryEntries(c, dictVar, new List<int>(ResourceItems(c, member)));
     }
 
     private static bool IsResourceDictionaryMember(XamlMember xm)

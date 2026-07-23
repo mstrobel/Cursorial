@@ -8,8 +8,10 @@ namespace Cursorial.UI.Xaml;
 /// The lexical ambient resource stack the loader maintains while instantiating (matrix XD9): a
 /// push/pop stack of <see cref="ResourceDictionary"/>s (each <c>x:Resources</c> hop, innermost on top)
 /// terminated by the optional <see cref="XamlLoadContext"/> ambient scope. <c>{StaticResource}</c>
-/// resolves eagerly innermost-first against this stack (load-order explicit, forward-reference-free,
-/// per XD9 — a key defined later in the same dictionary is NOT yet present, so it is a miss).
+/// resolves innermost-first against this stack. Note it is NOT order-sensitive within a dictionary: entries
+/// are authored as deferred slots (no instantiation at load) and realize lazily, so every sibling slot exists
+/// before any realizes — a key defined LATER in the same dictionary resolves fine (a forward reference; the
+/// per-slot <c>Realizing</c> guard in <see cref="ResourceDictionary"/> throws only on an actual cycle).
 /// </summary>
 internal sealed class XamlResourceScopeStack
 {

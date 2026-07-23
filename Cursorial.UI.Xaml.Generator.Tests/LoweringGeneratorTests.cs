@@ -120,7 +120,7 @@ namespace GenApp { public partial class PlainView : StackPanel { public PlainVie
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.GapView\">" +
-            "<Button x:Name=\"Ok\" Grid.Row=\"{DynamicResource RowKey}\"/>" + // {DynamicResource} on a non-styled attached property — still fenced
+            "<ComboBox x:Name=\"Ok\" Text=\"{DynamicResource TextKey}\"/>" + // {DynamicResource} on a DIRECT property — non-bindable, fenced (loader Fatals too)
             "</StackPanel>";
 
         const string codeBehind = @"

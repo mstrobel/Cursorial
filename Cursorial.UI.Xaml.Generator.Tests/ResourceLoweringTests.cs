@@ -124,13 +124,13 @@ namespace GenApp { public partial class InitView : StackPanel { public InitView(
         Assert.Equal(Color.FromRgb(0x30, 0x50, 0xC0), brush.Color);
     }
 
-    [Fact] // {DynamicResource} on a non-styled / non-bindable target stays a // TODO X5 (matches the runtime reject)
-    public void Lowered_DynamicResource_NonStyledTarget_StaysTodo()
+    [Fact] // {DynamicResource} on a DIRECT (non-bindable) property stays a // TODO X5 — the loader Fatals on a
+           // direct property too (BindingTargetNotBindable), so fencing matches. (ComboBox.Text is DirectProperty.)
+    public void Lowered_DynamicResource_DirectPropertyTarget_StaysTodo()
     {
-        // Width is a styled double? — use a CLR/plain target instead: Grid.Row is attached (not a StyledProperty<T>).
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.DynBadView\">" +
-            "<Button x:Name=\"Ok\" Grid.Row=\"{DynamicResource RowKey}\"/>" +
+            "<ComboBox x:Name=\"Ok\" Text=\"{DynamicResource TextKey}\"/>" +
             "</StackPanel>";
 
         const string codeBehind = @"
@@ -143,8 +143,35 @@ namespace GenApp { public partial class DynBadView : StackPanel { public DynBadV
 
         Assert.DoesNotContain("SetResourceReference", lowered);
         Assert.Contains("TODO X5", lowered);
-        // The TODO is a comment — the rest compiles.
-        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // the TODO is a comment
+    }
+
+    [Fact] // {DynamicResource} on an ATTACHED property resolves via SetResourceReference — the loader accepts any
+           // non-direct property (AttachedProperty<T> : StyledProperty<T>); only a direct property is rejected.
+    public void Lowered_DynamicResource_AttachedProperty_ResolvesViaSetResourceReference()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.DynAttView\">" +
+            "<Button x:Name=\"Ok\" Grid.Row=\"{DynamicResource RowKey}\"/>" + // Grid.Row is attached
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class DynAttView : StackPanel { public DynAttView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("SetResourceReference(", lowered);
+        Assert.Contains("RowProperty", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.DynAttView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+        using var host = UIHeadlessHost.Create();
+        view.Resources["RowKey"] = 3;
+        host.ShowRoot(view);
+        Assert.Equal(3, Cursorial.UI.Controls.Grid.GetRow(button)); // the live producer resolved the attached-property key
     }
 
     [Fact] // Inline <X.Resources> now routes through the top-level entry machinery: an UNKEYED Style keys by
@@ -622,6 +649,62 @@ namespace GenApp { public partial class CycleView : StackPanel { public CycleVie
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CycleView")!)!; // constructs (lazy)
         Assert.ThrowsAny<System.Exception>(() => _ = view.Resources["A"]); // the cycle throws at realization
+    }
+
+    [Fact] // A {x:Static}-valued <ResourceDictionary.Source> whose member is a CONST STRING folds to that value —
+           // the runtime loader (FoldConstants) does the identical new Uri(...). Previously fenced ("non-literal Source").
+    public void Lowered_ResourceDictionary_XStaticConstSource_LowersToUri()
+    {
+        const string helper = @"namespace GenApp { public static class Src { public const string Path = ""Shared.xaml""; } }";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.XSrcView\">" +
+            "<StackPanel.Resources>" +
+              "<ResourceDictionary Source=\"{x:Static g:Src.Path}\"/>" +
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class XSrcView : StackPanel { public XSrcView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(helper), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".Source = new global::System.Uri(", lowered); // the const {x:Static} value → a Uri, not fenced
+        Assert.Contains("Shared.xaml", lowered);
+    }
+
+    [Fact] // A forward Binding.Converter={StaticResource} — the converter defined AFTER the entry referencing it —
+           // resolves: the forward-ref scan now sees {StaticResource} inside a {Binding}, so the dict defers and the
+           // existing external-converter path resolves it against the slot. (Previously the scan was converter-blind.)
+    public void Lowered_BindingConverter_ForwardStaticResource_ResolvesViaDeferral()
+    {
+        const string conv = @"
+using System; using System.Globalization; using Cursorial.UI.Data;
+namespace GenApp { public sealed class PassConverter : IValueConverter {
+    public object? Convert(object? v, Type t, object? p, CultureInfo c) => v;
+    public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => v; } }";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:local=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.FwdConvView\">" +
+            "<StackPanel.Resources>" +
+              "<TextBlock x:Key=\"Lbl\" Text=\"{Binding Name, Converter={StaticResource Conv}}\"/>" + // forward converter ref
+              "<local:PassConverter x:Key=\"Conv\"/>" + // defined later — the forward sibling
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class FwdConvView : StackPanel { public FwdConvView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(conv), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered); // the Binding (with its forward converter) is no longer dropped
+        Assert.Contains(".SetDeferred(", lowered); // the dict defers because the Binding.Converter is a forward ref
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
     }
 
     [Fact] // Review regression: an {x:Reference} inside a DEFERRED entry must flush its resolution INSIDE the

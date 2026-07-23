@@ -117,6 +117,24 @@ internal static class XamlDataTypeScope
     }
 
     /// <summary>
+    /// True when the registered <c>&lt;Name&gt;Property</c> field is a non-direct STYLED property — a
+    /// <c>StyledProperty&lt;T&gt;</c> or its <c>AttachedProperty&lt;T&gt;</c> subclass — the precondition for
+    /// <c>SetResourceReference&lt;T&gt;</c> (<c>{DynamicResource}</c>), which the loader accepts for ANY non-direct
+    /// property (the handler's <c>IsDirect: false</c> gate). A <c>DirectProperty</c> or a base <c>UIProperty</c>
+    /// field is not — the loader Fatals (BindingTargetNotBindable) on those, so the generator keeps them fenced.
+    /// </summary>
+    public static bool IsNonDirectStyledProperty(INamedTypeSymbol owner, string name)
+    {
+        foreach (var member in owner.GetMembers(name + "Property"))
+            if (member is IFieldSymbol { IsStatic: true, Type: INamedTypeSymbol fieldType })
+                for (var t = fieldType; t is not null; t = t.BaseType)
+                    if (t.OriginalDefinition.Name is "StyledProperty") // AttachedProperty<T> : StyledProperty<T>; DirectProperty : UIProperty
+                        return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// True when <paramref name="type"/> is or derives from <c>Cursorial.UI.UIElement</c> — the receiver
     /// constraint for the resource extension methods (<c>FindResource</c> / <c>SetResourceReference</c>), so a
     /// resource markup on a non-element object (a brush/pen inside a resource value) bails instead of emitting

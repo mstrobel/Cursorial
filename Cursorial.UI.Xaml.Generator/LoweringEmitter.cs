@@ -212,9 +212,17 @@ internal static class LoweringEmitter
             {
                 case "Source":
                     if (member.Kind == XamlValueKind.Text)
-                        c.Line($"{dictVar}.Source = new global::System.Uri(\"{Escape(ResolveSourceUri(c.Doc.Strings[member.ValueIndex], c.SourceUri))}\", global::System.UriKind.RelativeOrAbsolute);");
+                        EmitResourceSource(c, dictVar, c.Doc.Strings[member.ValueIndex]);
+                    // A {x:Static} Source whose member is a CONST STRING: the runtime loader parses with
+                    // FoldConstants, folding it to that value before SetResourceSource does the identical new Uri(…).
+                    // (A non-const / non-string Source can't be resolved at generation time — it fences.)
+                    else if (member.Kind == XamlValueKind.Folded
+                             && c.Doc.Constants[member.ValueIndex] is XamlStaticReference sref
+                             && SplitStaticPath(c, sref.MemberPath, out var srcNs, out var srcPath)
+                             && ClosedTypeSet.ResolveStaticConstString(c.Resolver, srcNs, srcPath) is { } srcLiteral)
+                        EmitResourceSource(c, dictVar, srcLiteral);
                     else
-                        c.Todo("<ResourceDictionary.Source> with a non-literal value not yet lowered");
+                        c.Todo("<ResourceDictionary.Source> with a non-literal (non-const-{x:Static}) value not yet lowered");
                     // The Source folds external keys into this dict's OWN entries (invisible to KeyExprToVar) — mark
                     // the scope opaque so an unreachable copy of it forces the external {StaticResource} path to fence.
                     MarkScopeOpaque(c, dictVar);
@@ -468,9 +476,10 @@ internal static class LoweringEmitter
         return false;
     }
 
-    // The canonical keys of every DIRECT {StaticResource} extension member anywhere in an object's subtree (its own
-    // members + descendants), for the forward-reference scan. Nested Converter/Binding keys aren't reached — a
-    // missed key only keeps the dict eager (safe), never a wrong resolution.
+    // The canonical keys of every {StaticResource} an object's subtree forward-references, for the deferral scan:
+    // a DIRECT {StaticResource} member, and one nested in a {Binding}'s Converter / Source (so a dict whose only
+    // forward reference is a Binding.Converter still defers, and the existing external-converter path resolves it).
+    // A missed key only keeps the dict eager (safe); a key that isn't a same-dict sibling is filtered downstream.
     private static IEnumerable<string> StaticResourceRefsInSubtree(Context c, int rootObjectIndex)
     {
         int end = rootObjectIndex + c.Doc.Objects[rootObjectIndex].SubtreeLength;
@@ -482,18 +491,38 @@ internal static class LoweringEmitter
                 var member = c.Doc.Members[m];
                 if (member.Kind != XamlValueKind.Extension)
                     continue;
-                if (StaticResourceRefKey(c, member.ValueIndex) is { } key)
+                foreach (var key in StaticResourceRefKeys(c, member.ValueIndex))
                     yield return key;
             }
         }
     }
 
-    // The canonical key of a {StaticResource} extension record, or null for a different extension. Factored out so
-    // StaticResourceRefsInSubtree (a yield iterator) never holds a `ref` local across the yield.
-    private static string? StaticResourceRefKey(Context c, int extensionIndex)
+    // The canonical {StaticResource} keys of an extension record. A List (not a yield iterator) so it can hold a
+    // `ref readonly` into the record array; StaticResourceRefsInSubtree yields from it.
+    private static List<string> StaticResourceRefKeys(Context c, int extensionIndex)
     {
+        var keys = new List<string>();
         ref readonly var ext = ref c.Doc.Extensions[extensionIndex];
-        return ext.Kind == ExtensionKind.StaticResource ? ResourceKeyArgExpr(c, in ext, canonical: true) : null;
+        if (ext.Kind == ExtensionKind.StaticResource)
+        {
+            if (ResourceKeyArgExpr(c, in ext, canonical: true) is { } k)
+                keys.Add(k);
+        }
+        else if (ext.Kind is ExtensionKind.Binding or ExtensionKind.TemplateBinding
+                 && c.Doc.ParsedExtensions[ext.Payload] is { } node) // a Binding's payload is always its parsed node
+        {
+            AddNestedStaticResourceKey(node.FindNamed("Converter"), keys);
+            AddNestedStaticResourceKey(node.FindNamed("Source"), keys);
+        }
+        return keys;
+    }
+
+    // If <paramref name="arg"/> is a nested {StaticResource plain-key}, adds its canonical (literal) key.
+    private static void AddNestedStaticResourceKey(MarkupExtensionArgumentValue? arg, List<string> keys)
+    {
+        if (arg is { IsNested: true, Nested: { Name: "StaticResource" } inner }
+            && inner.PositionalArguments.Count > 0 && inner.PositionalArguments[0].Text is { Length: > 0 } key)
+            keys.Add($"\"{Escape(key)}\"");
     }
 
     // True when <paramref name="keyIdentity"/> is a key of a DEFERRED dictionary whose scope is on the current
@@ -2568,10 +2597,18 @@ internal static class LoweringEmitter
                 return $"typeof({Global(ts)})";
             if (nested.Name is "x:Null" or "Null")
                 return "null";
-            if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
-                ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"", out _) is { } srcVar)
-                return srcVar;
-            return null; // {Binding} / other nested / unreachable-scope key — no standalone value in this position
+            if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key)
+            {
+                var keyExpr = $"\"{Escape(key)}\""; // the loader's nested-arg StaticResource is plain-string-keyed only
+                if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
+                    return srcVar; // a same-dictionary entry var (typed)
+                // An external / app-tail / deferred key → an eager ResolveStatic (object?), cast to the arg's member
+                // type (object → concrete; string included, since object? → string is not implicit) — exactly the
+                // main {StaticResource} path, and the loader's nested-arg StaticResource resolution.
+                if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyExpr) is { } resolve)
+                    return memberType is { SpecialType: not SpecialType.System_Object } ? $"({Global(memberType)}){resolve}!" : resolve;
+            }
+            return null; // {Binding} / nested-key {StaticResource} / a forward-or-unreachable key — no value here
         }
 
         // A text value → the typed member expression (an object-initializer assignment needs the concrete
@@ -2682,8 +2719,9 @@ internal static class LoweringEmitter
 
     // {DynamicResource Key} → ResourceExtensions.SetResourceReference(element, Owner.FooProperty, key): a live
     // producer that re-resolves against the element's ancestor chain on attach (no eager-resolution timing
-    // problem — works inline AND inside templates). Requires a registered StyledProperty<T> target (the runtime
-    // handler rejects direct/attached); a literal key only (a nested-extension key is deferred to a later cut).
+    // problem — works inline AND inside templates). Requires a registered NON-DIRECT styled property target — a
+    // StyledProperty<T> or its AttachedProperty<T> subclass (the loader's IsDirect:false gate); only a DIRECT
+    // property is rejected. A literal / {x:Static} key (a nested-extension key is deferred to a later cut).
     private static void EmitDynamicResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
     {
         if (!XamlDataTypeScope.IsUIElement(c.CurrentObjectType))
@@ -2692,9 +2730,9 @@ internal static class LoweringEmitter
             return;
         }
 
-        if (RegisteredOwner(xm) is not { } owner || !XamlDataTypeScope.IsStyledProperty(owner, xm.Name))
+        if (RegisteredOwner(xm) is not { } owner || !XamlDataTypeScope.IsNonDirectStyledProperty(owner, xm.Name))
         {
-            c.Todo($"{{DynamicResource}} target '{xm.Name}' is not a styled UIProperty (direct/attached unsupported)");
+            c.Todo($"{{DynamicResource}} target '{xm.Name}' is a direct/non-styled UIProperty — not resource-referenceable");
             return;
         }
 
@@ -3500,6 +3538,11 @@ internal static class LoweringEmitter
         public List<string> Entries { get; } = [];
         public HashSet<int> Indices { get; } = [];
     }
+
+    // Emits `dict.Source = new Uri(resolved, RelativeOrAbsolute)` — the ResourceDictionary.Source load, with the raw
+    // value resolved against the document source URI (the loader's SetResourceSource wraps every Source in a Uri).
+    private static void EmitResourceSource(Context c, string dictVar, string rawValue)
+        => c.Line($"{dictVar}.Source = new global::System.Uri(\"{Escape(ResolveSourceUri(rawValue, c.SourceUri))}\", global::System.UriKind.RelativeOrAbsolute);");
 
     /// <summary>
     /// Resolves a relative <c>ResourceDictionary.Source</c> against the document's own source URI at

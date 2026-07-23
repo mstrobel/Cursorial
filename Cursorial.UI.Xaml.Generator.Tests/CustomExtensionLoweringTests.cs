@@ -389,4 +389,30 @@ namespace GenApp { public partial class NestAmbView : ContentControl { public Ne
         Assert.DoesNotContain("NestProbeExtension", lowered); // not lowered at all — fenced, not emitted with ambient:null
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
     }
+
+    [Fact] // A nested {StaticResource} ARGUMENT to a custom extension that's EXTERNAL (app-tail) resolves via
+           // ResolveStatic — previously only a same-dict entry var resolved (an external key fenced the whole ext).
+    public void Lowered_CustomExtension_ExternalStaticResourceArg_ResolvesViaResolveStatic()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.IconArgView\">" +
+            "<Button x:Name=\"Ok\" Content=\"{Icon Glyph={StaticResource GlyphKey}}\"/>" + // nested external {StaticResource} arg
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class IconArgView : StackPanel { public IconArgView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains("ResolveStatic(\"GlyphKey\"", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        using var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create();
+        host.Application.Resources["GlyphKey"] = "folder";
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.IconArgView")!)!;
+        var icon = Assert.IsType<Icon>(Assert.IsType<Button>(view.Children[0]).Content);
+        Assert.Equal("folder", icon.Glyph); // the app-tier resource resolved into the custom-extension arg
+    }
 }

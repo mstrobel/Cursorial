@@ -454,9 +454,10 @@ internal static class LoweringEmitter
     //      compile time, so a CROSS-FORM forward reference to it (`{x:Static Foo.Bar}` defined, referenced by the
     //      plain string of its value, sibling-later) goes undetected by (a). Defer so it resolves by VALUE at
     //      runtime — dict.TryGetValue(Foo.Bar) — exactly as the loader does, no generation-time value needed.
-    // Conservative both ways: a missed forward reference (a nested Converter/Binding key) just keeps the dict eager
-    // (that ref fences, as before); an over-detection defers a dict a backward ref would have built fine (still
-    // correct, only more codegen). Only DIRECT {StaticResource} extension members are scanned for (a).
+    // Conservative both ways: a missed forward reference (a nested-KEY {StaticResource {x:Type …}}) just keeps the
+    // dict eager (that ref fences, as before); an over-detection defers a dict a backward ref would have built fine
+    // (still correct, only more codegen). The (a) scan reads DIRECT {StaticResource} members plus one nested in a
+    // {Binding}'s Converter/Source (so a dict whose only forward reference is a Binding.Converter defers too).
     private static bool EntriesNeedDeferral(Context c, List<int> entryIndices)
     {
         var keyPosition = new Dictionary<string, int>(System.StringComparer.Ordinal);

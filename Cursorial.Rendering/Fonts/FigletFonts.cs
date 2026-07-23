@@ -1,3 +1,5 @@
+using Cursorial.Rendering.Content;
+
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
@@ -116,16 +118,10 @@ public static class FigletFonts
     public static FigletFont LoadFromFile(string path)
         => FigletFontParser.LoadFromFile(path);
 
-    private static FigletFont LoadEmbedded(string resourceLeaf)
+    private static FigletFont LoadEmbedded(string resourceLeaf, string? nameOverride = null)
     {
-        var assembly = typeof(FigletFonts).Assembly;
-        var resourceName = $"{resourceLeaf}";
-
-        using var stream = assembly.GetManifestResourceStream(resourceName)
-                           ?? throw new InvalidOperationException(
-                               $"Embedded FIGlet font '{resourceName}' is missing from the assembly. " +
-                               "This indicates a packaging error in Cursorial.Rendering.");
-
-        return FigletFontParser.Load(stream, Path.GetFileNameWithoutExtension(resourceLeaf));
+        var uri = ResourceLoader.Embedded(typeof(FigletFonts).Assembly, resourceLeaf);
+        using var stream = ResourceLoader.Default.Open(uri);
+        return FigletFontParser.LoadFromUri(uri, nameOverride);
     }
 }

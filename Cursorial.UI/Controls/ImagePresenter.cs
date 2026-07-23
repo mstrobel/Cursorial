@@ -35,6 +35,13 @@ public class ImagePresenter : DrawnContentPresenter
     public static readonly StyledProperty<Uri?> SourceUriProperty =
         UIProperty.Register<ImagePresenter, Uri?>(nameof(SourceUri), changed: OnSourceUriChanged);
 
+    /// <summary>Whether the image (not the placeholder) is currently shown — an effective source is set, has bytes,
+    /// and the negotiated graphics protocols can carry its format.</summary>
+    public static readonly DirectProperty<ImagePresenter, bool> IsImageVisibleProperty =
+        UIProperty.RegisterDirect<ImagePresenter, bool>(nameof(IsImageVisible),
+                                                        getter: static o => o.IsImageVisible);
+
+    private bool _isImageVisibleCached;
     private ImageContent? _imageContent;  // cached per effective source — a fresh content per Render would churn a new image id every frame
     private ImageData? _uriImage;          // the ImageData loaded from SourceUri (null when unset / load failed)
     private UIApplication? _subscribedApp; // the app whose CapabilitiesChanged we're subscribed to (for symmetric unsubscribe)
@@ -53,8 +60,7 @@ public class ImagePresenter : DrawnContentPresenter
     /// <summary>The image actually shown — the explicit <see cref="Source"/> if set, else the <see cref="SourceUri"/>-loaded image.</summary>
     public ImageData? EffectiveSource => Source ?? _uriImage;
 
-    /// <summary>Whether the image (not the placeholder) is currently shown — an effective source is set, has bytes,
-    /// and the negotiated graphics protocols can carry its format.</summary>
+    /// <inheritdoc cref="IsImageVisibleProperty"/>
     public bool IsImageVisible
     {
         get
@@ -67,7 +73,7 @@ public class ImagePresenter : DrawnContentPresenter
                 return false;
             // The EFFECTIVE view (negotiated ∘ CapabilityOverrides — FB-5): a user forcing images off
             // degrades to the placeholder exactly as a terminal without graphics would.
-            if (UIApplication.Current?.EffectiveCapabilities.Output.Graphics is not { } g)
+            if (UIApplication.Current?.EffectiveCapabilities.Output.Graphics is not {} g)
                 return false;
             return g.ITerm2InlineImages || (s.Format == ImageFormat.Png && (g.KittyGraphics || g.Sixel));
         }
@@ -105,14 +111,14 @@ public class ImagePresenter : DrawnContentPresenter
 
     private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e)
     {
-        InvalidateMeasure(); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
-        InvalidateVisual();
+        InvalidateContent(invalidateMeasure: true);  // defeats the measure-cache early-out so MeasureOverride
+                                                     // re-runs UpdatePlaceholderState
     }
 
     private void OnCapabilityOverridesChanged(object? sender, EventArgs e)
     {
-        InvalidateMeasure();
-        InvalidateVisual();
+        InvalidateContent(invalidateMeasure: true);  // defeats the measure-cache early-out so MeasureOverride
+                                                     // re-runs UpdatePlaceholderState
     }
 
     /// <inheritdoc/>
@@ -122,7 +128,7 @@ public class ImagePresenter : DrawnContentPresenter
         if (content is null)
             return Size.Empty;
         
-        var size = content.Measure(availableSize, UIApplication.Current!.Capabilities.Output); // delegated sizing (handles null/single-axis)
+        var size = content.Measure(availableSize, UIApplication.Current!.EffectiveCapabilities.Output); // delegated sizing (handles null/single-axis)
         return FloorVisibleImageSize(size, availableSize); // a visible image must never collapse to a 0 extent on either axis
     }
 
@@ -145,20 +151,38 @@ public class ImagePresenter : DrawnContentPresenter
     }
 
     private static void OnSourceChanged(UIObject sender, ImageData? oldValue, ImageData? newValue)
-        => (sender as ImagePresenter)?.RebuildContent();
+        => (sender as ImagePresenter)?.InvalidateContent(invalidateMeasure: true);
 
     private static void OnSourceUriChanged(UIObject sender, Uri? oldValue, Uri? newValue)
     {
         if (sender is not ImagePresenter p)
             return;
         p._uriImage = LoadFromUri(newValue); // synchronous load via the resource loader (embedded/file/relative)
-        p.RebuildContent();
+        p.InvalidateContent(invalidateMeasure: true);
     }
 
-    private void RebuildContent()
-    {
-        _imageContent = EffectiveSource is { } src ? new ImageContent(src) : null; // rebuild the cached content (id/diff stability)
+    private void InvalidateContent(bool invalidateMeasure = false)
+    {   
+        var wasImageVisible = _isImageVisibleCached;
+
+        _imageContent = EffectiveSource is {} src ? new ImageContent(src) : null; // rebuild the cached content (id/diff stability)
+
+        var isImageVisible = _isImageVisibleCached = IsImageVisible;
+
+        if (invalidateMeasure || isImageVisible != wasImageVisible)
+            InvalidateMeasure();
+
         InvalidateVisual();
+        InvalidateComposite();
+        UpdatePlaceholderState();
+        
+        if (wasImageVisible == isImageVisible) return;
+
+        DispatchPropertyChanged(IsImageVisibleProperty,
+                                null,
+                                wasImageVisible,
+                                isImageVisible,
+                                BindingPriority.LocalValue);
     }
 
     // Load + decode-format an image from a URI via the default resource loader; null on a missing source / failed load.

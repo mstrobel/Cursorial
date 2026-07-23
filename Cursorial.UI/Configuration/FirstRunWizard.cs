@@ -190,7 +190,7 @@ public sealed class FirstRunWizard : Window
 
         _maxWidth = FittedWidth is int fw ? Math.Max(_maxWidth, fw) : _maxWidth;
         _maxHeight = FittedHeight is int fh ? Math.Max(_maxHeight, fh) : _maxHeight;
-        Title = $"Cursorial Setup - {_maxWidth}x{_maxHeight}";
+        Title = "Cursorial Setup";
     }
 
     private UIElement BuildWelcomePage()

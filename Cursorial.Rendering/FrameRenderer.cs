@@ -68,6 +68,13 @@ public sealed class FrameRenderer
     // each render; cleared (set to false) at the start of each ComputeCoveredCells pass.
     private bool[]? _coveredCells;
 
+    // Reusable scratch buffer recording which cells EmitDiff actually re-emitted this frame.
+    // A FragmentLayer.Cells fragment whose footprint contains a re-emitted cell has had its
+    // payload overpainted by the cell pass (the covered-cell bg-only write), so it must re-emit
+    // even when its Key/AnchorStyle are unchanged — see FragmentFootprintTouched. Parallel to
+    // _coveredCells; cleared at the top of each EmitDiff.
+    private bool[]? _touchedCells;
+
     // Reusable scratch buffer for the per-render "must this cell re-emit unconditionally?" lookup,
     // populated from CellBuffer.ForceRepaintRegions. A force-repaint cell emits even when it compares
     // equal to the front buffer — the channel exists to overwrite content the front buffer can't tell
@@ -206,6 +213,8 @@ public sealed class FrameRenderer
             _dirtyCells = new bool[cellCount];
         if (_forceCells is null || _forceCells.Length != cellCount)
             _forceCells = new bool[cellCount];
+        if (_touchedCells is null || _touchedCells.Length != cellCount)
+            _touchedCells = new bool[cellCount];
 
         ComputeCoveredCells(back);
         ComputeDirtyCells(back);
@@ -509,6 +518,10 @@ public sealed class FrameRenderer
 
     private void EmitDiff(CellBuffer back, IBufferWriter<byte> output)
     {
+        // Reset the per-frame touched-cell record; EmitFragments reads it to decide whether a
+        // Cells-layer fragment's footprint was overpainted this frame and must re-emit.
+        Array.Clear(_touchedCells!);
+
         for (int r = 0; r < back.Rows; r++)
         {
             ReadOnlySpan<Cell> row = back.GetRowSpan(r);
@@ -626,12 +639,14 @@ public sealed class FrameRenderer
                     SyncStyle(output, neighbor.Style);
                     WriteGraphemeUtf8(output, neighbor);
                     _frontCells![frontIdx + 1] = neighbor;
+                    _touchedCells![frontIdx + 1] = true;
 
                     SyncCursor(output, r, c);
                     SyncHyperlink(output, cell.Style.Hyperlink);
                     SyncStyle(output, cell.Style);
                     WriteGraphemeUtf8(output, cell);
                     _frontCells![frontIdx] = cell;
+                    _touchedCells![frontIdx] = true;
 
                     // We can't trust the post-glyph cursor column (terminal advanced 1 or 2),
                     // and c+1 is already painted — skip it and force a CUP for whatever follows.
@@ -658,6 +673,7 @@ public sealed class FrameRenderer
 
                 WriteGraphemeUtf8(output, cell);
                 _frontCells![frontIdx] = cell;
+                _touchedCells![frontIdx] = true;
 
                 if (wideDefense)
                 {
@@ -679,6 +695,30 @@ public sealed class FrameRenderer
         }
     }
 
+    /// <summary>
+    /// True when <see cref="EmitDiff"/> re-emitted at least one cell inside the footprint of the
+    /// Cells-layer fragment anchored at (<paramref name="anchorCol"/>, <paramref name="anchorRow"/>).
+    /// Such a fragment has had its payload overpainted by the cell pass's covered-cell (bg-only)
+    /// write, so it must re-emit even when its <see cref="IBufferFragment.Key"/> and anchor style are
+    /// unchanged — otherwise a change UNDER the fragment (the panel behind sized text repainting on a
+    /// theme flip, a spinner cycling, …) erases the fragment and nothing draws it back. Mirrors the
+    /// <see cref="ComputeCoveredCells"/> footprint walk.
+    /// </summary>
+    private bool FragmentFootprintTouched(int anchorCol, int anchorRow, IBufferFragment fragment, CellBuffer back)
+    {
+        if (_touchedCells is not { } touched) return false;
+
+        var size = fragment.GetSize();
+        int colEnd = Math.Min(back.Columns, anchorCol + Math.Max(1, size.Columns));
+        int rowEnd = Math.Min(back.Rows, anchorRow + Math.Max(1, size.Rows));
+
+        for (int r = Math.Max(0, anchorRow); r < rowEnd; r++)
+            for (int c = Math.Max(0, anchorCol); c < colEnd; c++)
+                if (touched[r * back.Columns + c]) return true;
+
+        return false;
+    }
+
     private void EmitFragments(CellBuffer back, IBufferWriter<byte> output)
     {
         // Use OutputCapabilities.None when the renderer wasn't constructed with capabilities —
@@ -696,8 +736,7 @@ public sealed class FrameRenderer
         // empty). Cell-layer's default no-op EmitErase makes iterating all layers safe.
         foreach (var (anchor, frontEntry) in _frontFragments)
         {
-            if (back.Fragments.TryGetValue(anchor, out var backEntry) &&
-                FragmentsMatch(frontEntry, backEntry))
+            if (back.Fragments.TryGetValue(anchor, out var backEntry) && FragmentsMatch(frontEntry, backEntry))
                 continue;
 
             if (!frontEntry.Fragment.IsSupported(caps)) continue;
@@ -712,13 +751,19 @@ public sealed class FrameRenderer
             if (col < 0 || col >= back.Columns || row < 0 || row >= back.Rows) continue;
 
             if (_frontFragments.TryGetValue((col, row), out var frontEntry) &&
-                FragmentsMatch(frontEntry, entry))
+                FragmentsMatch(frontEntry, entry) &&
+                !(entry.Fragment.Layer == FragmentLayer.Cells &&
+                  FragmentFootprintTouched(col, row, entry.Fragment, back)))
             {
-                // Same Key + anchor style — terminal already shows the current payload.
+                // Same Key + anchor style, and the cell pass didn't overpaint the footprint — the
+                // terminal already shows the current payload. A Cells-layer fragment whose footprint
+                // WAS repainted this frame falls through to re-emit: the covered-cell bg-only writes
+                // just clobbered its payload (e.g. the panel behind sized text repainting on a theme flip).
                 continue;
             }
 
-            EmitFragmentBytes(col, row, entry, output, caps);
+            var style = back[col, row].Style;
+            EmitFragmentBytes(col, row, entry, output, caps, style);
         }
 
         // Snapshot for next render's diff. On a Key match we keep the FRONT entry, not the back
@@ -750,14 +795,26 @@ public sealed class FrameRenderer
         => Equals(a.Fragment.Key, b.Fragment.Key) && a.AnchorStyle == b.AnchorStyle;
 
     /// <summary>Bracket-emit a fragment's payload with DECSC / DECRC + cursor + SGR backdrop.</summary>
-    private void EmitFragmentBytes(int col, int row, CellBuffer.FragmentEntry entry,
-                                   IBufferWriter<byte> output, OutputCapabilities caps)
+    internal void EmitFragmentBytes(int col, int row, CellBuffer.FragmentEntry entry,
+                                    IBufferWriter<byte> output, OutputCapabilities caps,
+                                    Style existingStyle)
     {
         CursorWriter.WriteSavePosition(output);
         CursorWriter.WriteMoveTo(output, col, row);
 
-        if (entry.AnchorStyle != Style.Default)
-            SgrEncoder.WriteAbsolute(output, entry.AnchorStyle);
+        existingStyle = AdaptStyle(existingStyle, col, row);
+        
+        SgrEncoder.WriteAbsolute(output, in existingStyle);
+        
+        var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle) ?? entry.AnchorStyle;
+
+        if (anchorStyle is { Background.IsTransparent: true })
+            anchorStyle = anchorStyle.WithBackground(existingStyle.Background);
+
+        anchorStyle = AdaptStyle(anchorStyle, col, row);
+
+        if (anchorStyle != Style.Default)
+            SgrEncoder.WriteDelta(output, in existingStyle, in anchorStyle);
 
         entry.Fragment.Emit(col, row, output, caps);
 
@@ -810,10 +867,18 @@ public sealed class FrameRenderer
         if (_quantizer is null) return cell;
         // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full
         // depth / for non-RGB). Off → the plain position-independent quantize.
-        var quantized = _options.OrderedDither
-                            ? _quantizer.QuantizeDithered(cell.Style, column, row)
-                            : _quantizer.Quantize(cell.Style);
+        var quantized = AdaptStyle(cell.Style, column, row);
         return quantized == cell.Style ? cell : cell with { Style = quantized };
+    }
+
+    private Style AdaptStyle(in Style style, int column, int row)
+    {
+        if (_quantizer is null) return style;
+        // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full
+        // depth / for non-RGB). Off → the plain position-independent quantize.
+        return _options.OrderedDither
+                   ? _quantizer.QuantizeDithered(style, column, row)
+                   : _quantizer.Quantize(style);
     }
 
     private static void WriteGraphemeUtf8(IBufferWriter<byte> output, in Cell cell)

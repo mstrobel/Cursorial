@@ -137,7 +137,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                       (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, figlet.Style, c, r, blockRect)));
                 break;
             case FormattedSizedTextBlock sized:
-                PaintSizedText(sized, buffer, column, row, capabilities,
+                PaintSizedText(sized, buffer, column, row, capabilities, resolver,
                                ResolveStyle(resolver, sized.Style, centerColumn, centerRow, blockRect));
                 break;
             case FormattedContentBlock content:
@@ -303,15 +303,14 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 sb.AppendLine();
         }
     }
-    private static void PaintSizedText(
-        FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
-        OutputCapabilities capabilities, in Style style)
+    private static void PaintSizedText(FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
+                                       OutputCapabilities capabilities, BrushedTextResolver? resolver, in Style style)
     {
         // Mirror ScaledText's protocol: try OSC 66 fragment when supported, else fall back to
         // the configured glyph font. ScaledText itself encapsulates the decision tree, so we
         // delegate to a transient instance. The style (already brush-resolved by the caller) colors the
         // OSC-66 backdrop / the FIGlet fallback glyphs.
-        var scaled = new ScaledText(sized.Text, sized.Sizing, sized.Fallback);
+        var scaled = new ScaledText(sized.Text, sized.Sizing, sized.Fallback) { BrushResolver = resolver };
         scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, sized.Size.Rows),
                      style, capabilities);
     }

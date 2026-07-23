@@ -288,7 +288,7 @@ public class Image : FragmentContent
         return preliminarySize;
     }
 
-    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
     {
         var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = PlaceholderStyle });
         var formatter = new TextFormatter { Wrap = WrapMode.WordWrap, Alignment = TextAlignment.Center };

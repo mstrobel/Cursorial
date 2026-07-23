@@ -12,7 +12,7 @@ using Cursorial.UI.Input;
 // bound to view-models; implicit DataTemplates resolve each page. q / Esc / Ctrl+C exit.
 
 UIApplication app = UIApplication.DefaultBuilder()
-                                 .WithUserConfiguration(/*new UserConfigurationOptions { ShowFirstRunWizard = true }*/)
+                                 .WithUserConfiguration(new UserConfigurationOptions { ShowFirstRunWizard = true })
                                  .Build();
 
 // app.NerdFontAvailable = true;

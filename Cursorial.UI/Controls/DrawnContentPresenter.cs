@@ -25,12 +25,18 @@ public abstract class DrawnContentPresenter : UIElement
     static DrawnContentPresenter()
     {
         AffectsMeasure<DrawnContentPresenter>(PlaceholderContentProperty, PlaceholderTemplateProperty);
+
+        ClipToBoundsProperty.OverrideMetadata<DrawnContentPresenter>(
+            new PropertyMetadata<bool>(
+                DefaultValue: true,
+                Coerce: static (_, _) => true)); // always true, no matter what
+
     }
 
     /// <summary>Creates the presenter (clip-bounded so its drawn content never bleeds past its layout rect).</summary>
     protected DrawnContentPresenter()
     {
-        ClipToBounds = true;
+        SetValue(ClipToBoundsProperty, true);
         AdoptChild(_placeholder, index: -1);
     }
 
@@ -55,10 +61,12 @@ public abstract class DrawnContentPresenter : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
+        var primaryResult = MeasurePrimaryContent(availableSize);
+
         if (UpdatePlaceholderState())
         {
             _placeholder.Measure(Size.Empty); // collapsed — measures to nothing
-            return MeasurePrimaryContent(availableSize);
+            return primaryResult;
         }
 
         _placeholder.Measure(availableSize);
@@ -82,7 +90,7 @@ public abstract class DrawnContentPresenter : UIElement
 
     /// <summary>Flips the placeholder child's visibility + the <c>:placeholder</c> pseudo-class to the current
     /// primary-content-visible state, and returns whether the primary content is visible. Subclasses call this when an
-    /// out-of-band signal (e.g. a capability flip) may have changed visibility without a re-measure.</summary>
+    /// out-of-band signal (e.g., a capability flip) may have changed visibility without a re-measure.</summary>
     protected bool UpdatePlaceholderState()
     {
         var visible = IsPrimaryContentVisible;

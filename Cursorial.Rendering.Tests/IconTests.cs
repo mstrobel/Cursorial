@@ -203,9 +203,10 @@ public class IconTests
     {
         public int OpenCount { get; private set; }
 
-        public Stream TryOpen(Uri uri)
+        public Stream TryOpen(Uri uri, out Exception? error)
         {
             OpenCount++;
+            error = null;
             return new MemoryStream([0x89, 0x50, 0x4E, 0x47]); // four bytes — content irrelevant
         }
     }

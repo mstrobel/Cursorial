@@ -176,6 +176,75 @@ public class FrameRendererFragmentDiffTests
         Assert.Contains("F", output);
     }
 
+    [Fact]
+    public void CellsFragment_ReEmittedWhenCoveredCellBackgroundChanges()
+    {
+        // Repro of the sized-text-disappears bug. A Cells-layer fragment (OSC 66 sized text)
+        // writes NO cells into the scene, so the fragment diff is Key + AnchorStyle only. When the
+        // panel UNDER the fragment repaints — e.g. a base-theme light/dark flip that the fragment's
+        // owner never hears about — the covered cells' background changes; the cell pass re-emits
+        // them as bg-only spaces, overpainting the fragment's payload on the terminal. The fragment
+        // (same instance, unchanged identity) must re-emit on top, or it silently disappears.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        var dark = Style.Default.WithBackground(Color.FromRgb(20, 20, 20));
+        buffer.Set(0, 0, " ", dark);
+        buffer.Set(1, 0, " ", dark);
+        var fragment = new SentinelFragment(new Size(2, 1), "SIZED");
+        buffer.AddFragment(0, 0, fragment);
+
+        var first = Render(r, buffer);
+        Assert.Contains("SIZED", first); // emitted initially
+
+        // The panel underneath flips to a light background — the SAME fragment instance stays put
+        // (its owner was never invalidated), so absent the fix the fragment diff-skips.
+        var light = Style.Default.WithBackground(Color.FromRgb(230, 230, 230));
+        buffer.Set(0, 0, " ", light);
+        buffer.Set(1, 0, " ", light);
+        var second = Render(r, buffer);
+
+        Assert.Contains("48;2;230;230;230", second); // covered cells repaint the new bg …
+        Assert.Contains("SIZED", second);            // … and the fragment re-emits on top (the fix)
+    }
+
+    [Fact]
+    public void CellsFragment_StillSkippedWhenNothingUnderneathChanges()
+    {
+        // The re-emit is scoped to an actually-overpainted footprint: a stable frame must NOT
+        // re-transmit the fragment (no churn), even though it's a Cells-layer fragment.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(20, 20, 20)));
+        buffer.Set(1, 0, " ", Style.Default.WithBackground(Color.FromRgb(20, 20, 20)));
+        var fragment = new SentinelFragment(new Size(2, 1), "SIZED");
+        buffer.AddFragment(0, 0, fragment);
+
+        Render(r, buffer);
+        var second = Render(r, buffer); // identical state
+
+        Assert.DoesNotContain("SIZED", second);
+    }
+
+    [Fact]
+    public void OverlayFragment_NotReEmittedWhenUnderlyingCellChanges()
+    {
+        // The touched-footprint re-emit is Cells-layer ONLY. An Overlay fragment lives on a
+        // separate display plane, isn't clobbered by cell repaints, and must not re-transmit when
+        // the cells under it change — that churn is what exhausts a terminal's image store.
+        var r = new FrameRenderer();
+        var buffer = new CellBuffer(5, 1);
+        buffer.Set(0, 0, "A", Style.Default);
+        var overlay = new EraseTrackingFragment(new Size(2, 1)); // Overlay layer, emits "EMIT"
+        buffer.AddFragment(0, 0, overlay);
+        Render(r, buffer);
+
+        buffer.Set(0, 0, "B", Style.Default); // underlying cell changes (overlay doesn't cover it)
+        var output = Render(r, buffer);
+
+        Assert.Contains("B", output);          // the cell repaints normally
+        Assert.DoesNotContain("EMIT", output); // overlay NOT re-transmitted
+    }
+
     // ---- Content-keyed diff (per-frame reconstruction without churn) -------------
 
     [Fact]

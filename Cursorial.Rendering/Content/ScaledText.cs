@@ -2,6 +2,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Text;
 
 namespace Cursorial.Rendering.Content;
 
@@ -27,11 +28,8 @@ namespace Cursorial.Rendering.Content;
 /// composes it against whatever's already painted underneath.
 /// </para>
 /// </remarks>
-public sealed class ScaledText : IContent
+public sealed class ScaledText : FragmentContent
 {
-    private int? _lastBufferWidth;
-    private bool? _wouldWrap;
-
     /// <summary>
     /// Construct a scaled-text content. Pass <paramref name="fallbackFont"/> to override the
     /// default sizing → bundled-font mapping.
@@ -58,8 +56,21 @@ public sealed class ScaledText : IContent
     /// <summary>The font used when OSC 66 isn't supported.</summary>
     public IGlyphFont FallbackFont { get; }
 
-    /// <inheritdoc/>
-    public Size Measure(Size availableSpace, OutputCapabilities capabilities)
+    /// <summary>
+    /// An optional brush resolver to use for the primary and fallback placeholder content. Especially useful
+    /// for figlet font fallback if painted with brush resources or gradient brushes.
+    /// </summary>
+    public BrushedTextResolver? BrushResolver { get; set; }
+
+    protected internal override bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, in Style style,
+                                                      OutputCapabilities? capabilities = null)
+    {
+        return base.IsFragmentNeeded(in buffer, availableSpace, style, capabilities) ||
+               ExistingFragment is not SizedTextFragment { Style: var existingStyle } ||
+               existingStyle != style;
+    }
+
+    protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities, out bool canCreateFragment)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -67,13 +78,14 @@ public sealed class ScaledText : IContent
 
         // OSC 66 path: scaled glyphs at Sizing.Scale × text-width × 1 row. Wrap if it wouldn't fit.
         var probeFragment = new SizedTextFragment(Sizing, text, Style.Default);
-        if (probeFragment.IsSupported(capabilities) && FallbackFont is not FigletFont)
+        if (probeFragment.IsSupported(capabilities))
         {
-            int scaledWidth = text.Length * Math.Max((int) Sizing.Scale, 1);
-            if (scaledWidth <= availableSpace.Columns)
-                return probeFragment.GetSize();
+            canCreateFragment = true;
+            return probeFragment.GetSize().ClampTo(availableSpace);
         }
 
+        canCreateFragment = false;
+        
         // Fallback-font path: ask the font what footprint the text wants. If the font's width
         // doesn't fit, monospace fallback kicks in at Paint and the footprint becomes
         // (text.Length, 1).
@@ -84,49 +96,51 @@ public sealed class ScaledText : IContent
         return new Size(Math.Min(text.Length, availableSpace.Columns), 1);
     }
 
-    /// <inheritdoc/>
-    public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
+    {
+        var rtb = new RichTextBuilder(/*style*/);
+
+        var alignment = Sizing.Horizontal switch
+                        {
+                            TextSizingHorizontalAlignment.Right  => TextAlignment.Right,
+                            TextSizingHorizontalAlignment.Center => TextAlignment.Center,
+                            _                                    => TextAlignment.Left
+                        };
+
+        var rt = rtb.Figlet(Text, FallbackFont).Build();
+        var tf = new TextFormatter { Alignment = alignment, Trim = TextTrimming.None };
+        var ft = tf.Format(rt, size.Columns, maxRows: null, capabilities);
+
+        return ft;
+    }
+
+    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
+
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
+        
+        var placeholderSize = DesiredSize ?? bounds.Size;
 
-        if (buffer.Columns != _lastBufferWidth)
-        {
-            _lastBufferWidth = buffer.Columns;
-            _wouldWrap = null;
-        }
+        RealizedPlaceholder ??= BuildPlaceholder(placeholderSize, capabilities, style);
+        
+        if (RealizedPlaceholder is FormattedText ft)
+            return ft.Paint(buffer, new Rect(bounds.Position, placeholderSize), capabilities, BrushResolver);
 
-        var text = Text;
+        if (RealizedPlaceholder is {} p)
+            return p.Paint(buffer, new Rect(bounds.Position, placeholderSize), style, capabilities);
+        
+        return bounds;
+    }
 
-        // Try the OSC 66 path first.
-        var fragment = new SizedTextFragment(Sizing, text, style);
-        if (fragment.IsSupported(capabilities) && FallbackFont is not FigletFont)
-        {
-            _wouldWrap ??= text.Length * Math.Max((int) Sizing.Scale, 1) > bounds.Columns;
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style,
+                                                       OutputCapabilities capabilities)
+    {
+        var fragment = new SizedTextFragment(Sizing, Text, style);
+        if (fragment.IsSupported(capabilities))
+            return fragment;
 
-            if (_wouldWrap is true)
-                goto monospaceFallback;
-
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
-            var size = fragment.GetSize();
-            return new Rect(bounds.Column, bounds.Row,
-                            Math.Min(size.Columns, bounds.Columns),
-                            Math.Min(size.Rows, bounds.Rows));
-        }
-
-        _wouldWrap ??= FallbackFont.Measure(text).Columns > bounds.Columns;
-
-        if (_wouldWrap is true)
-            goto monospaceFallback;
-
-        // Fall back to cell-grid font rendering.
-        var painted = FallbackFont.Paint(buffer, bounds.Column, bounds.Row, text, style);
-        return new Rect(bounds.Column, bounds.Row, painted.Columns, painted.Rows);
-
-    monospaceFallback:
-        // If the text is too wide for the bounds, use monospace fallback.
-        var monoPainted = MonospaceFont.Default.Paint(buffer, bounds.Column, bounds.Row, text, style);
-        return new Rect(bounds.Column, bounds.Row, monoPainted.Columns, monoPainted.Rows);
+        return null;
     }
 
     private static IGlyphFont PickDefaultFallback(TextSizing sizing, bool isMultiLine = false)

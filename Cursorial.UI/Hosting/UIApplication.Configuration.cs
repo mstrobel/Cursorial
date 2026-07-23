@@ -16,7 +16,6 @@ namespace Cursorial.UI;
 /// </summary>
 public sealed partial class UIApplication
 {
-    private bool _emojiAvailable = true; // FB-15: opt-OUT — default present (maintainer decision, 2026-07-04)
     private CapabilityOverrides _capabilityOverrides = CapabilityOverrides.None;
     private UserOptionsStore? _userOptions;
 
@@ -34,17 +33,17 @@ public sealed partial class UIApplication
     /// </summary>
     public bool EmojiAvailable
     {
-        get => _emojiAvailable && ActualThemeVariant is { Tier: > ColorDepth.NoColor };
+        get => field && ActualThemeVariant is { Tier: > ColorDepth.NoColor };
         set
         {
             Dispatcher.VerifyAccess();
-            if (_emojiAvailable == value)
+            if (field == value)
                 return;
-            _emojiAvailable = value;
+            field = value;
             StyleEngineInternal.RestampCapabilityClasses();
             EmojiAvailableChanged?.Invoke(this, EventArgs.Empty);
         }
-    }
+    } = true; // FB-15: opt-OUT — default present (maintainer decision, 2026-07-04)
 
     /// <summary>Raised on the UI thread when <see cref="EmojiAvailable"/> flips (so capability-tiered visuals
     /// such as <see cref="Controls.Icon"/> can re-resolve their rendered tier live).</summary>
@@ -66,12 +65,15 @@ public sealed partial class UIApplication
             Dispatcher.VerifyAccess();
             ArgumentNullException.ThrowIfNull(value);
 
-            if (_capabilityOverrides == value)
-                return;
-
-            _capabilityOverrides = value;
-            StyleEngineInternal.RestampCapabilityClasses();
-            CapabilityOverridesChanged?.Invoke(this, EventArgs.Empty);
+            if (_capabilityOverrides != value)
+            {
+                _capabilityOverrides = value;
+                StyleEngineInternal.RestampCapabilityClasses();
+                CapabilityOverridesChanged?.Invoke(this, EventArgs.Empty);
+            }
+            
+            if (ShowUserOptionsCommand is ShowUserOptionsCommandImpl command)
+                command.RaiseCanExecuteChanged();
         }
     }
 
@@ -127,6 +129,9 @@ public sealed partial class UIApplication
         {
             Dispatcher.Post(() => _ = RunFirstRunWizardAsync());
         }
+        
+        if (ShowUserOptionsCommand is ShowUserOptionsCommandImpl command)
+            command.RaiseCanExecuteChanged();
     }
 
     private async Task RunFirstRunWizardAsync()
@@ -196,7 +201,7 @@ public sealed partial class UIApplication
     /// The framework binding behind the options-dialog chord: opens the dialog, single-instance
     /// (a second chord while open is a no-op — the existing task is returned, not a new dialog).
     /// </summary>
-    private sealed class ShowUserOptionsCommand(UIApplication application) : System.Windows.Input.ICommand
+    private sealed class ShowUserOptionsCommandImpl(UIApplication application) : System.Windows.Input.ICommand
     {
         private readonly UIApplication _application =
             application ?? throw new ArgumentNullException(nameof(application));
@@ -207,7 +212,8 @@ public sealed partial class UIApplication
                _application.Dispatcher.CheckAccess() &&
                // Never over the modal first-run wizard (two concurrent sessions corrupt the store;
                // the wizard root carries no chord, but a binding on an inner app element might).
-               _application._windowManager?.Windows.Any(static w => w is FirstRunWizard) is not true;
+               (parameter is "SkipFirstRunWizardCheck" ||
+                _application._windowManager?.Windows.Any(static w => w is FirstRunWizard) is not true);
 
         public void Execute(object? parameter)
         {
@@ -219,10 +225,9 @@ public sealed partial class UIApplication
             _ = _application.ShowUserOptionsDialogAsync();
         }
 
-        event EventHandler? System.Windows.Input.ICommand.CanExecuteChanged
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler? CanExecuteChanged;
+        
+        public void RaiseCanExecuteChanged()
+            => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }

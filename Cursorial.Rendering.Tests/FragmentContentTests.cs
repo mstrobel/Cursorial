@@ -60,7 +60,7 @@ public class FragmentContentTests
             return new StubFragment(bounds.Size);
         }
 
-        protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities)
+        protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
             => throw new NotSupportedException("Placeholder not exercised by this test.");
     }
 

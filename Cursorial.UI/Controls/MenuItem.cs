@@ -50,11 +50,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Whether the item shows a check column and toggles <see cref="IsChecked"/> on click.</summary>
     public static readonly StyledProperty<bool> IsCheckableProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable), changed: OnCheckStateChanged);
+        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable), changed: OnIsCheckableChanged);
 
     /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it).</summary>
     public static readonly StyledProperty<bool> IsCheckedProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), changed: OnCheckStateChanged);
+        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), changed: OnIsCheckedChanged);
 
     /// <summary>Whether this item's submenu is open (<c>:open</c>; two-way with the submenu <see cref="Popup"/>).</summary>
     public static readonly DirectProperty<MenuItem, bool> IsSubmenuOpenProperty =
@@ -86,6 +86,18 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     /// <summary>The bubbling event raised when a leaf item is invoked.</summary>
     public static readonly RoutedEvent<ClickEventArgs> ClickEvent =
         RoutedEvent<ClickEventArgs>.Register(nameof(Click), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised whenever the menu item is checked (<see cref="IsChecked"/> ⇒ true).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> CheckedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Checked), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised whenever the menu item is unchecked (<see cref="IsChecked"/> ⇒ false).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> UncheckedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Unchecked), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The direct event raised whenever the value of <see cref="IsChecked"/> changes.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Bubble, typeof(MenuItem));
 
     private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(250);
 
@@ -121,6 +133,27 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public MenuItem()
     {
         Focusable = true;
+    }
+
+    /// <summary>CLR sugar over <see cref="CheckedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Checked
+    {
+        add => AddHandler(CheckedEvent, value!);
+        remove => RemoveHandler(CheckedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="UncheckedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Unchecked
+    {
+        add => AddHandler(UncheckedEvent, value!);
+        remove => RemoveHandler(UncheckedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="IsCheckedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsCheckedChanged
+    {
+        add => AddHandler(IsCheckedChangedEvent, value!);
+        remove => RemoveHandler(IsCheckedChangedEvent, value!);
     }
 
     /// <inheritdoc/>
@@ -211,8 +244,8 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         UpdateHasItems();
         UpdateIsTopLevel();
 
-        // This item may bring the popup's first icon (or join an iconed group) — refresh the group,
-        // and remember the owner: detach must refresh the group this item LEAVES.
+        // This item may bring the popup's first icon (or join a group of items w/ at least one icon group) —
+        // refresh the group, and remember the owner: detach must refresh the group this item LEAVES.
         _iconTrayOwner = OwnerItemsControl;
         RefreshIconTrayGroup(_iconTrayOwner);
     }
@@ -549,7 +582,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     // A genuine user dismiss — Escape on a focused submenu item, or a click-away — collapses the WHOLE menu chain and
     // returns focus (decision ③). A Programmatic close (the one CloseMenuChain itself issues via SetSubmenuOpen(false),
-    // plus sibling-switch / left-arrow ascent / detach) takes the idempotent one-level path — the re-entrancy fence.
+    // plus sibling-switch / left-arrow ascent / detach) takes the idempotent one-level path — the reentrancy fence.
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
     {
         if (e.Reason is PopupCloseReason.EscapeKey or PopupCloseReason.LightDismiss)
@@ -817,7 +850,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         item.RefreshIconTrayGroup();
     }
 
-    private static void OnCheckStateChanged(UIObject sender, bool oldValue, bool newValue)
+    private static void OnIsCheckableChanged(UIObject sender, bool oldValue, bool newValue)
     {
         if (sender is not MenuItem item)
             return;
@@ -826,6 +859,32 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
         item.RefreshIconTrayGroup();
+    }
+
+    private static void OnIsCheckedChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        item.UpdateIconSite();
+
+        // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
+        item.RefreshIconTrayGroup();
+
+        // Control author gets notified before the event(s) go out.
+        item.OnIsCheckedChangedCore(oldValue, newValue);
+
+        var routedEvent = newValue ? CheckedEvent : UncheckedEvent;
+        var args = item.RentEvent(routedEvent);
+
+        item.RaiseEvent(args);
+        args = item.RentEvent(IsCheckedChangedEvent);
+        item.RaiseEvent(args);
+    }
+
+    /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event.</summary>
+    private protected virtual void OnIsCheckedChangedCore(bool? oldValue, bool? newValue)
+    {
     }
 
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)

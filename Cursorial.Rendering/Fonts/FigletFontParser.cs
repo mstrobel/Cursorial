@@ -2,6 +2,8 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using Cursorial.Rendering.Content;
+
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
@@ -46,15 +48,36 @@ public static partial class FigletFontParser
     ];
 
     /// <summary>Parse a FIGlet font from a file path. The font's name is the file stem.</summary>
-    public static FigletFont LoadFromFile(string path)
+    public static FigletFont LoadFromFile(string path, string? nameOverride = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         using var stream = File.OpenRead(path);
-        return Load(stream, Path.GetFileNameWithoutExtension(path));
+
+        if (Uri.TryCreate(path, UriKind.RelativeOrAbsolute, out Uri? uri))
+            return LoadFromUri(uri, nameOverride);
+
+        return Load(stream, Path.GetFileNameWithoutExtension(path), uriSource: null, nameOverride);
+    }
+
+    /// <summary>Parse a FIGlet font from an embedded resource or file URI. The font's name is the file stem.</summary>
+    /// <exception cref="InvalidOperationException">Thrown if the font could not be loaded from the given Uri.</exception>
+    public static FigletFont LoadFromUri(Uri uriSource, string? nameOverride = null)
+    {
+        ArgumentNullException.ThrowIfNull(uriSource);
+
+        if (ResourceLoader.Default.TryOpen(uriSource) is {} stream)
+        {
+            var path = uriSource.GetComponents(UriComponents.Path, UriFormat.Unescaped);
+            var name = Path.GetFileNameWithoutExtension(path);
+
+            return Load(stream, name, uriSource, nameOverride);
+        }
+
+        throw new InvalidOperationException($"Could not open resource from uri: <{uriSource}>");
     }
 
     /// <summary>Parse a FIGlet font from a stream. Accepts both raw and ZIP-wrapped <c>.flf</c>.</summary>
-    public static FigletFont Load(Stream stream, string name)
+    public static FigletFont Load(Stream stream, string name, Uri? uriSource = null, string? nameOverride = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(name);
@@ -155,11 +178,11 @@ public static partial class FigletFontParser
             glyphs[extCp] = extGlyph;
         }
 
-        return new FigletFont(name, hardblank, height, layout, glyphs);
+        return new FigletFont(nameOverride ?? name, hardblank, height, layout, glyphs, uriSource);
     }
 
-    private static FigletGlyph ParseGlyphBody(
-        uint codepoint, string[] lines, ref int cursor, int height, char hardblank)
+    private static FigletGlyph ParseGlyphBody(uint codepoint, string[] lines, ref int cursor, int height,
+                                              char hardblank)
     {
         var body = new string[height];
 

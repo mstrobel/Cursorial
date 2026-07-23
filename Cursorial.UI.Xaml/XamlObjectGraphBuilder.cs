@@ -1,6 +1,7 @@
 using System.Collections;
 using System.ComponentModel;
 
+using Cursorial.Markup;
 using Cursorial.UI.Controls;
 
 // ReSharper disable UnusedParameter.Local
@@ -1256,7 +1257,7 @@ internal sealed class XamlObjectGraphBuilder
             // goes through XamlUriUtil so the authority keeps its ORIGINAL casing (System.Uri
             // lowercases hosts; ours name assemblies).
             if (!uri.IsAbsoluteUri && (_source ?? _doc.SourceUri) is { IsAbsoluteUri: true } baseUri)
-                uri = XamlUriUtil.ResolveRelative(baseUri, uri.OriginalString);
+                uri = CursorialUri.ResolveRelative(baseUri, uri.OriginalString);
 
             dict.Source = uri;
         }

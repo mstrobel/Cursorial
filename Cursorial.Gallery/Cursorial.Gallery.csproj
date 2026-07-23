@@ -36,6 +36,10 @@
     <ItemGroup>
       <CursorialXaml Include="**/*.xaml" />
     </ItemGroup>
+  
+    <ItemGroup>
+      <EmbeddedResource Include="../cursorial_banner.png" LogicalName="cursorial_banner.png" />
+    </ItemGroup>
 
     <ItemGroup>
         <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->

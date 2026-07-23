@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
+using Cursorial.Gallery.Pages;
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Dialogs;
@@ -22,6 +23,7 @@ public sealed class ShellViewModel : ViewModelBase
         // The ScrollViewer page is first — scrolling is the framework's biggest bug surface (project memory).
         Pages =
         [
+            new WelcomeViewModel(),
             new ButtonsViewModel(),
             new DataGridViewModel(),
             new DateControlsViewModel(),

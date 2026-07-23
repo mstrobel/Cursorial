@@ -42,7 +42,7 @@ public abstract class FragmentContent : IContent
 
     /// <summary>
     /// The available space the cached <see cref="ExistingFragment"/> was built for. A fragment is
-    /// re-created when the available space changes (e.g. a layout-driven resize) so its content
+    /// re-created when the available space changes (e.g., a layout-driven resize) so its content
     /// is re-measured against the new bounds; an unchanged size lets it be reused as-is.
     /// </summary>
     private Size? _fragmentAvailableSpace;
@@ -55,13 +55,14 @@ public abstract class FragmentContent : IContent
     /// </summary>
     /// <param name="buffer">The buffer that holds rendering content and fragments.</param>
     /// <param name="availableSpace">The available space for rendering defined in rows and columns.</param>
+    /// <param name="style">The default style in use at the time of painting.</param>
     /// <param name="capabilities">Optional output capabilities to consider during the decision-making process.</param>
     /// <returns>
     /// A boolean value indicating whether a new fragment is required.
     /// Returns true if a fragment is needed, otherwise false.
     /// </returns>
     // ReSharper disable once VirtualMemberNeverOverridden.Global
-    protected internal virtual bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, OutputCapabilities? capabilities = null)
+    protected internal virtual bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, in Style style, OutputCapabilities? capabilities = null)
     {
         // A (re)create is needed when we don't already have a usable fragment registered in the
         // buffer, OR when the available space differs from what the cached fragment was built for.
@@ -74,7 +75,7 @@ public abstract class FragmentContent : IContent
         // AddFragment) and removed (Paint) under the *fragment's* Key — so the lookup never found the
         // entry and always reported "missing". Any one of these drives a per-frame RemoveFragment,
         // which marks the footprint dirty (CellBuffer.RemoveFragment), silently flipping the renderer
-        // into dirty-region-only mode and dropping unrelated changed cells (e.g. a ticking clock) —
+        // into dirty-region-only mode and dropping unrelated changed cells (e.g., a ticking clock) —
         // and churns a fresh Kitty image ID per frame. The key now matches the registration key, and
         // the size test is an equality check against the cached available space (the real recreation
         // trigger: a layout/resize).
@@ -94,7 +95,7 @@ public abstract class FragmentContent : IContent
 
         if (canCreateFragment is false)
         {
-            RealizedPlaceholder ??= BuildPlaceholder(availableSpace, capabilities);
+            RealizedPlaceholder ??= BuildPlaceholder(availableSpace, capabilities, Style.Default);
         
             if (RealizedPlaceholder is {} placeholder)
                 size = placeholder.Measure(availableSpace, capabilities);
@@ -131,7 +132,7 @@ public abstract class FragmentContent : IContent
 
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
-        if (IsFragmentNeeded(buffer, bounds.Size, capabilities) is false)
+        if (IsFragmentNeeded(buffer, bounds.Size, style, capabilities) is false)
         {
             if (ExistingFragment?.GetSize() is {} actualSize)
                 return bounds.WithSize(actualSize);
@@ -173,7 +174,7 @@ public abstract class FragmentContent : IContent
         return actualBounds;
     }
 
-    protected abstract IContent BuildPlaceholder(Size size, OutputCapabilities capabilities);
+    protected abstract IContent? BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style);
 
     // ReSharper disable UnusedParameter.Global
     /// <summary>
@@ -199,7 +200,7 @@ public abstract class FragmentContent : IContent
         
         var placeholderSize = DesiredSize ?? bounds.Size;
 
-        RealizedPlaceholder ??= BuildPlaceholder(placeholderSize, capabilities);
+        RealizedPlaceholder ??= BuildPlaceholder(placeholderSize, capabilities, style);
         
         if (RealizedPlaceholder is {} placeholder)
             return placeholder.Paint(buffer, new Rect(bounds.Position, placeholderSize), style, capabilities);

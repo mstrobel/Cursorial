@@ -34,7 +34,7 @@ public class ToggleButton : ButtonBase
 
     /// <summary>The direct event raised whenever the value of <see cref="IsChecked"/> changes.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
-        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Direct, typeof(ToggleButton));
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Bubble, typeof(ToggleButton));
 
     static ToggleButton()
     {
@@ -113,15 +113,13 @@ public class ToggleButton : ButtonBase
 
         toggle.OnIsCheckedChangedCore(oldValue, newValue);
 
-        if (toggle.IsAttachedToTree)
-        {
-            var args = toggle.RentEvent(routedEvent);
-            toggle.RaiseEvent(args);
-            args = toggle.RentEvent(IsCheckedChangedEvent);
-            toggle.RaiseEvent(args);
-            
-            toggle.SyncCheckedWithCommandParameter();
-        }
+        var args = toggle.RentEvent(routedEvent);
+
+        toggle.RaiseEvent(args);
+        args = toggle.RentEvent(IsCheckedChangedEvent);
+        toggle.RaiseEvent(args);
+
+        toggle.SyncCheckedWithCommandParameter();
     }
 
     /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event (RadioButton group uncheck rides this).</summary>

@@ -1,4 +1,6 @@
-namespace Cursorial.UI.Xaml;
+using System;
+
+namespace Cursorial.Markup;
 
 /// <summary>
 /// URI plumbing for the <c>cursorial://</c>/<c>embedded://</c> resource scheme, where the
@@ -7,8 +9,20 @@ namespace Cursorial.UI.Xaml;
 /// name on case-sensitive file systems), so composition here re-applies the base URI's original
 /// authority casing to the result.
 /// </summary>
-internal static class XamlUriUtil
+public static class CursorialUri
 {
+    public const string EmbeddedScheme = "embedded";
+    public const string CursorialScheme = "cursorial";
+
+    /// <summary>
+    /// Determines whether <paramref name="uri"/> is a <c>cursorial://</c> or <c>embedded://</c> URI.
+    /// </summary>
+    /// <param name="uri">The URI to test.</param>
+    /// <returns>
+    /// <c>true</c> if the URI is a <c>cursorial://</c> or <c>embedded://</c> URI; otherwise, <c>false</c>.
+    /// </returns>
+    public static bool IsCursorialUri(Uri? uri) => uri?.Scheme is CursorialScheme or EmbeddedScheme;
+
     /// <summary>Resolves <paramref name="relative"/> against <paramref name="baseUri"/>, preserving the authority's original casing.</summary>
     public static Uri ResolveRelative(Uri baseUri, string relative)
     {
@@ -16,7 +30,7 @@ internal static class XamlUriUtil
         if (!composed.IsAbsoluteUri)
             return composed;
 
-        var original = OriginalAuthority(baseUri);
+        var original = GetOriginalAuthority(baseUri);
         if (original is null || string.Equals(original, composed.Host, StringComparison.Ordinal))
             return composed;
 
@@ -26,7 +40,7 @@ internal static class XamlUriUtil
     }
 
     /// <summary>The authority exactly as written in the URI's original string, or null when unavailable.</summary>
-    public static string? OriginalAuthority(Uri uri)
+    public static string? GetOriginalAuthority(Uri uri)
     {
         var s = uri.OriginalString;
         var schemeEnd = s.IndexOf("://", StringComparison.Ordinal);

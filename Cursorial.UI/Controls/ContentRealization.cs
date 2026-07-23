@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
@@ -57,44 +58,66 @@ internal static class ContentRealization
         switch (content)
         {
             case null:
+            {
+                // Null content resolves as null.
                 return null;
+            }
 
             // ③ a UIElement passes through: it is a logical child of the templated parent (so it
             // inherits the host's DataContext) and a visual child of the presenter. When the presenter
             // is a template part, the templated parent owns the logical adoption (the ContentControl);
             // a free-standing presenter adopts it itself.
             case UIElement element:
+            {
                 AdoptElementContent(host, ForwardTextAttributeAxes(host, element));
                 // Icon-as-content gets the Inverse cue (§2.1), but the forward is a framework binding on
                 // BORROWED content — the presenter must own its lifecycle (it is torn down on unhost, else
                 // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the install is
                 // driven by ContentPresenter.RebuildChild, not here.
                 return element;
+            }
 
             // ④ an AccessText value always becomes an AccessTextPresenter, regardless of RecognizesAccessKey.
             case AccessText accessText:
-                return ForwardTextAttributeAxes(host, new AccessTextPresenter(accessText));
+            {
+                var atp = new AccessTextPresenter(accessText);
+                return ForwardTextAttributeAxes(host, atp);
+            }
 
             // ④ extension: a plain string under RecognizesAccessKey folds to an AccessText (doc §12.5). The access
             // key is parsed from the RAW content — the same text ContentControl registers with the AccessKeyManager
             // — so the underlined mnemonic always matches the active gesture (a ContentStringFormat never injects
             // or moves a mnemonic, and never disagrees with the registration).
             case string s when recognizesAccessKey:
-                return ForwardTextAttributeAxes(host, new AccessTextPresenter(AccessText.Parse(s)));
+            {
+                var atp = new AccessTextPresenter(AccessText.Parse(s));
+                return ForwardTextAttributeAxes(host, atp);
+            }
 
-            // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
-            // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
-            case string s:
-                var stb = recognizesMarkup
-                              ? new TextBlock { Markup = SafeFormat(host, stringFormat, s) }
-                              : new TextBlock { Text = SafeFormat(host, stringFormat, s) };
-                stb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
+            // ⑤ RichText content renders as RichTextPresenter.
+            case RichText rt:
+            {
+                var rtp = new RichTextPresenter { Source = rt };
+                return ForwardTextAttributeAxes(host, rtp);
+            }
+
+            // ⑥ fallback: any other content (incl. a plain string) when `recognizesMarkup` is true renders
+            // as TextBlock { Markup = SafeFormat(content) } with CurrentCulture (CD22), through the string format
+            // if provided.
+            case var o when recognizesMarkup:
+            {
+                var stb = new TextBlock { Markup = SafeFormat(host, stringFormat, o) };
                 return ForwardTextAttributeAxes(host, stb);
+            }
 
+            // ⑦ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
+            // as TextBlock { Text = SafeFormat(content) } with CurrentCulture (CD22), through the string format
+            // if provided.
             default:
+            {
                 var dtb = new TextBlock(SafeFormat(host, stringFormat, content));
-                dtb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
                 return ForwardTextAttributeAxes(host, dtb);
+            }
         }
     }
 
@@ -121,6 +144,9 @@ internal static class ContentRealization
                 if (host.ForwardTextInverse || axis != TextElement.InverseProperty)
                     leaf.SetBinding(axis, new Binding(axis) { Source = source });
             }
+            
+            leaf.SetBinding(TextBlock.TextWrappingProperty, 
+                            new Binding(TextBlock.TextWrappingProperty) { Source = source });
         }
 
         return leaf;

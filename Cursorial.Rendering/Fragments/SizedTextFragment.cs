@@ -71,13 +71,20 @@ public sealed class SizedTextFragment : IBufferFragment
     public ReadOnlySpan<string> Lines => _lines;
 
     /// <inheritdoc/>
+    public Style? StyleOverride => Style;
+
+    /// <inheritdoc/>
+    public FragmentLayer Layer => FragmentLayer.Cells;
+
+    /// <inheritdoc/>
     public Size GetSize()
     {
         // Cell footprint per the spec: each cluster occupies a (Scale × Width) block. Scale=0
         // is invalid; treat as 1. Width=0 ("auto") falls back to the cluster's natural width
         // (1 for narrow, 2 for wide). For multi-line text, the bounding rectangle is the
         // widest line by the number of lines, each scale-rows tall.
-        int scale = Sizing.Scale == 0 ? 1 : Sizing.Scale;
+        var scale = ExtractScale(out var numerator, out var denominator);
+
         int maxLineColumns = 0;
 
         foreach (var line in _lines)
@@ -92,38 +99,34 @@ public sealed class SizedTextFragment : IBufferFragment
             {
                 // Fixed width per cluster — count clusters via StringInfo.
                 int clusters = GraphemeWidth.ClusterCount(line);
-                lineColumns = clusters * Sizing.Width * scale;
+                lineColumns = clusters * Sizing.Width * scale * numerator / denominator;
             }
 
             if (lineColumns > maxLineColumns)
                 maxLineColumns = lineColumns;
         }
 
-        return new Size(maxLineColumns, _lines.Length * scale);
+        return new Size(maxLineColumns, _lines.Length * scale * numerator / denominator);
+    }
+
+    private int ExtractScale(out int numerator, out int denominator)
+    {
+        int scale = Sizing.Scale == 0 ? 1 : Sizing.Scale;
+
+        numerator = 1;
+        denominator = 1;
+
+        if (Sizing is { Numerator: var n and > 0, Denominator: var d and > 0 })
+        {
+            numerator = n;
+            denominator = d;
+        }
+
+        return scale;
     }
 
     /// <inheritdoc/>
-    public bool IsSupported(OutputCapabilities capabilities)
-    {
-        ArgumentNullException.ThrowIfNull(capabilities);
-
-        // Scale > 1 requires the s-key; Width > 0 requires the w-key. A fragment whose sizing
-        // is fully default would emit an empty metadata block, which any terminal will ignore —
-        // but a no-op fragment isn't useful, so we still report unsupported in that case so
-        // higher-level fallback fires.
-        bool needsScale = Sizing.Scale != 0 && Sizing.Scale != 1 ||
-                          Sizing.Numerator != 0 ||
-                          Sizing.Denominator != 0;
-
-        bool needsWidth = Sizing.Width != 0;
-
-        if (needsWidth && !capabilities.TextSizing.Width) return false;
-        if (needsScale && !capabilities.TextSizing.Scale) return false;
-
-        // If neither sub-feature is exercised, the fragment renders identically to plain text, and
-        // a regular MonospaceFont would be the better choice.
-        return needsScale || needsWidth;
-    }
+    public bool IsSupported(OutputCapabilities capabilities) => Sizing.IsSupported(capabilities);
 
     /// <inheritdoc/>
     public void Emit(int column, int row, IBufferWriter<byte> output, OutputCapabilities capabilities)
@@ -135,10 +138,10 @@ public sealed class SizedTextFragment : IBufferFragment
         // because the renderer's bracketing emits SGR-reset after our DECRC; there's no
         // continuity to preserve. One emission covers all lines — SGR is terminal-global and
         // persists across the cursor moves between lines.
-        if (Style != Style.Default)
-            SgrEncoder.WriteAbsolute(output, Style);
+        // if (Style != Style.Default)
+        //     SgrEncoder.WriteAbsolute(output, Style);
 
-        int scale = Sizing.Scale == 0 ? 1 : Sizing.Scale;
+        var scale = ExtractScale(out var numerator, out var denominator);
 
         for (int i = 0; i < _lines.Length; i++)
         {
@@ -148,7 +151,7 @@ public sealed class SizedTextFragment : IBufferFragment
             // line breaks within a single OSC 66 payload, so we emit one OSC 66 per line and
             // CUP explicitly between them.
             if (i > 0)
-                CursorWriter.WriteMoveTo(output, column, row + i * scale);
+                CursorWriter.WriteMoveTo(output, column, row + i * scale * numerator / denominator);
 
             TextSizingWriter.WriteSplit(output, Sizing, _lines[i]);
         }

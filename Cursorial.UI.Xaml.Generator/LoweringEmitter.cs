@@ -436,23 +436,34 @@ internal static class LoweringEmitter
         return $"global::Cursorial.UI.ResourceScopes.ResolveStatic({keyExpr}{AmbientDictsArgs(c)})";
     }
 
-    // True when a dictionary's entries contain a FORWARD same-dict {StaticResource}: an entry references, by
-    // {StaticResource}, a sibling key defined LATER in document order. The eager var build can't reproduce that
-    // (the sibling var isn't declared yet); a deferred-slot dictionary can (all slots exist before any realizes).
-    // Conservative both ways — a missed reference (a nested Converter/Binding key) just keeps the dict eager (the
-    // forward ref fences, as before); an over-detection defers a dict that a backward ref would have built fine
-    // (still correct, only more codegen). Only DIRECT {StaticResource} extension members are scanned.
-    private static bool EntriesHaveForwardReference(Context c, List<int> entryIndices)
+    // True when a dictionary must DEFER (each keyed-object entry as a lazy slot resolving by value at access time)
+    // rather than build eagerly. Two triggers:
+    //  (a) a FORWARD same-dict {StaticResource} — an entry references, by {StaticResource}, a sibling key defined
+    //      LATER in document order; the eager var build can't reproduce that (the sibling var isn't declared yet),
+    //      a deferred-slot dictionary can (all slots exist before any realizes).
+    //  (b) a NON-CONST {x:Static} key — a member access whose VALUE isn't known at generation time (only a const is
+    //      canonicalized to its literal). Such a key can't be matched against a plain-string {StaticResource} at
+    //      compile time, so a CROSS-FORM forward reference to it (`{x:Static Foo.Bar}` defined, referenced by the
+    //      plain string of its value, sibling-later) goes undetected by (a). Defer so it resolves by VALUE at
+    //      runtime — dict.TryGetValue(Foo.Bar) — exactly as the loader does, no generation-time value needed.
+    // Conservative both ways: a missed forward reference (a nested Converter/Binding key) just keeps the dict eager
+    // (that ref fences, as before); an over-detection defers a dict a backward ref would have built fine (still
+    // correct, only more codegen). Only DIRECT {StaticResource} extension members are scanned for (a).
+    private static bool EntriesNeedDeferral(Context c, List<int> entryIndices)
     {
         var keyPosition = new Dictionary<string, int>(System.StringComparer.Ordinal);
         for (int i = 0; i < entryIndices.Count; i++)
             if (ResourceKeyExpr(c, entryIndices[i], canonical: true) is { } key)
+            {
+                if (key.StartsWith("global::", System.StringComparison.Ordinal))
+                    return true; // (b) a non-const {x:Static} key — cross-form matching is impossible, defer to be safe
                 keyPosition[key] = i;
+            }
 
         for (int i = 0; i < entryIndices.Count; i++)
             foreach (var refKey in StaticResourceRefsInSubtree(c, entryIndices[i]))
                 if (keyPosition.TryGetValue(refKey, out var pos) && pos > i)
-                    return true; // references a sibling defined later → forward
+                    return true; // (a) references a sibling defined later → forward
 
         return false;
     }
@@ -508,7 +519,7 @@ internal static class LoweringEmitter
         // Defer when this run of entries has a forward reference OR the dictionary is ALREADY deferring (a nested
         // <ResourceDictionary> folding into a host that defers — its entries land in the same, already-deferred,
         // dict, so they must be lazy slots too, not eager Adds that could resolve a host key before its slot is set).
-        var defer = scope.DeferredKeys is not null || EntriesHaveForwardReference(c, entries);
+        var defer = scope.DeferredKeys is not null || EntriesNeedDeferral(c, entries);
         if (defer)
         {
             scope.DeferredKeys ??= new(System.StringComparer.Ordinal);

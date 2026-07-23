@@ -655,6 +655,40 @@ namespace GenApp { public partial class RefInDeferView : StackPanel { public Ref
         Assert.Same(view.Children[0], label.Target); // the x:Reference resolved to the named Button
     }
 
+    [Fact] // A resource key defined by a NON-CONST {x:Static} member (value unknown at generation time) and
+           // referenced CROSS-FORM (a plain string of that value) as a FORWARD reference resolves via deferral: the
+           // dict defers because a non-const {x:Static} key can't be canonically matched, so resolution happens by
+           // VALUE at runtime (dict.TryGetValue), exactly as the loader does — no generation-time value needed.
+    public void Lowered_StaticResource_NonConstXStaticKey_CrossFormForward_ResolvesViaDeferral()
+    {
+        const string helper = @"namespace GenApp { public static class RK { public static string Fg { get; } = ""theme.fg""; } }";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"clr-namespace:GenApp;assembly=LoweringHost\" x:Class=\"GenApp.NcView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Themed\" Selector=\":is(Button)\">" +
+                "<Setter Property=\"TextElement.Foreground\" Value=\"{StaticResource theme.fg}\"/>" + // plain-string, cross-form + forward
+              "</Style>" +
+              "<SolidColorBrush x:Key=\"{x:Static g:RK.Fg}\" Color=\"Red\"/>" + // non-const {x:Static} key (value ""theme.fg""), defined later
+            "</StackPanel.Resources>" +
+            "<Button x:Name=\"Ok\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class NcView : StackPanel { public NcView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(helper), CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.Contains(".SetDeferred(", lowered); // deferred because the non-const {x:Static} key can't be matched at compile time
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.NcView")!)!;
+        var themed = Assert.IsType<Cursorial.UI.Style>(view.Resources["Themed"]);
+        Assert.Same(view.Resources["theme.fg"], Assert.Single(themed.Setters).Value); // resolved cross-form + forward, by runtime value
+    }
+
     [Fact] // Documented eager-resolution divergence (consistent with BasedOn): a Setter.Value external
            // {StaticResource} that resolves NOWHERE throws at construction, where the loader — which defers
            // dictionary-entry realization — loads the (never-realized) document without error. Fail-CLOSED

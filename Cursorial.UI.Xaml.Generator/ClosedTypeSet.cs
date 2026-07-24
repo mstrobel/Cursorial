@@ -242,7 +242,7 @@ internal static class ClosedTypeSet
     /// xml namespace (a prefixed path binds through the document's <c>xmlns:</c> declarations — P1C) and
     /// resolved to a baked <c>global::FullType.Member</c> C# expression for the generated provider's
     /// <c>TryResolveStatic</c> switch. Keys are (namespace, prefix-free path) pairs, matching what the loader
-    /// hands <c>IXamlQualifiedStaticResolver</c> — the same prefix bound to different namespaces in two
+    /// hands <c>IXamlStaticResolver</c> — the same prefix bound to different namespaces in two
     /// documents bakes two distinct cases. Unresolvable paths are dropped (the runtime then misses
     /// identically — no drift). The single source both <c>XamlSourceGenerator.EmitProvider</c> and the
     /// dual-run test use, so they can't diverge.

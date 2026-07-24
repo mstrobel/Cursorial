@@ -42,7 +42,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>The parameter passed to <see cref="Command"/>.</summary>
     public static readonly StyledProperty<object?> CommandParameterProperty =
-        UIProperty.Register<MenuItem, object?>(nameof(CommandParameter), changed: OnCommandParameterChanged);
+        UIProperty.Register<MenuItem, object?>(nameof(CommandParameter), coerce: CoerceCommandParameter, changed: OnCommandParameterChanged);
 
     /// <summary>The display-only gesture hint (e.g. "Ctrl+S") shown right-aligned, faint. Not a live binding.</summary>
     public static readonly StyledProperty<string?> InputGestureTextProperty =
@@ -52,9 +52,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public static readonly StyledProperty<bool> IsCheckableProperty =
         UIProperty.Register<MenuItem, bool>(nameof(IsCheckable), changed: OnIsCheckableChanged);
 
-    /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it).</summary>
+    /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it). While checkable and
+    /// bound to a command whose <see cref="CommandParameter"/> is an <see cref="ICheckableCommandParameter"/>, its
+    /// effective value is coerced from that parameter (mirrors <see cref="ToggleButton"/>).</summary>
     public static readonly StyledProperty<bool> IsCheckedProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), changed: OnIsCheckedChanged);
+        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), coerce: CoerceIsChecked, changed: OnIsCheckedChanged);
 
     /// <summary>Whether this item's submenu is open (<c>:open</c>; two-way with the submenu <see cref="Popup"/>).</summary>
     public static readonly DirectProperty<MenuItem, bool> IsSubmenuOpenProperty =
@@ -262,6 +264,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         base.OnAttachedToTree(in e);
         SubscribeContainersChanged();
         SubscribeCanExecute(); // CD25: a live CanExecuteChanged must re-gate IsEnabledCore (matches ButtonBase)
+        SyncCheckedWithCommandParameter(); // reflect a checkable command parameter's checked state on attach (ToggleButton parity)
         RegisterAccessKey();   // register the Header mnemonic with the AccessKeyManager (doc §12.5)
         UpdateHasItems();
         UpdateIsTopLevel();
@@ -801,7 +804,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         }
     }
 
-    private void OnCanExecuteChanged(object? sender, EventArgs e) => InvalidateIsEnabledCore();
+    private void OnCanExecuteChanged(object? sender, EventArgs e)
+    {
+        InvalidateIsEnabledCore();
+        OnCommandStateChanged(); // CanExecuteChanged is also the re-query signal for a Handled checkable parameter
+    }
 
     // ── access keys (doc §12.5; mnemonic source is Header, not Content) ────────────────────────────────
 
@@ -866,6 +873,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             @new.CanExecuteChanged += item.OnCanExecuteChanged;
 
         item.InvalidateIsEnabledCore();
+        item.OnCommandStateChanged();
     }
 
     private static void OnIconChanged(UIObject sender, object? oldValue, object? newValue)
@@ -884,9 +892,15 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (sender is not MenuItem item)
             return;
 
+        // Checkability gates the whole checkable-command wiring: (un)install the default parameter and (re)sync the
+        // checked state as IsCheckable flips (the extra care vs ToggleButton, which is always checkable). A resulting
+        // IsChecked change refreshes the icon/tray via OnIsCheckedChanged; the explicit refresh below still covers a
+        // flip that leaves IsChecked unchanged (the check column appears/disappears with checkability itself).
+        item.OnCommandStateChanged();
+
         item.UpdateIconSite();
 
-        // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
+        // An icon (or the checkmark) appearing on / leaving ANY item flips the whole popup's tray — refresh the group.
         item.RefreshIconTrayGroup();
     }
 
@@ -918,8 +932,106 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)
     {
-        if (sender is MenuItem item)
-            item.InvalidateIsEnabledCore(); // the gate reads CanExecute(CommandParameter)
+        if (sender is not MenuItem item)
+            return;
+
+        item.InvalidateIsEnabledCore(); // the gate reads CanExecute(CommandParameter)
+        item.OnCommandStateChanged();
+    }
+
+    // ── checkable command parameter (ICheckableCommandParameter), gated on IsCheckable (mirrors ToggleButton) ──
+    //
+    // Backward-compat contract: an item NOT using an ICheckableCommandParameter behaves as before. The ONE accepted
+    // deviation (per design) is that a checkable, COMMANDED item with no CommandParameter set is auto-issued a default
+    // CheckableCommandParameter as its parameter — the caller either doesn't use the parameter (they set none) or
+    // supplies one that supersedes the default. A command-LESS checkable item is never issued one (nothing to carry it
+    // for). Checkability gates the whole thing: a non-checkable item never follows a command parameter, and the default
+    // parameter + checked coercion are wired on the IsCheckable off→on edge and torn down on on→off.
+
+    // The per-item default checkable parameter — allocated lazily so a checkable, commanded item that provides no
+    // ICheckableCommandParameter still participates. Superseded by an app/command-supplied parameter on
+    // CommandParameter. Kept across an IsCheckable off→on cycle for reuse.
+    private CheckableCommandParameter? _defaultCheckableParameter;
+
+    // The checkable command parameter this item's checked state answers to while checkable, or null.
+    private ICheckableCommandParameter? EffectiveCheckableParameter
+        => CommandParameter as ICheckableCommandParameter ?? _defaultCheckableParameter;
+
+    // CommandParameter coercion: while checkable with nothing provided, fall back to the checkable carrier so the
+    // command sees a stable parameter. A non-checkable item — or a provided parameter — passes through unchanged.
+    private static object? CoerceCommandParameter(UIObject sender, object? baseValue)
+        => sender is MenuItem { IsCheckable: true } item && baseValue is null ? item.EffectiveCheckableParameter : baseValue;
+
+    // IsChecked coercion: while checkable with a checkable parameter, reflect the item's preference into the parameter
+    // and take its effective (possibly Handled-overridden) checked state. Otherwise the base value passes through, so a
+    // non-checkable item (and every non-checkable-parameter item) behaves exactly as before — zero-cost backward-compat.
+    private static bool CoerceIsChecked(UIObject sender, bool baseValue)
+    {
+        if (sender is MenuItem { IsCheckable: true, Command: not null, CommandParameter: ICheckableCommandParameter cp })
+        {
+            if (cp is CheckableCommandParameter wcp)
+                wcp.IsChecked = baseValue;
+            return cp.IsCheckedEffective ?? baseValue; // null (indeterminate) has no bool form — keep the preference
+        }
+
+        return baseValue;
+    }
+
+    // Reflect a checkable parameter's IsChecked into the IsChecked BASE value (SetCurrentValue preserves a two-way
+    // binding). No-op unless checkable + commanded — a non-checkable item never follows a command parameter.
+    private void SyncCheckedWithCommandParameter()
+    {
+        if (!IsCheckable || Command is null)
+            return;
+
+        if (CommandParameter is ICheckableCommandParameter readableChecked)
+            SetCurrentValue(IsCheckedProperty, readableChecked.IsChecked ?? false);
+    }
+
+    // Called when the command's effective state may have changed (CanExecuteChanged, or Command / CommandParameter
+    // changed) OR IsCheckable flipped — the single place the checkable-parameter wiring is (re)established and torn
+    // down. Mirrors ButtonBase.OnCommandStateChanged + ToggleButton, but gated on IsCheckable throughout.
+    private void OnCommandStateChanged()
+    {
+        SyncCheckedWithCommandParameter();
+
+        if (!IsCheckable)
+        {
+            // Un-wire: if we auto-installed the default parameter, remove it (revert the SetCurrentValue graft), then
+            // re-coerce so neither CommandParameter nor IsChecked follows the checkable carrier any longer.
+            if (_defaultCheckableParameter is not null &&
+                ReferenceEquals(CommandParameter, _defaultCheckableParameter) &&
+                GetValueSource(CommandParameterProperty) is { Kind: ValueSourceKind.Default })
+            {
+                ClearValue(CommandParameterProperty);
+            }
+
+            CoerceValue(CommandParameterProperty);
+            CoerceValue(IsCheckedProperty);
+            return;
+        }
+
+        // Checkable: allocate the per-item default the first time a COMMANDED item lacks a checked source (a
+        // command-less item never gets one — there's nothing to carry it for), and graft it so coercion can inject it
+        // (the store won't coerce a pure-Default source — PD8). The field survives an un-wire, so re-enabling re-grafts.
+        var checkedSourceIsDefault = GetValueSource(IsCheckedProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false };
+
+        if (_defaultCheckableParameter is null && checkedSourceIsDefault && Command is not null)
+            _defaultCheckableParameter = new CheckableCommandParameter(GetBaseValue(IsCheckedProperty));
+
+        if (_defaultCheckableParameter is not null &&
+            GetValueSource(CommandParameterProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false })
+        {
+            SetCurrentValue(CommandParameterProperty, _defaultCheckableParameter);
+        }
+
+        CoerceValue(CommandParameterProperty);
+        CoerceValue(IsCheckedProperty);
+
+        // Graft a current-value base so a Handled override can force a value onto an item that never carried one (the
+        // store no-ops coercion on the pure-Default lane); the grafted raw value is the preference Handled falls back to.
+        if (checkedSourceIsDefault && Command is not null)
+            SetCurrentValue(IsCheckedProperty, IsCheckedProperty.GetMetadata(GetType()).DefaultValue);
     }
     
     /// <inheritdoc cref="IsWithinMenuProperty"/>

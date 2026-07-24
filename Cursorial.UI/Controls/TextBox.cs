@@ -104,6 +104,27 @@ public class TextBox : Control
     public static readonly RoutedEvent<RoutedEventArgs> TextChangedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(TextChanged), RoutingStrategy.Bubble, typeof(TextBox));
 
+    /// <summary>The bubbling event raised whenever the selection or caret position changes — keyboard navigation,
+    /// mouse drag, <see cref="SelectAll"/>, an edit that collapses the caret, or a programmatic
+    /// <see cref="CaretIndex"/> / <see cref="SelectionStart"/> / <see cref="SelectionLength"/> set.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SelectionChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(SelectionChanged), RoutingStrategy.Bubble, typeof(TextBox));
+
+    /// <summary>The bubbling event raised before text is inserted from a paste — both the terminal's bracketed
+    /// paste and an OSC 52 clipboard read. A handler vetoes the paste by setting <see cref="RoutedEventArgs.Handled"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> PastingFromClipboardEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(PastingFromClipboard), RoutingStrategy.Bubble, typeof(TextBox));
+
+    /// <summary>The bubbling event raised before the selection is copied to the clipboard (OSC 52). A handler
+    /// vetoes the copy by setting <see cref="RoutedEventArgs.Handled"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> CopyingToClipboardEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(CopyingToClipboard), RoutingStrategy.Bubble, typeof(TextBox));
+
+    /// <summary>The bubbling event raised before the selection is cut to the clipboard (OSC 52) and deleted. A
+    /// handler vetoes the cut by setting <see cref="RoutedEventArgs.Handled"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> CuttingToClipboardEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(CuttingToClipboard), RoutingStrategy.Bubble, typeof(TextBox));
+
     private TextPresenter? _presenter;
     private int _caretIndex;       // the active end of the selection (where the caret blinks)
     private int _selectionAnchor;  // the fixed end of the selection (== caret when there is no selection)
@@ -211,6 +232,18 @@ public class TextBox : Control
 
     /// <summary>CLR sugar over <see cref="TextChangedEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? TextChanged { add => AddHandler(TextChangedEvent, value!); remove => RemoveHandler(TextChangedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="SelectionChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? SelectionChanged { add => AddHandler(SelectionChangedEvent, value!); remove => RemoveHandler(SelectionChangedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="PastingFromClipboardEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? PastingFromClipboard { add => AddHandler(PastingFromClipboardEvent, value!); remove => RemoveHandler(PastingFromClipboardEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="CopyingToClipboardEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? CopyingToClipboard { add => AddHandler(CopyingToClipboardEvent, value!); remove => RemoveHandler(CopyingToClipboardEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="CuttingToClipboardEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? CuttingToClipboard { add => AddHandler(CuttingToClipboardEvent, value!); remove => RemoveHandler(CuttingToClipboardEvent, value!); }
 
     /// <summary>The caret position as a char offset (pinned to a grapheme-cluster boundary). Setting it collapses the selection.</summary>
     public int CaretIndex
@@ -562,6 +595,7 @@ public class TextBox : Control
         _caretIndex = caret;
         _caretLineEndAffinity = lineEndAffinity; // set before the refresh so the presenter renders the right line
         RefreshPresenter();
+        RaiseSelectionChanged(); // past the no-op guard: the anchor/caret actually moved
     }
 
     private void Select(int start, int length)
@@ -575,6 +609,12 @@ public class TextBox : Control
     private void InsertText(string input, bool fromPaste)
     {
         if (IsReadOnly)
+            return;
+
+        // Both paste paths reach the insert through here — the terminal's bracketed paste (TextInput{FromPaste})
+        // and the OSC 52 read in CompletePasteAsync (which bypasses the TextInput pipeline) — so this single site
+        // raises PastingFromClipboard before the insert on both; a handler vetoes by setting Handled.
+        if (fromPaste && RaiseClipboardVeto(PastingFromClipboardEvent))
             return;
 
         var filtered = FilterInput(input, fromPaste);
@@ -800,6 +840,9 @@ public class TextBox : Control
         if (text.Length == 0)
             return false;
 
+        if (RaiseClipboardVeto(CopyingToClipboardEvent))
+            return true; // a handler vetoed the copy — the gesture is still consumed (there was a selection)
+
         UIApplication.Current?.Clipboard.SetText(text);
         return true;
     }
@@ -810,6 +853,9 @@ public class TextBox : Control
     {
         if (IsReadOnly || SelectionLength == 0)
             return false;
+
+        if (RaiseClipboardVeto(CuttingToClipboardEvent))
+            return true; // a handler vetoed the cut — the gesture is still consumed, but no write/delete happens
 
         UIApplication.Current?.Clipboard.SetText(SelectedText);
         ReplaceCore("", UndoKind.Other);
@@ -1003,6 +1049,25 @@ public class TextBox : Control
     {
         if (IsAttachedToTree)
             RaiseEvent(RentEvent(TextChangedEvent));
+    }
+
+    private void RaiseSelectionChanged()
+    {
+        if (IsAttachedToTree)
+            RaiseEvent(RentEvent(SelectionChangedEvent));
+    }
+
+    // Raises a veto-only clipboard event (Pasting/Copying/Cutting) and reports whether a handler cancelled the
+    // operation. Caller-owned args (not the pooled path) because Handled must survive past RaiseEvent — a rented
+    // args goes stale on raise completion. A detached box has no route, so nothing can veto: report not-cancelled.
+    private bool RaiseClipboardVeto(RoutedEvent<RoutedEventArgs> routedEvent)
+    {
+        if (!IsAttachedToTree)
+            return false;
+
+        var args = new RoutedEventArgs(routedEvent, this);
+        RaiseEvent(args);
+        return args.Handled;
     }
 
     private static void OnIsUndoEnabledChanged(UIObject sender, bool oldValue, bool newValue)

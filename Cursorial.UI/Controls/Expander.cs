@@ -8,7 +8,9 @@ namespace Cursorial.UI.Controls;
 /// whose <see cref="HeaderedContentControl.Header"/> rides a clickable header (with a <c>▸</c>/<c>▾</c> twisty) and whose
 /// <see cref="ContentControl.Content"/> shows only while <see cref="IsExpanded"/> (gated via the <c>PART_Content</c>
 /// visibility; <c>:expanded</c>). Clicking the header — or Space/Enter while the expander has focus — toggles;
-/// <see cref="Expanded"/>/<see cref="Collapsed"/> bubble on the transition. (v1 expands downward.)
+/// <see cref="Expanding"/>/<see cref="Collapsing"/> bubble first (a handler may veto via
+/// <see cref="CancelRoutedEventArgs.Cancel"/>), then <see cref="Expanded"/>/<see cref="Collapsed"/> bubble
+/// once the transition commits. (v1 expands downward.)
 /// </summary>
 [TemplatePart(PartHeader, typeof(ToggleButton))]
 [TemplatePart(PartGlyph, typeof(TextBlock))]
@@ -28,7 +30,15 @@ public class Expander : HeaderedContentControl
 
     /// <summary>Whether the content is shown (<c>:expanded</c>; gates the <c>PART_Content</c> visibility + twisty).</summary>
     public static readonly StyledProperty<bool> IsExpandedProperty =
-        UIProperty.Register<Expander, bool>(nameof(IsExpanded), defaultValue: false, changed: OnIsExpandedChanged);
+        UIProperty.Register<Expander, bool>(nameof(IsExpanded), defaultValue: false, coerce: CoerceIsExpanded, changed: OnIsExpandedChanged);
+
+    /// <summary>Bubbles <em>before</em> the expander opens; a handler may set <see cref="CancelRoutedEventArgs.Cancel"/> to veto (Avalonia — no WPF analogue).</summary>
+    public static readonly RoutedEvent<CancelRoutedEventArgs> ExpandingEvent =
+        RoutedEvent<CancelRoutedEventArgs>.Register(nameof(Expanding), RoutingStrategy.Bubble, typeof(Expander));
+
+    /// <summary>Bubbles <em>before</em> the expander closes; a handler may set <see cref="CancelRoutedEventArgs.Cancel"/> to veto (Avalonia — no WPF analogue).</summary>
+    public static readonly RoutedEvent<CancelRoutedEventArgs> CollapsingEvent =
+        RoutedEvent<CancelRoutedEventArgs>.Register(nameof(Collapsing), RoutingStrategy.Bubble, typeof(Expander));
 
     /// <summary>Bubbles when the expander opens.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> ExpandedEvent =
@@ -47,6 +57,12 @@ public class Expander : HeaderedContentControl
 
     /// <inheritdoc cref="IsExpandedProperty"/>
     public bool IsExpanded { get => GetValue(IsExpandedProperty); set => SetValue(IsExpandedProperty, value); }
+
+    /// <summary>CLR sugar over <see cref="ExpandingEvent"/>.</summary>
+    public event EventHandler<CancelRoutedEventArgs>? Expanding { add => AddHandler(ExpandingEvent, value!); remove => RemoveHandler(ExpandingEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="CollapsingEvent"/>.</summary>
+    public event EventHandler<CancelRoutedEventArgs>? Collapsing { add => AddHandler(CollapsingEvent, value!); remove => RemoveHandler(CollapsingEvent, value!); }
 
     /// <summary>CLR sugar over <see cref="ExpandedEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? Expanded { add => AddHandler(ExpandedEvent, value!); remove => RemoveHandler(ExpandedEvent, value!); }
@@ -101,6 +117,26 @@ public class Expander : HeaderedContentControl
     }
 
     private void Toggle() => IsExpanded = !IsExpanded;
+
+    // Pre-commit veto (Avalonia parity): Expanding/Collapsing must raise BEFORE IsExpanded flips, and a
+    // handler that sets e.Cancel abandons the transition. The post-change OnIsExpandedChanged callback is too
+    // late to cancel, so the veto rides coercion — the single choke point EVERY write path funnels through
+    // (keyboard Toggle, the header's two-way IsChecked→IsExpanded binding, a direct set, XAML) — giving the
+    // veto uniformly. A cancelling handler returns the current value (!baseValue for the toggle), which the
+    // store's equality gate treats as no change, so Expanded/Collapsed never fire. The metadata default
+    // (false) is never coerced (PD8), so loading a collapsed expander raises nothing.
+    private static bool CoerceIsExpanded(UIObject sender, bool baseValue)
+    {
+        // Fire only on a real transition: during coercion the property still holds the OLD value, so
+        // baseValue == IsExpanded means a redundant set (no pending change) — nothing to raise or veto.
+        if (sender is not Expander expander || baseValue == expander.IsExpanded)
+            return baseValue;
+
+        var args = new CancelRoutedEventArgs(baseValue ? ExpandingEvent : CollapsingEvent, expander);
+        expander.RaiseEvent(args);
+
+        return args.Cancel ? !baseValue : baseValue;
+    }
 
     private static void OnIsExpandedChanged(UIObject sender, bool oldValue, bool newValue)
     {

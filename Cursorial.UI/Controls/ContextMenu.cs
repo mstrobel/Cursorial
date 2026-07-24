@@ -31,6 +31,14 @@ public sealed class ContextMenu : ItemsControl
     /// <summary>Whether the menu is currently shown — read-only; drive it with <see cref="Open"/>/<see cref="Close"/>.</summary>
     public static readonly StyledProperty<bool> IsOpenProperty = IsOpenPropertyKey.Property;
 
+    /// <summary>The bubbling event raised after the menu opens (mirrors WPF/Avalonia <c>ContextMenu.Opened</c>).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> OpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Opened), RoutingStrategy.Bubble, typeof(ContextMenu));
+
+    /// <summary>The bubbling event raised after the menu closes by any path — light-dismiss, <c>Escape</c>, a leaf invoke, or programmatic <see cref="Close"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> ClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Closed), RoutingStrategy.Bubble, typeof(ContextMenu));
+
     private Popup? _popup;
     private UIElement? _watchedTarget; // the owner whose tree-detach must close this menu (no stranded surface)
 
@@ -55,6 +63,19 @@ public sealed class ContextMenu : ItemsControl
     /// <inheritdoc cref="IsOpenProperty"/>
     public bool IsOpen => GetValue(IsOpenProperty);
 
+    /// <summary>CLR sugar over <see cref="OpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Opened { add => AddHandler(OpenedEvent, value!); remove => RemoveHandler(OpenedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="ClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Closed { add => AddHandler(ClosedEvent, value!); remove => RemoveHandler(ClosedEvent, value!); }
+
+    /// <summary>
+    /// Raised before the menu opens — a plain CLR (non-routed) notification since it precedes the popup surface
+    /// existing. A handler may veto the open by setting <see cref="System.ComponentModel.CancelEventArgs.Cancel"/>,
+    /// in which case nothing is shown (mirrors Avalonia <c>ContextMenu.Opening</c>).
+    /// </summary>
+    public event EventHandler<System.ComponentModel.CancelEventArgs>? Opening;
+
     /// <inheritdoc/>
     protected internal override bool HandlesScrolling => true;
 
@@ -66,6 +87,13 @@ public sealed class ContextMenu : ItemsControl
     public void Open(UIElement target, CellPosition? position = null)
     {
         ArgumentNullException.ThrowIfNull(target);
+
+        // Pre-open veto: a plain CLR notification raised before any popup surface exists — a handler may cancel the
+        // open, in which case nothing is shown (mirrors Avalonia ContextMenu.Opening).
+        var opening = new System.ComponentModel.CancelEventArgs();
+        Opening?.Invoke(this, opening);
+        if (opening.Cancel)
+            return;
 
         _popup ??= CreatePopup();
 
@@ -94,6 +122,9 @@ public sealed class ContextMenu : ItemsControl
         SetValue(IsOpenPropertyKey, true);
         WatchTarget(target); // close the menu if its owner leaves the tree (no stranded popup surface)
         FocusFirstItem();    // keyboard nav can begin immediately on the realized items
+
+        var opened = RentEvent(OpenedEvent);
+        RaiseEvent(opened); // the surface is realized and focused — notify listeners the menu is now shown
     }
 
     /// <summary>Closes the menu (a no-op when already closed).</summary>
@@ -146,6 +177,9 @@ public sealed class ContextMenu : ItemsControl
     {
         SetValue(IsOpenPropertyKey, false);
         UnwatchTarget();
+
+        var closed = RentEvent(ClosedEvent);
+        RaiseEvent(closed); // every close path funnels here — exactly one Closed per close
     }
 
     private void FocusFirstItem()

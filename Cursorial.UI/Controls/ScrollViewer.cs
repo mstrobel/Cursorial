@@ -84,6 +84,14 @@ public class ScrollViewer : ContentControl
         UIProperty.RegisterDirect<ScrollViewer, Size>(nameof(Viewport), static s => s._viewport);
 
     /// <summary>
+    /// The bubbling event raised whenever the scroll geometry moves — an offset, extent, or viewport
+    /// change (WPF/Avalonia <c>ScrollViewer.ScrollChanged</c> parity; <see cref="ScrollChangedEventArgs"/>).
+    /// Bubbles to mirror <see cref="ScrollBar.ScrollEvent"/>.
+    /// </summary>
+    public static readonly RoutedEvent<ScrollChangedEventArgs> ScrollChangedEvent =
+        RoutedEvent<ScrollChangedEventArgs>.Register(nameof(ScrollChanged), RoutingStrategy.Bubble, typeof(ScrollViewer));
+
+    /// <summary>
     /// Helper for setting VerticalScrollBarVisibility property.
     /// </summary>
     public static void SetVerticalScrollBarVisibility(UIElement element, ScrollBarVisibility verticalScrollBarVisibility)
@@ -134,6 +142,9 @@ public class ScrollViewer : ContentControl
 
     /// <inheritdoc cref="ViewportProperty"/>
     public Size Viewport => _viewport;
+
+    /// <summary>CLR sugar over <see cref="ScrollChangedEvent"/>.</summary>
+    public event EventHandler<ScrollChangedEventArgs>? ScrollChanged { add => AddHandler(ScrollChangedEvent, value!); remove => RemoveHandler(ScrollChangedEvent, value!); }
 
     /// <summary>The wrapped scroll-content presenter (the S1-owned banded SCP); null before first template expansion.</summary>
     protected internal ScrollContentPresenter? Presenter => _presenter;
@@ -264,12 +275,26 @@ public class ScrollViewer : ContentControl
         if (_presenter is not {} presenter)
             return;
 
-        SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, presenter.ScrollOffsetRow);
-        SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, presenter.ScrollOffsetColumn);
-        SetAndRaise(ExtentProperty, ref _extent, presenter.Extent);
-        SetAndRaise(ViewportProperty, ref _viewport, presenter.Viewport);
+        // Hold the prior offsets for the ScrollChanged deltas before SetAndRaise overwrites the fields.
+        var priorVerticalOffset = _verticalOffset;
+        var priorHorizontalOffset = _horizontalOffset;
+
+        var verticalMoved = SetAndRaise(VerticalOffsetProperty, ref _verticalOffset, presenter.ScrollOffsetRow);
+        var horizontalMoved = SetAndRaise(HorizontalOffsetProperty, ref _horizontalOffset, presenter.ScrollOffsetColumn);
+        var extentMoved = SetAndRaise(ExtentProperty, ref _extent, presenter.Extent);
+        var viewportMoved = SetAndRaise(ViewportProperty, ref _viewport, presenter.Viewport);
 
         UpdateBars();
+
+        // ScrollChanged fires once per sync when any of offset/extent/viewport actually moved (WPF/Avalonia
+        // parity): the offsets/sizes are the settled values, the changes are deltas from the pre-sync offsets.
+        if (verticalMoved || horizontalMoved || extentMoved || viewportMoved)
+        {
+            RaiseEvent(new ScrollChangedEventArgs(ScrollChangedEvent, this,
+                                                  _horizontalOffset, _verticalOffset, _extent, _viewport,
+                                                  _horizontalOffset - priorHorizontalOffset,
+                                                  _verticalOffset - priorVerticalOffset));
+        }
     }
 
     /// <summary>Maps the visibility policies onto the SCP's scroll-axis enables (CD28/C230).</summary>

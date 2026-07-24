@@ -34,6 +34,11 @@ public class Slider : RangeBase
     public static readonly StyledProperty<Pen?> FilledPenProperty =
         UIProperty.Register<Slider, Pen?>(nameof(FilledPen));
 
+    /// <summary>The bubbling event raised whenever <see cref="RangeBase.Value"/> changes (<see cref="RangeValueChangedEventArgs"/>).
+    /// Owned by <see cref="Slider"/>, not <see cref="RangeBase"/> — the shared range base stays allocation-free (see its remarks).</summary>
+    public static readonly RoutedEvent<RangeValueChangedEventArgs> ValueChangedEvent =
+        RoutedEvent<RangeValueChangedEventArgs>.Register(nameof(ValueChanged), RoutingStrategy.Bubble, typeof(Slider));
+
     static Slider()
     {
         FocusableProperty.OverrideDefaultValue<Slider>(true); // an interactive value picker takes keyboard focus
@@ -53,6 +58,9 @@ public class Slider : RangeBase
 
     /// <inheritdoc cref="FilledPenProperty"/>
     public Pen? FilledPen { get => GetValue(FilledPenProperty); set => SetValue(FilledPenProperty, value); }
+
+    /// <summary>CLR sugar over <see cref="ValueChangedEvent"/>.</summary>
+    public event EventHandler<RangeValueChangedEventArgs>? ValueChanged { add => AddHandler(ValueChangedEvent, value!); remove => RemoveHandler(ValueChangedEvent, value!); }
 
     private bool Vertical => Orientation == Orientation.Vertical;
 
@@ -234,7 +242,13 @@ public class Slider : RangeBase
     }
 
     /// <inheritdoc/>
-    protected override void OnValueChanged(double oldValue, double newValue) => InvalidateArrange();
+    protected override void OnValueChanged(double oldValue, double newValue)
+    {
+        InvalidateArrange();
+        // The thumb re-positions above; the value producer (drag/click/keyboard/binding) also gets a public
+        // bubbling notification. Slider-owned, payload-carrying ⇒ caller-owned args (new, never RentEvent).
+        RaiseEvent(new RangeValueChangedEventArgs(ValueChangedEvent, this, oldValue, newValue));
+    }
 
     private static void OnOrientationChanged(UIObject sender, Orientation oldValue, Orientation newValue)
         => ((Slider)sender).InvalidateMeasure();

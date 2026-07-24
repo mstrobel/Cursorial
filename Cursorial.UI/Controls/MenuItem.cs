@@ -99,6 +99,14 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Bubble, typeof(MenuItem));
 
+    /// <summary>The bubbling event raised when this item's submenu opens (<see cref="IsSubmenuOpen"/> ⇒ true).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SubmenuOpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(SubmenuOpened), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised when this item's submenu closes (<see cref="IsSubmenuOpen"/> ⇒ false).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SubmenuClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(SubmenuClosed), RoutingStrategy.Bubble, typeof(MenuItem));
+
     private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(250);
 
     protected static readonly IconCarrier CheckmarkIcon = BuildCheckmarkIcon();
@@ -154,6 +162,20 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     {
         add => AddHandler(IsCheckedChangedEvent, value!);
         remove => RemoveHandler(IsCheckedChangedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="SubmenuOpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? SubmenuOpened
+    {
+        add => AddHandler(SubmenuOpenedEvent, value!);
+        remove => RemoveHandler(SubmenuOpenedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="SubmenuClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? SubmenuClosed
+    {
+        add => AddHandler(SubmenuClosedEvent, value!);
+        remove => RemoveHandler(SubmenuClosedEvent, value!);
     }
 
     /// <inheritdoc/>
@@ -572,6 +594,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         PseudoClasses.Set(":open", value);
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value); // drive the part (light-dismiss writes back via OnPopupClosed)
+
+        // Bubble Submenu{Opened,Closed} so a Menu bar / ContextMenu host can watch every descendant item from one
+        // handler. This is the single chokepoint every open/close path funnels through (keyboard collapse,
+        // sibling-switch, chain-close, light-dismiss via OnPopupClosed → SetSubmenuOpen(false)).
+        var routedEvent = value ? SubmenuOpenedEvent : SubmenuClosedEvent;
+        var args = RentEvent(routedEvent);
+        RaiseEvent(args);
     }
 
     private void SetHighlighted(bool value)

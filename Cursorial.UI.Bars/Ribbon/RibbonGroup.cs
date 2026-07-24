@@ -328,7 +328,11 @@ public class RibbonGroup : HeaderedItemsControl
 
         _collapsedButton = GetTemplatePart<BarPopupButton>(PartCollapsedButton);
         if (_collapsedButton is not null)
+        {
             _collapsedButton.FocusContentOnOpen = true; // Down opens the flyout AND enters the hosted group (one press)
+            _collapsedButton.DropDownOpened += OnCollapsedDropDownOpened; // forward the collapsed flyout's open/close
+            _collapsedButton.DropDownClosed += OnCollapsedDropDownClosed;
+        }
         _collapsedPopupHost = GetTemplatePart<RibbonGroupPanel>(PartCollapsedPopupHost);
         // Reconcile the current tier against the fresh flyout part: a group re-templated while Collapsed re-hosts the
         // live controls into the new flyout band (the Ribbon.OnApplyTemplate reconcile precedent).
@@ -341,13 +345,33 @@ public class RibbonGroup : HeaderedItemsControl
         if (_launcher is not null)
             _launcher.Click -= OnLauncherClick;
         if (_collapsedButton is not null)
+        {
+            // Unsubscribe BEFORE the release below so the detach's forced close doesn't raise a spurious DropDownClosed.
+            _collapsedButton.DropDownOpened -= OnCollapsedDropDownOpened;
+            _collapsedButton.DropDownClosed -= OnCollapsedDropDownClosed;
             _collapsedButton.IsDropDownOpen = false; // release the flyout surface
+        }
         _launcher = null;
         _separator = null;
         _collapsedButton = null;
         _collapsedPopupHost = null;
         base.OnTemplateDetaching(old);
     }
+
+    /// <summary>Raised when the width-collapsed group's <c>[name ▾]</c> flyout opens (forwarded from the collapsed opener).</summary>
+    public event EventHandler? DropDownOpened;
+
+    /// <summary>Raised when the collapsed-group flyout dismisses (Escape / light-dismiss / item invoke).</summary>
+    public event EventHandler? DropDownClosed;
+
+    /// <summary>Raises <see cref="DropDownOpened"/>. Override to react to the collapsed flyout opening; call base to keep the event.</summary>
+    protected virtual void OnDropDownOpened() => DropDownOpened?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raises <see cref="DropDownClosed"/>. Override to react to the collapsed flyout closing; call base to keep the event.</summary>
+    protected virtual void OnDropDownClosed() => DropDownClosed?.Invoke(this, EventArgs.Empty);
+
+    private void OnCollapsedDropDownOpened(object? sender, EventArgs e) => OnDropDownOpened();
+    private void OnCollapsedDropDownClosed(object? sender, EventArgs e) => OnDropDownClosed();
 
     private void ApplySeparatorVisibility()
     {

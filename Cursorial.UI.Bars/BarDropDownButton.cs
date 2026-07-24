@@ -90,6 +90,12 @@ public abstract class BarDropDownButton : ButtonBase
     /// <inheritdoc cref="IsDropDownOpenProperty"/>
     public bool IsDropDownOpen { get => _isDropDownOpen; set => SetDropDownOpen(value); }
 
+    /// <summary>Raised when the dropdown opens (<see cref="IsDropDownOpen"/> ⇒ true) — the WPF <c>RibbonMenuButton.DropDownOpened</c> analog. Inherited by <see cref="BarPopupButton"/> and <see cref="BarSplitButton"/>.</summary>
+    public event EventHandler? DropDownOpened;
+
+    /// <summary>Raised when the dropdown closes (<see cref="IsDropDownOpen"/> ⇒ false), for every close path — the WPF <c>RibbonMenuButton.DropDownClosed</c> analog.</summary>
+    public event EventHandler? DropDownClosed;
+
     /// <inheritdoc cref="DropDownPlacementProperty"/>
     public PlacementMode DropDownPlacement
     {
@@ -395,6 +401,12 @@ public abstract class BarDropDownButton : ButtonBase
         return null;
     }
 
+    /// <summary>Raises <see cref="DropDownOpened"/>. Override to react to the dropdown opening; call base to keep the event.</summary>
+    protected virtual void OnDropDownOpened() => DropDownOpened?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raises <see cref="DropDownClosed"/>. Override to react to the dropdown closing; call base to keep the event.</summary>
+    protected virtual void OnDropDownClosed() => DropDownClosed?.Invoke(this, EventArgs.Empty);
+
     private void SetDropDownOpen(bool value)
     {
         if (!SetAndRaise(IsDropDownOpenProperty, ref _isDropDownOpen, value))
@@ -402,6 +414,13 @@ public abstract class BarDropDownButton : ButtonBase
 
         PseudoClasses.Set(":open", value);
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value); // light-dismiss/Escape write back via OnPopupClosed
+
+        // Fires once per transition on every path (keyboard/click/programmatic/light-dismiss) — SetAndRaise gated it to a
+        // real flip. Raised here (not from OnPopupOpened) so the event tracks IsDropDownOpen, mirroring ComboBox.
+        if (value)
+            OnDropDownOpened();
+        else
+            OnDropDownClosed();
     }
 
     // Light-dismiss / Escape / a content invoke closed the popup — sync state. Focus return to the face is the

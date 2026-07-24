@@ -354,30 +354,63 @@ internal static class ClosedTypeSet
     /// </summary>
     public static string? ResolveStaticExpr(XamlSymbolResolver resolver, string xmlNamespace, string memberPath)
     {
-        int dot = memberPath.LastIndexOf('.');
-        if (dot <= 0)
+        // The TYPE is the FIRST segment; the first member after it is STATIC, and any deeper segments are public
+        // INSTANCE member accesses on the running value (Type.Static.Instance.Instance…). Kept byte-identical in shape
+        // to ReflectionXamlMetadata.TryResolveStatic (X174) so the lowered `global::Type.A.B.C` expression the emitter
+        // bakes and the reflected chain the loader walks cannot drift. A 2-segment path is unaffected (first==last dot).
+        int firstDot = memberPath.IndexOf('.');
+        if (firstDot <= 0)
             return null;
 
-        var typeName = memberPath.Substring(0, dot);
-        var memberName = memberPath.Substring(dot + 1);
-
-        var type = resolver.Resolve(xmlNamespace, typeName, out _);
+        var type = resolver.Resolve(xmlNamespace, memberPath.Substring(0, firstDot), out _);
         if (type is null)
             return null;
 
-        // Directly-declared members only (GetMembers does not include inherited) — matches reflection's no-FlattenHierarchy.
-        foreach (var m in type.GetMembers(memberName))
-        {
-            var ok = m switch
-            {
-                IFieldSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } => true,
-                IPropertySymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public, GetMethod: not null } => true,
-                _ => false,
-            };
+        var members = memberPath.Substring(firstDot + 1).Split('.');
 
-            if (ok)
-                return $"{type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{memberName}";
+        // (1) The first member: a public static field / readable property DIRECTLY on the type (no inherited —
+        // GetMembers is directly-declared, matching reflection's no-FlattenHierarchy static lookup).
+        var currentType = StaticMemberType(type, members[0]);
+        if (currentType is null)
+            return null;
+
+        // (2) Any remaining members: a public instance field / readable property on the running type (inherited
+        // allowed — reflection's instance lookup walks the hierarchy).
+        for (int i = 1; i < members.Length; i++)
+        {
+            currentType = InstanceMemberType(currentType, members[i]);
+            if (currentType is null)
+                return null;
         }
+
+        return $"{type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{string.Join(".", members)}";
+    }
+
+    // The value type of a public STATIC field / readable property directly declared on `type`, or null.
+    private static ITypeSymbol? StaticMemberType(ITypeSymbol type, string name)
+    {
+        foreach (var m in type.GetMembers(name))
+        {
+            if (m is IFieldSymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public } f)
+                return f.Type;
+            if (m is IPropertySymbol { IsStatic: true, DeclaredAccessibility: Accessibility.Public, GetMethod: not null } p)
+                return p.Type;
+        }
+
+        return null;
+    }
+
+    // The value type of a public INSTANCE field / readable property named `name` on `type` or a base type, or null.
+    private static ITypeSymbol? InstanceMemberType(ITypeSymbol type, string name)
+    {
+        for (ITypeSymbol? t = type; t is not null; t = t.BaseType)
+            foreach (var m in t.GetMembers(name))
+            {
+                if (m is IFieldSymbol { IsStatic: false, DeclaredAccessibility: Accessibility.Public } f)
+                    return f.Type;
+                if (m is IPropertySymbol { IsStatic: false, DeclaredAccessibility: Accessibility.Public, GetMethod: not null } p)
+                    return p.Type;
+            }
 
         return null;
     }

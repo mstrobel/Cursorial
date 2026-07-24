@@ -362,8 +362,18 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             // and a Style.BasedOn references one). Resolves to the System.Type key.
             "Type" => builder.ResolveTypeToken(FirstPositional(node) ?? string.Empty, line, column),
             "Null" => null,
-            _ => throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
-                $"Nested extension '{node.Name}' is not supported as a binding argument value.", line, column),
+            // {DynamicResource}/{Binding}/{TemplateBinding}/{x:Reference} each produce a LIVE or DEFERRED result (a
+            // resource producer, a binding, a template pull, a namescope reference) rather than a plain value, so they
+            // can't stand as an argument value — reject with a clear diagnostic rather than trying to activate a type.
+            "DynamicResource" or "Binding" or "TemplateBinding" or "Reference" =>
+                throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
+                    $"{{{node.Name}}} produces a live/deferred value and cannot be used as a nested markup-extension " +
+                    "argument. Use {StaticResource}, {x:Static}, or a custom MarkupExtension.", line, column),
+            // Any other name is a CUSTOM MarkupExtension used as an argument value (e.g. Converter={local:MyConverter},
+            // Source={local:ServiceLocator}): activate it and take its ProvideValue result. Nested arguments recurse
+            // back through here, so custom extensions compose. Matches the generator's EmitCustomExtension lowering and
+            // the runtime's own AttachCustom for member-level extensions.
+            _ => ProvideStandaloneCustomValue(builder, node, line, column),
         };
     }
 

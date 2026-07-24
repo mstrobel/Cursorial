@@ -21,6 +21,23 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
 {
     private const string Pre = " xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"";
 
+    [Fact] // A Type-typed Setter.Value token resolves to the System.Type at load — the generator bakes typeof(T).
+    public void TypeTypedSetterValue_ResolvesToType()
+    {
+        var style = (Style)LoadRaw(
+            $"<Style{Pre} TargetType=\"TypeSetterHost\"><Setter Property=\"Kind\" Value=\"Button\"/></Style>");
+
+        var setter = Assert.Single(style.Setters);
+        Assert.Equal(typeof(UIControls.Button), setter.Value); // "Button" resolved to the type, not left a raw string
+    }
+
+    [Fact] // A collection-typed UIProperty content member is filled by child elements (the generator fills via the wrapper).
+    public void UIPropertyCollectionContent_FilledByChildren()
+    {
+        var host = Load<ListHost>("<ListHost><Button/><Border/></ListHost>");
+        Assert.Equal(2, host.Items!.Count); // both children added — the UIProperty member now exposes a getter to fill
+    }
+
     [Fact] // An inline OBJECT Setter.Value is built + assigned (previously dropped to UIProperty.UnsetValue).
     public void InlineObjectSetterValue_IsBuiltAndAssigned()
     {

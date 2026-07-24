@@ -1,10 +1,13 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Drawing.Media;
+using Cursorial.Markup;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.UI;
 using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
 
@@ -79,6 +82,63 @@ public sealed class AddExtension : MarkupExtension
     public int B { get; set; }
 
     public override object ProvideValue(IServiceProvider serviceProvider) => (A + B).ToString(CultureInfo.InvariantCulture);
+}
+
+/// <summary>A custom markup extension whose <c>ProvideValue</c> yields an <see cref="IValueConverter"/> — the
+/// nested-CUSTOM-extension converter case (<c>{Binding …, Converter={StatusConverter}}</c>), the twin of X121's
+/// <c>{StaticResource}</c> converter.</summary>
+public sealed class StatusConverterExtension : MarkupExtension
+{
+    public override object ProvideValue(IServiceProvider serviceProvider) => new StatusToBrush();
+}
+
+/// <summary>A custom markup extension whose member is a public instance FIELD (not a property) — the reflection
+/// loader must set it via a named argument, matching the generator's object-initializer lowering.</summary>
+public sealed class FieldExtension : MarkupExtension
+{
+    public string Value = "default";
+
+    public override object ProvideValue(IServiceProvider serviceProvider) => Value;
+}
+
+/// <summary>The root of an <c>{x:Static A.B.C.D}</c> chain: a static member (<see cref="B"/>) followed by instance
+/// member accesses (<c>.C.D</c>) on the running value — beyond WPF's <c>Type.Static</c>.</summary>
+public sealed class StaticChain
+{
+    public static ChainB B { get; } = new();
+}
+
+/// <summary>Intermediate instance node in the <see cref="StaticChain"/> fixture.</summary>
+public sealed class ChainB
+{
+    public ChainC C { get; } = new();
+}
+
+/// <summary>Leaf instance node in the <see cref="StaticChain"/> fixture.</summary>
+public sealed class ChainC
+{
+    public string D => "deep";
+}
+
+/// <summary>A control with a <see cref="Type"/>-typed styled property — the target of a Type-token Setter.Value.</summary>
+public sealed class TypeSetterHost : Cursorial.UI.Controls.Control
+{
+    public static readonly StyledProperty<Type?> KindProperty = UIProperty.Register<TypeSetterHost, Type?>(nameof(Kind));
+
+    public Type? Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
+}
+
+/// <summary>A control whose CONTENT is a collection-typed <c>UIProperty</c> (a concrete <see cref="List{T}"/> — a bare
+/// <c>IList&lt;T&gt;</c> interface type isn't classed as a collection), filled by child elements — the reflection
+/// loader must read the collection back and Add, as the generator does via the CLR wrapper.</summary>
+[ContentProperty("Items")]
+public sealed class ListHost : Cursorial.UI.Controls.Control
+{
+    public static readonly StyledProperty<List<object>?> ItemsProperty = UIProperty.Register<ListHost, List<object>?>(nameof(Items));
+
+    public ListHost() => SetValue(ItemsProperty, new List<object>());
+
+    public List<object>? Items => GetValue(ItemsProperty);
 }
 
 /// <summary>

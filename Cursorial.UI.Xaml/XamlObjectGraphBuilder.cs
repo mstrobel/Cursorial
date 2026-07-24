@@ -1558,6 +1558,12 @@ internal sealed class XamlObjectGraphBuilder
         if (property is null)
             throw Fatal(XamlDiagnosticCodes.MemberNotFound, "A Setter requires a resolvable Property.", line, column);
 
+        // A bare Type-typed Setter.Value token ("Button") resolves to the System.Type here: the generator bakes
+        // typeof(T) (SetterValueExpr), and StyleSetterConverter has no xmlns context at Seal, so the token must be
+        // resolved at load — against the document's namespaces — rather than deferred as an unconvertible string.
+        if (property.PropertyType == typeof(Type) && value is string typeToken && typeToken.Length > 0)
+            value = ResolveTypeToken(typeToken, line, column);
+
         return new Setter(property, value);
     }
 
@@ -1676,8 +1682,9 @@ internal sealed class XamlObjectGraphBuilder
 
         // The authoritative ordering, if the WPF [ConstructorArgument] convention is in use: the
         // arity-matching constructor's parameter names, each mapped to the property carrying
-        // [ConstructorArgument(paramName)] (P6 review P1-3). Absent that, declaration order of the
-        // writable public properties.
+        // [ConstructorArgument(paramName)] (P6 review P1-3). ([ConstructorArgument] is property-only —
+        // AttributeTargets.Property — so a field can never be a positional target, matching the generator.)
+        // Absent that, declaration order of the writable public properties.
         var ordered = ResolveConstructorArgumentOrder(extType, props, node.PositionalArguments.Count);
 
         if (ordered is not null)

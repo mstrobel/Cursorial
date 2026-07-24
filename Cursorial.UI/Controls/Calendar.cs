@@ -1,7 +1,7 @@
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 
 using Cursorial.Input;
-using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Input;
 
@@ -43,11 +43,13 @@ public class Calendar : Control
 
     /// <summary>The month shown (any day in it; the grid renders that month). Defaults to <see cref="Today"/>; clamped to [<see cref="DisplayDateStart"/>, <see cref="DisplayDateEnd"/>].</summary>
     public static readonly StyledProperty<DateOnly> DisplayDateProperty =
-        UIProperty.Register<Calendar, DateOnly>(nameof(DisplayDate), coerce: CoerceDisplayDate, changed: OnDisplayDateChanged);
+        UIProperty.Register<Calendar, DateOnly>(nameof(DisplayDate), coerce: CoerceDisplayDate,
+                                                changed: OnDisplayDateChanged);
 
     /// <summary>The selected date (<c>null</c> = none), two-way bindable; a day in an adjacent month moves <see cref="DisplayDate"/>. An out-of-range / blacked-out value coerces to <c>null</c>.</summary>
     public static readonly StyledProperty<DateOnly?> SelectedDateProperty =
-        UIProperty.Register<Calendar, DateOnly?>(nameof(SelectedDate), coerce: CoerceSelectedDate, changed: OnSelectedDateChanged);
+        UIProperty.Register<Calendar, DateOnly?>(nameof(SelectedDate), coerce: CoerceSelectedDate,
+                                                 changed: OnSelectedDateChanged);
 
     /// <summary>The "today" reference cell (<c>:today</c>); defaults to the system date at construction (settable for determinism).</summary>
     public static readonly StyledProperty<DateOnly> TodayProperty =
@@ -68,11 +70,12 @@ public class Calendar : Control
     /// <summary>Whether the <c>:today</c> cell is highlighted (default <c>true</c>).</summary>
     public static readonly StyledProperty<bool> IsTodayHighlightedProperty =
         UIProperty.Register<Calendar, bool>(nameof(IsTodayHighlighted), defaultValue: true,
-            changed: static (s, _, _) => (s as Calendar)?.RebuildView());
+                                            changed: static (s, _, _) => (s as Calendar)?.RebuildView());
 
     /// <summary>Non-selectable date ranges (<c>:blackout</c>, disabled). <c>null</c>/empty = none.</summary>
     public static readonly StyledProperty<IReadOnlyList<CalendarDateRange>?> BlackoutDatesProperty =
-        UIProperty.Register<Calendar, IReadOnlyList<CalendarDateRange>?>(nameof(BlackoutDates), changed: OnBlackoutChanged);
+        UIProperty.Register<Calendar, IReadOnlyList<CalendarDateRange>?>(
+            nameof(BlackoutDates), changed: OnBlackoutChanged);
 
     /// <summary>The drill-down level shown: <see cref="CalendarMode.Month"/> (the day grid, default),
     /// <see cref="CalendarMode.Year"/> (the 12 months), or <see cref="CalendarMode.Decade"/> (the decade's years).</summary>
@@ -83,6 +86,16 @@ public class Calendar : Control
     public static readonly StyledProperty<CalendarSelectionMode> SelectionModeProperty =
         UIProperty.Register<Calendar, CalendarSelectionMode>(nameof(SelectionMode), changed: OnSelectionModeChanged);
 
+    /// <inheritdoc cref="SelectedDatesProperty"/>
+    private static readonly UIPropertyKey<CalendarSelectedDatesCollection> SelectedDatesPropertyKey =
+        UIProperty.RegisterReadOnly<Calendar, CalendarSelectedDatesCollection>(nameof(SelectedDates));
+
+    /// <summary>The set of selected dates (the WPF <c>SelectedDates</c> analog). Directly mutable only when
+    /// <see cref="SelectionMode"/> is <see cref="CalendarSelectionMode.SingleRange"/> or
+    /// <see cref="CalendarSelectionMode.MultipleRange"/>; <see cref="SelectedDate"/> is the primary (first) date.</summary>
+    public static readonly StyledProperty<CalendarSelectedDatesCollection> SelectedDatesProperty =
+        SelectedDatesPropertyKey.Property;
+
     private readonly Dictionary<DateOnly, CalendarDayButton> _cells = new();
     private readonly List<CalendarButton> _modeButtons = new(); // the Year/Decade view's month/year cells
     private bool _suppressRebuild; // coalesce the DisplayDate + DisplayMode writes of one drill into a single rebuild
@@ -92,17 +105,16 @@ public class Calendar : Control
     private Button? _headerButton;
     private TextBlock? _headerText;
 
-    private CalendarSelectedDatesCollection _selectedDates = null!; // created in the ctor (needs `this`)
-    private DateOnly? _rangeAnchor;                 // the fixed end of an in-progress range (Shift-extend / drag)
-    private List<DateOnly> _activeRange = new();    // dates in the range currently being built (replaced on extend)
-    private bool _dragging;                         // a mouse range-drag is in flight (the Calendar holds capture)
-    private DateOnly? _lastDragDate;                // the last cell a drag extended to (dedupe per-move work)
-    private bool _syncingSelection;                 // reentrancy guard between SelectedDate ⇄ SelectedDates
+    private DateOnly? _rangeAnchor;              // the fixed end of an in-progress range (Shift-extend / drag)
+    private List<DateOnly> _activeRange = new(); // dates in the range currently being built (replaced on extend)
+    private bool _dragging;                      // a mouse range-drag is in flight (the Calendar holds capture)
+    private DateOnly? _lastDragDate;             // the last cell a drag extended to (dedupe per-move work)
+    private bool _syncingSelection;              // reentrancy guard between SelectedDate ⇄ SelectedDates
 
     /// <summary>Creates a calendar showing the current month.</summary>
     public Calendar()
     {
-        _selectedDates = new CalendarSelectedDatesCollection(this);
+        SelectedDates = new CalendarSelectedDatesCollection(this);
         var today = DateOnly.FromDateTime(DateTime.Now);
         SetValue(TodayProperty, today);
         SetValue(DisplayDateProperty, today);
@@ -115,39 +127,81 @@ public class Calendar : Control
     }
 
     /// <inheritdoc cref="DisplayDateProperty"/>
-    public DateOnly DisplayDate { get => GetValue(DisplayDateProperty); set => SetValue(DisplayDateProperty, value); }
+    public DateOnly DisplayDate
+    {
+        get => GetValue(DisplayDateProperty);
+        set => SetValue(DisplayDateProperty, value);
+    }
 
     /// <inheritdoc cref="SelectedDateProperty"/>
-    public DateOnly? SelectedDate { get => GetValue(SelectedDateProperty); set => SetValue(SelectedDateProperty, value); }
+    public DateOnly? SelectedDate
+    {
+        get => GetValue(SelectedDateProperty);
+        set => SetValue(SelectedDateProperty, value);
+    }
 
     /// <inheritdoc cref="TodayProperty"/>
-    public DateOnly Today { get => GetValue(TodayProperty); set => SetValue(TodayProperty, value); }
+    public DateOnly Today
+    {
+        get => GetValue(TodayProperty);
+        set => SetValue(TodayProperty, value);
+    }
 
     /// <inheritdoc cref="FirstDayOfWeekProperty"/>
-    public DayOfWeek FirstDayOfWeek { get => GetValue(FirstDayOfWeekProperty); set => SetValue(FirstDayOfWeekProperty, value); }
+    public DayOfWeek FirstDayOfWeek
+    {
+        get => GetValue(FirstDayOfWeekProperty);
+        set => SetValue(FirstDayOfWeekProperty, value);
+    }
 
     /// <inheritdoc cref="DisplayDateStartProperty"/>
-    public DateOnly? DisplayDateStart { get => GetValue(DisplayDateStartProperty); set => SetValue(DisplayDateStartProperty, value); }
+    public DateOnly? DisplayDateStart
+    {
+        get => GetValue(DisplayDateStartProperty);
+        set => SetValue(DisplayDateStartProperty, value);
+    }
 
     /// <inheritdoc cref="DisplayDateEndProperty"/>
-    public DateOnly? DisplayDateEnd { get => GetValue(DisplayDateEndProperty); set => SetValue(DisplayDateEndProperty, value); }
+    public DateOnly? DisplayDateEnd
+    {
+        get => GetValue(DisplayDateEndProperty);
+        set => SetValue(DisplayDateEndProperty, value);
+    }
 
     /// <inheritdoc cref="IsTodayHighlightedProperty"/>
-    public bool IsTodayHighlighted { get => GetValue(IsTodayHighlightedProperty); set => SetValue(IsTodayHighlightedProperty, value); }
+    public bool IsTodayHighlighted
+    {
+        get => GetValue(IsTodayHighlightedProperty);
+        set => SetValue(IsTodayHighlightedProperty, value);
+    }
 
     /// <inheritdoc cref="BlackoutDatesProperty"/>
-    public IReadOnlyList<CalendarDateRange>? BlackoutDates { get => GetValue(BlackoutDatesProperty); set => SetValue(BlackoutDatesProperty, value); }
+    public IReadOnlyList<CalendarDateRange>? BlackoutDates
+    {
+        get => GetValue(BlackoutDatesProperty);
+        set => SetValue(BlackoutDatesProperty, value);
+    }
 
     /// <inheritdoc cref="DisplayModeProperty"/>
-    public CalendarMode DisplayMode { get => GetValue(DisplayModeProperty); set => SetValue(DisplayModeProperty, value); }
+    public CalendarMode DisplayMode
+    {
+        get => GetValue(DisplayModeProperty);
+        set => SetValue(DisplayModeProperty, value);
+    }
 
     /// <inheritdoc cref="SelectionModeProperty"/>
-    public CalendarSelectionMode SelectionMode { get => GetValue(SelectionModeProperty); set => SetValue(SelectionModeProperty, value); }
+    public CalendarSelectionMode SelectionMode
+    {
+        get => GetValue(SelectionModeProperty);
+        set => SetValue(SelectionModeProperty, value);
+    }
 
-    /// <summary>The set of selected dates (the WPF <c>SelectedDates</c> analog). Directly mutable only when
-    /// <see cref="SelectionMode"/> is <see cref="CalendarSelectionMode.SingleRange"/> or
-    /// <see cref="CalendarSelectionMode.MultipleRange"/>; <see cref="SelectedDate"/> is the primary (first) date.</summary>
-    public CalendarSelectedDatesCollection SelectedDates => _selectedDates;
+    /// <inheritdoc cref="SelectedDatesProperty"/>
+    public CalendarSelectedDatesCollection SelectedDates
+    {
+        get => GetValue(SelectedDatesProperty);
+        private set => SetValue(SelectedDatesPropertyKey, value);
+    }
 
     /// <summary>Raised when <see cref="DisplayMode"/> changes (old → new) — a drill up/down or a direct assignment.</summary>
     public event EventHandler<CalendarModeChangedEventArgs>? DisplayModeChanged;
@@ -175,6 +229,7 @@ public class Calendar : Control
     internal Button? HeaderButton => _headerButton;
     internal TextBlock? HeaderTextPart => _headerText;
     internal IReadOnlyList<CalendarButton> ModeButtons => _modeButtons;
+
     internal CalendarButton? ModeButtonForRepresentative(DateOnly representative) =>
         _modeButtons.Find(b => b.RepresentativeDate == representative);
 
@@ -185,8 +240,10 @@ public class Calendar : Control
 
         if (_previousButton is not null)
             _previousButton.Click -= OnPreviousClick;
+
         if (_nextButton is not null)
             _nextButton.Click -= OnNextClick;
+
         if (_headerButton is not null)
             _headerButton.Click -= OnHeaderClick;
 
@@ -198,8 +255,10 @@ public class Calendar : Control
 
         if (_previousButton is not null)
             _previousButton.Click += OnPreviousClick;
+
         if (_nextButton is not null)
             _nextButton.Click += OnNextClick;
+
         if (_headerButton is not null)
             _headerButton.Click += OnHeaderClick;
 
@@ -211,8 +270,10 @@ public class Calendar : Control
     {
         if (_previousButton is not null)
             _previousButton.Click -= OnPreviousClick;
+
         if (_nextButton is not null)
             _nextButton.Click -= OnNextClick;
+
         if (_headerButton is not null)
             _headerButton.Click -= OnHeaderClick;
 
@@ -230,10 +291,12 @@ public class Calendar : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
         if (e.Handled)
             return;
 
         var handled = DisplayMode == CalendarMode.Month ? HandleMonthKey(e) : HandleModeKey(e);
+
         if (handled)
             e.Handled = true;
     }
@@ -243,16 +306,26 @@ public class Calendar : Control
     private bool HandleMonthKey(KeyEventArgs e)
     {
         var extend = (e.Modifiers & KeyModifiers.Shift) != 0;
+
         switch (e.Key)
         {
-            case Key.LeftArrow: MoveSelection(ResolveAnchorDate(e), -1, extend); break;
+            case Key.LeftArrow:  MoveSelection(ResolveAnchorDate(e), -1, extend); break;
             case Key.RightArrow: MoveSelection(ResolveAnchorDate(e), 1, extend); break;
-            case Key.UpArrow: MoveSelection(ResolveAnchorDate(e), -7, extend); break;
-            case Key.DownArrow: MoveSelection(ResolveAnchorDate(e), 7, extend); break;
-            case Key.Home: SelectInMonth(forward: true); break;
-            case Key.End: SelectInMonth(forward: false); break;
-            case Key.PageUp: Navigate(-1); FocusViewCell(); break;
-            case Key.PageDown: Navigate(1); FocusViewCell(); break;
+            case Key.UpArrow:    MoveSelection(ResolveAnchorDate(e), -7, extend); break;
+            case Key.DownArrow:  MoveSelection(ResolveAnchorDate(e), 7, extend); break;
+            case Key.Home:       SelectInMonth(forward: true); break;
+            case Key.End:        SelectInMonth(forward: false); break;
+
+            case Key.PageUp:
+                Navigate(-1);
+                FocusViewCell();
+                break;
+
+            case Key.PageDown:
+                Navigate(1);
+                FocusViewCell();
+                break;
+
             default: return false; // not a calendar-nav key — leave unhandled
         }
 
@@ -266,14 +339,23 @@ public class Calendar : Control
     {
         switch (e.Key)
         {
-            case Key.LeftArrow: MoveModeFocus(e, -1); break;
+            case Key.LeftArrow:  MoveModeFocus(e, -1); break;
             case Key.RightArrow: MoveModeFocus(e, 1); break;
-            case Key.UpArrow: MoveModeFocus(e, -ModeColumns); break;
-            case Key.DownArrow: MoveModeFocus(e, ModeColumns); break;
-            case Key.Home: FocusModeEdge(forward: true); break;
-            case Key.End: FocusModeEdge(forward: false); break;
-            case Key.PageUp: Navigate(-1); FocusViewCell(); break;
-            case Key.PageDown: Navigate(1); FocusViewCell(); break;
+            case Key.UpArrow:    MoveModeFocus(e, -ModeColumns); break;
+            case Key.DownArrow:  MoveModeFocus(e, ModeColumns); break;
+            case Key.Home:       FocusModeEdge(forward: true); break;
+            case Key.End:        FocusModeEdge(forward: false); break;
+
+            case Key.PageUp:
+                Navigate(-1);
+                FocusViewCell();
+                break;
+
+            case Key.PageDown:
+                Navigate(1);
+                FocusViewCell();
+                break;
+
             default: return false;
         }
 
@@ -298,13 +380,17 @@ public class Calendar : Control
     private CalendarButton? BestModeButton()
     {
         CalendarButton? selected = null, today = null, firstEnabled = null;
+
         foreach (var b in _modeButtons)
         {
             if (!b.IsEnabled)
                 continue;
+
             firstEnabled ??= b;
+
             if (b.IsSelected)
                 selected ??= b;
+
             if (b.IsToday)
                 today ??= b;
         }
@@ -318,6 +404,7 @@ public class Calendar : Control
     private void MoveModeFocus(KeyEventArgs e, int delta)
     {
         var idx = CurrentModeIndex(e);
+
         if (idx < 0)
         {
             FocusViewCell();
@@ -337,12 +424,24 @@ public class Calendar : Control
         if (forward)
         {
             foreach (var b in _modeButtons)
-                if (b.IsEnabled) { b.Focus(FocusNavigationMethod.Directional); return; }
+            {
+                if (b.IsEnabled)
+                {
+                    b.Focus(FocusNavigationMethod.Directional);
+                    return;
+                }
+            }
         }
         else
         {
             for (var i = _modeButtons.Count - 1; i >= 0; i--)
-                if (_modeButtons[i].IsEnabled) { _modeButtons[i].Focus(FocusNavigationMethod.Directional); return; }
+            {
+                if (_modeButtons[i].IsEnabled)
+                {
+                    _modeButtons[i].Focus(FocusNavigationMethod.Directional);
+                    return;
+                }
+            }
         }
     }
 
@@ -350,12 +449,15 @@ public class Calendar : Control
     private int CurrentModeIndex(KeyEventArgs e)
     {
         for (UIElement? node = e.OriginalSource; node is not null; node = node.VisualParent)
+        {
             if (node is CalendarButton cell)
             {
                 var i = _modeButtons.IndexOf(cell);
+
                 if (i >= 0)
                     return i;
             }
+        }
 
         return -1;
     }
@@ -366,18 +468,22 @@ public class Calendar : Control
     private DateOnly ResolveAnchorDate(KeyEventArgs e)
     {
         for (UIElement? node = e.OriginalSource; node is not null; node = node.VisualParent)
+        {
             if (node is CalendarDayButton cell)
                 return cell.Date;
+        }
 
         return InMonthAnchor();
     }
 
     private DateOnly InMonthAnchor()
     {
-        if (SelectedDate is { } s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month)
+        if (SelectedDate is {} s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month)
             return s;
+
         if (Today.Year == DisplayDate.Year && Today.Month == DisplayDate.Month)
             return Today;
+
         return new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
     }
 
@@ -388,7 +494,8 @@ public class Calendar : Control
         var lo = EffectiveMin();
         var hi = EffectiveMax();
         var clamped = Math.Clamp(anchor.DayNumber + deltaDays, lo, hi);
-        if (NearestSelectable(clamped, deltaDays >= 0 ? 1 : -1, lo, hi) is not { } target)
+
+        if (NearestSelectable(clamped, deltaDays >= 0 ? 1 : -1, lo, hi) is not {} target)
             return;
 
         // Shift+arrow (in a range mode) extends the range from the fixed anchor to the new target; a plain arrow
@@ -396,7 +503,9 @@ public class Calendar : Control
         if (extend && SelectionMode is CalendarSelectionMode.SingleRange or CalendarSelectionMode.MultipleRange)
         {
             _rangeAnchor ??= anchor;
+
             ApplyDaySelection(target, shift: true, ctrl: false);
+
             if (_cells.TryGetValue(target, out var cell))
                 cell.Focus(FocusNavigationMethod.Directional);
         }
@@ -413,10 +522,15 @@ public class Calendar : Control
     private void SelectInMonth(bool forward)
     {
         var lo = Math.Max(EffectiveMin(), new DateOnly(DisplayDate.Year, DisplayDate.Month, 1).DayNumber);
-        var hi = Math.Min(EffectiveMax(), new DateOnly(DisplayDate.Year, DisplayDate.Month, DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+
+        var hi = Math.Min(EffectiveMax(),
+                          new DateOnly(DisplayDate.Year, DisplayDate.Month,
+                                       DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+
         if (lo > hi)
             return;
-        if (NearestSelectable(forward ? lo : hi, forward ? 1 : -1, lo, hi) is { } target)
+
+        if (NearestSelectable(forward ? lo : hi, forward ? 1 : -1, lo, hi) is {} target)
             SelectAndFocus(target);
     }
 
@@ -424,18 +538,20 @@ public class Calendar : Control
     private void SelectAndFocus(DateOnly date)
     {
         SelectDate(date);
+
         if (_cells.TryGetValue(date, out var cell))
             cell.Focus(FocusNavigationMethod.Directional); // ⇒ :focus-visible
     }
 
-    private void SelectDate(DateOnly date) => SetCurrentValue(SelectedDateProperty, date); // SetCurrentValue preserves a two-way binding
+    private void SelectDate(DateOnly date) =>
+        SetCurrentValue(SelectedDateProperty, date); // SetCurrentValue preserves a two-way binding
 
     // After a keyboard month change (which rebuilt the grid and dropped the focused cell), move focus onto a cell in
     // the new month — the selected day if it is shown, else the first — so subsequent keys keep routing to the Calendar.
     private void FocusDisplayMonthCell()
     {
         // Focus a SELECTABLE cell — a disabled (out-of-range/blackout) target would no-op and leave focus nowhere.
-        if (BestFocusDate() is { } date && _cells.TryGetValue(date, out var cell))
+        if (BestFocusDate() is {} date && _cells.TryGetValue(date, out var cell))
             cell.Focus(FocusNavigationMethod.Directional);
     }
 
@@ -443,23 +559,31 @@ public class Calendar : Control
     // (if shown + selectable), else the first selectable day of the month within [Start, End].
     private DateOnly? BestFocusDate()
     {
-        if (SelectedDate is { } s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month && IsSelectable(s))
+        if (SelectedDate is {} s && s.Year == DisplayDate.Year && s.Month == DisplayDate.Month && IsSelectable(s))
             return s;
+
         if (Today.Year == DisplayDate.Year && Today.Month == DisplayDate.Month && IsSelectable(Today))
             return Today;
 
         var lo = Math.Max(EffectiveMin(), new DateOnly(DisplayDate.Year, DisplayDate.Month, 1).DayNumber);
-        var hi = Math.Min(EffectiveMax(), new DateOnly(DisplayDate.Year, DisplayDate.Month, DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+
+        var hi = Math.Min(EffectiveMax(),
+                          new DateOnly(DisplayDate.Year, DisplayDate.Month,
+                                       DateTime.DaysInMonth(DisplayDate.Year, DisplayDate.Month)).DayNumber);
+
         return lo > hi ? null : NearestSelectable(lo, 1, lo, hi);
     }
 
     private void ChangeMonth(int months)
     {
         var firstOfMonth = new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
+
         if (months < 0 && firstOfMonth <= MinMonth)
             return; // clamp at the representable bounds (AddMonths throws past DateOnly.Min/MaxValue)
+
         if (months > 0 && firstOfMonth >= MaxMonth)
             return;
+
         SetCurrentValue(DisplayDateProperty, firstOfMonth.AddMonths(months));
     }
 
@@ -467,8 +591,10 @@ public class Calendar : Control
     private void ChangeYears(int years)
     {
         var newYear = Math.Clamp(DisplayDate.Year + years, DateOnly.MinValue.Year, DateOnly.MaxValue.Year);
+
         if (newYear == DisplayDate.Year)
             return;
+
         SetCurrentValue(DisplayDateProperty, new DateOnly(newYear, DisplayDate.Month, 1));
     }
 
@@ -477,9 +603,9 @@ public class Calendar : Control
     {
         switch (DisplayMode)
         {
-            case CalendarMode.Year: ChangeYears(direction); break;
+            case CalendarMode.Year:   ChangeYears(direction); break;
             case CalendarMode.Decade: ChangeYears(direction * 10); break;
-            default: ChangeMonth(direction); break;
+            default:                  ChangeMonth(direction); break;
         }
     }
 
@@ -496,7 +622,7 @@ public class Calendar : Control
         switch (DisplayMode)
         {
             case CalendarMode.Month: SetCurrentValue(DisplayModeProperty, CalendarMode.Year); break;
-            case CalendarMode.Year: SetCurrentValue(DisplayModeProperty, CalendarMode.Decade); break;
+            case CalendarMode.Year:  SetCurrentValue(DisplayModeProperty, CalendarMode.Decade); break;
         }
     }
 
@@ -504,12 +630,20 @@ public class Calendar : Control
     // Neither selects a date (only a day click does). The DisplayDate + DisplayMode writes coalesce into one rebuild.
     private void OnModeCellClick(object? sender, ClickEventArgs e)
     {
-        var representative = ((CalendarButton)sender!).RepresentativeDate;
+        var representative = ((CalendarButton) sender!).RepresentativeDate;
         var target = DisplayMode == CalendarMode.Decade ? CalendarMode.Year : CalendarMode.Month;
 
         _suppressRebuild = true;
-        try { SetCurrentValue(DisplayDateProperty, representative); }
-        finally { _suppressRebuild = false; }
+
+        try
+        {
+            SetCurrentValue(DisplayDateProperty, representative);
+        }
+        finally
+        {
+            _suppressRebuild = false;
+        }
+
         SetCurrentValue(DisplayModeProperty, target); // one rebuild, in the new mode at the new date
 
         FocusViewCell(); // the rebuild detached the clicked cell — land focus in the new view so keys keep routing
@@ -517,9 +651,10 @@ public class Calendar : Control
 
     private void OnDayClick(object? sender, ClickEventArgs e)
     {
-        var date = ((CalendarDayButton)sender!).Date;
+        var date = ((CalendarDayButton) sender!).Date;
         var old = SelectedDate;
         SelectDate(date);
+
         // Re-focus the picked day: SelectDate rebuilt the grid (detaching the clicked cell), so without this focus
         // repair would jump to the first tab stop — the prev-month button (audit CD-P2D-1).
         if (_cells.TryGetValue(date, out var cell))
@@ -534,14 +669,17 @@ public class Calendar : Control
     {
         if (sender is not Calendar calendar)
             return;
+
         calendar.RebuildView();
         calendar.DisplayDateChanged?.Invoke(calendar, new CalendarDateChangedEventArgs(oldValue, newValue));
     }
 
-    private static void OnSelectionModeChanged(UIObject sender, CalendarSelectionMode oldValue, CalendarSelectionMode newValue)
+    private static void OnSelectionModeChanged(UIObject sender, CalendarSelectionMode oldValue,
+                                               CalendarSelectionMode newValue)
     {
         if (sender is not Calendar calendar)
             return;
+
         calendar.ReconcileSelectionToMode();
         calendar.RebuildView();
     }
@@ -556,6 +694,7 @@ public class Calendar : Control
     {
         if (sender is not Calendar c)
             return;
+
         c.RebuildView();
         c.DisplayModeChanged?.Invoke(c, new CalendarModeChangedEventArgs(oldValue, newValue));
     }
@@ -564,15 +703,18 @@ public class Calendar : Control
     {
         if (sender is not Calendar c)
             return;
+
         c.CoerceValue(DisplayDateProperty); // re-clamp the view into the new range
         c.PruneUnselectable();              // drop now-out-of-range dates (syncs SelectedDate to the new primary)
         c.RebuildView();
     }
 
-    private static void OnBlackoutChanged(UIObject sender, IReadOnlyList<CalendarDateRange>? oldValue, IReadOnlyList<CalendarDateRange>? newValue)
+    private static void OnBlackoutChanged(UIObject sender, IReadOnlyList<CalendarDateRange>? oldValue,
+                                          IReadOnlyList<CalendarDateRange>? newValue)
     {
         if (sender is not Calendar c)
             return;
+
         c.PruneUnselectable(); // drop now-blacked-out dates (syncs SelectedDate to the new primary)
         c.RebuildView();
     }
@@ -581,21 +723,27 @@ public class Calendar : Control
     {
         if (sender is not Calendar c)
             return value;
+
         var dayNumber = value.DayNumber;
-        if (c.DisplayDateStart is { } start)
+
+        if (c.DisplayDateStart is {} start)
             dayNumber = Math.Max(dayNumber, start.DayNumber);
-        if (c.DisplayDateEnd is { } end)
+
+        if (c.DisplayDateEnd is {} end)
             dayNumber = Math.Min(dayNumber, end.DayNumber);
+
         return DateOnly.FromDayNumber(Math.Clamp(dayNumber, DateOnly.MinValue.DayNumber, DateOnly.MaxValue.DayNumber));
     }
 
     private static DateOnly? CoerceSelectedDate(UIObject sender, DateOnly? value)
     {
-        if (sender is not Calendar c || value is not { } d)
+        if (sender is not Calendar c || value is not {} d)
             return value;
+
         if (c.SelectionMode == CalendarSelectionMode.None)
-            return null;                          // no selection is possible in None mode
-        return c.IsSelectable(d) ? value : null;  // out-of-range / blackout ⇒ cleared
+            return null; // no selection is possible in None mode
+
+        return c.IsSelectable(d) ? value : null; // out-of-range / blackout ⇒ cleared
     }
 
     // ── bounds + blackout helpers ───────────────────────────────────────────────────────────────────────
@@ -606,11 +754,15 @@ public class Calendar : Control
 
     private bool IsBlackoutDate(DateOnly d)
     {
-        if (BlackoutDates is not { } ranges)
+        if (BlackoutDates is not {} ranges)
             return false;
+
         foreach (var range in ranges)
+        {
             if (range.Contains(d))
                 return true;
+        }
+
         return false;
     }
 
@@ -620,11 +772,17 @@ public class Calendar : Control
     private DateOnly? NearestSelectable(int fromDayNumber, int dir, int lo, int hi)
     {
         for (var n = fromDayNumber; n >= lo && n <= hi; n += dir)
+        {
             if (!IsBlackoutDate(DateOnly.FromDayNumber(n)))
                 return DateOnly.FromDayNumber(n);
+        }
+
         for (var n = fromDayNumber - dir; n >= lo && n <= hi; n -= dir)
+        {
             if (!IsBlackoutDate(DateOnly.FromDayNumber(n)))
                 return DateOnly.FromDayNumber(n);
+        }
+
         return null;
     }
 
@@ -646,13 +804,16 @@ public class Calendar : Control
         {
             case CalendarSelectionMode.None:
                 throw new InvalidOperationException("Dates cannot be selected when SelectionMode is None.");
+
             case CalendarSelectionMode.SingleDate when currentCount >= 1:
                 throw new InvalidOperationException(
                     "Only one date can be selected when SelectionMode is SingleDate. Use SelectedDate.");
         }
 
         if (!IsInRange(date))
-            throw new ArgumentOutOfRangeException(nameof(date), "The date is outside the DisplayDateStart / DisplayDateEnd range.");
+            throw new ArgumentOutOfRangeException(nameof(date),
+                                                  "The date is outside the DisplayDateStart / DisplayDateEnd range.");
+
         if (IsBlackoutDate(date))
             throw new InvalidOperationException("The date is in a BlackoutDates range and cannot be selected.");
     }
@@ -660,16 +821,21 @@ public class Calendar : Control
     /// <summary>Whether <paramref name="date"/> is currently selectable (in range and not blacked out).</summary>
     internal bool IsSelectableDate(DateOnly date) => IsSelectable(date);
 
-    private bool IsDateSelected(DateOnly date) => _selectedDates.Contains(date);
+    private bool IsDateSelected(DateOnly date) => SelectedDates.Contains(date);
 
     // Whether a Year/Decade cell should read :selected — any selected date in that month (Year) / year (Decade).
     private bool IsRepresentativeSelected(DateOnly representative)
     {
-        foreach (var s in _selectedDates)
+        foreach (var s in SelectedDates)
+        {
             if (DisplayMode == CalendarMode.Year
                     ? s.Year == representative.Year && s.Month == representative.Month
                     : s.Year == representative.Year)
+            {
                 return true;
+            }
+        }
+
         return false;
     }
 
@@ -679,8 +845,15 @@ public class Calendar : Control
     {
         var wasSync = _syncingSelection;
         _syncingSelection = true;
-        try { SetCurrentValue(SelectedDateProperty, _selectedDates.Count > 0 ? _selectedDates[0] : (DateOnly?)null); }
-        finally { _syncingSelection = wasSync; }
+
+        try
+        {
+            SetCurrentValue(SelectedDateProperty, SelectedDates.Count > 0 ? SelectedDates[0] : (DateOnly?) null);
+        }
+        finally
+        {
+            _syncingSelection = wasSync;
+        }
 
         RestampSelection();
         SelectedDatesChanged?.Invoke(this, new CalendarSelectedDatesChangedEventArgs(added, removed));
@@ -704,20 +877,25 @@ public class Calendar : Control
     // Drop any selected dates that are no longer selectable (a bounds / blackout change) as one batched edit.
     private void PruneUnselectable()
     {
-        if (_selectedDates.Count == 0)
+        if (SelectedDates.Count == 0)
             return;
 
         List<DateOnly>? drop = null;
-        foreach (var d in _selectedDates)
+
+        foreach (var d in SelectedDates)
+        {
             if (!IsSelectable(d))
                 (drop ??= new List<DateOnly>()).Add(d);
+        }
 
         if (drop is not null)
-            _selectedDates.Edit(() =>
-            {
-                foreach (var d in drop)
-                    _selectedDates.Remove(d);
-            });
+        {
+            SelectedDates.Edit(() =>
+                               {
+                                   foreach (var d in drop)
+                                       SelectedDates.Remove(d);
+                               });
+        }
     }
 
     // Narrow / keep the current selection to fit a new SelectionMode.
@@ -726,20 +904,25 @@ public class Calendar : Control
         switch (SelectionMode)
         {
             case CalendarSelectionMode.None:
-                _selectedDates.Clear();
+                SelectedDates.Clear();
                 _rangeAnchor = null;
                 _activeRange.Clear();
                 break;
+
             case CalendarSelectionMode.SingleDate:
-                if (_selectedDates.Count > 1)
-                    _selectedDates.ReplaceAll(new[] { _selectedDates[0] });
+                if (SelectedDates.Count > 1)
+                    SelectedDates.ReplaceAll(new[] { SelectedDates[0] });
+
                 ResetRangeAnchor();
                 break;
+
             case CalendarSelectionMode.SingleRange:
-                if (_selectedDates.Count > 1 && !IsContiguousSelection())
-                    _selectedDates.ReplaceAll(new[] { _selectedDates[0] });
+                if (SelectedDates.Count > 1 && !IsContiguousSelection())
+                    SelectedDates.ReplaceAll(new[] { SelectedDates[0] });
+
                 ResetRangeAnchor();
                 break;
+
             case CalendarSelectionMode.MultipleRange:
                 ResetRangeAnchor();
                 break;
@@ -748,21 +931,25 @@ public class Calendar : Control
 
     private void ResetRangeAnchor()
     {
-        _rangeAnchor = _selectedDates.Count > 0 ? _selectedDates[0] : null;
+        _rangeAnchor = SelectedDates.Count > 0 ? SelectedDates[0] : null;
         _activeRange.Clear();
-        if (_selectedDates.Count > 0)
-            _activeRange.AddRange(_selectedDates);
+
+        if (SelectedDates.Count > 0)
+            _activeRange.AddRange(SelectedDates);
     }
 
     private bool IsContiguousSelection()
     {
-        if (_selectedDates.Count <= 1)
+        if (SelectedDates.Count <= 1)
             return true;
-        var sorted = new List<DateOnly>(_selectedDates);
+
+        var sorted = new List<DateOnly>(SelectedDates);
         sorted.Sort();
+
         for (var i = 1; i < sorted.Count; i++)
             if (sorted[i].DayNumber != sorted[i - 1].DayNumber + 1)
                 return false;
+
         return true;
     }
 
@@ -771,18 +958,25 @@ public class Calendar : Control
     private List<DateOnly> ContiguousSelectableRange(DateOnly anchor, DateOnly target)
     {
         var run = new List<DateOnly>();
+
         if (!IsSelectable(anchor))
             return run;
+
         var step = target.DayNumber >= anchor.DayNumber ? 1 : -1;
+
         for (var n = anchor.DayNumber; n >= DateOnly.MinValue.DayNumber && n <= DateOnly.MaxValue.DayNumber; n += step)
         {
             var d = DateOnly.FromDayNumber(n);
+
             if (!IsSelectable(d))
                 break;
+
             run.Add(d);
+
             if (n == target.DayNumber)
                 break;
         }
+
         return run;
     }
 
@@ -802,51 +996,57 @@ public class Calendar : Control
                 return;
 
             case CalendarSelectionMode.SingleRange:
-                if (shift && _rangeAnchor is { } singleAnchor)
-                    _selectedDates.ReplaceAll(ContiguousSelectableRange(singleAnchor, date));
+                if (shift && _rangeAnchor is {} singleAnchor)
+                {
+                    SelectedDates.ReplaceAll(ContiguousSelectableRange(singleAnchor, date));
+                }
                 else
                 {
                     _rangeAnchor = date;
-                    _selectedDates.ReplaceAll(ContiguousSelectableRange(date, date));
+                    SelectedDates.ReplaceAll(ContiguousSelectableRange(date, date));
                 }
 
                 _activeRange.Clear();
-                _activeRange.AddRange(_selectedDates);
+                _activeRange.AddRange(SelectedDates);
                 return;
 
             case CalendarSelectionMode.MultipleRange:
-                if (shift && _rangeAnchor is { } multiAnchor)
+                if (shift && _rangeAnchor is {} multiAnchor)
                 {
                     var newRange = ContiguousSelectableRange(multiAnchor, date);
                     var previous = _activeRange;
-                    _selectedDates.Edit(() =>
-                    {
-                        foreach (var d in previous)
-                            if (!newRange.Contains(d))
-                                _selectedDates.Remove(d);
-                        foreach (var d in newRange)
-                            _selectedDates.Add(d);
-                    });
+
+                    SelectedDates.Edit(() =>
+                                       {
+                                           foreach (var d in previous)
+                                               if (!newRange.Contains(d))
+                                                   SelectedDates.Remove(d);
+
+                                           foreach (var d in newRange)
+                                               SelectedDates.Add(d);
+                                       });
+
                     _activeRange = newRange;
                 }
                 else if (ctrl)
                 {
-                    if (_selectedDates.Contains(date))
-                        _selectedDates.Remove(date);
+                    if (SelectedDates.Contains(date))
+                        SelectedDates.Remove(date);
                     else if (IsSelectable(date))
-                        _selectedDates.Add(date);
+                        SelectedDates.Add(date);
 
                     _rangeAnchor = date;
                     _activeRange.Clear();
-                    if (_selectedDates.Contains(date))
+
+                    if (SelectedDates.Contains(date))
                         _activeRange.Add(date);
                 }
                 else
                 {
                     _rangeAnchor = date;
-                    _selectedDates.ReplaceAll(ContiguousSelectableRange(date, date));
+                    SelectedDates.ReplaceAll(ContiguousSelectableRange(date, date));
                     _activeRange.Clear();
-                    _activeRange.AddRange(_selectedDates);
+                    _activeRange.AddRange(SelectedDates);
                 }
 
                 return;
@@ -859,6 +1059,7 @@ public class Calendar : Control
         foreach (var (date, cell) in _cells)
         {
             var p = e.GetPosition(cell);
+
             if (p.Column >= 0 && p.Column < CellWidth && p.Row >= 0 && p.Row < 1)
                 return date;
         }
@@ -870,6 +1071,7 @@ public class Calendar : Control
     {
         if (!_dragging)
             return;
+
         _dragging = false;
         _lastDragDate = null;
         ReleaseMouseCapture();
@@ -884,9 +1086,11 @@ public class Calendar : Control
 
         if (e.Handled || e.Button != MouseButton.Left || DisplayMode != CalendarMode.Month)
             return;
+
         if (SelectionMode is not (CalendarSelectionMode.SingleRange or CalendarSelectionMode.MultipleRange))
             return;
-        if (DayCellAt(e) is not { } date || !IsSelectable(date))
+
+        if (DayCellAt(e) is not {} date || !IsSelectable(date))
             return;
 
         var shift = (e.Modifiers & KeyModifiers.Shift) != 0;
@@ -912,13 +1116,14 @@ public class Calendar : Control
 
         if (!_dragging)
             return;
+
         if ((e.ButtonsHeld & MouseButtons.Left) == 0)
         {
             EndDrag();
             return;
         }
 
-        if (DayCellAt(e) is { } date && date != _lastDragDate && IsSelectable(date))
+        if (DayCellAt(e) is {} date && date != _lastDragDate && IsSelectable(date))
         {
             _lastDragDate = date;
             ApplyDaySelection(date, shift: true, ctrl: false); // extend the active range to the hovered day
@@ -929,6 +1134,7 @@ public class Calendar : Control
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
+
         if (_dragging && e.Button == MouseButton.Left)
             EndDrag();
     }
@@ -950,21 +1156,26 @@ public class Calendar : Control
         // rebuild — the collection path already restamped in place — just surface the singular SelectedDateChanged.
         if (calendar._syncingSelection)
         {
-            calendar.SelectedDateChanged?.Invoke(calendar, new CalendarSelectedDateChangedEventArgs(oldValue, newValue));
+            calendar.SelectedDateChanged?.Invoke(
+                calendar, new CalendarSelectedDateChangedEventArgs(oldValue, newValue));
+
             return;
         }
 
         // An external SelectedDate assignment (or binding push): make the collection hold exactly this primary date.
         calendar._syncingSelection = true;
+
         try
         {
-            if (newValue is { } sel)
-                calendar._selectedDates.ReplaceAll(new[] { sel });
+            if (newValue is {} sel)
+                calendar.SelectedDates.ReplaceAll(new[] { sel });
             else
-                calendar._selectedDates.Clear();
+                calendar.SelectedDates.Clear();
+
             calendar._rangeAnchor = newValue;
             calendar._activeRange.Clear();
-            if (newValue is { } anchor)
+
+            if (newValue is {} anchor)
                 calendar._activeRange.Add(anchor);
         }
         finally
@@ -973,7 +1184,7 @@ public class Calendar : Control
         }
 
         // Selecting a day in an adjacent month moves the view (DisplayDate change rebuilds); otherwise restamp in place.
-        if (newValue is { } d && (d.Year != calendar.DisplayDate.Year || d.Month != calendar.DisplayDate.Month))
+        if (newValue is {} d && (d.Year != calendar.DisplayDate.Year || d.Month != calendar.DisplayDate.Month))
             calendar.SetCurrentValue(DisplayDateProperty, new DateOnly(d.Year, d.Month, 1));
         else
             calendar.RebuildView();
@@ -995,11 +1206,12 @@ public class Calendar : Control
     {
         if (_suppressRebuild)
             return;
+
         switch (DisplayMode)
         {
-            case CalendarMode.Year: RebuildYearView(); break;
+            case CalendarMode.Year:   RebuildYearView(); break;
             case CalendarMode.Decade: RebuildDecadeView(); break;
-            default: RebuildMonthView(); break;
+            default:                  RebuildMonthView(); break;
         }
     }
 
@@ -1017,45 +1229,61 @@ public class Calendar : Control
         var dtf = CultureInfo.CurrentCulture.DateTimeFormat;
 
         var header = new StackPanel { Orientation = Orientation.Horizontal };
+
         for (var i = 0; i < 7; i++)
         {
-            var dow = (DayOfWeek)(((int)FirstDayOfWeek + i) % 7);
-            header.Children.Add(new TextBlock { Text = dtf.ShortestDayNames[(int)dow], Width = CellWidth, TextAlignment = TextAlignment.Center });
+            var dow = (DayOfWeek) (((int) FirstDayOfWeek + i) % 7);
+
+            header.Children.Add(new TextBlock
+                                {
+                                    Text = dtf.ShortestDayNames[(int) dow], Width = CellWidth,
+                                    TextAlignment = TextAlignment.Center
+                                });
         }
 
         _monthView.Children.Add(header);
 
         var firstOfMonth = new DateOnly(DisplayDate.Year, DisplayDate.Month, 1);
-        var lead = ((int)firstOfMonth.DayOfWeek - (int)FirstDayOfWeek + 7) % 7;
-        lead = Math.Min(lead, firstOfMonth.DayNumber); // don't underflow DateOnly.MinValue (Jan 0001) computing the start
+        var lead = ((int) firstOfMonth.DayOfWeek - (int) FirstDayOfWeek + 7) % 7;
+
+        lead = Math.Min(
+            lead, firstOfMonth.DayNumber); // don't underflow DateOnly.MinValue (Jan 0001) computing the start
+
         var startDayNumber = firstOfMonth.DayNumber - lead;
 
         for (var week = 0; week < 6; week++)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal };
+
             for (var day = 0; day < 7; day++)
             {
                 var dayNumber = startDayNumber + week * 7 + day;
+
                 if (dayNumber > DateOnly.MaxValue.DayNumber)
                 {
-                    row.Children.Add(new TextBlock { Width = CellWidth }); // a blank slot past the representable range (Dec 9999)
+                    row.Children.Add(new TextBlock
+                                     { Width = CellWidth }); // a blank slot past the representable range (Dec 9999)
+
                     continue;
                 }
 
                 var date = DateOnly.FromDayNumber(dayNumber);
                 var blackout = !IsSelectable(date); // out of [Start,End] or in a BlackoutDates range
+
                 var cell = new CalendarDayButton
-                {
-                    Date = date,
-                    Content = date.Day.ToString(CultureInfo.CurrentCulture),
-                    Width = CellWidth,
-                    Padding = new(1, 0, 0, 0),
-                    IsToday = IsTodayHighlighted && date == Today && !blackout, // a blacked-out/out-of-range today isn't highlighted
-                    IsSelected = IsDateSelected(date),
-                    IsInactive = date.Month != DisplayDate.Month,
-                    IsBlackout = blackout,
-                    IsEnabled = !blackout, // disabled ⇒ ButtonBase raises no Click, so it can't be picked
-                };
+                           {
+                               Date = date,
+                               Content = date.Day.ToString(CultureInfo.CurrentCulture),
+                               Width = CellWidth,
+                               Padding = new(1, 0, 0, 0),
+                               IsToday = IsTodayHighlighted && date == Today &&
+                                         !blackout, // a blacked-out/out-of-range today isn't highlighted
+                               IsSelected = IsDateSelected(date),
+                               IsInactive = date.Month != DisplayDate.Month,
+                               IsBlackout = blackout,
+                               IsEnabled = !blackout, // disabled ⇒ ButtonBase raises no Click, so it can't be picked
+                           };
+
                 cell.Click += OnDayClick;
                 row.Children.Add(cell);
                 _cells[date] = cell;
@@ -1089,23 +1317,26 @@ public class Calendar : Control
                                Orientation = Orientation.Horizontal,
                                Margin = new(0, row == 0 ? ModeVerticalMargin : 0, 0, ModeVerticalMargin)
                            };
+
             for (var col = 0; col < ModeColumns; col++)
             {
                 var month = row * ModeColumns + col + 1; // 1..12
                 var first = new DateOnly(year, month, 1);
                 var last = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
                 var selectable = HasSelectableDay(first, last);
+
                 var cell = new CalendarButton
-                {
-                    RepresentativeDate = first,
-                    Content = dtf.AbbreviatedMonthNames[month - 1],
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    Width = ModeCellWidth,
-                    IsToday = IsTodayHighlighted && Today.Year == year && Today.Month == month && selectable,
-                    IsSelected = IsRepresentativeSelected(first),
-                    IsBlackout = !selectable,
-                    IsEnabled = selectable,
-                };
+                           {
+                               RepresentativeDate = first,
+                               Content = dtf.AbbreviatedMonthNames[month - 1],
+                               HorizontalContentAlignment = HorizontalAlignment.Center,
+                               Width = ModeCellWidth,
+                               IsToday = IsTodayHighlighted && Today.Year == year && Today.Month == month && selectable,
+                               IsSelected = IsRepresentativeSelected(first),
+                               IsBlackout = !selectable,
+                               IsEnabled = selectable,
+                           };
+
                 cell.Click += OnModeCellClick;
                 rowPanel.Children.Add(cell);
                 _modeButtons.Add(cell);
@@ -1143,6 +1374,7 @@ public class Calendar : Control
             {
                 var offset = row * ModeColumns + col - 1; // -1 .. 10
                 var year = decadeStart + offset;
+
                 if (year < DateOnly.MinValue.Year || year > DateOnly.MaxValue.Year)
                 {
                     rowPanel.Children.Add(new TextBlock { Width = ModeCellWidth }); // an unrepresentable year slot
@@ -1152,18 +1384,21 @@ public class Calendar : Control
                 var first = new DateOnly(year, 1, 1);
                 var last = new DateOnly(year, 12, 31);
                 var selectable = HasSelectableDay(first, last);
+
                 var cell = new CalendarButton
-                {
-                    RepresentativeDate = first,
-                    Content = year.ToString(CultureInfo.CurrentCulture),
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    Width = ModeCellWidth,
-                    IsToday = IsTodayHighlighted && Today.Year == year && selectable,
-                    IsSelected = IsRepresentativeSelected(first),
-                    IsInactive = offset is < 0 or > 9, // outside the shown decade (the leading/trailing fill)
-                    IsBlackout = !selectable,
-                    IsEnabled = selectable,
-                };
+                           {
+                               RepresentativeDate = first,
+                               Content = year.ToString(CultureInfo.CurrentCulture),
+                               HorizontalContentAlignment = HorizontalAlignment.Center,
+                               Width = ModeCellWidth,
+                               IsToday = IsTodayHighlighted && Today.Year == year && selectable,
+                               IsSelected = IsRepresentativeSelected(first),
+                               IsInactive =
+                                   offset is < 0 or > 9, // outside the shown decade (the leading/trailing fill)
+                               IsBlackout = !selectable,
+                               IsEnabled = selectable,
+                           };
+
                 cell.Click += OnModeCellClick;
                 rowPanel.Children.Add(cell);
                 _modeButtons.Add(cell);
@@ -1220,7 +1455,7 @@ public sealed class CalendarModeChangedEventArgs(CalendarMode oldMode, CalendarM
 public readonly record struct CalendarDateRange(DateOnly Start, DateOnly End)
 {
     /// <summary>A single-date range.</summary>
-    public CalendarDateRange(DateOnly date) : this(date, date) { }
+    public CalendarDateRange(DateOnly date) : this(date, date) {}
 
     /// <summary>Whether <paramref name="date"/> falls within [<see cref="Start"/>, <see cref="End"/>] (inclusive).</summary>
     public bool Contains(DateOnly date)
@@ -1235,20 +1470,25 @@ public readonly record struct CalendarDateRange(DateOnly Start, DateOnly End)
 public enum CalendarSelectionMode
 {
     /// <summary>One date at a time (the default) — via <see cref="Calendar.SelectedDate"/>; <see cref="Calendar.SelectedDates"/> holds 0–1.</summary>
+    [Display(Name = "Single Date")]
     SingleDate,
 
     /// <summary>A single contiguous range of dates — Shift+click / Shift+arrow / mouse-drag to extend.</summary>
+    [Display(Name = "Single Range")]
     SingleRange,
 
     /// <summary>Multiple disjoint dates / ranges — Ctrl adds a date, Shift extends the active range.</summary>
+    [Display(Name = "Multiple Range")]
     MultipleRange,
 
     /// <summary>Selection is disabled — no date can be selected.</summary>
-    None,
+    [Display(Name = "None")]
+    None
 }
 
 /// <summary>The <see cref="Calendar.SelectedDatesChanged"/> payload — the dates added to / removed from the selection.</summary>
-public sealed class CalendarSelectedDatesChangedEventArgs(IReadOnlyList<DateOnly> addedDates, IReadOnlyList<DateOnly> removedDates) : EventArgs
+public sealed class CalendarSelectedDatesChangedEventArgs(IReadOnlyList<DateOnly> addedDates,
+                                                          IReadOnlyList<DateOnly> removedDates) : EventArgs
 {
     /// <summary>The dates newly added to the selection.</summary>
     public IReadOnlyList<DateOnly> AddedDates { get; } = addedDates;

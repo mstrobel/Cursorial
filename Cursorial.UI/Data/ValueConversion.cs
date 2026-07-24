@@ -41,9 +41,11 @@ internal static class ValueConversion
         {
             if (value is string enumText)
                 return Enum.TryParse(underlying, enumText, ignoreCase: true, out var parsed) ? parsed : Failed;
+
             try
             {
-                return Enum.ToObject(underlying, value);
+                if (value.GetType().IsIntegralType())
+                    return Enum.ToObject(underlying, value);
             }
             catch (ArgumentException)
             {

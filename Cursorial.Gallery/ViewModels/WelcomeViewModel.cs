@@ -32,7 +32,7 @@ public class WelcomeViewModel : PageViewModel
            $"[brush={ThemeKeys.CoolBrush}]Figlet fonts[/brush] (big ascii art glyphs), " +
            $"[brush={ThemeKeys.RedBrush}]scaled text[/brush], and/or an actual " +
            $"[brush={ThemeKeys.SuccessBrush}]raster image[/brush] above.[br/][br/]" +
-           $"Tiered, capability-based presentation is a core design pillar of Cursorial's UI framework.";
+           $"Tiered, capability-based presentation is a core design pillar of Cursorial.";
 
     private static RichText MakeWelcomeText(IGlyphFont font, string text, TextSizing? sizing = null)
     {

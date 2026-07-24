@@ -1671,12 +1671,31 @@ internal static class ControlThemes
 
     // // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
     // // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
-    // private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
-    // {
-    //     var presenter = new ContentPresenter { RecognizesAccessKey = false };
-    //     ctx.RegisterName("PART_ContentPresenter", presenter);
-    //     return presenter;
-    // });
+    private static ControlTemplate BareGlyphButtonTemplate()
+    {
+        var t = new ControlTemplate(
+            ctx =>
+            {
+                var presenter = new ContentPresenter { RecognizesAccessKey = false };
+                ctx.RegisterName("PART_ContentPresenter", presenter);
+                return presenter;
+            });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<RepeatButton>())
+            {
+                Children =
+                {
+                    new Style("^:pointerover /template/ #PART_ContentPresenter")
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
+                            
+                    new Style("^:pressed /template/ #PART_ContentPresenter")
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
+                }
+            });
+
+        return t;
+    }
 
     // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
     // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
@@ -1687,7 +1706,7 @@ internal static class ControlThemes
             ctx =>
             {
                var dock = new DockPanel();
-               // var bareTemplate = BareGlyphButtonTemplate();
+               var bareTemplate = BareGlyphButtonTemplate();
 
                // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
                // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
@@ -1696,7 +1715,7 @@ internal static class ControlThemes
                var lineUp = new RepeatButton
                             {
                                 Content = horizontal ? "◀" : "▲",
-                                // Template = bareTemplate, 
+                                Template = bareTemplate,
                                 Padding = Margins.Zero, 
                                 Focusable = false,
                                 IsTabStop = false
@@ -1708,7 +1727,7 @@ internal static class ControlThemes
                var lineDown = new RepeatButton
                               {
                                   Content = horizontal ? "▶" : "▼",
-                                  // Template = bareTemplate,
+                                  Template = bareTemplate,
                                   Padding = Margins.Zero,
                                   Focusable = false,
                                   IsTabStop = false

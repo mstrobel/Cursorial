@@ -98,7 +98,7 @@ public static class TaskDialog
 
         var root = new Grid
                    {
-                       MaxWidth = (wm?.ScreenSize.Columns + 1) / 3 * 2 ?? 40,
+                       MaxWidth = (wm?.ScreenSize.Columns + 1) / 2 ?? 40,
                        MaxHeight = wm?.ScreenSize.Rows ?? LayoutMath.Unbounded
                    };
 

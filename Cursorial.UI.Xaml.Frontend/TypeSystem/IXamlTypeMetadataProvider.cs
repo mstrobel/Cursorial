@@ -53,29 +53,20 @@ public interface IXamlTypeMetadataProvider
 /// non-breaking on netstandard2.0 (which has no default interface methods) — existing providers keep working
 /// and opt in by implementing it.
 /// </summary>
+/// <remarks>
+/// The single method is xmlns-QUALIFIED (P1C): the loader binds the document prefix itself
+/// (<c>{x:Static co:Colors.Red}</c> → the <c>co:</c> declaration's namespace) and passes the provider a
+/// prefix-FREE path, so providers never see raw prefixes and two documents binding the same prefix to
+/// different namespaces cannot collide. There is deliberately no unqualified (default-namespace-only)
+/// overload — such a method silently resolves prefixed paths in the wrong namespace, the exact bug class
+/// this seam is kept qualified to avoid.
+/// </remarks>
 public interface IXamlStaticResolver
 {
     /// <summary>
-    /// Resolves an <c>{x:Static Type.Member}</c> member path (e.g. <c>"Colors.Red"</c>) to its value, or
+    /// Resolves a prefix-free <c>Type.Member</c> path (e.g. <c>"Colors.Red"</c>) whose type is declared under
+    /// <paramref name="xmlNamespace"/> (a Cursorial uri or <c>clr-namespace:</c> form) to its value, or
     /// returns <c>false</c> on an unresolvable path.
-    /// </summary>
-    bool TryResolveStatic(string memberPath, out object? value);
-}
-
-/// <summary>
-/// The xmlns-aware widening of <see cref="IXamlStaticResolver"/> (P1C): resolves an <c>{x:Static}</c> path
-/// whose type token binds under <c>xmlNamespace</c>. The loader resolves the document prefix itself
-/// (<c>{x:Static co:Colors.Red}</c> → the <c>co:</c> declaration's namespace) and passes the prefix-FREE
-/// path, so providers never see raw prefixes — two documents binding the same prefix to different
-/// namespaces cannot collide. A separate derived interface for the same reason as its base:
-/// netstandard2.0 has no default interface methods, so widening in place would break existing providers.
-/// </summary>
-public interface IXamlQualifiedStaticResolver : IXamlStaticResolver
-{
-    /// <summary>
-    /// Resolves a prefix-free <c>Type.Member</c> path whose type is declared under
-    /// <paramref name="xmlNamespace"/> (a Cursorial uri or <c>clr-namespace:</c> form), or returns
-    /// <c>false</c> on an unresolvable path.
     /// </summary>
     bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value);
 }

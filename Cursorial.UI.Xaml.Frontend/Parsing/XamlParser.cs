@@ -1051,6 +1051,14 @@ internal sealed class XamlParser
         var kind = ClassifyExtension(node.Name);
         int lineInfo = LineInfo.Pack(node.Line, node.Column);
 
+        // Stamp the resolved xmlns onto THIS node and, recursively, every nested-extension argument — for
+        // ALL kinds, not just Custom. The loader/generator re-resolve extension types at build (the reader
+        // scope is gone), keyed off the stamp. A nested custom extension living under a built-in outer
+        // extension ({Binding Converter={i:MyConverter}}, {StaticResource {i:Key}}) is only reachable here;
+        // without this stamp its ResolvedNamespace was null → the build-time resolver fell back to the default
+        // UI xmlns and a prefixed project extension was CUR2002 at load/generate (Gallery's {i:EnumItemConverter}).
+        StampResolvedNamespaces(node);
+
         switch (kind)
         {
             case ExtensionKind.Null:
@@ -1400,9 +1408,10 @@ internal sealed class XamlParser
     private void ResolveExtensionType(MarkupExtensionNode node, int line, int column)
     {
         // A custom extension name may be prefix-qualified (my:FooExtension); bind the prefix from the live
-        // reader scope and try the conventional "Extension" suffix. Reports CUR2002 on a miss (X53).
+        // reader scope and try the conventional "Extension" suffix. Reports CUR2002 on a miss (X53). The
+        // namespace stamp (for the loader's build-time re-resolution) is applied for every extension node up
+        // in BuildExtensionValue, so this only surfaces the top-level parse-time diagnostic.
         _ = ResolveQualifiedType(node.Name, appendExtensionSuffix: true, node.Line, node.Column, report: true);
-        StampResolvedNamespaces(node);
     }
 
     /// <summary>

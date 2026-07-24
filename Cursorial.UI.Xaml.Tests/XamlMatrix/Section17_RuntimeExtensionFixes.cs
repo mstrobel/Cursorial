@@ -38,6 +38,24 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.Equal(2, host.Items!.Count); // both children added — the UIProperty member now exposes a getter to fill
     }
 
+    [Fact] // A prefixed (clr-namespace) custom extension NESTED under a BUILT-IN outer extension resolves its
+    // type — regression for the Gallery {Binding Converter={i:EnumItemConverter}} CUR2002. Nested nodes were
+    // only namespace-stamped when the OUTER extension was itself custom; under {Binding} the nested extension
+    // was unstamped, so the loader probed the default UI xmlns (where the prefixed type does not live) and
+    // reported CUR2002. The extension's namespace comes from the p: prefix, NOT the default namespace.
+    public void NestedPrefixedCustomExtension_UnderBuiltIn_ResolvesConverter()
+    {
+        var root = (UIControls.StackPanel) LoadRaw(
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:p=\"clr-namespace:Cursorial.Tests.UI.Xaml.XamlMatrix.Prefixed;assembly=Cursorial.UI.Xaml.Tests\" Spacing=\"3\">" +
+            "<Border Width=\"{Binding Spacing, Converter={p:PrefixConverter}}\"/>" +
+            "</StackPanel>");
+
+        var border = (UIControls.Border) root.Children[0];
+        var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
+        Assert.IsType<Prefixed.PrefixConverter>(binding.Converter); // the nested {p:PrefixConverter} resolved under the p: namespace
+    }
+
     [Fact] // An inline OBJECT Setter.Value is built + assigned (previously dropped to UIProperty.UnsetValue).
     public void InlineObjectSetterValue_IsBuiltAndAssigned()
     {

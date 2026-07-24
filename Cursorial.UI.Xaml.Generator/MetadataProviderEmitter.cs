@@ -80,7 +80,7 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
         sb.AppendLine("namespace Cursorial.UI.Xaml.Generated");
         sb.AppendLine("{");
-        sb.AppendLine($"    internal sealed class __GeneratedXamlMetadata : {Frontend}.IXamlTypeMetadataProvider, {Frontend}.IXamlQualifiedStaticResolver");
+        sb.AppendLine($"    internal sealed class __GeneratedXamlMetadata : {Frontend}.IXamlTypeMetadataProvider, {Frontend}.IXamlStaticResolver");
         sb.AppendLine("    {");
         sb.AppendLine("        public static readonly __GeneratedXamlMetadata Instance = new();");
         sb.AppendLine();
@@ -218,17 +218,13 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
     }
 
-    // WS-X4.5 / P1B — the AOT-clean {x:Static} seam (IXamlQualifiedStaticResolver): a baked switch over the
+    // WS-X4.5 / P1B — the AOT-clean {x:Static} seam (IXamlStaticResolver): a baked switch over the
     // document set's referenced static members → `global::FullType.Member`, keyed by the (xmlns, prefix-free
     // path) pair the loader binds (P1C). The consumer's compile resolves the refs (no System.Type at generator
     // time, identical to the converter strategy). An x:Static the generator can't resolve isn't baked (the
-    // runtime then reports member-not-found, matching the reflection provider — no drift). The raw-path form
-    // scopes to the default UI uri, mirroring ReflectionXamlMetadata.
+    // runtime then reports member-not-found, matching the reflection provider — no drift).
     private void EmitTryResolveStatic(StringBuilder sb, IReadOnlyList<(string Namespace, string Path, string Expr)> statics)
     {
-        sb.AppendLine("        public bool TryResolveStatic(string memberPath, out object? value)");
-        sb.AppendLine($"            => TryResolveStatic(\"{Ui}\", memberPath, out value);");
-        sb.AppendLine();
         sb.AppendLine("        public bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value)");
         sb.AppendLine("        {");
         sb.AppendLine("            switch (xmlNamespace, memberPath)");

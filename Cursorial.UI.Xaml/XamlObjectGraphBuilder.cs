@@ -969,9 +969,7 @@ internal sealed class XamlObjectGraphBuilder
         // the X5 generated provider via a baked switch. No hard-cast to a concrete provider type, so x:Static
         // works under the generated/AOT provider too (and the loader no longer statically references the
         // reflection provider here — one of the two AOT blocker sites closed).
-        var provider = _options.MetadataProvider;
-
-        if (provider is IXamlQualifiedStaticResolver qualified)
+        if (_options.MetadataProvider is IXamlStaticResolver resolver)
         {
             // The xmlns-aware seam (P1C): bind the document prefix here — {x:Static co:Colors.Red}
             // resolves Colors.Red under the co: declaration's namespace, an unprefixed path under the
@@ -995,12 +993,8 @@ internal sealed class XamlObjectGraphBuilder
                 ns = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
             }
 
-            if (qualified.TryResolveStatic(ns, path, out var qualifiedResolved))
-                return qualifiedResolved;
-        }
-        else if (provider is IXamlStaticResolver resolver && resolver.TryResolveStatic(memberPath, out var resolved))
-        {
-            return resolved;
+            if (resolver.TryResolveStatic(ns, path, out var resolved))
+                return resolved;
         }
 
         throw Fatal(XamlDiagnosticCodes.MemberNotFound,

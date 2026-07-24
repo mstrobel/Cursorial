@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlQualifiedStaticResolver
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -264,13 +264,9 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlQua
     /// Resolves an <c>{x:Static Type.Member[.Member…]}</c> path to its value (matrix X26/X122): a public static
     /// field or property on a schema-resolvable type (<c>Colors.Red</c>, <c>Brushes.Red</c>), optionally followed by
     /// a chain of public INSTANCE member accesses (<c>Palette.Colors.Accent</c> — a Cursorial extension over WPF's
-    /// <c>Type.Static</c>). The raw-path form scopes to the default Cursorial uri; the loader normally calls the
-    /// xmlns-qualified overload with the document-bound namespace (P1C). Returns false on an unresolvable path.
+    /// <c>Type.Static</c>). The type token is resolved under <paramref name="xmlNamespace"/> — the document-bound
+    /// namespace the loader passes after binding the path's prefix itself (P1C). Returns false on an unresolvable path.
     /// </summary>
-    public bool TryResolveStatic(string memberPath, out object? value)
-        => TryResolveStatic(XamlSchemaContext.CursorialUiNamespace, memberPath, out value);
-
-    /// <inheritdoc cref="TryResolveStatic(string, out object?)"/>
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x:Static reflects static + instance members on resolved types; the X5 generator supplies trim-clean values.")]
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "x:Static chains reflect instance members on a resolved value's runtime type; the X5 generator supplies trim-clean values.")]
     public bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value)

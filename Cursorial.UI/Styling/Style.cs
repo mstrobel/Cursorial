@@ -80,6 +80,19 @@ public sealed class Style
     public SetterCollection Setters => _setters ??= new SetterCollection(this);
 
     /// <summary>
+    /// The terminal capabilities this style requires (<see cref="StyleCapabilities"/>) — a rule applies
+    /// only while every required flag is in the EFFECTIVE set (the same fold the <c>caps-*</c> class stamp
+    /// uses, so a migrated rule can never disagree with its old class form). Unlike a <c>.caps-*</c>
+    /// ancestor class, the requirement gates regardless of SUBJECT position: a control shown as a surface
+    /// root matches like any nested one (the top-level-element gap the classes cannot close). Composes
+    /// across <see cref="BasedOn"/> and <see cref="Children"/> by union (AND), and each required flag
+    /// counts one class-like specificity unit — exactly the weight of the dropped <c>.caps-*</c> compound,
+    /// so migrated rules keep their relative sort order. Evaluated once per match pass at gather time —
+    /// capabilities are terminal-global and never arm per-element watchers (contrast <see cref="When"/>).
+    /// </summary>
+    public StyleCapabilities RequiresCapabilities { get; init; }
+
+    /// <summary>
     /// The style's data-condition conjunction (design doc §3.1 / §3.3): a rule of this style is active
     /// iff its structural selector matches, all required pseudo-classes are set, <b>and</b> every
     /// <see cref="DataCondition"/> here holds. Empty = always (the structural/pseudo verdict alone).
@@ -172,7 +185,7 @@ public sealed class Style
         // Compile the full flattened rule set (own rule(s) + Children, depth-first). This walks and
         // validates every nested style (and BasedOn chain) and converts every setter exactly once (SD9).
         var rules = new List<CompiledRule>();
-        EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, isNested: false, this);
+        EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, parentRequires: StyleCapabilities.None, isNested: false, this);
         _compiledRules = [.. rules];
 
         LintHoverParity();
@@ -269,7 +282,7 @@ public sealed class Style
                     throw new InvalidOperationException($"Style '{IdentityForDiagnostics}' has not been sealed.");
 
                 var rules = new List<CompiledRule>();
-                EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, isNested: false, this);
+                EmitRules(rules, this, parentBranches: null, parentWhen: NoConditions, parentRequires: StyleCapabilities.None, isNested: false, this);
                 _compiledRules = [.. rules];
             }
 
@@ -400,6 +413,10 @@ public sealed class Style
         return _flattenedWhen = flattened.Count == 0 ? NoConditions : [.. flattened];
     }
 
+    /// <summary>The flattened capability requirement (own | BasedOn chain — union = AND).</summary>
+    private StyleCapabilities GetFlattenedRequires()
+        => RequiresCapabilities | (BasedOn?.GetFlattenedRequires() ?? StyleCapabilities.None);
+
     private static void AppendFlattenedWhen(List<DataCondition> flattened, Style style)
     {
         // BasedOn conditions compose base-first (the base's are AND-ed in; sealed before this style
@@ -420,7 +437,7 @@ public sealed class Style
     /// </summary>
     private static void EmitRules(
         List<CompiledRule> rules, Style style, SelectorBranch[]? parentBranches, DataCondition[] parentWhen,
-        bool isNested, Style ownerStyle)
+        StyleCapabilities parentRequires, bool isNested, Style ownerStyle)
     {
         style.ThrowOnBasedOnCycle();
         style.BasedOn?.Seal();
@@ -474,6 +491,29 @@ public sealed class Style
         var ownWhen = style.GetFlattenedWhen();
         var combinedWhen = Combine(parentWhen, ownWhen);
 
+        // The capability requirement composes like When: a nested rule requires the union (AND) of its
+        // own flags and every ancestor style's. Each flag counts one class-like specificity unit — the
+        // exact weight of the .caps-* compound a migrated rule dropped.
+        var combinedRequires = parentRequires | style.GetFlattenedRequires();
+        var requiresSpecificity = System.Numerics.BitOperations.PopCount((uint)combinedRequires);
+
+        // The color tiers are MUTUALLY EXCLUSIVE in the effective set (exactly one folds), and Requires
+        // semantics are AND — two tier flags can never both hold, so the rule would be silently dead on
+        // every terminal. An author who means "ansi16 OR nocolor" writes two styles (or a shared BasedOn
+        // base). Thrown at Seal like the SD17 nesting error — fail fast at composition, checked on the
+        // COMBINED mask so BasedOn/nesting-composed contradictions are caught too.
+        const StyleCapabilities tierMask =
+            StyleCapabilities.Truecolor | StyleCapabilities.Ansi256 | StyleCapabilities.Ansi16 | StyleCapabilities.NoColor;
+
+        if (System.Numerics.BitOperations.PopCount((uint)(combinedRequires & tierMask)) > 1)
+        {
+            throw new InvalidOperationException(
+                $"Style '{ownerStyle.IdentityForDiagnostics}': rule {rules.Count}: RequiresCapabilities combines " +
+                $"multiple color tiers ({combinedRequires & tierMask}) — the tiers are mutually exclusive and the " +
+                "requirement is a conjunction, so the rule could never apply. Author one style per tier " +
+                "(or hoist the shared setters into a BasedOn base).");
+        }
+
         // Each DataCondition counts 1 classLike toward specificity (SD5 — data conditions ARE
         // specificity; a When-guarded style beats its unguarded base with no extra mechanism). The
         // StyleSortKey factory saturates the classLike field, so an overlong conjunction never
@@ -484,7 +524,8 @@ public sealed class Style
         {
             rules.Add(new CompiledRule(
                           ownerStyle, style, rules.Count, branch: null, selectorText: string.Empty,
-                          names: 0, classLike: whenSpecificity, types: 0, setters, combinedWhen));
+                          names: 0, classLike: whenSpecificity + requiresSpecificity, types: 0, setters,
+                          combinedWhen, combinedRequires));
         }
         else
         {
@@ -494,14 +535,15 @@ public sealed class Style
 
                 rules.Add(new CompiledRule(
                               ownerStyle, style, rules.Count, branch, branch.ToCanonicalString(),
-                              names, classLike + whenSpecificity, types, setters, combinedWhen));
+                              names, classLike + whenSpecificity + requiresSpecificity, types, setters,
+                              combinedWhen, combinedRequires));
             }
         }
 
         if (style._children is { Count: > 0 } children)
         {
             foreach (var child in children)
-                EmitRules(rules, child, composed, combinedWhen, isNested: true, ownerStyle: ownerStyle);
+                EmitRules(rules, child, composed, combinedWhen, combinedRequires, isNested: true, ownerStyle: ownerStyle);
         }
     }
 

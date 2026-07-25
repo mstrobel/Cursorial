@@ -573,11 +573,34 @@ public static class XamlConverters
         {
             text = text.Trim();
             // Enum names in XAML are case-insensitive (WPF/Avalonia parity, P6 review P1-6).
-            if (Enum.TryParse(_enumType, text, ignoreCase: true, out var v) && Enum.IsDefined(_enumType, v))
+            if (Enum.TryParse(_enumType, text, ignoreCase: true, out var v) && IsValidValue(v))
                 return v;
-            if (long.TryParse(text, NumberStyles.Integer, ctx.Culture, out long n) && Enum.IsDefined(_enumType, Enum.ToObject(_enumType, n)))
+            if (long.TryParse(text, NumberStyles.Integer, ctx.Culture, out long n) && IsValidValue(Enum.ToObject(_enumType, n)))
                 return Enum.ToObject(_enumType, n);
             throw Fail($"'{text}' is not a member of {_enumType.Name}.", ctx);
+        }
+
+        // A single defined member always passes; a [Flags] enum additionally accepts a COMBINATION
+        // ("NoColor, Motion" — Enum.TryParse parses the comma form, but IsDefined rejects the combined
+        // value) as long as every set bit is covered by the defined members (WPF parity).
+        private bool IsValidValue(object value)
+        {
+            if (Enum.IsDefined(_enumType, value))
+                return true;
+
+            if (!_enumType.IsDefined(typeof(FlagsAttribute), inherit: false))
+                return false;
+
+            var bits = ToBits(value);
+            ulong all = 0;
+
+            foreach (var defined in Enum.GetValues(_enumType))
+                all |= ToBits(defined);
+
+            return bits != 0 && (bits & ~all) == 0;
+
+            static ulong ToBits(object member)
+                => unchecked((ulong)Convert.ToInt64(member, CultureInfo.InvariantCulture));
         }
     }
 

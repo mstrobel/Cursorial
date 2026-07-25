@@ -1,3 +1,5 @@
+using Cursorial.Output.Capabilities;
+
 namespace Cursorial.Output;
 
 /// <summary>
@@ -72,4 +74,26 @@ public readonly record struct TextSizing(
                             Denominator is 0 &&
                             Vertical is TextSizingVerticalAlignment.Top &&
                             Horizontal is TextSizingHorizontalAlignment.Left;
+    
+    public bool IsSupported(OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+
+        // Scale > 1 requires the s-key; Width > 0 requires the w-key. A fragment whose sizing
+        // is fully default would emit an empty metadata block, which any terminal will ignore —
+        // but a no-op fragment isn't useful, so we still report unsupported in that case so
+        // higher-level fallback fires.
+        bool needsScale = Scale != 0 && Scale != 1 ||
+                          Numerator != 0 ||
+                          Denominator != 0;
+
+        bool needsWidth = Width != 0;
+
+        if (needsWidth && !capabilities.TextSizing.Width) return false;
+        if (needsScale && !capabilities.TextSizing.Scale) return false;
+
+        // If neither sub-feature is exercised, the fragment renders identically to plain text, and
+        // a regular MonospaceFont would be the better choice.
+        return needsScale || needsWidth;
+    }
 }

@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Drawing.Media;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
@@ -33,6 +34,12 @@ internal sealed class DataGridRulesManager
     private readonly DataGridRulesManager? _live;
     private DataGridRuleEditor? _activeRuleEditor;
     private int _selectedIndex = -1;
+    private BarButton? _up;
+    private BarButton? _down;
+    private BarCommand? _edit;
+    private BarCommand? _delete;
+    private BarCommand? _moveUp;
+    private BarCommand? _moveDown;
 
     public DataGridRulesManager(DataGrid grid)
     {
@@ -55,23 +62,55 @@ internal sealed class DataGridRulesManager
 
         var content = new StackPanel(); // vertical
 
-        // The toolbar band (the mockup's ＋ ✎ ✕ ▲▼ strip).
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        var newRule = new Button { Content = "＋ New Rule" };
-        newRule.Click += (_, _) => _ = NewRuleAsync();
-        var edit = new Button { Content = "✎ Edit" };
-        edit.Click += (_, _) => _ = EditSelectedAsync();
-        var delete = new Button { Content = "✕ Delete" };
-        delete.Click += (_, _) => DeleteSelected();
-        var up = new Button { Content = "▲" };
-        up.Click += (_, _) => MoveSelected(-1);
-        var down = new Button { Content = "▼" };
-        down.Click += (_, _) => MoveSelected(+1);
-        toolbar.Children.Add(newRule);
-        toolbar.Children.Add(edit);
-        toolbar.Children.Add(delete);
-        toolbar.Children.Add(up);
-        toolbar.Children.Add(down);
+        // The toolbar band (the mockup's ＋ ✎ ✕ ▲▼ strip): a real Toolbar of BarButtons over
+        // BarCommands — the label/icon/rich-help metadata lives ON the command, and the ✎/✕/▲/▼
+        // enablement is the commands' CanExecute (the ButtonBase coupling grays a button whose
+        // command can't run — no hand-rolled IsEnabled writes). Icons carry all three tiers: the
+        // Nerd Font glyph (documented nf-md codepoints, mirroring Cursorial.Gallery's Icons — shown
+        // only under UIApplication.NerdFontAvailable), the emoji, and the single-width text floor.
+        var newRule = new BarCommand(() => _ = NewRuleAsync())
+        {
+            Text = "New Rule",
+            Icon = new IconCarrier { Glyph = "\U000F0415", Text = "+", Emoji = "➕" }, // nf-md-plus U+F0415
+            Description = "Add a conditional-formatting rule (opens the rule editor).",
+        };
+        _edit = new BarCommand(() => _ = EditSelectedAsync(), HasSelection)
+        {
+            Text = "Edit",
+            Icon = new IconCarrier { Glyph = "\U000F03EB", Text = "✎", Emoji = "✏️" }, // nf-md-pencil U+F03EB
+            Description = "Edit the selected rule.",
+        };
+        _delete = new BarCommand(DeleteSelected, HasSelection)
+        {
+            Text = "Delete",
+            Icon = new IconCarrier { Glyph = "\U000F01B4", Text = "✕", Emoji = "🗑️" }, // nf-md-delete U+F01B4
+            Description = "Delete the selected rule.",
+        };
+        _moveUp = new BarCommand(() => MoveSelected(-1), () => HasSelection() && HasSameColumnNeighbor(-1))
+        {
+            Text = "Move Up",
+            Icon = new IconCarrier { Glyph = "\U000F0739", Text = "▲", Emoji = "🔼" }, // nf-md-arrow_up_bold_box_outline U+F0739
+            Description = "Apply the selected rule earlier — priority is per-column, first match wins.",
+        };
+        _moveDown = new BarCommand(() => MoveSelected(+1), () => HasSelection() && HasSameColumnNeighbor(+1))
+        {
+            Text = "Move Down",
+            Icon = new IconCarrier { Glyph = "\U000F0730", Text = "▼", Emoji = "🔽" }, // nf-md-arrow_down_bold_box_outline U+F0730
+            Description = "Apply the selected rule later — priority is per-column, first match wins.",
+        };
+
+        var toolbar = new Toolbar();
+        toolbar.Items.Add(new BarButton { Command = newRule });
+        toolbar.Items.Add(new BarButton { Command = _edit });
+        toolbar.Items.Add(new BarButton { Command = _delete });
+        toolbar.Items.Add(new BarSeparator());
+        // The mockup's ▲▼ are glyph-only: an explicit Content (authored BEFORE Command, so the
+        // sync sees an author value and never label-fills) keeps the face to the icon while the
+        // command's Text still titles the SuperTip.
+        _up = new BarButton { Content = null, Command = _moveUp };
+        _down = new BarButton { Content = null, Command = _moveDown };
+        toolbar.Items.Add(_up);
+        toolbar.Items.Add(_down);
         content.Children.Add(toolbar);
 
         // The header strip (fixed cell widths shared with the rows below).
@@ -89,8 +128,14 @@ internal sealed class DataGridRulesManager
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         });
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Conditional Formatting Rules Manager", content,
-            ("Close", () => _window?.Close(true)));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Conditional Formatting Rules Manager",
+            content,
+            defaultButton: "_Close",
+            cancelButton: "_Close",
+            minSize: new(0, 12),
+            maxSize: null,
+            ("_Close", () => _window?.Close(true)));
 
         RefreshRows();
     }
@@ -107,6 +152,13 @@ internal sealed class DataGridRulesManager
 
     /// <summary>The selected list index (−1 none).</summary>
     internal int SelectedIndex => (_live ?? this)._selectedIndex;
+
+    /// <summary>The ▲ reorder button (tests assert its contextual enablement — via
+    /// <see cref="UIElement.IsEffectivelyEnabled"/>, the command-CanExecute-aware gate).</summary>
+    internal BarButton? UpButton => (_live ?? this)._up;
+
+    /// <summary>The ▼ reorder button.</summary>
+    internal BarButton? DownButton => (_live ?? this)._down;
 
     /// <summary>The live add/edit dialog (null while none is open; tests reach its panes).</summary>
     internal DataGridRuleEditor? ActiveRuleEditor => (_live ?? this)._activeRuleEditor;
@@ -185,6 +237,8 @@ internal sealed class DataGridRulesManager
 
         if (_selectedIndex >= _rows.Count)
             _selectedIndex = _rows.Count - 1;
+        if (_selectedIndex < 0 && _rows.Count > 0)
+            _selectedIndex = 0; // the list-dialog convention: ✎/✕/▲▼ always have a target
         ApplySelectionLook();
     }
 
@@ -210,6 +264,28 @@ internal sealed class DataGridRulesManager
             else
                 _rows[i].RowElement.ClearValue(Border.BackgroundProperty);
         }
+
+        // ▲/▼/✎/✕ enable exactly when they can DO something (live-canary fix — priority is
+        // per-COLUMN, so with one rule per column, or no selection, ▲▼ used to no-op silently).
+        // The truth lives in each command's CanExecute; this is just the re-query pulse for the
+        // gating state (selection / rule order) those predicates read.
+        _edit?.RaiseCanExecuteChanged();
+        _delete?.RaiseCanExecuteChanged();
+        _moveUp?.RaiseCanExecuteChanged();
+        _moveDown?.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>Whether a listed rule is selected (the ✎/✕/▲▼ commands' base gate).</summary>
+    private bool HasSelection() => _selectedIndex >= 0 && _selectedIndex < _rows.Count;
+
+    /// <summary>Whether the selected rule has a SAME-COLUMN neighbor in the move direction (the
+    /// ▲/▼ enablement truth — a move can only reorder within its column's list).</summary>
+    private bool HasSameColumnNeighbor(int delta)
+    {
+        var (column, rule, _, _) = _rows[_selectedIndex];
+        int at = column.FormatRules.IndexOf(rule);
+        int to = at + delta;
+        return at >= 0 && to >= 0 && to < column.FormatRules.Count;
     }
 
     private static TextBlock HeaderCell(string text, int width)
@@ -268,9 +344,16 @@ internal sealed class DataGridRulesManager
                 text.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.CoolBrush);
                 return host;
             case ColorScaleRule scale:
-                text.Text = "▒▒▒ scale";
-                text.Foreground = new SolidColorBrush(scale.Stops[^1]);
-                return host;
+            {
+                // The stepped swatch (shared with the editor's preview) — each stop gets its run,
+                // in order; the caption stays muted so the colors carry the meaning.
+                var line = new StackPanel { Orientation = Orientation.Horizontal };
+                line.Children.Add(DataGridDialogHelpers.ScaleSwatch(scale.Stops));
+                var caption = new TextBlock { Text = " scale" };
+                caption.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+                line.Children.Add(caption);
+                return new Border { Child = line };
+            }
             case ThresholdRule { Entries.Count: > 0 } threshold:
                 format = threshold.Entries[0].Format;
                 break;

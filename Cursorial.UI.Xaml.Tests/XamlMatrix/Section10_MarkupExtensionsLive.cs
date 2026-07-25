@@ -187,12 +187,41 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         Assert.Equal(Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
     }
 
+    [Fact] // X121a — a Binding Converter provided by a CUSTOM markup extension (nested-extension parity with X121)
+    public void X121a_Binding_Converter_FromCustomExtension()
+    {
+        // {Converter={StatusConverter}} activates the custom extension and takes its ProvideValue (an IValueConverter),
+        // the same way {Converter={StaticResource …}} resolves — previously the handler threw "not supported".
+        var vm = new TestVm { Status = "ok" };
+        var button = Load<UIControls.Button>("<Button Foreground=\"{Binding Status, Converter={StatusConverter}}\"/>");
+        button.DataContext = vm;
+        Assert.IsType<SolidColorBrush>(button.Foreground);
+        Assert.Equal(Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
+    }
+
+    [Fact] // a non-IValueConverter result in the Converter slot is a clear, position-carrying diagnostic
+    public void CustomExtensionConverter_WrongType_IsDiagnosed()
+    {
+        var ex = Assert.Throws<XamlParseException>(() =>
+            Load<UIControls.Button>("<Button Content=\"{Binding Name, Converter={Repeat Count=1, Text=x}}\"/>"));
+        Assert.Equal(XamlDiagnosticCodes.ConversionFailed, ex.Code);
+        Assert.True(ex.Line > 0 && ex.Column > 0);
+    }
+
     [Fact] // X122
     public void X122_XStatic_AssignedDirectly()
     {
         // {x:Static Colors.Red} folds at parse (X26) and is assigned as the value (no extension object).
         var button = Load<UIControls.Button>("<Button Background=\"{x:Static Brushes.Red}\"/>");
         Assert.NotNull(button.Background);
+    }
+
+    [Fact] // X122b — {x:Static} resolves a CHAIN: a static member then instance member accesses (A.B.C.D)
+    public void X122b_XStatic_ResolvesMemberChain()
+    {
+        // StaticChain.B is a static property; .C and .D are instance property accesses on the running value.
+        var button = Load<UIControls.Button>("<Button Content=\"{x:Static StaticChain.B.C.D}\"/>");
+        Assert.Equal("deep", button.Content);
     }
 
     [Fact] // X123
@@ -224,6 +253,15 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
     {
         var button = Load<UIControls.Button>("<Button Content=\"{Add 1, 2}\"/>");
         Assert.Equal("3", button.Content);
+    }
+
+    [Fact] // X126a — a custom extension's public instance FIELD is settable via a named argument (generator parity)
+    public void X126a_CustomExtension_PublicField_SetViaNamedArg()
+    {
+        // FieldExtension.Value is a public FIELD, not a property — the reflection metadata now resolves fields as
+        // members (matching the generator, which sets them via `new FieldExtension { Value = … }`).
+        var button = Load<UIControls.Button>("<Button Content=\"{Field Value=hello}\"/>");
+        Assert.Equal("hello", button.Content);
     }
 
     [Fact] // X127 (also asserted end-to-end in §13 X160)

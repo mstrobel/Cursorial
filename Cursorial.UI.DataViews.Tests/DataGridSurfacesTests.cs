@@ -229,8 +229,8 @@ public class DataGridSurfacesTests
         popup.SearchBox!.Text = "we";
         host.RunUntilIdle();
 
-        Assert.Equal(Visibility.Collapsed, popup.CheckBoxFor("East")!.Visibility);
-        Assert.Equal(Visibility.Visible, popup.CheckBoxFor("West")!.Visibility);
+        Assert.Equal(Visibility.Collapsed, popup.RowVisibilityFor("East")); // search collapses the whole row
+        Assert.Equal(Visibility.Visible, popup.RowVisibilityFor("West"));
         Assert.True(popup.CheckBoxFor("East")!.IsChecked); // hidden ≠ unchecked
 
         popup.Apply();
@@ -482,9 +482,117 @@ public class DataGridSurfacesTests
         host.RunUntilIdle();
 
         // Ascending: row 1 = 12450 (fraction 0 ⇒ all track), row 4 = 31900 (fraction 1 ⇒ all fill).
-        Assert.Contains("12450 ░", Row(host, 1));
-        Assert.Contains("31900 █", Row(host, 4));
+        Assert.Contains("12,450 ░", Row(host, 1));
+        Assert.Contains("31,900 █", Row(host, 4));
         Assert.DoesNotContain("█", Row(host, 1));
+    }
+
+    [Fact]
+    public void Data_bar_track_is_uniform_across_value_widths()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // A 3-char value beside 5-char ones (the live-canary screenshot): the bar used to start
+        // right after EACH row's text, so the origin — and therefore the SCALE — shifted per row.
+        source[0].Amount = 999m;
+        grid.Columns[2].FormatRules.Add(new DataBarRule { ColumnKey = grid.Columns[2] });
+        grid.CycleSort(grid.Columns[2]); // ascending: 999 = all track, 31900 = all fill
+        host.RunUntilIdle();
+
+        static int BarStart(string row)
+        {
+            int fill = row.IndexOf('█');
+            int track = row.IndexOf('░');
+            return fill < 0 ? track : track < 0 ? fill : Math.Min(fill, track);
+        }
+
+        int[] starts = [BarStart(Row(host, 1)), BarStart(Row(host, 2)), BarStart(Row(host, 3)), BarStart(Row(host, 4))];
+        Assert.All(starts, s => Assert.True(s >= 0, "every data row draws a bar"));
+        // ONE origin per column — equal fractions must render equal bars regardless of the
+        // value's character count.
+        Assert.All(starts, s => Assert.Equal(starts[0], s));
+    }
+
+    [Fact]
+    public void Between_threshold_colors_only_in_range_cells()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // §10.5: a Between entry carries a SecondValue upper bound through the controller compile.
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var amount = grid.Columns[2];
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries = [new ThresholdEntry(FilterOperator.Between, 15000m, new CellFormat(Foreground: green), 28000m)],
+        });
+        grid.CycleSort(amount);
+        host.RunUntilIdle();
+
+        // 19800 and 27300 are inside [15000, 28000] → green; 12450 and 31900 are outside → not.
+        foreach (var inRange in new[] { "19,800", "27,300" })
+        {
+            var hit = FindText(host, inRange);
+            Assert.NotNull(hit);
+            Assert.Equal(green, host.GetCell(hit.Value.X, hit.Value.Y).Style.Foreground);
+        }
+        foreach (var outOfRange in new[] { "12,450", "31,900" })
+        {
+            var miss = FindText(host, outOfRange);
+            Assert.NotNull(miss);
+            Assert.NotEqual(green, host.GetCell(miss.Value.X, miss.Value.Y).Style.Foreground);
+        }
+    }
+
+    [Fact]
+    public void Icon_and_data_bar_coexist_on_one_cell()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // §10.7: a bar cell used to SKIP its verdict icon (to keep the track origin column-uniform).
+        // Now a per-column icon reserve lets an icon + bar coexist AND stay uniform. Amount carries
+        // BOTH a DataBarRule and an icon-bearing ThresholdRule.
+        source[0].Amount = 999m;
+        var amount = grid.Columns[2];
+        // A generous explicit width so icon + grouped value ("31,900") + a bar run all fit (the
+        // grouped default format widened the value by the thousands separator).
+        amount.Width = DataGridLength.Cells(14);
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var red = Color.FromRgb(0xF7, 0x76, 0x8E);
+        amount.FormatRules.Add(new DataBarRule { ColumnKey = amount });
+        amount.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amount,
+            Entries =
+            [
+                (FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Foreground: green, Icon: "▲")),
+                (FilterOperator.LessThan, 25000m, new CellFormat(Foreground: red, Icon: "▼")),
+            ],
+        });
+        grid.CycleSort(amount); // ascending
+        host.RunUntilIdle();
+
+        // The icon rides the cell's left content edge in the bucket color…
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        int iconX = entry.X + 1;
+        var big = FindText(host, "31,900");
+        Assert.NotNull(big);
+        Assert.Equal("▲", host.GetCell(iconX, big.Value.Y).Grapheme);
+        Assert.Equal(green, host.GetCell(iconX, big.Value.Y).Style.Foreground);
+
+        // …and the bar still renders (icons no longer suppress it), with ONE origin per column.
+        static int BarStart(string row)
+        {
+            int fill = row.IndexOf('█');
+            int track = row.IndexOf('░');
+            return fill < 0 ? track : track < 0 ? fill : Math.Min(fill, track);
+        }
+        int[] starts = [BarStart(Row(host, 1)), BarStart(Row(host, 2)), BarStart(Row(host, 3)), BarStart(Row(host, 4))];
+        Assert.All(starts, s => Assert.True(s >= 0, "icon-bearing cells still draw bars"));
+        Assert.All(starts, s => Assert.Equal(starts[0], s));
     }
 
     [Fact]
@@ -504,18 +612,104 @@ public class DataGridSurfacesTests
         host.RunUntilIdle();
 
         // 31900 (row 4 ascending) matched: its digits carry the rule's fg + Bold.
-        var hit = FindText(host, "31900");
+        var hit = FindText(host, "31,900");
         Assert.NotNull(hit);
         var cell = host.GetCell(hit.Value.X, hit.Value.Y);
         Assert.Equal(red, cell.Style.Foreground);
         Assert.True((cell.Style.Attributes & TextAttributes.Bold) != 0);
 
         // 12450 (row 1) below the threshold: the theme's resting fg, no bold.
-        var miss = FindText(host, "12450");
+        var miss = FindText(host, "12,450");
         Assert.NotNull(miss);
         var restingCell = host.GetCell(miss.Value.X, miss.Value.Y);
         Assert.NotEqual(red, restingCell.Style.Foreground);
         Assert.True((restingCell.Style.Attributes & TextAttributes.Bold) == 0);
+    }
+
+    [Fact]
+    public void Format_background_fills_the_whole_cell()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // Live-canary fix: a format BACKGROUND used to vanish entirely — the glyph layer's
+        // DrawText overwrites the base style's background with its transparent default, so only
+        // the foreground ever changed. The background is now a WHOLE-CELL fill.
+        var wine = Color.FromRgb(90, 30, 50);
+        var amountColumn = grid.Columns[2];
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries = [(FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Background: wine))],
+        });
+        grid.CycleSort(amountColumn); // shape push re-collects rules
+        host.RunUntilIdle();
+
+        // The digits sit on the fill…
+        var hit = FindText(host, "31,900");
+        Assert.NotNull(hit);
+        Assert.Equal(wine, host.GetCell(hit.Value.X, hit.Value.Y).Style.Background);
+        // …and so does the EMPTY remainder of the cell (right-aligned numerics leave the left
+        // side blank — a glyph-only tint would miss it).
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        Assert.Equal(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
+
+        // A below-threshold cell keeps the resting background.
+        var miss = FindText(host, "12,450");
+        Assert.NotNull(miss);
+        Assert.NotEqual(wine, host.GetCell(miss.Value.X, miss.Value.Y).Style.Background);
+
+        // A SELECTED row's tint outranks the format fill (the selection stays legible).
+        host.SendClick(hit.Value.X, hit.Value.Y);
+        host.RunUntilIdle();
+        Assert.NotEqual(wine, host.GetCell(entry.X + 1, hit.Value.Y).Style.Background);
+    }
+
+    [Fact]
+    public void Icon_set_rule_draws_its_glyphs_at_the_cell_edge()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+
+        // The editor's Icon Set lowering — glyph + color per bucket (live-canary fix: CellFormat
+        // had no glyph lane, so icon-set rules tinted values but drew no icons at all).
+        var green = Color.FromRgb(0x9E, 0xCE, 0x6A);
+        var amber = Color.FromRgb(0xE0, 0xAF, 0x68);
+        var red = Color.FromRgb(0xF7, 0x76, 0x8E);
+        var amountColumn = grid.Columns[2];
+        amountColumn.FormatRules.Add(new ThresholdRule
+        {
+            ColumnKey = amountColumn,
+            Entries =
+            [
+                (FilterOperator.GreaterThanOrEqual, 25000m, new CellFormat(Foreground: green, Icon: "▲")),
+                (FilterOperator.GreaterThanOrEqual, 15000m, new CellFormat(Foreground: amber, Icon: "●")),
+                (FilterOperator.LessThan, 15000m, new CellFormat(Foreground: red, Icon: "▼")),
+            ],
+        });
+        grid.RefreshFormatRules();
+        host.RunUntilIdle();
+
+        // Each bucket's glyph sits at the cell's LEFT content edge in the bucket color, with the
+        // value still right-aligned (and tinted) in the remaining width.
+        var entry = grid.RowsPresenter!.ColumnLayout.Entries[2];
+        int iconX = entry.X + 1; // + CellPadding
+
+        var high = FindText(host, "31,900");
+        Assert.NotNull(high);
+        Assert.Equal("▲", host.GetCell(iconX, high.Value.Y).Grapheme);
+        Assert.Equal(green, host.GetCell(iconX, high.Value.Y).Style.Foreground);
+        Assert.Equal(green, host.GetCell(high.Value.X, high.Value.Y).Style.Foreground);
+
+        var mid = FindText(host, "19,800");
+        Assert.NotNull(mid);
+        Assert.Equal("●", host.GetCell(iconX, mid.Value.Y).Grapheme);
+        Assert.Equal(amber, host.GetCell(iconX, mid.Value.Y).Style.Foreground);
+
+        var low = FindText(host, "12,450");
+        Assert.NotNull(low);
+        Assert.Equal("▼", host.GetCell(iconX, low.Value.Y).Grapheme);
+        Assert.Equal(red, host.GetCell(iconX, low.Value.Y).Style.Foreground);
     }
 
     [Fact]
@@ -561,8 +755,8 @@ public class DataGridSurfacesTests
         grid.CycleSort(amountColumn);
         host.RunUntilIdle();
 
-        var min = FindText(host, "12450");
-        var max = FindText(host, "31900");
+        var min = FindText(host, "12,450");
+        var max = FindText(host, "31,900");
         Assert.NotNull(min);
         Assert.NotNull(max);
         Assert.Equal(low, host.GetCell(min.Value.X, min.Value.Y).Style.Foreground);

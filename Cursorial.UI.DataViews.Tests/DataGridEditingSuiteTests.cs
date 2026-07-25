@@ -316,6 +316,141 @@ public class DataGridEditingSuiteTests
         Assert.Equal(45m, source[0].Hours);
     }
 
+    // ── §10.2 commit-time validation hooks ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Column_validator_vetoes_a_commit_shows_the_message_and_recovers()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // A business rule beyond parseability: Hours must be ≤ 40 (§10.2 — a text-level validator).
+        grid.Columns[3].Validator = ctx =>
+            decimal.TryParse(ctx.Text, out var hours) && hours > 40m ? "Hours must be ≤ 40" : null;
+
+        BeginEdit(host, grid, viewIndex: 0, columnIndex: 3); // Hours (12)
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("99"); // parseable, but the validator rejects it
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        // Vetoed: the editor stays open in the danger ink, nothing is written, the message is on the
+        // grid AND on the edit bar.
+        Assert.True(grid.RowsPresenter!.IsEditing);
+        Assert.Equal(12m, source[0].Hours);
+        Assert.Equal("Hours must be ≤ 40", grid.EditValidationError);
+        Assert.Same(box.FindResource(ThemeKeys.DangerBrush), box.Foreground);
+        Assert.Contains("Hours must be ≤ 40", AllRows(host));
+
+        // A fresh keystroke retires the message (the recovery contract) …
+        box.SelectAll();
+        host.SendText("30");
+        host.RunUntilIdle();
+        Assert.Null(grid.EditValidationError);
+
+        // … and the in-range value commits.
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.False(grid.RowsPresenter!.IsEditing);
+        Assert.Equal(30m, source[0].Hours);
+    }
+
+    [Fact]
+    public void Column_validator_runs_on_the_new_row_lane()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 14) });
+        using var _ = host;
+        var source = new ObservableCollection<Entry> { new() { Name = "Alpha", Amount = 1m } };
+        var grid = new DataGrid { ItemsSource = source, AllowAddNew = true };
+        // The new-row session edits the first editable column (Name); validate it there.
+        grid.Columns[0].Validator = ctx => ctx.Text.Trim().Length < 3 ? "Name needs 3+ characters" : null;
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+        Assert.True(grid.HasNewRowPlaceholder);
+
+        // Enter the new-row template and give a too-short Name.
+        host.SendClick(2, 1); // Alpha
+        host.RunUntilIdle();
+        host.SendKey(Key.DownArrow); // the placeholder
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter); // begins new-row entry on Name
+        host.RunUntilIdle();
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("Hi"); // too short — the validator vetoes the new-row commit
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.True(grid.IsNewRowSession); // still pending — the veto kept the session open (§10.2 new-row lane)
+        Assert.Equal("Name needs 3+ characters", grid.EditValidationError);
+        Assert.Single(source); // no row added
+
+        // Correct it and commit.
+        box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("Charlie");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal(2, source.Count);
+        Assert.Contains(source, e => e.Name == "Charlie");
+    }
+
+    [Fact]
+    public void A_throwing_validator_is_contained_and_surfaced_as_an_error()
+    {
+        var (host, grid, source) = Show();
+        using var _ = host;
+
+        // Audit fix: a validator that throws must not unwind into the synchronous commit path.
+        grid.Columns[3].Validator = _ => throw new InvalidOperationException("boom");
+
+        BeginEdit(host, grid, viewIndex: 0, columnIndex: 3); // Hours
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("5");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter); // commit → validator throws → contained, shown as an error
+        host.RunUntilIdle();
+
+        Assert.True(grid.RowsPresenter!.IsEditing); // vetoed, not crashed
+        Assert.Contains("boom", grid.EditValidationError);
+        Assert.Equal(12m, source[0].Hours); // nothing written
+        grid.CancelEdit();
+    }
+
+    [Fact]
+    public void A_new_edit_does_not_inherit_the_prior_cells_validation_message()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+        grid.Columns[3].Validator = ctx => decimal.TryParse(ctx.Text, out var h) && h > 40m ? "too big" : null;
+
+        BeginEdit(host, grid, viewIndex: 0, columnIndex: 3); // Hours
+        var box = Assert.IsType<TextBox>(grid.RowsPresenter!.EditorElement);
+        box.SelectAll();
+        host.SendText("99");
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("too big", grid.EditValidationError);
+
+        // Audit fix: the public BeginEdit (bypassing commit/cancel) must not carry the stale message
+        // into a fresh session on another cell.
+        grid.SetFocusCell(1, 3);
+        grid.BeginEdit();
+        host.RunUntilIdle();
+        Assert.True(grid.RowsPresenter!.IsEditing);
+        Assert.Null(grid.EditValidationError);
+        grid.CancelEdit();
+    }
+
+    private static string AllRows(UIHeadlessHost host)
+        => string.Join("\n", Enumerable.Range(0, 14).Select(host.GetRowText));
+
     // ── The new-row template ──────────────────────────────────────────────────────────────────────
 
     [Fact]

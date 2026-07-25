@@ -195,6 +195,11 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 name,
                 uiProperty.PropertyType,
                 property: uiProperty,
+                // A collection-typed UIProperty filled by child elements (implicit content / a property element) needs
+                // a getter so the collection-fill path can read the current collection and Add — the generator fills
+                // the same member through its CLR wrapper (x.Items.Add). Scalar UIProperties keep no getter (they are
+                // assigned via SetValue), so only collection members are affected (#7).
+                get: IsCollectionType(uiProperty.PropertyType) ? instance => (instance as UIObject)?.GetValue(uiProperty) : null,
                 converter: XamlConverters.ForMember(wrapper, uiProperty.PropertyType),
                 isEvent: false,
                 isAttachable: uiProperty.IsAttached)
@@ -229,45 +234,83 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             };
         }
 
+        // (4) A public instance FIELD. Some markup extensions (and plain types) expose settable fields; the
+        // generator sets them via an object initializer (XamlDataTypeScope.FindMember returns IFieldSymbol), so
+        // the reflection loader must too — otherwise `{my:Gauge Threshold=42}` with a `public int Threshold;` field
+        // is CUR2002 at load while compiling fine. Excludes readonly/const (not assignable post-construction).
+        var fieldInfo = ownerType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+        if (fieldInfo is { IsInitOnly: false, IsLiteral: false })
+        {
+            return new XamlMember(
+                name,
+                fieldInfo.FieldType,
+                property: null,
+                setClr: fieldInfo.SetValue,
+                get: fieldInfo.GetValue,
+                converter: XamlConverters.ForMember(null, fieldInfo.FieldType), // type-level [TypeConverter] (fields rarely carry one)
+                isEvent: false,
+                isAttachable: false)
+            {
+                IsDeferredContent = fieldInfo.FieldType == typeof(ITemplateContent),
+            };
+        }
+
         return null;
     }
 
     // ── x:Static field/property resolution (the loader's fold-finalize) ──────────────────────────────
 
     /// <summary>
-    /// Resolves an <c>{x:Static Type.Member}</c> path to its value (matrix X26/X122): a public static
-    /// field or property on a type the schema can resolve (<c>Colors.Red</c>, <c>Brushes.Red</c>, …).
-    /// Returns false on an unresolvable path.
+    /// Resolves an <c>{x:Static Type.Member[.Member…]}</c> path to its value (matrix X26/X122): a public static
+    /// field or property on a schema-resolvable type (<c>Colors.Red</c>, <c>Brushes.Red</c>), optionally followed by
+    /// a chain of public INSTANCE member accesses (<c>Palette.Colors.Accent</c> — a Cursorial extension over WPF's
+    /// <c>Type.Static</c>). The type token is resolved under <paramref name="xmlNamespace"/> — the document-bound
+    /// namespace the loader passes after binding the path's prefix itself (P1C). Returns false on an unresolvable path.
     /// </summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x:Static reflects a static member on a resolved type; X5 generator supplies trim-clean values.")]
-    public bool TryResolveStatic(string memberPath, out object? value)
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x:Static reflects static + instance members on resolved types; the X5 generator supplies trim-clean values.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "x:Static chains reflect instance members on a resolved value's runtime type; the X5 generator supplies trim-clean values.")]
+    public bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value)
     {
         value = null;
-        int dot = memberPath.LastIndexOf('.');
-        if (dot <= 0)
+
+        // The TYPE is the FIRST segment (the XAML prefix-mapped name); the first member after it is STATIC, and any
+        // deeper segments are INSTANCE member accesses on the running value (Type.Static.Instance.Instance…).
+        // Splitting at the FIRST dot (not the last) is what enables the chain — a 2-segment Type.Member path is
+        // unaffected (first dot == last dot). Kept byte-identical in shape to ClosedTypeSet.ResolveStaticExpr (X174).
+        int firstDot = memberPath.IndexOf('.');
+        if (firstDot <= 0)
             return false;
 
-        var typeName = memberPath.Substring(0, dot);
-        var memberName = memberPath.Substring(dot + 1);
-
-        var type = _schema.Resolve(XamlSchemaContext.CursorialUiNamespace, typeName, out _);
+        var type = _schema.Resolve(xmlNamespace, memberPath.Substring(0, firstDot), out _);
         if (type is null)
             return false;
 
-        var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Static);
-        if (field is not null)
+        var members = memberPath.Substring(firstDot + 1).Split('.');
+
+        // (1) The first member: a public static field or readable property directly on the type.
+        object? current;
+        if (type.GetField(members[0], BindingFlags.Public | BindingFlags.Static) is { } staticField)
+            current = staticField.GetValue(null);
+        else if (type.GetProperty(members[0], BindingFlags.Public | BindingFlags.Static) is { CanRead: true } staticProp)
+            current = staticProp.GetValue(null);
+        else
+            return false;
+
+        // (2) Any remaining members: a public instance readable property / field on the running value.
+        for (int i = 1; i < members.Length; i++)
         {
-            value = field.GetValue(null);
-            return true;
+            if (current is null)
+                return false;
+            var runtimeType = current.GetType();
+            if (runtimeType.GetProperty(members[i], BindingFlags.Public | BindingFlags.Instance) is { CanRead: true } instanceProp)
+                current = instanceProp.GetValue(current);
+            else if (runtimeType.GetField(members[i], BindingFlags.Public | BindingFlags.Instance) is { } instanceField)
+                current = instanceField.GetValue(current);
+            else
+                return false;
         }
 
-        var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static);
-        if (prop is { CanRead: true })
-        {
-            value = prop.GetValue(null);
-            return true;
-        }
-
-        return false;
+        value = current;
+        return true;
     }
 }

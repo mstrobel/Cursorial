@@ -111,7 +111,7 @@ public sealed class Section42_ResourceAlias
         host.RunUntilIdle();
 
         var dark = Assert.IsType<SolidColorBrush>(tree.Leaf.GetValue(Probe.P));
-        Assert.Equal(Color.FromHex("#7aa2f7"), dark.Color);
+        Assert.Equal(Color.FromHex("#6090f6"), dark.Color);
 
         host.Application.RequestedThemeBase = ThemeBase.Light;
         host.RunUntilIdle();

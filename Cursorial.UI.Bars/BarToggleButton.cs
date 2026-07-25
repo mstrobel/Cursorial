@@ -39,11 +39,12 @@ public class BarToggleButton : ToggleButton
     private bool IsCheckedCommandOwned => CommandParameter is ICheckableCommandParameter;
 
     /// <inheritdoc/>
-    protected override void OnToggle()
+    protected override void OnToggle(InvokeMethod method = InvokeMethod.Programmatic)
     {
         if (IsCheckedCommandOwned)
             return; // command-owned: Execute mutates the parameter; the sync reflects it (no self-toggle)
-        base.OnToggle();
+
+        base.OnToggle(method);
     }
 
     /// <inheritdoc/>

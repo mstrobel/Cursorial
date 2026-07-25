@@ -1238,10 +1238,13 @@ internal static class ControlThemes
             .Set(UIElement.MinWidthProperty, 12)
             .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionInactive)
             .Set(Control.TemplateProperty, TextBoxTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundHover));
         theme.Children.Add(new Style("^:focus")
                               .SetResource(TextBox.SelectionBrushProperty, ThemeKeys.InputSelectionActive)
-                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus));
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundFocus));
         theme.Children.Add(new Style("^:disabled")
             .SetResource(Control.BackgroundProperty, ThemeKeys.InputBackgroundDisabled)
             .SetResource(Control.ForegroundProperty, ThemeKeys.InputForegroundDisabled));
@@ -1262,9 +1265,14 @@ internal static class ControlThemes
                      header.SetBinding(ContentPresenter.ContentProperty,
                                        new TemplateBinding(HeaderedItemsControl.HeaderProperty));
 
-                     var icon = new ContentPresenter { Visibility = Visibility.Collapsed };
+                     var icon = new ContentPresenter
+                                {
+                                    Visibility = Visibility.Collapsed,
+                                    ForwardsFromTemplatedParent = false
+                                };
+
                      var iconTray = new Border { Width = 2, Height = 1, Child = icon, Margin = new Margins(0, 0, 1, 0) };
-                     
+
                      ctx.RegisterName("PART_IconTray", iconTray);
                      ctx.RegisterName("PART_Icon", icon);
                      
@@ -1338,12 +1346,61 @@ internal static class ControlThemes
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":highlighted").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_GestureText"))
                                .Or(Selectors.OfType<MenuItem>().PseudoClass(":open").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator")))
-               .SetResource(Control.ForegroundProperty, ThemeKeys.MenuAcceleratorHoverForeground)
+               .SetResource(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorHoverForeground)
         );
 
         t.Styles.Add(
             new Style(Selectors.OfType<MenuItem>().PseudoClass(":top-level").Template().OfType<TextBlock>().Name("PART_SubmenuIndicator"))
                .Set(UIElement.VisibilityProperty, Visibility.Collapsed)
+        );
+
+        // By default, dim the foreground of the icon/checkmark when checkable but unchecked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checkable").Template().OfType<Border>().Name("PART_IconTray"))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconUncheckedForeground)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checkable").PseudoClass(":highlighted").Template().OfType<Border>().Name("PART_IconTray")
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":checkable").PseudoClass(":open").Template().OfType<Border>().Name("PART_IconTray")))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconUncheckedHoverForeground)
+        );
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").PseudoClass(":highlighted").Template().OfType<Border>().Name("PART_IconTray")
+                               .Or(Selectors.OfType<MenuItem>().PseudoClass(":checked").PseudoClass(":open").Template().OfType<Border>().Name("PART_IconTray")))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+        );
+
+        // By default, toggle the foreground ONLY of the icon/checkmark when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+        );
+
+        // By default, toggle text weight of icon/checkmark to BOLD when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<ContentPresenter>().Name("PART_Icon"))
+               .Set(TextElement.TextWeightProperty, TextWeight.Bold)
+        );
+
+        // If emoji are enabled but NOT nerd fonts, toggle the foreground AND background of the icon/checkmark when checked
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+                {
+                    RequiresCapabilities = StyleCapabilities.Emoji
+                }
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+               .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessInverseBrush)
+        );
+        // If nerd fonts are enabled, toggle the foreground ONLY of the icon/checkmark when checked (overrides the emoji rule when both are present)
+        t.Styles.Add(
+            new Style(Selectors.OfType<MenuItem>().PseudoClass(":checked").Template().OfType<Border>().Name("PART_IconTray"))
+                {
+                    RequiresCapabilities = StyleCapabilities.NerdFont
+                }
+               .SetResource(Icon.IconBrushProperty, ThemeKeys.MenuIconCheckedForeground)
+               .Set(Border.BackgroundProperty, null)
         );
 
         // t.Styles.Add(
@@ -1364,9 +1421,15 @@ internal static class ControlThemes
         var theme = new Style { Key = "Theme.MenuItem" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundNormal)
             .Set(Control.TemplateProperty, MenuItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHover));
-        theme.Children.Add(new Style("^:highlighted").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
-        theme.Children.Add(new Style("^:open").SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted));
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHover));
+        theme.Children.Add(new Style("^:highlighted")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHighlighted));
+        theme.Children.Add(new Style("^:open")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.MenuBackgroundHighlighted)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundHighlighted));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.MenuForegroundDisabled));
         return theme;
     }
@@ -1396,7 +1459,9 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:pointerover")
                               .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
                               .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive));
+        theme.Children.Add(new Style("^:selected")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
         // The keyboard focus-row cue (gallery .item.rev): reverse-video — ordered AFTER :selected so a
         // focused+selected current item reads as focused (adoption-spec lines 108-110). :focus-visible (not :focus)
         // so a mouse click — Pointer modality — shows :selected, while keyboard nav shows the reverse row.
@@ -1434,7 +1499,7 @@ internal static class ControlThemes
         theme.Children.Add(
             new Style("^:default")
                .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal)
-               .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush));
+               .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundDefault));
 
         theme.Children.Add(
             new Style("^:pointerover")
@@ -1606,12 +1671,31 @@ internal static class ControlThemes
 
     // // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
     // // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
-    // private static ControlTemplate BareGlyphButtonTemplate() => new(ctx =>
-    // {
-    //     var presenter = new ContentPresenter { RecognizesAccessKey = false };
-    //     ctx.RegisterName("PART_ContentPresenter", presenter);
-    //     return presenter;
-    // });
+    private static ControlTemplate BareGlyphButtonTemplate()
+    {
+        var t = new ControlTemplate(
+            ctx =>
+            {
+                var presenter = new ContentPresenter { RecognizesAccessKey = false };
+                ctx.RegisterName("PART_ContentPresenter", presenter);
+                return presenter;
+            });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<RepeatButton>())
+            {
+                Children =
+                {
+                    new Style("^:pointerover /template/ #PART_ContentPresenter")
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.AccentBrush),
+                            
+                    new Style("^:pressed /template/ #PART_ContentPresenter")
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.AccentInverseBrush)
+                }
+            });
+
+        return t;
+    }
 
     // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
     // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
@@ -1622,7 +1706,7 @@ internal static class ControlThemes
             ctx =>
             {
                var dock = new DockPanel();
-               // var bareTemplate = BareGlyphButtonTemplate();
+               var bareTemplate = BareGlyphButtonTemplate();
 
                // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
                // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
@@ -1631,7 +1715,7 @@ internal static class ControlThemes
                var lineUp = new RepeatButton
                             {
                                 Content = horizontal ? "◀" : "▲",
-                                // Template = bareTemplate, 
+                                Template = bareTemplate,
                                 Padding = Margins.Zero, 
                                 Focusable = false,
                                 IsTabStop = false
@@ -1643,7 +1727,7 @@ internal static class ControlThemes
                var lineDown = new RepeatButton
                               {
                                   Content = horizontal ? "▶" : "▼",
-                                  // Template = bareTemplate,
+                                  Template = bareTemplate,
                                   Padding = Margins.Zero,
                                   Focusable = false,
                                   IsTabStop = false
@@ -1925,7 +2009,8 @@ internal static class ControlThemes
                           {
                               Name = "PART_ObscuredOverlay",
                               Visibility = Visibility.Collapsed,
-                              IsRenderBoundary = true
+                              IsRenderBoundary = true,
+                              IsHitTestVisible = true
                           };
 
         overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);

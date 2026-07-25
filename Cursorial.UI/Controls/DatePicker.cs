@@ -48,6 +48,10 @@ public class DatePicker : Control
     public static readonly StyledProperty<bool> IsEditableProperty =
         UIProperty.Register<DatePicker, bool>(nameof(IsEditable), defaultValue: false, changed: OnIsEditableChanged);
 
+    /// <summary>The bubbling event raised when the calendar drop-down opens (<see cref="IsDropDownOpen"/> ⇒ true).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> CalendarOpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(CalendarOpened), RoutingStrategy.Bubble, typeof(DatePicker));
+
     private bool _isDropDownOpen;
     private bool _editing;  // the user has typed an uncommitted draft (so a SelectedDate sync must not clobber it)
     private bool _syncing;  // guards the SelectedDate → box push so it isn't mistaken for a user edit
@@ -81,6 +85,12 @@ public class DatePicker : Control
 
     /// <summary>Raised when <see cref="SelectedDate"/> changes (old → new).</summary>
     public event EventHandler<CalendarSelectedDateChangedEventArgs>? SelectedDateChanged;
+
+    /// <summary>CLR sugar over <see cref="CalendarOpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? CalendarOpened { add => AddHandler(CalendarOpenedEvent, value!); remove => RemoveHandler(CalendarOpenedEvent, value!); }
+
+    /// <summary>Raised when typed editable text can't be parsed as a date, before the field silently reverts to the last value (WPF <c>DateValidationError</c> analog).</summary>
+    public event EventHandler<DatePickerDateValidationErrorEventArgs>? DateValidationError;
 
     // Test/inspection seams (the parts are template-private).
     internal Calendar? CalendarPart => _calendar;
@@ -262,10 +272,18 @@ public class DatePicker : Control
         e.Handled = true;
     }
 
+    /// <summary>Raised when the editable text box's text changes from a user keystroke (not our own
+    /// SelectedDate→box sync). Lets a host clear per-keystroke state — an error cue, say — while the
+    /// typed value has not yet parsed to a new <see cref="SelectedDate"/>.</summary>
+    internal event EventHandler? EditableTextEdited;
+
     private void OnEditableTextChanged(object? sender, RoutedEventArgs e)
     {
         if (!_syncing)
+        {
             _editing = true; // a real user keystroke (not our own SelectedDate→box push)
+            EditableTextEdited?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // Parse the editable text (culture-aware) and commit it to SelectedDate; an unparseable value reverts the box to
@@ -273,8 +291,13 @@ public class DatePicker : Control
     private void ParseAndCommit(bool close)
     {
         _editing = false;
-        if (_editableTextBox is { } box && DateOnly.TryParse(box.Text, CultureInfo.CurrentCulture, DateTimeStyles.None, out var date))
-            SetCurrentValue(SelectedDateProperty, date);
+        if (_editableTextBox is { } box)
+        {
+            if (DateOnly.TryParse(box.Text, CultureInfo.CurrentCulture, DateTimeStyles.None, out var date))
+                SetCurrentValue(SelectedDateProperty, date);
+            else if (box.Text.Length > 0) // a non-empty draft that won't parse — surface the error before the silent revert
+                DateValidationError?.Invoke(this, new DatePickerDateValidationErrorEventArgs(box.Text));
+        }
 
         PushDateToBox(); // canonical form on success; revert to the current SelectedDate on a parse failure
         if (close)
@@ -362,9 +385,15 @@ public class DatePicker : Control
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value);
 
         if (value)
+        {
             _calendar?.FocusDate(); // best-effort keyboard entry into the grid (a no-op until the popup lays out)
+            var args = RentEvent(CalendarOpenedEvent); // a genuine closed→open transition (SetAndRaise guarded the no-op)
+            RaiseEvent(args);
+        }
         else
+        {
             RestoreFaceFocus(); // restore focus to the field / text box when the drop-down closes
+        }
     }
 
     private void RestoreFaceFocus()

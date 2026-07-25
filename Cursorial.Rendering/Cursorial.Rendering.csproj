@@ -18,6 +18,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
+        <ProjectReference Include="..\Cursorial.Shared\Cursorial.Shared.csproj" />
     </ItemGroup>
 
     <ItemGroup>

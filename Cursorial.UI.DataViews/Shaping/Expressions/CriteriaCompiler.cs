@@ -559,7 +559,79 @@ public static class CriteriaCompiler
                     return Expression.Call(typeof(Math).GetMethod(nameof(Math.Round), [value.Type, typeof(int)])!, value, digits);
                 }
 
+                case "IIF":
+                {
+                    // The DevExpress ternary: Iif(condition, then, else).
+                    if (arguments.Length != 3)
+                    {
+                        Error(node, "Iif takes (condition, then, else).");
+                        return null;
+                    }
+                    var cond = arguments[0];
+                    if (Unwrap(cond.Type) != typeof(bool))
+                    {
+                        Error(node, "Iif's first argument must be boolean.");
+                        return null;
+                    }
+                    if (Nullable.GetUnderlyingType(cond.Type) is not null)
+                        cond = Expression.Coalesce(cond, Expression.Constant(false)); // a null condition ⇒ else
+                    var then = arguments[1];
+                    var @else = arguments[2];
+                    if (!Unify(ref then, ref @else))
+                    {
+                        Error(node, "Iif's then/else branches have incompatible types.");
+                        return null;
+                    }
+                    return Expression.Condition(cond, then, @else);
+                }
+
+                case "MIN" or "MAX":
+                {
+                    if (arguments.Length < 2)
+                    {
+                        Error(node, $"{node.Name} takes 2+ numeric arguments.");
+                        return null;
+                    }
+                    string mathMethod = node.Name.ToUpperInvariant() == "MIN" ? nameof(Math.Min) : nameof(Math.Max);
+                    var acc = DropNullable(arguments[0]);
+                    if (!IsNumeric(acc.Type))
+                    {
+                        Error(node, $"{node.Name}'s arguments must be numeric.");
+                        return null;
+                    }
+                    for (int i = 1; i < arguments.Length; i++)
+                    {
+                        var next = DropNullable(arguments[i]);
+                        if (!IsNumeric(next.Type) || !Unify(ref acc, ref next))
+                        {
+                            Error(node, $"{node.Name}'s arguments must be numeric and compatible.");
+                            return null;
+                        }
+                        acc = Expression.Call(typeof(Math).GetMethod(mathMethod, [acc.Type, acc.Type])!, acc, next);
+                    }
+                    return acc;
+                }
+
                 default:
+                    // Custom functions (§ expression registry): a consumer-registered handler binds a
+                    // static method or emits its own expression tree. Falls through to the error below.
+                    if (CriteriaFunctions.TryGet(node.Name, out var registration))
+                    {
+                        if (arguments.Length < registration.MinArgs || arguments.Length > registration.MaxArgs)
+                        {
+                            Error(node, $"{node.Name} takes {registration.ArityText} argument(s).");
+                            return null;
+                        }
+                        try
+                        {
+                            return registration.Build(arguments);
+                        }
+                        catch (Exception ex)
+                        {
+                            Error(node, $"{node.Name}: {ex.Message}");
+                            return null;
+                        }
+                    }
                     Error(node, $"Unknown function '{node.Name}'.");
                     return null;
             }

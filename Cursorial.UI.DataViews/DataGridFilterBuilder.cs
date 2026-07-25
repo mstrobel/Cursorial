@@ -10,7 +10,7 @@ namespace Cursorial.UI.DataViews;
 /// <summary>How the Filter Builder dialog closed (the grid's entry point dispatches on it).</summary>
 internal enum FilterBuilderOutcome
 {
-    Cancelled,
+    Canceled,
     Applied,
     /// <summary>The "ƒ Edit as Text" hop: reopen as the expression editor seeded with the tree's text.</summary>
     EditAsText,
@@ -65,7 +65,7 @@ internal sealed class DataGridFilterBuilder
 
     /// <summary>One rendered condition row's live controls (tests drive the real cells).</summary>
     internal sealed record ConditionRow(Condition Model, ComboBox Field, ComboBox Operator,
-                                        TextBox Value, TextBox SecondValue);
+                                        ValueEditor Value, ValueEditor SecondValue);
 
     /// <summary>One rendered group row's live controls.</summary>
     internal sealed record GroupRow(Group Model, Button OperatorToggle);
@@ -96,12 +96,23 @@ internal sealed class DataGridFilterBuilder
     /// <summary>Non-null when this instance is a duplicate-open rider adopting the LIVE dialog.</summary>
     private readonly DataGridFilterBuilder? _live;
     private Group _root;
+    private readonly FilterNode? _seedFilter; // the ⧉ Designer hop's draft (null = the grid's filter)
+    private readonly string? _seedText;       // its source text (the §9.1 pair)
     private string _editAsTextSeed = string.Empty;
     private bool _rebuilding;
 
-    public DataGridFilterBuilder(DataGrid grid)
+    /// <param name="grid">The owning grid.</param>
+    /// <param name="seedFilter">An optional tree to seed from INSTEAD of the grid's active filter —
+    /// the editor's ⧉ Designer hop carries its lowered draft here, side-effect-free (nothing
+    /// applies until OK).</param>
+    /// <param name="seedText">The hop draft's SOURCE TEXT: labels a seeded compiled predicate's
+    /// locked ƒ row, and an un-edited OK re-applies THROUGH the text authority so the §9.1
+    /// (tree, text) pair stores together.</param>
+    public DataGridFilterBuilder(DataGrid grid, FilterNode? seedFilter = null, string? seedText = null)
     {
         _grid = grid;
+        _seedFilter = seedFilter;
+        _seedText = seedText;
 
         if (grid.ActiveFilterBuilder is { } open)
         {
@@ -124,7 +135,7 @@ internal sealed class DataGridFilterBuilder
         }
 
         _fieldColumns = grid.Columns.Where(c => c.FieldName is not null || c.KeySelector is not null).ToList();
-        _root = Seed(grid.Filter);
+        _root = Seed(seedFilter ?? grid.Filter);
 
         var content = new StackPanel(); // vertical
         content.Children.Add(new ScrollViewer
@@ -152,8 +163,14 @@ internal sealed class DataGridFilterBuilder
 
         content.Children.Add(_strip);
 
-        _window = DataGridDialogHelpers.CreateDialogWindow("Filter Builder", content,
-            ("OK", Ok), ("Cancel", Cancel));
+        _window = DataGridDialogHelpers.CreateDialogWindow(
+            "Filter Builder",
+            content,
+            defaultButton: "_OK",
+            cancelButton: "_Cancel",
+            minSize: new(0, 12),
+            maxSize: null,
+            ("_OK", Ok), ("_Cancel", Cancel));
 
         Rebuild();
     }
@@ -181,22 +198,22 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // A duplicate open rides the live dialog and completes with ITS outcome. EditAsText
-            // maps to Cancelled for the rider: the live call's owner chains the expression-editor
+            // maps to Canceled for the rider: the live call's owner chains the expression-editor
             // hop — chaining it from both entry tasks would stack two editors.
             var ridden = await live._outcome.Task;
-            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Cancelled : ridden;
+            return ridden == FilterBuilderOutcome.EditAsText ? FilterBuilderOutcome.Canceled : ridden;
         }
 
         try
         {
             var result = await _window.ShowDialogAsync();
-            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Cancelled;
+            var outcome = result is FilterBuilderOutcome closed ? closed : FilterBuilderOutcome.Canceled;
             _outcome.TrySetResult(outcome);
             return outcome;
         }
         finally
         {
-            _outcome.TrySetResult(FilterBuilderOutcome.Cancelled); // the throw path (dialog cancellation)
+            _outcome.TrySetResult(FilterBuilderOutcome.Canceled); // the throw path (dialog cancellation)
         }
     }
 
@@ -254,10 +271,11 @@ internal sealed class DataGridFilterBuilder
                 return new Opaque(not, $"Not ({DescribeOpaque(not.Child)})");
 
             case FilterPredicateNode predicate:
-                // §9.1: the compiled fallback keeps its ORIGINAL SOURCE TEXT grid-side — the
-                // builder shows it as a read-only expression row rather than pretending to edit it.
+                // §9.1: the compiled fallback keeps its ORIGINAL SOURCE TEXT — the hop's draft
+                // text when seeded from the editor, else the grid-side retained text; the builder
+                // shows it as a read-only expression row rather than pretending to edit it.
                 return new Opaque(predicate,
-                    _grid.FilterExpressionText is { Length: > 0 } text
+                    (_seedText ?? _grid.FilterExpressionText) is { Length: > 0 } text
                         ? $"ƒ {text}"
                         : "ƒ (custom predicate)");
 
@@ -385,6 +403,7 @@ internal sealed class DataGridFilterBuilder
             {
                 condition.Column = _fieldColumns[field.SelectedIndex];
                 condition.Pristine = false;
+                Rebuild(); // the value inputs are keyed to the column type — refresh them (enum ⇒ dropdown)
             }
         };
         row.Children.Add(field);
@@ -397,32 +416,36 @@ internal sealed class DataGridFilterBuilder
         };
         row.Children.Add(op);
 
-        var value = new TextBox { Text = condition.ValueText, MinWidth = 10 };
-        value.TextChanged += (_, _) =>
+        // The value inputs adapt to the column's key type (§10 value-entry): enum/bool ⇒ a name dropdown.
+        var keyType = condition.Column is null
+            ? null
+            : _grid.Controller?.GetColumnKeyType(condition.Column) ?? condition.Column.KeySelector?.ReturnType;
+        ValueEditor valueEd = null!;
+        valueEd = ValueEditor.Create(keyType, condition.ValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.ValueText = value.Text;
+                condition.ValueText = valueEd.Value;
                 condition.Pristine = false;
             }
-        };
-        row.Children.Add(value);
+        }, minWidth: 10);
+        row.Children.Add(valueEd.Element);
 
         var ellipsis = DataGridDialogHelpers.Caption("…");
-        var second = new TextBox { Text = condition.SecondValueText, MinWidth = 10 };
-        second.TextChanged += (_, _) =>
+        ValueEditor secondEd = null!;
+        secondEd = ValueEditor.Create(keyType, condition.SecondValueText, () =>
         {
             if (!_rebuilding)
             {
-                condition.SecondValueText = second.Text;
+                condition.SecondValueText = secondEd.Value;
                 condition.Pristine = false;
             }
-        };
+        }, minWidth: 10);
         bool between = condition.Operator == FilterOperator.Between;
         ellipsis.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
-        second.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
+        secondEd.Element.Visibility = between ? Visibility.Visible : Visibility.Collapsed;
         row.Children.Add(ellipsis);
-        row.Children.Add(second);
+        row.Children.Add(secondEd.Element);
 
         op.SelectionChanged += (_, _) =>
         {
@@ -432,7 +455,7 @@ internal sealed class DataGridFilterBuilder
             condition.Pristine = false;
             bool showSecond = condition.Operator == FilterOperator.Between;
             ellipsis.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
-            second.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
+            secondEd.Element.Visibility = showSecond ? Visibility.Visible : Visibility.Collapsed;
         };
 
         var add = new Button { Content = "＋" };
@@ -442,7 +465,7 @@ internal sealed class DataGridFilterBuilder
         remove.Click += (_, _) => Remove(condition);
         row.Children.Add(remove);
 
-        _conditionRows.Add(new ConditionRow(condition, field, op, value, second));
+        _conditionRows.Add(new ConditionRow(condition, field, op, valueEd, secondEd));
         _treeHost.Children.Add(row);
     }
 
@@ -707,10 +730,21 @@ internal sealed class DataGridFilterBuilder
             return;
         }
 
+        // The ⧉ Designer hop's UN-EDITED compiled draft applies THROUGH the text authority so the
+        // §9.1 (tree, source-text) pair stores together — the plain Filter write would orphan the
+        // text the hop carried.
+        if (built is FilterPredicateNode && ReferenceEquals(built, _seedFilter) && _seedText is { Length: > 0 })
+        {
+            if (!_grid.TryApplyFilterExpression(_seedText, out _))
+            {
+                SetError("the expression does not apply to the current columns");
+                return;
+            }
+        }
         // A zero-edit OK lowers back to the seeded tree verbatim (a single preserved opaque root ⇒
         // the SAME FilterNode reference). The §9.1-retained source text still describes it exactly —
         // writing through the Filter setter would clear FilterExpressionText for nothing.
-        if (!ReferenceEquals(built, _grid.Filter))
+        else if (!ReferenceEquals(built, _grid.Filter))
         {
             // The public Filter setter deliberately: the tree is now BUILDER-authored, so any
             // stored expression text is stale — the editor re-derives via ToText on its next
@@ -720,7 +754,7 @@ internal sealed class DataGridFilterBuilder
         _window.Close(FilterBuilderOutcome.Applied);
     }
 
-    internal void Cancel() => _window.Close(FilterBuilderOutcome.Cancelled);
+    internal void Cancel() => _window.Close(FilterBuilderOutcome.Canceled);
 
     /// <summary>
     /// "ƒ Edit as Text": lower the CURRENT model to criteria text and close with the hop outcome
@@ -732,7 +766,7 @@ internal sealed class DataGridFilterBuilder
         if (_live is { } live)
         {
             // The hop must land its seed on the LIVE instance — its owning entry task is the one
-            // that chains into the expression editor (the rider maps EditAsText to Cancelled).
+            // that chains into the expression editor (the rider maps EditAsText to Canceled).
             live.RequestEditAsText();
             return;
         }
@@ -758,6 +792,6 @@ internal sealed class DataGridFilterBuilder
     internal void CloseWindow()
     {
         if (_window.IsShown)
-            _window.Close(FilterBuilderOutcome.Cancelled);
+            _window.Close(FilterBuilderOutcome.Canceled);
     }
 }

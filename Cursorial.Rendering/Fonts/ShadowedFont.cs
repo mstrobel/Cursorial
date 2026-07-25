@@ -90,6 +90,17 @@ public sealed class ShadowedFont : IGlyphFont
     /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
     {
+        return PaintCore(buffer, column, row, text, style, styleProvider: null);
+    }
+
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+    {
+        return PaintCore(buffer, column, row, text, default, styleProvider);
+    }
+
+    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style,
+                           GlyphStyleProvider? styleProvider = null)
+    {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
         var shadowStyle = ShadowStyle;
@@ -104,9 +115,14 @@ public sealed class ShadowedFont : IGlyphFont
 
         try
         {
+            var baseStyle = style;
+
+            if (styleProvider is not null)
+                baseStyle = styleProvider(column, row);
+
             var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(style.UnderlineStyle)
-                                                  .WithAttributes((shadowStyle.Attributes | style.Attributes) & ~ForbiddenShadowAttributes)
-                                                  .BlendOver(style);
+                                                  .WithAttributes((shadowStyle.Attributes | baseStyle.Attributes) & ~ForbiddenShadowAttributes)
+                                                  .BlendOver(baseStyle);
 
             Inner.Paint(buffer, column + Offset.Columns, row + Offset.Rows, text, effectiveShadowStyle);
         }
@@ -116,7 +132,10 @@ public sealed class ShadowedFont : IGlyphFont
                 buffer.PopBlendingMode();
         }
 
-        var painted = Inner.Paint(buffer, column, row, text, style);
+        var painted = styleProvider is {} sp 
+                          ? Inner.Paint(buffer, column, row, text, sp) 
+                          : Inner.Paint(buffer, column, row, text, in style);
+
         if (painted.IsEmpty)
             return Size.Empty;
 

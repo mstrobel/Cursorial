@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -34,7 +36,7 @@ public class ToggleButton : ButtonBase
 
     /// <summary>The direct event raised whenever the value of <see cref="IsChecked"/> changes.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
-        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Direct, typeof(ToggleButton));
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Bubble, typeof(ToggleButton));
 
     static ToggleButton()
     {
@@ -72,7 +74,8 @@ public class ToggleButton : ButtonBase
     /// <c>false → true → null → false</c> (three-state). A click/Space/Enter routes through
     /// <see cref="OnClick"/>, which calls <see cref="OnToggle"/> before raising the click.
     /// </summary>
-    protected virtual void OnToggle()
+    [SuppressMessage("ReSharper", "UnusedParameter.Global")]
+    protected virtual void OnToggle(InvokeMethod method = InvokeMethod.Programmatic)
     {
         var current = IsChecked;
 
@@ -84,11 +87,12 @@ public class ToggleButton : ButtonBase
                     };
     }
 
+    /// <param name="method"></param>
     /// <inheritdoc/>
-    protected override void OnClick()
+    protected override void OnClick(InvokeMethod method = InvokeMethod.Programmatic)
     {
-        OnToggle();
-        base.OnClick();
+        OnToggle(method);
+        base.OnClick(method);
     }
 
     // ReSharper disable once RedundantOverriddenMember
@@ -113,15 +117,13 @@ public class ToggleButton : ButtonBase
 
         toggle.OnIsCheckedChangedCore(oldValue, newValue);
 
-        if (toggle.IsAttachedToTree)
-        {
-            var args = toggle.RentEvent(routedEvent);
-            toggle.RaiseEvent(args);
-            args = toggle.RentEvent(IsCheckedChangedEvent);
-            toggle.RaiseEvent(args);
-            
-            toggle.SyncCheckedWithCommandParameter();
-        }
+        var args = toggle.RentEvent(routedEvent);
+
+        toggle.RaiseEvent(args);
+        args = toggle.RentEvent(IsCheckedChangedEvent);
+        toggle.RaiseEvent(args);
+
+        toggle.SyncCheckedWithCommandParameter();
     }
 
     /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event (RadioButton group uncheck rides this).</summary>

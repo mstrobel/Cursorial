@@ -55,13 +55,14 @@ internal sealed class MetadataProviderEmitter
     /// </summary>
     public string? Emit(
         IReadOnlyList<INamedTypeSymbol> types,
-        IReadOnlyList<(string Path, string Expr)>? statics = null)
+        IReadOnlyList<(string Namespace, string Path, string Expr)>? statics = null)
     {
         if (types.Count == 0)
             return null;
 
-        var staticList = (statics ?? System.Array.Empty<(string, string)>())
-                         .OrderBy(s => s.Path, System.StringComparer.Ordinal)
+        var staticList = (statics ?? System.Array.Empty<(string, string, string)>())
+                         .OrderBy(s => s.Namespace, System.StringComparer.Ordinal)
+                         .ThenBy(s => s.Path, System.StringComparer.Ordinal)
                          .ToList();
 
         // Deterministic order (display name) for stable output.
@@ -217,19 +218,20 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
     }
 
-    // WS-X4.5 / P1B — the AOT-clean {x:Static} seam (IXamlStaticResolver): a baked switch over the document
-    // set's referenced static members → `global::FullType.Member`. The consumer's compile resolves the refs (no
-    // System.Type at generator time, identical to the converter strategy). An x:Static the generator can't
-    // resolve isn't baked (the runtime then reports member-not-found, matching the reflection provider — no drift).
-    private void EmitTryResolveStatic(StringBuilder sb, IReadOnlyList<(string Path, string Expr)> statics)
+    // WS-X4.5 / P1B — the AOT-clean {x:Static} seam (IXamlStaticResolver): a baked switch over the
+    // document set's referenced static members → `global::FullType.Member`, keyed by the (xmlns, prefix-free
+    // path) pair the loader binds (P1C). The consumer's compile resolves the refs (no System.Type at generator
+    // time, identical to the converter strategy). An x:Static the generator can't resolve isn't baked (the
+    // runtime then reports member-not-found, matching the reflection provider — no drift).
+    private void EmitTryResolveStatic(StringBuilder sb, IReadOnlyList<(string Namespace, string Path, string Expr)> statics)
     {
-        sb.AppendLine("        public bool TryResolveStatic(string memberPath, out object? value)");
+        sb.AppendLine("        public bool TryResolveStatic(string xmlNamespace, string memberPath, out object? value)");
         sb.AppendLine("        {");
-        sb.AppendLine("            switch (memberPath)");
+        sb.AppendLine("            switch (xmlNamespace, memberPath)");
         sb.AppendLine("            {");
 
-        foreach (var (path, expr) in statics)
-            sb.AppendLine($"                case \"{Escape(path)}\": value = {expr}; return true;");
+        foreach (var (ns, path, expr) in statics)
+            sb.AppendLine($"                case (\"{Escape(ns)}\", \"{Escape(path)}\"): value = {expr}; return true;");
 
         sb.AppendLine("                default: value = null; return false;");
         sb.AppendLine("            }");

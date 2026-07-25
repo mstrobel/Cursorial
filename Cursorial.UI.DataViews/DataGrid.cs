@@ -2,27 +2,45 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 using Cursorial.Input;
+using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
+using Cursorial.UI.DataViews.Annotations;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.DataViews.Shaping.Expressions;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
+
+// ReSharper disable GrammarMistakeInComment
+// ReSharper disable ForCanBeConvertedToForeach
 
 namespace Cursorial.UI.DataViews;
 
 /// <summary>
-/// The DevExpress-style data grid (design doc §3; visual spec
-/// <c>tokyo-night-terminal-datagrid.html</c>): a non-generic <see cref="Control"/> over the typed
-/// shaping engine — columns (explicit + auto-generated), multi-level sorting and grouping with
-/// summaries, criteria-tree filtering, direct-drawn virtualized rows, row-id-keyed selection, and
-/// in-row editing via the element-hosting special case. The observable
-/// <see cref="SortDescriptions"/>/<see cref="GroupDescriptions"/> collections are the ONE source of
-/// truth — gestures edit them, glyphs render them, persistence reads them (panel decision).
+/// The DevExpress-style data grid (design doc §3; visual spec <c>tokyo-night-terminal-datagrid.html</c>):
+/// a non-generic <see cref="Control"/> over the typed shaping engine — columns (explicit and auto-generated),
+/// multi-level sorting and grouping with summaries, criteria-tree filtering, direct-drawn virtualized rows,
+/// row-id-keyed selection, and in-row editing via the element-hosting special case. The observable
+/// <see cref="DataGrid.SortDescriptions"/>/<see cref="DataGrid.GroupDescriptions"/> collections are the ONE
+/// source of truth — gestures edit them, glyphs render them, persistence reads them (panel decision).
 /// </summary>
+/// <summary>How a group row shows its summaries (§2.5).</summary>
+public enum GroupSummaryDisplay
+{
+    /// <summary>One concatenated string right-aligned in the group banner (the compact default).</summary>
+    Banner,
+
+    /// <summary>Each aggregate aligned UNDER its own column (like the footer), scrolling with the columns.</summary>
+    InColumn,
+}
+
 [RequiresDynamicCode("The shaping engine compiles expression trees specialized to the row type.")]
 public class DataGrid : Control
 {
@@ -39,10 +57,28 @@ public class DataGrid : Control
     public static readonly StyledProperty<bool> LiveUpdatesProperty =
         UIProperty.Register<DataGrid, bool>(nameof(LiveUpdates), true);
 
+    /// <summary>How group rows show their summaries — a right-aligned banner string (default) or each
+    /// aggregate aligned under its column, like the footer (§2.5).</summary>
+    public static readonly StyledProperty<GroupSummaryDisplay> GroupSummaryDisplayProperty =
+        UIProperty.Register<DataGrid, GroupSummaryDisplay>(nameof(GroupSummaryDisplay),
+            changed: static (sender, _, _) => ((DataGrid)sender).RowsPresenter?.InvalidateVisual());
+
+    /// <inheritdoc cref="GroupSummaryDisplayProperty"/>
+    public GroupSummaryDisplay GroupSummaryDisplay
+    {
+        get => GetValue(GroupSummaryDisplayProperty);
+        set => SetValue(GroupSummaryDisplayProperty, value);
+    }
+
     /// <summary>Whether the auto-filter row renders (default hidden — opt-in band, §3.4).</summary>
     public static readonly StyledProperty<bool> ShowAutoFilterRowProperty =
         UIProperty.Register<DataGrid, bool>(nameof(ShowAutoFilterRow),
-            changed: static (sender, _, _) => ((DataGrid)sender).AutoFilterRow?.InvalidateMeasure());
+            changed: static (sender, _, _) =>
+            {
+                var grid = (DataGrid)sender;
+                grid.AutoFilterRow?.InvalidateMeasure();
+                grid.RepairBandFocus(); // sweep [3]: hiding the band under the virtual focus
+            });
 
     /// <summary>
     /// Whether the group panel renders (default hidden — the flip drops the whole band from
@@ -51,11 +87,17 @@ public class DataGrid : Control
     /// </summary>
     public static readonly StyledProperty<bool> ShowGroupPanelProperty =
         UIProperty.Register<DataGrid, bool>(nameof(ShowGroupPanel),
-            changed: static (sender, _, _) => ((DataGrid)sender).GroupPanel?.InvalidateMeasure());
+            changed: static (sender, _, _) =>
+            {
+                var grid = (DataGrid)sender;
+                grid.GroupPanel?.InvalidateMeasure();
+                grid.RepairBandFocus(); // sweep [3]: hiding the band under the virtual focus
+            });
 
     /// <summary>Whether the summary footer renders (auto-hides when no summaries are defined).</summary>
     public static readonly StyledProperty<bool> ShowSummaryFooterProperty =
-        UIProperty.Register<DataGrid, bool>(nameof(ShowSummaryFooter), true);
+        UIProperty.Register<DataGrid, bool>(nameof(ShowSummaryFooter), true,
+            changed: static (sender, _, _) => ((DataGrid)sender).UpdateSummaryFooterVisibility());
 
     /// <summary>
     /// Whether the trailing new-row template renders (design doc §3.2 deferred-suite item; the
@@ -67,6 +109,12 @@ public class DataGrid : Control
     public static readonly StyledProperty<bool> AllowAddNewProperty =
         UIProperty.Register<DataGrid, bool>(nameof(AllowAddNew),
             changed: static (sender, _, _) => ((DataGrid)sender).RowsPresenter?.InvalidateBand());
+
+    /// <summary>Whether Delete removes the focused/selected data rows (default off — the
+    /// <see cref="AllowAddNew"/> twin; effective only on a non-readonly, non-fixed
+    /// <see cref="IList"/> source). Sweep [11] — unpromised DevExpress parity, opt-in.</summary>
+    public static readonly StyledProperty<bool> AllowDeleteProperty =
+        UIProperty.Register<DataGrid, bool>(nameof(AllowDelete));
 
     /// <summary>
     /// The ONE horizontal scroll truth (§9.2 — the in-presenter horizontal axis): every band
@@ -85,8 +133,8 @@ public class DataGrid : Control
     /// content-y map); detail elements are hosted children built fresh per expansion with
     /// <c>DataContext</c> = the row object.
     /// </summary>
-    public static readonly StyledProperty<Controls.DataTemplate?> DetailTemplateProperty =
-        UIProperty.Register<DataGrid, Controls.DataTemplate?>(nameof(DetailTemplate),
+    public static readonly StyledProperty<DataTemplate?> DetailTemplateProperty =
+        UIProperty.Register<DataGrid, DataTemplate?>(nameof(DetailTemplate),
             changed: static (sender, _, _) =>
             {
                 var grid = (DataGrid)sender;
@@ -135,9 +183,17 @@ public class DataGrid : Control
             // attaches must still surface on the panel).
             GroupPanel?.InvalidateMeasure();
             GroupPanel?.InvalidateVisual();
+            // Band-focus repair (sweep [3]): EVERY removal path crosses here (keyboard Delete, the
+            // mouse ✕, programmatic Clear) — a panel that just lost its last chip must not keep the
+            // virtual focus (its keys go dead while the grid looks row-focused).
+            RepairBandFocus();
         };
         SummaryDescriptions = [];
-        SummaryDescriptions.CollectionChanged += (_, _) => ScheduleShapePush();
+        SummaryDescriptions.CollectionChanged += (_, _) =>
+        {
+            ScheduleShapePush();
+            UpdateSummaryFooterVisibility(); // the "auto-hides when no summaries" half of the gate
+        };
     }
 
     /// <inheritdoc cref="ItemsSourceProperty"/>
@@ -198,6 +254,47 @@ public class DataGrid : Control
         set => SetValue(AllowAddNewProperty, value);
     }
 
+    /// <inheritdoc cref="AllowDeleteProperty"/>
+    public bool AllowDelete
+    {
+        get => GetValue(AllowDeleteProperty);
+        set => SetValue(AllowDeleteProperty, value);
+    }
+
+    /// <summary>
+    /// Removes the selected data rows (falling back to the focus row) from the
+    /// <see cref="IList"/> source — the Delete key / context-menu surface (sweep [11]). Row
+    /// OBJECTS resolve first (ids die as removals reshape), then remove by identity; the id-keyed
+    /// hygiene fan-out (selection/focus/cell-range/details/edit) rides the removal events. For
+    /// value-type rows, removal matches by EQUALITY (the boxed copy) — the first equal element
+    /// leaves. A plain (non-INCC) IList refreshes via the cold re-attach, the new-row lane's twin.
+    /// </summary>
+    public bool DeleteSelectedRows()
+    {
+        if (!AllowDelete || _controller is null ||
+            ItemsSource is not IList list || list.IsReadOnly || list.IsFixedSize)
+        {
+            return false;
+        }
+
+        var snapshot = Snapshot;
+        var ids = RowSelection.IsEmpty
+            ? FocusRowIdOrEmpty(snapshot)
+            : RowSelection.MaterializeSelectedIds(snapshot);
+        if (ids.Count == 0)
+            return false;
+
+        var rows = new List<object>(ids.Count);
+        foreach (int id in ids)
+            rows.Add(_controller.GetRowObject(id));
+        foreach (var row in rows)
+            list.Remove(row); // INCC sources tick per removal
+
+        if (list is not INotifyCollectionChanged)
+            _controller.AttachSource(list, EffectiveLiveUpdates);
+        return true;
+    }
+
     /// <inheritdoc cref="HorizontalOffsetProperty"/>
     public int HorizontalOffset
     {
@@ -206,7 +303,7 @@ public class DataGrid : Control
     }
 
     /// <inheritdoc cref="DetailTemplateProperty"/>
-    public Controls.DataTemplate? DetailTemplate
+    public DataTemplate? DetailTemplate
     {
         get => GetValue(DetailTemplateProperty);
         set => SetValue(DetailTemplateProperty, value);
@@ -330,6 +427,13 @@ public class DataGrid : Control
         AddItem(menu, "Conditional formatting…", () => _ = OpenRulesManagerAsync());
         AddItem(menu, "Column chooser…", () => OpenColumnChooser(0));
 
+        // The view-band toggles (DevExpress Group By Box / footer parity): checked = shown. The
+        // menu is rebuilt per open, so the check state re-seeds from the live property; hiding the
+        // group panel keeps the grouping itself (the panel is chrome, not the descriptions).
+        menu.Items.Add(new Separator());
+        AddToggle(menu, "Group panel", ShowGroupPanel, () => ShowGroupPanel = !ShowGroupPanel);
+        AddToggle(menu, "Summary footer", ShowSummaryFooter, () => ShowSummaryFooter = !ShowSummaryFooter);
+
         if (column is not null && _controller is not null)
         {
             menu.Items.Add(new Separator());
@@ -345,9 +449,14 @@ public class DataGrid : Control
 
             void AddSummaryChoice(string caption, AggregateKind kind)
             {
+                // The mockup shows each aggregate's live value beside its name ("Sum  $171,900"),
+                // formatted the same as the footer/group summary — the column's own format by default.
+                var value = _controller.ComputeSummaryText(column, kind, column.Format);
                 var item = new MenuItem
                 {
-                    Header = caption,
+                    // A DockPanel row (label fills, value docked right) so the values right-align into
+                    // one column regardless of label width — not a fixed-space string.
+                    Header = value is { Length: > 0 } ? MenuValueRow(caption, value) : caption,
                     IsCheckable = true,
                     IsChecked = SummaryDescriptions.Any(s =>
                         ReferenceEquals(s.ColumnKey, column) && s.Aggregate == kind),
@@ -364,9 +473,39 @@ public class DataGrid : Control
             }
             AddSummaryChoice("Min", AggregateKind.Min);
             AddSummaryChoice("Max", AggregateKind.Max);
+
+            summaryMenu.Items.Add(new Separator());
+
+            // Group-summary placement (only meaningful while grouped): checked ⇒ each aggregate aligns
+            // UNDER its column in the group rows (like the footer); unchecked ⇒ the concatenated banner
+            // string. A grid-wide toggle over GroupSummaryDisplay.
+            if (GroupDescriptions.Count > 0)
+            {
+                var inColumns = new MenuItem
+                {
+                    Header = "Show in Columns",
+                    IsCheckable = true,
+                    IsChecked = GroupSummaryDisplay == GroupSummaryDisplay.InColumn,
+                };
+                inColumns.Click += (_, _) => GroupSummaryDisplay =
+                    GroupSummaryDisplay == GroupSummaryDisplay.InColumn ? GroupSummaryDisplay.Banner : GroupSummaryDisplay.InColumn;
+                summaryMenu.Items.Add(inColumns);
+            }
+
+            // The full editor (§2.5): aggregate + format string + display template + live preview.
+            // The gear rides MenuItem.Icon (the tiered Icon class — Nerd Font → emoji → Unicode floor),
+            // not the header text, so it aligns in the menu's icon tray.
+            var editSummary = new MenuItem
+            {
+                Header = "Edit / Format…",
+                Icon = new Icon { Glyph = "\U000F0493", Text = "⛭", Emoji = "⚙️" }, // nf-md-cog U+F0493
+            };
+            var summaryColumn = column;
+            editSummary.Click += (_, _) => _ = OpenSummaryEditorAsync(summaryColumn);
+            summaryMenu.Items.Add(editSummary);
+
             if (SummaryDescriptions.Any(s => ReferenceEquals(s.ColumnKey, column)))
             {
-                summaryMenu.Items.Add(new Separator());
                 var clear = new MenuItem { Header = "None" };
                 clear.Click += (_, _) =>
                 {
@@ -383,6 +522,8 @@ public class DataGrid : Control
 
         menu.Items.Add(new Separator());
         AddItem(menu, "Copy", CopySelectionToClipboard);
+        if (AllowDelete)
+            AddItem(menu, "Delete row(s)", () => DeleteSelectedRows());
 
         _gridMenu = menu;
         menu.Open(presenter, position);
@@ -393,6 +534,31 @@ public class DataGrid : Control
             item.Click += (_, _) => action();
             menu.Items.Add(item);
         }
+
+        static void AddToggle(ContextMenu menu, string caption, bool isChecked, Action toggle)
+        {
+            var item = new MenuItem { Header = caption, IsCheckable = true, IsChecked = isChecked };
+            item.Click += (_, _) => toggle();
+            menu.Items.Add(item);
+        }
+    }
+
+    /// <summary>A two-part menu-item header: <paramref name="caption"/> fills the row while
+    /// <paramref name="trailing"/> (a live value / count / preview) docks to the right, so trailing
+    /// text right-aligns into one column across sibling items regardless of caption width — the menu
+    /// stretches every item to the widest, so the fill child yields a uniform gutter (owner note,
+    /// 2026-07-20; the uneven fixed-space spacing it replaces).</summary>
+    private static DockPanel MenuValueRow(string caption, string trailing)
+    {
+        var dock = new DockPanel();
+
+        var value = new TextBlock { Text = trailing, Margin = new Margins(3, 0, 0, 0) };
+        value.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+        DockPanel.SetDock(value, Dock.Right);
+        dock.Children.Add(value);
+
+        dock.Children.Add(new TextBlock { Text = caption }); // last child fills the remaining width
+        return dock;
     }
 
     /// <summary>Adds the (column, kind) summary, or removes it when already present (the menu's checkable toggle).</summary>
@@ -468,6 +634,14 @@ public class DataGrid : Control
                 break;
         }
         InvalidateBandCues();
+    }
+
+    /// <summary>Sweep [3]: a band that became unavailable under the virtual focus (last chip
+    /// removed, Show* flipped off) hands the focus back to the rows.</summary>
+    private void RepairBandFocus()
+    {
+        if (_focusBand != DataGridFocusBand.Rows && !BandAvailable(_focusBand))
+            ExitBandFocus();
     }
 
     /// <summary>Returns the virtual focus to the rows (Esc, a rows press, or the cycle wrapping).</summary>
@@ -684,26 +858,51 @@ public class DataGrid : Control
 
     // The range IS its corners (§9.4): row ids + COLUMN IDENTITIES (never visible indices — the
     // column UX reorders/hides at runtime). Membership derives per snapshot from the re-projected
-    // corners; reshapes legitimately change membership (the Excel/DevExpress semantic).
+    // corners; reshapes legitimately change membership (the Excel/DevExpress semantic). §10.1:
+    // Ctrl+click BANKS the active range into _committedRanges and starts a fresh active one — the
+    // ACTIVE range stays the four scalar fields (the sole extendable one); committed ranges are
+    // frozen corner tuples, re-projected the same way every publish.
     private int _cellAnchorRowId = -1;
     private int _cellLeadRowId = -1;
     private DataGridColumn? _cellAnchorColumn;
     private DataGridColumn? _cellLeadColumn;
+    private readonly List<CellRangeCorners> _committedRanges = [];
+
+    /// <summary>One banked (non-active) cell range's frozen corners (§10.1).</summary>
+    private readonly record struct CellRangeCorners(int AnchorRowId, int LeadRowId, DataGridColumn? AnchorColumn, DataGridColumn? LeadColumn);
 
     internal void ClearCellRange()
     {
+        _committedRanges.Clear();
         _cellAnchorRowId = _cellLeadRowId = -1;
         _cellAnchorColumn = _cellLeadColumn = null;
     }
 
-    /// <summary>Both corners onto one cell (the plain click / unmodified focus move).</summary>
+    /// <summary>Both active corners onto one cell (the raw setter; keeps committed ranges).</summary>
     private void SetCellRangeAnchor(int rowId, DataGridColumn? column)
     {
         _cellAnchorRowId = _cellLeadRowId = rowId;
         _cellAnchorColumn = _cellLeadColumn = column;
     }
 
-    /// <summary>Moves the lead corner (Shift+click / Shift+arrow); the anchor stays.</summary>
+    /// <summary>A plain click / unmodified move: back to ONE range (drops the committed ones — §10.1).</summary>
+    private void ResetCellRange(int rowId, DataGridColumn? column)
+    {
+        _committedRanges.Clear();
+        SetCellRangeAnchor(rowId, column);
+    }
+
+    /// <summary>Banks the active range as a committed one (Ctrl+click — §10.1), keeping its corners.</summary>
+    private void CommitActiveRange()
+    {
+        if (_cellAnchorRowId < 0 || _cellLeadRowId < 0)
+            return;
+        var corners = new CellRangeCorners(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn);
+        if (!_committedRanges.Contains(corners)) // an exact re-bank is a no-op (audit fix)
+            _committedRanges.Add(corners);
+    }
+
+    /// <summary>Moves the active lead corner (Shift+click / Shift+arrow); the anchor + committed stay.</summary>
     private void ExtendCellRangeTo(int rowId, DataGridColumn? column)
     {
         if (_cellAnchorRowId < 0)
@@ -717,24 +916,59 @@ public class DataGrid : Control
     }
 
     /// <summary>
-    /// The derived rectangle in the CURRENT snapshot/layout (§9.4): view rows normalized min..max,
-    /// column edges resolved by IDENTITY (a hidden endpoint clamps to its nearest visible neighbor
-    /// in collection order). Null = no range (row mode, no corners, or nothing visible).
+    /// The ACTIVE range's derived rectangle in the CURRENT snapshot/layout (§9.4): view rows
+    /// normalized min..max, column edges resolved by IDENTITY (a hidden endpoint clamps to its
+    /// nearest visible neighbor in collection order). Null = no active range (row mode, no corners,
+    /// or nothing visible). For ALL ranges (committed + active) use <see cref="CollectCellRangeViewRects"/>.
     /// </summary>
     internal (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? CellRangeViewRect()
     {
         if (SelectionUnit != DataGridSelectionUnit.Cell || _cellAnchorRowId < 0 || _cellLeadRowId < 0)
             return null;
+        return ResolveCellRangeRect(_cellAnchorRowId, _cellLeadRowId, _cellAnchorColumn, _cellLeadColumn);
+    }
 
-        int anchorRow = ViewIndexOfRow(_cellAnchorRowId);
-        int leadRow = ViewIndexOfRow(_cellLeadRowId);
-        int anchorColumn = EntryIndexOfColumnClamped(_cellAnchorColumn);
-        int leadColumn = EntryIndexOfColumnClamped(_cellLeadColumn);
-        if (anchorRow < 0 || leadRow < 0 || anchorColumn < 0 || leadColumn < 0)
-            return null; // a lost corner renders nothing this frame; the publish prune collapses it
+    /// <summary>Re-projects one range's corners into a normalized view rectangle (null on any lost corner).</summary>
+    private (int FirstRow, int LastRow, int FirstColumn, int LastColumn)? ResolveCellRangeRect(
+        int anchorRowId, int leadRowId, DataGridColumn? anchorColumn, DataGridColumn? leadColumn)
+    {
+        int anchorRow = ViewIndexOfRow(anchorRowId);
+        int leadRow = ViewIndexOfRow(leadRowId);
+        int anchorCol = EntryIndexOfColumnClamped(anchorColumn);
+        int leadCol = EntryIndexOfColumnClamped(leadColumn);
+        if (anchorRow < 0 || leadRow < 0 || anchorCol < 0 || leadCol < 0)
+            return null; // a lost corner renders nothing this frame; the publish prune collapses/drops it
 
         return (Math.Min(anchorRow, leadRow), Math.Max(anchorRow, leadRow),
-                Math.Min(anchorColumn, leadColumn), Math.Max(anchorColumn, leadColumn));
+                Math.Min(anchorCol, leadCol), Math.Max(anchorCol, leadCol));
+    }
+
+    /// <summary>
+    /// Fills <paramref name="into"/> with EVERY cell range's view rectangle (committed then active —
+    /// §10.1). The caller owns the list (the presenter reuses one field ⇒ zero steady-state alloc);
+    /// empties it in row mode. Lost-corner ranges are skipped (the publish prune retires them).
+    /// </summary>
+    internal void CollectCellRangeViewRects(List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> into)
+    {
+        into.Clear();
+        if (SelectionUnit != DataGridSelectionUnit.Cell)
+            return;
+        foreach (var range in _committedRanges)
+        {
+            if (ResolveCellRangeRect(range.AnchorRowId, range.LeadRowId, range.AnchorColumn, range.LeadColumn) is { } rect)
+                into.Add(rect);
+        }
+        if (CellRangeViewRect() is { } active)
+            into.Add(active);
+    }
+
+    /// <summary>All cell-range rectangles (allocating; test/diagnostic use — the paint path uses
+    /// <see cref="CollectCellRangeViewRects"/> against a reused buffer).</summary>
+    internal IReadOnlyList<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)> CellRangeViewRects()
+    {
+        var list = new List<(int, int, int, int)>();
+        CollectCellRangeViewRects(list);
+        return list;
     }
 
     /// <summary>A column's layout-entry index; a hidden endpoint clamps to the nearest visible
@@ -782,7 +1016,22 @@ public class DataGrid : Control
     /// entirely (audit W2-15) — collapses the range to the focus cell.</summary>
     private void PruneCellRange()
     {
-        if (SelectionUnit != DataGridSelectionUnit.Cell || _cellAnchorRowId < 0)
+        if (SelectionUnit != DataGridSelectionUnit.Cell)
+            return;
+        // Audit fix: without a resolvable layout (the grid detached / re-templating, so
+        // EntryIndexOfColumnClamped returns −1 for EVERY column) NOTHING can be re-projected —
+        // pruning here would false-drop every committed range permanently. Skip; the next publish
+        // (presenter back) prunes for real.
+        if (RowsPresenter?.ColumnLayout is null)
+            return;
+        // §10.1: a committed range that lost a corner just DROPS (only the active range collapses to
+        // the focus cell — a dead banked rectangle has no focus to fall back on).
+        if (_committedRanges.Count > 0)
+        {
+            _committedRanges.RemoveAll(r =>
+                ResolveCellRangeRect(r.AnchorRowId, r.LeadRowId, r.AnchorColumn, r.LeadColumn) is null);
+        }
+        if (_cellAnchorRowId < 0)
             return;
         if (ViewIndexOfRow(_cellAnchorRowId) >= 0 && ViewIndexOfRow(_cellLeadRowId) >= 0 &&
             EntryIndexOfColumnClamped(_cellAnchorColumn) >= 0 && EntryIndexOfColumnClamped(_cellLeadColumn) >= 0)
@@ -802,24 +1051,43 @@ public class DataGrid : Control
         }
         else
         {
-            ClearCellRange();
+            // Audit fix: only the ACTIVE range collapses here — a full ClearCellRange() would ALSO
+            // wipe still-valid committed ranges (e.g. focus parked on a group row when the active
+            // corner is lost). Committed ranges are pruned independently, per corner.
+            ClearActiveCellRange();
         }
+    }
+
+    /// <summary>Clears just the ACTIVE range's corners, keeping the committed ranges (§10.1).</summary>
+    private void ClearActiveCellRange()
+    {
+        _cellAnchorRowId = _cellLeadRowId = -1;
+        _cellAnchorColumn = _cellLeadColumn = null;
     }
 
     /// <summary>Audit W2-12: a corner id being REMOVED collapses immediately — before the freed
     /// slot can recycle onto an unrelated row and silently re-attach the range.</summary>
     private void HandleRowsRemovedForCellRange(IReadOnlyList<int> ids)
     {
+        bool Removed(int rowId)
+        {
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (ids[i] == rowId)
+                    return true;
+            }
+            return false;
+        }
+
+        // §10.1: a committed range whose corner id is removed DROPS (before the slot recycles onto
+        // an unrelated row); the active range collapses to the focus cell.
+        if (_committedRanges.Count > 0)
+            _committedRanges.RemoveAll(r => Removed(r.AnchorRowId) || Removed(r.LeadRowId));
+
         if (_cellAnchorRowId < 0)
             return;
-        for (int i = 0; i < ids.Count; i++)
-        {
-            if (ids[i] == _cellAnchorRowId || ids[i] == _cellLeadRowId)
-            {
-                CollapseCellRangeToFocusCell();
-                return;
-            }
-        }
+        if (Removed(_cellAnchorRowId) || Removed(_cellLeadRowId))
+            CollapseCellRangeToFocusCell();
     }
 
     /// <summary>The column at a layout-entry index, or null.</summary>
@@ -1068,8 +1336,10 @@ public class DataGrid : Control
     public const string PartEditBar = "PART_EditBar";
     public const string PartHScrollBar = "PART_HScrollBar";
 
+    // ReSharper disable once NotAccessedField.Local
     private ScrollViewer? _scrollViewer;
     private DataGridHeaderPresenter? _header;
+    private DataGridSummaryPresenter? _footer;
     private ScrollBar? _hScrollBar;
 
     protected override void OnApplyTemplate()
@@ -1079,7 +1349,8 @@ public class DataGrid : Control
         GroupPanel = GetTemplatePart<DataGridGroupPanel>(PartGroupPanel);
         _header = GetTemplatePart<DataGridHeaderPresenter>(PartHeader);
         AutoFilterRow = GetTemplatePart<DataGridAutoFilterRow>(PartAutoFilterRow);
-        var footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
+        _footer = GetTemplatePart<DataGridSummaryPresenter>(PartFooter);
+        var footer = _footer;
         _scrollViewer = GetTemplatePart<ScrollViewer>(PartScrollViewer);
         RowsPresenter = GetTemplatePart<DataGridRowsPresenter>(PartRows);
         EditBar = GetTemplatePart<DataGridEditBar>(PartEditBar);
@@ -1109,6 +1380,7 @@ public class DataGrid : Control
             footer.Owner = this;
             footer.SetBinding(DataGridSummaryPresenter.HorizontalOffsetProperty,
                               new Binding(nameof(HorizontalOffset)) { Source = this });
+            UpdateSummaryFooterVisibility();
         }
 
         // The grid-owned horizontal bar (§9.2 — the SV part cannot host it: its bar wiring pins to
@@ -1118,6 +1390,22 @@ public class DataGrid : Control
         {
             hBar.Scroll += OnHorizontalScroll;
             UpdateHorizontalScrollBar();
+        }
+    }
+
+    /// <summary>
+    /// The footer band's effective visibility — <see cref="ShowSummaryFooter"/> AND at least one
+    /// summary defined (the property doc's "auto-hides when no summaries" promise; the presenter
+    /// itself always measures ≥ 1 row, so the collapse must live on the part). Runs on template
+    /// apply, on the property flip (the context menu's toggle), and on summary add/remove.
+    /// </summary>
+    private void UpdateSummaryFooterVisibility()
+    {
+        if (_footer is { } footer)
+        {
+            footer.Visibility = ShowSummaryFooter && SummaryDescriptions.Count > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
         }
     }
 
@@ -1137,6 +1425,9 @@ public class DataGrid : Control
             AutoFilterRow.Owner = null;
         if (EditBar is not null)
             EditBar.Owner = null;
+        if (_footer is not null)
+            _footer.Owner = null;
+        _footer = null;
         _scrollViewer = null;
         _header = null;
         GroupPanel = null;
@@ -1167,6 +1458,7 @@ public class DataGrid : Control
             return;
         }
 
+        // ReSharper disable once PossibleMultipleEnumeration
         _rowType = DiscoverRowType(source);
         _rowTypeHasParameterlessCtor = _rowType?.GetConstructor(Type.EmptyTypes) is not null;
         if (_rowType is null)
@@ -1188,7 +1480,9 @@ public class DataGrid : Control
         EnsureColumns();
         _controller.SetColumns(Columns.Where(c => c.FieldName is not null || c.KeySelector is not null)
                                       .Select(c => c.ToShapingDescription()).ToList());
+        // ReSharper disable once PossibleMultipleEnumeration
         _controller.AttachSource(source, EffectiveLiveUpdates);
+        ApplyPendingAnnotationShape(); // annotation-declared default sort/group, now that columns are registered
         _controller.SnapshotChanged += (_, _) => RaiseSnapshotChanged();
         // Row-id hygiene (final-audit fix): removed ids leave the selection BEFORE their slots can
         // recycle onto new rows; a source reset clears id-keyed state wholesale.
@@ -1206,6 +1500,11 @@ public class DataGrid : Control
             }
             if (_focusRowId >= 0 && Contains(ids, _focusRowId))
                 _focusRowId = -1; // the view-space fallback carries the focus (audit W2-13)
+            if (RowsPresenter is { IsEditing: true, EditRowId: >= 0 } editing &&
+                Contains(ids, editing.EditRowId))
+            {
+                CancelEdit(); // the edited row was removed — discard before its slot can recycle
+            }
         };
         _controller.RowsAdded += ids => RowSelection.HandleRowsAdded(ids);
         _controller.RowsReset += (_, _) =>
@@ -1231,10 +1530,36 @@ public class DataGrid : Control
     private void RaiseSnapshotChanged()
     {
         ReanchorFocusRow();     // audit W2-13: focus follows its row id — the prunes read the RESULT
+        ReanchorEditSession();  // the open editor rides its row id (live-canary fix)
         PruneExpandedDetails(); // §9.3: a row id that left the view drops its pane
         PruneCellRange();       // §9.4: a lost corner collapses the range to the focus cell
         SnapshotChanged?.Invoke(this, EventArgs.Empty);
         InvalidateMeasure();
+    }
+
+    /// <summary>
+    /// Re-anchors an open edit session against the NEW snapshot (live-canary fix — the gallery's
+    /// feed): a data-row session's view slot re-resolves through the id map so the hosted editor
+    /// rides its row; a row that left the view cancels the session (the DevExpress behavior — an
+    /// edit on a vanished row is discarded, never written to whatever slid under it). The new-row
+    /// placeholder session re-anchors to the ghost row (view == Count, which moves with membership).
+    /// </summary>
+    private void ReanchorEditSession()
+    {
+        if (RowsPresenter is not { IsEditing: true } presenter)
+            return;
+
+        if (_pendingNewRow is not null)
+        {
+            presenter.ReanchorEditRow(Snapshot.Count);
+            return;
+        }
+
+        int view = presenter.EditRowId >= 0 ? ViewIndexOfRow(presenter.EditRowId) : -1;
+        if (view < 0)
+            CancelEdit();
+        else
+            presenter.ReanchorEditRow(view);
     }
 
     /// <summary>Row type discovery: the source's <c>IEnumerable&lt;T&gt;</c> (first closed interface), else the first item's runtime type.
@@ -1323,7 +1648,12 @@ public class DataGrid : Control
     /// <summary>
     /// Auto-generation (design doc §1): when <see cref="Columns"/> is empty and
     /// <see cref="AutoGenerateColumns"/>, public instance properties of the row type generate
-    /// columns in declaration order; <c>[Browsable(false)]</c> skips; numerics right-align.
+    /// columns. Reads <c>System.ComponentModel.DataAnnotations</c> so the row type declares its own
+    /// metadata: <c>[Display(Name/Order/AutoGenerateField)]</c> / <c>[DisplayName]</c> → header +
+    /// order + skip, <c>[DisplayFormat(DataFormatString)]</c> → format, alongside the honored
+    /// <c>[Browsable(false)]</c>. When no format is declared, a per-type default rounds floating
+    /// values (the "[panel] per-type format defaults") so <c>double</c>/<c>decimal</c> don't render
+    /// at full "G" precision. Numerics right-align.
     /// </summary>
     private void EnsureColumns()
     {
@@ -1333,13 +1663,21 @@ public class DataGrid : Control
         _columnsFromAutoGeneration = true;
         try
         {
-            foreach (var property in _rowType.GetProperties(System.Reflection.BindingFlags.Public |
-                                                            System.Reflection.BindingFlags.Instance))
+            var generated = new List<(int Order, int Sequence, DataGridColumn Column)>();
+            var pendingSorts = new List<(int Level, DataGridColumn Column, SortDirection Direction)>();
+            var pendingGroups = new List<(int Level, DataGridColumn Column)>();
+            int sequence = 0;
+            foreach (var property in _rowType.GetProperties(BindingFlags.Public |
+                                                            BindingFlags.Instance))
             {
                 if (property.GetMethod is null || property.GetIndexParameters().Length > 0)
                     continue;
                 if (property.GetCustomAttributes(typeof(BrowsableAttribute), inherit: true) is
                     [BrowsableAttribute { Browsable: false }, ..])
+                    continue;
+
+                var display = property.GetCustomAttribute<DisplayAttribute>(inherit: true);
+                if (display?.GetAutoGenerateField() == false) // [Display(AutoGenerateField=false)] — the annotations peer of [Browsable(false)]
                     continue;
 
                 var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
@@ -1348,17 +1686,165 @@ public class DataGrid : Control
                                type == typeof(decimal) || type == typeof(uint) || type == typeof(ulong) ||
                                type == typeof(ushort);
 
-                Columns.Add(new DataGridColumn
+                // Header: [Display(Name)] wins, then [DisplayName], else null (⇒ the property name).
+                string? header = display?.GetName()
+                                 ?? property.GetCustomAttribute<DisplayNameAttribute>(inherit: true)?.DisplayName;
+                // Format: [DisplayFormat(DataFormatString)] wins, else the per-type rounding default.
+                string? format = ExtractDisplayFormat(property.GetCustomAttribute<DisplayFormatAttribute>(inherit: true)?.DataFormatString)
+                                 ?? DefaultFormatFor(type);
+
+                var column = new DataGridColumn
                 {
                     FieldName = property.Name,
+                    Header = header,
+                    Format = format,
                     TextAlignment = numeric ? TextAlignment.Right : TextAlignment.Left,
-                });
+                };
+
+                // Cursorial.UI.DataViews.Annotations: grid-specific declarative config (default sort/
+                // group + conditional-format rules) — applied before the customization hook so a
+                // handler sees (and can adjust) them.
+                ApplyColumnAnnotations(property, column, pendingSorts, pendingGroups);
+
+                // The per-column hook (WPF parity): a handler customizes the column (format rules,
+                // validator, alignment…), replaces it, or cancels the property.
+                if (AutoGeneratingColumn is { } handler)
+                {
+                    var args = new DataGridAutoGeneratingColumnEventArgs(property.Name, property.PropertyType, column);
+                    handler(this, args);
+                    if (args.Cancel)
+                        continue;
+                    column = args.Column;
+                }
+
+                generated.Add((display?.GetOrder() ?? int.MaxValue, sequence++, column));
             }
+
+            // [Display(Order)] first (stable), then declaration order for the un-ordered remainder.
+            foreach (var (_, _, column) in generated.OrderBy(g => g.Order).ThenBy(g => g.Sequence))
+                Columns.Add(column);
+
+            // Declarative default sort/grouping is applied AFTER the engine is set up (adding to the
+            // observable collections pushes a shape, which needs the columns registered first).
+            _pendingAnnotationSorts = pendingSorts;
+            _pendingAnnotationGroups = pendingGroups;
         }
         finally
         {
             _columnsFromAutoGeneration = false;
         }
+
+        AutoGeneratedColumns?.Invoke(this, EventArgs.Empty);
+    }
+
+    private List<(int Level, DataGridColumn Column, SortDirection Direction)>? _pendingAnnotationSorts;
+    private List<(int Level, DataGridColumn Column)>? _pendingAnnotationGroups;
+
+    /// <summary>Applies the annotation-declared default sort/grouping collected during auto-generation
+    /// — after the engine has its columns (so the shape push resolves), and only when the consumer
+    /// hasn't authored their own (annotations never clobber explicit state).</summary>
+    private void ApplyPendingAnnotationShape()
+    {
+        if (_pendingAnnotationSorts is { } sorts && SortDescriptions.Count == 0)
+        {
+            foreach (var (_, column, direction) in sorts.OrderBy(s => s.Level))
+                SortDescriptions.Add(new SortDescription(column, direction));
+        }
+        if (_pendingAnnotationGroups is { } groups && GroupDescriptions.Count == 0)
+        {
+            foreach (var (_, column) in groups.OrderBy(g => g.Level))
+                GroupDescriptions.Add(new GroupDescription(column));
+        }
+        _pendingAnnotationSorts = null;
+        _pendingAnnotationGroups = null;
+    }
+
+    /// <summary>Applies the <see cref="Annotations"/> declared on <paramref name="property"/> to the
+    /// generated <paramref name="column"/> (format rules add now; default sort/group collect for a
+    /// post-generation apply).</summary>
+    private static void ApplyColumnAnnotations(PropertyInfo property, DataGridColumn column,
+        List<(int Level, DataGridColumn Column, SortDirection Direction)> sorts,
+        List<(int Level, DataGridColumn Column)> groups)
+    {
+        if (property.GetCustomAttribute<DataBarAttribute>() is not null)
+            column.FormatRules.Add(new DataBarRule { ColumnKey = column });
+
+        if (property.GetCustomAttribute<ColorScaleAttribute>() is { Stops.Length: >= 2 } scale)
+        {
+            var stops = new List<Output.Color>();
+            foreach (var hex in scale.Stops)
+            {
+                if (DataGridDialogHelpers.TryParseColor(hex, out var color))
+                    stops.Add(color);
+            }
+            if (stops.Count is 2 or 3)
+                column.FormatRules.Add(new ColorScaleRule { ColumnKey = column, Stops = stops });
+        }
+
+        foreach (var highlight in property.GetCustomAttributes<HighlightAttribute>())
+        {
+            var format = new CellFormat(
+                Foreground: highlight.Foreground is { } fg && DataGridDialogHelpers.TryParseColor(fg, out var fgColor) ? fgColor : null,
+                Background: highlight.Background is { } bg && DataGridDialogHelpers.TryParseColor(bg, out var bgColor) ? bgColor : null,
+                Bold: highlight.Bold);
+            column.FormatRules.Add(new ThresholdRule
+            {
+                ColumnKey = column,
+                Entries = [new ThresholdEntry(highlight.Operator, highlight.Value, format)],
+            });
+        }
+
+        if (property.GetCustomAttribute<DefaultSortAttribute>() is { } sort)
+            sorts.Add((sort.Level, column, sort.Direction));
+        if (property.GetCustomAttribute<DefaultGroupAttribute>() is { } group)
+            groups.Add((group.Level, column));
+    }
+
+    /// <summary>Raised once per property during column auto-generation (§1; WPF parity) — customize,
+    /// replace, or cancel each generated column. See <see cref="DataGridAutoGeneratingColumnEventArgs"/>.</summary>
+    public event EventHandler<DataGridAutoGeneratingColumnEventArgs>? AutoGeneratingColumn;
+
+    /// <summary>Raised after auto-generation finishes populating <see cref="Columns"/> (once per
+    /// generation pass; not raised when columns are authored explicitly).</summary>
+    public event EventHandler? AutoGeneratedColumns;
+
+    /// <summary>The per-type default display format when a column declares none (§1 "[panel] per-type
+    /// format defaults"): fractional numeric columns (<c>double</c>/<c>float</c>/<c>decimal</c>)
+    /// format with group separators and up to the culture's default number of fraction digits as
+    /// OPTIONAL places (<c>"#,0.##"</c> in an <c>en-US</c> locale) — so thousands read cleanly, "G"
+    /// full-precision noise never shows, AND an integer-valued column keeps no trailing ".00"
+    /// (forcing mandatory decimals is harsh). Integers and everything else keep their plain
+    /// <c>ToString</c>. A per-column <see cref="DataGridColumn.Format"/> or <c>[DisplayFormat]</c>
+    /// wins over this default (it is only consulted when neither is set).</summary>
+    private static string? DefaultFormatFor(Type type)
+        => type == typeof(double) || type == typeof(float) || type == typeof(decimal) ? FractionalDefaultFormat
+         : null;
+
+    /// <summary>The fractional-numeric default: group separators + up to the culture's default
+    /// fraction digits, all OPTIONAL (<c>#</c>) so an integer value keeps no trailing zeros. Built
+    /// from <see cref="NumberFormatInfo.NumberDecimalDigits"/> (the count the <c>"N"</c> format uses).</summary>
+    private static string FractionalDefaultFormat
+    {
+        get
+        {
+            int digits = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalDigits;
+            return digits > 0 ? "#,0." + new string('#', digits) : "#,0";
+        }
+    }
+
+    /// <summary>Turns a <see cref="DisplayFormatAttribute.DataFormatString"/> into a raw
+    /// <c>ToString</c> format: the common composite <c>"{0:N2}"</c> yields <c>"N2"</c>, a bare
+    /// <c>"{0}"</c> yields null (no format), and a value that is already a raw format passes through.
+    /// (A composite string with literal text around the placeholder can't map to a per-value
+    /// <c>ToString</c> format — author a raw format there instead.)</summary>
+    private static string? ExtractDisplayFormat(string? dataFormatString)
+    {
+        if (string.IsNullOrEmpty(dataFormatString))
+            return null;
+        var match = System.Text.RegularExpressions.Regex.Match(dataFormatString, @"^\{0(?::(?<f>[^}]*))?\}$");
+        if (match.Success)
+            return match.Groups["f"].Success && match.Groups["f"].Value.Length > 0 ? match.Groups["f"].Value : null;
+        return dataFormatString; // already a raw format the author wrote directly
     }
 
     // ── Shape push (the one funnel from the observable state into the engine) ────────────────────
@@ -1398,7 +1884,25 @@ public class DataGrid : Control
 
         FilterNode? effective = BuildEffectiveFilter();
         _controller.SetShape(SortDescriptions.ToList(), GroupDescriptions.ToList(),
-                             SummaryDescriptions.ToList(), effective);
+                             ResolveSummaryFormats(), effective);
+    }
+
+    /// <summary>The summary descriptions pushed to the engine, each with its <see cref="SummaryDescription.Format"/>
+    /// defaulted to the column's own display format when it declares none — so a footer/group summary matches its
+    /// column's formatting (thousands separators, currency, …) unless the summary carries an explicit override
+    /// (owner note, 2026-07-20).</summary>
+    private List<SummaryDescription> ResolveSummaryFormats()
+    {
+        var list = new List<SummaryDescription>(SummaryDescriptions.Count);
+
+        foreach (var s in SummaryDescriptions)
+        {
+            list.Add(s.Format is null && s.ColumnKey is DataGridColumn { Format: { Length: > 0 } columnFormat }
+                         ? s with { Format = columnFormat }
+                         : s);
+        }
+
+        return list;
     }
 
     private List<FormatRule> CollectFormatRules()
@@ -1640,6 +2144,9 @@ public class DataGrid : Control
     /// <summary>The rows presenter (stamped when the template applies; hit/paint state flows through it).</summary>
     internal DataGridRowsPresenter? RowsPresenter { get; set; }
 
+    /// <summary>The header band part (the chooser's drag-to-show hands its gesture off here).</summary>
+    internal DataGridHeaderPresenter? HeaderPresenter => _header;
+
     /// <summary>The group panel band (stamped when the template applies).</summary>
     internal DataGridGroupPanel? GroupPanel { get; private set; }
 
@@ -1665,6 +2172,33 @@ public class DataGrid : Control
     {
         Focus(FocusNavigationMethod.Pointer);
         ExitBandFocus(); // a rows press returns the §3.3 virtual focus to the rows
+
+        // The §9.2 displacement policy on the CLICK path (sweep [12]): a rows press while the
+        // auto-filter's roving editor holds a draft commits it (cancel on failure) — otherwise the
+        // abandoned editor's IsEditing stand-down swallowed every grid key until the user
+        // rediscovered the cell.
+        if (AutoFilterRow is { IsEditing: true } filterRow && !filterRow.CommitEdit())
+            filterRow.EndEdit();
+
+        // And for the CELL editor (sweep [17]/[18] — the DevExpress click-away contract): a press
+        // outside the open editor's cell commits it (cancel on failure) BEFORE the press is
+        // interpreted; a press ON the edit cell stays the editor's own business. The commit's
+        // reshape may move rows, so the pressed row re-resolves by ID afterward.
+        if (RowsPresenter is { IsEditing: true } editingPresenter)
+        {
+            var editCell = editingPresenter.EditCell;
+            if (viewIndex == editCell.ViewIndex && columnIndex == editCell.ColumnIndex)
+                return; // the editor face + its padding own presses on the edit cell
+
+            int pressedRowId = viewIndex >= 0 && viewIndex < Snapshot.Count &&
+                               Snapshot.GetRow(viewIndex) is { IsGroup: false, RowId: >= 0 } pressedRow
+                ? pressedRow.RowId
+                : -1;
+            if (!CommitEdit())
+                CancelEdit();
+            if (pressedRowId >= 0 && ViewIndexOfRow(pressedRowId) is >= 0 and var reresolved)
+                viewIndex = reresolved;
+        }
 
         var snapshot = Snapshot;
         if (viewIndex < 0 || viewIndex >= snapshot.Count)
@@ -1708,12 +2242,24 @@ public class DataGrid : Control
 
         if (SelectionUnit == DataGridSelectionUnit.Cell)
         {
-            // §9.4: the cell-range lanes — Shift extends the lead corner, a plain press re-anchors.
+            // §9.4/§10.1: Shift extends the active lead corner; Ctrl (no Shift) BANKS the active
+            // range and starts a new one (multi-range accumulation); a plain press re-anchors to one.
             var column = ColumnAtEntry(columnIndex);
-            if ((modifiers & KeyModifiers.Shift) != 0)
+            bool shift = (modifiers & KeyModifiers.Shift) != 0;
+            bool ctrl = (modifiers & KeyModifiers.Control) != 0;
+            if (shift)
+            {
                 ExtendCellRangeTo(row.RowId, column);
-            else
+            }
+            else if (ctrl)
+            {
+                CommitActiveRange();
                 SetCellRangeAnchor(row.RowId, column);
+            }
+            else
+            {
+                ResetCellRange(row.RowId, column);
+            }
         }
         else if ((modifiers & KeyModifiers.Shift) != 0 && _selectionAnchorViewIndex >= 0)
         {
@@ -1765,6 +2311,48 @@ public class DataGrid : Control
             RowSelection.SelectRange(span, lead);
     }
 
+    /// <summary>
+    /// The right-press focus move (sweep [7]/[8] — "focus follows the press like a left-click"):
+    /// group rows take ROW focus (column −1), the new-row placeholder keeps its past-the-end view
+    /// index (<see cref="SetFocusCell"/> clamps it away), data cells focus normally. Never selects.
+    /// </summary>
+    internal void SetContextPressFocus(int viewIndex, int columnIndex)
+    {
+        var snapshot = Snapshot;
+        if (viewIndex == snapshot.Count && HasNewRowPlaceholder)
+        {
+            FocusViewIndex = viewIndex;
+            FocusColumnIndex = columnIndex;
+        }
+        else if (viewIndex >= 0 && viewIndex < snapshot.Count)
+        {
+            FocusViewIndex = viewIndex;
+            FocusColumnIndex = snapshot.GetRow(viewIndex).IsGroup ? -1 : columnIndex;
+        }
+        else
+        {
+            return;
+        }
+        RowsPresenter?.InvalidateBand();
+    }
+
+    /// <summary>The Menu-key twin of the rows right-click (sweep [6]): anchors the menu AT the
+    /// focus cell — Bottom placement offsets from the target's bottom edge, so the cell's
+    /// content position translates into that space (scroll-correct via the window translation).</summary>
+    internal void OpenGridContextMenuAtFocus()
+    {
+        if (RowsPresenter is not { } presenter || presenter.ColumnLayout.Entries.Count == 0)
+        {
+            OpenGridContextMenu(FocusColumnIndex);
+            return;
+        }
+
+        int col = Math.Clamp(Math.Max(0, FocusColumnIndex), 0, presenter.ColumnLayout.Entries.Count - 1);
+        int x = presenter.DrawXOf(col);
+        int y = presenter.ContentYOf(Math.Max(0, FocusViewIndex)) + 1; // the menu drops BELOW the cell
+        OpenGridContextMenu(FocusColumnIndex, new CellPosition(x, y - presenter.Bounds.Rows));
+    }
+
     /// <summary>Sets the focus cell programmatically (view-space row + visible-column index).</summary>
     public void SetFocusCell(int viewIndex, int columnIndex)
     {
@@ -1779,6 +2367,10 @@ public class DataGrid : Control
 
     /// <summary>The new row instance under edit on the new-row template (null outside new-row entry — §3.2).</summary>
     private object? _pendingNewRow;
+
+    /// <summary>Whether the active edit session is the new-row template's (the edit bar's Tab hint
+    /// dispatches on it — Tab COMMITS the pending row there, never a cell advance; sweep [20]).</summary>
+    internal bool IsNewRowSession => _pendingNewRow is not null;
 
     /// <summary>
     /// Whether the trailing new-row template is live (§3.2): <see cref="AllowAddNew"/> is on, the
@@ -1861,6 +2453,10 @@ public class DataGrid : Control
         if (presenter is null || _controller is null || FocusViewIndex < 0)
             return;
 
+        // Audit fix: a new session must never inherit the prior cell's validation message — the
+        // public BeginEdit bypasses the commit/cancel paths that clear it. (Idempotent when clear.)
+        ClearEditValidationError();
+
         if (FocusOnNewRowPlaceholder)
         {
             BeginNewRowEdit(presenter);
@@ -1887,7 +2483,8 @@ public class DataGrid : Control
         FocusColumnIndex = columnIndex;
         ScrollColumnIntoView(columnIndex); // §9.2: the hosted editor must sit clear of the frozen region
         presenter.BeginEdit(FocusViewIndex, columnIndex, kind, _controller.FormatCell(row.RowId, column),
-                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null);
+                            kind == DataGridEditorKind.Combo ? BuildComboItems(column) : null,
+                            rowId: row.RowId); // the session's ONE identity (live publishes permute the view)
     }
 
     /// <summary>
@@ -1942,14 +2539,17 @@ public class DataGrid : Control
         if (presenter is null || !presenter.IsEditing || _controller is null)
             return false;
 
-        var (viewIndex, columnIndex) = presenter.EditCell;
+        var (_, columnIndex) = presenter.EditCell;
         if (!presenter.TryGetEditorText(out string? text))
             return false; // nothing committable yet (a combo with no selection) — keep editing
 
         var column = presenter.ColumnLayout.Entries[columnIndex].Column;
+        ClearEditValidationError(); // fresh attempt — retire any prior message
 
         if (_pendingNewRow is { } newRow)
         {
+            if (RejectedByValidator(column, text, rowId: -1, isNewRow: true))
+                return false; // §10.2 — vetoed on the strip; the editor stays open
             if (!_controller.TrySetRowText(newRow, column, text))
             {
                 presenter.FlagEditorError(); // the ed-err look; the editor stays open for correction
@@ -1969,15 +2569,23 @@ public class DataGrid : Control
             return true;
         }
 
-        var snapshot = Snapshot;
-        if (viewIndex >= snapshot.Count)
+        // The commit writes through the session's ROW ID (live-canary fix): under live updates the
+        // view permutes beneath the open editor, and the old view-index lookup either aliased a
+        // DIFFERENT row (silent wrong-row write) or fell off the shrunken view (the silently
+        // discarded commit the gallery report hit). A row that left the VIEW entirely (refilter/
+        // removal) discards the edit — the per-publish re-anchor cancels it before we ever get
+        // here in practice; this is the same-frame backstop.
+        int editRowId = presenter.EditRowId;
+        if (editRowId < 0 || ViewIndexOfRow(editRowId) < 0)
         {
             presenter.EndEditVisual();
             return false;
         }
 
-        var row = snapshot.GetRow(viewIndex);
-        if (!_controller.TrySetCellFromText(row.RowId, column, text))
+        if (RejectedByValidator(column, text, editRowId, isNewRow: false))
+            return false; // §10.2 — vetoed on the strip; the editor stays open
+
+        if (!_controller.TrySetCellFromText(editRowId, column, text))
         {
             presenter.FlagEditorError(); // unparseable — the editor stays open for correction
             return false;
@@ -1987,10 +2595,57 @@ public class DataGrid : Control
         return true;
     }
 
+    /// <summary>
+    /// Runs the column's §10.2 <see cref="DataGridColumn.Validator"/> (if any) against the proposed
+    /// text. On rejection: records the message (shown on the edit bar), flags the editor error look,
+    /// and returns true so the caller vetoes the commit and keeps the editor open.
+    /// </summary>
+    private bool RejectedByValidator(DataGridColumn column, string text, int rowId, bool isNewRow)
+    {
+        if (column.Validator is not { } validator)
+            return false;
+
+        string? message;
+        try
+        {
+            message = validator(new DataGridCellValidationContext(column, text, rowId, isNewRow));
+        }
+        catch (Exception ex)
+        {
+            // Audit fix: a throwing validator must not unwind into the input pipeline (CommitEdit
+            // runs synchronously from key/click handlers). Treat a throw as a rejection surfaced on
+            // the edit bar — the editor stays open, the exception is contained.
+            message = $"Validation error: {ex.Message}";
+        }
+        if (string.IsNullOrEmpty(message))
+            return false;
+
+        _editValidationError = message;
+        RowsPresenter?.FlagEditorError();
+        NotifyEditingChanged(); // repaint the edit bar with the message
+        return true;
+    }
+
+    private string? _editValidationError;
+
+    /// <summary>The active commit-time validation message (§10.2), or null. The edit bar renders it.</summary>
+    internal string? EditValidationError => _editValidationError;
+
+    /// <summary>Retires the validation message (the editor's next text/selection change, and each
+    /// fresh commit attempt / edit teardown call this).</summary>
+    internal void ClearEditValidationError()
+    {
+        if (_editValidationError is null)
+            return;
+        _editValidationError = null;
+        NotifyEditingChanged();
+    }
+
     /// <summary>Cancels the hosted editor without writing (a pending new-row instance is discarded).</summary>
     public void CancelEdit()
     {
         _pendingNewRow = null;
+        ClearEditValidationError();
         RowsPresenter?.EndEditVisual();
     }
 
@@ -2056,10 +2711,11 @@ public class DataGrid : Control
         if (e.Handled)
             return;
 
-        // While the checklist popup is open its content owns the keyboard: the popup's route
-        // crosses back through its anchor into the grid, and a search-box Space / checklist arrow
-        // must not select rows here — unhandled arrows fall through to the dispatcher's directional
-        // navigation inside the popup instead (§3.4).
+        // While the checklist popup is open its content owns the keyboard. Historically the popup's
+        // route crossed back through its anchor into the grid (the placement-leg leak), making this
+        // stand-down load-bearing; since the input-routing narrowing the route ENDS at the popup and
+        // the grid never sees those keys — the guard remains as defense-in-depth for keys raised on
+        // the grid itself while the popup is up (§3.4).
         if (ActiveFilterPopup is not null)
             return;
 
@@ -2150,23 +2806,19 @@ public class DataGrid : Control
         }
 
         var snapshot = Snapshot;
-        // The new-row template extends the navigable range one PAST the real rows (its ghost row
-        // is focusable/clickable like a data row — §3.2), and an EMPTY AllowAddNew grid still
-        // navigates to it (the only row there is).
-        int lastNavigable = snapshot.Count - 1 + (HasNewRowPlaceholder ? 1 : 0);
-        if (lastNavigable < 0)
-            return;
-
-        int current = Math.Clamp(FocusViewIndex < 0 ? 0 : FocusViewIndex, 0, lastNavigable);
-        int viewport = RowsPresenter is { } presenter ? Math.Max(1, presenter.PageStep(0, 1, vertical: true)) : 10;
         bool shift = (e.Modifiers & KeyModifiers.Shift) != 0;
         bool ctrl = (e.Modifiers & KeyModifiers.Control) != 0;
+
+        // The reachability gestures come BEFORE the empty-view early-out (sweep [9]): the Menu
+        // key's command menu and the band cycle must work with ZERO rows — a filter that matches
+        // nothing would otherwise strand a keyboard user (no way back into the filter band or the
+        // menu to clear it; recovery was mouse-only).
 
         // The Menu key opens the grid command menu at the focus cell (the keyboard twin of the
         // rows right-click — the reachability surface for the dialogs + summaries).
         if (e.Key == Key.Menu)
         {
-            OpenGridContextMenu(FocusColumnIndex);
+            OpenGridContextMenuAtFocus();
             e.Handled = true;
             return;
         }
@@ -2185,6 +2837,16 @@ public class DataGrid : Control
             e.Handled = true;
             return;
         }
+
+        // The new-row template extends the navigable range one PAST the real rows (its ghost row
+        // is focusable/clickable like a data row — §3.2), and an EMPTY AllowAddNew grid still
+        // navigates to it (the only row there is).
+        int lastNavigable = snapshot.Count - 1 + (HasNewRowPlaceholder ? 1 : 0);
+        if (lastNavigable < 0)
+            return;
+
+        int current = Math.Clamp(FocusViewIndex < 0 ? 0 : FocusViewIndex, 0, lastNavigable);
+        int viewport = RowsPresenter is { } presenter ? Math.Max(1, presenter.PageStep(0, 1, vertical: true)) : 10;
 
         // The §9.3 detail keyboard cluster — BEFORE the row-nav switch (its plain-arrow arms would
         // otherwise swallow the Ctrl-modified gestures): Ctrl+Right expands the focused data row's
@@ -2227,8 +2889,11 @@ public class DataGrid : Control
             // view rows and content rows diverge, so the jump steps in content-y and maps back.
             Key.PageUp => Math.Max(0, PageTargetView(current, -viewport)),
             Key.PageDown => Math.Min(lastNavigable, PageTargetView(current, viewport)),
-            Key.Home when ctrl => 0,
-            Key.End when ctrl => lastNavigable,
+            // §3.3 lists Home/End in the UNMODIFIED rows keys ("+Ctrl" is the addition, not the
+            // requirement — sweep [10]); both spellings jump to the first/last row, matching the
+            // header band's own plain Home/End.
+            Key.Home => 0,
+            Key.End => lastNavigable,
             _ => null,
         };
 
@@ -2271,13 +2936,13 @@ public class DataGrid : Control
                 // Audit W2-11: `focused` is the DEFAULT carrier on the placeholder / with no focus
                 // row (RowId 0 would alias a real slot) — the range writes need a REAL data row.
                 bool focusedIsData = !onPlaceholder && FocusViewIndex >= 0 && FocusViewIndex < snapshot.Count &&
-                                     !focused.IsGroup && focused.RowId >= 0;
+                                     focused is { IsGroup: false, RowId: >= 0 };
                 if (SelectionUnit == DataGridSelectionUnit.Cell && focusedIsData)
                 {
                     if (shift)
                         ExtendCellRangeTo(focused.RowId, ColumnAtEntry(next));
                     else
-                        SetCellRangeAnchor(focused.RowId, ColumnAtEntry(next));
+                        ResetCellRange(focused.RowId, ColumnAtEntry(next)); // §10.1: plain navigation → one range
                 }
                 RowsPresenter?.InvalidateBand();
                 e.Handled = true;
@@ -2285,9 +2950,16 @@ public class DataGrid : Control
             }
 
             // Enter on a data row (or the new-row template) begins editing the focused cell (§3.2).
-            case Key.Enter when onPlaceholder || (!focused.IsGroup && focused.RowId >= 0):
+            case Key.Enter when onPlaceholder || focused is { IsGroup: false, RowId: >= 0 }:
                 BeginEdit();
                 e.Handled = RowsPresenter is { IsEditing: true }; // read-only cells leave Enter unhandled
+                return;
+
+            // Delete removes the selected rows — the focus row when nothing selects (sweep [11]:
+            // the AllowAddNew twin, opt-in; group rows/the placeholder never delete).
+            case Key.Delete when AllowDelete && !onPlaceholder:
+                if (DeleteSelectedRows())
+                    e.Handled = true;
                 return;
 
             // Ctrl+C — copy the selected rows as TSV (formatted values, visible columns; the
@@ -2311,7 +2983,7 @@ public class DataGrid : Control
             // placeholder: its default `focused` carries RowId 0, which would alias a real row.
             // ROW mode only (audit W2-14): cell mode keeps its one rectangle — a row-selection
             // write would re-create the mixed state the §9.4 mode switch exists to clear.
-            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && !focused.IsGroup && focused.RowId >= 0 &&
+            case Key.Character or Key.Space when IsSpace(e) && !onPlaceholder && focused is { IsGroup: false, RowId: >= 0 } &&
                                                  SelectionUnit == DataGridSelectionUnit.Row:
                 if (ctrl)
                     RowSelection.Toggle(focused.RowId);
@@ -2346,12 +3018,12 @@ public class DataGrid : Control
             if (SelectionUnit == DataGridSelectionUnit.Cell)
             {
                 // §9.4: the lead follows the focus onto data rows (it passes THROUGH group rows
-                // keeping its column — those never update it); a plain move re-anchors.
+                // keeping its column — those never update it); a plain move re-anchors to one range.
                 var column = ColumnAtEntry(FocusColumnIndex);
                 if (shift)
                     ExtendCellRangeTo(row.RowId, column);
                 else if (!ctrl)
-                    SetCellRangeAnchor(row.RowId, column);
+                    ResetCellRange(row.RowId, column); // §10.1
             }
             else if (shift && _selectionAnchorViewIndex >= 0)
             {
@@ -2449,27 +3121,43 @@ public class DataGrid : Control
     }
 
     /// <summary>The §9.4 rectangle as TSV (formatted values, display order, group rows skipped —
-    /// they are never members), or null without a derivable range. The Ctrl+C payload.</summary>
+    /// they are never members), or null without a derivable range. The Ctrl+C payload. With multiple
+    /// ranges (§10.1) each disjoint block is emitted in turn, separated by a blank line (lossless —
+    /// unlike Excel's refuse-to-copy, a terminal grid has no reason to lose the selection).</summary>
     internal string? BuildCellRangeTsv()
     {
-        if (_controller is null || CellRangeViewRect() is not { } range || RowsPresenter is null)
+        if (_controller is null || RowsPresenter is null)
+            return null;
+        var rects = new List<(int FirstRow, int LastRow, int FirstColumn, int LastColumn)>();
+        CollectCellRangeViewRects(rects);
+        if (rects.Count == 0)
             return null;
 
         var snapshot = Snapshot;
         var entries = RowsPresenter.ColumnLayout.Entries;
         var rectangle = new System.Text.StringBuilder();
-        for (int view = range.FirstRow; view <= range.LastRow && view < snapshot.Count; view++)
+        var emitted = new HashSet<(int View, int Column)>(); // audit fix: a cell shared by overlapping ranges is written ONCE
+        for (int ri = 0; ri < rects.Count; ri++)
         {
-            var viewRow = snapshot.GetRow(view);
-            if (viewRow.IsGroup)
-                continue;
-            for (int c = range.FirstColumn; c <= range.LastColumn && c < entries.Count; c++)
+            if (ri > 0)
+                rectangle.Append('\n'); // a blank line between disjoint ranges
+            var range = rects[ri];
+            for (int view = range.FirstRow; view <= range.LastRow && view < snapshot.Count; view++)
             {
-                if (c > range.FirstColumn)
-                    rectangle.Append('\t');
-                rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
+                var viewRow = snapshot.GetRow(view);
+                if (viewRow.IsGroup)
+                    continue;
+                for (int c = range.FirstColumn; c <= range.LastColumn && c < entries.Count; c++)
+                {
+                    if (c > range.FirstColumn)
+                        rectangle.Append('\t');
+                    // A repeat cell (an overlapping range already emitted it) keeps its column slot
+                    // for alignment but re-emits nothing — the value appears once in the payload.
+                    if (emitted.Add((view, c)))
+                        rectangle.Append(_controller.FormatCell(viewRow.RowId, entries[c].Column));
+                }
+                rectangle.Append('\n');
             }
-            rectangle.Append('\n');
         }
         return rectangle.ToString();
     }
@@ -2536,6 +3224,8 @@ public class DataGrid : Control
         if (entries is null || slot < 0)
             return;
 
+        // `from` may be −1 for a HIDDEN column (the chooser's drag-to-show, sweep [2]/[15]) — no
+        // beside-itself no-op applies there; the anchor-instance move below works pre-show.
         int from = -1;
         for (int i = 0; i < entries.Count; i++)
         {
@@ -2545,7 +3235,7 @@ public class DataGrid : Control
                 break;
             }
         }
-        if (from < 0 || slot == from || slot == from + 1)
+        if (from >= 0 && (slot == from || slot == from + 1))
             return; // dropping beside itself — the no-op slots the adorner pass also suppresses
 
         int oldIndex = Columns.IndexOf(column);
@@ -2555,6 +3245,19 @@ public class DataGrid : Control
         if (slot >= entries.Count)
         {
             Columns.Move(oldIndex, Columns.Count - 1); // append after the last visible column
+            return;
+        }
+
+        // Sweep [0]: a FIXED column dropped at the partition seam (slot == FrozenCount) has a
+        // SCROLLING anchor there — anchoring on it in Columns order could scatter the fixed run.
+        // Anchor AFTER the last fixed entry instead (the "end of the frozen run" drop).
+        var layout = RowsPresenter!.ColumnLayout;
+        if (column.Fixed == DataGridColumnFixed.Left && slot == layout.FrozenCount && layout.FrozenCount > 0)
+        {
+            int lastFixedIndex = Columns.IndexOf(entries[layout.FrozenCount - 1].Column);
+            if (lastFixedIndex < 0)
+                return;
+            Columns.Move(oldIndex, oldIndex > lastFixedIndex ? lastFixedIndex + 1 : lastFixedIndex);
             return;
         }
 
@@ -2811,15 +3514,23 @@ public class DataGrid : Control
                       (_filter is { } filter ? CriteriaExpression.ToText(filter, CriteriaFieldName) : string.Empty);
         var editor = new DataGridExpressionEditor(this, seed);
         _expressionEditor = editor;
+        bool applied;
         try
         {
-            return await editor.ShowAsync();
+            applied = await editor.ShowAsync();
         }
         finally
         {
             if (ReferenceEquals(_expressionEditor, editor))
                 _expressionEditor = null;
         }
+
+        // The ⧉ Designer hop (the reverse of the Builder's "ƒ Edit as Text"): reopen the DRAFT in
+        // the Filter Builder, side-effect-free — nothing applied yet; the designer's OK is the one
+        // write. The hop may bounce back and forth; each leg is one modal.
+        if (!applied && editor.HopToBuilder)
+            return await OpenFilterBuilderCoreAsync(editor.BuilderSeedFilter, editor.BuilderSeedText);
+        return applied;
     }
 
     /// <summary>
@@ -2833,12 +3544,12 @@ public class DataGrid : Control
         var application = UIApplication.Current;
         if (application?.WindowManager is null)
             return Task.FromResult(false);
-        return application.Dispatcher.InvokeAsync(OpenFilterBuilderCoreAsync);
+        return application.Dispatcher.InvokeAsync(() => OpenFilterBuilderCoreAsync());
     }
 
-    private async Task<bool> OpenFilterBuilderCoreAsync()
+    private async Task<bool> OpenFilterBuilderCoreAsync(FilterNode? seedFilter = null, string? seedText = null)
     {
-        var builder = new DataGridFilterBuilder(this);
+        var builder = new DataGridFilterBuilder(this, seedFilter, seedText);
         _filterBuilder = builder;
         FilterBuilderOutcome outcome;
         try
@@ -2887,6 +3598,38 @@ public class DataGrid : Control
         }
     }
 
+    private DataGridSummaryEditor? _summaryEditor;
+
+    /// <summary>The live summary editor (null while none is open; tests reach its fields).</summary>
+    internal DataGridSummaryEditor? ActiveSummaryEditor => _summaryEditor;
+
+    /// <summary>Opens the summary editor for <paramref name="column"/> (§2.5 — aggregate, format
+    /// string, display template, live preview). Marshaled through the UI dispatcher (the dialog
+    /// entry-point idiom).</summary>
+    public Task OpenSummaryEditorAsync(DataGridColumn column)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        var application = UIApplication.Current;
+        if (application?.WindowManager is null || _controller is null)
+            return Task.CompletedTask;
+        return application.Dispatcher.InvokeAsync(() => OpenSummaryEditorCoreAsync(column));
+    }
+
+    private async Task OpenSummaryEditorCoreAsync(DataGridColumn column)
+    {
+        var editor = new DataGridSummaryEditor(this, column);
+        _summaryEditor = editor;
+        try
+        {
+            await editor.ShowAsync();
+        }
+        finally
+        {
+            if (ReferenceEquals(_summaryEditor, editor))
+                _summaryEditor = null;
+        }
+    }
+
     // ── Teardown ─────────────────────────────────────────────────────────────────────────────────
 
     protected override void OnTearDown()
@@ -2896,6 +3639,7 @@ public class DataGrid : Control
         _expressionEditor?.CloseWindow(); // the dialog windows read the grid/controller — close first
         _filterBuilder?.CloseWindow();
         _rulesManager?.CloseWindow();
+        _summaryEditor?.CloseWindow();
         _controller?.Dispose();
         _controller = null;
         base.OnTearDown();

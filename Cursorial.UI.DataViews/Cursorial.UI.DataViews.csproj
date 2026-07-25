@@ -28,10 +28,15 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
     </ItemGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.UI.DataViews.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
     </ItemGroup>
 
 </Project>

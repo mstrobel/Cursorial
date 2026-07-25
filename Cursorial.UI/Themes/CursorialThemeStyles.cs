@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
@@ -72,7 +73,7 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsUnicodeCheckBoxGlyphs()
     {
-        var style = new Style(".caps-unicode CheckBox") { Key = "Theme.CapsUnicode.CheckBox" };
+        var style = new Style("CheckBox") { Key = "Theme.CapsUnicode.CheckBox", RequiresCapabilities = StyleCapabilities.Unicode };
         style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("[ ]", "[✓]", "[▪]")));
         return style;
     }
@@ -80,7 +81,7 @@ internal static class CursorialThemeStyles
     /// <summary>The caps-unicode RadioButton glyph opt-up (<c>( ) / (●) / (-)</c>; ● accent); see <see cref="CapsUnicodeCheckBoxGlyphs"/>.</summary>
     internal static Style CapsUnicodeRadioGlyphs()
     {
-        var style = new Style(".caps-unicode RadioButton") { Key = "Theme.CapsUnicode.RadioButton" };
+        var style = new Style("RadioButton") { Key = "Theme.CapsUnicode.RadioButton", RequiresCapabilities = StyleCapabilities.Unicode };
         style.Setters.Add(new Setter(ToggleGlyph.GlyphsProperty, (GlyphSetCarrier?)new GlyphSetCarrier("( )", "(●)", "(-)")));
         return style;
     }
@@ -99,9 +100,10 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorInteractiveInverse()
     {
-        var style = new Style(".caps-nocolor :is(ButtonBase), :is(ButtonBase).caps-nocolor")
+        var style = new Style(":is(ButtonBase)")
                     {
                         Key = "Theme.CapsNoColor.Inverse",
+                        RequiresCapabilities = StyleCapabilities.NoColor,
                         Children =
                         {
                             // per-axis (proposal §4.3); delivery = face forward + presenter forward
@@ -115,10 +117,8 @@ internal static class CursorialThemeStyles
 
     internal static Style CapsNoColorInputInteractiveInverse()
     {
-        var style = new Style(".caps-nocolor :is(TextBox), " +
-                              ":is(TextBox).caps-nocolor, " +
-                              ".caps-nocolor :is(ProgressBar), " +
-                              ":is(ProgressBar).caps-nocolor") { Key = "Theme.CapsNoColor.InputInverse" };
+        var style = new Style(":is(TextBox), :is(ProgressBar)")
+                    { Key = "Theme.CapsNoColor.InputInverse", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true)); // per-axis (proposal §4.3); delivery = face forward + presenter forward
         return style;
     }
@@ -132,8 +132,8 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorDisabledFaint()
     {
-        var style = new Style(".caps-nocolor :is(ButtonBase):disabled," +
-                              ":is(ButtonBase).caps-nocolor:disabled") { Key = "Theme.CapsNoColor.DisabledFaint" };
+        var style = new Style(":is(ButtonBase):disabled")
+                    { Key = "Theme.CapsNoColor.DisabledFaint", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Faint)); // the weight AXIS (proposal §1)
         return style;
     }
@@ -152,16 +152,16 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorSelectionInverse()
     {
-        var style = new Style(".caps-nocolor :is(ListBoxItem):focus, " +
-                              ".caps-nocolor :is(ComboBoxItem):selected, " +
-                              ".caps-nocolor :is(ComboBox):focus /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(ComboBox):open /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(DatePicker):focus-within /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(DatePicker):open /template/ #PART_DropDown, " +
-                              ".caps-nocolor :is(MenuItem):selected, " +
-                              ".caps-nocolor :is(MenuItem):highlighted, " +
-                              ".caps-nocolor :is(TabItem):focus")
-        { Key = "Theme.CapsNoColor.SelectionInverse" };
+        var style = new Style(":is(ListBoxItem):focus, " +
+                              ":is(ComboBoxItem):selected, " +
+                              ":is(ComboBox):focus /template/ #PART_DropDown, " +
+                              ":is(ComboBox):open /template/ #PART_DropDown, " +
+                              ":is(DatePicker):focus-within /template/ #PART_DropDown, " +
+                              ":is(DatePicker):open /template/ #PART_DropDown, " +
+                              ":is(MenuItem):selected, " +
+                              ":is(MenuItem):highlighted, " +
+                              ":is(TabItem):focus")
+        { Key = "Theme.CapsNoColor.SelectionInverse", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true));
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;
@@ -169,9 +169,10 @@ internal static class CursorialThemeStyles
 
     internal static Style CapsNoColorTreeSelectionInverse()
     {
-        var style = new Style(".caps-nocolor TreeViewItem")
+        var style = new Style("TreeViewItem")
                     {
                         Key = "Theme.CapsNoColor.TreeSelectionInverse",
+                        RequiresCapabilities = StyleCapabilities.NoColor,
                         Children =
                         {
                             new Style("^:selected").Set(TextElement.TextWeightProperty, TextWeight.Bold),
@@ -184,8 +185,8 @@ internal static class CursorialThemeStyles
     
     internal static Style CapsNoColorFocusBlink()
     {
-        var style = new Style(".caps-nocolor Slider:focus /template/ Thumb")
-        { Key = "Theme.CapsNoColor.FocusBlink" };
+        var style = new Style("Slider:focus /template/ Thumb")
+        { Key = "Theme.CapsNoColor.FocusBlink", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.BlinkProperty, true));
         return style;
     }
@@ -200,11 +201,11 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorListFocusCue()
     {
-        var style = new Style(".caps-nocolor :is(ListBoxItem):focus-visible, " +
-                              ".caps-nocolor :is(ComboBoxItem):focus-visible, " +
-                              ".caps-nocolor :is(MenuItem):focus-visible, " +
-                              ".caps-nocolor :is(TabItem):focus-visible")
-        { Key = "Theme.CapsNoColor.ListFocusCue" };
+        var style = new Style(":is(ListBoxItem):focus-visible, " +
+                              ":is(ComboBoxItem):focus-visible, " +
+                              ":is(MenuItem):focus-visible, " +
+                              ":is(TabItem):focus-visible")
+        { Key = "Theme.CapsNoColor.ListFocusCue", RequiresCapabilities = StyleCapabilities.NoColor };
         style.Setters.Add(new Setter(TextElement.InverseProperty, true));
         style.Setters.Add(new Setter(TextElement.TextWeightProperty, TextWeight.Bold));
         return style;
@@ -226,13 +227,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Accent2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.AccentDarkBrush)
                    }
                };
@@ -253,13 +254,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Info2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush)
                    }
                };
@@ -281,13 +282,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Cool2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)
                    }
                };
@@ -309,13 +310,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.ButtonBackgroundNormal),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Danger2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)
                    }
                };
@@ -337,13 +338,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Success2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
                    }
                };
@@ -365,13 +366,13 @@ internal static class CursorialThemeStyles
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button:pointerover")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.Warning2Brush),
                        new Style("^Button:focus-visible, ^Button:focus")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
-                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush)
                    }
                };
@@ -392,14 +393,27 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderStyle()
     {
-        return new Style(".caps-nocolor :is(Border), " +
-                         ".caps-nocolor :is(Panel), " +
-                         ".caps-nocolor /template/ :is(Border), " +
-                         ".caps-nocolor /template/ :is(Panel), " +
-                         ".caps-nocolor :is(UIElement) /template/ :is(Border), " +
-                         ".caps-nocolor :is(Panel) /template/ :is(Panel)") { Key = "Theme.CapsNoColor.BorderStyle"}
-           .Set(Panel.OccludesProperty, true)/*
-           .Set(Panel.BackgroundProperty, Brushes.Default)*/;
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Border), " +
+                         ":is(Panel), " +
+                         ":is(UIElement) /template/ :is(Border), " +
+                         ":is(Panel) /template/ :is(Panel), " +
+                         ".caps-nocolor /template/ :is(Panel)")
+               {
+                   Key = "Theme.CapsNoColor.BorderStyle",
+                   RequiresCapabilities = StyleCapabilities.NoColor,
+                   // Children =
+                   // {
+                   //     new Style("^#PART_ObscuredOverlay")
+                   //        .Set(Panel.OccludesProperty, false)
+                   //        .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                   //        .Set(Panel.BackgroundProperty, Brushes.Transparent)
+                   // }
+               }
+              .Set(Panel.OccludesProperty, true)
+              .Set(Panel.BackgroundProperty, Brushes.Default);
     }
 
     /// <summary>
@@ -407,13 +421,12 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsAnsi16BorderStyle()
     {
-        return new Style(".caps-ansi16 :is(Border), " +
-                         ".caps-ansi16 :is(Panel), " +
-                         ".caps-ansi16 /template/ :is(Border), " +
-                         ".caps-ansi16 /template/ :is(Panel), " +
-                         ".caps-ansi16 :is(UIElement) /template/ :is(Border), " +
-                         ".caps-ansi16 :is(Panel) /template/ :is(Panel)") 
-               { Key = "Theme.CapsNoColor.BorderStyle"}
+        return new Style(":is(Border), " +
+                         ":is(Panel), " +
+                         ":is(UIElement) /template/ :is(Border), " +
+                         ":is(Panel) /template/ :is(Panel), " +
+                         ".caps-ansi16 /template/ :is(Panel)")
+               { Key = "Theme.CapsAnsi16.BorderStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic: the styles channel is unkeyed — both rules armed under the old keys too)
            .Set(Panel.OccludesProperty, true)/*
            .Set(Panel.BackgroundProperty, Brushes.Default)*/;
     }
@@ -423,7 +436,11 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsNoColorBorderPenStyle()
     {
-        return new Style(":is(Window).caps-nocolor, :is(Popup).caps-nocolor, ContextMenu.caps-nocolor") { Key = "Theme.CapsNoColor.BorderPenStyle"}
+        // The historical :is(Popup) leg is deleted (review): the structural Popup element renders nothing
+        // and nothing reads BorderPen from it — popup-surface borders receive ThemeKeys.BorderPen through
+        // their own control themes. The leg only added per-Popup DynamicResource subscriptions.
+        return new Style(":is(Window), ContextMenu")
+               { Key = "Theme.CapsNoColor.BorderPenStyle", RequiresCapabilities = StyleCapabilities.NoColor }
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
     }
 
@@ -432,7 +449,70 @@ internal static class CursorialThemeStyles
     /// </summary>
     internal static Style CapsAnsi16BorderPenStyle()
     {
-        return new Style(":is(Window).caps-ansi16, :is(Popup).caps-ansi16, ContextMenu.caps-ansi16") { Key = "Theme.CapsNoColor.BorderPenStyle"}
+        return new Style(":is(Window), ContextMenu")
+               { Key = "Theme.CapsAnsi16.BorderPenStyle", RequiresCapabilities = StyleCapabilities.Ansi16 } // key de-duplicated from the nocolor sibling (cosmetic — see the nocolor twin's note)
            .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
+    }
+
+    internal static Style CapsNoColorMenuIconToggleStyle()
+    {
+        return new Style(":is(MenuItem)")
+               {
+                   Key = "Theme.BarToggleButton.CheckedInverse",
+                   RequiresCapabilities = StyleCapabilities.NoColor,
+                   Children =
+                   {
+                       new Style("^:checked /template/ #PART_Icon > Icon, " +
+                                 "^:checked /template/ #PART_IconTray, " +
+                                 "^:focus /template/ #PART_Icon > Icon, " +
+                                 "^:focus /template/ #PART_IconTray, " +
+                                 "^:pointerover /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover /template/ #PART_IconTray")
+                          .Set(TextElement.InverseProperty, true),
+                       new Style("^:focus:checked /template/ #PART_Icon > Icon, " +
+                                 "^:focus:checked /template/ #PART_IconTray, " +
+                                 "^:pointerover:checked /template/ #PART_Icon > Icon, " +
+                                 "^:pointerover:checked /template/ #PART_IconTray, " +
+                                 "^:focus:pressed /template/ #PART_Icon > Icon, " +
+                                 "^:focus:pressed /template/ #PART_IconTray")
+                          .Set(TextElement.InverseProperty, false)
+                   }
+               };
+    }
+
+    /// <summary>
+    /// Replaces the translucent obscured root/window overlay with 'faint' content on <c>.caps-nocolor</c>.
+    /// </summary>
+    internal static Style CapsNoColorObscuredOverlayStyle()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Window) /template/ Border#PART_ObscuredOverlay, " +
+                         ":is(RootElementHost) > Border#PART_ObscuredOverlay")
+               {
+                   Key = "Theme.NoColor.ObscuredOverlayStyle",
+                   RequiresCapabilities = StyleCapabilities.NoColor
+               }.Set(Panel.OccludesProperty, false)
+                .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                .Set(Panel.BackgroundProperty, Brushes.Transparent);
+    }
+
+    /// <summary>
+    /// Replaces the translucent obscured root/window overlay with 'faint' content on <c>.caps-ansi16</c>.
+    /// </summary>
+    internal static Style CapsAnsi16ObscuredOverlayStyle()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Window) /template/ Border#PART_ObscuredOverlay, " +
+                         ":is(RootElementHost) > Border#PART_ObscuredOverlay")
+               {
+                   Key = "Theme.CapsAnsi16.ObscuredOverlayStyle",
+                   RequiresCapabilities = StyleCapabilities.Ansi16
+               }.Set(Panel.OccludesProperty, false)
+                .Set(TextElement.TextWeightProperty, TextWeight.Faint)
+                .Set(Panel.BackgroundProperty, Brushes.Transparent);
     }
 }

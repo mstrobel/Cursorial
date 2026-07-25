@@ -16,6 +16,18 @@ public class ListBoxItem : ContentControl, ISelectableContainer
     public static readonly StyledProperty<bool> IsSelectedProperty =
         UIProperty.Register<ListBoxItem, bool>(nameof(IsSelected), defaultValue: false, changed: OnIsSelectedChanged);
 
+    /// <summary>The bubbling event raised whenever the item becomes selected (<see cref="IsSelected"/> ⇒ true), for both user- and owner/model-driven selection.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SelectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Selected), RoutingStrategy.Bubble, typeof(ListBoxItem));
+
+    /// <summary>The bubbling event raised whenever the item becomes unselected (<see cref="IsSelected"/> ⇒ false), for both user- and owner/model-driven selection.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> UnselectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Unselected), RoutingStrategy.Bubble, typeof(ListBoxItem));
+
+    /// <summary>The bubbling event raised whenever <see cref="IsSelected"/> changes (either direction) — the selection-side parallel to <see cref="ToggleButton.IsCheckedChanged"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsSelectedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsSelectedChanged), RoutingStrategy.Bubble, typeof(ListBoxItem));
+
     private bool _ownerDriven; // guards the owner→container write so it never echoes back into the model
 
     static ListBoxItem() => PseudoClassMapping.Register<ListBoxItem>(IsSelectedProperty, ":selected");
@@ -29,6 +41,15 @@ public class ListBoxItem : ContentControl, ISelectableContainer
         get => GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
     }
+
+    /// <summary>CLR sugar over <see cref="SelectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Selected { add => AddHandler(SelectedEvent, value!); remove => RemoveHandler(SelectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="UnselectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Unselected { add => AddHandler(UnselectedEvent, value!); remove => RemoveHandler(UnselectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="IsSelectedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsSelectedChanged { add => AddHandler(IsSelectedChangedEvent, value!); remove => RemoveHandler(IsSelectedChangedEvent, value!); }
 
     void ISelectableContainer.SetIsSelectedFromOwner(bool selected)
     {
@@ -75,7 +96,17 @@ public class ListBoxItem : ContentControl, ISelectableContainer
 
     private static void OnIsSelectedChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is ListBoxItem { _ownerDriven: false, OwnerSelector: {} owner } item)
+        if (sender is not ListBoxItem item)
+            return;
+
+        // An external (user/binding) set folds into the owner's model; the owner-driven write is guarded so it
+        // never echoes back (CD-P9-9).
+        if (!item._ownerDriven && item.OwnerSelector is { } owner)
             owner.NotifyContainerIsSelectedChanged(item, newValue);
+
+        // Raise Selected/Unselected OUTSIDE the owner-driven guard (mirroring TreeViewItem.OnIsExpandedChanged) so
+        // the item-level pair fires for both user- and owner/model-driven selection.
+        item.RaiseEvent(item.RentEvent(newValue ? SelectedEvent : UnselectedEvent));
+        item.RaiseEvent(item.RentEvent(IsSelectedChangedEvent)); // fires on every change (cf. ToggleButton.IsCheckedChanged)
     }
 }

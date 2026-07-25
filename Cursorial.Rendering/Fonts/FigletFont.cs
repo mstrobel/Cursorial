@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 
 using Cursorial.Output;
@@ -14,8 +15,8 @@ namespace Cursorial.Rendering.Fonts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Load fonts via <see cref="FigletFontParser.LoadFromFile(string)"/> or
-/// <see cref="FigletFontParser.Load(Stream, string)"/>. Cursorial bundles a small set of
+/// Load fonts via <see cref="FigletFontParser.LoadFromFile(string, string?)"/> or
+/// <see cref="FigletFontParser.Load(Stream, string, Uri?, string?)"/>. Cursorial bundles a small set of
 /// public-domain FIGlet fonts under <see cref="FigletFonts"/> for the common cases.
 /// </para>
 /// <para>
@@ -28,11 +29,12 @@ namespace Cursorial.Rendering.Fonts;
 /// </para>
 /// <para>
 /// <b>Unsupported glyphs.</b> Codepoints not defined by the font fall back to the font's
-/// space glyph (a row of blanks). Customize the fallback behaviour by subclassing if you need
+/// space glyph (a row of blanks). Customize the fallback behavior by subclassing if you need
 /// per-app fallback chains; for the typical case "missing glyph = blank gap" is the least
 /// surprising default.
 /// </para>
 /// </remarks>
+[TypeConverter(typeof(FigletFontConverter))]
 public sealed class FigletFont : IGlyphFont
 {
     private const TextAttributes ForbiddenAttributes = TextAttributes.Italic |
@@ -55,7 +57,8 @@ public sealed class FigletFont : IGlyphFont
         char hardBlank,
         int height,
         FigletLayoutMode layoutMode,
-        IReadOnlyDictionary<uint, FigletGlyph> glyphs)
+        IReadOnlyDictionary<uint, FigletGlyph> glyphs,
+        Uri? sourceUri = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(glyphs);
@@ -65,6 +68,7 @@ public sealed class FigletFont : IGlyphFont
         HardBlank = hardBlank;
         Height = height;
         LayoutMode = layoutMode;
+        SourceUri = sourceUri;
         _glyphs = new Dictionary<uint, FigletGlyph>(glyphs);
 
         // Space (U+0020) must exist per the FIGlet spec; if a malformed font omits it, fabricate
@@ -95,6 +99,9 @@ public sealed class FigletFont : IGlyphFont
 
     /// <summary>Number of glyphs defined in the font.</summary>
     public int GlyphCount => _glyphs.Count;
+
+    /// <summary>The source URI from which this font was loaded, if available.</summary>
+    public Uri? SourceUri { get; private init; }
 
     /// <summary>True when a glyph is defined for <paramref name="codepoint"/>.</summary>
     public bool HasGlyph(uint codepoint) => _glyphs.ContainsKey(codepoint);

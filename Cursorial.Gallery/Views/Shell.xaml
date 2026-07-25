@@ -7,7 +7,10 @@
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
            xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
-           Background="{DynamicResource {x:Static ThemeKeys.ElevationDesktop}}"
+           xmlns:pages="clr-namespace:Cursorial.Gallery.Pages;assembly=Cursorial.Gallery"
+           xmlns:ff="clr-namespace:Cursorial.Rendering.Fonts;assembly=Cursorial.Rendering"
+           xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
+           Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
            d:DataContext="vm:ShellViewModel">
@@ -23,13 +26,6 @@
 
         <DataTemplate DataType="vm:DialogsViewModel">
           <DockPanel>
-            <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-              <StackPanel Orientation="Vertical">
-                <TextBlock Text="{Binding Title}" />
-                <TextBlock Text="{Binding Summary}" />
-              </StackPanel>
-            </Border>
-
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -58,12 +54,63 @@
             
         </DataTemplate>
 
+        <DataTemplate DataType="vm:WelcomeViewModel">
+          <DockPanel>
+            <StackPanel VerticalAlignment="Center"
+                        Margin="8,1">
+              <RichTextPresenter Source="{Binding WelcomeTextPreamble}"
+                                 TextAlignment="Center"
+                                 TextElement.TextStyle="Italic"
+                                 Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}" />
+              
+              <ImagePresenter SourceUri="embedded://Cursorial.Gallery/cursorial_banner.png"
+                              MaxHeight="8"
+                              HorizontalAlignment="Center">
+                <ImagePresenter.PlaceholderContent>
+<!--
+                  <FigletPresenter Font="{x:Static ff:FigletFonts.Slant}"
+                                   Text="cursorial"
+                                   TextAlignment="Center">
+                    <FigletPresenter.Foreground>
+                      <LinearGradientBrush StartPoint="0.5,0" EndPoint="0,1">
+                        <GradientStop Color="#73c6e7" Offset="0"/>
+                        <GradientStop Color="#2c83b7" Offset="1"/>
+                      </LinearGradientBrush>
+                    </FigletPresenter.Foreground>
+                  </FigletPresenter>
+-->
+                  <RichTextPresenter Source="{Binding WelcomeText}"
+                                     TextAlignment="Center"
+                                     TextElement.TextStyle="Italic">
+                    <TextElement.Foreground>
+                      <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                        <GradientStop Color="#2c83b7" Offset="0"/>
+                        <GradientStop Color="#73c6e7" Offset="1 "/>
+                      </LinearGradientBrush>
+                    </TextElement.Foreground>
+                  </RichTextPresenter>
+                </ImagePresenter.PlaceholderContent>
+              </ImagePresenter>
+
+              <RichTextPresenter TextAlignment="Center"
+                                 Margin="0,2,0,0"
+                                 Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                                 Source="{Binding EpilogueText}"/>
+
+              <Button Command="{Binding ShowUserOptionsCommand}"
+                      CommandParameter="SkipFirstRunWizardCheck"
+                      Margin="0,2,0,0"
+                      HorizontalAlignment="Center"
+                      Content="Show User _Options"/>
+
+            </StackPanel>
+          </DockPanel>
+        </DataTemplate>
+
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
                     <StackPanel Orientation="Vertical">
-                        <TextBlock Text="{Binding Title}" />
-                        <TextBlock Text="{Binding Summary}" />
                         <WrapPanel>
                             <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
                             <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
@@ -93,23 +140,14 @@
             </DockPanel>
         </DataTemplate>
 
+      <DataTemplate DataType="vm:EventRoutingViewModel">
+        <DockPanel LastChildFill="True">
+          <pages:EventRoutingView Margin="0,1,0,0" />
+        </DockPanel>
+      </DataTemplate>
+
       <DataTemplate DataType="vm:InputsPageViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
-          <!--
-          <StatusBar DockPanel.Dock="Bottom">
-            <StatusBarItem Content="{Binding Status}" />
-          </StatusBar>
-          -->
-
           <Grid Margin="2,1">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
@@ -203,21 +241,6 @@
 
       <DataTemplate DataType="vm:MenusViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
-          <!--
-          <StatusBar DockPanel.Dock="Bottom">
-            <StatusBarItem Content="{Binding Status}" />
-          </StatusBar>
-          -->
-
           <Menu Margin="2,1" DockPanel.Dock="Top">
             <MenuItem Header="_File">
               <MenuItem Header="_New"  InputGestureText="Ctrl+N" Icon="📄" />
@@ -227,19 +250,20 @@
               <MenuItem Header="E_xit" InputGestureText="Alt+Q" Icon="❌" />
             </MenuItem>
             <MenuItem Header="_Edit">
-              <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" Icon="{Icon Glyph='&#x000F0190;', Emoji='✂️', Text='✁'}" />
-              <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" Icon="{Icon Glyph='&#x000F018F;', Emoji='🗒', Text='⧉'}" />
-              <MenuItem Header="_Paste" InputGestureText="Ctrl+V" Icon="{Icon Glyph='&#x000F0192;', Emoji='📋', Text='▤'}" />
+              <MenuItem Header="Cu_t"   InputGestureText="Ctrl+X" Icon="{Icon Glyph='&#x000F0190;', GlyphWidth=2, Emoji='✂️', Text='✁'}" />
+              <MenuItem Header="_Copy"  InputGestureText="Ctrl+C" Icon="{Icon Glyph='&#x000F018F;', GlyphWidth=2, Emoji='🗒', Text='⧉'}" />
+              <MenuItem Header="_Paste" InputGestureText="Ctrl+V" Icon="{Icon Glyph='&#x000F0192;', GlyphWidth=2, Emoji='📋', Text='▤'}" />
               <Separator/>
               <MenuItem Header="Fi_nd">
                 <MenuItem Header="Find _Next"     InputGestureText="F3" />
                 <MenuItem Header="Find _Previous" InputGestureText="Shift+F3" />
+                <MenuItem Header="Case _Sensitive" Icon="{Icon Glyph='&#x0000eab1;', GlyphWidth=2, Emoji='🔡', Text='Aa'}" IsCheckable="true" />
               </MenuItem>
             </MenuItem>
             <MenuItem Header="_View">
               <MenuItem Header="F_ull Screen"      InputGestureText="Alt+Enter" />
-              <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" />
-              <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" />
+              <MenuItem Header="_Hide Sidebar"     InputGestureText="Shift+F3" IsCheckable="True" />
+              <MenuItem Header="Hide _Diagnostics" InputGestureText="Shift+F3" IsCheckable="True" />
             </MenuItem>
           </Menu>
           
@@ -286,15 +310,6 @@
 
       <DataTemplate DataType="vm:BarsViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
           <!-- The Toolbar (Surface A): one BarCommand set, define-once. Docked top so it stretches to the page width
                and overflows as the window narrows. "Settings" is pinned to the overflow popup (OverflowMode=Always). -->
           <bars:Toolbar DockPanel.Dock="Top" Margin="2,1">
@@ -371,13 +386,6 @@
            Left/Right; the File tab opens Backstage (a stub); Clipboard's ⋰ is the dialog launcher. -->
       <DataTemplate DataType="vm:RibbonViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
           <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
@@ -468,21 +476,6 @@
 
       <DataTemplate DataType="vm:TabControlViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
-          <!--
-          <StatusBar DockPanel.Dock="Bottom">
-            <StatusBarItem Content="{Binding Status}" />
-          </StatusBar>
-          -->
-
           <TabControl Margin="2,1">
             <TabItem Header="F_irst Tab">
               <TabItem.Content>
@@ -520,33 +513,19 @@
 
       <DataTemplate DataType="vm:DataGridViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
           <Button DockPanel.Dock="Top" Margin="2,1,2,0" HorizontalAlignment="Left"
                   Content="{Binding FeedLabel}" Command="{Binding ToggleFeed}" />
 
-          <dv:DataGrid Margin="2,1" ItemsSource="{Binding Orders}" />
+          <dv:DataGrid Margin="2,1"
+                       ItemsSource="{Binding Orders}"
+                       ShowAutoFilterRow="True"
+                       ShowGroupPanel="True"
+                       ShowSummaryFooter="True"/>
         </DockPanel>
       </DataTemplate>
 
       <DataTemplate DataType="vm:TreeViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
           <TreeView Margin="2,1">
             <TreeViewItem Header="Item 1">
               <TreeViewItem Header="Item 1.1" />
@@ -569,62 +548,89 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:DateControlsViewModel">
-        <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}"
-                  Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
-            </StackPanel>
-          </Border>
+        <Grid Margin="2,1">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
 
-          <StackPanel Orientation="Horizontal" Spacing="4" Margin="2,1">
-            <Calendar VerticalAlignment="Top"/>
-            <Grid VerticalAlignment="Top">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-              </Grid.RowDefinitions>
-            </Grid>
-            
-            <Label Content="_Non-Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
-                   Target="{x:Reference NonEditableDatePicker}" />
-            <DatePicker x:Name="NonEditableDatePicker" Grid.Column="1" IsEditable="False"
-                        VerticalAlignment="Top" Watermark="birthday" /> 
-
-            <Label Grid.Row="1" Content="_Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
-                   Target="{x:Reference EditableDatePicker}"/>
-            <DatePicker x:Name="EditableDatePicker" Grid.Row="1" Grid.Column="1" IsEditable="True"
-                        VerticalAlignment="Top" Watermark="birthday" /> 
+          <StackPanel Grid.Column="0" Grid.Row="0"
+                      Orientation="Vertical" Spacing="0">
+            <Label Content="Selection _Mode:" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Target="{x:Reference SelectionModeSelector}"/>
+            <ComboBox x:Name="SelectionModeSelector"
+                      HorizontalAlignment="Left"
+                      MinWidth="20"
+                      ItemsSource="{i:EnumItemsSource EnumType={x:Type CalendarSelectionMode}}"
+                      SelectedItem="{Binding ElementName=DemoCalendar, Path=SelectionMode, Mode=TwoWay, Converter={i:EnumItemConverter EnumType={x:Type CalendarSelectionMode}}}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type i:EnumItem}">
+                  <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Calendar x:Name="DemoCalendar" VerticalAlignment="Top" Margin="0,1,0,0"
+                      SelectionMode="MultipleRange"
+                      SelectedDates="{Binding Path=SelectedDates, Mode=OneWayToSource}"
+                      HorizontalAlignment="Left" />
+            <TextBlock Text="selected dates:" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"
+                       Margin="0,1,0,0" />
           </StackPanel>
-        </DockPanel>
+
+          <ItemsControl Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Grid.Row="1"
+                        ItemsSource="{Binding SelectedDateRanges}"
+                        Margin="2,0,0,0"
+                        MinWidth="28"
+                        HorizontalAlignment="Left"
+                        Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}">
+            <ItemsControl.Template>
+              <ControlTemplate TargetType="ItemsControl">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsPresenter/>
+                </ScrollViewer>
+              </ControlTemplate>
+            </ItemsControl.Template>
+          </ItemsControl>
+
+          <Grid Grid.Column="1"
+                Grid.Row="0" 
+                Margin="4,0,0,0"
+                VerticalAlignment="Top">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="1" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="1" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Label Grid.Column="0" Grid.Row="0" Content="_Non-Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Target="{x:Reference NonEditableDatePicker}" />
+            <DatePicker x:Name="NonEditableDatePicker" Grid.Column="2" Grid.Row="0" IsEditable="False"
+                        VerticalAlignment="Top" Watermark="birthday" />
+
+            <Label Grid.Column="0" Grid.Row="2" Content="_Editable" Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                   Target="{x:Reference EditableDatePicker}"/>
+            <DatePicker x:Name="EditableDatePicker" Grid.Column="2" Grid.Row="2" IsEditable="True"
+                        VerticalAlignment="Top" Watermark="birthday" />
+          </Grid>
+        </Grid>
       </DataTemplate>
 
       <DataTemplate DataType="vm:ButtonsViewModel">
         <DockPanel LastChildFill="True">
-          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-            <StackPanel Orientation="Vertical">
-              <TextBlock Text="{Binding Title}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-              <TextBlock Text="{Binding Summary}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
-            </StackPanel>
-          </Border>
-
-          <!--
-          <StatusBar DockPanel.Dock="Bottom">
-            <StatusBarItem Content="{Binding Status, TargetNullValue=''}" />
-          </StatusBar>
-          -->
-
           <Grid Margin="2,1">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
@@ -728,9 +734,10 @@
       <DockPanel LastChildFill="True">
         <Label DockPanel.Dock="Top"
                Content="Select a _Page:"
-               Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"
                Padding="1,0"
                Target="{x:Reference PageList}" />
+           <!--Background="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"-->
+
         <ListBox x:Name="PageList"
                  Width="22"
                  ItemsSource="{Binding Pages}"
@@ -745,7 +752,16 @@
       </DockPanel>
     </Border>
 
-    <StatusBar DockPanel.Dock="Bottom">
+  <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+    <StackPanel Orientation="Vertical">
+      <TextBlock Text="{Binding SelectedPage.Title}"
+                 Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+      <TextBlock Text="{Binding SelectedPage.Summary}"
+                 Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+    </StackPanel>
+  </Border>
+
+  <StatusBar DockPanel.Dock="Bottom">
     <!-- <StatusBarItem Classes="alternate" Content="{Icon Glyph='&#x0e5fe;', GlyphWidth=2}" /> -->
       <StatusBarItem Classes="alternate"
                      Content="{Binding ThemeDescription}" />

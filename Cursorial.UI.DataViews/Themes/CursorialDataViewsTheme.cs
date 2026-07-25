@@ -65,6 +65,7 @@ internal static class CursorialDataViewsTheme
         editBar.SetResourceReference(DataGridEditBar.TextBrushProperty, ThemeKeys.MutedBrush);
         editBar.SetResourceReference(DataGridEditBar.KeyBrushProperty, ThemeKeys.AccentBrush);
         editBar.SetResourceReference(DataGridEditBar.IndicatorBrushProperty, ThemeKeys.AmberBrush);
+        editBar.SetResourceReference(DataGridEditBar.ErrorBrushProperty, ThemeKeys.DangerBrush);
 
         var footer = new DataGridSummaryPresenter();
         DockPanel.SetDock(footer, Dock.Bottom);

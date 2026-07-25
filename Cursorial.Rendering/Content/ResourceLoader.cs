@@ -46,20 +46,35 @@ public sealed class ResourceLoader : IResourceLoader
     public static IResourceLoader Default { get; } = new ResourceLoader();
 
     /// <inheritdoc/>
-    public Stream? TryOpen(Uri uri)
+    public Stream? TryOpen(Uri uri) => TryOpen(uri, out _);
+
+    /// <inheritdoc/>
+    public Stream? TryOpen(Uri? uri, out Exception? error)
     {
-        ArgumentNullException.ThrowIfNull(uri);
+        if (uri is null)
+            throw new ArgumentNullException(nameof(uri));
+
+        error = null;
 
         if (!uri.IsAbsoluteUri)
-            return OpenRelative(uri.OriginalString);
+            return TryOpenRelative(uri.OriginalString, out error);
 
         return uri.Scheme switch
                {
-                   EmbeddedScheme => OpenEmbedded(uri),
-                   "file"         => OpenFile(uri),
+                   EmbeddedScheme => TryOpenEmbedded(uri, out error),
+                   "file"         => TryOpenFile(uri, out error),
                    _              => null
                };
     }
+
+    /// <inheritdoc/>
+    public Stream Open(Uri uri) => IResourceLoader.Open(this, uri);
+
+    /// <inheritdoc/>
+    public byte[]? TryLoadBytes(Uri uri) => IResourceLoader.TryLoadBytes(this, uri, out _);
+
+    /// <inheritdoc/>
+    public byte[]? TryLoadBytes(Uri uri, out Exception? error) => IResourceLoader.TryLoadBytes(this, uri, out error);
 
     /// <summary>
     /// Build an <c>embedded://</c> URI for the given assembly + resource name. Convenience
@@ -98,8 +113,10 @@ public sealed class ResourceLoader : IResourceLoader
         return new Uri(Path.GetFullPath(absolutePath));
     }
 
-    private static Stream? OpenEmbedded(Uri uri)
+    private static Stream? TryOpenEmbedded(Uri uri, out Exception? error)
     {
+        error = null;
+
         // For an embedded:// URI, the authority is the assembly simple name, and the path is
         // the resource name. Uri's Authority can contain dots ("Cursorial.Rendering") and is
         // returned via uri.Host; AbsolutePath has a leading '/' that we strip.
@@ -109,20 +126,35 @@ public sealed class ResourceLoader : IResourceLoader
         if (string.IsNullOrEmpty(assemblyName) || string.IsNullOrEmpty(resourceName))
             return null;
 
-        var assembly = FindAssemblyByName(assemblyName);
-        return assembly?.GetManifestResourceStream(resourceName);
+        var assembly = FindAssemblyByName(assemblyName, out error);
+        var stream = assembly?.GetManifestResourceStream(resourceName);
+        
+        if (stream is null) error = new ResourceLoadException(uri, error);
+
+        return stream;
     }
 
-    private static Stream? OpenFile(Uri uri)
+    private static Stream? TryOpenFile(Uri uri, out Exception? error)
     {
         // Honor the IResourceLoader.TryLoadBytes contract ("returns null when the URI can't be resolved"): a malformed
         // path (NUL char ⇒ ArgumentException, over-long ⇒ PathTooLongException : IOException) must return null, not throw.
-        try { return System.IO.File.OpenRead(uri.LocalPath); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
+        error = null;
+
+        try
+        {
+            return System.IO.File.OpenRead(uri.LocalPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or
+                                         NotSupportedException)
+        {
+            error = ex;
+            return null;
+        }
     }
 
-    private static Stream? OpenRelative(string relativePath)
+    private static Stream? TryOpenRelative(string relativePath, out Exception? error)
     {
+        error = null;
         if (string.IsNullOrEmpty(relativePath)) return null;
 
         // Path.GetFullPath/Combine themselves throw on a malformed path — keep them inside the guard so a bad relative
@@ -132,11 +164,18 @@ public sealed class ResourceLoader : IResourceLoader
             var resolved = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
             return System.IO.File.OpenRead(resolved);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or
+                                         NotSupportedException)
+        {
+            error = ex;
+            return null;
+        }
     }
 
-    private static Assembly? FindAssemblyByName(string assemblyName)
+    private static Assembly? FindAssemblyByName(string assemblyName, out Exception? error)
     {
+        error = null;
+
         // Already-loaded assemblies first — most consumers ship their icons in the same
         // assembly that's running, which is already in AppDomain.CurrentDomain.Assemblies.
         foreach (var loaded in AppDomain.CurrentDomain.GetAssemblies())
@@ -149,10 +188,13 @@ public sealed class ResourceLoader : IResourceLoader
         // hasn't been touched yet (which is rare in TUI contexts but doesn't hurt to support).
     
         // @formatter:off
-        try { return Assembly.Load(new AssemblyName(assemblyName)); }
-        catch (FileNotFoundException)   { return null; }
-        catch (BadImageFormatException) { return null; }
-        catch (FileLoadException)       { return null; }
+        try { return Assembly.Load(new AssemblyName(assemblyName)); } 
+        catch (Exception ex) when (ex is FileNotFoundException or BadImageFormatException or FileLoadException)
+        {
+            error = ex;
+            return null;
+        }
+
         // @formatter:on
     }
 }

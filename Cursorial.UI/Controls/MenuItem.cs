@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Rendering.Imaging;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -18,7 +19,7 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartPopup, typeof(Popup))] // optional: a leaf item's template may omit the submenu surface
 [TemplatePart(PartIcon, typeof(ContentPresenter))]  // optional: a leaf item's template may omit the submenu surface
 [TemplatePart(PartGestureText, typeof(TextBlock))]  // optional: a leaf item's template may omit the submenu surface
-public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
+public class MenuItem : HeaderedItemsControl, IAccessKeyTarget, ICommandSource, IClickableControl
 {
     private const string PartPopup = "PART_Popup";
     private const string PartIcon = "PART_Icon";
@@ -41,7 +42,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>The parameter passed to <see cref="Command"/>.</summary>
     public static readonly StyledProperty<object?> CommandParameterProperty =
-        UIProperty.Register<MenuItem, object?>(nameof(CommandParameter), changed: OnCommandParameterChanged);
+        UIProperty.Register<MenuItem, object?>(nameof(CommandParameter), coerce: CoerceCommandParameter, changed: OnCommandParameterChanged);
 
     /// <summary>The display-only gesture hint (e.g. "Ctrl+S") shown right-aligned, faint. Not a live binding.</summary>
     public static readonly StyledProperty<string?> InputGestureTextProperty =
@@ -49,11 +50,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Whether the item shows a check column and toggles <see cref="IsChecked"/> on click.</summary>
     public static readonly StyledProperty<bool> IsCheckableProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable));
+        UIProperty.Register<MenuItem, bool>(nameof(IsCheckable), changed: OnIsCheckableChanged);
 
-    /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it).</summary>
+    /// <summary>The checked state of a <see cref="IsCheckable"/> item (<c>:checked</c> mirrors it). While checkable and
+    /// bound to a command whose <see cref="CommandParameter"/> is an <see cref="ICheckableCommandParameter"/>, its
+    /// effective value is coerced from that parameter (mirrors <see cref="ToggleButton"/>).</summary>
     public static readonly StyledProperty<bool> IsCheckedProperty =
-        UIProperty.Register<MenuItem, bool>(nameof(IsChecked));
+        UIProperty.Register<MenuItem, bool>(nameof(IsChecked), coerce: CoerceIsChecked, changed: OnIsCheckedChanged);
 
     /// <summary>Whether this item's submenu is open (<c>:open</c>; two-way with the submenu <see cref="Popup"/>).</summary>
     public static readonly DirectProperty<MenuItem, bool> IsSubmenuOpenProperty =
@@ -86,14 +89,36 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public static readonly RoutedEvent<ClickEventArgs> ClickEvent =
         RoutedEvent<ClickEventArgs>.Register(nameof(Click), RoutingStrategy.Bubble, typeof(MenuItem));
 
+    /// <summary>The bubbling event raised whenever the menu item is checked (<see cref="IsChecked"/> ⇒ true).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> CheckedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Checked), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised whenever the menu item is unchecked (<see cref="IsChecked"/> ⇒ false).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> UncheckedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Unchecked), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The direct event raised whenever the value of <see cref="IsChecked"/> changes.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsCheckedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsCheckedChanged), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised when this item's submenu opens (<see cref="IsSubmenuOpen"/> ⇒ true).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SubmenuOpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(SubmenuOpened), RoutingStrategy.Bubble, typeof(MenuItem));
+
+    /// <summary>The bubbling event raised when this item's submenu closes (<see cref="IsSubmenuOpen"/> ⇒ false).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SubmenuClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(SubmenuClosed), RoutingStrategy.Bubble, typeof(MenuItem));
+
     private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(250);
+
+    protected static readonly IconCarrier CheckmarkIcon = BuildCheckmarkIcon();
 
     private bool _isSubmenuOpen;
     private bool _isHighlighted;
     // private bool _isPointerOver;
     private bool _hasItemsCached;
     private bool _isTopLevelCached;
-    private bool _isIconTrayVisibleCached;
+    private bool? _isIconTrayVisibleCached;
     private ItemsControl? _iconTrayOwner; // the owner at attach — detach must refresh the group it LEFT
     private char _registeredAccessKey;
     private Popup? _popup;
@@ -106,6 +131,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         AffectsParentMeasure<MenuItem>(IconProperty);
 
         PseudoClassMapping.Register<MenuItem>(IsCheckedProperty, ":checked");
+        PseudoClassMapping.Register<MenuItem>(IsCheckableProperty, ":checkable");
         PseudoClassMapping.Register<UIElement>(IsWithinMenuProperty, ":within-menu");
         PseudoClassMapping.Register<UIElement>(IsTopLevelProperty, ":top-level");
 
@@ -119,6 +145,41 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         Focusable = true;
     }
 
+    /// <summary>CLR sugar over <see cref="CheckedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Checked
+    {
+        add => AddHandler(CheckedEvent, value!);
+        remove => RemoveHandler(CheckedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="UncheckedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Unchecked
+    {
+        add => AddHandler(UncheckedEvent, value!);
+        remove => RemoveHandler(UncheckedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="IsCheckedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsCheckedChanged
+    {
+        add => AddHandler(IsCheckedChangedEvent, value!);
+        remove => RemoveHandler(IsCheckedChangedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="SubmenuOpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? SubmenuOpened
+    {
+        add => AddHandler(SubmenuOpenedEvent, value!);
+        remove => RemoveHandler(SubmenuOpenedEvent, value!);
+    }
+
+    /// <summary>CLR sugar over <see cref="SubmenuClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? SubmenuClosed
+    {
+        add => AddHandler(SubmenuClosedEvent, value!);
+        remove => RemoveHandler(SubmenuClosedEvent, value!);
+    }
+
     /// <inheritdoc/>
     protected internal override bool HandlesScrolling => true;
 
@@ -130,6 +191,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <inheritdoc cref="CommandParameterProperty"/>
     public object? CommandParameter { get => GetValue(CommandParameterProperty); set => SetValue(CommandParameterProperty, value); }
+
+    /// <inheritdoc/>
+    void ICommandSource.CanExecuteChanged(object sender, EventArgs e) => OnCanExecuteChanged(sender, e);
 
     /// <inheritdoc cref="InputGestureTextProperty"/>
     public string? InputGestureText { get => GetValue(InputGestureTextProperty); set => SetValue(InputGestureTextProperty, value); }
@@ -153,19 +217,18 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     public bool IsTopLevel => OwnerItemsControl is Menu;
 
     /// <inheritdoc cref="IsIconTrayVisibleProperty"/>
-    public bool IsIconTrayVisible
-    {
-        get
-        {
-            if (OwnerItemsControl is not {} owner)
-                return HasValidIcon(Icon); // standalone (no popup): its own icon decides
+    public bool IsIconTrayVisible => _isIconTrayVisibleCached ??= ComputeIsIconTrayVisible();
 
-            return owner is not Menu && AnyContainerHasIcon(owner);
-        }
+    private bool ComputeIsIconTrayVisible()
+    {
+        if (OwnerItemsControl is not {} owner)
+            return ShouldDisplayIconTray(this); // standalone (no popup): its own icon decides
+
+        return owner is not Menu && AnyContainerHasIcon(owner);
     }
 
     // 'Valid' is simply non-null for now — one place to tighten if that ever changes.
-    private static bool HasValidIcon(object? icon) => icon is not null;
+    private static bool HasValidIcon(MenuItem? item) => item?.Icon is not null;
 
     private static bool AnyContainerHasIcon(ItemsControl owner)
     {
@@ -173,18 +236,27 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         for (var i = 0; i < generator.ContainerCount; i++)
         {
-            if (generator.ContainerFromIndex(i) is MenuItem sibling && HasValidIcon(sibling.Icon))
+            if (generator.ContainerFromIndex(i) is MenuItem sibling && ShouldDisplayIconTray(sibling))
                 return true;
         }
 
         return false;
     }
 
+    private static bool ShouldDisplayIconTray(MenuItem item) => item.IsCheckable || HasValidIcon(item);
+
     /// <summary>CLR sugar over <see cref="ClickEvent"/>.</summary>
     public event EventHandler<ClickEventArgs>? Click
     {
         add => AddHandler(ClickEvent, value!);
         remove => RemoveHandler(ClickEvent, value!);
+    }
+
+    /// <inheritdoc/>
+    void IClickableControl.RaiseClick(InvokeMethod method)
+    {
+        if (IsEffectivelyEnabled)
+            OnClick(method);
     }
 
     /// <summary>The command-aware enabled gate (CD25): enabled unless a non-null <see cref="Command"/> reports it can't execute.</summary>
@@ -202,12 +274,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         base.OnAttachedToTree(in e);
         SubscribeContainersChanged();
         SubscribeCanExecute(); // CD25: a live CanExecuteChanged must re-gate IsEnabledCore (matches ButtonBase)
+        SyncCheckedWithCommandParameter(); // reflect a checkable command parameter's checked state on attach (ToggleButton parity)
         RegisterAccessKey();   // register the Header mnemonic with the AccessKeyManager (doc §12.5)
         UpdateHasItems();
         UpdateIsTopLevel();
 
-        // This item may bring the popup's first icon (or join an iconed group) — refresh the group,
-        // and remember the owner: detach must refresh the group this item LEAVES.
+        // This item may bring the popup's first icon (or join a group of items w/ at least one icon group) —
+        // refresh the group, and remember the owner: detach must refresh the group this item LEAVES.
         _iconTrayOwner = OwnerItemsControl;
         RefreshIconTrayGroup(_iconTrayOwner);
     }
@@ -284,7 +357,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         }
         else
         {
-            Invoke(); // a leaf invokes + dismisses
+            OnClick(InvokeMethod.Pointer); // a leaf invokes + dismisses
         }
 
         e.Handled = true;
@@ -382,7 +455,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
                 if (HasItems)
                     OpenSubmenuWithFocus();
                 else
-                    Invoke();
+                    OnClick(InvokeMethod.KeyboardEnter);
+                break;
+            case Key.Space or Key.Character when e.Text.Span is " ":
+                if (IsCheckable)
+                    OnClick(InvokeMethod.KeyboardSpace);
+                else if (HasItems)
+                    OpenSubmenuWithFocus();
                 break;
             default:
                 return; // not a menu-nav key — leave unhandled. A focused submenu item's Escape is the submenu
@@ -395,17 +474,22 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Invokes a leaf item: raise <see cref="Click"/>, toggle <see cref="IsChecked"/> (if checkable),
     /// execute <see cref="Command"/>, then dismiss the whole menu.</summary>
-    protected virtual void Invoke()
+    protected virtual void OnClick(InvokeMethod method = InvokeMethod.Programmatic)
     {
-        RaiseEvent(RentEvent(ClickEvent));
+        var args = RentEvent(ClickEvent);
+
+        args.Method = method;
+
+        RaiseEvent(args);
 
         if (IsCheckable)
             SetCurrentValue(IsCheckedProperty, !IsChecked); // SetCurrentValue preserves a two-way IsChecked binding
 
-        if (Command is { } command && command.CanExecute(CommandParameter))
+        if (Command is {} command && command.CanExecute(CommandParameter))
             command.Execute(CommandParameter);
 
-        CloseMenuChain();
+        if (method is InvokeMethod.KeyboardEnter || IsCheckable is false)
+            CloseMenuChain();
     }
 
     private void RefreshHighlight() => SetHighlighted(IsFocused/* || _isPointerOver*/); // highlighted = focused or hovered
@@ -527,6 +611,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
         PseudoClasses.Set(":open", value);
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value); // drive the part (light-dismiss writes back via OnPopupClosed)
+
+        // Bubble Submenu{Opened,Closed} so a Menu bar / ContextMenu host can watch every descendant item from one
+        // handler. This is the single chokepoint every open/close path funnels through (keyboard collapse,
+        // sibling-switch, chain-close, light-dismiss via OnPopupClosed → SetSubmenuOpen(false)).
+        var routedEvent = value ? SubmenuOpenedEvent : SubmenuClosedEvent;
+        var args = RentEvent(routedEvent);
+        RaiseEvent(args);
     }
 
     private void SetHighlighted(bool value)
@@ -537,7 +628,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     // A genuine user dismiss — Escape on a focused submenu item, or a click-away — collapses the WHOLE menu chain and
     // returns focus (decision ③). A Programmatic close (the one CloseMenuChain itself issues via SetSubmenuOpen(false),
-    // plus sibling-switch / left-arrow ascent / detach) takes the idempotent one-level path — the re-entrancy fence.
+    // plus sibling-switch / left-arrow ascent / detach) takes the idempotent one-level path — the reentrancy fence.
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
     {
         if (e.Reason is PopupCloseReason.EscapeKey or PopupCloseReason.LightDismiss)
@@ -659,13 +750,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     private void UpdateIsIconTrayVisible()
     {
         var was = _isIconTrayVisibleCached;
+
+        _isIconTrayVisibleCached = null;
+
         var now = IsIconTrayVisible;
 
         if (was != now)
-        {
-            _isIconTrayVisibleCached = now;
             DispatchPropertyChanged(IsIconTrayVisibleProperty, null, was, now, BindingPriority.LocalValue);
-        }
     }
 
     /// <summary>
@@ -700,6 +791,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         {
             _icon.Content = icon;
             _icon.Visibility = Visibility.Visible;
+        } 
+        else if (Icon is IconCarrier carrier)
+        {
+            _icon.Content = carrier;
+            _icon.Visibility = Visibility.Visible;
         }
         else if (Icon is ImageData image)
         {
@@ -711,13 +807,22 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             _icon.Content = other.ToString();
             _icon.Visibility = Visibility.Visible;
         }
+        else if (IsChecked)
+        {
+            _icon.Content = CheckmarkIcon;
+            _icon.Visibility = Visibility.Visible;
+        }
         else
         {
             _icon.Visibility = Visibility.Collapsed;
         }
     }
 
-    private void OnCanExecuteChanged(object? sender, EventArgs e) => InvalidateIsEnabledCore();
+    private void OnCanExecuteChanged(object? sender, EventArgs e)
+    {
+        InvalidateIsEnabledCore();
+        OnCommandStateChanged(); // CanExecuteChanged is also the re-query signal for a Handled checkable parameter
+    }
 
     // ── access keys (doc §12.5; mnemonic source is Header, not Content) ────────────────────────────────
 
@@ -735,7 +840,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (HasItems)
             OpenSubmenuWithFocus();
         else
-            Invoke();
+            OnClick(InvokeMethod.AccessKey);
     }
 
     private AccessText GetAccessText()
@@ -782,6 +887,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
             @new.CanExecuteChanged += item.OnCanExecuteChanged;
 
         item.InvalidateIsEnabledCore();
+        item.OnCommandStateChanged();
     }
 
     private static void OnIconChanged(UIObject sender, object? oldValue, object? newValue)
@@ -795,12 +901,164 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         item.RefreshIconTrayGroup();
     }
 
+    private static void OnIsCheckableChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        // Checkability gates the whole checkable-command wiring: (un)install the default parameter and (re)sync the
+        // checked state as IsCheckable flips (the extra care vs ToggleButton, which is always checkable). A resulting
+        // IsChecked change refreshes the icon/tray via OnIsCheckedChanged; the explicit refresh below still covers a
+        // flip that leaves IsChecked unchanged (the check column appears/disappears with checkability itself).
+        item.OnCommandStateChanged();
+
+        item.UpdateIconSite();
+
+        // An icon (or the checkmark) appearing on / leaving ANY item flips the whole popup's tray — refresh the group.
+        item.RefreshIconTrayGroup();
+    }
+
+    private static void OnIsCheckedChanged(UIObject sender, bool oldValue, bool newValue)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        item.UpdateIconSite();
+
+        // An icon appearing on (or leaving) ANY item flips the whole popup's tray — refresh the group.
+        item.RefreshIconTrayGroup();
+
+        // Control author gets notified before the event(s) go out.
+        item.OnIsCheckedChangedCore(oldValue, newValue);
+
+        var routedEvent = newValue ? CheckedEvent : UncheckedEvent;
+        var args = item.RentEvent(routedEvent);
+
+        item.RaiseEvent(args);
+        args = item.RentEvent(IsCheckedChangedEvent);
+        item.RaiseEvent(args);
+    }
+
+    /// <summary>The control-author hook called after <see cref="IsChecked"/> changes, before the routed event.</summary>
+    private protected virtual void OnIsCheckedChangedCore(bool? oldValue, bool? newValue)
+    {
+    }
+
     private static void OnCommandParameterChanged(UIObject sender, object? oldValue, object? newValue)
     {
-        if (sender is MenuItem item)
-            item.InvalidateIsEnabledCore(); // the gate reads CanExecute(CommandParameter)
+        if (sender is not MenuItem item)
+            return;
+
+        item.InvalidateIsEnabledCore(); // the gate reads CanExecute(CommandParameter)
+        item.OnCommandStateChanged();
+    }
+
+    // ── checkable command parameter (ICheckableCommandParameter), gated on IsCheckable (mirrors ToggleButton) ──
+    //
+    // Backward-compat contract: an item NOT using an ICheckableCommandParameter behaves as before. The ONE accepted
+    // deviation (per design) is that a checkable, COMMANDED item with no CommandParameter set is auto-issued a default
+    // CheckableCommandParameter as its parameter — the caller either doesn't use the parameter (they set none) or
+    // supplies one that supersedes the default. A command-LESS checkable item is never issued one (nothing to carry it
+    // for). Checkability gates the whole thing: a non-checkable item never follows a command parameter, and the default
+    // parameter + checked coercion are wired on the IsCheckable off→on edge and torn down on on→off.
+
+    // The per-item default checkable parameter — allocated lazily so a checkable, commanded item that provides no
+    // ICheckableCommandParameter still participates. Superseded by an app/command-supplied parameter on
+    // CommandParameter. Kept across an IsCheckable off→on cycle for reuse.
+    private CheckableCommandParameter? _defaultCheckableParameter;
+
+    // The checkable command parameter this item's checked state answers to while checkable, or null.
+    private ICheckableCommandParameter? EffectiveCheckableParameter
+        => CommandParameter as ICheckableCommandParameter ?? _defaultCheckableParameter;
+
+    // CommandParameter coercion: while checkable with nothing provided, fall back to the checkable carrier so the
+    // command sees a stable parameter. A non-checkable item — or a provided parameter — passes through unchanged.
+    private static object? CoerceCommandParameter(UIObject sender, object? baseValue)
+        => sender is MenuItem { IsCheckable: true } item && baseValue is null ? item.EffectiveCheckableParameter : baseValue;
+
+    // IsChecked coercion: while checkable with a checkable parameter, reflect the item's preference into the parameter
+    // and take its effective (possibly Handled-overridden) checked state. Otherwise the base value passes through, so a
+    // non-checkable item (and every non-checkable-parameter item) behaves exactly as before — zero-cost backward-compat.
+    private static bool CoerceIsChecked(UIObject sender, bool baseValue)
+    {
+        if (sender is MenuItem { IsCheckable: true, Command: not null, CommandParameter: ICheckableCommandParameter cp })
+        {
+            if (cp is CheckableCommandParameter wcp)
+                wcp.IsChecked = baseValue;
+            return cp.IsCheckedEffective ?? baseValue; // null (indeterminate) has no bool form — keep the preference
+        }
+
+        return baseValue;
+    }
+
+    // Reflect a checkable parameter's IsChecked into the IsChecked BASE value (SetCurrentValue preserves a two-way
+    // binding). No-op unless checkable + commanded — a non-checkable item never follows a command parameter.
+    private void SyncCheckedWithCommandParameter()
+    {
+        if (!IsCheckable || Command is null)
+            return;
+
+        if (CommandParameter is ICheckableCommandParameter readableChecked)
+            SetCurrentValue(IsCheckedProperty, readableChecked.IsChecked ?? false);
+    }
+
+    // Called when the command's effective state may have changed (CanExecuteChanged, or Command / CommandParameter
+    // changed) OR IsCheckable flipped — the single place the checkable-parameter wiring is (re)established and torn
+    // down. Mirrors ButtonBase.OnCommandStateChanged + ToggleButton, but gated on IsCheckable throughout.
+    private void OnCommandStateChanged()
+    {
+        SyncCheckedWithCommandParameter();
+
+        if (!IsCheckable)
+        {
+            // Un-wire: if we auto-installed the default parameter, remove it (revert the SetCurrentValue graft), then
+            // re-coerce so neither CommandParameter nor IsChecked follows the checkable carrier any longer.
+            if (_defaultCheckableParameter is not null &&
+                ReferenceEquals(CommandParameter, _defaultCheckableParameter) &&
+                GetValueSource(CommandParameterProperty) is { Kind: ValueSourceKind.Default })
+            {
+                ClearValue(CommandParameterProperty);
+            }
+
+            CoerceValue(CommandParameterProperty);
+            CoerceValue(IsCheckedProperty);
+            return;
+        }
+
+        // Checkable: allocate the per-item default the first time a COMMANDED item lacks a checked source (a
+        // command-less item never gets one — there's nothing to carry it for), and graft it so coercion can inject it
+        // (the store won't coerce a pure-Default source — PD8). The field survives an un-wire, so re-enabling re-grafts.
+        var checkedSourceIsDefault = GetValueSource(IsCheckedProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false };
+
+        if (_defaultCheckableParameter is null && checkedSourceIsDefault && Command is not null)
+            _defaultCheckableParameter = new CheckableCommandParameter(GetBaseValue(IsCheckedProperty));
+
+        if (_defaultCheckableParameter is not null &&
+            GetValueSource(CommandParameterProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: false })
+        {
+            SetCurrentValue(CommandParameterProperty, _defaultCheckableParameter);
+        }
+
+        CoerceValue(CommandParameterProperty);
+        CoerceValue(IsCheckedProperty);
+
+        // Graft a current-value base so a Handled override can force a value onto an item that never carried one (the
+        // store no-ops coercion on the pure-Default lane); the grafted raw value is the preference Handled falls back to.
+        if (checkedSourceIsDefault && Command is not null)
+            SetCurrentValue(IsCheckedProperty, IsCheckedProperty.GetMetadata(GetType()).DefaultValue);
     }
     
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     public static bool GetIsWithinMenu(UIElement element) => element.GetValue(IsWithinMenuProperty);
+    
+    private static IconCarrier BuildCheckmarkIcon()
+    {
+        return new IconCarrier
+               {
+                   Glyph = "",
+                   GlyphWidth = 2,
+                   Emoji = "✅",
+                   Text = "✓"
+               };
+    }
 }

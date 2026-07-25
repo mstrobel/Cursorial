@@ -275,9 +275,9 @@ public sealed class Section07_ContentPresenter
             host.RunFrame();
         }
 
-        // Swap to element content so the LAST fallback TextBlock is discarded too. Every rebuilt fallback child's
+        // Swap to null content so the LAST fallback TextBlock is discarded too. Every rebuilt fallback child's
         // TextWrapping binding was disposed on discard — none leak onto the presenter.
-        cp.Content = new Border();
+        cp.Content = null;
         host.RunFrame();
 
         Assert.DoesNotContain(Cursorial.UI.Data.BindingLeakTracker.Sweep(), l => l.Path.Contains("TextWrapping"));

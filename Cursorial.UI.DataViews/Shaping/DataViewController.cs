@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 
 namespace Cursorial.UI.DataViews.Shaping;
 
@@ -13,7 +12,7 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// </summary>
 public abstract class DataViewController : IDisposable
 {
-    private protected DataViewController() { }
+    private protected DataViewController() {}
 
     /// <summary>Closes the typed controller over <paramref name="rowType"/>. Value-type rows are
     /// supported with runtime guards (design doc §9.6): they must attach with
@@ -22,7 +21,8 @@ public abstract class DataViewController : IDisposable
     public static DataViewController Create(Type rowType, IShapingScheduler? scheduler = null)
     {
         ArgumentNullException.ThrowIfNull(rowType);
-        return (DataViewController)Activator.CreateInstance(
+
+        return (DataViewController) Activator.CreateInstance(
             typeof(DataViewController<>).MakeGenericType(rowType), [scheduler])!;
     }
 
@@ -156,7 +156,8 @@ public abstract class DataViewController : IDisposable
     /// <param name="threshold">The boxed threshold key value, or null when unavailable.</param>
     /// <returns>False when the column is unknown, <paramref name="count"/> ≤ 0, or no visible row
     /// has a non-null value for the column.</returns>
-    public abstract bool TryGetTopKThreshold(object columnKey, int count, bool percent, bool top, out object? threshold);
+    public abstract bool TryGetTopKThreshold(object columnKey, int count, bool percent, bool top,
+                                             out object? threshold);
 
     /// <summary>
     /// The number of CURRENT visible (filtered, pre-collapse) rows with a non-null key value for
@@ -194,6 +195,15 @@ public abstract class DataViewController : IDisposable
     /// <summary>The grand-total formatted summaries, aligned with the summary descriptions.</summary>
     public IReadOnlyList<string> Totals { get; private protected set; } = [];
 
+    /// <summary>
+    /// Computes one aggregate over the CURRENT filtered view on demand — the summary editor's live
+    /// preview and the summary menu's per-aggregate values. Formatted through the SAME lane as the
+    /// footer totals (<paramref name="format"/> and <paramref name="displayTemplate"/> optional).
+    /// Null when the column is unknown, the view is empty, or the aggregate doesn't apply (e.g. Sum
+    /// on a non-numeric column).
+    /// </summary>
+    public abstract string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null);
+
     /// <summary>Drains any pending coalesced ticks synchronously (tests + frame-boundary flushes).</summary>
     public abstract void Flush();
 
@@ -209,7 +219,7 @@ public abstract class DataViewController : IDisposable
 /// back by id through the store (<see cref="TrySetCellFromText"/>).
 /// </summary>
 [RequiresDynamicCode("The shaping engine compiles expression trees specialized to the row type.")]
-public sealed class DataViewController<TRow> : DataViewController
+public sealed class DataViewController<TRow> : DataViewController where TRow : notnull
 {
     private readonly IShapingScheduler _scheduler;
     private readonly RowStore<TRow> _store = new();
@@ -288,14 +298,17 @@ public sealed class DataViewController<TRow> : DataViewController
         ThrowIfDisposed();
 
         _columns.Clear();
+
         foreach (var description in columns)
         {
             var selector = description.KeySelector
-                ?? ShapingCodegen.BuildPropertyPathLambda(typeof(TRow), description.FieldName
-                    ?? throw new ArgumentException($"Column '{description.Key}' has neither FieldName nor KeySelector."));
+                           ?? ShapingCodegen.BuildPropertyPathLambda(typeof(TRow), description.FieldName
+                                                                                   ?? throw new ArgumentException(
+                                                                                       $"Column '{description.Key}' has neither FieldName nor KeySelector."));
 
-            var column = (ShapedColumn<TRow>)ShapingCodegen.CreateColumn<TRow>(
+            var column = (ShapedColumn<TRow>) ShapingCodegen.CreateColumn<TRow>(
                 description.Key, selector, description.StringComparison, description.Format);
+
             _columns.Add((description, column));
         }
 
@@ -312,11 +325,16 @@ public sealed class DataViewController<TRow> : DataViewController
         // never-extracted vectors). Drop shape entries whose key no longer resolves (the consumer's
         // next SetShape re-authorizes them), then recompile against the new columns.
         _sorts = _sorts.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
+
         _groups = _groups.Where(d => FindColumn(d.ColumnKey) is not null)
-                         .Select(d => d.OrderBySummary is { } order && FindColumn(order.ColumnKey) is null
-                             ? d with { OrderBySummary = null } // the summary column left; the level falls back to key order
-                             : d)
+                         .Select(d => d.OrderBySummary is {} order && FindColumn(order.ColumnKey) is null
+                                          ? d with
+                                            {
+                                                OrderBySummary = null
+                                            } // the summary column left; the level falls back to key order
+                                          : d)
                          .ToArray();
+
         _summaries = _summaries.Where(d => FindColumn(d.ColumnKey) is not null).ToArray();
         CompileShape();
 
@@ -324,9 +342,9 @@ public sealed class DataViewController<TRow> : DataViewController
     }
 
     public override void SetShape(
-        IReadOnlyList<SortDescription> sorts,
-        IReadOnlyList<GroupDescription> groups,
-        IReadOnlyList<SummaryDescription> summaries,
+        IReadOnlyList<SortDescription>? sorts,
+        IReadOnlyList<GroupDescription>? groups,
+        IReadOnlyList<SummaryDescription>? summaries,
         FilterNode? filter)
     {
         ThrowIfDisposed();
@@ -338,6 +356,7 @@ public sealed class DataViewController<TRow> : DataViewController
         Reshape();
     }
 
+    [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
     public override void AttachSource(IEnumerable? source, bool liveUpdates = true)
     {
         ThrowIfDisposed();
@@ -361,9 +380,10 @@ public sealed class DataViewController<TRow> : DataViewController
         if (source is not null)
         {
             int index = 0;
+
             foreach (var item in source)
             {
-                var row = (TRow)item!;
+                var row = (TRow) item!;
                 _store.Insert(index++, row);
                 SubscribeRow(row);
             }
@@ -385,6 +405,7 @@ public sealed class DataViewController<TRow> : DataViewController
         ThrowIfDisposed();
 
         bool changed = collapsed ? _collapsedPaths.Add(groupPath) : _collapsedPaths.Remove(groupPath);
+
         if (!changed)
             return;
 
@@ -401,7 +422,25 @@ public sealed class DataViewController<TRow> : DataViewController
             if (Equals(description.Key, columnKey))
                 return column;
         }
+
         return null;
+    }
+
+    public override string? ComputeSummaryText(object columnKey, AggregateKind kind, string? format = null, string? displayTemplate = null)
+    {
+        var column = FindColumn(columnKey);
+        if (column is null || _sortedLength == 0)
+            return null;
+        try
+        {
+            var aggregator = ColumnAggregator.Create(column, kind, format);
+            var value = aggregator.Aggregate(_sortedView, 0, _sortedLength);
+            return ApplyTemplate(displayTemplate, aggregator.Format(value));
+        }
+        catch (Exception) // an aggregate that doesn't apply to the column type (e.g. Sum on a string)
+        {
+            return null;
+        }
     }
 
     public override string FormatCell(int rowId, object columnKey)
@@ -420,6 +459,7 @@ public sealed class DataViewController<TRow> : DataViewController
         ArgumentNullException.ThrowIfNull(text);
 
         var column = FindColumn(columnKey);
+
         if (column is null)
             return false;
 
@@ -451,6 +491,7 @@ public sealed class DataViewController<TRow> : DataViewController
             MarkDirty(rowId);
             ScheduleTick();
         }
+
         return true;
     }
 
@@ -470,6 +511,7 @@ public sealed class DataViewController<TRow> : DataViewController
     public override bool CanCompileFilter(FilterNode fragment)
     {
         ArgumentNullException.ThrowIfNull(fragment);
+
         try
         {
             ShapingFilter.Compile(fragment, FindColumn, RowAccessor);
@@ -559,15 +601,18 @@ public sealed class DataViewController<TRow> : DataViewController
                 // (authoring-time, synchronous), never at evaluation.
                 var compiled = ShapingFilter.Compile(
                     FilterNode.Custom(predicate.RowPredicate), FindColumn, RowAccessor);
+
                 _rowFormatRules.Add((compiled, predicate.Format));
                 continue;
             }
 
             var column = FindColumn(rule.ColumnKey);
+
             if (column is null)
                 continue;
 
             var entry = _columnFormats.FirstOrDefault(e => ReferenceEquals(e.Column, column));
+
             if (entry is null)
             {
                 entry = new CompiledColumnFormats { ColumnKey = rule.ColumnKey, Column = column };
@@ -584,22 +629,28 @@ public sealed class DataViewController<TRow> : DataViewController
                 case ColorScaleRule scale:
                     if (scale.Stops.Count is < 2 or > 3)
                         throw new ArgumentException($"A color scale needs 2 or 3 stops; got {scale.Stops.Count}.");
+
                     entry.DoubleReader ??= column.TryCreateDoubleReader();
+
                     if (entry.DoubleReader is not null)
                         entry.ColorScale = scale;
+
                     break;
 
                 case ThresholdRule threshold:
-                    foreach (var (op, value, format) in threshold.Entries)
+                    foreach (var thresholdEntry in threshold.Entries)
                     {
                         // Each entry compiles through the column's typed condition builder — the
-                        // FILTER lane, so literal conversion and null ordering can never drift.
+                        // FILTER lane, so literal conversion and null ordering can never drift. The
+                        // SecondValue upper bound feeds Between (null for every other operator).
                         var slot = System.Linq.Expressions.Expression.Parameter(typeof(int), "slot");
-                        var body = column.BuildConditionExpression(slot, op, value, null);
+                        var body = column.BuildConditionExpression(slot, thresholdEntry.Operator,
+                                                                   thresholdEntry.Value, thresholdEntry.SecondValue);
                         entry.Thresholds.Add((
                             System.Linq.Expressions.Expression.Lambda<Func<int, bool>>(body, slot).Compile(),
-                            format));
+                            thresholdEntry.Format));
                     }
+
                     break;
 
                 case TopBottomRule topBottom:
@@ -607,10 +658,11 @@ public sealed class DataViewController<TRow> : DataViewController
                     // threshold itself is per-publish state (EnsureFormatStats re-derives it
                     // through the TopK seam, so filter changes re-rank without a recompile).
                     entry.TopBottom.Add(new CompiledTopBottom
-                    {
-                        Rule = topBottom,
-                        Qualifies = column.CreateRankPredicate(topBottom.Top),
-                    });
+                                        {
+                                            Rule = topBottom,
+                                            Qualifies = column.CreateRankPredicate(topBottom.Top),
+                                        });
+
                     break;
             }
         }
@@ -624,6 +676,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (_statsVersion == _version)
             return;
+
         _statsVersion = _version;
 
         foreach (var entry in _columnFormats)
@@ -637,20 +690,25 @@ public sealed class DataViewController<TRow> : DataViewController
                                                       out topBottom.Threshold);
             }
 
-            if (entry.DoubleReader is not { } read || (!entry.HasDataBar && entry.ColorScale is null))
+            if (entry.DoubleReader is not {} read || entry is { HasDataBar: false, ColorScale: null })
                 continue;
 
             double min = double.NaN, max = double.NaN;
+
             for (int i = 0; i < _sortedLength; i++)
             {
                 double v = read(_sortedView[i]);
+
                 if (double.IsNaN(v))
                     continue; // null cells don't anchor the range (ignore-null, the aggregate convention)
+
                 if (double.IsNaN(min) || v < min)
                     min = v;
+
                 if (double.IsNaN(max) || v > max)
                     max = v;
             }
+
             entry.StatsMin = min;
             entry.StatsMax = max;
         }
@@ -663,17 +721,20 @@ public sealed class DataViewController<TRow> : DataViewController
             if (Equals(entry.ColumnKey, columnKey))
                 return entry;
         }
+
         return null;
     }
 
     public override CellFormat GetCellFormat(int rowId, object columnKey)
     {
         var entry = FindFormats(columnKey);
+
         if (entry is null)
             return default;
 
         // Threshold entries: FIRST match wins (the authored priority order).
         CellFormat result = default;
+
         foreach (var (predicate, format) in entry.Thresholds)
         {
             if (predicate(rowId))
@@ -688,6 +749,7 @@ public sealed class DataViewController<TRow> : DataViewController
         if (result.IsEmpty && entry.TopBottom.Count > 0)
         {
             EnsureFormatStats();
+
             foreach (var topBottom in entry.TopBottom)
             {
                 if (topBottom.Valid && topBottom.Qualifies(rowId, topBottom.Threshold))
@@ -699,11 +761,12 @@ public sealed class DataViewController<TRow> : DataViewController
         }
 
         // ColorScale fills the foreground only when no threshold claimed it (§2.7 layering).
-        if (entry is { ColorScale: { } scale, DoubleReader: { } read } && result.Foreground is null)
+        if (entry is { ColorScale: {} scale, DoubleReader: {} read } && result.Foreground is null)
         {
             EnsureFormatStats();
             double v = read(rowId);
             double range = entry.StatsMax - entry.StatsMin;
+
             if (!double.IsNaN(v) && !double.IsNaN(range))
             {
                 double t = range <= 0 ? 1 : Math.Clamp((v - entry.StatsMin) / range, 0, 1);
@@ -714,18 +777,19 @@ public sealed class DataViewController<TRow> : DataViewController
         return result;
     }
 
-    private static Cursorial.Output.Color InterpolateStops(IReadOnlyList<Cursorial.Output.Color> stops, double t)
+    private static Output.Color InterpolateStops(IReadOnlyList<Output.Color> stops, double t)
     {
         // 2 stops: one segment; 3 stops: split at 0.5 (min→mid→max, the heat-scale convention).
         int segments = stops.Count - 1;
         double scaled = t * segments;
-        int index = Math.Min(segments - 1, (int)scaled);
+        int index = Math.Min(segments - 1, (int) scaled);
         double local = scaled - index;
         var (a, b) = (stops[index], stops[index + 1]);
-        return Cursorial.Output.Color.FromRgb(
-            (byte)Math.Round(a.Red + (b.Red - a.Red) * local),
-            (byte)Math.Round(a.Green + (b.Green - a.Green) * local),
-            (byte)Math.Round(a.Blue + (b.Blue - a.Blue) * local));
+
+        return Output.Color.FromRgb(
+            (byte) Math.Round(a.Red + (b.Red - a.Red) * local),
+            (byte) Math.Round(a.Green + (b.Green - a.Green) * local),
+            (byte) Math.Round(a.Blue + (b.Blue - a.Blue) * local));
     }
 
     public override CellFormat GetRowFormat(int rowId)
@@ -735,20 +799,24 @@ public sealed class DataViewController<TRow> : DataViewController
             if (predicate(rowId))
                 return format; // first match wins (authored priority)
         }
+
         return default;
     }
 
     public override double GetDataBarFraction(int rowId, object columnKey)
     {
         var entry = FindFormats(columnKey);
-        if (entry is not { HasDataBar: true, DoubleReader: { } read })
+
+        if (entry is not { HasDataBar: true, DoubleReader: {} read })
             return double.NaN;
 
         EnsureFormatStats();
         double v = read(rowId);
         double range = entry.StatsMax - entry.StatsMin;
+
         if (double.IsNaN(v) || double.IsNaN(range))
             return double.NaN;
+
         return range <= 0 ? 1 : Math.Clamp((v - entry.StatsMin) / range, 0, 1);
     }
 
@@ -764,14 +832,16 @@ public sealed class DataViewController<TRow> : DataViewController
                 // only on the owner thread and never while a shape is in flight; the drain is the
                 // one site that satisfies both, and it coalesces multi-ticks per row for free).
                 int index = e.NewStartingIndex;
+
                 foreach (var item in e.NewItems!)
                 {
-                    var row = (TRow)item!;
+                    var row = (TRow) item!;
                     int slot = _store.Insert(index++, row);
                     SubscribeRow(row);
                     MarkInserted(slot);
                     _addedSlotsThisBatch.Add(slot);
                 }
+
                 break;
             }
 
@@ -779,26 +849,29 @@ public sealed class DataViewController<TRow> : DataViewController
             {
                 for (int i = 0; i < e.OldItems!.Count; i++)
                 {
-                    var row = (TRow)_store.GetRow(_store.SlotAt(e.OldStartingIndex));
+                    var row = _store.GetRow(_store.SlotAt(e.OldStartingIndex));
                     int slot = _store.RemoveAt(e.OldStartingIndex);
                     UnsubscribeRow(row);
                     MarkRemoved(slot);
                 }
+
                 break;
             }
 
             case NotifyCollectionChangedAction.Replace:
             {
                 int index = e.NewStartingIndex;
+
                 foreach (var item in e.NewItems!)
                 {
                     var old = _store.GetRow(_store.SlotAt(index));
-                    var row = (TRow)item!;
+                    var row = (TRow) item!;
                     int slot = _store.Replace(index++, row);
                     UnsubscribeRow(old);
                     SubscribeRow(row);
                     MarkDirty(slot); // extraction deferred to the drain (invariant 1)
                 }
+
                 break;
             }
 
@@ -807,6 +880,7 @@ public sealed class DataViewController<TRow> : DataViewController
                 // just re-map the index space.
                 for (int i = 0; i < (e.OldItems?.Count ?? 1); i++)
                     _store.Move(e.OldStartingIndex + i, e.NewStartingIndex + i);
+
                 return;
 
             default: // Reset
@@ -841,12 +915,13 @@ public sealed class DataViewController<TRow> : DataViewController
 
         // "" and "Item[]" always match (the binding-engine convention); otherwise only shaped columns tick.
         if (!string.IsNullOrEmpty(e.PropertyName) && e.PropertyName != "Item[]" &&
-            _shapedPropertyNames is { } names && !names.Contains(e.PropertyName))
+            _shapedPropertyNames is {} names && !names.Contains(e.PropertyName))
         {
             return;
         }
 
         int slot = _store.SlotOf(row);
+
         if (slot < 0)
             return;
 
@@ -889,6 +964,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (_tickScheduled)
             return;
+
         _tickScheduled = true;
         _scheduler.Post(DrainTick);
     }
@@ -896,6 +972,7 @@ public sealed class DataViewController<TRow> : DataViewController
     public override void Flush()
     {
         ThrowIfDisposed();
+
         if (_tickScheduled)
             DrainTick();
     }
@@ -912,6 +989,7 @@ public sealed class DataViewController<TRow> : DataViewController
         _tickScheduled = false;
 
         int k = _dirtyRows.Count + _removed.Count;
+
         if (k == 0)
             return;
 
@@ -919,21 +997,24 @@ public sealed class DataViewController<TRow> : DataViewController
         foreach (int slot in _dirtyRows)
         {
             var row = _store.GetRow(slot);
-            if (row is not null)
-                ExtractRowKeys(row, slot);
+
+            ExtractRowKeys(row, slot);
         }
 
         // Visibility recheck for dirty rows: a row failing the filter leaves the view (mark removed
         // for the sweep); a passing row (re-)inserts via the dirty lane.
         int write = 0;
+
         for (int i = 0; i < _dirtyRows.Count; i++)
         {
             int slot = _dirtyRows[i];
+
             if (_filterPredicate is null || _filterPredicate(slot))
                 _dirtyRows[write++] = slot;
             else
                 _removed.Add(slot);
         }
+
         _dirtyRows.RemoveRange(write, _dirtyRows.Count - write);
 
         if (_dirtyRows.Count > ShapingRepair.FullSortThreshold * Math.Max(1, _sortedLength))
@@ -945,12 +1026,15 @@ public sealed class DataViewController<TRow> : DataViewController
             // array: the published snapshot aliases _sortedView (immutable-by-contract, §2.6).
             var fresh = new int[Math.Max(16, _sortedLength + _dirtyRows.Count)];
             int count = 0;
+
             for (int i = 0; i < _sortedLength; i++)
             {
                 int slot = _sortedView[i];
+
                 if (!_removed.Contains(slot) && !_dirty.Contains(slot))
                     fresh[count++] = slot;
             }
+
             foreach (int slot in _dirtyRows)
                 fresh[count++] = slot;
 
@@ -966,9 +1050,11 @@ public sealed class DataViewController<TRow> : DataViewController
 
             int capacity = _sortedLength + dirtyBuffer.Length;
             var result = new int[capacity]; // pooling arrives with the background lane
+
             _sortedLength = ShapingRepair.Repair(
                 _sortedView, _sortedLength, _dirty, _removed, dirtyBuffer, dirtyBuffer.Length,
                 _slotComparison!, result, _scratch);
+
             _sortedView = result;
 
             PublishFromSorted();
@@ -1001,10 +1087,11 @@ public sealed class DataViewController<TRow> : DataViewController
             foreach (int slot in _dirtyRows)
             {
                 var row = _store.GetRow(slot);
-                if (row is not null)
-                    ExtractRowKeys(row, slot);
+
+                ExtractRowKeys(row, slot);
             }
         }
+
         _dirty.Clear();
         _removed.Clear();
         _dirtyRows.Clear();
@@ -1024,6 +1111,7 @@ public sealed class DataViewController<TRow> : DataViewController
         var (view, length) = FilterAndSort(_store.SourceOrder.ToArray(), _slotComparison!,
                                            _filterPredicate, _scratch,
                                            _sortedView.Length >= _store.Count ? _sortedView : null);
+
         _sortedView = view;
         _sortedLength = length;
 
@@ -1036,10 +1124,11 @@ public sealed class DataViewController<TRow> : DataViewController
         SortScratch scratch, int[]? reusable)
     {
         var view = reusable is not null && reusable.Length >= sourceOrder.Length
-            ? reusable
-            : new int[Math.Max(16, sourceOrder.Length * 2)];
+                       ? reusable
+                       : new int[Math.Max(16, sourceOrder.Length * 2)];
 
         int length = 0;
+
         foreach (int slot in sourceOrder)
         {
             if (filter is null || filter(slot))
@@ -1053,7 +1142,7 @@ public sealed class DataViewController<TRow> : DataViewController
     private void RunBackgroundReshape(int generation)
     {
         _inFlight = true;
-        _store.DeferReclamation = true;   // §2.6 invariant 2
+        _store.DeferReclamation = true; // §2.6 invariant 2
 
         // Capture everything the pipeline reads: the compiled kit is immutable per shape; the source
         // order is copied (the store mutates on the owner thread while we run); vectors are sealed
@@ -1063,19 +1152,21 @@ public sealed class DataViewController<TRow> : DataViewController
         var filter = _filterPredicate;
 
         BackgroundRunner(() =>
-        {
-            try
-            {
-                var (view, length) = FilterAndSort(sourceOrder, comparison, filter, new SortScratch(), reusable: null);
-                _scheduler.Post(() => CompleteBackgroundReshape(generation, view, length));
-            }
-            catch (Exception)
-            {
-                // A faulted shape must not strand the gates (a poisoned comparer/filter surfaces on
-                // the next sync operation); publish nothing.
-                _scheduler.Post(() => CompleteBackgroundReshape(generation, null, 0));
-            }
-        });
+                         {
+                             try
+                             {
+                                 var (view, length) =
+                                     FilterAndSort(sourceOrder, comparison, filter, new SortScratch(), reusable: null);
+
+                                 _scheduler.Post(() => CompleteBackgroundReshape(generation, view, length));
+                             }
+                             catch (Exception)
+                             {
+                                 // A faulted shape must not strand the gates (a poisoned comparer/filter surfaces on
+                                 // the next sync operation); publish nothing.
+                                 _scheduler.Post(() => CompleteBackgroundReshape(generation, null, 0));
+                             }
+                         });
     }
 
     private void CompleteBackgroundReshape(int generation, int[]? view, int length)
@@ -1115,6 +1206,7 @@ public sealed class DataViewController<TRow> : DataViewController
         int[] flat;
         int flatLength;
         bool grouped = _groupColumns.Length > 0;
+
         if (!grouped)
         {
             nodes = [];
@@ -1132,12 +1224,14 @@ public sealed class DataViewController<TRow> : DataViewController
                 foreach (var node in _groupBuffers.Nodes)
                 {
                     var cells = new string[_aggregators.Length];
+
                     for (int i = 0; i < _aggregators.Length; i++)
                     {
                         var (description, aggregator) = _aggregators[i];
                         var value = aggregator.Aggregate(_sortedView, node.SortedStart, node.RowCount);
                         cells[i] = ApplyTemplate(description.DisplayTemplate, aggregator.Format(value));
                     }
+
                     node.Summaries = cells;
                 }
             }
@@ -1158,12 +1252,14 @@ public sealed class DataViewController<TRow> : DataViewController
         if (_aggregators.Length > 0)
         {
             var totals = new string[_aggregators.Length];
+
             for (int i = 0; i < _aggregators.Length; i++)
             {
                 var (description, aggregator) = _aggregators[i];
                 var value = aggregator.Aggregate(_sortedView, 0, _sortedLength);
                 totals[i] = ApplyTemplate(description.DisplayTemplate, aggregator.Format(value));
             }
+
             Totals = totals;
         }
         else
@@ -1188,8 +1284,6 @@ public sealed class DataViewController<TRow> : DataViewController
         RaiseSnapshotChanged();
     }
 
-    private static string[] _emptyStrings = [];
-
     private static int[] CopyFlat(int[] flat, int length)
     {
         var copy = new int[length];
@@ -1209,6 +1303,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         var buffers = _groupBuffers;
         var nodes = buffers.Nodes;
+
         if (nodes.Count == 0)
             return;
 
@@ -1218,13 +1313,14 @@ public sealed class DataViewController<TRow> : DataViewController
         for (int n = 0; n < nodes.Count; n++)
         {
             var node = nodes[n];
-            if (_groupOrderKits[node.Level] is { } kit)
+
+            if (_groupOrderKits[node.Level] is {} kit)
                 _groupOrderValues[n] = kit.Aggregator.Aggregate(_sortedView, node.SortedStart, node.RowCount);
         }
 
         _groupOrderComparer.Values = _groupOrderValues;
 
-        if (_groupOrderKits[0] is { } rootKit && buffers.RootCount > 1)
+        if (_groupOrderKits[0] is {} rootKit && buffers.RootCount > 1)
         {
             _groupOrderComparer.Aggregator = rootKit.Aggregator;
             _groupOrderComparer.Descending = rootKit.Descending;
@@ -1234,7 +1330,8 @@ public sealed class DataViewController<TRow> : DataViewController
         for (int n = 0; n < nodes.Count; n++)
         {
             int childLevel = nodes[n].Level + 1;
-            if (childLevel >= _groupOrderKits.Length || _groupOrderKits[childLevel] is not { } kit ||
+
+            if (childLevel >= _groupOrderKits.Length || _groupOrderKits[childLevel] is not {} kit ||
                 buffers.ChildCount[n] <= 1)
             {
                 continue;
@@ -1258,8 +1355,9 @@ public sealed class DataViewController<TRow> : DataViewController
         public int Compare(int x, int y)
         {
             int c = Descending
-                ? Aggregator.CompareValues(Values[y], Values[x])
-                : Aggregator.CompareValues(Values[x], Values[y]);
+                        ? Aggregator.CompareValues(Values[y], Values[x])
+                        : Aggregator.CompareValues(Values[x], Values[y]);
+
             return c != 0 ? c : x - y; // node indices are non-negative — no overflow
         }
     }
@@ -1268,6 +1366,7 @@ public sealed class DataViewController<TRow> : DataViewController
 
     private readonly Dictionary<(object ColumnKey, int Count, bool Percent, bool Top), (bool Found, object? Threshold)>
         _topKCache = new();
+
     private readonly Dictionary<object, int> _visibleNonNullCache = new();
     private int _topKVersion = -1;
     private int[] _topKScratch = [];
@@ -1281,12 +1380,15 @@ public sealed class DataViewController<TRow> : DataViewController
 
         if (count <= 0)
             return false;
+
         var column = FindColumn(columnKey);
+
         if (column is null)
             return false;
 
         InvalidateStatsCachesIfStale();
         var cacheKey = (columnKey, count, percent, top);
+
         if (_topKCache.TryGetValue(cacheKey, out var cached))
         {
             threshold = cached.Threshold;
@@ -1295,15 +1397,16 @@ public sealed class DataViewController<TRow> : DataViewController
 
         int n = CollectVisibleNonNull(column);
         bool found = false;
+
         if (n > 0)
         {
             // K: direct, or ceil(percent% of the non-null population); clamps to the population
             // (K ≥ N ⇒ the threshold is the extreme value — every non-null cell qualifies).
-            long k = percent ? (long)Math.Ceiling(count * (double)n / 100) : count;
+            long k = percent ? (long) Math.Ceiling(count * (double) n / 100) : count;
             k = Math.Clamp(k, 1, n);
 
             // The K-th largest sits at sorted position n−K (ascending); the K-th smallest at K−1.
-            int nth = top ? n - (int)k : (int)k - 1;
+            int nth = top ? n - (int) k : (int) k - 1;
             ShapingStats.SelectNth(_topKScratch, n, nth, column.CompareSlots);
             threshold = column.GetKeyBoxed(_topKScratch[nth]);
             found = true;
@@ -1320,10 +1423,12 @@ public sealed class DataViewController<TRow> : DataViewController
         ArgumentNullException.ThrowIfNull(columnKey);
 
         var column = FindColumn(columnKey);
+
         if (column is null)
             return 0;
 
         InvalidateStatsCachesIfStale();
+
         if (_visibleNonNullCache.TryGetValue(columnKey, out int cached))
             return cached;
 
@@ -1340,12 +1445,15 @@ public sealed class DataViewController<TRow> : DataViewController
             _topKScratch = new int[Math.Max(_sortedLength, Math.Max(16, _topKScratch.Length * 2))];
 
         int n = 0;
+
         for (int i = 0; i < _sortedLength; i++)
         {
             int slot = _sortedView[i];
+
             if (!column.IsKeyNull(slot))
                 _topKScratch[n++] = slot;
         }
+
         return n;
     }
 
@@ -1355,13 +1463,29 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (_topKVersion == _version)
             return;
+
         _topKVersion = _version;
         _topKCache.Clear();
         _visibleNonNullCache.Clear();
     }
 
     private static string ApplyTemplate(string? template, string value)
-        => template is null ? value : string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+    {
+        if (template is null)
+            return value;
+
+        // A malformed composite-format template ("{0" unclosed, "{1}" out of range) throws
+        // FormatException — a user/metadata display template must never crash the summary path, so a
+        // bad one degrades to the bare formatted value.
+        try
+        {
+            return string.Format(System.Globalization.CultureInfo.CurrentCulture, template, value);
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
+    }
 
     private void CompileShape()
     {
@@ -1375,6 +1499,7 @@ public sealed class DataViewController<TRow> : DataViewController
             levels.Add((column, group.Direction == SortDirection.Descending));
             groupColumns.Add(column);
         }
+
         foreach (var sort in _sorts)
             levels.Add((RequireColumn(sort.ColumnKey), sort.Direction == SortDirection.Descending));
 
@@ -1385,23 +1510,27 @@ public sealed class DataViewController<TRow> : DataViewController
         // summary is displayed (the projection reads it directly, not the display summaries).
         _groupOrderKits = new (ColumnAggregator, bool)?[_groups.Count];
         _hasGroupOrder = false;
+
         for (int i = 0; i < _groups.Count; i++)
         {
-            if (_groups[i].OrderBySummary is not { } order)
+            if (_groups[i].OrderBySummary is not {} order)
                 continue;
+
             _groupOrderKits[i] = (
-                ColumnAggregator.Create(RequireColumn(order.ColumnKey), order.Aggregate, order.Format),
-                _groups[i].SummaryDirection == SortDirection.Descending);
+                                     ColumnAggregator.Create(RequireColumn(order.ColumnKey), order.Aggregate,
+                                                             order.Format),
+                                     _groups[i].SummaryDirection == SortDirection.Descending);
+
             _hasGroupOrder = true;
         }
 
         _filterPredicate = _filter is null
-            ? null
-            : ShapingFilter.Compile(_filter, FindColumn, RowAccessor);
+                               ? null
+                               : ShapingFilter.Compile(_filter, FindColumn, RowAccessor);
 
         _aggregators = _summaries
-            .Select(s => (s, ColumnAggregator.Create(RequireColumn(s.ColumnKey), s.Aggregate, s.Format)))
-            .ToArray();
+                      .Select(s => (s, ColumnAggregator.Create(RequireColumn(s.ColumnKey), s.Aggregate, s.Format)))
+                      .ToArray();
     }
 
     private ShapedColumn RequireColumn(object key)
@@ -1417,6 +1546,7 @@ public sealed class DataViewController<TRow> : DataViewController
         foreach (int slot in _store.SourceOrder)
         {
             var row = _store.GetRow(slot);
+
             foreach (var (_, column) in _columns)
                 column.ExtractKey(row, slot); // typed — value-type rows never box on the extract path (§9.6)
         }
@@ -1435,6 +1565,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (!_liveUpdates || row is not INotifyPropertyChanged inpc)
             return;
+
         _rowHandler ??= OnRowPropertyChanged;
         inpc.PropertyChanged += _rowHandler;
     }
@@ -1451,6 +1582,7 @@ public sealed class DataViewController<TRow> : DataViewController
         // Nested-path invalidation over intermediate hops is a recorded limitation (a change to
         // row.Customer itself re-ticks; a change INSIDE a stale Customer instance does not).
         var names = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var column in columns)
         {
             if (column.FieldName is { Length: > 0 } field)
@@ -1463,6 +1595,7 @@ public sealed class DataViewController<TRow> : DataViewController
                 return null; // lambda columns: unknown member set — every tick shapes (conservative)
             }
         }
+
         return names;
     }
 
@@ -1474,6 +1607,7 @@ public sealed class DataViewController<TRow> : DataViewController
             foreach (int slot in _store.SourceOrder)
                 UnsubscribeRow(_store.GetRow(slot));
         }
+
         _store.Clear();
         _dirty.Clear();
         _removed.Clear();
@@ -1482,9 +1616,10 @@ public sealed class DataViewController<TRow> : DataViewController
         if (_source is not null)
         {
             int index = 0;
+
             foreach (var item in _source)
             {
-                var row = (TRow)item!;
+                var row = (TRow) item!;
                 _store.Insert(index++, row);
                 SubscribeRow(row);
             }
@@ -1498,6 +1633,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (_source is INotifyCollectionChanged incc && _collectionHandler is not null)
             incc.CollectionChanged -= _collectionHandler;
+
         _collectionHandler = null;
 
         if (_rowHandler is not null)
@@ -1525,6 +1661,7 @@ public sealed class DataViewController<TRow> : DataViewController
     {
         if (_disposed)
             return;
+
         DetachSource();
         _disposed = true;
     }

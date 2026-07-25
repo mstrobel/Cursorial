@@ -30,16 +30,21 @@ public sealed class DataGridEditBar : UIElement
     public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> IndicatorBrushProperty =
         UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(IndicatorBrush));
 
+    /// <summary>The ✕ validation-error ink (§10.2 — the danger tint the commit veto message wears).</summary>
+    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ErrorBrushProperty =
+        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(ErrorBrush));
+
     static DataGridEditBar()
     {
         AffectsRender<DataGridEditBar>(BackgroundProperty, TextBrushProperty, KeyBrushProperty,
-                                       IndicatorBrushProperty);
+                                       IndicatorBrushProperty, ErrorBrushProperty);
     }
 
     public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
     public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? KeyBrush { get => GetValue(KeyBrushProperty); set => SetValue(KeyBrushProperty, value); }
     public Cursorial.Drawing.Media.IBrush? IndicatorBrush { get => GetValue(IndicatorBrushProperty); set => SetValue(IndicatorBrushProperty, value); }
+    public Cursorial.Drawing.Media.IBrush? ErrorBrush { get => GetValue(ErrorBrushProperty); set => SetValue(ErrorBrushProperty, value); }
 
     private DataGrid? _owner;
 
@@ -81,13 +86,24 @@ public sealed class DataGridEditBar : UIElement
         string caption = owner.EditCaption();
         if (caption.Length > 0)
             x = Draw(context, x, $" {caption}", TextBrush);
+
+        // §10.2: a rejected commit shows the validator's message in the danger ink, in place of the
+        // key hints (prominent, and it can't get clipped off the right past a long hint run).
+        if (owner.EditValidationError is { Length: > 0 } error)
+        {
+            Draw(context, x, $"  ✕ {error}", ErrorBrush ?? KeyBrush);
+            return;
+        }
+
         x = Draw(context, x, " · ", TextBrush);
         x = Draw(context, x, "Enter", KeyBrush);
         x = Draw(context, x, " commit · ", TextBrush);
         x = Draw(context, x, "Esc", KeyBrush);
         x = Draw(context, x, " cancel · ", TextBrush);
         x = Draw(context, x, "Tab", KeyBrush);
-        Draw(context, x, " next cell", TextBrush);
+        // The new-row session is one-cell-at-a-time (§3.2): Tab COMMITS the pending row there —
+        // the hint says what the key does (sweep [20]; a hint must never advertise the wrong verb).
+        Draw(context, x, owner.IsNewRowSession ? " commit row" : " next cell", TextBrush);
     }
 
     /// <summary>Draws one segment and returns the advanced x (clipped by the band's own boundary).</summary>

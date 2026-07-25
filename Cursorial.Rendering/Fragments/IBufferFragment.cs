@@ -1,4 +1,6 @@
 using System.Buffers;
+
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Content;
 
@@ -49,6 +51,12 @@ namespace Cursorial.Rendering.Fragments;
 /// </remarks>
 public interface IBufferFragment
 {
+    /// <summary>
+    /// If the fragment provides its own style that should be blended over the anchor style, it may
+    /// advertise it here.
+    /// </summary>
+    Style? StyleOverride => null;
+   
     /// <summary>
     /// Classification of the fragment by display-stack layer — see <see cref="FragmentLayer"/>
     /// for the rendering implications. Defaults to <see cref="FragmentLayer.Cells"/> since

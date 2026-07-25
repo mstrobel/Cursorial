@@ -291,5 +291,5 @@ public static class UserOptionCatalog
     /// coverage — one glyph from each commonly-used Nerd Font subset (dev icons, Font Awesome,
     /// Octicons, Powerline, Material, Weather). Boxes/tofu ⇒ no Nerd Font.
     /// </summary>
-    public static string NerdFontProbeGlyphs => "     ";
+    public static string NerdFontProbeGlyphs => "      ";
 }

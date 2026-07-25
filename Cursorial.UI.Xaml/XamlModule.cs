@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
+using Cursorial.Markup;
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
@@ -130,7 +132,7 @@ public sealed class EmbeddedXamlResourceProvider : IXamlResourceProvider
         // System.Uri canonicalizes the authority to LOWERCASE (RFC host rules) — fine for hosts,
         // wrong for assembly simple names on case-sensitive file systems (Assembly.Load probes
         // by file name on Linux). Read the authority from the original string when possible.
-        string assemblyName = XamlUriUtil.OriginalAuthority(uri) ?? uri.Host;
+        string assemblyName = CursorialUri.GetOriginalAuthority(uri) ?? uri.Host;
         string path = uri.AbsolutePath.TrimStart('/');
 
         var assembly = ResolveAssembly(assemblyName);

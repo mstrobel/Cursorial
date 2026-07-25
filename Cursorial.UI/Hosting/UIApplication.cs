@@ -153,6 +153,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     public static UIApplicationBuilder DefaultBuilder()
         => CreateBuilder().WithFrameRate(60)            // 60fps recommended
                           .WithKeyReleaseSynthesis()    // synthesize key-up if not natively supported
+                          .WithNumpadKeyTranslation()   // translate numpad keys to their main key area counterparts
                           .UseAlternateScreen()         // use alternate screen for rendering
                           .WithUserConfiguration();     // enable the user configuration system
 
@@ -534,7 +535,7 @@ public sealed partial class UIApplication : IAsyncDisposable
         foreach (var binding in root.InputBindings)
         {
             hasRedraw |= binding is KeyBinding { Command: RequestFullRedrawCommand };
-            hasOptions |= binding is KeyBinding { Command: ShowUserOptionsCommand };
+            hasOptions |= binding is KeyBinding { Command: ShowUserOptionsCommandImpl };
         }
 
         if (!hasRedraw)
@@ -548,9 +549,13 @@ public sealed partial class UIApplication : IAsyncDisposable
         if (!hasOptions && !isOptionsSurface && _userOptions is not null &&
             _options.UserConfiguration is { OptionsDialogGesture: {} gesture })
         {
-            root.InputBindings.Add(new KeyBinding(gesture, new ShowUserOptionsCommand(this)));
+            var showUserOptionsCommand = new ShowUserOptionsCommandImpl(this);
+            root.InputBindings.Add(new KeyBinding(gesture, showUserOptionsCommand));
+            ShowUserOptionsCommand = showUserOptionsCommand;
         }
     }
+
+    public ICommand ShowUserOptionsCommand { get; private set; } = UnavailableCommand.Instance;
 
     /// <summary>
     /// S4 per-window focus activation (doc §7.7): when the <see cref="WindowManager"/>'s active window changes,
@@ -810,5 +815,13 @@ public sealed partial class UIApplication : IAsyncDisposable
             add {}
             remove {}
         }
+    }
+
+    private sealed class UnavailableCommand : ICommand
+    {
+        public static readonly ICommand Instance = new UnavailableCommand();
+        bool ICommand.CanExecute(object? parameter) => false;
+        void ICommand.Execute(object? parameter) {}
+        event EventHandler? ICommand.CanExecuteChanged { add {} remove {} }
     }
 }

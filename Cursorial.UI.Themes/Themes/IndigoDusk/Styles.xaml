@@ -22,24 +22,24 @@
     <!-- caps-unicode glyph opt-up (design doc §12.7 / SD14): under .caps-unicode set the ToggleGlyph.Glyphs
          attached override to colored Unicode marks; a caps-ascii terminal never matches and keeps the ASCII base.
          The glyph triple is the '|'-separated "unchecked|checked|indeterminate" GlyphSetCarrier form. -->
-    <Style Selector=".caps-unicode CheckBox">
+    <Style Selector="CheckBox" RequiresCapabilities="Unicode">
       <Setter Property="ToggleGlyph.Glyphs" Value="[ ]|[✓]|[▪]"/>
     </Style>
 
-    <Style Selector=".caps-unicode RadioButton">
+    <Style Selector="RadioButton" RequiresCapabilities="Unicode">
       <Setter Property="ToggleGlyph.Glyphs" Value="( )|(●)|(-)"/>
     </Style>
 
     <!-- caps-nocolor interactive-state layer (design doc §11.8a): colors collapse to Default under NoColor, so the
          button family's focus/pressed/default flip Inverse (reverse-video, honored by the Border fill + content
          text); the selector list spans the exact button-family types (CheckBox/RadioButton excluded — in-box caret). -->
-    <Style Selector=".caps-nocolor Button:focus, .caps-nocolor Button:pointerover, .caps-nocolor Button:default, .caps-nocolor RepeatButton:focus, .caps-nocolor RepeatButton:pointerover, .caps-nocolor ToggleButton:focus, .caps-nocolor ToggleButton:pointerover">
+    <Style Selector="Button:focus, Button:pointerover, Button:default, RepeatButton:focus, RepeatButton:pointerover, ToggleButton:focus, ToggleButton:pointerover" RequiresCapabilities="NoColor">
       <Setter Property="TextElement.Inverse" Value="True"/>
     </Style>
 
     <!-- caps-nocolor disabled layer: a disabled button-family control (incl. CheckBox/RadioButton via :is(ButtonBase))
          dims to Faint when its palette would otherwise resolve to Default. -->
-    <Style Selector=".caps-nocolor :is(ButtonBase):disabled">
+    <Style Selector=":is(ButtonBase):disabled" RequiresCapabilities="NoColor">
       <Setter Property="TextElement.TextWeight" Value="Faint"/>
     </Style>
 
@@ -108,7 +108,7 @@
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}"/>
     </Style>
 
-    <Style Selector=".caps-nocolor Border, .caps-nocolor :is(UIElement) /template/ Border">
+    <Style Selector="Border, :is(UIElement) /template/ Border" RequiresCapabilities="NoColor">
       <Setter Property="Border.Occludes" Value="True"/>
       <Setter Property="Panel.Background" Value="default"/>
     </Style>

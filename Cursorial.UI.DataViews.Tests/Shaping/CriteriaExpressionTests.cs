@@ -176,6 +176,53 @@ public class CriteriaExpressionTests
         Assert.Contains(FailCompile("Frobnicate([Id])"), d => d.Message.Contains("Unknown function"));
         Assert.Contains(FailCompile("[Amount] + 1"), d => d.Message.Contains("not boolean"));
         Assert.Contains(FailCompile("Not [Amount]"), d => d.Message.Contains("boolean operand"));
+        Assert.Contains(FailCompile("Iif([Amount] > 1)"), d => d.Message.Contains("Iif takes"));
+    }
+
+    // ── Iif ternary + Min/Max + numeric builtins + the custom function registry ──────────────────
+
+    [Fact]
+    public void Iif_ternary_evaluates_the_branch()
+    {
+        // Amount > 20000 ⇒ 31900 (SO-1044), 27300 (SO-1047).
+        Assert.Equal(new[] { "SO-1044", "SO-1047" }, Run("Iif([Amount] > 20000, 1, 0) = 1"));
+    }
+
+    [Fact]
+    public void Min_and_max_fold_numeric_arguments()
+    {
+        // Min(Amount, 15000) == 15000 ⇔ Amount >= 15000 (all but SO-1042's 12450).
+        Assert.Equal(new[] { "SO-1044", "SO-1046", "SO-1047", "SO-1049" }, Run("Min([Amount], 15000) = 15000"));
+        // Max(Amount, 25000) == Amount ⇔ Amount >= 25000 ⇒ 31900, 27300.
+        Assert.Equal(new[] { "SO-1044", "SO-1047" }, Run("Max([Amount], 25000) = [Amount]"));
+    }
+
+    [Fact]
+    public void Numeric_builtins_from_the_registry()
+    {
+        // Sqrt(31900)=178.6, Sqrt(27300)=165.2 exceed 150; the rest don't.
+        Assert.Equal(new[] { "SO-1044", "SO-1047" }, Run("Sqrt([Amount]) > 150"));
+        // 31900 mod 10000 = 1900.
+        Assert.Equal(new[] { "SO-1044" }, Run("Mod([Amount], 10000) = 1900"));
+    }
+
+    [Fact]
+    public void A_custom_registered_function_compiles_and_runs()
+    {
+        // Register a bespoke function that emits its own expression tree (double the value).
+        CriteriaFunctions.Register("Twice", args => Expression.Multiply(args[0], Expression.Constant(2m)), minArgs: 1, maxArgs: 1);
+        try
+        {
+            // Twice(Amount) > 40000 ⇔ Amount > 20000 ⇒ SO-1044, SO-1047.
+            Assert.Equal(new[] { "SO-1044", "SO-1047" }, Run("Twice([Amount]) > 40000"));
+            Assert.Contains("Twice", CriteriaFunctions.Names, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            CriteriaFunctions.Unregister("Twice");
+        }
+        // Once unregistered it's an unknown function again.
+        Assert.Contains(FailCompile("Twice([Amount]) > 1"), d => d.Message.Contains("Unknown function"));
     }
 
     // ── The Filter-Builder bridge ────────────────────────────────────────────────────────────────

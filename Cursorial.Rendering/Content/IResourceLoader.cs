@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Cursorial.Rendering.Content;
 
 /// <summary>
@@ -49,15 +51,79 @@ public interface IResourceLoader
     /// return. Throw only for genuinely unexpected failures (corrupted assembly, permission
     /// violation we couldn't have predicted, etc.).
     /// </remarks>
-    Stream? TryOpen(Uri uri);
+    Stream? TryOpen(Uri uri) => TryOpen(uri, out _);
+
+    /// <summary>
+    /// Open a readable stream for the resource at <paramref name="uri"/>, or return
+    /// <see langword="null"/> when the URI can't be resolved (unsupported scheme, missing
+    /// resource, I/O error). Callers must dispose the returned stream.
+    /// </summary>
+    /// <remarks>
+    /// Implementations should not throw for "not found" or "scheme unsupported" — those
+    /// are expected, gracefully handleable outcomes that callers want to detect via a null
+    /// return. Throw only for genuinely unexpected failures (corrupted assembly, permission
+    /// violation we couldn't have predicted, etc.).
+    /// </remarks>
+    Stream? TryOpen(Uri uri, out Exception? error);
+
+    /// <summary>
+    /// Opens a readable stream for the resource at <paramref name="uri"/>, or throws an
+    /// <see cref="InvalidOperationException">exception</see> when the URI can't be resolved
+    /// (unsupported scheme, missing resource, I/O error). Callers must dispose the returned stream.
+    /// </summary>
+    /// <param name="uri">The resource URI to open.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the URI can't be resolved (unsupported scheme, missing resource, I/O error)
+    /// </exception>
+    Stream Open(Uri uri) => Open(this, uri);
+
+    /// <summary>
+    /// Opens a readable stream for the resource at <paramref name="uri"/>, or throws an
+    /// <see cref="InvalidOperationException">exception</see> when the URI can't be resolved
+    /// (unsupported scheme, missing resource, I/O error). Callers must dispose the returned stream.
+    /// </summary>
+    /// <param name="loader">The resource loader to use to open the resource.</param>
+    /// <param name="uri">The resource URI to open.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the URI can't be resolved (unsupported scheme, missing resource, I/O error)
+    /// </exception>
+    protected static Stream Open(IResourceLoader loader, Uri uri)
+    {
+        if (loader.TryOpen(uri, out var error) is {} stream)
+            return stream;
+
+        if (error is null)
+            throw new ResourceLoadException(uri);
+
+        ExceptionDispatchInfo.Throw(error);
+        throw error;
+    }
 
     /// <summary>
     /// Load the entire resource into a byte array. Returns <see langword="null"/> when the
-    /// URI can't be resolved. Convenience over <see cref="TryOpen"/>.
+    /// URI can't be resolved. Convenience over <see cref="TryOpen(Uri)"/>.
     /// </summary>
-    byte[]? TryLoadBytes(Uri uri)
+    /// <param name="uri">The resource URI to open.</param>
+    byte[]? TryLoadBytes(Uri uri) => TryLoadBytes(this, uri, out _);
+
+    /// <summary>
+    /// Load the entire resource into a byte array. Returns <see langword="null"/> when the
+    /// URI can't be resolved. Convenience over <see cref="TryOpen(Uri)"/>.
+    /// </summary>
+    /// <param name="uri">The resource URI to open.</param>
+    /// <param name="error">The exception that occurred, if any.</param>
+    byte[]? TryLoadBytes(Uri uri, out Exception? error) => TryLoadBytes(this, uri, out error);
+
+    /// <summary>
+    /// Load the entire resource into a byte array. Returns <see langword="null"/> when the
+    /// URI can't be resolved. Convenience over <see cref="TryOpen(Uri)"/>.
+    /// </summary>
+    /// <param name="loader">The resource loader to use to open the resource.</param>
+    /// <param name="uri">The resource URI to open.</param>
+    /// <param name="error">The exception that occurred, if any.</param>
+    protected static byte[]? TryLoadBytes(IResourceLoader loader, Uri uri, out Exception? error)
     {
-        using var stream = TryOpen(uri);
+        using var stream = loader.TryOpen(uri, out error);
 
         if (stream is null)
             return null;

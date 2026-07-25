@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using Cursorial.Output.Capabilities;
 
 namespace Cursorial.Output;
@@ -166,15 +168,20 @@ public sealed class StyleQuantizer
     // palette boundary, which is what produces the stipple. The primary tuning knob; oracle tests lock it.
     private const double DitherSpread = 48.0;
 
+    private const int GrayTableStart = 232;
+
     // Ordered-dither a single color, then quantize. Only RGB at a reducing depth is perturbed: Transparent
     // and non-RGB pass straight through QuantizeColor (nothing continuous to dither), and a Truecolor target
     // needs no reduction — perturbing it would corrupt the exact color and break the "dither is a no-op at
     // full depth" guarantee.
     private Color DitherColor(Color color, int column, int row)
     {
-        if (color.Kind != ColorKind.Rgb || color == Color.Transparent ||
+        if (color.Kind != ColorKind.Rgb ||
+            color == Color.Transparent || 
             _cachedCapabilities.HasFlag(CachedCapabilities.Truecolor))
+        {
             return QuantizeColor(color);
+        }
 
         int threshold = Bayer4[(row & 3) * 4 + (column & 3)];   // 0..15
         double delta = ((threshold + 0.5) / 16.0 - 0.5) * DitherSpread;
@@ -182,6 +189,7 @@ public sealed class StyleQuantizer
         byte r = Perturb(color.Red, delta);
         byte g = Perturb(color.Green, delta);
         byte b = Perturb(color.Blue, delta);
+
         return QuantizeColor(Color.FromRgb(r, g, b));
     }
 
@@ -201,19 +209,24 @@ public sealed class StyleQuantizer
             return depth == ColorDepth.Truecolor ? color : Color.Default;
 
         // @formatter:off
-        return color.Kind switch
-               {
-                   ColorKind.Default                                  => color,
-                   _ when depth == ColorDepth.NoColor                 => Color.Default,
-                   ColorKind.Rgb when depth == ColorDepth.Truecolor   => color,
-                   ColorKind.Rgb when depth == ColorDepth.Ansi256     => Color.FromPalette(NearestPaletteIndex(color.Red, color.Green, color.Blue)),
-                   ColorKind.Rgb /* Ansi16 */                         => Color.FromPalette(NearestAnsi16Index(color.Red, color.Green, color.Blue)),
-                   ColorKind.Palette when depth >= ColorDepth.Ansi256 => color,
-                   ColorKind.Palette /* Ansi16 */                     => color.PaletteIndex < 16 
-                                                                             ? color 
-                                                                             : Color.FromPalette(PaletteIndexToAnsi16(color.PaletteIndex)),
-                   _                                                  => color
-               };
+        var result = color.Kind switch
+                     {
+                         ColorKind.Default                                  => color,
+                         _ when depth == ColorDepth.NoColor                 => Color.Default,
+                         ColorKind.Rgb when depth == ColorDepth.Truecolor   => color,
+                         ColorKind.Rgb when depth == ColorDepth.Ansi256     => Color.FromPalette(NearestPaletteIndex(color.Red, color.Green, color.Blue)),
+                         ColorKind.Rgb /* Ansi16 */                         => Color.FromPalette(NearestAnsi16Index(color.Red, color.Green, color.Blue)),
+                         ColorKind.Palette when depth >= ColorDepth.Ansi256 => color,
+                         ColorKind.Palette /* Ansi16 */                     => color.PaletteIndex < 16 
+                                                                                   ? color 
+                                                                                   : Color.FromPalette(PaletteIndexToAnsi16(color.PaletteIndex)),
+                         _                                                  => color
+                     };
+
+        if (result == Color.FromPalette(255))
+            return Color.FromPalette(254);
+
+        return result;
         // @formatter:on
     }
 
@@ -238,42 +251,155 @@ public sealed class StyleQuantizer
     /// two by sum-of-absolute-differences. The cube is the dominant choice for chromatic input;
     /// grayscale wins for near-monochrome input where the cube's stops are too coarse.
     /// </summary>
-    public static byte NearestPaletteIndex(byte red, byte green, byte blue)
+    public static byte NearestPaletteIndex(byte r, byte g, byte b)
     {
-        // xterm cube stops: 0, 95, 135, 175, 215, 255.
-        int ri = CubeAxisIndex(red);
-        int gi = CubeAxisIndex(green);
-        int bi = CubeAxisIndex(blue);
-        byte cubeIndex = (byte) (16 + 36 * ri + 6 * gi + bi);
-        int cubeR = CubeAxisValue(ri);
-        int cubeG = CubeAxisValue(gi);
-        int cubeB = CubeAxisValue(bi);
-        int cubeDist = Diff(red, cubeR) + Diff(green, cubeG) + Diff(blue, cubeB);
+        var rgb = ((uint)r << 16) + ((uint)g << 8) + b;
 
-        // Grayscale ramp stops: 8 + n*10 for n=0..23 → 8, 18, …, 238.
-        int avg = (red + green + blue) / 3;
-        int grayIndex;
-        int grayValue;
+        if (r == g && g == b) return GrayIndex(rgb & 0xFFu);
 
-        if (avg < 8)
+        uint cube = CubeAxisComponent(r, CubeAxis.Red) +
+                    CubeAxisComponent(g, CubeAxis.Green) +
+                    CubeAxisComponent(b, CubeAxis.Blue);
+
+        var cubeDistance = Distance(rgb, cube);
+
+        var grayIndex = GrayIndex(Luminance(rgb));
+        var grayDistance  = Distance(rgb, RgbFromAnsi256(grayIndex));
+
+        if (cubeDistance < grayDistance)
         {
-            grayIndex = 0;
-            grayValue = 8;
-        }
-        else if (avg > 238)
-        {
-            grayIndex = 23;
-            grayValue = 238;
-        }
-        else
-        {
-            grayIndex = (avg - 8 + 5) / 10; // round half-up.
-            grayValue = 8 + grayIndex * 10;
+            var cubeIndex = (byte) (cube >> 24);
+            return cubeIndex;
         }
 
-        int grayDist = Diff(red, grayValue) + Diff(green, grayValue) + Diff(blue, grayValue);
+        return grayIndex;
+    }
 
-        return grayDist < cubeDist ? (byte) (232 + grayIndex) : cubeIndex;
+    private static byte GrayIndex(uint value)
+    {
+        const byte blacklistStart = 233; // first 255 entry
+        const byte blacklistEnd = 246;   // last 255 entry
+        const byte altGrayLower = 254;   // #e4e4e4
+        const byte altGrayHigher = 231;  // #ffffff
+
+        var grayIndex = GrayLookupTable[value];
+        
+        // HACK: kitty assigns #abcdef instead of #eeeeee at Palette(255) for some reason.
+        //       Unconditionally disallow that palette index and switch to 254 or 231 (whichever is closer).
+        if (grayIndex == 255)
+            grayIndex = Diff(value, blacklistStart) < Diff(value, blacklistEnd) ? altGrayLower : altGrayHigher;
+
+        return grayIndex;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Diff(uint a, uint b) => a > b ? a - b : b - a;
+    
+    private enum CubeAxis
+    {
+        Red,
+        Green,
+        Blue
+    }
+
+    private static readonly byte[] CubeThresholdsRed = [38, 115, 155, 196, 235];
+    private static readonly byte[] CubeThresholdsGreen = [36, 116, 154, 195, 235];
+    private static readonly byte[] CubeThresholdsBlue = [35, 115, 155, 195, 235];
+    private static readonly byte[] CubeAxisRamp = [0, 95, 135, 175, 215, 255];
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Distance(uint x, uint y)
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint R(uint c) => (c >> 16) & 0xFFu;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint G(uint c) => (c >> 8) & 0xFFu;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint B(uint c) => c & 0xFFu;
+        
+        var rSum= R(x) + R(y);
+        var r = R(x) - R(y);
+        var g = G(x) - G(y);
+        var b = B(x) - B(y);
+
+        return (1024 + rSum) * r * r + 2048 * g * g + (1534 - rSum) * b * b;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte Luminance(uint rgb)
+    {
+        var v = 3567664u * (rgb >> 16 & 0xff) + 11998547u * (rgb >> 8 & 0xff) + 1211005u * (rgb & 0xff);
+        return (byte) ((v + (1 << 23)) >> 24);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint CubeIndex(uint i) => CubeAxisRamp[i];
+
+    private static uint CubeAxisComponent(byte v, CubeAxis axis)
+    {
+        var thresholds = AxisThresholds(axis);
+
+        // @formatter:off
+        if (v < thresholds[0]) { return CubeAxisComponent(0,   0, axis); }
+        if (v < thresholds[1]) { return CubeAxisComponent(1,  95, axis); }
+        if (v < thresholds[2]) { return CubeAxisComponent(2, 135, axis); }
+        if (v < thresholds[3]) { return CubeAxisComponent(3, 175, axis); }
+        if (v < thresholds[4]) { return CubeAxisComponent(4, 215, axis); }
+        /* else */             { return CubeAxisComponent(5, 255, axis); }
+        // @formatter:on
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] AxisThresholds(CubeAxis axis)
+    {
+        return axis switch
+               {
+                   CubeAxis.Red   => CubeThresholdsRed,
+                   CubeAxis.Green => CubeThresholdsGreen,
+                   _              => CubeThresholdsBlue
+               };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint CubeAxisComponent(uint i, uint v, CubeAxis axis)
+    {
+        return axis switch
+               {
+                   CubeAxis.Red   => CubeComponentRed(i, v),
+                   CubeAxis.Green => CubeComponentGreen(i, v),
+                   _              => CubeComponentBlue(i, v)
+               };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint CubeComponentBlue(uint i, uint v) => (i << 24) | v;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint CubeComponentGreen(uint i, uint v) => ((i * 6) << 24) | (v << 8);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint CubeComponentRed(uint i, uint v) => ((i * 36 + 16) << 24) | (v << 16);
+
+    private static uint RgbFromAnsi256(uint i)
+    {
+        if (i < 16)
+            return SystemColors[i];
+
+        uint index;
+
+        if (i < 232)
+        {
+            index = i - 16;
+
+            return CubeIndex(index / 36) << 16 |
+                   CubeIndex(index / 6 % 6) << 8 |
+                   CubeIndex(index % 6);
+        }
+
+        index = (i - 232) * 10 + 8;
+        return index * 0x010101u;
     }
 
     /// <summary>
@@ -305,7 +431,7 @@ public sealed class StyleQuantizer
     {
         if (index < 16) return index;
 
-        if (index < 232)
+        if (index < GrayTableStart)
         {
             int n = index - 16;
             int ri = n / 36;
@@ -315,22 +441,35 @@ public sealed class StyleQuantizer
         }
 
         // Grayscale: 0 → black, 23 → white, with a midline crossover.
-        int grayValue = 8 + (index - 232) * 10;
+        int grayValue = 8 + (index - GrayTableStart) * 10;
         return NearestAnsi16Index((byte) grayValue, (byte) grayValue, (byte) grayValue);
-    }
-
-    private static int CubeAxisIndex(byte value)
-    {
-        // Map a channel value to the nearest of 0, 95, 135, 175, 215, 255 and return the index.
-        if (value < 48) return 0;
-        if (value < 115) return 1;
-        if (value < 155) return 2;
-        if (value < 195) return 3;
-        if (value < 235) return 4;
-        return 5;
     }
 
     private static int CubeAxisValue(int axisIndex) => axisIndex == 0 ? 0 : 55 + axisIndex * 40;
 
-    private static int Diff(int a, int b) => a > b ? a - b : b - a;
+    // @formatter:off
+    private static readonly byte[] GrayLookupTable =
+    [
+        16, 16, 16, 16, 16, 232, 232, 232, 232, 232, 232, 232, 232, 232, 233, 233, 233, 233, 233, 233,
+        233, 233, 233, 233, 234, 234, 234, 234, 234, 234, 234, 234, 234, 234, 235, 235, 235, 235, 235,
+        235, 235, 235, 235, 235, 236, 236, 236, 236, 236, 236, 236, 236, 236, 236, 237, 237, 237, 237,
+        237, 237, 237, 237, 237, 237, 238, 238, 238, 238, 238, 238, 238, 238, 238, 238, 239, 239, 239,
+        239, 239, 239, 239, 239, 239, 239, 240, 240, 240, 240, 240, 240, 240, 240, 59, 59, 59, 59, 59,
+        241, 241, 241, 241, 241, 241, 241, 242, 242, 242, 242, 242, 242, 242, 242, 242, 242, 243, 243,
+        243, 243, 243, 243, 243, 243, 243, 244, 244, 244, 244, 244, 244, 244, 244, 244, 102, 102, 102,
+        102, 102, 245, 245, 245, 245, 245, 245, 246, 246, 246, 246, 246, 246, 246, 246, 246, 246, 247,
+        247, 247, 247, 247, 247, 247, 247, 247, 247, 248, 248, 248, 248, 248, 248, 248, 248, 248, 145,
+        145, 145, 145, 145, 249, 249, 249, 249, 249, 249, 250, 250, 250, 250, 250, 250, 250, 250, 250,
+        250, 251, 251, 251, 251, 251, 251, 251, 251, 251, 251, 252, 252, 252, 252, 252, 252, 252, 252,
+        252, 188, 188, 188, 188, 188, 253, 253, 253, 253, 253, 253, 254, 254, 254, 254, 254, 254, 254,
+        254, 254, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 231, 231,
+        231, 231, 231, 231, 231, 231, 231
+    ];
+
+    private static readonly uint[] SystemColors =
+    [
+        0x000000u, 0xCD0000u, 0x00CD00u, 0xCDCD00u, 0x0000EEu, 0xCD00CDu, 0x00CDCDu, 0xE5E5E5u,
+        0x7F7F7Fu, 0xFF0000u, 0x00FF00u, 0xFFFF00u, 0x5C5CFFu, 0xFF00FFu, 0x00FFFFu, 0xFFFFFFu
+    ];
+    // @formatter:on
 }

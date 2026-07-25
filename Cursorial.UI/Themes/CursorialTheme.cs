@@ -64,7 +64,9 @@ public static class CursorialTheme
         ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.CalendarDayForegroundSelected,
         ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.CalendarDayBackgroundFocus,
         ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.ProgressFillNormal, ThemeKeys.ProgressFillIndeterminate,
-        ThemeKeys.OnHoverBrush, ThemeKeys.ListItemForegroundSelected
+        ThemeKeys.OnHoverBrush, ThemeKeys.ListItemForegroundSelected, ThemeKeys.AlternateRowInk, ThemeKeys.SelectionInk,
+        ThemeKeys.MenuForegroundHover, ThemeKeys.MenuForegroundHighlighted, ThemeKeys.MenuIconCheckedForeground,
+        ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground
     };
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -153,10 +155,13 @@ public static class CursorialTheme
             CursorialThemeStyles.CapsNoColorListFocusCue(),
             CursorialThemeStyles.CapsNoColorBorderStyle(),
             CursorialThemeStyles.CapsNoColorBorderPenStyle(),
+            CursorialThemeStyles.CapsNoColorMenuIconToggleStyle(),
+            CursorialThemeStyles.CapsNoColorObscuredOverlayStyle(),
 
             // All blending should be disabled for Ansi16, so make sure all borders and panels occlude.
             CursorialThemeStyles.CapsAnsi16BorderStyle(),
             CursorialThemeStyles.CapsAnsi16BorderPenStyle(),
+            CursorialThemeStyles.CapsAnsi16ObscuredOverlayStyle(),
             
             CursorialThemeStyles.MenuSeparatorStyle(),
 
@@ -182,6 +187,7 @@ public static class CursorialTheme
         noColor[ThemeKeys.MenuBorderPen] = Pens.Ascii;
         noColor[ThemeKeys.TabControlBorderPen] = Pens.Ascii;
         noColor[ThemeKeys.ToolTipBorderPen] = Pens.Ascii;
+        noColor[ThemeKeys.FocusBorderPen] = Pens.Ascii;
         noColor[ThemeKeys.SeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.MenuSeparatorPen] = Pens.Ascii;
         noColor[ThemeKeys.FocusPen] = Pens.Ascii.WithWeight(StrokeWeight.Heavy);
@@ -190,7 +196,7 @@ public static class CursorialTheme
         // No color to distinguish filled vs empty — both are an ASCII heavy rail; the thumb + reverse-video focus carry it.
         noColor[ThemeKeys.SliderFilledPen] = Pens.Ascii.WithWeight(StrokeWeight.Double);
         noColor[ThemeKeys.SliderTrackPen] = Pens.Ascii.WithWeight(StrokeWeight.Light);
-        noColor[ThemeKeys.ObscuredOverlayBrush] = defaultBrush;
+        noColor[ThemeKeys.ObscuredOverlayBrush] = Brushes.Transparent;
         noColor[ThemeKeys.AccessKeyIndicatorBrush] = defaultBrush;
         // Ribbon: no fill under monochrome — the active tab is marked by the ASCII-heavy underline (TabUnderlinePen).
         noColor[ThemeKeys.RibbonTabStripBrush] = defaultBrush;
@@ -208,6 +214,7 @@ public static class CursorialTheme
         noColor[ThemeKeys.InteractiveCueInverse] = true;
         noColor[ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal;
         noColor[ThemeKeys.InteractiveCueUnderline] = null;
+
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
 
         // The color-tier floor for the cue pair. The CD8 probe DESCENDS tiers
@@ -219,7 +226,8 @@ public static class CursorialTheme
             [ThemeKeys.InteractiveCueInverse] = false,
             [ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Bold,
             [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
-            [ThemeKeys.ListItemSelectionGlyph] = "▍"
+            [ThemeKeys.ListItemSelectionGlyph] = "▍",
+            [ThemeKeys.ObscuredOverlayBrush] = Brushes.Transparent
         };
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.Ansi16)] = ansi16Floor;
     }
@@ -236,10 +244,17 @@ public static class CursorialTheme
         {
             foreach (var themeDictionary in dict.ThemeDictionaries)
             {
+                if (themeDictionary.Key.Tier is ColorDepth.Truecolor)
+                    continue; // we only put a few overrides in Truecolor; most rgb values live in Ansi256.
                 if (themeDictionary.Value.ContainsKey(key) is false)
                     themeDictionary.Value[key] = new ResourceReference(target);
             }
         }
+
+        
+        Alias(ThemeKeys.SelectionInk, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.OnHoverBrush, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.OnAccentInverseBrush, ThemeKeys.OnAccentBrush);
 
         // Base / shared — the 3 spec-named aliases whose guide name differs from our role token.
         Alias(ThemeKeys.AccentForegroundBrush, ThemeKeys.OnAccentBrush);
@@ -257,7 +272,9 @@ public static class CursorialTheme
         Alias(ThemeKeys.ButtonForegroundFocus, ThemeKeys.ElevationRaised);
         Alias(ThemeKeys.ButtonBackgroundPressed, ThemeKeys.AccentDarkBrush);
         Alias(ThemeKeys.ButtonForegroundPressed, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.ButtonBackgroundDisabled, ThemeKeys.DisabledBackgroundBrush);
         Alias(ThemeKeys.ButtonForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
+        Alias(ThemeKeys.ButtonForegroundDefault, ThemeKeys.AccentBrush);
         Alias(ThemeKeys.SplitButtonDropZoneBrush, ThemeKeys.AccentBrush);
 
         // ToggleSwitch / CheckBox / RadioButton.
@@ -269,10 +286,11 @@ public static class CursorialTheme
 
         // Input (TextBox, editable ComboBox).
         Alias(ThemeKeys.InputForegroundNormal, ThemeKeys.TextBrush);
-        Alias(ThemeKeys.InputBackgroundNormal, ThemeKeys.SurfaceBrush);
+        Alias(ThemeKeys.InputBackgroundNormal, ThemeKeys.ElevationHighest);
         Alias(ThemeKeys.InputBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.InputForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.InputBackgroundFocus, ThemeKeys.WellBrush);
+        Alias(ThemeKeys.InputForegroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.InputSelectionActive, ThemeKeys.SelectionBrush);
         Alias(ThemeKeys.InputSelectionInactive, ThemeKeys.SelectionInactiveBrush);
         Alias(ThemeKeys.InputForegroundDisabled, ThemeKeys.DisabledForegroundBrush);
@@ -284,11 +302,12 @@ public static class CursorialTheme
         Alias(ThemeKeys.ListItemForegroundHover, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.ListItemBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelected, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.ListItemForegroundSelectedInactive, ThemeKeys.OnHoverBrush);
         Alias(ThemeKeys.ListItemBackgroundSelectedInactive, ThemeKeys.SelectionInactiveBrush);
         // Gallery `.item.rev { background: --text; color: --panel }` (final style guide): a list item sits on the
         // PanelBrush surface, so its reverse-video focus ink is --panel (not the universal --bg). #103.
         Alias(ThemeKeys.ListItemForegroundFocus, ThemeKeys.OnAccentBrush);
-        Alias(ThemeKeys.ListItemForegroundSelected, ThemeKeys.TextBrush);
+        Alias(ThemeKeys.ListItemForegroundSelected, ThemeKeys.SelectionInk);
         Alias(ThemeKeys.ListItemBackgroundFocus, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ListItemForegroundDisabled, ThemeKeys.MutedBrush);
 
@@ -301,12 +320,17 @@ public static class CursorialTheme
 
         // Menu (MenuBar / MenuItem / ContextMenu).
         Alias(ThemeKeys.MenuForegroundNormal, ThemeKeys.TextBrush);
-        Alias(ThemeKeys.MenuBarBackground, ThemeKeys.SurfaceBrush);
+        Alias(ThemeKeys.MenuBarBackground, ThemeKeys.ElevationRaised);
         Alias(ThemeKeys.MenuBackgroundHover, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.MenuForegroundHover, ThemeKeys.SelectionInk);
         Alias(ThemeKeys.MenuBackgroundHighlighted, ThemeKeys.SelectionBrush);
+        Alias(ThemeKeys.MenuForegroundHighlighted, ThemeKeys.SelectionInk);
         Alias(ThemeKeys.MenuAcceleratorForeground, ThemeKeys.MutedBrush);
         Alias(ThemeKeys.MenuAcceleratorHoverForeground, ThemeKeys.TextDimBrush);
         Alias(ThemeKeys.MenuForegroundDisabled, ThemeKeys.MutedBrush);
+        Alias(ThemeKeys.MenuIconCheckedForeground, ThemeKeys.SuccessBrush);
+        Alias(ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuAcceleratorForeground);
+        Alias(ThemeKeys.MenuIconUncheckedHoverForeground, ThemeKeys.MenuAcceleratorHoverForeground);
 
         // TabItem — gallery: inactive ink = --text-dim, active = --surface fill + --text ink + an --accent
         // underline bar (#103, was a --sel fill with --text ink on every tab).
@@ -334,7 +358,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.CalendarDayBackgroundHover, ThemeKeys.HoverBrush);
         Alias(ThemeKeys.CalendarDayTodayForeground, ThemeKeys.AccentBrush);
         Alias(ThemeKeys.CalendarDayBackgroundSelected, ThemeKeys.SelectionBrush);
-        Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.OnAccentBrush);
+        Alias(ThemeKeys.CalendarDayForegroundSelected, ThemeKeys.SelectionInk);
         // Gallery `.cal .focus { background: --text; color: --panel }` (#103, was --bg).
         Alias(ThemeKeys.CalendarDayForegroundFocus, ThemeKeys.PanelBrush);
         Alias(ThemeKeys.CalendarDayBackgroundFocus, ThemeKeys.TextBrush);
@@ -348,6 +372,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.MenuBorderPen, ThemeKeys.BorderPen);
         Alias(ThemeKeys.ToolTipBorderPen, ThemeKeys.BorderPen);
         Alias(ThemeKeys.TabUnderlinePen, ThemeKeys.BorderPen);
+        Alias(ThemeKeys.FocusBorderPen, ThemeKeys.BorderPen);
         
         Alias(ThemeKeys.Success2Brush, ThemeKeys.SuccessBrush);
         Alias(ThemeKeys.SuccessDarkBrush, ThemeKeys.SuccessInverseBrush);
@@ -365,6 +390,14 @@ public static class CursorialTheme
     {
         var dark = @base == ThemeBase.Dark;
 
+        var tc = new ResourceDictionary();
+
+        tc[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        tc[ThemeKeys.SelectionInk] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        tc[ThemeKeys.OnHoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        
+        dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Truecolor)] = tc;
+
         // (B,Ansi256): RGB role tokens — Tokyo-Night, verbatim from the default-theme gallery; served at
         // Truecolor too (descent never ascends; CD8). The cell-faithful spine (design doc §11.8a) — fill +
         // foreground tokens; the two pens are opt-in chrome, not spine members.
@@ -375,33 +408,46 @@ public static class CursorialTheme
             [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
             [ThemeKeys.ListItemSelectionGlyph] = "▍"
         };
-        rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#ffffff"));
+        
+        rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
-        rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
-        rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
-        rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.95 };
-        rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
-        rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd2"));
+        rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8"));
+        rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
+        rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) { Opacity = 0.95 };
+        rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1F2233") : Color.FromHex("#d8d8df"));
+        rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));
-        rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#9EA0A8"));
+        rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#30364f") : Color.FromHex("#9ea0a8"));
         rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#171A26") : Color.FromHex("#e9e9ed"));
-        rgb[ThemeKeys.WellBrush] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
+        // rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#ffffff"));
+        // rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
+        // rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
+        // rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
+        // rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.95 };
+        // rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
+        // rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
+        // rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));
+        // rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#9EA0A8"));
+        // rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#171A26") : Color.FromHex("#e9e9ed"));
+        rgb[ThemeKeys.WellBrush] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#f6f6f8"));
+        rgb[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#e4e4e4") : Color.FromHex("#3a3a3a"));
+        rgb[ThemeKeys.TextDimBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
         rgb[ThemeKeys.SelectionBrush] = new SolidColorBrush(dark ? Color.FromHex("#33467c") : Color.FromHex("#a8aecb"));
         rgb[ThemeKeys.SelectionInactiveBrush] = new SolidColorBrush(dark ? Color.FromHex("#454f6a") : Color.FromHex("#b1b4c2"));
-        rgb[ThemeKeys.AlternateRowBrush] = new SolidColorBrush(dark ? Color.FromHex("#272b41") : Color.FromHex("#e1e2e7"));
+        rgb[ThemeKeys.SelectionInk] = new SolidColorBrush(dark ? Color.FromHex("#e4e4e4") : Color.FromHex("#3a3a3a"));
+        rgb[ThemeKeys.AlternateRowBrush] = new SolidColorBrush(dark ? Color.FromHex("#151828") : Color.FromHex("#f0f0f0"));
+        rgb[ThemeKeys.AlternateRowInk] = null;
         // Light --hover nudged off --surface (#cbccd1) so a hovered control reads as a fill (spec §1.1).
         rgb[ThemeKeys.HoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
-        rgb[ThemeKeys.OnHoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
-        rgb[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
-        rgb[ThemeKeys.TextDimBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
+        rgb[ThemeKeys.OnHoverBrush] = new SolidColorBrush(dark ? Color.FromHex("#e4e4e4") : Color.FromHex("#3a3a3a"));
         rgb[ThemeKeys.MutedBrush] = new SolidColorBrush(dark ? Color.FromHex("#565f89") : Color.FromHex("#9699a3"));
         rgb[ThemeKeys.FaintBrush] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#818392"));
         rgb[ThemeKeys.DisabledBackgroundBrush] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#dcdde2"));
-        rgb[ThemeKeys.DisabledForegroundBrush] = new SolidColorBrush(dark ? Color.FromHex("#565f89") : Color.FromHex("#757985"));
-        rgb[ThemeKeys.AccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
+        rgb[ThemeKeys.DisabledForegroundBrush] = new SolidColorBrush(dark ? Color.FromHex("#565f89") : Color.FromHex("#9699a3"));
+        rgb[ThemeKeys.AccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#6090f6") : Color.FromHex("#34548a"));
         rgb[ThemeKeys.AccentInverseBrush] = new SolidColorBrush(dark ? Color.FromHex("#34548a") : Color.FromHex("#7aa2f7"));
-        rgb[ThemeKeys.Accent2Brush] = new SolidColorBrush(dark ? Color.FromHex("#7dcfff") : Color.FromHex("#0f4b6e"));
-        rgb[ThemeKeys.AccentDarkBrush] = new SolidColorBrush(dark ? Color.FromHex("#3F78F3") : Color.FromHex("#446EB6"));
+        rgb[ThemeKeys.Accent2Brush] = new SolidColorBrush(dark ? Color.FromHex("#9ab8f9") : Color.FromHex("#23385d"));
+        rgb[ThemeKeys.AccentDarkBrush] = new SolidColorBrush(dark ? Color.FromHex("#2667f3") : Color.FromHex("#446EB6"));
         rgb[ThemeKeys.OnAccentBrush] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e9e9ed"));
         rgb[ThemeKeys.CoolBrush] = new SolidColorBrush(dark ? Color.FromHex("#9663F3") : Color.FromHex("#5a3e8e"));
         rgb[ThemeKeys.CoolInverseBrush] = new SolidColorBrush(dark ? Color.FromHex("#5a3e8e") : Color.FromHex("#9663F3"));
@@ -437,6 +483,7 @@ public static class CursorialTheme
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392"));
         rgb[ThemeKeys.MenuBorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) /*{ Corners = CornerStyle.Rounded }*/;
         rgb[ThemeKeys.ToolTipBorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) /*{ Corners = CornerStyle.Rounded }*/;
+        rgb[ThemeKeys.FocusBorderPen] = new Pen(dark ? Color.FromHex("#6090f6") : Color.FromHex("#34548a")) /*{ Corners = CornerStyle.Rounded }*/;
         rgb[ThemeKeys.TabControlBorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) { Corners = CornerStyle.Rounded };
         rgb[ThemeKeys.SeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.MenuSeparatorPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) { Weight = StrokeWeight.Light };
@@ -447,21 +494,14 @@ public static class CursorialTheme
         // The active-tab underline rule — a Heavy --accent pen (the gallery "━ cells" bar), themeable per variant.
         rgb[ThemeKeys.TabUnderlinePen] = new Pen(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a")) { Weight = StrokeWeight.Heavy };
         rgb[ThemeKeys.ObscuredOverlayBrush] = new SolidColorBrush(Color.FromHex("#080910")) { Opacity = 0.55 };
-        // rgb[ThemeKeys.AccessKeyIndicatorBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
+        // rgb[ThemeKeys.AccessKeyIndicatorBrush] = new ResourceReference(ThemeKeys.TextBrush);
         
         rgb[ThemeKeys.WindowTitleBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#3F78F3") : Color.FromHex("#23385D"));
         rgb[ThemeKeys.WindowTitleBarActiveBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
 
         rgb[ThemeKeys.ToolBarBrush] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.SplitButtonDropZoneBrush] = new SolidColorBrush(dark ? Color.FromHex("#343c5e") : Color.FromHex("#cdd0dd"));
-        
-        rgb[ThemeKeys.TabBackgroundFocused] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
-        rgb[ThemeKeys.TabForegroundFocused] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
-        rgb[ThemeKeys.TabBackgroundHover] = new SolidColorBrush(dark ? Color.FromHex("#414868") : Color.FromHex("#bfc0c6"));
-        rgb[ThemeKeys.TabForegroundHover] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
 
-        rgb[ThemeKeys.ListItemForegroundHover] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
-        
         // Ribbon (Surface B): the strip recess (--tabstrip) and the dropped active-tab fill (--tab-active).
         rgb[ThemeKeys.RibbonBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#dedee3"));
         rgb[ThemeKeys.RibbonTabStripBrush] = new SolidColorBrush(dark ? Color.FromHex("#1b1e2e") : Color.FromHex("#d2d3da"));
@@ -472,75 +512,91 @@ public static class CursorialTheme
         rgb[ThemeKeys.RibbonContextualUnderlinePen] = new Pen(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e")) { Weight = StrokeWeight.Heavy };
 
         rgb[ThemeKeys.KeyTipTextWeight] = TextWeight.Normal;
-        
+
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
 
         // (B,Ansi16): hand-picked palette indices — beat the quantizer (spec §1). Pinned for role
         // distinguishability under reverse-video: --text/--bg at the extremes (15/0), --accent/--on-accent on
         // real blue, resting fills→0 vs interactive fills→8 (dark), status hues kept true.
         var ansi16 = new ResourceDictionary();
-        ansi16[ThemeKeys.ElevationWell] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.ElevationDesktop] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.ElevationWindow] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.ElevationRaised] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.ElevationHighest] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.WindowBackground] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? 8 : 7);
-        ansi16[ThemeKeys.PanelBrush] = Palette(dark ? 8 : 7);
-        ansi16[ThemeKeys.ToolBarBrush] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.RibbonBrush] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.WellBrush] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.SelectionBrush] = Palette(12);
-        ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(8);    // 16-color: no distinct inactive shade — tracks active selection
-        ansi16[ThemeKeys.AlternateRowBrush] = Palette(dark ? 0 : 7); // 16-color: tracks the panel fill (zebra needs RGB)
-        ansi16[ThemeKeys.HoverBrush] = Palette(dark ? 7 : 8);
-        ansi16[ThemeKeys.OnHoverBrush] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.TextBrush] = Palette(dark ? 15 : 0);
-        ansi16[ThemeKeys.TextDimBrush] = Palette(dark ? 7 : 8);
-        ansi16[ThemeKeys.MutedBrush] = Palette(8);
-        ansi16[ThemeKeys.FaintBrush] = Palette(8);
-        ansi16[ThemeKeys.DisabledBackgroundBrush] = Palette(dark ? 0 : 7);
-        ansi16[ThemeKeys.DisabledForegroundBrush] = Palette(8);
-        ansi16[ThemeKeys.AccentBrush] = Palette(dark ? 12 : 4);
-        ansi16[ThemeKeys.AccentDarkBrush] = Palette(dark ? 4 : 12);
-        ansi16[ThemeKeys.Accent2Brush] = Palette(dark ? 14 : 6);
-        ansi16[ThemeKeys.StatusBarBackground] = Palette(dark ? 7 : 15);
-        ansi16[ThemeKeys.StatusBarAltBackground] = Palette(dark ? 8 : 7);
-        ansi16[ThemeKeys.StatusBarAltForeground] = Palette(15);
-        ansi16[ThemeKeys.ButtonForegroundFocus] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.ButtonBackgroundFocus] = Palette(dark ? 15 : 0);
-        ansi16[ThemeKeys.ButtonForegroundNormal] = Palette(dark ? 8 : 0);
-        ansi16[ThemeKeys.ButtonBackgroundNormal] = Palette(dark ? 7 : 15);
-        ansi16[ThemeKeys.InputBackgroundNormal] = Palette(8);
-        ansi16[ThemeKeys.InputBackgroundFocus] = Palette(dark ? 7 : 15);
-        ansi16[ThemeKeys.InputForegroundNormal] = Palette(0);
-        ansi16[ThemeKeys.MenuBarBackground] = Palette(dark ? 0 : 7);
+        ansi16[ThemeKeys.ElevationWell] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ElevationDesktop] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ElevationWindow] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ElevationRaised] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.ElevationHighest] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.WindowBackground] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.SurfaceBrush] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.PanelBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ToolBarBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.RibbonBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.WellBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.SelectionBrush] = Palette(Ansi.LightBlue);
+        ansi16[ThemeKeys.SelectionInk] = Palette(Ansi.Black);
+        ansi16[ThemeKeys.SelectionInactiveBrush] = Palette(Ansi.LightBlack);
+        ansi16[ThemeKeys.AlternateRowBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.AlternateRowInk] = null;//Palette(Ansi.Black);
+        ansi16[ThemeKeys.HoverBrush] = Palette(dark ? Ansi.White : Ansi.LightBlack);
+        ansi16[ThemeKeys.OnHoverBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.TextBrush] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
+        ansi16[ThemeKeys.TextDimBrush] = Palette(dark ? Ansi.LightWhite : Ansi.LightBlack);
+        ansi16[ThemeKeys.MutedBrush] = Palette(dark ? Ansi.White :  Ansi.LightBlack);
+        ansi16[ThemeKeys.FaintBrush] = Palette(dark ? Ansi.White : Ansi.LightBlack);
+        ansi16[ThemeKeys.DisabledBackgroundBrush] = Palette(dark ? Ansi.Black : Ansi.White);
+        ansi16[ThemeKeys.DisabledForegroundBrush] = Palette(Ansi.LightBlack);
+        ansi16[ThemeKeys.AccentBrush] = Palette(dark ? Ansi.LightBlue : Ansi.Blue);
+        ansi16[ThemeKeys.AccentDarkBrush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
+        ansi16[ThemeKeys.Accent2Brush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
+        ansi16[ThemeKeys.StatusBarBackground] = Palette(dark ? Ansi.White : Ansi.White);
+        ansi16[ThemeKeys.StatusBarAltBackground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
+        ansi16[ThemeKeys.StatusBarAltForeground] = Palette(dark ? Ansi.LightWhite : Ansi.LightWhite);
+        ansi16[ThemeKeys.ButtonForegroundFocus] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ButtonBackgroundFocus] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
+        ansi16[ThemeKeys.ButtonForegroundNormal] = Palette(dark ? Ansi.White : Ansi.LightBlack);
+        ansi16[ThemeKeys.ButtonBackgroundNormal] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.InputBackgroundNormal] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.InputForegroundNormal] = Palette(dark ? Ansi.White : Ansi.LightBlack);
+        ansi16[ThemeKeys.InputBackgroundFocus] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.InputForegroundFocus] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
+        ansi16[ThemeKeys.InputBackgroundHover] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.InputForegroundHover] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
+        ansi16[ThemeKeys.MenuBarBackground] = Palette(dark ? Ansi.LightBlack : Ansi.White);
+        ansi16[ThemeKeys.MenuAcceleratorHoverForeground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
+        ansi16[ThemeKeys.MenuIconUncheckedHoverForeground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
+        ansi16[ThemeKeys.ListItemForegroundFocus] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.ListItemForegroundSelectedInactive] = Palette(dark ? Ansi.LightWhite : Ansi.LightWhite);
 
-        // on-accent dark = 15 (white): black-on-bright-blue is unreadable on pure-blue palettes (spec §1†).
-        ansi16[ThemeKeys.OnAccentBrush] = Palette(dark ? 0 : 15);
-        ansi16[ThemeKeys.AccentInverseBrush] = Palette(dark ? 4 : 12);
-        ansi16[ThemeKeys.InfoBrush] = Palette(dark ? 14 : 6);
-        ansi16[ThemeKeys.InfoInverseBrush] = Palette(dark ? 6 : 14);
-        ansi16[ThemeKeys.CoolBrush] = Palette(dark ? 13 : 5);
-        ansi16[ThemeKeys.CoolInverseBrush] = Palette(dark ? 5 : 13);
-        ansi16[ThemeKeys.DangerBrush] = Palette(dark ? 9 : 1);
-        ansi16[ThemeKeys.DangerInverseBrush] = Palette(dark ? 1 : 9);
-        ansi16[ThemeKeys.SuccessBrush] = Palette(dark ? 10 : 2);
-        ansi16[ThemeKeys.SuccessInverseBrush] = Palette(dark ? 2 : 10);
-        ansi16[ThemeKeys.WarningBrush] = Palette(dark ? 11 : 3);
-        ansi16[ThemeKeys.WarningInverseBrush] = Palette(dark ? 3 : 11);
-        ansi16[ThemeKeys.GreenBrush] = Palette(2);
-        ansi16[ThemeKeys.AmberBrush] = Palette(3);
-        ansi16[ThemeKeys.RedBrush] = Palette(dark ? 9 : 1);
-        ansi16[ThemeKeys.PurpleBrush] = Palette(dark ? 13 : 5);
-        ansi16[ThemeKeys.BorderPen] = Pens.Light.WithBrush(Palette(dark ? 8 : 15));
-        ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithBrush(Palette(dark ? 8 : 15));
-        ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? 15 : 0));
-        ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
-        ansi16[ThemeKeys.TabUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4));
-        ansi16[ThemeKeys.SliderFilledPen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)12 : (byte)4)); // accent
-        ansi16[ThemeKeys.SliderTrackPen] = Pens.Heavy.WithColor(Color.FromPalette(8));                          // faint/grey
-        ansi16[ThemeKeys.ObscuredOverlayBrush] = Palette(8);
+        // on-accent dark = Ansi.LightWhite (white): black-on-bright-blue is unreadable on pure-blue palettes (spec §Ansi.Red†).
+        ansi16[ThemeKeys.OnAccentBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
+        ansi16[ThemeKeys.OnAccentInverseBrush] = Palette(dark ? Ansi.Black : Ansi.Black);
+        ansi16[ThemeKeys.AccentInverseBrush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
+        ansi16[ThemeKeys.InfoBrush] = Palette(dark ? Ansi.LightCyan : Ansi.Cyan);
+        ansi16[ThemeKeys.Info2Brush] = Palette(dark ? Ansi.Cyan : Ansi.LightCyan);
+        ansi16[ThemeKeys.InfoInverseBrush] = Palette(dark ? Ansi.Cyan : Ansi.LightCyan);
+        ansi16[ThemeKeys.CoolBrush] = Palette(dark ? Ansi.LightMagenta : Ansi.Magenta);
+        ansi16[ThemeKeys.Cool2Brush] = Palette(dark ? Ansi.Magenta : Ansi.LightMagenta);
+        ansi16[ThemeKeys.CoolInverseBrush] = Palette(dark ? Ansi.Magenta : Ansi.LightMagenta);
+        ansi16[ThemeKeys.DangerBrush] = Palette(dark ? Ansi.LightRed : Ansi.Red);
+        ansi16[ThemeKeys.Danger2Brush] = Palette(dark ? Ansi.Red : Ansi.LightRed);
+        ansi16[ThemeKeys.DangerInverseBrush] = Palette(dark ? Ansi.Red : Ansi.LightRed);
+        ansi16[ThemeKeys.SuccessBrush] = Palette(dark ? Ansi.LightGreen : Ansi.Green);
+        ansi16[ThemeKeys.Success2Brush] = Palette(dark ? Ansi.Green : Ansi.LightGreen);
+        ansi16[ThemeKeys.SuccessInverseBrush] = Palette(dark ? Ansi.Green : Ansi.LightGreen);
+        ansi16[ThemeKeys.WarningBrush] = Palette(dark ? Ansi.LightYellow : Ansi.Yellow);
+        ansi16[ThemeKeys.Warning2Brush] = Palette(dark ? Ansi.Yellow : Ansi.LightYellow);
+        ansi16[ThemeKeys.WarningInverseBrush] = Palette(dark ? Ansi.Yellow : Ansi.LightYellow);
+        ansi16[ThemeKeys.GreenBrush] = Palette(Ansi.Green);
+        ansi16[ThemeKeys.AmberBrush] = Palette(Ansi.Yellow);
+        ansi16[ThemeKeys.RedBrush] = Palette(dark ? Ansi.LightRed : Ansi.Red);
+        ansi16[ThemeKeys.PurpleBrush] = Palette(dark ? Ansi.LightMagenta : Ansi.Magenta);
+        ansi16[ThemeKeys.BorderPen] = Pens.Light.WithBrush(Palette(Ansi.LightBlack));
+        ansi16[ThemeKeys.FocusBorderPen] = Pens.Light.WithBrush(Palette(dark ? Ansi.LightBlue : Ansi.Blue));
+        ansi16[ThemeKeys.SeparatorPen] = Pens.Double.WithBrush(Palette(dark ? Ansi.LightBlack : Ansi.LightWhite));
+        ansi16[ThemeKeys.MenuSeparatorPen] = Pens.Light.WithBrush(Palette(dark ? Ansi.LightWhite : Ansi.Black));
+        ansi16[ThemeKeys.FocusPen] = Pens.Double.WithColor(Color.FromPalette(dark ? (byte)Ansi.LightBlue : (byte)Ansi.Blue));
+        ansi16[ThemeKeys.TabUnderlinePen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)Ansi.LightBlue : (byte)Ansi.Blue));
+        ansi16[ThemeKeys.SliderFilledPen] = Pens.Heavy.WithColor(Color.FromPalette(dark ? (byte)Ansi.LightBlue : (byte)Ansi.Blue)); // accent
+        ansi16[ThemeKeys.SliderTrackPen] = Pens.Heavy.WithColor(Color.FromPalette(Ansi.LightBlack));                          // faint/grey
+        ansi16[ThemeKeys.ObscuredOverlayBrush] = Brushes.Transparent;//Palette(Ansi.LightBlack);
         // ansi16[ThemeKeys.AccessKeyIndicatorBrush] = Palette(dark ? 15 : 0);
         // Ribbon: the descent never ascends to Ansi256, so the strip recess and dropped active-tab fill need explicit
         // Ansi16 indices or they collapse to the NoColor floor (no fill) on 16-color terminals.
@@ -561,4 +617,24 @@ public static class CursorialTheme
     }
 
     private static SolidColorBrush Palette(int index) => new(Color.FromPalette((byte)index));
+
+    private static class Ansi
+    {
+        public const int Black = 0;
+        public const int Red = 1;
+        public const int Green = 2;
+        public const int Yellow = 3;
+        public const int Blue = 4;
+        public const int Magenta = 5;
+        public const int Cyan = 6;
+        public const int White = 7;
+        public const int LightBlack = 8;
+        public const int LightRed = 9;
+        public const int LightGreen = 10;
+        public const int LightYellow = 11;
+        public const int LightBlue = 12;
+        public const int LightMagenta = 13;
+        public const int LightCyan = 14;
+        public const int LightWhite = 15;
+    }
 }

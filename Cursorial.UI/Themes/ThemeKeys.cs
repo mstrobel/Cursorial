@@ -51,11 +51,17 @@ public static class ThemeKeys
     /// <summary>Selection fill (selected item/text) in a focused container.</summary>
     public const string SelectionBrush = "Theme.SelectionBrush";
 
+    /// <summary>Selection ink (selected item/text) in a focused container.</summary>
+    public const string SelectionInk = "Theme.SelectionInk";
+
     /// <summary>Selection fill in an <b>unfocused</b> container (the neutral-grey inactive selection, spec --sel-inactive).</summary>
     public const string SelectionInactiveBrush = "Theme.SelectionInactiveBrush";
 
     /// <summary>Even-row zebra fill in lists/grids (spec --altrow; consumed by the opt-in <c>:alternate</c> row look).</summary>
     public const string AlternateRowBrush = "Theme.AlternateRowBrush";
+
+    /// <summary>Even-row zebra ink in lists/grids (spec --altrow-ink; consumed by the opt-in <c>:alternate</c> row look).</summary>
+    public const string AlternateRowInk = "Theme.AlternateRowInk";
 
     /// <summary>Shared pointer-over (hover) fill.</summary>
     public const string HoverBrush = "Theme.HoverBrush";
@@ -119,6 +125,9 @@ public static class ThemeKeys
 
     /// <summary>Text drawn on an accent/colored fill (pressed-button text, badge text).</summary>
     public const string OnAccentBrush = "Theme.OnAccentBrush";
+    
+    /// <summary>Text drawn on an dark accent/colored fill (pressed-button text, badge text).</summary>
+    public const string OnAccentInverseBrush = "Theme.OnAccentInverseBrush";
 
     /// <summary>Success / on.</summary>
     public const string GreenBrush = "Theme.GreenBrush";
@@ -214,6 +223,7 @@ public static class ThemeKeys
     /// the line-drawn surfaces (<c>Border</c>/GroupBox/Expander/Window chrome) that genuinely want a frame.
     /// </summary>
     public const string BorderPen = "Theme.BorderPen";
+    public const string FocusBorderPen = "Theme.FocusBorderPen";
     public const string ToolTipBorderPen = "Theme.ToolTipBorderPen";
     public const string MenuBorderPen = "Theme.MenuBorderPen";
     public const string TabControlBorderPen = "Theme.TabControlBorderPen";
@@ -277,8 +287,10 @@ public static class ThemeKeys
     public const string PanelBackgroundBrush = "Theme.PanelBackgroundBrush";
 
     // Button (Button / RepeatButton / ToggleButton).
-    /// <summary>Standard + default button ink (--text).</summary>
+    /// <summary>Standard button ink (--text).</summary>
     public const string ButtonForegroundNormal = "Theme.ButtonForegroundNormal";
+    /// <summary>Default button ink (--text).</summary>
+    public const string ButtonForegroundDefault = "Theme.ButtonForegroundDefault";
     /// <summary>Resting button fill (--surface).</summary>
     public const string ButtonBackgroundNormal = "Theme.ButtonBackgroundNormal";
     /// <summary>Hovered button ink (--hover).</summary>
@@ -340,6 +352,8 @@ public static class ThemeKeys
     public const string InputForegroundHover = "Theme.InputForegroundHover";
     /// <summary>Focused input fill — the recessed well (--well).</summary>
     public const string InputBackgroundFocus = "Theme.InputBackgroundFocus";
+    /// <summary>Focused input ink.</summary>
+    public const string InputForegroundFocus = "Theme.InputForegroundFocus";
     /// <summary>Input selection fill, control focused (--sel).</summary>
     public const string InputSelectionActive = "Theme.InputSelectionActive";
     /// <summary>Input selection fill, control unfocused (--sel).</summary>
@@ -360,10 +374,12 @@ public static class ThemeKeys
     public const string ListItemForegroundHover = "Theme.ListItemForegroundHover";
     /// <summary>Selected list-item fill, focused container (--sel).</summary>
     public const string ListItemBackgroundSelected = "Theme.ListItemBackgroundSelected";
-    /// <summary>Selected but inactive list-item fill, focused container.</summary>
-    public const string ListItemBackgroundSelectedInactive = "Theme.ListItemBackgroundSelectedInactive";
     /// <summary>Selected list-item ink.</summary>
     public const string ListItemForegroundSelected = "Theme.ListItemForegroundSelected";
+    /// <summary>Selected but inactive list-item fill, focused container.</summary>
+    public const string ListItemBackgroundSelectedInactive = "Theme.ListItemBackgroundSelectedInactive";
+    /// <summary>Selected but inactive list-item ink.</summary>
+    public const string ListItemForegroundSelectedInactive = "Theme.ListItemForegroundSelectedInactive";
     /// <summary>Keyboard-focused list-item ink — reverse-video.</summary>
     public const string ListItemForegroundFocus = "Theme.ListItemForegroundFocus";
     /// <summary>Keyboard-focused list-item fill — reverse-video (--text).</summary>
@@ -392,14 +408,24 @@ public static class ThemeKeys
     public const string MenuBarBackground = "Theme.MenuBarBackground";
     /// <summary>Hovered menu-item fill (--hover).</summary>
     public const string MenuBackgroundHover = "Theme.MenuBackgroundHover";
+    /// <summary>Hovered menu-item fill (--hover).</summary>
+    public const string MenuForegroundHover = "Theme.MenuForegroundHover";
     /// <summary>Highlighted / open menu-item fill (--sel).</summary>
     public const string MenuBackgroundHighlighted = "Theme.MenuBackgroundHighlighted";
+    /// <summary>Highlighted / open menu-item ink</summary>
+    public const string MenuForegroundHighlighted = "Theme.MenuForegroundHighlighted";
     /// <summary>The ^X accelerator/gesture hint text (--muted).</summary>
     public const string MenuAcceleratorForeground = "Theme.MenuAcceleratorForeground";
     /// <summary>The ^X accelerator/gesture hint text when hovered (--text-dim).</summary>
     public const string MenuAcceleratorHoverForeground = "Theme.MenuAcceleratorHoverForeground";
     /// <summary>Disabled menu-item ink (--muted).</summary>
     public const string MenuForegroundDisabled = "Theme.MenuForegroundDisabled";
+    /// <summary>ink for <em>checkable</em> menu-item's checkmark/icon when <em>checked</em>.</summary>
+    public const string MenuIconCheckedForeground = "Theme.MenuIconCheckedForeground";
+    /// <summary>ink for <em>checkable</em> menu-item's checkmark/icon when <em>unchecked</em>.</summary>
+    public const string MenuIconUncheckedForeground = "Theme.MenuIconUncheckedForeground";
+    /// <summary>ink for <em>checkable, hovered</em> menu-item's checkmark/icon when <em>unchecked</em>.</summary>
+    public const string MenuIconUncheckedHoverForeground = "Theme.MenuIconUncheckedHoverForeground";
 
     // TabItem.
     /// <summary>Inactive tab-header ink (--text-dim; the gallery dims unselected tabs).</summary>

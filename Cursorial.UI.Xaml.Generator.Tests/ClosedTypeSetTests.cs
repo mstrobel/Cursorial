@@ -110,6 +110,23 @@ public class ClosedTypeSetTests
         Assert.Null(ResolveStaticOf(resolver, "Button.OpacityProperty"));         // inherited → NOT baked (matches reflection)
     }
 
+    [Fact] // {x:Static} resolves a CHAIN — a static member then INSTANCE member accesses (A.B.C.D); it bakes the full path
+    public void ResolveStaticExpr_MemberChain_BakesFullPath()
+    {
+        var resolver = new XamlSymbolResolver(GeneratorHarness.ReferencedCompilation());
+
+        Assert.NotNull(ResolveStaticOf(resolver, "Brushes.Red")); // 2-part baseline — Brushes resolves in the generator
+
+        // Brushes.Red (static field) → .Color (instance property): the instance hop bakes as one member-access expr.
+        var expr = ResolveStaticOf(resolver, "Brushes.Red.Color");
+        Assert.NotNull(expr);
+        Assert.EndsWith(".Brushes.Red.Color", expr);
+
+        // A broken hop ANYWHERE in the chain resolves to null — no partial bake (would drift from the loader).
+        Assert.Null(ResolveStaticOf(resolver, "Brushes.Red.Nonexistent"));
+        Assert.Null(ResolveStaticOf(resolver, "Brushes.Nonexistent.Color"));
+    }
+
     private static string? ResolveStaticOf(XamlSymbolResolver resolver, string path)
-        => ClosedTypeSet.ResolveStaticExpr(resolver, path);
+        => ClosedTypeSet.ResolveStaticExpr(resolver, XamlSymbolResolver.CursorialUiNamespace, path);
 }

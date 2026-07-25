@@ -2,7 +2,7 @@ namespace Cursorial.UI.DataViews.Shaping;
 
 /// <summary>
 /// The engine's adaptive stable sort — a TimSort over an <see cref="int"/> permutation with an
-/// arbitrary <see cref="Comparison{T}"/> (design doc §2.3). Chosen over <see cref="Array.Sort{T}"/>'s
+/// arbitrary <see cref="Comparison{T}"/> (design doc §2.3). Chosen over <see cref="Array.Sort{T}(T[])"/>'s
 /// introsort because the shaping profile is dominated by <em>mostly-sorted</em> input (a re-sort
 /// after a burst of live-update repairs, a direction flip, a secondary-column add), where natural-run
 /// detection is O(N) instead of O(N log N); pure-random input pays a small constant over introsort

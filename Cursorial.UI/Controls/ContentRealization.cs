@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
 namespace Cursorial.UI.Controls;
@@ -46,57 +47,77 @@ internal static class ContentRealization
     /// <param name="recognizesAccessKey">Whether a plain string is parsed for an access-key mnemonic (chain ④ extension).</param>
     /// <param name="recognizesMarkup"></param>
     /// <param name="stringFormat">A composite format applied to the text fallbacks (chains ④-string/⑤); ignored when a template handles the content (WPF parity).</param>
-    /// <param name="forwardTextInverse">Whether the <see cref="TextElement.InverseProperty"/> should be forwarded.</param>
     internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template,
-                                       bool recognizesAccessKey, bool recognizesMarkup, string? stringFormat = null,
-                                       bool forwardTextInverse = true)
+                                       bool recognizesAccessKey, bool recognizesMarkup, string? stringFormat = null)
     {
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
-            return ForwardTextAttributeAxes(host, template.Build(content), forwardTextInverse);
+            return ForwardTextAttributeAxes(host, template.Build(content));
 
         switch (content)
         {
             case null:
+            {
+                // Null content resolves as null.
                 return null;
+            }
 
             // ③ a UIElement passes through: it is a logical child of the templated parent (so it
             // inherits the host's DataContext) and a visual child of the presenter. When the presenter
             // is a template part, the templated parent owns the logical adoption (the ContentControl);
             // a free-standing presenter adopts it itself.
             case UIElement element:
-                AdoptElementContent(host, ForwardTextAttributeAxes(host, element, forwardTextInverse));
+            {
+                AdoptElementContent(host, ForwardTextAttributeAxes(host, element));
                 // Icon-as-content gets the Inverse cue (§2.1), but the forward is a framework binding on
                 // BORROWED content — the presenter must own its lifecycle (it is torn down on unhost, else
                 // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the install is
                 // driven by ContentPresenter.RebuildChild, not here.
                 return element;
+            }
 
             // ④ an AccessText value always becomes an AccessTextPresenter, regardless of RecognizesAccessKey.
             case AccessText accessText:
-                return ForwardTextAttributeAxes(host, new AccessTextPresenter(accessText), forwardTextInverse);
+            {
+                var atp = new AccessTextPresenter(accessText);
+                return ForwardTextAttributeAxes(host, atp);
+            }
 
             // ④ extension: a plain string under RecognizesAccessKey folds to an AccessText (doc §12.5). The access
             // key is parsed from the RAW content — the same text ContentControl registers with the AccessKeyManager
             // — so the underlined mnemonic always matches the active gesture (a ContentStringFormat never injects
             // or moves a mnemonic, and never disagrees with the registration).
             case string s when recognizesAccessKey:
-                return ForwardTextAttributeAxes(host, new AccessTextPresenter(AccessText.Parse(s)), forwardTextInverse);
+            {
+                var atp = new AccessTextPresenter(AccessText.Parse(s));
+                return ForwardTextAttributeAxes(host, atp);
+            }
 
-            // ⑤ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
-            // as TextBlock(Convert.ToString(content)) with CurrentCulture (CD22), through the string format.
-            case string s:
-                var stb = recognizesMarkup
-                              ? new TextBlock { Markup = SafeFormat(host, stringFormat, s) }
-                              : new TextBlock { Text = SafeFormat(host, stringFormat, s) };
-                stb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
-                return ForwardTextAttributeAxes(host, stb, forwardTextInverse);
+            // ⑤ RichText content renders as RichTextPresenter.
+            case RichText rt:
+            {
+                var rtp = new RichTextPresenter { Source = rt };
+                return ForwardTextAttributeAxes(host, rtp);
+            }
 
+            // ⑥ fallback: any other content (incl. a plain string) when `recognizesMarkup` is true renders
+            // as TextBlock { Markup = SafeFormat(content) } with CurrentCulture (CD22), through the string format
+            // if provided.
+            case var o when recognizesMarkup:
+            {
+                var stb = new TextBlock { Markup = SafeFormat(host, stringFormat, o) };
+                return ForwardTextAttributeAxes(host, stb);
+            }
+
+            // ⑦ fallback: any other content (incl. a plain string without RecognizesAccessKey) renders
+            // as TextBlock { Text = SafeFormat(content) } with CurrentCulture (CD22), through the string format
+            // if provided.
             default:
+            {
                 var dtb = new TextBlock(SafeFormat(host, stringFormat, content));
-                dtb.SetBinding(TextBlock.TextWrappingProperty, new Binding("(TextBlock.TextWrapping)") { Source = host });
-                return ForwardTextAttributeAxes(host, dtb, forwardTextInverse);
+                return ForwardTextAttributeAxes(host, dtb);
+            }
         }
     }
 
@@ -105,11 +126,11 @@ internal static class ContentRealization
     // onto DataTemplate/opaque-element content (app content is app-styleable, proposal §2.1/§7.3).
     // The axes are non-inheriting ("flows like Background"), so a control-level cue — the theme's
     // `.caps-nocolor Button:focus → Inverse` — reaches the label through these live forwards.
-    private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf, bool forwardTextInverse)
+    private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
     {
         // The forward source is the control the theme rules land on (the templated parent); a
         // free-standing presenter forwards its own values (it IS the element the app styles).
-        var source = host.TemplatedParent ?? (UIObject)host;
+        var source = host.ForwardsFromTemplatedParent ? host.TemplatedParent ?? (UIObject)host : host;
 
         // Install at the Template lane (audit fix 2026-07-13): opening the template-instantiation
         // scope around the binding installs makes the forwarded value the leaf's RESTING truth —
@@ -120,9 +141,12 @@ internal static class ContentRealization
         {
             foreach (var axis in TextElement.AllAxisProperties)
             {
-                if (forwardTextInverse || axis != TextElement.InverseProperty)
+                if (host.ForwardTextInverse || axis != TextElement.InverseProperty)
                     leaf.SetBinding(axis, new Binding(axis) { Source = source });
             }
+            
+            leaf.SetBinding(TextBlock.TextWrappingProperty, 
+                            new Binding(TextBlock.TextWrappingProperty) { Source = source });
         }
 
         return leaf;

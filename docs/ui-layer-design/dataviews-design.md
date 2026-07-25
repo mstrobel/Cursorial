@@ -77,6 +77,9 @@ of the otherwise direct-drawn rows.
 
 ### Deferred (seams carved, recorded here)
 
+> **Disposition (2026-07-19):** everything below shipped in Wave 2 (§9) or the post-merge
+> live-canary rounds, except a small residue — the open remainder is tracked in §10.
+
 Full editor suite (combo/date/spin/new-row/validation — rides the v1 edit host); column chooser +
 header drag-reorder (API reorder exists; the drag UX later); header-edge mouse resize (the width
 model is v1; the gesture later); rules-manager/rule-dialog UI; **TopBottom format rules** (needs
@@ -388,6 +391,27 @@ custom columns don't touch the engine (DataBar/badge are the built-in painters).
 > row-id hygiene fan-out; the band presenters' frozen overpaint gates on `FrozenWidth` (the
 > gutter is pinned without any Fixed column); and detail-pane height refinements re-dirty the
 > band so the fixpoint refills under the corrected content-y map.
+>
+> **The gesture sweep (2026-07-19, post-merge live-canary program):** a 6-surface promised-vs-
+> implemented audit of every input gesture (probe-tested headlessly, each finding adversarially
+> verified — 21 confirmed, 0 refuted) closed the full set: **edit sessions are ROW-ID-anchored**
+> (the editor rides its row through live churn; commits write the id, never a stale view slot —
+> the gallery's "committing didn't work"); the §9.2 **click-away displacement policy** (a press
+> outside the open cell/filter editor commits-else-cancels before landing — no more stranded
+> editors swallowing the keyboard); header drags are **partition-honest** across the frozen
+> boundary (slots clamp to the drag column's partition; a rejected group drop cancels instead of
+> reordering); the **group-panel chips drag** (reorder in-band, ungroup below, press-release
+> semantics so a promoted drag never also toggles/removes); the **chooser's drag-to-show** landed
+> (the mockup headline: a hidden chip drags onto the header, the header adopts the gesture via
+> capture hand-off, release inserts AT the slot); the rows **context menu anchors at the pressed/
+> focused cell** (Pointer placement for right-click; bottom-edge-translated offsets for the Menu
+> key) and right-click focus covers group rows + the placeholder; the reachability keys (Menu/F6/
+> Ctrl+Up) survive an EMPTY view; plain Home/End jump rows; band focus repairs when its band
+> empties/hides; `AllowDelete` + Delete + a menu lane (opt-in, unpromised parity); the drawn ▲▼
+> spin steppers are clickable; the auto-filter editor seeds only grammar-round-trippable text
+> (a checklist digest no longer destroys the InSet on Enter), scrolls clear of the frozen region
+> on the mouse path, and the checklist's tri-state (Select All) checks all from partial; the edit
+> bar's Tab hint says "commit row" on the new-row session.
 
 ### 9.1 The expression language (`Shaping/Expressions/`)
 
@@ -543,3 +567,46 @@ per call, so rowId is the ONLY identity for value-type rows (id-keyed consumers 
 through it). Span formatters wire into the band cache (pooled char buffers replace per-cell
 strings). The SCP band window (BandStartRow/BandLength) promotes into `IScrollContentHost` as a
 `GetRealizationWindow()`-style surface (the recorded IVT follow-up; solution-wide change).
+
+## 10. §10 deferred items — CLEARED (autonomous sweep, 2026-07-19)
+
+The §10 open-deferral list is now **all shipped** (the 2026-07-19 autonomous sweep). Each item and
+where it landed. (Independent group `Direction` was never here — it shipped at §9.5, pinned by test.)
+
+1. **Multi-range cell selection ✅** — `SelectionUnit.Cell` accumulates disjoint ranges: the active
+   range stays the four scalar corner fields, Ctrl+click BANKS it into `_committedRanges` and starts
+   a fresh one (a plain click/arrow drops the banked ones). Every range re-projects through the same
+   `ViewIndexOfRow`/`EntryIndexOfColumnClamped` path; the prune + RowsRemoved hygiene DROP a committed
+   range that loses a corner (only the active collapses to focus). The presenter fills a cell when ANY
+   range contains it (reused buffer, zero steady-state alloc); Ctrl+C TSV emits each block separated
+   by a blank line (`DataGrid.CollectCellRangeViewRects`).
+2. **Cell validation hooks ✅** — `DataGridColumn.Validator` (`Func<DataGridCellValidationContext,
+   string?>`, null = accept) runs in `CommitEdit` before the setter write on BOTH commit lanes; a
+   rejection vetoes the commit, keeps the editor in the danger ink, and shows the message on the edit
+   bar (retired on the next keystroke).
+3. **Expression-editor completion ✅ (highlighting still deferred)** — the criteria editor gains a
+   live completion popup (field names inside `[…]`, function tokens for a bare identifier; ↑/↓/Enter/
+   Tab/Esc). LIVE SYNTAX HIGHLIGHTING remains deferred with a sharper reason: it needs a second
+   orthogonal colored-run dimension on `TextBox`/`TextPresenter` (they render one brush, splitting
+   runs only at the selection) — genuine text-tier surgery, not an editor-local change.
+4. **Multi-entry `ThresholdRule` editing ✅** — the Highlight pane is a list of condition rows with
+   ＋ Add / ✕ Remove; SeedFrom populates one row per entry; Ok builds the whole ordered list.
+5. **`Between` in the Highlight pane ✅** — a two-bound operator revealing a second value box; Ok
+   carries the upper bound as `ThresholdEntry.SecondValue`, which the controller compile threads into
+   `BuildConditionExpression`.
+6. **Custom formatting pickers ✅** — every format combo offers a "Custom…" reveal (fg/bg `#hex` via
+   `DataGridDialogHelpers.TryParseColor`, + Bold/Inverse); the color scale takes 2/3 custom stops; the
+   icon set's ▲●▼ glyphs are editable.
+7. **Icon glyphs on data-bar cells ✅** — a per-column icon reserve (`_barIconReserve`, computed like
+   `_barReserve`) reserves the band's widest bar-cell icon uniformly, so an icon + bar coexist with
+   the track origin still fixed.
+8. **`PredicateRule` re-edit ✅ (as designed)** — `PredicateRule.SourceText` is settable by code
+   authors, so a code-authored lambda rule that supplies it re-seeds the field (pinned by test); the
+   residual empty-seed case is only a lambda with no text, which is inherent.
+9. **Nerd Font icon tier ✅** — the rules-manager toolbar `IconCarrier`s carry documented nf-md glyph
+   codepoints (mirroring `Cursorial.Gallery`'s `Icons`; shown only under `UIApplication.NerdFontAvailable`).
+10. **SCP band-window accessor ✅** — the visibility promotion had already shipped (`BandStartRow`/
+    `BandLength` are public since wave 2); this adds the clean shape — a public `RealizationWindow`
+    record + `ScrollContentPresenter.GetRealizationWindow()` bundling the pair, which
+    `DataGridRowsPresenter.BandWindow()` now calls (NOT a solution-wide change — the earlier "IVT
+    reach-through / solution-wide" framing was stale).

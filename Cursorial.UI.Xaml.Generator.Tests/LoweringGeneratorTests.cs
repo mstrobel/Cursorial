@@ -120,7 +120,7 @@ namespace GenApp { public partial class PlainView : StackPanel { public PlainVie
     {
         var xaml =
             $"<StackPanel {Ns} x:Class=\"GenApp.GapView\">" +
-            "<Button x:Name=\"Ok\" Content=\"{Binding Amount, Converter={StaticResource Fmt}}\"/>" + // converter lowering not built yet
+            "<ComboBox x:Name=\"Ok\" Text=\"{DynamicResource TextKey}\"/>" + // {DynamicResource} on a DIRECT property — non-bindable, fenced (loader Fatals too)
             "</StackPanel>";
 
         const string codeBehind = @"
@@ -132,7 +132,7 @@ namespace GenApp { public partial class GapView : StackPanel { public GapView() 
         // The dropped member is visible as a CURG3001 build warning at the .xaml (not silently lost).
         var gap = Assert.Single(diagnostics, d => d.Id == "CURG3001");
         Assert.Equal(DiagnosticSeverity.Warning, gap.Severity);
-        Assert.Contains("Converter", gap.GetMessage());
+        Assert.Contains("DynamicResource", gap.GetMessage());
 
         // The rest of the view still lowered (the TODO is a comment) and compiles.
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);

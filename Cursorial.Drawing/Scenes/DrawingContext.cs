@@ -875,54 +875,80 @@ public sealed class DrawingContext
             MappedSurface(),
             bounds,
             capabilities,
-            // ReSharper disable once RedundantLambdaParameterType
-            resolver: (in BrushedTextContext ctx) =>
-                      {
-                          Style style;
-                          // A run that declares its own brush wins, sampled at its declaration scope.
-                          if (ctx.Tag is BrushedStyle bs)
-                          {
-                              // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
-                              // logical offset within the source run, over the run's total width, so the gradient
-                              // flows continuously across a wrap instead of restarting per line-piece. Block /
-                              // Document → the 2-D laid-out box.
-                              Color foreground = bs.Scope == DeclarationScope.Inline
-                                                     ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
-                                                     : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
-                                                                             bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
-
-                              style = ctx.BaseStyle.WithForeground(foreground);
-                          }
-                          else if (documentBrush is null)
-                          {
-                              style = ctx.BaseStyle;
-                          }
-                          else
-                          {
-                              // Otherwise the document brush colors cells that inherited the document
-                              // foreground; an explicit run color (differing from the default) wins.
-                              var fg = ctx.BaseStyle.Foreground;
-                              bool inherited = fg.IsDefault || fg == documentForeground;
-                              style = inherited
-                                          ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
-                                          : ctx.BaseStyle;
-                          }
-
-                          // The base-attribute leg: OR the element-effective attributes onto the run's own
-                          // (default none = a no-op for every pre-existing caller). When the base carries the
-                          // Underline presence bit with a non-Single shape, the shape rides along (the widened
-                          // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
-                          // today, so the base shape never overwrites authored run state.
-                          if (baseAttributes == default)
-                              return style;
-                          var merged = style.AddAttributes(baseAttributes);
-                          if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
-                              merged = merged.WithUnderlineStyle(baseUnderlineShape);
-                          return merged;
-                      });
+            resolver: CreateBrushResolver(documentBrush, documentForeground, docBounds, baseAttributes, baseUnderlineShape));
 
         if (transformed)
             CropNewFragmentsToClip(clip, fragmentsBefore);
+    }
+
+    /// <summary>
+    /// Creates a brush resolver that generates text styles based on the provided brush, foreground color,
+    /// document bounds, and text attributes. The resolver determines the final style of text rendering
+    /// for use in drawing operations, accommodating document-specific configurations and underline shapes.
+    /// </summary>
+    /// <param name="documentBrush">The brush applied to the document text. Can be null to use default behavior.</param>
+    /// <param name="documentForeground">The default foreground color used for rendering text within the document bounds.</param>
+    /// <param name="docBounds">Defines the rectangular boundary within which the text style applies.</param>
+    /// <param name="baseAttributes">The foundational set of text attributes that augment text styling. These include alignment, weight, and other styling parameters.</param>
+    /// <param name="baseUnderlineShape">Defines the default underline style to apply to the document text (e.g., single, double).</param>
+    /// <returns>
+    /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and resolves the appropriate
+    /// text style based on the brush and other styling parameters supplied to this method.
+    /// </returns>
+    public static BrushedTextResolver CreateBrushResolver(IBrush? documentBrush,
+                                                          Color documentForeground,
+                                                          Rect docBounds,
+                                                          TextAttributes baseAttributes,
+                                                          UnderlineStyle baseUnderlineShape)
+    {
+        // ReSharper disable once RedundantLambdaParameterType
+        return (in BrushedTextContext ctx) =>
+               {
+                   Style style;
+
+                   // A run that declares its own brush wins, sampled at its declaration scope.
+                   if (ctx.Tag is BrushedStyle bs)
+                   {
+                       // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
+                       // logical offset within the source run, over the run's total width, so the gradient
+                       // flows continuously across a wrap instead of restarting per line-piece. Block /
+                       // Document → the 2-D laid-out box.
+                       Color foreground = bs.Scope == DeclarationScope.Inline
+                                              ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
+                                              : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
+                                                                      bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
+
+                       style = ctx.BaseStyle.WithForeground(foreground);
+                   }
+                   else if (documentBrush is null)
+                   {
+                       style = ctx.BaseStyle;
+                   }
+                   else
+                   {
+                       // Otherwise the document brush colors cells that inherited the document
+                       // foreground; an explicit run color (differing from the default) wins.
+                       var fg = ctx.BaseStyle.Foreground;
+                       bool inherited = fg.IsDefault || fg == documentForeground;
+                       style = inherited
+                                   ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
+                                   : ctx.BaseStyle;
+                   }
+
+                   // The base-attribute leg: OR the element-effective attributes onto the run's own
+                   // (default none = a no-op for every pre-existing caller). When the base carries the
+                   // Underline presence bit with a non-Single shape, the shape rides along (the widened
+                   // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
+                   // today, so the base shape never overwrites authored run state.
+                   if (baseAttributes == default)
+                       return style;
+
+                   var merged = style.AddAttributes(baseAttributes);
+                   if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
+                       merged = merged.WithUnderlineStyle(baseUnderlineShape);
+
+                   return merged;
+               };
     }
 
     /// <summary>

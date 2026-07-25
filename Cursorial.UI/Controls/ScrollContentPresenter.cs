@@ -3,14 +3,14 @@ using Cursorial.Rendering;
 namespace Cursorial.UI.Controls;
 
 /// <summary>
-/// The scroll-mechanics element (design doc §5.7): hosts a single <see cref="Content"/> child,
-/// measures it at <see cref="LayoutLimits.MaxScrollExtent"/> on scrollable axes (never
+/// The scroll-mechanics element (design doc §5.7): hosts a single <see cref="ScrollContentPresenter.Content"/>
+/// child, measures it at <see cref="LayoutLimits.MaxScrollExtent"/> on scrollable axes (never
 /// <see cref="LayoutMath.Unbounded"/> — the doc's §12 scrolling note), publishes
-/// <see cref="Extent"/>/<see cref="Viewport"/> readbacks, and slides the content at composite time
-/// via the <b>styled</b> <see cref="ScrollOffsetColumn"/>/<see cref="ScrollOffsetRow"/> offsets
-/// (<c>[AffectsComposite]</c> — storyboard-animatable; smooth scrolling never re-rasters,
-/// invariant 3). S8's <c>ScrollViewer</c> templates around it; its <c>DirectProperty</c> offsets
-/// are two-way mirrors of these.
+/// <see cref="ScrollContentPresenter.Extent"/>/<see cref="ScrollContentPresenter.Viewport"/> readbacks, and slides
+/// the content at composite time via the <b>styled</b> <see cref="ScrollContentPresenter.ScrollOffsetColumn"/>/<see
+/// cref="ScrollContentPresenter.ScrollOffsetRow"/> offsets (<c>[AffectsComposite]</c> — storyboard-animatable;
+/// smooth scrolling never re-rasters, invariant 3). S8's <c>ScrollViewer</c> templates around it; its
+/// <c>DirectProperty</c> offsets are two-way mirrors of these.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,6 +47,13 @@ namespace Cursorial.UI.Controls;
 /// the templating parent (S8's <c>ScrollViewer</c>), not to a <c>Render</c> override here.
 /// </para>
 /// </remarks>
+/// <summary>
+/// The realization window a virtualizing <see cref="IScrollContentHost"/> fills (§9.6): the content
+/// row the zone scene's row 0 maps to (<see cref="Start"/>) and the window length in rows
+/// (<see cref="Length"/>). Returned by <see cref="ScrollContentPresenter.GetRealizationWindow"/>.
+/// </summary>
+public readonly record struct RealizationWindow(int Start, int Length);
+
 public class ScrollContentPresenter : UIElement
 {
     /// <summary>The minimum band padding in rows — <c>K = max(viewportRows, 8)</c> (matrix LD11).</summary>
@@ -218,6 +225,13 @@ public class ScrollContentPresenter : UIElement
     /// window's length (public for hosts; see <see cref="BandStartRow"/>).</summary>
     public int BandLength => Math.Min(ArrangedContentRows, _viewport.Rows + 2 * BandPadding);
 
+    /// <summary>
+    /// The current realization window — <see cref="BandStartRow"/> + <see cref="BandLength"/> as one
+    /// value (the §9.6 public band-window accessor a virtualizing <see cref="IScrollContentHost"/>
+    /// reads at band-fill time; prefer it over the two properties so the pair can't drift).
+    /// </summary>
+    public RealizationWindow GetRealizationWindow() => new(BandStartRow, BandLength);
+
     /// <summary>The content's arranged height — <c>max(Extent, Viewport)</c> rows when vertically scrollable, else the viewport.</summary>
     private int ArrangedContentRows => CanScrollVertically ? Math.Max(_extent.Rows, _viewport.Rows) : _viewport.Rows;
 
@@ -383,12 +397,12 @@ public class ScrollContentPresenter : UIElement
     // ───────────────────────────── offset coercion + re-anchor check ─────────────────────────────
 
     private static int CoerceScrollOffsetColumn(UIObject sender, int value)
-        => sender is ScrollContentPresenter presenter && presenter.CanScrollHorizontally
+        => sender is ScrollContentPresenter { CanScrollHorizontally: true } presenter
             ? Math.Clamp(value, 0, Math.Max(0, presenter._extent.Columns - presenter._viewport.Columns))
             : 0;
 
     private static int CoerceScrollOffsetRow(UIObject sender, int value)
-        => sender is ScrollContentPresenter presenter && presenter.CanScrollVertically
+        => sender is ScrollContentPresenter { CanScrollVertically: true } presenter
             ? Math.Clamp(value, 0, Math.Max(0, presenter._extent.Rows - presenter._viewport.Rows))
             : 0;
 

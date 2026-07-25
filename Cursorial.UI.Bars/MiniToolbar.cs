@@ -42,11 +42,35 @@ public sealed class MiniToolbar : ItemsControl
     /// <summary>Whether the strip is currently shown (the real surface-open state, not just the requested flag).</summary>
     public bool IsOpen => _isOpen;
 
+    /// <summary>Raised when the strip's surface actually opens — the WPF/Avalonia <c>ContextMenu.Opened</c> analog (bubbling).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> OpenedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Opened), RoutingStrategy.Bubble, typeof(MiniToolbar));
+
+    /// <summary>Raised when the strip closes on any path (light-dismiss, Escape, <see cref="Close"/>, target detach) — bubbling.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> ClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Closed), RoutingStrategy.Bubble, typeof(MiniToolbar));
+
+    /// <summary>Raised before the strip opens; a handler may set <see cref="System.ComponentModel.CancelEventArgs.Cancel"/> to suppress it (the Avalonia <c>ContextMenu.Opening</c> model).</summary>
+    public event EventHandler<System.ComponentModel.CancelEventArgs>? Opening;
+
+    /// <summary>CLR sugar over <see cref="OpenedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Opened { add => AddHandler(OpenedEvent, value!); remove => RemoveHandler(OpenedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="ClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Closed { add => AddHandler(ClosedEvent, value!); remove => RemoveHandler(ClosedEvent, value!); }
+
     /// <summary>Opens the strip at the pointer over <paramref name="target"/> (the right-click anchor). Re-opening
     /// relocates an open strip.</summary>
     public void Open(UIElement target)
     {
         ArgumentNullException.ThrowIfNull(target);
+
+        // Pre-open veto (the Avalonia ContextMenu.Opening model): a handler may cancel before the surface is built. The
+        // right-click trigger (OnTargetMouseUp) funnels through here, so this one point also governs the attached path.
+        var opening = new System.ComponentModel.CancelEventArgs();
+        Opening?.Invoke(this, opening);
+        if (opening.Cancel)
+            return;
 
         _popup ??= CreatePopup();
         if (_isOpen)
@@ -89,12 +113,16 @@ public sealed class MiniToolbar : ItemsControl
         _isOpen = true;
         if (_pendingTarget is { } target)
             WatchTarget(target);
+
+        RaiseEvent(RentEvent(OpenedEvent)); // the real surface-open edge (a bailed OpenCore never reaches here)
     }
 
     private void OnPopupClosed(object? sender, PopupClosedEventArgs e)
     {
         _isOpen = false;
         UnwatchTarget();
+
+        RaiseEvent(RentEvent(ClosedEvent)); // the single convergence point for every close path
     }
 
     // The anchor lives in the host tree; if it detaches while the strip is open, nothing else would close the

@@ -208,15 +208,40 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
             SendKey(Key.Character, text: rune.ToString());
     }
 
-    /// <summary>Sends a mouse-move at the cell position.</summary>
-    public void SendMouseMove(int column, int row)
+    /// <summary>Sends a mouse-move at the cell position (optionally with buttons held / modifiers — e.g. during a drag).</summary>
+    public void SendMouseMove(int column, int row, MouseButtons buttonsHeld = MouseButtons.None, KeyModifiers modifiers = default)
         => SendInput(new MouseEvent
         {
             Kind = MouseEventKind.Move,
             Position = new CellPosition(column, row),
             Button = MouseButton.None,
+            ButtonsHeld = buttonsHeld,
+            Modifiers = modifiers,
+            Timestamp = Time.GetUtcNow()
+        });
+
+    /// <summary>Sends a mouse button-down (press) at the cell — the start of a drag; pair with <see cref="SendMouseUp"/>.</summary>
+    public void SendMouseDown(int column, int row, MouseButton button = MouseButton.Left, KeyModifiers modifiers = default, int clickCount = 1)
+        => SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonDown,
+            Position = new CellPosition(column, row),
+            Button = button,
             ButtonsHeld = MouseButtons.None,
-            Modifiers = KeyModifiers.None,
+            Modifiers = modifiers,
+            ClickCount = clickCount,
+            Timestamp = Time.GetUtcNow()
+        });
+
+    /// <summary>Sends a mouse button-up (release) at the cell — the end of a drag.</summary>
+    public void SendMouseUp(int column, int row, MouseButton button = MouseButton.Left, KeyModifiers modifiers = default)
+        => SendInput(new MouseEvent
+        {
+            Kind = MouseEventKind.ButtonUp,
+            Position = new CellPosition(column, row),
+            Button = button,
+            ButtonsHeld = MouseButtons.None,
+            Modifiers = modifiers,
             Timestamp = Time.GetUtcNow()
         });
 
@@ -224,7 +249,7 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
     /// Sends a press/release pair at the cell, with <paramref name="clickCount"/> riding the
     /// button-down (the S3 contract's <see cref="ClickCountTarget.ButtonDown"/> default).
     /// </summary>
-    public void SendClick(int column, int row, MouseButton button = MouseButton.Left, int clickCount = 1)
+    public void SendClick(int column, int row, MouseButton button = MouseButton.Left, int clickCount = 1, KeyModifiers modifiers = default)
     {
         var position = new CellPosition(column, row);
 
@@ -234,7 +259,7 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
                       Position = position,
                       Button = button,
                       ButtonsHeld = MouseButtons.None,
-                      Modifiers = KeyModifiers.None,
+                      Modifiers = modifiers,
                       ClickCount = clickCount,
                       Timestamp = Time.GetUtcNow()
                   });
@@ -245,7 +270,7 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
                       Position = position,
                       Button = button,
                       ButtonsHeld = MouseButtons.None,
-                      Modifiers = KeyModifiers.None,
+                      Modifiers = modifiers,
                       Timestamp = Time.GetUtcNow()
                   });
     }

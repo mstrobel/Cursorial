@@ -11,6 +11,16 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class Menu : ItemsControl, IMainMenu
 {
+    /// <summary>
+    /// The bubbling event raised when the bar leaves menu mode — every open top-level submenu has shut and
+    /// keyboard focus has returned to the pre-menu origin (an Escape, a leaf invoke, or a light-dismiss). The
+    /// entry counterpart lives on the access-key engine (<see cref="AccessKeyManager.EnterMenuMode"/> /
+    /// <see cref="IMainMenu.OnEnterMenuMode"/>). Mirrors Avalonia's <c>MenuBase.MenuClosed</c> (WPF's
+    /// <c>Menu</c> has no such event).
+    /// </summary>
+    public static readonly RoutedEvent<RoutedEventArgs> MenuClosedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(MenuClosed), RoutingStrategy.Bubble, typeof(Menu));
+
     /// <summary>Creates a menu bar (items stack horizontally).</summary>
     public Menu()
     {
@@ -29,6 +39,13 @@ public class Menu : ItemsControl, IMainMenu
         // memory records on the Menu itself so an excursion never clobbers the window-root scope's memory.
         FocusManager.IsFocusScopeProperty.OverrideDefaultValue<Menu>(true);
         FocusManager.RetainsFocusProperty.OverrideDefaultValue<Menu>(false);
+    }
+
+    /// <summary>CLR sugar over <see cref="MenuClosedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? MenuClosed
+    {
+        add => AddHandler(MenuClosedEvent, value!);
+        remove => RemoveHandler(MenuClosedEvent, value!);
     }
 
     /// <inheritdoc/>
@@ -65,6 +82,25 @@ public class Menu : ItemsControl, IMainMenu
                 first.Focus(FocusNavigationMethod.AccessKey);
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Menu mode ends when keyboard focus leaves the bar. The Menu is a NON-RETAINING focus scope, so every
+    /// exit path — an Escape, a leaf invoke, a light-dismiss — routes focus back to the pre-menu origin, which
+    /// flips <see cref="UIElement.IsKeyboardFocusWithin"/> false here. Moving between the bar headers and their
+    /// submenu popups keeps it true (the placement-target bridge counts a focused submenu item as within the
+    /// bar, so a sibling-switch never trips it), making this true→false edge the single chokepoint every close
+    /// funnels through — <see cref="MenuClosed"/> fires exactly once per menu session.
+    /// </summary>
+    protected override void OnPropertyChanged(in UIPropertyChangedEventArgs args)
+    {
+        base.OnPropertyChanged(in args);
+
+        if (ReferenceEquals(args.Property, IsKeyboardFocusWithinProperty) && !args.GetNewValue<bool>())
+        {
+            var closed = RentEvent(MenuClosedEvent);
+            RaiseEvent(closed);
         }
     }
 

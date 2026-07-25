@@ -97,7 +97,7 @@ public static class SgrEncoder
         }
 
         // Background.
-        if (from.Background != to.Background)
+        if (from.Background != to.Background && !to.Background.IsTransparent)
         {
             WriteBackground(to.Background, buffer, ref written, ref needSeparator);
         }
@@ -158,7 +158,7 @@ public static class SgrEncoder
         if (attrs.HasFlag(TextAttributes.Overline)) WriteParam(53, buffer, ref written, ref needSeparator);
 
         if (!style.Foreground.IsDefault) WriteForeground(style.Foreground, buffer, ref written, ref needSeparator);
-        if (!style.Background.IsDefault) WriteBackground(style.Background, buffer, ref written, ref needSeparator);
+        if (style.Background is { IsDefault: false, IsTransparent: false }) WriteBackground(style.Background, buffer, ref written, ref needSeparator);
         if (!style.UnderlineColor.IsDefault) WriteUnderlineColor(style.UnderlineColor, buffer, ref written, ref needSeparator);
     }
 

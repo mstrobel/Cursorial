@@ -35,6 +35,19 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
     public static readonly StyledProperty<bool> IsSelectableProperty =
         UIProperty.Register<TabItem, bool>(nameof(IsSelectable), defaultValue: true);
 
+    /// <summary>The bubbling event raised whenever this tab becomes the selected tab (<see cref="IsSelected"/> ⇒ true) —
+    /// a per-tab activation hook distinct from the owner's selection-changed notification.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SelectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Selected), RoutingStrategy.Bubble, typeof(TabItem));
+
+    /// <summary>The bubbling event raised whenever this tab stops being the selected tab (<see cref="IsSelected"/> ⇒ false).</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> UnselectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Unselected), RoutingStrategy.Bubble, typeof(TabItem));
+
+    /// <summary>The bubbling event raised whenever <see cref="IsSelected"/> changes (either direction) — the selection-side parallel to <see cref="ToggleButton.IsCheckedChanged"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsSelectedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsSelectedChanged), RoutingStrategy.Bubble, typeof(TabItem));
+
     private bool _ownerDriven; // guards the owner→container write so it never echoes back into the model
     private Separator? _underline;
 
@@ -60,6 +73,15 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
         get => GetValue(IsSelectableProperty);
         set => SetValue(IsSelectableProperty, value);
     }
+
+    /// <summary>CLR sugar over <see cref="SelectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Selected { add => AddHandler(SelectedEvent, value!); remove => RemoveHandler(SelectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="UnselectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Unselected { add => AddHandler(UnselectedEvent, value!); remove => RemoveHandler(UnselectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="IsSelectedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsSelectedChanged { add => AddHandler(IsSelectedChangedEvent, value!); remove => RemoveHandler(IsSelectedChangedEvent, value!); }
 
     /// <inheritdoc/>
     protected override void OnApplyTemplate()
@@ -129,6 +151,12 @@ public class TabItem : HeaderedContentControl, ISelectableContainer, IAccessKeyT
             return;
 
         item.UpdateUnderline(); // show/hide the accent underline as selection flips
+
+        // Per-tab activation hook (Selector.Selected/Unselected, MenuItem.Checked/Unchecked analog): bubbles off the
+        // item so a handler on the TabControl sees which tab flipped, independent of the owner's SelectionChanged.
+        var routedEvent = newValue ? SelectedEvent : UnselectedEvent;
+        item.RaiseEvent(item.RentEvent(routedEvent));
+        item.RaiseEvent(item.RentEvent(IsSelectedChangedEvent)); // fires on every change (cf. ToggleButton.IsCheckedChanged)
 
         if (item is { _ownerDriven: false, OwnerSelector: {} owner })
             owner.NotifyContainerIsSelectedChanged(item, newValue);

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.ComponentModel;
 
+using Cursorial.Markup;
 using Cursorial.UI.Controls;
 
 // ReSharper disable UnusedParameter.Local
@@ -968,10 +969,32 @@ internal sealed class XamlObjectGraphBuilder
         // the X5 generated provider via a baked switch. No hard-cast to a concrete provider type, so x:Static
         // works under the generated/AOT provider too (and the loader no longer statically references the
         // reflection provider here — one of the two AOT blocker sites closed).
-        if (_options.MetadataProvider is IXamlStaticResolver resolver
-            && resolver.TryResolveStatic(memberPath, out var resolved))
+        if (_options.MetadataProvider is IXamlStaticResolver resolver)
         {
-            return resolved;
+            // The xmlns-aware seam (P1C): bind the document prefix here — {x:Static co:Colors.Red}
+            // resolves Colors.Red under the co: declaration's namespace, an unprefixed path under the
+            // document default xmlns — and hand the provider a prefix-free path.
+            string path;
+            string ns;
+            int colon = memberPath.IndexOf(':');
+            if (colon > 0)
+            {
+                var prefix = memberPath.Substring(0, colon);
+                path = memberPath.Substring(colon + 1);
+                if (!_doc.Namespaces.TryGetValue(prefix, out ns!))
+                {
+                    throw Fatal(XamlDiagnosticCodes.MemberNotFound,
+                        $"Could not resolve {{x:Static {memberPath}}}: xmlns prefix '{prefix}' is not declared.", line, column);
+                }
+            }
+            else
+            {
+                path = memberPath;
+                ns = _doc.Namespaces.TryGetValue(string.Empty, out var dns) ? dns : XamlSchemaContext.CursorialUiNamespace;
+            }
+
+            if (resolver.TryResolveStatic(ns, path, out var resolved))
+                return resolved;
         }
 
         throw Fatal(XamlDiagnosticCodes.MemberNotFound,
@@ -1228,7 +1251,7 @@ internal sealed class XamlObjectGraphBuilder
             // goes through XamlUriUtil so the authority keeps its ORIGINAL casing (System.Uri
             // lowercases hosts; ours name assemblies).
             if (!uri.IsAbsoluteUri && (_source ?? _doc.SourceUri) is { IsAbsoluteUri: true } baseUri)
-                uri = XamlUriUtil.ResolveRelative(baseUri, uri.OriginalString);
+                uri = CursorialUri.ResolveRelative(baseUri, uri.OriginalString);
 
             dict.Source = uri;
         }
@@ -1529,6 +1552,12 @@ internal sealed class XamlObjectGraphBuilder
         if (property is null)
             throw Fatal(XamlDiagnosticCodes.MemberNotFound, "A Setter requires a resolvable Property.", line, column);
 
+        // A bare Type-typed Setter.Value token ("Button") resolves to the System.Type here: the generator bakes
+        // typeof(T) (SetterValueExpr), and StyleSetterConverter has no xmlns context at Seal, so the token must be
+        // resolved at load — against the document's namespaces — rather than deferred as an unconvertible string.
+        if (property.PropertyType == typeof(Type) && value is string typeToken && typeToken.Length > 0)
+            value = ResolveTypeToken(typeToken, line, column);
+
         return new Setter(property, value);
     }
 
@@ -1647,8 +1676,9 @@ internal sealed class XamlObjectGraphBuilder
 
         // The authoritative ordering, if the WPF [ConstructorArgument] convention is in use: the
         // arity-matching constructor's parameter names, each mapped to the property carrying
-        // [ConstructorArgument(paramName)] (P6 review P1-3). Absent that, declaration order of the
-        // writable public properties.
+        // [ConstructorArgument(paramName)] (P6 review P1-3). ([ConstructorArgument] is property-only —
+        // AttributeTargets.Property — so a field can never be a positional target, matching the generator.)
+        // Absent that, declaration order of the writable public properties.
         var ordered = ResolveConstructorArgumentOrder(extType, props, node.PositionalArguments.Count);
 
         if (ordered is not null)

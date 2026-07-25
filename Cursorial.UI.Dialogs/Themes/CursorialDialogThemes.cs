@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -35,6 +34,11 @@ public static class CursorialDialogThemes
     {
         dict[CursorialDialogThemeKeys.CommandLinkIcon] = CommandLinkIconResource();
         dict[typeof(CommandLink)] = CommandLinkStyle();
+
+        dict.Styles =
+        [
+            Ansi16CommandLinkStyleOverrides()
+        ];
     }
 
     #region CommandLink Theme
@@ -49,7 +53,6 @@ public static class CursorialDialogThemes
         theme.Children.Add(new Style("^:pointerover")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundHover));
-
         theme.Children.Add(new Style("^:focus")
                           .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundFocus)
                           .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundFocus)
@@ -111,11 +114,13 @@ public static class CursorialDialogThemes
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        TextElement.ForwardInverse(icon); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
+        TextElement.ForwardAllAxes(icon); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
         TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
-        var explanation = new ContentPresenter();
+        var explanation = new ContentPresenter { RecognizesAccessKey = false, ForwardsFromTemplatedParent = false };
+
+        TextElement.ForwardInverse(explanation);
 
         label.SetValue(TextElement.TextWeightProperty, TextWeight.Faint);
         
@@ -150,6 +155,44 @@ public static class CursorialDialogThemes
                    Emoji = "\u27A1",
                    Text = "➡"
                };
+    }
+
+    private static Style Ansi16CommandLinkStyleOverrides()
+    {
+        return new Style(Selectors.OfType<CommandLink>())
+               {
+                   RequiresCapabilities = StyleCapabilities.Ansi16,
+                   Children =
+                   {
+                       new Style("^")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationWell)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush),
+                       new Style("^ /template/ #PART_Icon")
+                          .Set(TextElement.TextWeightProperty, TextWeight.Faint),
+                       new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive),
+                       new Style("^:focus, ^:focus-visible")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
+                       new Style("^:pressed")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed),
+                       new Style("^:pointerover /template/ #PART_Explanation")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentInverseBrush),
+                       new Style("^:focus /template/ #PART_Explanation")
+                          .Set(TextElement.TextStyleProperty, TextStyle.Italic)
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus),
+                       new Style("^:pressed /template/ #PART_Explanation")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.ButtonForegroundPressed),
+                       new Style("^:pointerover /template/ #PART_Label, " +
+                                 "^:pressed /template/ #PART_Label, " +
+                                 "^:focus /template/ #PART_Label, " +
+                                 "^:focus-visible /template/ #PART_Label")
+                          .Set(TextElement.TextWeightProperty, TextWeight.Normal)
+                   }
+               }/*
+           .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen)*/;
     }
 
     #endregion

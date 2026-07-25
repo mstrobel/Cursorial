@@ -10,26 +10,30 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// folds it over the theme's resting brushes at draw time (an unset lane falls through to the
 /// theme). Colors are <see cref="Cursorial.Output.Color"/> — the Core value primitive, not a UI
 /// brush — so the rule model stays presentation-free and headless-testable (invariant 1's spirit:
-/// no UI machinery; Color is pure data).
+/// no UI machinery; Color is pure data). <see cref="Icon"/> is an optional glyph the painter
+/// prefixes at the cell's left edge wearing the verdict's foreground (the editor's ▲●▼ icon sets).
 /// </summary>
 public readonly record struct CellFormat(
     Color? Foreground = null,
     Color? Background = null,
     bool Bold = false,
-    bool Inverse = false)
+    bool Inverse = false,
+    string? Icon = null)
 {
     /// <summary>Whether every lane is unset (the painter's fast path — pure theme drawing).</summary>
-    public bool IsEmpty => Foreground is null && Background is null && !Bold && !Inverse;
+    public bool IsEmpty => Foreground is null && Background is null && !Bold && !Inverse && Icon is null;
 
     /// <summary>
     /// Folds this (the CELL verdict) over <paramref name="under"/> (the ROW verdict): set color
-    /// lanes win per lane; attribute flags OR (a bold threshold on a dimmed row stays both).
+    /// lanes win per lane; attribute flags OR (a bold threshold on a dimmed row stays both);
+    /// <see cref="Icon"/> is a set-wins lane like the colors.
     /// </summary>
     public CellFormat OverlayOn(in CellFormat under) => new(
         Foreground ?? under.Foreground,
         Background ?? under.Background,
         Bold || under.Bold,
-        Inverse || under.Inverse);
+        Inverse || under.Inverse,
+        Icon ?? under.Icon);
 }
 
 /// <summary>
@@ -73,7 +77,33 @@ public sealed class DataBarRule : FormatRule;
 public sealed class ThresholdRule : FormatRule
 {
     /// <summary>The ordered entries (evaluation stops at the first operator match).</summary>
-    public required IReadOnlyList<(FilterOperator Operator, object Value, CellFormat Format)> Entries { get; init; }
+    public required IReadOnlyList<ThresholdEntry> Entries { get; init; }
+}
+
+/// <summary>
+/// One <see cref="ThresholdRule"/> entry: an operator + value (+ an optional <see cref="SecondValue"/>
+/// upper bound for <see cref="FilterOperator.Between"/>) → the <see cref="CellFormat"/> applied when
+/// it matches. A readonly record struct so entry lists allocate as one array with no per-entry
+/// boxing beyond the already-boxed literal. An implicit conversion from the 3-tuple keeps the
+/// existing <c>Entries = [(op, value, format)]</c> authoring form (and every test) compiling.
+/// </summary>
+public readonly record struct ThresholdEntry(
+    FilterOperator Operator,
+    object Value,
+    CellFormat Format,
+    object? SecondValue = null)
+{
+    /// <summary>The 3-tuple authoring form (no second bound) — the pre-Between shape.</summary>
+    public static implicit operator ThresholdEntry((FilterOperator Operator, object Value, CellFormat Format) tuple)
+        => new(tuple.Operator, tuple.Value, tuple.Format);
+
+    /// <summary>The 3-field deconstruction (the pre-Between <c>foreach (var (op, value, format) …)</c> form).</summary>
+    public void Deconstruct(out FilterOperator op, out object value, out CellFormat format)
+    {
+        op = Operator;
+        value = Value;
+        format = Format;
+    }
 }
 
 /// <summary>
@@ -99,4 +129,11 @@ public sealed class PredicateRule : FormatRule
 
     /// <summary>The row-level format applied when the predicate matches.</summary>
     public required CellFormat Format { get; init; }
+
+    /// <summary>
+    /// The criteria text the predicate was compiled from, when it came from text (the rule editor;
+    /// null for a hand-built lambda) — carried so an edit re-seeds the expression field instead of
+    /// starting empty (the §9.1 tree+text pairing discipline, applied to rules).
+    /// </summary>
+    public string? SourceText { get; init; }
 }

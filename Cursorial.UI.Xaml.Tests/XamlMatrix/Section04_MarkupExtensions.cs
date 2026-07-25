@@ -71,6 +71,28 @@ public sealed class Section04_MarkupExtensions : XamlTestBase
         Assert.Equal("StatusToBrush", converter.Nested!.PositionalArguments[0].Text);
     }
 
+    [Fact] // X45a — a nested CUSTOM extension under a BUILT-IN outer ({Binding Converter={g:…}}) is namespace-
+    // stamped with the g: prefix's xmlns, exactly as one under a custom outer is. The loader/generator re-resolve
+    // extension types at BUILD off this stamp; before the fix only a top-level CUSTOM extension stamped (then
+    // recursed), so a nested extension under {Binding} was left unstamped → the build-time resolver probed the
+    // DEFAULT UI xmlns and a prefixed project extension was CUR2002 (the Gallery {i:EnumItemConverter} bug).
+    public void X045a_NestedExtension_UnderBuiltIn_IsNamespaceStamped()
+    {
+        const string clrNs = "clr-namespace:Cursorial.Tests.UI.Xaml.XamlMatrix.Prefixed;assembly=Cursorial.UI.Xaml.Tests";
+        var xml =
+            "<Button xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:g=\"" + clrNs + "\" " +
+            "Content=\"{Binding Status, Converter={g:PrefixConverter}}\"/>";
+        var doc = ParseRaw(xml, XamlDiagnosticMode.CollectAll);
+
+        Assert.True(doc.TryFindMember(0, "Content", out var m));
+        ref readonly var ext = ref doc.ExtensionOf(m);
+        var converter = doc.ParsedExtension(in ext)!.FindNamed("Converter")!.Value;
+
+        Assert.True(converter.IsNested);
+        Assert.Equal(clrNs, converter.Nested!.ResolvedNamespace); // stamped with g:'s xmlns — not null, not the UI default
+    }
+
     [Fact] // X44a — a StaticResource KEY that is itself an {x:Static} (XD7a)
     public void X044a_StaticResource_NestedStaticKey_RecordsParsedKeyNode()
     {

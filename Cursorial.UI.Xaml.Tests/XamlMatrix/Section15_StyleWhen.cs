@@ -17,6 +17,26 @@ namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 /// </summary>
 public sealed class Section15_StyleWhen : LoaderTestBase
 {
+    [Fact] // RequiresCapabilities parses as a [Flags] attribute (single + comma list) — the @media-model
+           // capability gate is XAML-authorable, so the theme packages' caps rules migrate in lock-step
+           // with the code-first ones.
+    public void RequiresCapabilities_attribute_single_and_flags()
+    {
+        var single = Load<Style>("""
+            <Style Selector="CheckBox" RequiresCapabilities="Unicode">
+              <Setter Property="TextElement.Foreground" Value="Red"/>
+            </Style>
+            """);
+        Assert.Equal(StyleCapabilities.Unicode, single.RequiresCapabilities);
+
+        var flags = Load<Style>("""
+            <Style Selector="Button" RequiresCapabilities="NoColor, Motion">
+              <Setter Property="TextElement.Foreground" Value="Red"/>
+            </Style>
+            """);
+        Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion, flags.RequiresCapabilities);
+    }
+
     [Fact]
     public void When_element_value_via_typed_element()
     {

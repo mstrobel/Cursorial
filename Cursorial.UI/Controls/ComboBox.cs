@@ -280,6 +280,12 @@ public class ComboBox : SelectingItemsControl
         }
     }
 
+    /// <summary>Raised after the drop-down opens (the <see cref="IsDropDownOpen"/> transition to <see langword="true"/>).</summary>
+    public event EventHandler? DropDownOpened;
+
+    /// <summary>Raised after the drop-down closes (the <see cref="IsDropDownOpen"/> transition to <see langword="false"/>).</summary>
+    public event EventHandler? DropDownClosed;
+
     /// <summary>
     /// Called after the drop-down opens (the <see cref="IsDropDownOpen"/> transition to <see langword="true"/>, any
     /// path — keyboard, face click, programmatic). A derived control snapshots per-session state here (a
@@ -287,6 +293,7 @@ public class ComboBox : SelectingItemsControl
     /// </summary>
     protected virtual void OnDropDownOpened()
     {
+        DropDownOpened?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -300,6 +307,7 @@ public class ComboBox : SelectingItemsControl
     /// <param name="committed">Whether the close was a commit gesture (Enter / Space / item click) rather than a dismissal.</param>
     protected virtual void OnDropDownClosed(bool committed)
     {
+        DropDownClosed?.Invoke(this, EventArgs.Empty);
     }
 
     private void RestoreFaceFocus()

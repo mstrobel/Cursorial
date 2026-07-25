@@ -18,7 +18,8 @@ public class SizedTextFragmentMultiLineTests
     private static string EmitToString(SizedTextFragment fragment)
     {
         var w = new ArrayBufferWriter<byte>();
-        fragment.Emit(0, 0, w, CapsWithScale());
+        var f = new FrameRenderer();
+        f.EmitFragmentBytes(0, 0, new CellBuffer.FragmentEntry(fragment, default), w, CapsWithScale(), default);
         return Encoding.ASCII.GetString(w.WrittenSpan);
     }
 
@@ -192,7 +193,7 @@ public class SizedTextFragmentMultiLineTests
             sgrCount++;
             idx += 12;
         }
-        Assert.Equal(1, sgrCount);
+        Assert.Equal(1, sgrCount); // emitted by 
     }
 
     [Fact]

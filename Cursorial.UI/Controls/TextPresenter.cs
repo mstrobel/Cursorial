@@ -297,13 +297,18 @@ public sealed class TextPresenter : UIElement
                 // MutedBrush carries the placeholder color on color tiers; Faint carries the de-emphasis on the
                 // NoColor tier where MutedBrush resolves to Default (adoption-spec §5: placeholder → Faint).
                 IBrush? muted;
-                TextAttributes attributes = TextElement.ComposeAttributes(owner).Flags | TextAttributes.Faint;
-                
-                if (UIApplication.Current?.ActualThemeVariant.Tier >= ColorDepth.Ansi256)
-                    muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
-                else
+                TextAttributes attributes = TextElement.ComposeAttributes(owner).Flags/* | TextAttributes.Faint*/;
+
+                var lowFidelity = UIApplication.Current?.ActualThemeVariant.Tier < ColorDepth.Ansi256;
+
+                if (lowFidelity)
+                    attributes |= TextAttributes.Faint;
+
+                if (lowFidelity)
                     muted = foreground;
-                
+                else
+                    muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
+
                 DrawText(context, 0, 0, placeholder, muted, null, CellStyle.Default.WithAttributes(attributes));
             }
 

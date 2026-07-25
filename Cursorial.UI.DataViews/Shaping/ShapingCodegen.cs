@@ -12,7 +12,7 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// §2.2 panel amendment): no per-cell string allocation. Built by
 /// <see cref="ShapingCodegen.CreateSpanFormatter{TKey}"/>.
 /// </summary>
-internal delegate int SpanFormat<TKey>(TKey value, Span<char> destination);
+internal delegate int SpanFormat<in TKey>(TKey value, Span<char> destination);
 
 /// <summary>
 /// The engine's single code-generation site (design doc §2.2 / invariant 8): every typed delegate the
@@ -221,6 +221,37 @@ internal static class ShapingCodegen
     // ── Formatters ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Whether <paramref name="format"/> is a usable <c>ToString</c> spec for <paramref name="type"/>.
+    /// A mistyped standard specifier (e.g. <c>"N2x"</c>, <c>"Q0"</c>) throws
+    /// <see cref="FormatException"/> at format time; validating ONCE per formatter build (against a
+    /// sample value — numeric/date format validity is value-independent) lets a bad user- or
+    /// metadata-supplied format degrade to the unformatted <c>ToString</c> instead of crashing the
+    /// render/summary path. Null/empty formats and non-<see cref="IFormattable"/> types are always
+    /// valid (the format is unused). Reference <see cref="IFormattable"/> types can't be sampled here
+    /// and are reported valid (the codegen null-guards them; a throw there is the caller's contract).
+    /// </summary>
+    internal static bool IsFormatStringValid(Type type, string? format, CultureInfo? culture = null)
+    {
+        if (string.IsNullOrEmpty(format))
+            return true;
+
+        var valueType = Nullable.GetUnderlyingType(type) ?? type;
+        if (!valueType.IsValueType || !typeof(IFormattable).IsAssignableFrom(valueType))
+            return true;
+
+        try
+        {
+            var sample = (IFormattable)Activator.CreateInstance(valueType)!;
+            sample.ToString(format, culture ?? CultureInfo.CurrentCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The display formatter for a key type: <see cref="IFormattable"/> keys call
     /// <c>ToString(format, culture)</c> directly on the typed value (no box for value types);
     /// <see cref="Nullable{T}"/>/reference nulls format as <c>""</c>. Default culture is
@@ -231,11 +262,28 @@ internal static class ShapingCodegen
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
 
+        // An invalid ToString spec (a mistyped standard specifier) throws FormatException at format
+        // time — which would crash the summary/render path. Degrade a bad format to the unformatted
+        // ToString once here instead (design §2.5 — user/metadata formats are never trusted blind).
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
+
         if (type == typeof(string))
             return (Func<TKey, string>)(object)new Func<string?, string>(static v => v ?? string.Empty);
 
         var underlying = Nullable.GetUnderlyingType(type);
         var valueType = underlying ?? type;
+
+        // Enum members with [Display(Name=…)] render their designated text (a closure over the cached
+        // per-type map; parsing/filtering still uses the raw member name). Only when a member declares
+        // one — a plain enum keeps the fast ToString/span lanes below.
+        if (valueType.IsEnum && EnumDisplay.HasDisplayNames(valueType))
+        {
+            if (underlying is null)
+                return value => EnumDisplay.TextOf(valueType, value!);
+            return value => value is null ? string.Empty : EnumDisplay.TextOf(valueType, value);
+        }
+
         var v = Expression.Parameter(type, "v");
 
         Expression formatted;
@@ -301,6 +349,11 @@ internal static class ShapingCodegen
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
 
+        // Degrade an invalid ToString spec to the unformatted lane (CreateFormatter parity) — an
+        // uncaught FormatException here would crash per-cell rendering.
+        if (!IsFormatStringValid(type, format, culture))
+            format = null;
+
         if (type == typeof(string))
         {
             // String cells copy; null → 0 chars (the null-key display convention — CreateFormatter parity).
@@ -316,7 +369,13 @@ internal static class ShapingCodegen
         }
 
         var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
+        // An enum whose members declare [Display(Name)] formats through the string lane (the map
+        // lookup isn't ISpanFormattable) — route it to the ToString-then-copy fallback below; a plain
+        // enum keeps the fast constrained span path.
+        var enumType = underlying ?? type;
+        bool enumDisplay = enumType.IsEnum && EnumDisplay.HasDisplayNames(enumType);
+
+        if (!enumDisplay && underlying is not null && typeof(ISpanFormattable).IsAssignableFrom(underlying))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateNullableSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
@@ -324,7 +383,7 @@ internal static class ShapingCodegen
                 .Invoke(null, [format, culture])!;
         }
 
-        if (typeof(ISpanFormattable).IsAssignableFrom(type))
+        if (!enumDisplay && typeof(ISpanFormattable).IsAssignableFrom(type))
         {
             return (SpanFormat<TKey>)typeof(ShapingCodegen)
                 .GetMethod(nameof(CreateSpanFormatterCore), BindingFlags.NonPublic | BindingFlags.Static)!
@@ -350,9 +409,14 @@ internal static class ShapingCodegen
     /// null check is JIT-eliminated for structs).</summary>
     private static SpanFormat<TValue> CreateSpanFormatterCore<TValue>(string? format, CultureInfo culture)
         where TValue : ISpanFormattable
-        => (value, destination) => value is null
-            ? 0
-            : value.TryFormat(destination, out int written, format, culture) ? written : -1;
+    {
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+        return (value, destination) => value is null
+                                           ? 0
+                                           : value.TryFormat(destination, out int written, format, culture)
+                                               ? written
+                                               : -1;
+    }
 
     /// <summary>The <see cref="Nullable{T}"/> lane: unwrap without boxing; null → 0 chars.</summary>
     private static SpanFormat<TValue?> CreateNullableSpanFormatterCore<TValue>(string? format, CultureInfo culture)
@@ -445,7 +509,7 @@ internal static class ShapingCodegen
     private static Expression GuardedAssign(MemberExpression leaf, ParameterExpression value)
     {
         Expression assign = Expression.Assign(leaf, value);
-        if (leaf.Expression is MemberExpression owner && !owner.Type.IsValueType)
+        if (leaf.Expression is MemberExpression { Type.IsValueType: false } owner)
             assign = Expression.IfThen(Expression.NotEqual(owner, Expression.Constant(null, owner.Type)), assign);
         return assign;
     }
@@ -468,29 +532,30 @@ internal static class ShapingCodegen
     }
 
     private static ShapedColumn CreateColumnCore<TRow, TKey>(
-        object identity, LambdaExpression selector, StringComparison stringComparison, string? format, CultureInfo? culture)
+        object identity, LambdaExpression selector, StringComparison stringComparison, string? format,
+        CultureInfo? culture) where TRow : notnull
         => new ShapedColumn<TRow, TKey>(
-            ((Expression<Func<TRow, TKey>>)selector).Compile(),
-            CreateKeyComparison<TKey>(stringComparison),
-            CreateFormatter<TKey>(format, culture),
-            // Culture-mode string columns get the §2.2 collation-key blob (culture order at memcmp
-            // speed); Ordinal/OrdinalIgnoreCase skip it — ordinal compare is already memcmp-speed.
-            typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
-                ? new CollationKeyStore(stringComparison)
-                : null)
-        {
-            Identity = identity,
-            // The §9.6 span-format lane: the band cache formats into pooled char buffers through
-            // this (no per-cell string); the string _formatter stays the cold/diagnostic lane.
-            SpanFormatter = CreateSpanFormatter<TKey>(format, culture),
-            // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
-            // computed keys stay read-only (the editor won't open on them). Value-type rows compile
-            // the copy-returning mutator instead (§9.6 — an Action on a struct copy is a silent no-op).
-            Setter = !typeof(TRow).IsValueType && TryBuildSetter(selector) is { } setter
-                ? (Action<TRow, TKey>)setter.Compile()
-                : null,
-            StructSetter = typeof(TRow).IsValueType && TryBuildStructSetter(selector) is { } mutator
-                ? (Func<TRow, TKey, TRow>)mutator.Compile()
-                : null,
-        };
+               ((Expression<Func<TRow, TKey>>) selector).Compile(),
+               CreateKeyComparison<TKey>(stringComparison),
+               CreateFormatter<TKey>(format, culture),
+               // Culture-mode string columns get the §2.2 collation-key blob (culture order at memcmp
+               // speed); Ordinal/OrdinalIgnoreCase skip it — ordinal compare is already memcmp-speed.
+               typeof(TKey) == typeof(string) && CollationKeyStore.IsCultureBased(stringComparison)
+                   ? new CollationKeyStore(stringComparison)
+                   : null)
+           {
+               Identity = identity,
+               // The §9.6 span-format lane: the band cache formats into pooled char buffers through
+               // this (no per-cell string); the string _formatter stays the cold/diagnostic lane.
+               SpanFormatter = CreateSpanFormatter<TKey>(format, culture),
+               // The editing write-back lane (§3.2): a settable member chain compiles the typed setter;
+               // computed keys stay read-only (the editor won't open on them). Value-type rows compile
+               // the copy-returning mutator instead (§9.6 — an Action on a struct copy is a silent no-op).
+               Setter = !typeof(TRow).IsValueType && TryBuildSetter(selector) is {} setter
+                            ? (Action<TRow, TKey>) setter.Compile()
+                            : null,
+               StructSetter = typeof(TRow).IsValueType && TryBuildStructSetter(selector) is {} mutator
+                                  ? (Func<TRow, TKey, TRow>) mutator.Compile()
+                                  : null,
+           };
 }

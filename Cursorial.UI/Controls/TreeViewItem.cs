@@ -40,6 +40,18 @@ public class TreeViewItem : HeaderedItemsControl
     public static readonly RoutedEvent<RoutedEventArgs> CollapsedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(Collapsed), RoutingStrategy.Bubble, typeof(TreeViewItem));
 
+    /// <summary>The bubbling event raised whenever the node becomes selected (<see cref="IsSelected"/> ⇒ true), for both user- and tree-driven selection.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> SelectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Selected), RoutingStrategy.Bubble, typeof(TreeViewItem));
+
+    /// <summary>The bubbling event raised whenever the node becomes unselected (<see cref="IsSelected"/> ⇒ false), for both user- and tree-driven selection.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> UnselectedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(Unselected), RoutingStrategy.Bubble, typeof(TreeViewItem));
+
+    /// <summary>The bubbling event raised whenever <see cref="IsSelected"/> changes (either direction) — the selection-side parallel to <see cref="ToggleButton.IsCheckedChanged"/>.</summary>
+    public static readonly RoutedEvent<RoutedEventArgs> IsSelectedChangedEvent =
+        RoutedEvent<RoutedEventArgs>.Register(nameof(IsSelectedChanged), RoutingStrategy.Bubble, typeof(TreeViewItem));
+
     private bool _treeDriven; // guards the tree→node IsSelected write so it never echoes back into the tree
     private TextBlock? _twisty;
     private TreeView? _ownerTree; // captured at attach so a detached node can still reach its tree to clear selection
@@ -80,6 +92,15 @@ public class TreeViewItem : HeaderedItemsControl
         add => AddHandler(CollapsedEvent, value!);
         remove => RemoveHandler(CollapsedEvent, value!);
     }
+
+    /// <summary>CLR sugar over <see cref="SelectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Selected { add => AddHandler(SelectedEvent, value!); remove => RemoveHandler(SelectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="UnselectedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? Unselected { add => AddHandler(UnselectedEvent, value!); remove => RemoveHandler(UnselectedEvent, value!); }
+
+    /// <summary>CLR sugar over <see cref="IsSelectedChangedEvent"/>.</summary>
+    public event EventHandler<RoutedEventArgs>? IsSelectedChanged { add => AddHandler(IsSelectedChangedEvent, value!); remove => RemoveHandler(IsSelectedChangedEvent, value!); }
 
     /// <inheritdoc/>
     protected override UIElement GetContainerForItemOverride() => new TreeViewItem();
@@ -235,13 +256,23 @@ public class TreeViewItem : HeaderedItemsControl
 
     private static void OnIsSelectedChanged(UIObject sender, bool oldValue, bool newValue)
     {
-        if (sender is not TreeViewItem { _treeDriven: false, OwnerTree: { } tree } item)
+        if (sender is not TreeViewItem item)
             return;
 
-        if (newValue)
-            tree.ChangeSelection(item);   // external select folds in (deselecting the prior node)
-        else
-            tree.ClearSelectionIf(item);  // external deselect clears the tree iff this was the selection
+        // Fold an external (non-tree-driven) change into the owning tree's single selection; the tree-driven write
+        // is guarded so it never echoes back into the tree.
+        if (item is { _treeDriven: false, OwnerTree: { } tree })
+        {
+            if (newValue)
+                tree.ChangeSelection(item);   // external select folds in (deselecting the prior node)
+            else
+                tree.ClearSelectionIf(item);  // external deselect clears the tree iff this was the selection
+        }
+
+        // Raise the item-level events for both user- and tree-driven selection (outside the fold guard, mirroring
+        // OnIsExpandedChanged), then IsSelectedChanged on every change (cf. ToggleButton.IsCheckedChanged).
+        item.RaiseEvent(new RoutedEventArgs(newValue ? SelectedEvent : UnselectedEvent, item));
+        item.RaiseEvent(new RoutedEventArgs(IsSelectedChangedEvent, item));
     }
 
     // ── expansion ──────────────────────────────────────────────────────────────────────────────────────

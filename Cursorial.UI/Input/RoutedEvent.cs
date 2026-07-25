@@ -40,6 +40,13 @@ public abstract class RoutedEvent
     /// </summary>
     internal bool SweepsInputBindings;
 
+    /// <summary>Whether this event's route is confined to the target's SURFACE (the pointer family —
+    /// input-routing review Q1): the route walks <c>VisualParent</c> only and never crosses a popup seam.
+    /// A pointer event is a statement about a screen cell the window manager already arbitrated to ONE
+    /// surface; bridging afterward contradicts that arbitration. Tunnel/bubble pair members must agree
+    /// (asserted in <c>EventRouting.RaisePair</c> — one shared route serves both legs).</summary>
+    internal bool SurfaceScoped;
+
     /// <summary>
     /// Whether the per-node class stage (the <c>On*</c> virtual) runs even after a nearer node set
     /// <see cref="RoutedEventArgs.Handled"/> — set only for <c>UIElement.QueryCursorEvent</c>, whose

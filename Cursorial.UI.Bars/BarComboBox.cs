@@ -44,7 +44,7 @@ namespace Cursorial.UI.Bars;
 /// back into the face, and auto-committing the latter would echo.
 /// </para>
 /// </summary>
-public class BarComboBox : ComboBox
+public class BarComboBox : ComboBox, ICommandSource
 {
     /// <summary>The command the drop-down routes value actions to. Its <c>CanExecute</c> also gates the combo's
     /// effective enabled state (CD25 — as on <see cref="ButtonBase.CommandProperty"/>), re-queried on
@@ -70,6 +70,9 @@ public class BarComboBox : ComboBox
 
     /// <inheritdoc cref="CommandParameterProperty"/>
     public object? CommandParameter { get => GetValue(CommandParameterProperty); set => SetValue(CommandParameterProperty, value); }
+
+    /// <inheritdoc/>
+    void ICommandSource.CanExecuteChanged(object sender, EventArgs e) => OnCanExecuteChanged(sender, e);
 
     // The value parameter the drop-down routes through — non-null only when BOTH a command and an
     // IValueCommandParameter parameter are present (no default is ever provisioned: T is the app's to choose).

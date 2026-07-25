@@ -28,7 +28,7 @@ public class RadioButton : ToggleButton
     /// to indeterminate by click (C218) — only an explicit <see cref="ToggleButton.IsChecked"/> set
     /// can place the indeterminate state.
     /// </summary>
-    protected override void OnToggle()
+    protected override void OnToggle(InvokeMethod method = InvokeMethod.Programmatic)
     {
         if (IsChecked == true)
             return; // re-clicking a checked radio is a no-op (WPF)

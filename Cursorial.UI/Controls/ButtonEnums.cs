@@ -1,5 +1,7 @@
 using Cursorial.UI.Input;
 
+// ReSharper disable UnusedAutoPropertyAccessor.Global
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>When a <see cref="ButtonBase"/> raises its click (design doc §12.7).</summary>
@@ -26,7 +28,7 @@ public enum InvokeMethod : byte
     /// <summary>A press of the 'Enter' key.</summary>
     KeyboardEnter,
 
-    /// <summary>A press of the 'Space' key.</summary>
+    /// <summary>A press or latched press-and-release of the 'Space' key.</summary>
     KeyboardSpace,
 
     /// <summary>Access-key (mnemonic) activation.</summary>
@@ -36,6 +38,11 @@ public enum InvokeMethod : byte
 /// <summary>The args for <see cref="ButtonBase.ClickEvent"/> (a bubbling routed event, S8-owned — doc §12.7).</summary>
 public sealed class ClickEventArgs : RoutedEventArgs
 {
+    /// <summary>
+    /// Identifies the invocation method used to trigger the click event (e.g., pointer, key press, etc.).
+    /// </summary>
+    public InvokeMethod Method { get; set; }
+
     /// <summary>Creates an empty caller-owned args (also the pooled construction path).</summary>
     public ClickEventArgs()
     {

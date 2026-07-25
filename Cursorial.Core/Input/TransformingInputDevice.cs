@@ -74,4 +74,12 @@ public static class InputDeviceTransformExtensions
     /// </summary>
     public static IAsyncInputDevice WithClickSynthesis(this IAsyncInputDevice device, MouseClickOptions? options = null)
         => device.Transform(new MouseClickSynthesizer(options));
+
+    /// <summary>
+    /// Wrap <paramref name="device"/> with a <see cref="NumpadKeyTranslator"/>. Key events originating from
+    /// numpad keys are translated to their primary key area counterparts, but retain their original
+    /// <see cref="KeyEvent.RawCode"/>.
+    /// </summary>
+    public static IAsyncInputDevice WithNumpadKeyTranslation(this IAsyncInputDevice device)
+        => device.Transform(new NumpadKeyTranslator());
 }

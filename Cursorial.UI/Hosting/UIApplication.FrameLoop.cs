@@ -222,6 +222,9 @@ public sealed partial class UIApplication
             device = new KeyReleaseSynthesizer(device, krs.UpTimeout, krs.RepeatTimeout, _options.TimeProvider);
         }
 
+        if (_options.TranslateNumpadKeys)
+            device = device.WithNumpadKeyTranslation();
+        
         device = device.WithClickSynthesis(_options.ClickOptions);
         _device = device;
 

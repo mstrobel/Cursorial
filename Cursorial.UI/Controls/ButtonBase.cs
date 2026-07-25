@@ -12,7 +12,7 @@ namespace Cursorial.UI.Controls;
 /// <see cref="ClickEvent"/>, and the <see cref="Command"/> coupling (<see cref="IsEnabledCore"/>
 /// includes <c>CanExecute</c>, CD25).
 /// </summary>
-public abstract class ButtonBase : ContentControl, IAccessKeyTarget
+public abstract class ButtonBase : ContentControl, IAccessKeyTarget, ICommandSource, IClickableControl
 {
     private bool _captured;     // we hold mouse capture (press in flight)
     private bool _spaceLatched; // Space is held (keyboard press in flight)
@@ -58,6 +58,9 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     /// <inheritdoc cref="CommandParameterProperty"/>
     public object? CommandParameter { get => GetValue(CommandParameterProperty); set => SetValue(CommandParameterProperty, value); }
 
+    /// <inheritdoc/>
+    void ICommandSource.CanExecuteChanged(object sender, EventArgs e) => OnCanExecuteChanged(sender, e);
+
     /// <inheritdoc cref="IsPressedProperty"/>
     public bool IsPressed => GetValue(IsPressedProperty);
 
@@ -68,15 +71,25 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         remove => RemoveHandler(ClickEvent, value!);
     }
 
+    /// <inheritdoc/>
+    void IClickableControl.RaiseClick(InvokeMethod method)
+    {
+        if (IsEffectivelyEnabled)
+            OnClick(method);
+    }
+
     // ───────────────────────────── click / command (doc §12.7) ─────────────────────────────
 
     /// <summary>
     /// Raises <see cref="ClickEvent"/> (bubbles) then executes <see cref="Command"/> when its
     /// <c>CanExecute</c> is true (doc §12.7).
     /// </summary>
-    protected virtual void OnClick()
+    /// <param name="method"></param>
+    protected virtual void OnClick(InvokeMethod method = InvokeMethod.Programmatic)
     {
         var args = RentEvent(ClickEvent);
+        
+        args.Method = method;
 
         RaiseEvent(args);
 
@@ -103,12 +116,12 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
     // focus-visible ring (a Restore — see FocusManager.ReturnRetainedFocus), independent of the invoke modality.
     // Skipped when the click itself moved focus elsewhere (a drop-down button that focused its popup). A cheap no-op
     // outside a non-retaining scope.
-    private void InvokeClickRetaining()
+    private void InvokeClickRetaining(InvokeMethod method = InvokeMethod.Programmatic)
     {
         var focus = UIApplication.Current?.FocusManager;
         var before = focus?.FocusedElement;
 
-        OnClick();
+        OnClick(method);
 
         if (focus is not null && ReferenceEquals(focus.FocusedElement, before))
             focus.TryAutoReturnFocus(this);
@@ -130,7 +143,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         SetPressed(true);
 
         if (ClickMode == ClickMode.Press)
-            InvokeClickRetaining();
+            InvokeClickRetaining(InvokeMethod.Pointer);
     }
 
     /// <inheritdoc/>
@@ -157,7 +170,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         SetPressed(false);
 
         if (over && ClickMode == ClickMode.Release)
-            InvokeClickRetaining(); // up over self ⇒ click (C187); off self ⇒ no click (C188)
+            InvokeClickRetaining(InvokeMethod.Pointer); // up over self ⇒ click (C187); off self ⇒ no click (C188)
     }
 
     /// <inheritdoc/>
@@ -205,14 +218,14 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
             e.Handled = true;
             _spaceLatched = true;
             SetPressed(true);
-            InvokeClickRetaining(); // returns iff the scope was entered Pointer/AccessKey
+            InvokeClickRetaining(InvokeMethod.KeyboardSpace); // returns iff the scope was entered Pointer/AccessKey
             return;
         }
 
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            InvokeClickRetaining(); // immediate click, no pressed latch (C193)
+            InvokeClickRetaining(InvokeMethod.KeyboardEnter); // immediate click, no pressed latch (C193)
         }
     }
 
@@ -254,7 +267,7 @@ public abstract class ButtonBase : ContentControl, IAccessKeyTarget
         if (e.IsMultiMatch)
             return; // the manager already focused us; multi-match never invokes (ND18)
 
-        InvokeClickRetaining();
+        InvokeClickRetaining(InvokeMethod.AccessKey);
     }
 
     // ───────────────────────────── attach lifecycle (access key + command coupling) ─────────────────────────────

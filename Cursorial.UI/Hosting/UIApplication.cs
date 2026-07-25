@@ -153,6 +153,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     public static UIApplicationBuilder DefaultBuilder()
         => CreateBuilder().WithFrameRate(60)            // 60fps recommended
                           .WithKeyReleaseSynthesis()    // synthesize key-up if not natively supported
+                          .WithNumpadKeyTranslation()   // translate numpad keys to their main key area counterparts
                           .UseAlternateScreen()         // use alternate screen for rendering
                           .WithUserConfiguration();     // enable the user configuration system
 

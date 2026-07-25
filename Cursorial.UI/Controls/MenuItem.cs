@@ -19,7 +19,7 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartPopup, typeof(Popup))] // optional: a leaf item's template may omit the submenu surface
 [TemplatePart(PartIcon, typeof(ContentPresenter))]  // optional: a leaf item's template may omit the submenu surface
 [TemplatePart(PartGestureText, typeof(TextBlock))]  // optional: a leaf item's template may omit the submenu surface
-public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
+public class MenuItem : HeaderedItemsControl, IAccessKeyTarget, ICommandSource, IClickableControl
 {
     private const string PartPopup = "PART_Popup";
     private const string PartIcon = "PART_Icon";
@@ -192,6 +192,9 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     /// <inheritdoc cref="CommandParameterProperty"/>
     public object? CommandParameter { get => GetValue(CommandParameterProperty); set => SetValue(CommandParameterProperty, value); }
 
+    /// <inheritdoc/>
+    void ICommandSource.CanExecuteChanged(object sender, EventArgs e) => OnCanExecuteChanged(sender, e);
+
     /// <inheritdoc cref="InputGestureTextProperty"/>
     public string? InputGestureText { get => GetValue(InputGestureTextProperty); set => SetValue(InputGestureTextProperty, value); }
 
@@ -247,6 +250,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
     {
         add => AddHandler(ClickEvent, value!);
         remove => RemoveHandler(ClickEvent, value!);
+    }
+
+    /// <inheritdoc/>
+    void IClickableControl.RaiseClick(InvokeMethod method)
+    {
+        if (IsEffectivelyEnabled)
+            OnClick(method);
     }
 
     /// <summary>The command-aware enabled gate (CD25): enabled unless a non-null <see cref="Command"/> reports it can't execute.</summary>
@@ -347,7 +357,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         }
         else
         {
-            Invoke(InvokeMethod.Pointer); // a leaf invokes + dismisses
+            OnClick(InvokeMethod.Pointer); // a leaf invokes + dismisses
         }
 
         e.Handled = true;
@@ -445,11 +455,11 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
                 if (HasItems)
                     OpenSubmenuWithFocus();
                 else
-                    Invoke(InvokeMethod.KeyboardEnter);
+                    OnClick(InvokeMethod.KeyboardEnter);
                 break;
             case Key.Space or Key.Character when e.Text.Span is " ":
                 if (IsCheckable)
-                    Invoke(InvokeMethod.KeyboardSpace);
+                    OnClick(InvokeMethod.KeyboardSpace);
                 else if (HasItems)
                     OpenSubmenuWithFocus();
                 break;
@@ -464,9 +474,13 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
 
     /// <summary>Invokes a leaf item: raise <see cref="Click"/>, toggle <see cref="IsChecked"/> (if checkable),
     /// execute <see cref="Command"/>, then dismiss the whole menu.</summary>
-    protected virtual void Invoke(InvokeMethod method = InvokeMethod.Programmatic)
+    protected virtual void OnClick(InvokeMethod method = InvokeMethod.Programmatic)
     {
-        RaiseEvent(RentEvent(ClickEvent));
+        var args = RentEvent(ClickEvent);
+
+        args.Method = method;
+
+        RaiseEvent(args);
 
         if (IsCheckable)
             SetCurrentValue(IsCheckedProperty, !IsChecked); // SetCurrentValue preserves a two-way IsChecked binding
@@ -826,7 +840,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget
         if (HasItems)
             OpenSubmenuWithFocus();
         else
-            Invoke(InvokeMethod.AccessKey);
+            OnClick(InvokeMethod.AccessKey);
     }
 
     private AccessText GetAccessText()

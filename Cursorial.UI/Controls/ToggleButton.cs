@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -72,7 +74,8 @@ public class ToggleButton : ButtonBase
     /// <c>false → true → null → false</c> (three-state). A click/Space/Enter routes through
     /// <see cref="OnClick"/>, which calls <see cref="OnToggle"/> before raising the click.
     /// </summary>
-    protected virtual void OnToggle()
+    [SuppressMessage("ReSharper", "UnusedParameter.Global")]
+    protected virtual void OnToggle(InvokeMethod method = InvokeMethod.Programmatic)
     {
         var current = IsChecked;
 
@@ -84,11 +87,12 @@ public class ToggleButton : ButtonBase
                     };
     }
 
+    /// <param name="method"></param>
     /// <inheritdoc/>
-    protected override void OnClick()
+    protected override void OnClick(InvokeMethod method = InvokeMethod.Programmatic)
     {
-        OnToggle();
-        base.OnClick();
+        OnToggle(method);
+        base.OnClick(method);
     }
 
     // ReSharper disable once RedundantOverriddenMember

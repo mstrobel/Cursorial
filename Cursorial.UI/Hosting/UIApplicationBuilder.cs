@@ -93,6 +93,16 @@ public sealed class UIApplicationBuilder
         return this;
     }
 
+    /// <summary>
+    /// OPT-IN key event transformer that translates numpad keys to <see cref="Key.Character"/> events with
+    /// corresponding to their main keyboard area counterparts (<c>0-9, Enter, '+', '/'</c>, etc.)
+    /// </summary>
+    public UIApplicationBuilder WithNumpadKeyTranslation()
+    {
+        _options.TranslateNumpadKeys = true;
+        return this;
+    }
+
     /// <summary>Enter the alternate screen buffer at startup when the terminal supports it (default true).</summary>
     public UIApplicationBuilder UseAlternateScreen(bool enabled = true)
     {
@@ -164,6 +174,7 @@ internal sealed class UIApplicationOptions
     public bool UseAlternateScreen = true;
     public bool OrderedDither;
     public bool ExitOnUnhandledCtrlC = true;
+    public bool TranslateNumpadKeys = false;
     public UserConfigurationOptions? UserConfiguration;
 
     public TimeSpan FrameInterval => TimeSpan.FromMilliseconds(1000.0 / FramesPerSecond);

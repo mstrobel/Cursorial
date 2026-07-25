@@ -20,8 +20,9 @@ public class BarPopupButton : BarDropDownButton
         FocusManager.IsFocusScopeProperty.OverrideDefaultValue<BarPopupButton>(true);
     }
 
+    /// <param name="method"></param>
     /// <inheritdoc/>
-    protected override void OnClick() => ToggleDropDown(); // the whole control toggles the dropdown (no primary command)
+    protected override void OnClick(InvokeMethod method = InvokeMethod.Programmatic) => ToggleDropDown(); // the whole control toggles the dropdown (no primary command)
 
     /// <inheritdoc/>
     protected override void OnCommandStateChanged()

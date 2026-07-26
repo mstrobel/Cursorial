@@ -102,9 +102,21 @@ public sealed class AccessKeyManager
         element.SetValue(AccessKeyProxyForProperty, value);
     }
 
+    /// <summary>
+    /// The default post-Escape access-key <b>activation</b> suppression window (design doc §7.8,
+    /// the ESC-framing hazard). Deliberately seeded from
+    /// <see cref="VtInputDevice.DefaultEscapeAmbiguityTimeout"/> — the two are the same physical
+    /// quantity viewed from opposite ends of the pipe, so they must stay visibly related: S6's byte
+    /// pump waits exactly that long before committing a lone <c>ESC</c> as
+    /// <see cref="Key.Escape"/>, and this manager distrusts an <b>unbracketed</b> Alt chord for
+    /// exactly that long afterwards. Bump one and you almost certainly want to bump the other.
+    /// </summary>
+    public static TimeSpan DefaultEscapeSuppressionWindow { get; } = VtInputDevice.DefaultEscapeAmbiguityTimeout;
+
     private readonly UIDispatcher _dispatcher;
     private readonly FocusManager _focus;
     private readonly InteractionStateService _interactions;
+    private readonly TimeProvider _time;
     private readonly Dictionary<char, List<UIElement>> _registry = new();
     private readonly List<UIElement> _scopeStack = [];
     private readonly List<UIElement> _cueRoots = [];
@@ -132,11 +144,20 @@ public sealed class AccessKeyManager
     private IKeyTipController? _keyTipController;
     private bool _cueSuppressed;
 
-    internal AccessKeyManager(UIDispatcher dispatcher, FocusManager focus, InteractionStateService interactions)
+    // The post-Escape suppression arm (the ESC-framing hazard — see EscapeSuppressionWindow): the
+    // monotonic TimeProvider timestamp of the last bare Escape DELIVERED to the tree, or null when
+    // no window is armed. Timestamps (not DateTimeOffset) so a wall-clock step can never widen or
+    // collapse a 50 ms window, and TimeProvider (not Stopwatch) so the headless FakeTimeProvider
+    // drives it deterministically — this manager shares the application's single clock domain.
+    private long? _escapeDeliveredAt;
+    private TimeSpan _escapeSuppressionWindow = DefaultEscapeSuppressionWindow;
+
+    internal AccessKeyManager(UIDispatcher dispatcher, FocusManager focus, InteractionStateService interactions, TimeProvider? time = null)
     {
         _dispatcher = dispatcher;
         _focus = focus;
         _interactions = interactions;
+        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>The KeyTip overlay controller (Cursorial.UI.Bars) — null unless a bars app called
@@ -198,6 +219,46 @@ public sealed class AccessKeyManager
     public bool IsCueActive => _cueActive;
 
     /// <summary>
+    /// How long an <b>unbracketed</b> Alt chord stays barred from access-key <b>activation</b> after a
+    /// bare <see cref="Key.Escape"/> was delivered (default
+    /// <see cref="DefaultEscapeSuppressionWindow"/>). Set to <see cref="TimeSpan.Zero"/> to disable the
+    /// guard entirely; negative values are rejected. Apps that pass a custom
+    /// <c>TerminalSessionOptions.EscapeAmbiguityTimeout</c> should mirror it here so the consumer-side
+    /// window keeps matching the pump's decision window. UI thread only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The hazard.</b> A lone <c>ESC</c> byte is ambiguous on the wire: it is either the Escape key
+    /// or the prefix of an Alt chord (<c>ESC 'o'</c> ≡ <c>Alt+O</c>), and S6's byte pump resolves the
+    /// ambiguity with a timing race — it commits the bare Escape only after
+    /// <see cref="VtInputDevice.DefaultEscapeAmbiguityTimeout"/> of quiet. A user who presses Esc and
+    /// immediately types a letter therefore straddles that race, and the framing the application
+    /// observes for the <em>same</em> physical keystrokes depends on how the reads batched. In the
+    /// ordering where the Escape lands first, a letter arriving inside the very next ambiguity window
+    /// can still reach us wearing an Alt bit it was never typed with — and access-key activation is
+    /// <b>destructive</b>: the file dialog whose Esc moves focus from the breadcrumb to the
+    /// type-ahead file list has <c>Alt+O</c> = <i>Open</i>, so one fast keystroke commits the dialog.
+    /// </para>
+    /// <para>
+    /// <b>The guard.</b> For one window after a delivered bare Escape, an Alt chord with <b>no live Alt
+    /// bracket</b> (no real Alt Down observed — precisely the shape the ESC framing fabricates) does not
+    /// activate. A chord corroborated by a physical Alt Down is trusted and still activates inside the
+    /// window, unmodified menu-mode letters are untouched, F10 is untouched, ordinary Alt-modified key
+    /// routing is untouched, and the cue never changes state — only the activation is refused.
+    /// </para>
+    /// </remarks>
+    public TimeSpan EscapeSuppressionWindow
+    {
+        get => _escapeSuppressionWindow;
+        set
+        {
+            _dispatcher.VerifyAccess();
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, TimeSpan.Zero);
+            _escapeSuppressionWindow = value;
+        }
+    }
+
+    /// <summary>
     /// Raised on menu-mode entry: a chordless Alt tap (AltHeld terminals) or an unhandled F10
     /// (ND19, both modes). The sticky cue is up when this fires; Esc, a second tap, activation, or
     /// a pointer-driven focus change exits.
@@ -248,6 +309,7 @@ public sealed class AccessKeyManager
         _altWasChordless = false;
         _sawStandaloneAlt = false;
         _bracketUnobserved = false;
+        _escapeDeliveredAt = null; // the pump parks ~500 ms across renegotiation — no ESC framing survives it
         DeactivateCue();
 
         _mode = mode;
@@ -397,8 +459,9 @@ public sealed class AccessKeyManager
     /// <summary>
     /// Pre-stage 1b/1c for a non-Alt key Down: chordless tracking, stale-bracket inference (an
     /// event lacking the Alt bit while a side bit is set means the Up was lost — the terminal's
-    /// per-event modifier state is ground truth), and the sticky-cue Esc consume (menu mode is
-    /// modal to Esc — N177).
+    /// per-event modifier state is ground truth), the sticky-cue Esc consume (menu mode is modal to
+    /// Esc — N177), and arming the post-Escape activation-suppression window
+    /// (<see cref="EscapeSuppressionWindow"/>).
     /// </summary>
     /// <returns>Whether the event was consumed (sticky Esc) — the dispatcher returns handled without routing.</returns>
     internal bool OnPreStageKeyDown(KeyEvent key)
@@ -434,6 +497,17 @@ public sealed class AccessKeyManager
 
             return true; // consumed — the focused element never sees it
         }
+
+        // ───────────────────────── post-Escape suppression: ARM ─────────────────────────
+        // Only a BARE Escape (no modifiers) that survives to the tree arms the window. "Bare"
+        // because Alt+Esc / Ctrl+Esc are not the ambiguous ESC-framing shape; "survives" because an
+        // Escape the pre-stage just consumed belongs to a KeyTip level or menu mode — the user is
+        // deliberately inside the access-key surface and their next letter is intentional, so arming
+        // there would break KeyTip / menu-mode typing. The stamp is taken here rather than from
+        // KeyEvent.Timestamp: producers stamp events inconsistently (tests hand-roll DateTimeOffset
+        // constants, decorators stamp synthesis time), and the window must key on OUR clock domain.
+        if (key is { Key: Key.Escape, Modifiers: KeyModifiers.None })
+            _escapeDeliveredAt = _time.GetTimestamp();
 
         return false;
     }
@@ -471,6 +545,7 @@ public sealed class AccessKeyManager
         _rightAltDown = false;
         _stickyCue = false;
         _altWasChordless = false;
+        _escapeDeliveredAt = null; // the next key comes from a fresh focus session — nothing to distrust
         ClearCueForAltHeld();
     }
 
@@ -539,6 +614,26 @@ public sealed class AccessKeyManager
         // cue window is up — physical Alt held or sticky menu mode, including a bracket the
         // pre-stage's stale inference closed on this very key (N182).
         if (!altChord && !((cueWindowWasOpen || anyAltDown || _stickyCue) && modifiers == KeyModifiers.None))
+            return false;
+
+        // ──────────────────────── post-Escape suppression: ENFORCE ────────────────────────
+        // The bug: `ESC 'o'` decodes as Alt+O, so a user who presses Esc and immediately types a
+        // letter races S6's escape-ambiguity timeout — in a file dialog that turns "Esc to leave the
+        // breadcrumb, then type to find a file" into Alt+O ≡ Open, committing the dialog. For one
+        // EscapeSuppressionWindow after a delivered bare Escape we therefore refuse activation for
+        // the one chord shape the ESC framing can fabricate: an Alt chord with NO live Alt bracket.
+        // A chord backed by a real Alt Down (anyAltDown) is corroborated by the wire and still
+        // activates; the unmodified menu-mode path is never suppressed (a plain letter is not an
+        // ESC-framing artifact, and Esc inside menu mode is consumed before it ever arms).
+        //
+        // Placed BEFORE the chord-flash self-correction on purpose: that correction reads an
+        // unbracketed chord as evidence the terminal never delivers brackets and answers by
+        // latching the cue ON and STICKY — which would leave menu mode up on the strength of a
+        // keystroke we just decided not to trust, turning every following letter into an activation.
+        // Returning here leaves the cue exactly as it was (Alt-held stamping and the AlwaysVisible
+        // permanent cue are both untouched) and drops the key back to the dispatcher's remaining
+        // tails, where the Alt bit keeps it out of TextInput synthesis.
+        if (altChord && !anyAltDown && IsEscapeSuppressionActive)
             return false;
 
         // Chord-flash self-correction (doc §7.8): a family-matched terminal that never delivers
@@ -621,8 +716,32 @@ public sealed class AccessKeyManager
 
     // ───────────────────────────── internals ─────────────────────────────
 
+    // Whether a delivered bare Escape is still inside its suppression window. Self-disarming: the
+    // expired arm is dropped on the first read past the window, so the steady state (every keystroke
+    // of a normal session) costs one null check and never samples the clock at all — this sits on
+    // the per-key dispatch path.
+    private bool IsEscapeSuppressionActive
+    {
+        get
+        {
+            if (_escapeDeliveredAt is not {} armedAt)
+                return false;
+
+            // A zero (disabled) or elapsed window fails the strict comparison — GetElapsedTime is
+            // never negative on a monotonic source, so Zero disables the guard outright.
+            if (_time.GetElapsedTime(armedAt) < _escapeSuppressionWindow)
+                return true;
+
+            _escapeDeliveredAt = null;
+            return false;
+        }
+    }
+
     /// <summary>Test observability for the chord-flash latch (N187).</summary>
     internal bool BracketUnobservedInternal => _bracketUnobserved;
+
+    /// <summary>Test observability for the post-Escape activation-suppression window.</summary>
+    internal bool EscapeSuppressionActiveInternal => IsEscapeSuppressionActive;
 
     /// <summary>Test observability for the sticky (menu-mode) flag.</summary>
     internal bool StickyCueInternal => _stickyCue;

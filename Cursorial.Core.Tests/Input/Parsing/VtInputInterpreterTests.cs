@@ -344,10 +344,10 @@ public class VtInputInterpreterTests
     [Fact]
     public void EscPlusSymbol_EmitsCharacterWithAltModifier()
     {
-        // '?' is 0x3F — in the ESC-dispatch final range (0x30-0x7E). The intermediate
-        // range (0x20-0x2F: space, !"#$%&'()*+,-./) currently routes through
-        // EscapeIntermediate and is held pending a final byte; Alt+symbol coverage there
-        // is a separate parser extension.
+        // '?' is 0x3F — in the ESC-dispatch final range (0x30-0x7E), so it decodes immediately.
+        // The intermediate range (0x20-0x2F: space, !"#$%&'()*+,-./) routes through
+        // EscapeIntermediate and is held pending a final byte, so it only resolves on the idle
+        // flush — see EscPlusIntermediateRangeSymbol_EmitsCharacterWithAltModifier.
         Feed("?");
 
         var k = _sink.Single<KeyEvent>();
@@ -370,6 +370,260 @@ public class VtInputInterpreterTests
 
         Assert.Equal(KeyModifiers.Alt, keys[1].Modifiers);
         Assert.Equal("a", new string(keys[1].Text.Span));
+    }
+
+    // ---- xterm Alt+<control key> (ESC + C0 / DEL) ----
+    //
+    // The control-key half of meta-sends-escape: the terminal prefixes ESC to the byte the key
+    // sends unmodified, so Alt+Enter is ESC CR, Alt+Tab is ESC HT, Alt+Backspace is ESC BS or
+    // ESC DEL, and Alt+Esc is ESC ESC.
+    //
+    // BUG these pin: the classifier used to execute the C0 byte in place and stay in the Escape
+    // state, so Alt+Enter arrived as a bare `Key.Enter` with NO modifier (wrong action) followed
+    // by a phantom `Key.Escape` at the 50 ms ambiguity flush (which additionally unwound a focus
+    // scope). Alt+Enter worked on the Kitty (`CSI 13;3u`) and Win32 wires the whole time — only
+    // the ESC-prefix (xterm-family) wire was broken.
+
+    [Theory]
+    [InlineData((byte) 0x0D, Key.Enter)]     // CR
+    [InlineData((byte) 0x0A, Key.Enter)]     // LF (terminals with LNM set)
+    [InlineData((byte) 0x09, Key.Tab)]
+    [InlineData((byte) 0x08, Key.Backspace)] // BS
+    [InlineData((byte) 0x7F, Key.Backspace)] // DEL — the common modern spelling
+    public void EscPlusC0_EmitsNamedKeyWithAltModifier(byte controlChar, Key expected)
+    {
+        Feed(0x1B, controlChar);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(expected, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+        Assert.Equal(ReadOnlyMemory<char>.Empty, k.Text);
+    }
+
+    [Theory]
+    [InlineData((byte) 0x0D)]
+    [InlineData((byte) 0x09)]
+    [InlineData((byte) 0x08)]
+    [InlineData((byte) 0x7F)]
+    public void EscPlusC0_EmitsNoPhantomEscapeOnTheAmbiguityFlush(byte controlChar)
+    {
+        // The half of the bug that unwound focus scopes: the classifier stayed parked in Escape,
+        // so the idle flush committed a second, entirely fictitious Escape keypress.
+        Feed(0x1B, controlChar);
+        Flush();
+
+        Assert.Single(_sink.Events);
+        Assert.Equal(KeyModifiers.Alt, _sink.At<KeyEvent>(0).Modifiers);
+    }
+
+    [Fact]
+    public void DoubleEsc_AfterFlush_EmitsEscapeWithAltModifier()
+    {
+        // Alt+Esc. Held pending because `ESC ESC` is also the prefix of an Escape press followed
+        // by an ESC-introduced sequence; the idle window is what disambiguates.
+        Feed(0x1B, 0x1B);
+        Assert.Empty(_sink.Events);
+
+        Flush();
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Escape, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal(KeyEventKind.Down, k.Kind);
+    }
+
+    [Fact]
+    public void EscPlusNul_EmitsCtrlAltSpace()
+    {
+        // ESC NUL is Alt+Ctrl+Space — the Alt bit rides on top of the unmodified decode.
+        Feed(0x1B, 0x00);
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Space, k.Key);
+        Assert.Equal(KeyModifiers.Control | KeyModifiers.Alt, k.Modifiers);
+    }
+
+    [Fact]
+    public void EscPlusCtrlLetter_EmitsCharacterWithCtrlAndAlt()
+    {
+        Feed(0x1B, 0x01); // Alt+Ctrl+A
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Control | KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal("a", TextOf(k));
+    }
+
+    [Fact]
+    public void UnprefixedC0_StillDecodesWithoutTheAltModifier()
+    {
+        // Regression guard for the shared decode table: the Alt bit must come from the ESC
+        // introducer alone, never leak onto a plain keypress.
+        Feed(0x0D);
+        Feed(0x09);
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.Equal(Key.Enter, _sink.At<KeyEvent>(0).Key);
+        Assert.Equal(KeyModifiers.None, _sink.At<KeyEvent>(0).Modifiers);
+        Assert.Equal(Key.Tab, _sink.At<KeyEvent>(1).Key);
+        Assert.Equal(KeyModifiers.None, _sink.At<KeyEvent>(1).Modifiers);
+    }
+
+    [Fact]
+    public void EscPlusC0_ThenRealCsiSequence_BothDecode()
+    {
+        // (b) in the fix's risk list: returning to Ground after the Alt key must leave a genuine
+        // CSI sequence in the same burst intact.
+        Feed(0x1B, 0x0D);
+        Feed("\x1b[A");
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.Equal(Key.Enter, _sink.At<KeyEvent>(0).Key);
+        Assert.Equal(KeyModifiers.Alt, _sink.At<KeyEvent>(0).Modifiers);
+        Assert.Equal(Key.UpArrow, _sink.At<KeyEvent>(1).Key);
+        Assert.Equal(KeyModifiers.None, _sink.At<KeyEvent>(1).Modifiers);
+    }
+
+    [Fact]
+    public void EscPlusC0_ThenSs3Sequence_BothDecode()
+    {
+        Feed(0x1B, 0x09);
+        Feed("\x1bOP"); // SS3 F1
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.Equal(Key.Tab, _sink.At<KeyEvent>(0).Key);
+        Assert.Equal(KeyModifiers.Alt, _sink.At<KeyEvent>(0).Modifiers);
+        Assert.Equal(Key.F1, _sink.At<KeyEvent>(1).Key);
+    }
+
+    [Fact]
+    public void DoubleEsc_FollowedByCsi_EmitsBareEscapeThenTheCursorKey()
+    {
+        // (d) in the fix's risk list. `ESC ESC [ A` is macOS Terminal.app / rxvt's Alt+Up — ESC
+        // plus the key's ordinary sequence. We don't fold the prefix in (that would need a
+        // second lookahead), but the cursor key must not be destroyed by Alt+Esc decoding.
+        Feed(0x1B, 0x1B, (byte) '[', (byte) 'A');
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.Equal(Key.Escape, _sink.At<KeyEvent>(0).Key);
+        Assert.Equal(KeyModifiers.None, _sink.At<KeyEvent>(0).Modifiers);
+        Assert.Equal(Key.UpArrow, _sink.At<KeyEvent>(1).Key);
+    }
+
+    [Fact]
+    public void BareEsc_IsUnaffectedByAltEscapeDecoding()
+    {
+        // (a) in the fix's risk list — a single Escape press still commits on the idle flush with
+        // no modifier, and a second press after its own idle window is a second Escape.
+        Feed(0x1B);
+        Flush();
+        Feed(0x1B);
+        Flush();
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.All(
+            _sink.Events.OfType<KeyEvent>(),
+            k =>
+            {
+                Assert.Equal(Key.Escape, k.Key);
+                Assert.Equal(KeyModifiers.None, k.Modifiers);
+            });
+    }
+
+    [Theory]
+    [InlineData((byte) '/')]
+    [InlineData((byte) '.')]
+    [InlineData((byte) '-')]
+    [InlineData((byte) ' ')]
+    public void EscPlusIntermediateRangeSymbol_EmitsCharacterWithAltModifier(byte symbol)
+    {
+        // 0x20-0x2F sits in the ESC-intermediate range, so Alt+/ and friends park awaiting a final
+        // byte that a single keypress never sends; the idle flush recovers them. Before that
+        // recovery these keystrokes were dropped on the floor.
+        Feed(0x1B, symbol);
+        Assert.Empty(_sink.Events);
+
+        Flush();
+
+        var k = _sink.Single<KeyEvent>();
+        Assert.Equal(Key.Character, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+        Assert.Equal(((char) symbol).ToString(), TextOf(k));
+    }
+
+    // ---- Cross-protocol agreement ----
+    //
+    // The point of the ESC-prefix fix: a binding written against one wire works on all three.
+    // Each row is the same physical keypress spelled by the ESC-prefix (xterm), Kitty, and Win32
+    // Input Mode encoders, and every one must land on the same (Key, Modifiers) pair.
+
+    [Fact]
+    public void AltEnter_AgreesAcrossEscPrefixKittyAndWin32Wires()
+    {
+        Feed(0x1B, 0x0D);      // ESC-prefix: ESC CR
+        Feed("\x1b[13;3u");    // Kitty / CSI u: codepoint 13, modifier 3 = Alt
+        Feed("\x1b[13;13;0;1;2;1_"); // Win32: VK_RETURN, keydown, LEFT_ALT_PRESSED
+
+        Assert.Equal(3, _sink.Events.Count);
+        Assert.All(
+            _sink.Events.OfType<KeyEvent>(),
+            k =>
+            {
+                Assert.Equal(Key.Enter, k.Key);
+                Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+                Assert.Equal(KeyEventKind.Down, k.Kind);
+            });
+    }
+
+    [Theory]
+    [InlineData((byte) 0x09, "\x1b[9;3u", Key.Tab)]
+    [InlineData((byte) 0x7F, "\x1b[127;3u", Key.Backspace)]
+    [InlineData((byte) 0x08, "\x1b[8;3u", Key.Backspace)]
+    public void AltControlKey_AgreesBetweenEscPrefixAndKittyWires(byte controlChar, string kitty, Key expected)
+    {
+        Feed(0x1B, controlChar);
+        Feed(kitty);
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.All(
+            _sink.Events.OfType<KeyEvent>(),
+            k =>
+            {
+                Assert.Equal(expected, k.Key);
+                Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+            });
+    }
+
+    [Fact]
+    public void AltEscape_AgreesBetweenEscPrefixAndKittyWires()
+    {
+        Feed(0x1B, 0x1B);
+        Flush();
+        Feed("\x1b[27;3u");
+
+        Assert.Equal(2, _sink.Events.Count);
+        Assert.All(
+            _sink.Events.OfType<KeyEvent>(),
+            k =>
+            {
+                Assert.Equal(Key.Escape, k.Key);
+                Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+            });
+    }
+
+    [Fact]
+    public void EscPlusC0_InsidePaste_StaysPasteTextAndEmitsNoKeyEvent()
+    {
+        // The classifier is paste-unaware by design, so an ESC inside pasted content still frames
+        // as an introducer. The Alt bit is meaningless there — the byte must land in the paste
+        // payload under the ordinary OnExecute rules, not escape as a synthetic Alt+Tab.
+        Feed("\x1b[200~a");
+        Feed(0x1B, 0x09);
+        Feed("b\x1b[201~");
+
+        var p = _sink.Single<PasteEvent>();
+        Assert.Equal("a\tb", new string(p.Text.Span));
     }
 
     // ---- Focus events ----

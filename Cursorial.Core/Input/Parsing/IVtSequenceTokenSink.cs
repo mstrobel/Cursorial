@@ -34,6 +34,30 @@ public interface IVtSequenceTokenSink
     void OnExecute(byte controlChar);
 
     /// <summary>
+    /// A C0 control character (0x00–0x1F) or DEL (0x7F) that arrived <em>directly after</em> an
+    /// <c>ESC</c> introducer — the meta-sends-escape wire form of <c>Alt+&lt;control key&gt;</c>.
+    /// This is the control-key twin of the <c>ESC &lt;printable&gt;</c> form that reaches
+    /// <see cref="OnEscDispatch"/> as an empty-intermediate dispatch: <c>ESC CR</c> is Alt+Enter,
+    /// <c>ESC HT</c> is Alt+Tab, <c>ESC BS</c> / <c>ESC DEL</c> are Alt+Backspace, and
+    /// <c>ESC ESC</c> (committed by <see cref="VtSequenceClassifier.Flush"/>, since the pair is
+    /// ambiguous until the burst ends) is Alt+Esc.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A separate callback rather than a bare-final <see cref="OnEscDispatch"/> because
+    /// <c>final == 0</c> is already spoken for as the bare-ESC commit — <c>ESC NUL</c>
+    /// (Alt+Ctrl+Space) would otherwise be indistinguishable from a lone Escape keypress.
+    /// </para>
+    /// <para>
+    /// Default-implemented as a forward to <see cref="OnExecute"/> so sinks written before
+    /// Alt+&lt;control key&gt; decoding existed keep compiling and keep seeing the un-modified
+    /// key (the behavior they had when the classifier executed these bytes in place) instead of
+    /// silently dropping the keystroke.
+    /// </para>
+    /// </remarks>
+    void OnAltExecute(byte controlChar) => OnExecute(controlChar);
+
+    /// <summary>
     /// An <c>ESC</c> sequence with an optional run of intermediates and a final byte —
     /// e.g. <c>ESC ( B</c> (intermediates=<c>(</c>, final=<c>B</c>) for G0 charset, or
     /// <c>ESC O P</c> (intermediates=<c>O</c>, final=<c>P</c>) for SS3 F1.

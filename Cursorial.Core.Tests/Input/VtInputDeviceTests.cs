@@ -168,6 +168,70 @@ public class VtInputDeviceTests
         Assert.Equal(Key.DownArrow, ((KeyEvent)events[1]).Key);
     }
 
+    // ---- ESC-prefix Alt+<control key> across the real ambiguity timer ----
+
+    [Fact]
+    public async Task EscPlusCarriageReturn_BecomesAltEnter_WithNoTrailingEscape()
+    {
+        // The end-to-end shape of the bug: `ESC CR` (Alt+Enter on any xterm-family terminal)
+        // used to surface as a bare Enter and then — once the ambiguity timer fired on the ESC
+        // the classifier was still holding — a phantom Escape that unwound a focus scope. Leave
+        // the writer open so the timer, not completion, is what would produce that second event.
+        _source.Enqueue([0x1B, 0x0D]);
+
+        await using var device = BuildDevice(escTimeout: TimeSpan.FromMilliseconds(20));
+
+        // Ask for two events; the collector gives up at its own timeout, well past the 20 ms
+        // flush window, so a second event would have had ample opportunity to arrive.
+        var events = await CollectAsync(device, count: 2, timeout: TimeSpan.FromMilliseconds(400));
+
+        var k = Assert.IsType<KeyEvent>(Assert.Single(events));
+        Assert.Equal(Key.Enter, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+    }
+
+    [Fact]
+    public async Task DoubleEscByte_BecomesAltEscapeAfterTimeout()
+    {
+        _source.Enqueue([0x1B, 0x1B]);
+
+        await using var device = BuildDevice(escTimeout: TimeSpan.FromMilliseconds(20));
+        var events = await CollectAsync(device, count: 1, timeout: TimeSpan.FromSeconds(2));
+
+        var k = Assert.IsType<KeyEvent>(Assert.Single(events));
+        Assert.Equal(Key.Escape, k.Key);
+        Assert.Equal(KeyModifiers.Alt, k.Modifiers);
+    }
+
+    [Fact]
+    public async Task TwoEscPressesSeparatedByTheIdleWindow_StayTwoPlainEscapes()
+    {
+        // The guard on Alt+Esc decoding: only a *burst* `ESC ESC` is one keypress. Two real
+        // Escape presses are separated by more than the ambiguity window, so the first commits
+        // on its own timer long before the second byte arrives.
+        _source.Enqueue([0x1B]);
+
+        await using var device = BuildDevice(escTimeout: TimeSpan.FromMilliseconds(30));
+
+        // ReSharper disable once AccessToDisposedClosure
+        var consumer = Task.Run(async () => await CollectAsync(device, count: 2, timeout: TimeSpan.FromSeconds(2)));
+
+        await Task.Delay(80);
+        _source.Enqueue([0x1B]);
+        _source.CompleteWriter();
+
+        var events = await consumer;
+
+        Assert.Equal(2, events.Count);
+        Assert.All(
+            events.OfType<KeyEvent>(),
+            k =>
+            {
+                Assert.Equal(Key.Escape, k.Key);
+                Assert.Equal(KeyModifiers.None, k.Modifiers);
+            });
+    }
+
     // ---- Lifecycle ----
 
     [Fact]

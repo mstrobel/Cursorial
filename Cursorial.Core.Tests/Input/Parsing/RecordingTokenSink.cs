@@ -17,6 +17,11 @@ internal sealed class RecordingTokenSink : IVtSequenceTokenSink
     public void OnExecute(byte controlChar)
         => Tokens.Add(new RecordedToken.Execute(controlChar));
 
+    // Recorded distinctly from Execute (rather than leaning on the interface's default forward)
+    // so tests can prove the classifier framed `ESC <C0>` as Alt+<key> and not as a bare control.
+    public void OnAltExecute(byte controlChar)
+        => Tokens.Add(new RecordedToken.AltExecute(controlChar));
+
     public void OnEscDispatch(ReadOnlySpan<byte> intermediates, byte final)
         => Tokens.Add(new RecordedToken.EscDispatch(intermediates.ToArray(), final));
 
@@ -43,6 +48,7 @@ internal abstract record RecordedToken
 {
     public sealed record Print(byte[] Bytes) : RecordedToken;
     public sealed record Execute(byte ControlChar) : RecordedToken;
+    public sealed record AltExecute(byte ControlChar) : RecordedToken;
     public sealed record EscDispatch(byte[] Intermediates, byte Final) : RecordedToken;
     public sealed record CsiDispatch(byte PrivatePrefix, byte[] Parameters, byte[] Intermediates, byte Final) : RecordedToken;
     public sealed record OscDispatch(byte[] Body) : RecordedToken;

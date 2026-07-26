@@ -147,6 +147,7 @@ public sealed class ArchOneXamlThemeTests
             typeof(UIControls.TreeView), typeof(UIControls.TreeViewItem),
             typeof(UIControls.ComboBox), typeof(UIControls.ComboBoxItem),
             typeof(UIControls.Calendar), typeof(UIControls.DatePicker),
+            typeof(UIControls.BreadcrumbBar), typeof(UIControls.BreadcrumbBarItem),
         ];
         foreach (var t in themed)
             Assert.True(dict.TryGetValue(t, out _), $"XAML theme missing the control theme for {t.Name}");
@@ -226,6 +227,36 @@ public sealed class ArchOneXamlThemeTests
         Assert.True(host.RunUntilIdle());
         Assert.True(ctx.IsOpen);
         Assert.Equal(1, Popups(host));
+    }
+
+    [Fact] // the XAML BreadcrumbBar/BreadcrumbBarItem twins render the trail and fold it from the LEFT, like the code-first pair
+    public void XamlBreadcrumbBarTheme_RendersTrail_AndFoldsFromTheLeft()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 4) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var bar = new UIControls.BreadcrumbBar
+        {
+            ItemsSource = new[] { "Home", "Projects", "assets" },
+            Width = 30,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        host.ShowRoot(bar);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(RenderContains(host, "Home", 40, 4));
+        Assert.True(RenderContains(host, "▸", 40, 4)); // the XAML template's PART_Separator
+        Assert.False(bar.HasOverflow);
+
+        bar.Width = 18;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(bar.HasOverflow);
+        Assert.True(RenderContains(host, "…", 40, 4));    // the XAML template's PART_OverflowChip came up
+        Assert.True(RenderContains(host, "assets", 40, 4));
+        Assert.False(RenderContains(host, "Home", 40, 4)); // the ancestors folded away
     }
 
     [Fact] // the XAML ToolTip theme shows on the hit-transparent popup after the hover delay
@@ -355,6 +386,53 @@ public sealed class ArchOneXamlThemeTests
         "Label"        => new UIControls.Label { Content = "Caption" },
         _              => throw new ArgumentOutOfRangeException(nameof(control)),
     };
+
+    [Fact] // the XAML ListView theme renders the pinned header strip + the column grid, and follows a live view switch
+    public void XamlListViewTheme_RendersColumnGrid_AndSwitchesView()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 8) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var list = new UIControls.ListView { ItemsSource = new[] { "alpha", "bravo" }, DisplayMemberPath = null };
+        list.Columns.Add(new UIControls.ListViewColumn { Header = "Name", Width = UIControls.GridLength.Star() });
+        host.ShowRoot(list);
+        Assert.True(host.RunUntilIdle());
+
+        // The declarative ListViewTemplate's PART_HeaderPresenter + the ListViewItemTemplate's PART_Cells.
+        Assert.True(RenderContains(host, "Name", 40, 8));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+
+        // A sort click lights the indicator that the declarative ListViewColumnHeaderTemplate hosts.
+        list.CycleSort(list.Columns[0]);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(RenderContains(host, "\u25b2", 40, 8));
+
+        // The view switch swaps the items panel underneath the same (declarative) template.
+        list.View = UIControls.ListViewViewMode.List;
+        Assert.True(host.RunUntilIdle());
+        Assert.IsType<UIControls.UniformWrapPanel>(UIControls.ItemsControl.ItemsPanelFromItemsControl(list));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+    }
+
+    [Fact] // the IndigoDusk twin carries the same ListView keys and renders the same column grid (both halves stay in step)
+    public void IndigoDuskListViewTheme_CarriesTheSameKeys_AndRenders()
+    {
+        var dict = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadControls();
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListView)));
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListViewItem)));
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListViewColumnHeader)));
+
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 8) });
+        host.Application.Theme = dict;
+
+        var list = new UIControls.ListView { ItemsSource = new[] { "alpha", "bravo" } };
+        list.Columns.Add(new UIControls.ListViewColumn { Header = "Name", Width = UIControls.GridLength.Star() });
+        host.ShowRoot(list);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(RenderContains(host, "Name", 40, 8));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+    }
 
     private static /*(string Glyph, Color Fg, Color Bg)*/string[] CaptureCells(
         bool xaml, bool focus, int cols, int rows, Func<UIControls.Control> factory)

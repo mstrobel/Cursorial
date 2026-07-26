@@ -400,6 +400,108 @@
     </Style.Children>
   </Style>
 
+  <!-- ListView (the switchable-view list): the ListBox chrome plus a PINNED header strip. The
+       PART_HeaderPresenter docks to the TOP of a DockPanel, OUTSIDE the ScrollViewer, so the column
+       headings never scroll away vertically (and, symmetrically, why the control disables horizontal
+       scrolling in Details — the body would slide out from under its own headings). The strip collapses
+       itself in the three wrapping views; ListView.ApplyViewToTemplate drives that. The declarative twin of
+       ControlThemes.ListViewTheme(). -->
+  <ControlTemplate x:Key="ListViewTemplate">
+    <Border Background="{TemplateBinding Background}" BorderPen="{TemplateBinding BorderPen}">
+      <DockPanel>
+        <ListViewHeaderPresenter x:Name="PART_HeaderPresenter" DockPanel.Dock="Top"
+                                 Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"/>
+        <ScrollViewer x:Name="PART_ScrollViewer">
+          <ItemsPresenter x:Name="PART_ItemsHost"/>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ListView}" TargetType="ListView">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ListViewTemplate}"/>
+  </Style>
+
+  <!-- ListViewItem: the ListBoxItem selection bar with the ContentPresenter swapped for the PART_Cells
+       ListViewCellsPresenter — one container type has to render four different compositions, and a details
+       row cannot carry the ListBoxItem selection glyph in a gutter (the gutter would shift every cell out
+       from under its heading), so selection reads purely as the fill/ink flip. States ordered
+       hover -> selected -> focus-visible -> disabled (document order breaks the pseudo-class tie); the
+       ^:tiles rule pads the two-line tile on both axes. The declarative twin of
+       ControlThemes.ListViewItemTheme(). -->
+  <ControlTemplate x:Key="ListViewItemTemplate">
+    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+      <ListViewCellsPresenter x:Name="PART_Cells"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ListViewItem}" TargetType="ListViewItem">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundNormal}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
+    <Setter Property="Padding"    Value="1,0"/>
+    <Setter Property="Template"   Value="{StaticResource ListViewItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="ListViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="ListViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelectedInactive}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelectedInactive}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="ListViewItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ListViewItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+      </Style>
+      <Style Selector="^:tiles" TargetType="ListViewItem">
+        <Setter Property="Padding" Value="1,0,1,0"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- ListViewColumnHeader: [Header ... ▲] on a PanelBrush strip. The sort indicator docks RIGHT so it hugs
+       the column edge and the heading keeps the leading cell — the arrangement a sorted table is read by.
+       The indicator is collapsed until the ListView pushes a direction into it (collapsing rather than
+       blanking keeps an unsorted header's width free of a phantom cell). The declarative twin of
+       ControlThemes.ListViewColumnHeaderTheme(). -->
+  <ControlTemplate x:Key="ListViewColumnHeaderTemplate">
+    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+      <DockPanel>
+        <TextBlock x:Name="PART_SortIndicator" DockPanel.Dock="Right" Visibility="Collapsed"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <ContentPresenter x:Name="PART_ContentPresenter"
+                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+      </DockPanel>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type ListViewColumnHeader}" TargetType="ListViewColumnHeader">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"/>
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Padding"    Value="0"/>
+    <Setter Property="Template"   Value="{StaticResource ListViewColumnHeaderTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="ListViewColumnHeader">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+      </Style>
+      <Style Selector="^:pressed" TargetType="ListViewColumnHeader">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="ListViewColumnHeader">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.DisabledForegroundBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
   <!-- The non-interactive divider control theme (design doc §12.7), the declarative twin of the code-first
        ControlThemes.SeparatorTheme(): a 1-cell-high rule whose Border. No interactive states (Separator
        is never focusable and never a tab stop). -->
@@ -926,6 +1028,92 @@
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
       </Style>
       <Style Selector="^:disabled" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- BreadcrumbBar: the chip trail [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill —
+       a trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
+       BreadcrumbBarItem (so it inherits the chip look) docked LEFT of the items host: it is not a segment, and a
+       non-item child inside the items host would break the ItemsPresenter's index-aligned adoption. Docking it
+       also makes the overflow reserve automatic — the DockPanel hands the items panel the width that is left,
+       which is exactly the width BreadcrumbBarPanel's fold must pack into. The chips band and the raw-text edit
+       box overlap in a Grid (the ComboBox two-face trick); the collapsed one takes no space. The ItemsPanel is NOT
+       set here — the horizontal, left-overflowing BreadcrumbBarPanel is control identity, set in the ctor. The
+       declarative twin of ControlThemes.BreadcrumbBarTheme(). -->
+  <ControlTemplate x:Key="BreadcrumbBarTemplate" TargetType="BreadcrumbBar">
+    <Border Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}"
+            Padding="{TemplateBinding Padding}">
+      <Grid>
+        <DockPanel x:Name="PART_ChipsHost">
+          <BreadcrumbBarItem x:Name="PART_OverflowChip"
+                             DockPanel.Dock="Left"
+                             Content="…"
+                             Visibility="Collapsed"
+                             IsTabStop="False"/>
+          <ItemsPresenter x:Name="PART_ItemsHost"/>
+        </DockPanel>
+        <TextBox x:Name="PART_EditBox" Visibility="Collapsed"/>
+      </Grid>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type BreadcrumbBar}" TargetType="BreadcrumbBar">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource BreadcrumbBarTemplate}"/>
+    <Style.Children>
+      <!-- In edit mode the bar IS a field, so it takes the recessed well (the trail itself has no resting fill —
+           it sits on the page). This also keeps the gutter around PART_EditBox from reading as page. -->
+      <Style Selector="^:editing" TargetType="BreadcrumbBar">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.WellBrush}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <!-- BreadcrumbBarItem: a chip + its trailing "▸". The fill rides the chip Border only (TemplateBinding on
+       Background) so the separator stays on the page between two filled chips — a hover that swallowed the
+       separator would read as one wide button rather than a trail. The current (deepest) segment hides its
+       separator; that is driven by BreadcrumbBarItem itself, not by a /template/ rule, so both theme halves
+       behave identically. The declarative twin of ControlThemes.BreadcrumbBarItemTheme(). -->
+  <ControlTemplate x:Key="BreadcrumbBarItemTemplate" TargetType="BreadcrumbBarItem">
+    <StackPanel Orientation="Horizontal">
+      <Border Padding="{TemplateBinding Padding}"
+              Background="{TemplateBinding Background}"
+              BorderPen="{TemplateBinding BorderPen}"
+              TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+      </Border>
+      <TextBlock x:Name="PART_Separator" Text="▸"
+                 Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+    </StackPanel>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type BreadcrumbBarItem}" TargetType="BreadcrumbBarItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+    <Setter Property="Padding"    Value="1,0"/>
+    <Setter Property="Template"   Value="{StaticResource BreadcrumbBarItemTemplate}"/>
+    <Style.Children>
+      <!-- Ancestors are dim ink, the current segment is full-strength: the trail visibly brightens toward where
+           you are. Ordered :current -> :pointerover -> :pressed -> :focus-visible -> :disabled so interaction
+           always wins the pseudo-class tie (document order breaks it), matching the code-first append order. -->
+      <Style Selector="^:current" TargetType="BreadcrumbBarItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+      </Style>
+      <Style Selector="^:pointerover" TargetType="BreadcrumbBarItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundHover}}"/>
+      </Style>
+      <Style Selector="^:pressed" TargetType="BreadcrumbBarItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundPressed}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundPressed}}"/>
+      </Style>
+      <Style Selector="^:focus-visible" TargetType="BreadcrumbBarItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="BreadcrumbBarItem">
         <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
       </Style>
     </Style.Children>

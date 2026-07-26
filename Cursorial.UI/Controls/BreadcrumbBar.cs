@@ -367,8 +367,20 @@ public class BreadcrumbBar : ItemsControl
             return;
         }
 
-        var index = ItemContainerGenerator.IndexFromContainer(chip);
-        if (index < 0)
+        RequestDropDownAt(ItemContainerGenerator.IndexFromContainer(chip));
+    }
+
+    /// <summary>
+    /// Opens the drop-down for the segment at <paramref name="index"/> — the keyboard path (<c>↓</c>) and the
+    /// pointer path (a chip's <c>▸</c>) funnel through here, so both raise the same events in the same order.
+    /// A negative index, or a host that fills no children, leaves the affordance inert.
+    /// </summary>
+    public void RequestDropDownAt(int index)
+    {
+        if (index < 0 || index >= ItemContainerGenerator.ContainerCount)
+            return;
+
+        if (ItemContainerGenerator.ContainerFromIndex(index) is not BreadcrumbBarItem chip)
             return;
 
         var item = ItemContainerGenerator.ItemFromIndex(index);
@@ -584,6 +596,14 @@ public class BreadcrumbBar : ItemsControl
             case Key.End:
                 MoveActiveToEdge(first: false);
                 break;
+
+            // The keyboard twin of pressing a chip's "▸". Outside edit mode this is the bar's primary drill
+            // gesture — without it the child list is reachable only by pointer, which strands the keyboard user
+            // on the ancestors the trail happens to already contain.
+            case Key.DownArrow:
+                RequestDropDownAt(ActiveIndex);
+                break;
+
             case Key.F2 when IsEditable:
                 BeginEdit();
                 break;

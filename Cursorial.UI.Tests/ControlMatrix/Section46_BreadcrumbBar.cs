@@ -70,20 +70,47 @@ public sealed class Section46_BreadcrumbBar
         Assert.Contains("Home", row);
         Assert.Contains("Projects", row);
         Assert.Contains("assets", row);
-        Assert.Contains("▸", row);                     // separators between the chips
-        Assert.EndsWith("assets", row.TrimEnd());      // the trail ends on the current chip, never on a separator
+        Assert.Contains("▸", row);                     // the drill affordance sits on every chip
+        Assert.EndsWith("▸", row.TrimEnd());           // including the current one — see BC1b
         Assert.False(bar.HasOverflow);
     }
 
-    [Fact] // BC1b: the current chip hides its trailing separator — the trail never ends in "▸"
-    public void BC1b_CurrentChipHasNoSeparator()
+    [Fact] // BC1b: EVERY chip keeps its "▸", the current one included — it is the drill affordance, not a divider
+    public void BC1b_EveryChipKeepsItsSeparator()
     {
         var (host, bar) = Show();
         using var _ = host;
 
-        Assert.Equal(Visibility.Collapsed, Chip(bar, 2).SeparatorPart!.Visibility);
+        // The separator opens THIS segment's children, so collapsing it on the deepest chip removed the one
+        // drop-down a user most wants (drill deeper from where you already are) and left a single-segment trail
+        // with no drop-down at all. Explorer shows the trailing chevron for the same reason.
         Assert.Equal(Visibility.Visible, Chip(bar, 0).SeparatorPart!.Visibility);
-        Assert.Equal(2, host.GetRowText(0).Count(c => c == '▸'));
+        Assert.Equal(Visibility.Visible, Chip(bar, 2).SeparatorPart!.Visibility);
+        Assert.Equal(3, host.GetRowText(0).Count(c => c == '▸'));
+    }
+
+    [Fact] // BC1c: ↓ opens the ACTIVE segment's drop-down — the keyboard twin of pressing its "▸"
+    public void BC1c_DownArrowOpensTheActiveSegmentsDropDown()
+    {
+        var (host, bar) = Show();
+        using var _ = host;
+
+        var asked = -1;
+        bar.DropDownOpening += (_, e) =>
+        {
+            asked = e.Index;
+            e.Children.Add("child-a");
+            e.Children.Add("child-b");
+        };
+
+        bar.Focus();
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);   // active := segment 1
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, asked);         // the ACTIVE segment — not the first, not the current
+        Assert.Equal(1, Popups(host));  // without this gesture the child list was pointer-only
     }
 
     // ───────────────────────────── BC2/BC3 — arrow navigation is FOCUS ONLY ─────────────────────────────

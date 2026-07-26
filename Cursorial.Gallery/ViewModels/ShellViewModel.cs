@@ -24,7 +24,9 @@ public sealed class ShellViewModel : ViewModelBase
         Pages =
         [
             new WelcomeViewModel(),
+            new BreadcrumbViewModel(),
             new ButtonsViewModel(),
+            new CompletionViewModel(),
             new DataGridViewModel(),
             new DateControlsViewModel(),
             new DialogsViewModel(app),
@@ -33,6 +35,7 @@ public sealed class ShellViewModel : ViewModelBase
             new MenusViewModel(),
             new BarsViewModel(),
             new RibbonViewModel(),
+            new ListViewPageViewModel(),
             new TabControlViewModel(),
             new TreeViewModel(),
             new ScrollViewerPageViewModel()

@@ -142,11 +142,16 @@ public class BreadcrumbBarItem : ButtonBase
     private static void OnIsCurrentChanged(UIObject sender, bool oldValue, bool newValue)
         => (sender as BreadcrumbBarItem)?.UpdateSeparatorVisibility();
 
-    // The trail never ends in a separator: the current (deepest) chip collapses its "▸". Driven imperatively rather
-    // than by a `^:current /template/ #PART_Separator` theme rule so both theme halves (the code-first
-    // ControlThemes and the declarative Themes/*/Controls.xaml) get the behavior from ONE place and can't drift.
+    // EVERY chip keeps its "▸", including the current (deepest) one. The separator is not decoration BETWEEN
+    // segments — it is the drill affordance, and the list it opens is THIS segment's children. Collapsing it on the
+    // current chip therefore removed the one drop-down a user most wants (drill deeper from where you already are)
+    // and, on a single-segment trail, left the bar with no drop-down at all: the root offered nothing until a second
+    // segment appeared. Explorer shows the trailing chevron for exactly this reason.
+    //
+    // Driven imperatively rather than by a `^:current /template/ #PART_Separator` theme rule so both theme halves
+    // (the code-first ControlThemes and the declarative Themes/*/Controls.xaml) get the behavior from ONE place.
     private void UpdateSeparatorVisibility()
     {
-        _separator?.SetCurrentValue(VisibilityProperty, IsCurrent ? Visibility.Collapsed : Visibility.Visible);
+        _separator?.SetCurrentValue(VisibilityProperty, Visibility.Visible);
     }
 }

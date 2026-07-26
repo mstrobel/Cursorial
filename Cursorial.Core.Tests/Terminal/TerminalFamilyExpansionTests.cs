@@ -213,10 +213,10 @@ public class TerminalFamilyExpansionTests
     }
 
     [Fact]
-    public async Task Rio_ShipsSixel()
+    public async Task Rio_ShipsKittyGraphics()
     {
         var g = (await IdentifyAsync("\x1bP>|Rio 0.2.0\x1b\\")).Output.Graphics;
-        Assert.True(g.Sixel);
+        // Assert.True(g.Sixel); // <- require Rio to _advertise_ Sixel in its DA1 response; it's still a new feature.
         Assert.True(g.KittyGraphics);
     }
 

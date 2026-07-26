@@ -37,8 +37,15 @@ public class WelcomeViewModel : PageViewModel
     private static RichText MakeWelcomeText(IGlyphFont font, string text, TextSizing? sizing = null)
     {
         var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default));
-        if (sizing is {} sz)
-            return rtb.SizedText(text, sz, fallback: font).Build();
-        return rtb.Figlet(text, font).Build();
+
+        foreach (var line in text.Split('\n'))
+        {
+            if (sizing is {} sz)
+                rtb.SizedText(line, sz, fallback: font);
+            else
+                rtb.Figlet(line, font);
+
+        }
+        return rtb.Build();
     }
 }

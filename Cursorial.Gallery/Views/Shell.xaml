@@ -67,18 +67,6 @@
                               MaxHeight="8"
                               HorizontalAlignment="Center">
                 <ImagePresenter.PlaceholderContent>
-<!--
-                  <FigletPresenter Font="{x:Static ff:FigletFonts.Slant}"
-                                   Text="cursorial"
-                                   TextAlignment="Center">
-                    <FigletPresenter.Foreground>
-                      <LinearGradientBrush StartPoint="0.5,0" EndPoint="0,1">
-                        <GradientStop Color="#73c6e7" Offset="0"/>
-                        <GradientStop Color="#2c83b7" Offset="1"/>
-                      </LinearGradientBrush>
-                    </FigletPresenter.Foreground>
-                  </FigletPresenter>
--->
                   <RichTextPresenter Source="{Binding WelcomeText}"
                                      TextAlignment="Center"
                                      TextElement.TextStyle="Italic">
@@ -501,10 +489,45 @@
               </TabItem.Content>
             </TabItem>
             <TabItem Header="_Second Tab">
-              <Border/>
+              <Border>
+                <ImagePresenter SourceUri="embedded://Cursorial.Gallery/cursorial_icon.png"
+                                MaxHeight="16"
+                                HorizontalAlignment="Center">
+                  <ImagePresenter.PlaceholderContent>
+                    <FigletPresenter Text="C >"
+                                     Font="{x:Static ff:FigletFonts.AnsiShadow}"
+                                     TextAlignment="Center"
+                                     TextElement.TextStyle="Italic">
+                      <TextElement.Foreground>
+                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                          <GradientStop Color="#2c83b7" Offset="0"/>
+                          <GradientStop Color="#73c6e7" Offset="1 "/>
+                        </LinearGradientBrush>
+                      </TextElement.Foreground>
+                    </FigletPresenter>
+                  </ImagePresenter.PlaceholderContent>
+                </ImagePresenter>
+              </Border>
             </TabItem>
             <TabItem Header="T_hird Tab">
-              <Border/>
+              <Border>
+                <ScrollViewer VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Hidden">
+                  <FigletPresenter Text="ghost&#13;in the&#13;machine"
+                                   Font="{x:Static ff:FigletFonts.Roman}"
+                                   TextAlignment="Center"
+                                   TextElement.TextStyle="Italic"
+                                   Focusable="True"
+                                   IsTabStop="True">
+                    <TextElement.Foreground>
+                      <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                        <GradientStop Color="#2c83b7" Offset="0"/>
+                        <GradientStop Color="#73c6e7" Offset="1 "/>
+                      </LinearGradientBrush>
+                    </TextElement.Foreground>
+                  </FigletPresenter>
+                </ScrollViewer>
+              </Border>
             </TabItem>
           </TabControl>
 

@@ -161,9 +161,9 @@ public sealed partial class UIApplication : IResourceHost
         if (_host is not {} host || _renderer is not {} renderer)
             throw new InvalidOperationException("The application is not running.");
 
-        var oldCapabilities = _capabilities;
+        var oldEffective = _capabilityOverrides.Apply(_capabilities);
 
-        ChangeCapabilities(host, renderer, oldCapabilities, newCapabilities, Dispatcher.ShutdownToken);
+        ChangeCapabilities(host, renderer, oldEffective, newCapabilities, Dispatcher.ShutdownToken);
     }
 
     // The negotiated-only variant (the per-axis derivation source before the requested overrides).

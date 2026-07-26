@@ -67,9 +67,14 @@ public sealed partial class UIApplication
 
             if (_capabilityOverrides != value)
             {
+                var oldEffective = _capabilityOverrides.Apply(_capabilities);
+
                 _capabilityOverrides = value;
-                StyleEngineInternal.RestampCapabilityClasses();
+
                 CapabilityOverridesChanged?.Invoke(this, EventArgs.Empty);
+
+                if (_host is {} host && _renderer is {} renderer)
+                    ChangeCapabilities(host, renderer, oldEffective, _capabilities, Dispatcher.ShutdownToken);
             }
             
             if (ShowUserOptionsCommand is ShowUserOptionsCommandImpl command)

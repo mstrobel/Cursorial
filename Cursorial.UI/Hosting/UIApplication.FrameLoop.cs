@@ -650,7 +650,7 @@ public sealed partial class UIApplication
     /// (delta emission <i>and</i> the control-sequence drain) is gated for the duration because the
     /// negotiator writes probes to the same non-thread-safe pipe. On success the renderer + buffer
     /// rebuild with the new capabilities, the render tree re-stamps and fully re-rasters,
-    /// <see cref="EffectiveInputCapabilities"/> recomputes, and <see cref="CapabilitiesChanged"/>
+    /// <see cref="EffectiveInputCapabilities"/> recomputes, and <see cref="EffectiveCapabilitiesChanged"/>
     /// fires; on failure the session keeps the old negotiator and nothing changes.
     /// </summary>
     public async ValueTask RenegotiateAsync(CancellationToken cancellationToken = default)
@@ -698,6 +698,8 @@ public sealed partial class UIApplication
         {
             _capabilities = newCapabilities;
 
+            var effective = _capabilityOverrides.Apply(newCapabilities);
+
             // Close the old renderer (fragment erases, autowrap restore) and flush before rebuilding.
             // The pointer shape is re-baselined here too (§7.6): reset under the OLD gate (a shape
             // may be active from before the window); the dispatcher's OnCapabilitiesChanged below
@@ -716,7 +718,7 @@ public sealed partial class UIApplication
 
                 if (_scratch.WrittenCount > 0)
                 {
-                    var writer = _host!.Output.Writer;
+                    var writer = host.Output.Writer;
                     writer.Write(_scratch.WrittenSpan);
                     writer.FlushAsync(cancellationToken).AsTask().GetAwaiter().GetResult();
                 }
@@ -728,22 +730,22 @@ public sealed partial class UIApplication
 
             var (columns, rows) = (_buffer!.Columns, _buffer.Rows);
 
-            _buffer = new CellBuffer(columns, rows, newCapabilities) { CursorVisible = false };
+            _buffer = new CellBuffer(columns, rows, effective) { CursorVisible = false };
 
-            _renderer = new FrameRenderer(newCapabilities.Output,
+            _renderer = new FrameRenderer(effective.Output,
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither));
 
-            _effectiveInputCapabilities = ApplyDecorationProjections(newCapabilities.Input);
-            _supportsAltKeyTracking = ComputeAltKeyTracking(newCapabilities.Input);
-            _windowManager?.OnCapabilitiesChanged(newCapabilities.Output);
+            _effectiveInputCapabilities = ApplyDecorationProjections(effective.Input);
+            _supportsAltKeyTracking = ComputeAltKeyTracking(effective.Input);
+            _windowManager?.OnCapabilitiesChanged(effective.Output);
 
-            ApplyCapabilities(newCapabilities);
+            ApplyCapabilities(effective);
 
-            CapabilitiesChanged?.Invoke(this,
+            EffectiveCapabilitiesChanged?.Invoke(this,
                                         new CapabilitiesChangedEventArgs
                                         {
                                             OldCapabilities = oldCapabilities,
-                                            NewCapabilities = newCapabilities
+                                            NewCapabilities = effective
                                         });
         }
         finally

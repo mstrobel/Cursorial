@@ -291,7 +291,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     public FrameTime CurrentFrameTime => _currentFrameTime;
 
     /// <summary>Raised on the UI thread after <see cref="RenegotiateAsync"/> swaps the snapshot.</summary>
-    public event EventHandler<CapabilitiesChangedEventArgs>? CapabilitiesChanged;
+    public event EventHandler<CapabilitiesChangedEventArgs>? EffectiveCapabilitiesChanged;
 
     /// <summary>
     /// The exception funnel (design doc §10.8): every user-code entry point in the loop routes

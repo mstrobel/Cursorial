@@ -132,7 +132,7 @@ public class Icon : Control
 
         if (UIApplication.Current is { } app)
         {
-            app.CapabilitiesChanged += OnCapabilitiesChanged; // graphics (image tier) renegotiation
+            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged; // graphics (image tier) renegotiation
             app.CapabilityOverridesChanged += OnCapabilityOverridesChanged; // FB-5 override flip (image tier gate)
             app.NerdFontAvailableChanged += OnNerdFontChanged; // nerd-font (glyph tier) opt-in flip
             app.EmojiAvailableChanged += OnEmojiChanged; // emoji tier availability flip (FB-15, opt-out)
@@ -148,7 +148,7 @@ public class Icon : Control
     {
         if (_subscribedApp is { } app)
         {
-            app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
             app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             app.NerdFontAvailableChanged -= OnNerdFontChanged;
             app.EmojiAvailableChanged -= OnEmojiChanged;

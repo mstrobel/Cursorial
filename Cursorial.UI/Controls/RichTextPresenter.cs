@@ -122,7 +122,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         // otherwise leave the placeholder visibility / :placeholder stale on a caps flip — CD-P2K-1 audit).
         if (UIApplication.Current is {} app)
         {
-            app.CapabilitiesChanged += OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged;
 
             app.CapabilityOverridesChanged +=
                 OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
@@ -136,7 +136,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     {
         if (_subscribedApp is {} app)
         {
-            app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
             app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             _subscribedApp = null;
         }
@@ -185,13 +185,13 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
     private FormattedText? EnsureText(int? possibleColumns)
     {
+        if (ResolveSource() is not { IsEmpty: false } text) return null;
+
         var bounds = ResolveBounds(possibleColumns);
 
         var availableColumns = bounds.Columns;
         if (availableColumns is 0)
             return null;
-
-        if (ResolveSource() is not {} text) return null;
 
         if (_cachedState is { Text: not null } cs &&
             ReferenceEquals(cs.Source, text) &&
@@ -224,9 +224,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
         var source = _cachedState?.Source ?? Source;
 
-        if (source is RichText t)
+        if (source is RichText { IsEmpty: false } t)
             text = t;
-        else if (source is string s)
+        else if (source is string { Length: > 0 } s)
             text = ParseRichText(s);
         else
             text = null;
@@ -256,7 +256,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
         var bounds = Bounds;
 
-        return (bounds with { Columns = availableColumns ?? bounds.Columns }).ToRect();
+        return (bounds with { Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent) }).ToRect();
     }
 
     private RichText ParseRichText(string s)

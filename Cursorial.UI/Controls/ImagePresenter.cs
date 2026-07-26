@@ -20,7 +20,7 @@ namespace Cursorial.UI.Controls;
 /// Sizing is delegated to <see cref="Cursorial.Rendering.Content.Image"/> (a null / single-axis
 /// <see cref="ImageData.RequestedSize"/> is sized from the decoded pixels). A <c>Stretch</c> property is a deferral.
 /// A mid-session renegotiation that flips graphics support re-evaluates on the next layout pass (the presenter
-/// subscribes to <see cref="UIApplication.CapabilitiesChanged"/>). <see cref="SourceUri"/> loads synchronously via
+/// subscribes to <see cref="UIApplication.EffectiveCapabilitiesChanged"/>). <see cref="SourceUri"/> loads synchronously via
 /// <see cref="ResourceLoader.Default"/> — fine for embedded/file sources; an explicit <see cref="Source"/> wins.
 /// </remarks>
 public class ImagePresenter : DrawnContentPresenter
@@ -90,7 +90,7 @@ public class ImagePresenter : DrawnContentPresenter
         // otherwise leave the placeholder visibility / :placeholder stale on a caps flip — CD-P2K-1 audit).
         if (UIApplication.Current is { } app)
         {
-            app.CapabilitiesChanged += OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged;
             app.CapabilityOverridesChanged += OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
             _subscribedApp = app;
         }
@@ -101,7 +101,7 @@ public class ImagePresenter : DrawnContentPresenter
     {
         if (_subscribedApp is { } app)
         {
-            app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
             app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             _subscribedApp = null;
         }

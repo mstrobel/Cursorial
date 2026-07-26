@@ -51,6 +51,8 @@ public sealed class FigletPresenter : DrawnContentPresenter
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<FigletPresenter>();
 
+    private static readonly char[] LineSeparators = ['\r','\n'];
+
     private record CachedState(int AvailableColumns, string Text, FormattedText RealizedText);
 
     private CachedState? _cachedState;
@@ -125,7 +127,7 @@ public sealed class FigletPresenter : DrawnContentPresenter
         // otherwise leave the placeholder visibility / :placeholder stale on a caps flip — CD-P2K-1 audit).
         if (UIApplication.Current is {} app)
         {
-            app.CapabilitiesChanged += OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged;
 
             app.CapabilityOverridesChanged +=
                 OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
@@ -139,7 +141,7 @@ public sealed class FigletPresenter : DrawnContentPresenter
     {
         if (_subscribedApp is {} app)
         {
-            app.CapabilitiesChanged -= OnCapabilitiesChanged;
+            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
             app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             _subscribedApp = null;
         }
@@ -184,7 +186,7 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
     private FormattedText? EnsureText(int? possibleColumns)
     {
-        if (Text is not {} text)
+        if (Text is not { Length: > 0 } text)
             return null;
 
         var bounds = ResolveBounds(possibleColumns);
@@ -204,7 +206,13 @@ public sealed class FigletPresenter : DrawnContentPresenter
                  };
 
         var font = Font ?? FigletFonts.Small;
-        var richText = new RichTextBuilder().Figlet(text, font, ResolveStyle(), TextAlignment, Padding).Build();
+        var rtb = new RichTextBuilder();
+        var style = ResolveStyle();
+
+        foreach (var line in text.Split(LineSeparators))
+            rtb.Figlet(line, font, style, TextAlignment, Padding);
+
+        var richText = rtb.Build();
 
         var ft = tf.Format(richText,
                            availableColumns,
@@ -241,8 +249,8 @@ public sealed class FigletPresenter : DrawnContentPresenter
                  {
                      Column = Math.Max(0, bounds.Column),
                      Row = Math.Max(0, bounds.Row),
-                     Columns = availableColumns ?? bounds.Columns,
-                     Rows = bounds.Rows
+                     Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
+                     Rows = Math.Min(bounds.Rows, LayoutMath.MaxExtent)
                  };
 
         return bounds.ToRect();

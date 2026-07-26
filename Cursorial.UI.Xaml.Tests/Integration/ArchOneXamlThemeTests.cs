@@ -147,6 +147,7 @@ public sealed class ArchOneXamlThemeTests
             typeof(UIControls.TreeView), typeof(UIControls.TreeViewItem),
             typeof(UIControls.ComboBox), typeof(UIControls.ComboBoxItem),
             typeof(UIControls.Calendar), typeof(UIControls.DatePicker),
+            typeof(UIControls.BreadcrumbBar), typeof(UIControls.BreadcrumbBarItem),
         ];
         foreach (var t in themed)
             Assert.True(dict.TryGetValue(t, out _), $"XAML theme missing the control theme for {t.Name}");
@@ -226,6 +227,36 @@ public sealed class ArchOneXamlThemeTests
         Assert.True(host.RunUntilIdle());
         Assert.True(ctx.IsOpen);
         Assert.Equal(1, Popups(host));
+    }
+
+    [Fact] // the XAML BreadcrumbBar/BreadcrumbBarItem twins render the trail and fold it from the LEFT, like the code-first pair
+    public void XamlBreadcrumbBarTheme_RendersTrail_AndFoldsFromTheLeft()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 4) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var bar = new UIControls.BreadcrumbBar
+        {
+            ItemsSource = new[] { "Home", "Projects", "assets" },
+            Width = 30,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        host.ShowRoot(bar);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(RenderContains(host, "Home", 40, 4));
+        Assert.True(RenderContains(host, "▸", 40, 4)); // the XAML template's PART_Separator
+        Assert.False(bar.HasOverflow);
+
+        bar.Width = 18;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(bar.HasOverflow);
+        Assert.True(RenderContains(host, "…", 40, 4));    // the XAML template's PART_OverflowChip came up
+        Assert.True(RenderContains(host, "assets", 40, 4));
+        Assert.False(RenderContains(host, "Home", 40, 4)); // the ancestors folded away
     }
 
     [Fact] // the XAML ToolTip theme shows on the hit-transparent popup after the hover delay
@@ -356,6 +387,53 @@ public sealed class ArchOneXamlThemeTests
         _              => throw new ArgumentOutOfRangeException(nameof(control)),
     };
 
+    [Fact] // the XAML ListView theme renders the pinned header strip + the column grid, and follows a live view switch
+    public void XamlListViewTheme_RendersColumnGrid_AndSwitchesView()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 8) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var list = new UIControls.ListView { ItemsSource = new[] { "alpha", "bravo" }, DisplayMemberPath = null };
+        list.Columns.Add(new UIControls.ListViewColumn { Header = "Name", Width = UIControls.GridLength.Star() });
+        host.ShowRoot(list);
+        Assert.True(host.RunUntilIdle());
+
+        // The declarative ListViewTemplate's PART_HeaderPresenter + the ListViewItemTemplate's PART_Cells.
+        Assert.True(RenderContains(host, "Name", 40, 8));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+
+        // A sort click lights the indicator that the declarative ListViewColumnHeaderTemplate hosts.
+        list.CycleSort(list.Columns[0]);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(RenderContains(host, "\u25b2", 40, 8));
+
+        // The view switch swaps the items panel underneath the same (declarative) template.
+        list.View = UIControls.ListViewViewMode.List;
+        Assert.True(host.RunUntilIdle());
+        Assert.IsType<UIControls.UniformWrapPanel>(UIControls.ItemsControl.ItemsPanelFromItemsControl(list));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+    }
+
+    [Fact] // the IndigoDusk twin carries the same ListView keys and renders the same column grid (both halves stay in step)
+    public void IndigoDuskListViewTheme_CarriesTheSameKeys_AndRenders()
+    {
+        var dict = Cursorial.UI.Themes.IndigoDusk.IndigoDuskTheme.LoadControls();
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListView)));
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListViewItem)));
+        Assert.True(dict.ContainsKey(typeof(UIControls.ListViewColumnHeader)));
+
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 8) });
+        host.Application.Theme = dict;
+
+        var list = new UIControls.ListView { ItemsSource = new[] { "alpha", "bravo" } };
+        list.Columns.Add(new UIControls.ListViewColumn { Header = "Name", Width = UIControls.GridLength.Star() });
+        host.ShowRoot(list);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(RenderContains(host, "Name", 40, 8));
+        Assert.True(RenderContains(host, "alpha", 40, 8));
+    }
+
     private static /*(string Glyph, Color Fg, Color Bg)*/string[] CaptureCells(
         bool xaml, bool focus, int cols, int rows, Func<UIControls.Control> factory)
     {
@@ -382,4 +460,68 @@ public sealed class ArchOneXamlThemeTests
         // return cells.ToArray();
         return cells.Select(c => $"'{c.Item1}', #{c.Item2.Red:X2}{c.Item2.Green:X2}{c.Item2.Blue:X2}, #{c.Item3.Red:X2}{c.Item3.Green:X2}{c.Item3.Blue:X2}").ToArray();
     }
+    [Fact] // the XAML CompletionPopup theme templates the overlay: PART_List on a popup surface, matches bolded
+    public void XamlCompletionPopupTheme_OpensAndBoldsTheMatch()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 12) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var box = new UIControls.TextBox
+        {
+            Width = 16,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var completion = new UIControls.CompletionPopup
+        {
+            Target = box,
+            Provider = new UIControls.DelegateCompletionProvider(query => new UIControls.CompletionContext(
+                0,
+                query.Text.Length,
+                query.Text,
+                [new UIControls.CompletionItem("Price") { KindLabel = "field" }])),
+        };
+
+        var root = new UIControls.Grid();
+        root.Children.Add(box);
+        root.Children.Add(completion);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        box.Focus();
+        Assert.True(host.RunUntilIdle());
+        host.SendText("Pr");
+        Assert.True(host.RunUntilIdle());
+
+        // The declarative template really expanded: the required PART_Popup / PART_List parts resolved
+        // (a missing one throws at instantiation), the list is hosted on its own popup surface, and the
+        // header/footer strips the control pushes into are present.
+        Assert.True(completion.IsOpen);
+        Assert.Equal(1, Popups(host));
+        Assert.True(RenderContains(host, "Price", 60, 12));
+        Assert.True(RenderContains(host, "1 match", 60, 12));
+        Assert.True(RenderContains(host, "Esc dismiss", 60, 12));
+
+        // …and the fuzzy highlight survives the XAML half too: "Pr" bold, "ice" not.
+        var (column, row) = FindCells(host, "Price", 60, 12);
+        Assert.True((host.GetCell(column, row).Style.Attributes & TextAttributes.Bold) != 0);
+        Assert.True((host.GetCell(column + 2, row).Style.Attributes & TextAttributes.Bold) == 0);
+    }
+
+    private static (int Column, int Row) FindCells(UIHeadlessHost host, string text, int cols, int rows)
+    {
+        for (var r = 0; r < rows; r++)
+        {
+            var line = string.Concat(Enumerable.Range(0, cols).Select(c => host.GetCell(c, r).Grapheme ?? " "));
+            var index = line.IndexOf(text, StringComparison.Ordinal);
+
+            if (index >= 0)
+                return (index, r);
+        }
+
+        return (-1, -1);
+    }
+
 }

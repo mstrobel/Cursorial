@@ -1,0 +1,155 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Cursorial.Rendering;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Input;
+
+namespace Cursorial.UI.Dialogs;
+
+/// <summary>
+/// The Open File dialog: a places rail, a breadcrumb path bar with completion, a sortable listing with
+/// switchable views, and a File name + type-filter footer — the terminal counterpart of WPF's
+/// <c>Microsoft.Win32.OpenFileDialog</c> and Avalonia's <c>IStorageProvider.OpenFilePickerAsync</c>, except
+/// that it is an ordinary <see cref="Window"/> in the application's own tree rather than a shell dialog, so it
+/// is themed, keyboard-complete and testable frame by frame.
+/// <para>
+/// All of the behaviour lives in <see cref="FileDialogViewModel"/> and all of the chrome in
+/// <see cref="FileDialogView"/>; this type is the entry point, the window, and the mapping from "the
+/// view-model says it is finished" to "the window closes with that result".
+/// </para>
+/// </summary>
+public sealed class FileOpenDialog : Window
+{
+    private readonly FileDialogViewModel _model;
+    private readonly FileDialogView _view;
+
+    /// <summary>Control themes resolve exact-key, so a <see cref="Window"/> subclass must opt into the base
+    /// window chrome or it has no template at all and measures 0×0.</summary>
+    protected override object ControlThemeKey => typeof(Window);
+
+    private FileOpenDialog(FileDialogViewModel model, string title)
+    {
+        _model = model;
+        _view = new FileDialogView(model);
+
+        Title = title;
+        DataContext = model;
+        Content = _view.Root;
+        Width = 78;
+        Height = 26;
+        MinWidth = 48;
+        MinHeight = 14;
+        Padding = Margins.Zero;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        AutoFitToViewport = true;
+        Shadow = WindowShadow.Default;
+
+        model.Completed += (_, result) => Close(result);
+        ContentRendered += OnContentRendered;
+    }
+
+    /// <summary>
+    /// Shows the dialog modally over <paramref name="application"/>'s active surface and completes with the
+    /// chosen file when it closes.
+    /// </summary>
+    /// <param name="application">
+    /// The owning application. When called off the UI thread the call marshals to its dispatcher.
+    /// </param>
+    /// <param name="request">The dialog's configuration — the hierarchy, the starting directory, the filters.</param>
+    /// <param name="cancellationToken">
+    /// Force-closes the dialog when canceled. Cancellation never throws through this call — it completes with
+    /// <see cref="FileDialogResult.Dismissed"/>, the same outcome as Cancel or a window-chrome close.
+    /// </param>
+    public static async Task<FileDialogResult> ShowAsync(UIApplication application,
+                                                         FileOpenDialogRequest request,
+                                                         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(application);
+        ArgumentNullException.ThrowIfNull(request);
+
+        // The TaskDialog threading contract verbatim. On the UI thread the show runs unguarded: a missing
+        // WindowManager there is programmer error (a dialog raised before RunAsync composed one) and must fail
+        // loudly rather than be silently reported as a dismissal.
+        if (application.Dispatcher.CheckAccess())
+            return await ShowOnUIThreadAsync(application, request, viaMarshal: false, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            return await application.Dispatcher
+                                    .InvokeAsync(() => ShowOnUIThreadAsync(application, request, viaMarshal: true, cancellationToken))
+                                    .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // A shut-down dispatcher returns a canceled task without ever running the delegate, so the
+            // in-dialog cancellation handling never engages — the no-throw contract maps this to dismissal.
+            return FileDialogResult.Dismissed;
+        }
+    }
+
+    private static async Task<FileDialogResult> ShowOnUIThreadAsync(UIApplication application,
+                                                                    FileOpenDialogRequest request,
+                                                                    bool viaMarshal,
+                                                                    CancellationToken cancellationToken)
+    {
+        // Shutdown race — the MARSHALED path ONLY: a marshaled show can be dispatched while teardown removes
+        // the window manager on this same UI thread, and ShowDialogAsync would throw. Scoping the check here
+        // keeps a direct on-UI-thread show against a not-yet-started application failing loudly.
+        if (viaMarshal && UIApplication.Current?.WindowManager is null)
+            return FileDialogResult.Dismissed;
+
+        var model = new FileDialogViewModel(request);
+
+        try
+        {
+            var dialog = new FileOpenDialog(model, request.Title);
+
+            // The first listing is loaded BEFORE the window is shown, so the dialog's first frame is the real
+            // one — no empty listing flashing past on the way to the directory the caller asked for.
+            await model.InitializeAsync(cancellationToken).ConfigureAwait(true);
+
+            return await dialog.ShowDialogAsync<FileDialogResult>(cancellationToken).ConfigureAwait(true)
+                   ?? FileDialogResult.Dismissed;
+        }
+        catch (OperationCanceledException)
+        {
+            return FileDialogResult.Dismissed; // dismissal-by-cancellation: the forced close carries no choice
+        }
+        finally
+        {
+            model.Dispose();
+        }
+    }
+
+    /// <inheritdoc/>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        // First stop on the tunnel: the dialog's accelerators outrank the controls' own keys (Alt+↑ must beat
+        // the file list's ↑). Everything that must yield instead rides OnKeyDown.
+        if (!e.Handled && _view.HandlePreviewKey(e))
+            e.Handled = true;
+    }
+
+    /// <inheritdoc/>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        // Last stop on the bubble: everything a control wanted (Backspace in a text field, Escape in the
+        // completion popup) has already been claimed, so what arrives here is genuinely dialog-wide. Escape
+        // deliberately falls through unhandled at the top level so the Cancel button's IsCancel binding —
+        // which runs in the gesture tail, after the route — finally cancels.
+        if (!e.Handled && _view.HandleKey(e))
+            e.Handled = true;
+    }
+
+    private void OnContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= OnContentRendered;
+        _view.FocusFileList();
+    }
+}

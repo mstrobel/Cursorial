@@ -43,6 +43,20 @@ public class DataGridDialogsTests
         }
     }
 
+    /// <summary>
+    /// A row whose columns are camel-humped, multi-word names — the fuzzy matcher's territory. Column
+    /// auto-generation leaves <c>Header</c> null unless annotated, so each criteria field's display
+    /// label is the property name VERBATIM, which is what the completion pattern is matched against.
+    /// The first property is deliberately the matcher's own worked example: <c>inpc</c> must find it.
+    /// </summary>
+    [SuppressMessage("ReSharper", "UnusedMember.Local")]
+    private sealed class Notice(string source, int changedCount, decimal netAmountDue)
+    {
+        public string INotifyPropertyChanged { get; } = source;
+        public int ChangedCount { get; } = changedCount;
+        public decimal NetAmountDue { get; } = netAmountDue;
+    }
+
     private static ObservableCollection<Order> SampleOrders() =>
     [
         new("SO-1042", "East", 12450m),
@@ -168,6 +182,70 @@ public class DataGridDialogsTests
         host.SendKey(Key.Enter); // accept "Amount"
         host.RunUntilIdle();
         Assert.Equal("[Amount]", editor.TextBox.Text); // whole token replaced — NOT "[Amount]]"
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+    }
+
+    [Fact]
+    public void Completion_fuzzy_matches_a_camel_humped_field_a_prefix_filter_would_miss()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
+        using var _ = host;
+        var grid = new DataGrid { ItemsSource = new ObservableCollection<Notice> { new("changed", 3, 1200m) } };
+        host.ShowRoot(grid);
+        host.RunUntilIdle();
+
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+
+        // 'inpc' is a scattered acronym, not a prefix — the hand-rolled StartsWith filter this editor
+        // carried before the CompletionPopup migration would have found NOTHING and closed the popup.
+        // FuzzyMatcher walks the camel humps instead, and the other two fields hold no 'i' at all.
+        host.SendText("[inpc");
+        host.RunUntilIdle();
+        Assert.True(editor.IsCompletionOpen);
+        Assert.Equal("INotifyPropertyChanged", Assert.Single(editor.CompletionItems));
+
+        // …and accepting still splices the CANONICAL bracketed token, never the typed pattern.
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("[INotifyPropertyChanged]", editor.TextBox.Text);
+        Assert.False(editor.IsCompletionOpen);
+
+        editor.Cancel();
+        host.RunUntilIdle();
+        Assert.True(task.IsCompleted);
+    }
+
+    [Fact]
+    public void Completion_ranks_prefix_function_matches_ahead_of_scattered_ones()
+    {
+        var (host, grid, _) = Show();
+        using var _ = host;
+        var task = grid.OpenFilterEditorAsync();
+        host.RunUntilIdle();
+        var editor = grid.ActiveFilterEditor!;
+        editor.TextBox.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+
+        // 'is' prefixes IsNull/IsNullOrEmpty and scatters through Conta(i)n(s). StartsWith saw only the
+        // first two; the matcher keeps all three but holds the prefix TIER ahead of the subsequence
+        // one, shortest first inside a tier — the rank order, not the provider's declaration order.
+        host.SendText("is");
+        host.RunUntilIdle();
+        Assert.True(editor.IsCompletionOpen);
+        Assert.Equal(new[] { "IsNull", "IsNullOrEmpty", "Contains" }, editor.CompletionItems);
+
+        // Tab accepts exactly like Enter, and the token still lands call-shaped.
+        host.SendKey(Key.Tab);
+        host.RunUntilIdle();
+        Assert.Equal("IsNull(", editor.TextBox.Text);
+        Assert.False(editor.IsCompletionOpen);
+
         editor.Cancel();
         host.RunUntilIdle();
         Assert.True(task.IsCompleted);

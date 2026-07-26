@@ -21,6 +21,9 @@ namespace Cursorial.Input.Parsing;
 /// <b>Decoder coverage:</b> printable UTF-8 runs (one <see cref="KeyEvent"/> per
 /// <see cref="System.Text.Rune"/>), C0 control characters (Tab, Enter, Backspace, NUL→Ctrl+Space,
 /// Ctrl+letter for 0x01–0x1A), DEL→Backspace, bare-ESC committed by classifier flush,
+/// the ESC-prefix (meta-sends-escape) Alt forms — <c>ESC &lt;printable&gt;</c> → Character+Alt and
+/// <c>ESC &lt;C0|DEL&gt;</c> → the same named key that byte produces alone, plus Alt
+/// (<see cref="OnAltExecute"/>: Alt+Enter, Alt+Tab, Alt+Backspace, Alt+Esc, Alt+Ctrl+letter) —
 /// focus events (<c>CSI I</c> / <c>CSI O</c>), bracketed-paste accumulation
 /// (<c>CSI 200~</c> … <c>CSI 201~</c>), CSI cursor keys (<c>A B C D H F</c>) and special
 /// keys (Insert, Delete, Page Up/Down, Home, End), function keys F1–F20 via the
@@ -146,6 +149,43 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
         }
 
         EmitControlEvent(controlChar);
+    }
+
+    /// <summary>
+    /// A C0 / DEL byte that followed an <c>ESC</c> introducer — the meta-sends-escape wire form of
+    /// <c>Alt+&lt;control key&gt;</c>. Decodes to exactly what the same key produces unmodified
+    /// (<see cref="OnExecute"/>) with <see cref="KeyModifiers.Alt"/> added, so <c>ESC CR</c> is
+    /// <c>Enter+Alt</c>, <c>ESC HT</c> is <c>Tab+Alt</c>, <c>ESC BS</c> / <c>ESC DEL</c> are
+    /// <c>Backspace+Alt</c>, <c>ESC ESC</c> is <c>Escape+Alt</c>, and <c>ESC 0x01</c> is
+    /// <c>Character "a"+Ctrl+Alt</c>. That is byte-for-byte the same <see cref="KeyEvent"/> the
+    /// Kitty (<c>CSI 13;3u</c>) and Win32 Input Mode wires produce for those keys — the whole
+    /// point of the callback is that a binding written against one protocol works on all three.
+    /// </summary>
+    public void OnAltExecute(byte controlChar)
+    {
+        // Inside a bracketed paste the Alt bit is meaningless: the classifier is paste-unaware by
+        // design, so an ESC that appears in pasted content is framing, not a modifier. Route back
+        // through OnExecute so the byte lands in the paste accumulator under exactly the rules
+        // OnExecute applies (whitespace kept, everything else dropped) rather than escaping the
+        // paste as a synthetic keystroke.
+        if (_inPaste)
+        {
+            OnExecute(controlChar);
+            return;
+        }
+
+        // ESC is deliberately absent from EmitControlEvent's table: a ground-state ESC is a
+        // sequence introducer the classifier consumes, and the only bytes that do reach OnExecute
+        // as 0x1B come from a truncated sequence (`ESC [ <intermediate> ESC`) where an Escape
+        // keypress is exactly the wrong reading. Behind an ESC introducer it is unambiguous —
+        // `ESC ESC` is Alt+Esc — so the mapping lives here rather than in the shared table.
+        if (controlChar == VtInputSequences.Escape)
+        {
+            EmitNamedKey(Key.Escape, KeyModifiers.Alt);
+            return;
+        }
+
+        EmitControlEvent(controlChar, KeyModifiers.Alt);
     }
 
     public void OnEscDispatch(ReadOnlySpan<byte> intermediates, byte final)
@@ -1073,11 +1113,15 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                   // and Backspace (127) using their legacy ASCII codepoints rather than the PUA
                   // codes — verified empirically via the demo's `trace` command. The PUA cases
                   // below (EscapeKey = 57344, etc.) cover any future / alternate emitter that
-                  // chooses the functional form.
+                  // chooses the functional form. BS (8) is included alongside DEL (127) because
+                  // that is the pair EmitControlEvent collapses to Backspace on the ESC-prefix
+                  // wire (`ESC BS` and `ESC DEL` are both Alt+Backspace); a CSI-u emitter that
+                  // picks 8 must not decode to a different Key than one that picks 127.
                   VtInputSequences.Escape               => Key.Escape,
                   VtInputSequences.Tab                  => Key.Tab,
                   VtInputSequences.CarriageReturn       => Key.Enter,
                   VtInputSequences.LineFeed             => Key.Enter,
+                  VtInputSequences.Backspace            => Key.Backspace,
                   VtInputSequences.Delete               => Key.Backspace,
                   VtInputSequences.Kitty.EscapeKey      => Key.Escape,
                   VtInputSequences.Kitty.EnterKey       => Key.Enter,
@@ -1687,7 +1731,16 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
 
     // ---- Control character → KeyEvent ----
 
-    private void EmitControlEvent(byte controlChar)
+    /// <summary>
+    /// Decode a C0 / DEL byte into its <see cref="KeyEvent"/>. <paramref name="extraModifiers"/> is
+    /// OR'd into every event this produces — <see cref="KeyModifiers.None"/> for a control byte seen
+    /// in Ground state, <see cref="KeyModifiers.Alt"/> for one the classifier saw behind an ESC
+    /// introducer (<see cref="OnAltExecute"/>). Sharing the mapping is what keeps <c>Alt+Enter</c>
+    /// on an ESC-prefix terminal identical to plain <c>Enter</c> plus the Alt bit, and identical in
+    /// turn to what the Kitty / Win32 decoders emit — the normalization the ESC-prefix path was
+    /// missing entirely (its bytes reached this method with no modifier at all).
+    /// </summary>
+    private void EmitControlEvent(byte controlChar, KeyModifiers extraModifiers = KeyModifiers.None)
     {
         var ts = Now;
 
@@ -1712,7 +1765,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                    {
                                        Timestamp = ts,
                                        Key = key,
-                                       Modifiers = KeyModifiers.None,
+                                       Modifiers = extraModifiers,
                                        Kind = KeyEventKind.Down,
                                    };
 
@@ -1720,7 +1773,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                                 {
                                     Timestamp = ts,
                                     Key = Key.Space,
-                                    Modifiers = KeyModifiers.Control,
+                                    Modifiers = KeyModifiers.Control | extraModifiers,
                                     Kind = KeyEventKind.Down,
                                 };
 
@@ -1733,7 +1786,7 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                    {
                        Timestamp = ts,
                        Key = Key.Character,
-                       Modifiers = KeyModifiers.Control,
+                       Modifiers = KeyModifiers.Control | extraModifiers,
                        Kind = KeyEventKind.Down,
                        Text = new[] { letter },
                    };

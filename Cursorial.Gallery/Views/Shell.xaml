@@ -731,6 +731,174 @@
 
         </DockPanel>
       </DataTemplate>
+
+      <!-- ═══════════════════════ Completion ═══════════════════════
+           A plain TextBox with a CompletionPopup ATTACHED to it (Target), not a control that owns its own field.
+           The popup's template root measures 0x0 and is not hit-testable, so it shares the field's Grid cell and
+           contributes nothing to this layout. Target/Provider are styled properties and are set right here; the
+           commit hook and the Committed event are wired by pages:GalleryCompletionPopup. -->
+      <DataTemplate DataType="vm:CompletionViewModel">
+        <!-- LastChildFill is OFF: the two stacks dock to the edges and the band between them is left empty on
+             purpose — see the note on the bottom stack. -->
+        <DockPanel LastChildFill="False">
+          <StackPanel DockPanel.Dock="Top" Orientation="Vertical" Margin="2,1">
+            <TextBlock Text="Try: inpc → INotifyPropertyChanged · hban → hero_banner.png · gmap → gradient-map.json"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+            <TextBlock Text="Then type assets and press Enter — the commit hook appends the separator and keeps completing."
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+              <Label Content="Ter_m" Target="{x:Reference TermBox}"
+                     Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+              <Grid Margin="1,0,0,0">
+                <TextBox x:Name="TermBox" Width="44" Text="{Binding Text, Mode=TwoWay}"
+                         Placeholder="a type name, a file name, or a group" />
+                <pages:GalleryCompletionPopup Target="{x:Reference TermBox}"
+                                              Provider="{Binding Provider}"
+                                              MaxVisibleItems="10" />
+              </Grid>
+              <Button Margin="2,0,0,0" MinWidth="9" Content="_Clear" Command="{Binding ClearCommand}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- The readouts are docked to the BOTTOM so the band under the field stays clear: that is where the
+               popup opens, and a hint overlay does not clear the cells it covers on the tiers that can paint a
+               real fill (the ComboBox drop-down's Occludes rule). -->
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Vertical" Margin="2,1">
+            <TextBlock Text="{Binding Text, StringFormat='field: “{0}”'}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Text="{Binding Status}" TextWrapping="WordWrap"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <TextBlock Margin="0,1,0,0" Text="The three seams, all of them on this page:"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· provider — the token grammar; the replaced span ends at the TOKEN, not the caret"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· matcher  — filters, ranks and bolds; a scattered hit is labelled “· fuzzy”"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· commit   — Enter on a group drills in and keeps going; Tab takes the bare name"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+          </StackPanel>
+        </DockPanel>
+      </DataTemplate>
+
+      <!-- ═══════════════════════ List View ═══════════════════════
+           One ListView, four presentations. The switcher is bound to the view-model's ViewMode, which is also what
+           ListView.View reads — flipping it swaps the items panel, the scroll axis and every row's cell composition
+           in one write. IsBuiltInSortEnabled lets the control reorder the page's own ObservableCollection; the
+           view-model still listens on Sorting, purely to report. -->
+      <DataTemplate DataType="vm:ListViewPageViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <WrapPanel Orientation="Horizontal">
+              <Label Content="_View:" Target="{x:Reference ViewSelector}" Margin="0,0,1,0"
+                     Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+              <ComboBox x:Name="ViewSelector" MinWidth="14"
+                        ItemsSource="{i:EnumItemsSource EnumType={x:Type ListViewViewMode}}"
+                        SelectedItem="{Binding ViewMode, Mode=TwoWay, Converter={i:EnumItemConverter EnumType={x:Type ListViewViewMode}}}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate DataType="{x:Type i:EnumItem}">
+                    <TextBlock Text="{Binding Name}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Margin="2,0,0,0" VerticalAlignment="Center"
+                         Text="click a Details header to cycle its sort (▲/▼) · ctrl-click and shift-click multi-select"
+                         Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            </WrapPanel>
+          </Border>
+
+          <Border DockPanel.Dock="Bottom" Padding="1,0">
+            <TextBlock Text="{Binding Status}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+          </Border>
+
+          <pages:GalleryListView Margin="2,1"
+                                 ItemsSource="{Binding Rows}"
+                                 View="{Binding ViewMode}"
+                                 SelectionMode="Multiple"
+                                 IsBuiltInSortEnabled="True"
+                                 DisplayMemberPath="Name"
+                                 IconMemberPath="Icon"
+                                 SecondaryMemberPath="Detail"
+                                 ItemWidth="26">
+            <ListView.Columns>
+              <!-- The Name cell is templated so the file-type icon rides along in Details too; the other three
+                   columns are one-way DisplayMemberPath bindings. Size and Modified DISPLAY their formatted
+                   twins but SORT on the raw value — ordering "12.4 KB" as text would file 9 B after it. -->
+              <ListViewColumn Header="Name" Width="*" MinWidth="14" SortMemberPath="Name">
+                <ListViewColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal">
+                      <ContentPresenter Content="{Binding Icon}" Margin="0,0,1,0" />
+                      <TextBlock Text="{Binding Name}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListViewColumn.CellTemplate>
+              </ListViewColumn>
+              <ListViewColumn Header="Size" Width="10" HorizontalAlignment="Right"
+                              DisplayMemberPath="Size" SortMemberPath="SizeBytes" />
+              <ListViewColumn Header="Kind" Width="Auto" MinWidth="10" DisplayMemberPath="Kind" />
+              <ListViewColumn Header="Modified" Width="17"
+                              DisplayMemberPath="ModifiedText" SortMemberPath="Modified" />
+            </ListView.Columns>
+          </pages:GalleryListView>
+        </DockPanel>
+      </DataTemplate>
+
+      <!-- ═══════════════════════ Breadcrumb Bar ═══════════════════════
+           A trail over a synthetic hierarchy of view-models — no paths, no separators in strings. Deeper/Narrower
+           provoke the LEADING fold (ancestors collapse behind “…”, never the current segment). The bar raises
+           ItemActivated / the three edit-mode events / the two drop-down events and mutates nothing itself; the
+           view-model answers them (wired by pages:GalleryBreadcrumbBar). -->
+      <DataTemplate DataType="vm:BreadcrumbViewModel">
+        <DockPanel LastChildFill="True">
+          <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+            <WrapPanel Orientation="Horizontal">
+              <Button Margin="0,0,1,0" MinWidth="11" Content="Dee_per"    Command="{Binding DeeperCommand}" />
+              <Button Margin="0,0,1,0" MinWidth="11" Content="S_hallower" Command="{Binding ShallowerCommand}" />
+              <Button Margin="0,0,1,0" MinWidth="11" Content="_Reset"     Command="{Binding ResetCommand}" />
+              <Button Margin="0,0,1,0" MinWidth="11" Content="_Narrower"  Command="{Binding NarrowerCommand}" />
+              <Button Margin="0,0,1,0" MinWidth="11" Content="_Wider"     Command="{Binding WiderCommand}" />
+            </WrapPanel>
+          </Border>
+
+          <StackPanel Margin="2,1" Orientation="Vertical" VerticalAlignment="Top">
+            <pages:GalleryBreadcrumbBar x:Name="TrailBar"
+                                        HorizontalAlignment="Left"
+                                        Width="{Binding BarWidth}"
+                                        IsEditable="True"
+                                        ItemsSource="{Binding Trail}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </pages:GalleryBreadcrumbBar>
+
+            <TextBlock Margin="0,1,0,0" Text="{Binding CurrentNode, StringFormat='current node: {0}'}"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <TextBlock Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                       Text="{Binding Source={x:Reference TrailBar}, Path=OverflowCount, StringFormat='folded ancestors: {0}  (press the leading … chip to list them)'}" />
+            <TextBlock Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                       Text="{Binding BarWidth, StringFormat='bar width: {0} cells'}" />
+
+            <TextBlock Margin="0,1,0,0" Text="{Binding Status}" TextWrapping="WordWrap"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+
+            <TextBlock Margin="0,1,0,0" Text="Keyboard: Tab lands on the whole trail ONCE."
+                       Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· ←/→ move the active chip (focus only — arrowing never navigates); Home/End jump"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· Enter or Space activates the active chip; the page truncates the trail there"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· F2 edits as text — Enter commits (an empty commit is rejected), Esc reverts"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+            <TextBlock Margin="2,0,0,0" Text="· in chip mode Esc is left UNHANDLED, so it reaches the shell's quit binding"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
+          </StackPanel>
+        </DockPanel>
+      </DataTemplate>
     </DockPanel.Resources>
   
     <!-- Title bar -->

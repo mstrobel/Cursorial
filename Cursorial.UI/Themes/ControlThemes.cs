@@ -52,8 +52,16 @@ internal static class ControlThemes
         dict[typeof(ItemsControl)] = ItemsControlTheme();
         dict[typeof(ListBox)] = ListBoxTheme();
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
+        dict[typeof(ListView)] = ListViewTheme();
+        dict[typeof(ListViewItem)] = ListViewItemTheme();
+        dict[typeof(ListViewColumnHeader)] = ListViewColumnHeaderTheme();
         dict[typeof(ComboBox)] = ComboBoxTheme();
         dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
+        dict[typeof(BreadcrumbBar)] = BreadcrumbBarTheme();
+        dict[typeof(BreadcrumbBarItem)] = BreadcrumbBarItemTheme();
+        dict[typeof(CompletionPopup)] = CompletionPopupTheme();
+        dict[typeof(CompletionList)] = CompletionListTheme();
+        dict[typeof(CompletionListItem)] = CompletionListItemTheme();
         dict[typeof(TreeView)] = TreeViewTheme();
         dict[typeof(TreeViewItem)] = TreeViewItemTheme();
         dict[typeof(Calendar)] = CalendarTheme();
@@ -334,6 +342,128 @@ internal static class ControlThemes
         return t;
     }
 
+    // ───────────────────────────── ListView / ListViewItem / ListViewColumnHeader ─────────────────────────────
+
+    // A ListView is a ListBox with a PINNED header strip: the PART_HeaderPresenter docks to the top OUTSIDE the
+    // ScrollViewer, so the column headings never scroll away vertically (and, symmetrically, why the control
+    // disables horizontal scrolling in Details — the body would slide out from under them). The header strip
+    // collapses itself in the three wrapping views; the ListView drives that from ApplyViewToTemplate.
+    private static ControlTemplate ListViewTemplate() => new(ctx =>
+    {
+        var header = new ListViewHeaderPresenter();
+        ctx.RegisterName("PART_HeaderPresenter", header);
+        header.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.PanelBrush);
+        DockPanel.SetDock(header, Dock.Top);
+
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+
+        var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the UIParent bridge
+        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty,
+                          new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty,
+                          new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+        ctx.RegisterName("PART_ScrollViewer", scroll);
+
+        var layout = new DockPanel(); // LastChildFill: the scroll band takes everything under the header
+        layout.Children.Add(header);
+        layout.Children.Add(scroll);
+
+        var border = new Border { Child = layout };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style ListViewTheme()
+        => new Style { Key = "Theme.ListView" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListViewTemplate());
+
+    // The row face is the ListBoxItem selection bar with the ContentPresenter swapped for PART_Cells: a details
+    // row cannot carry the ListBoxItem selection glyph in a gutter, because the gutter would shift every cell out
+    // from under its heading. Selection reads purely as the fill/ink flip.
+    private static ControlTemplate ListViewItemTemplate() => new(ctx =>
+    {
+        var cells = new ListViewCellsPresenter();
+        ctx.RegisterName("PART_Cells", cells);
+
+        var border = new Border { Child = cells };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        // The row face forwards the Inverse axis so the NoColor selection/focus cue paints the WHOLE bar.
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        TextElement.ForwardInverse(cells);
+        return border;
+    });
+
+    private static Style ListViewItemTheme()
+    {
+        var theme = new Style { Key = "Theme.ListViewItem" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundNormal)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, ListViewItemTemplate());
+        // Ordered hover → selected → focus-visible → disabled: document order breaks the pseudo-class tie, so a
+        // hovered-selected row reads as selected and the keyboard current row reads as the reverse-video cue.
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:selected")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
+        theme.Children.Add(new Style("^:focus-visible")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        // A tile is two rows tall and pads on both axes; a details/list row is one row with side padding only.
+        theme.Children.Add(new Style("^:tiles").Set(Control.PaddingProperty, new Margins(1, 0, 1, 0)));
+        return theme;
+    }
+
+    // A column heading: [Header … ▲] on a PanelBrush strip. The sort indicator docks RIGHT so it hugs the column
+    // edge and the heading text keeps the leading cell — the arrangement a sorted table is read by.
+    private static ControlTemplate ListViewColumnHeaderTemplate() => new(ctx =>
+    {
+        var indicator = new TextBlock { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_SortIndicator", indicator);
+        indicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.AccentBrush);
+        DockPanel.SetDock(indicator, Dock.Right);
+
+        var presenter = new ContentPresenter();
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+        var row = new DockPanel();
+        row.Children.Add(indicator); // docked right
+        row.Children.Add(presenter); // fills the rest
+
+        var border = new Border { Child = row };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        TextElement.ForwardInverse(presenter);
+        return border;
+    });
+
+    private static Style ListViewColumnHeaderTheme()
+    {
+        var theme = new Style { Key = "Theme.ListViewColumnHeader" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.PaddingProperty, Margins.Zero)
+            .Set(Control.TemplateProperty, ListViewColumnHeaderTemplate());
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:pressed")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+        return theme;
+    }
+
     // ───────────────────────────── ComboBox / ComboBoxItem ─────────────────────────────
 
     // A combo box face: a recessed WellBrush field [selected-item … 'v' drop glyph] that the control toggles on
@@ -447,6 +577,235 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
         theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
         theme.Children.Add(new Style("^:focus-visible")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        return theme;
+    }
+
+    // ───────────────────────────── BreadcrumbBar / BreadcrumbBarItem ─────────────────────────────
+
+    // A breadcrumb trail: [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill — it is a
+    // trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
+    // BreadcrumbBarItem so it inherits the chip look for free; it is Collapsed until the panel's fold reports
+    // elided ancestors (the BreadcrumbBar flips it). The chips band and the raw-text edit box overlap in a Grid,
+    // exactly like the ComboBox's two faces — the collapsed one takes no space.
+    private static ControlTemplate BreadcrumbBarTemplate() => new(ctx =>
+    {
+        var overflowChip = new BreadcrumbBarItem
+        {
+            Content = "…",
+            Visibility = Visibility.Collapsed, // raised by BreadcrumbBar.SetOverflowState when the fold elides
+            IsTabStop = false
+        };
+        ctx.RegisterName("PART_OverflowChip", overflowChip);
+        DockPanel.SetDock(overflowChip, Dock.Left);
+
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+
+        // Docked LEFT (not in the items panel): the ellipsis is not a segment, and a non-item child inside the
+        // items host would break the ItemsPresenter's index-aligned container adoption. Docking it also makes the
+        // reserve automatic — the DockPanel hands the panel the width that is left, which is exactly the width the
+        // fold must pack into.
+        var chips = new DockPanel();
+        chips.Children.Add(overflowChip);
+        chips.Children.Add(host);
+        ctx.RegisterName("PART_ChipsHost", chips);
+
+        var edit = new TextBox { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_EditBox", edit);
+
+        var content = new Grid();
+        content.Children.Add(chips);
+        content.Children.Add(edit);
+
+        var root = new Border { Child = content };
+        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        return root;
+    });
+
+    private static Style BreadcrumbBarTheme()
+        => new Style
+           {
+               Key = "Theme.BreadcrumbBar",
+               Children =
+               {
+                   // In edit mode the bar IS a field, so it takes the recessed well (the trail has no resting fill —
+                   // it sits on the page). This also keeps the gutter around PART_EditBox from reading as page.
+                   new Style("^:editing").SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
+               }
+           }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, BreadcrumbBarTemplate());
+
+    // A chip + its trailing "▸". The fill rides the chip Border only (bound to Control.Background) so the
+    // separator stays on the page between two filled chips — a hover that swallowed the separator would read as
+    // one wide button rather than a trail. The current (deepest) segment hides its separator; that is driven by
+    // BreadcrumbBarItem itself, not by a /template/ rule, so both theme halves behave identically.
+    private static ControlTemplate BreadcrumbBarItemTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        TextElement.ForwardInverse(presenter);
+
+        var chip = new Border { Child = presenter };
+        chip.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        chip.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        chip.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        chip.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+
+        var separator = new TextBlock { Text = "▸" };
+        separator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_Separator", separator);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(chip);
+        row.Children.Add(separator);
+        return row;
+    });
+
+    private static Style BreadcrumbBarItemTheme()
+    {
+        // Ancestors are dim ink, the current segment is full-strength: the trail visibly brightens toward where
+        // you are. Ordered :current → :pointerover → :pressed → :focus-visible → :disabled, so interaction always
+        // wins the pseudo-class tie (document order breaks it).
+        var theme = new Style { Key = "Theme.BreadcrumbBarItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, BreadcrumbBarItemTemplate());
+        theme.Children.Add(new Style("^:current").SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:pressed")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:focus-visible")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        return theme;
+    }
+
+    // ───────────────────────────── CompletionPopup / CompletionListItem ─────────────────────────────
+
+    // A completion overlay: an elevated occluding-by-caps panel over [header | PART_List | footer]. The control
+    // element itself contributes nothing to the host layout — the template root is a Grid holding only the Popup,
+    // which measures 0x0 — so a host can drop one in the same Grid cell as the field it decorates.
+    //
+    // Occludes is left FALSE here, exactly like the ComboBox drop-down: the blanket caps rules in
+    // CursorialThemeStyles (:is(Border) under RequiresCapabilities="NoColor"/"Ansi16") already force it true on
+    // every Border wholesale, and a per-control override would fight them on the tiers that can paint a real fill.
+    //
+    // NOTE — no {TemplateBinding} below the Popup. A Popup's Child is a LOGICAL child, and the template's
+    // TemplatedParent stamp (ControlTemplate.StampTemplatedParent) walks VISUAL children only, so a
+    // TemplateBinding authored inside the popup's content never resolves. DynamicResource / inheritance DO
+    // cross the seam (they walk LogicalParent ?? TemplatedParent), which is why the palette references here are
+    // fine. The three values that must reach the content — header text, footer text, the list's height cap —
+    // are pushed onto the parts by CompletionPopup.UpdateChrome instead.
+    private static ControlTemplate CompletionPopupTemplate() => new(ctx =>
+    {
+        // The "3 matches" strip. Collapsed until the control pushes text into it (ShowHeader + a live count) —
+        // Collapsed rather than Hidden because the popup surface is sized to its content and a Hidden strip would
+        // reserve a blank row.
+        var header = new TextBlock { Visibility = Visibility.Collapsed };
+        header.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_Header", header);
+        DockPanel.SetDock(header, Dock.Top);
+
+        var footer = new TextBlock { Visibility = Visibility.Collapsed };
+        footer.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Footer", footer);
+        DockPanel.SetDock(footer, Dock.Bottom);
+
+        var list = new CompletionList();
+        ctx.RegisterName("PART_List", list);
+
+        var stack = new DockPanel();
+        stack.Children.Add(header);
+        stack.Children.Add(footer);
+        stack.Children.Add(list); // last child fills what the docked strips leave
+
+        var content = new Border { Occludes = false, MinWidth = 16, Child = stack };
+        content.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        content.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+
+        // StaysOpen: a hint overlay is not light-dismissable — an outside press is the user dismissing the FIELD,
+        // and the field's focus-out is what closes us. (The control re-asserts this in OnApplyTemplate so a custom
+        // template cannot accidentally re-arm light dismiss.)
+        var popup = new Popup { Child = content, StaysOpen = true };
+        ctx.RegisterName("PART_Popup", popup);
+
+        var root = new Grid(); // the Popup adds no layout (0x0), so the control is a zero-size overlay anchor
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style CompletionPopupTheme()
+        => new Style { Key = "Theme.CompletionPopup" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, CompletionPopupTemplate());
+
+    // The list inside the popup: the ListBox chrome (Border > ScrollViewer > PART_ItemsHost) with NO recessed
+    // WellBrush fill and no frame — the popup's own content Border already carries the elevation and the rule,
+    // and a second well inside it reads as a box-in-a-box. It is its own theme entry rather than a
+    // ControlThemeKey alias to ListBox because the declarative twin authors that rule as
+    // <Style TargetType="ListBox">, which does not reach a subclass — aliasing the key would leave the XAML
+    // half's list untemplated (no items host, so no visible rows) while the code-first half worked.
+    private static Style CompletionListTheme()
+        => new Style { Key = "Theme.CompletionList" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListBoxTemplate())
+            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
+
+    // A completion row: [icon] display-with-the-match-bolded … description  kind. Each side column carries its own
+    // gutter margin and the control collapses it when its value is absent, so an icon-less / label-less candidate
+    // costs no column. The display TextBlock is fed MARKUP (not Text) — that is how the fuzzy matcher's MatchSpans
+    // become bold cells.
+    private static ControlTemplate CompletionListItemTemplate() => new(ctx =>
+    {
+        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0), Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_Icon", icon);
+        DockPanel.SetDock(icon, Dock.Left);
+
+        var kind = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        kind.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_KindLabel", kind);
+        DockPanel.SetDock(kind, Dock.Right);
+
+        var description = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        description.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Description", description);
+        DockPanel.SetDock(description, Dock.Right);
+
+        var display = new TextBlock(); // inherits the row Foreground so the selection bar's flip reaches it
+        ctx.RegisterName("PART_Display", display);
+
+        var row = new DockPanel();
+        row.Children.Add(icon);
+        row.Children.Add(kind);
+        row.Children.Add(description);
+        row.Children.Add(display);
+
+        var border = new Border { Padding = new Margins(1, 0), Child = row };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
+        return border;
+    });
+
+    private static Style CompletionListItemTheme()
+    {
+        // No :focus-visible rule: completion rows are never focusable (focus stays in the completed field), so the
+        // keyboard cue rides :selected alone — the one place this row differs from the ListBoxItem bar it copies.
+        var theme = new Style { Key = "Theme.CompletionListItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.TemplateProperty, CompletionListItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
+        theme.Children.Add(new Style("^:selected")
             .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));

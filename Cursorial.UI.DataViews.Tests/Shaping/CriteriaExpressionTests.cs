@@ -300,4 +300,59 @@ public class CriteriaExpressionTests
         var literal = Assert.IsType<CriteriaLiteralNode>(Assert.IsType<CriteriaBinaryNode>(parsed.Root).Right);
         Assert.Equal("O'Brien", literal.Value);
     }
+
+    // ── Authoring names: the token a UI should INSERT (the inverse of the resolver) ───────────────
+
+    private static CriteriaExpression.Field Fld(string name, string? display)
+        => new(name, display, (Expression<Func<Order, string>>)(o => o.Id), name);
+
+    [Fact] // a user edits in the vocabulary the grid SHOWS, so an unambiguous header alias is what gets authored
+    public void Authoring_name_prefers_the_display_alias()
+    {
+        var amount = BridgeFields.Single(f => f.Name == "Amount");
+        Assert.Equal("Order Total", CriteriaExpression.GetAuthoringName(amount, BridgeFields));
+    }
+
+    [Fact] // no alias (or an alias that only differs by case) ⇒ the canonical name
+    public void Authoring_name_falls_back_when_there_is_no_alias()
+    {
+        var region = BridgeFields.Single(f => f.Name == "Region");
+        Assert.Equal("Region", CriteriaExpression.GetAuthoringName(region, BridgeFields));
+
+        CriteriaExpression.Field[] same = [Fld("Region", "region")];
+        Assert.Equal("Region", CriteriaExpression.GetAuthoringName(same[0], same));
+    }
+
+    [Fact] // THE DANGEROUS CASE: an alias that is another column's CANONICAL name would bind the WRONG column,
+           // because the resolver's exact-name pass runs first. Authoring the canonical name is the only safe move.
+    public void Authoring_name_falls_back_when_the_alias_shadows_another_columns_canonical_name()
+    {
+        CriteriaExpression.Field[] fields = [Fld("Amount", "Total"), Fld("Total", null)];
+
+        Assert.Equal("Amount", CriteriaExpression.GetAuthoringName(fields[0], fields));
+        Assert.Equal("Total", CriteriaExpression.GetAuthoringName(fields[1], fields));
+    }
+
+    [Fact] // two columns sharing a header are ambiguous to the resolver (a diagnostic, not a guess), so neither
+           // may be authored by alias — otherwise the editor hands the user an expression that cannot compile
+    public void Authoring_name_falls_back_when_the_alias_is_ambiguous()
+    {
+        CriteriaExpression.Field[] fields = [Fld("NetAmount", "Total"), Fld("GrossAmount", "Total")];
+
+        Assert.Equal("NetAmount", CriteriaExpression.GetAuthoringName(fields[0], fields));
+        Assert.Equal("GrossAmount", CriteriaExpression.GetAuthoringName(fields[1], fields));
+    }
+
+    [Fact] // the whole point: the authored token compiles, and binds the column the user picked
+    public void Authored_alias_compiles_and_binds_the_same_column()
+    {
+        var amount = BridgeFields.Single(f => f.Name == "Amount");
+        var token = CriteriaExpression.GetAuthoringName(amount, BridgeFields);
+
+        Assert.Equal("Order Total", token);          // authored in the user's vocabulary…
+        var byAlias = Run($"[{token}] >= 27000");
+
+        Assert.Equal(Run("[Amount] >= 27000"), byAlias);  // …and identical to the canonical spelling
+        Assert.Equal(["SO-1044", "SO-1047"], byAlias);
+    }
 }

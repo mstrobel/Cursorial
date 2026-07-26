@@ -21,7 +21,22 @@ namespace Cursorial.Input.Parsing;
 /// the timeout; the device above is expected to call <see cref="Flush"/> after its
 /// platform-appropriate quiet period (xterm convention is 50 ms). Flush commits any pending
 /// bare-ESC as an <see cref="IVtSequenceTokenSink.OnEscDispatch"/> with empty intermediates
-/// and final <c>0</c>.
+/// and final <c>0</c>. <c>ESC ESC</c> is the second-order case — Alt+Esc, or an Escape press
+/// followed by another ESC-introduced sequence — so it parks in <c>EscapeEscape</c> and resolves
+/// the same way: a following byte means the first ESC stood alone, silence means Alt+Esc.
+/// </para>
+/// <para>
+/// <b>Alt+key (meta-sends-escape).</b> Terminals in the xterm family spell <c>Alt+&lt;key&gt;</c>
+/// as ESC followed by whatever the key sends on its own, and the classifier frames all three
+/// shapes it can take: <c>ESC &lt;0x30-0x7E&gt;</c> (letters, digits, most symbols) and
+/// <c>ESC &lt;0x20-0x2F&gt;</c> (Alt+Space, Alt+/, Alt+-, … recovered from the parked
+/// <c>EscapeIntermediate</c> state) both dispatch through
+/// <see cref="IVtSequenceTokenSink.OnEscDispatch"/> with empty intermediates, while
+/// <c>ESC &lt;C0|DEL&gt;</c> (Alt+Enter, Alt+Tab, Alt+Backspace, Alt+Esc, Alt+Ctrl+letter)
+/// dispatches through <see cref="IVtSequenceTokenSink.OnAltExecute"/>. Not covered:
+/// <c>ESC &lt;multi-byte UTF-8&gt;</c> (Alt+é) and <c>ESC ESC &lt;sequence&gt;</c> (Alt+Up on
+/// terminals that prefix the whole cursor-key sequence) — both need state the framing layer
+/// doesn't carry.
 /// </para>
 /// <para>
 /// <b>Buffers.</b> CSI/DCS parameter and intermediate bytes plus OSC bodies are accumulated
@@ -161,6 +176,23 @@ public sealed class VtSequenceClassifier
                 ResetToGround();
                 break;
 
+            case State.EscapeEscape:
+                // `ESC ESC` with nothing after it: the idle window is the signal that the pair was
+                // one keypress — Alt+Esc under meta-sends-escape — and not an Escape press that
+                // introduced a following sequence (that case leaves this state at StepEscapeEscape,
+                // before any flush can run). Two *separately typed* Escapes can't land here either:
+                // the first commits on its own idle timeout long before the second arrives.
+                sink.OnAltExecute(VtInputSequences.Escape);
+                ResetToGround();
+                break;
+
+            case State.EscapeIntermediate:
+                // `ESC <0x20-0x2F>` parked on the idle timeout — Alt+<symbol>. See
+                // RecoverAltSymbolOrDrop for why a multi-intermediate buffer is dropped instead.
+                RecoverAltSymbolOrDrop(sink);
+                ResetToGround();
+                break;
+
             // A lone Alt+<introducer> typed under meta-sends-escape — ESC [ (Alt+[), ESC ] (Alt+]),
             // ESC P (Alt+P), ESC O (Alt+O) — parks the machine in the matching sequence state with an empty
             // body, waiting for a continuation a single keypress never sends. The idle timeout is the signal
@@ -209,12 +241,12 @@ public sealed class VtSequenceClassifier
 
             default:
                 // Backstop against stranding. Any other mid-sequence state reached when 50 ms of silence says
-                // input has stopped — a truncated CSI/DCS intermediate or ignore, an EscapeIntermediate
-                // Alt+symbol we don't yet decode, or (the case this closes) a DCS that hooked but never
-                // received its ST and sits in passthrough — is an abandoned sequence. Drop it and return to
-                // Ground rather than leaving the parser parked, silently swallowing every later keystroke
-                // (the exact failure class this whole change addresses). Ground falls here too — a harmless
-                // no-op. A genuine device response arrives as a sub-50 ms burst, so this never truncates one.
+                // input has stopped — a truncated CSI/DCS intermediate or ignore, or (the case this closes) a
+                // DCS that hooked but never received its ST and sits in passthrough — is an abandoned sequence.
+                // Drop it and return to Ground rather than leaving the parser parked, silently swallowing every
+                // later keystroke (the exact failure class this whole change addresses). Ground falls here too —
+                // a harmless no-op. A genuine device response arrives as a sub-50 ms burst, so this never
+                // truncates one.
                 ResetToGround();
                 break;
         }
@@ -265,6 +297,10 @@ public sealed class VtSequenceClassifier
 
             case State.Escape:
                 StepEscape(b, sink);
+                break;
+
+            case State.EscapeEscape:
+                StepEscapeEscape(b, sink);
                 break;
 
             case State.EscapeIntermediate:
@@ -396,10 +432,21 @@ public sealed class VtSequenceClassifier
                 return;
 
             case VtInputSequences.Escape:
-                // Two ESCs in a row — commit the first as a bare ESC and start a new sequence.
-                sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
-                ResetSequenceBuffers();
-                // Stay in Escape for the second ESC.
+                // Two ESCs back-to-back are ambiguous and CANNOT be resolved from bytes alone:
+                //
+                //   ESC ESC          → Alt+Esc under meta-sends-escape (the whole keypress)
+                //   ESC ESC [ A      → Escape, then Alt+Up on the terminals (macOS Terminal.app
+                //                      with option-as-meta, rxvt) that spell Alt+<key> as ESC +
+                //                      the key's ordinary sequence
+                //
+                // So park instead of deciding: State.EscapeEscape holds the pair pending. If the
+                // burst ends there, Flush commits Alt+Esc; if a third byte arrives, the first ESC
+                // was a standalone Escape press and StepEscapeEscape replays the byte through the
+                // Escape state — byte-for-byte the behavior this state machine had before Alt+Esc
+                // decoding existed. Bug this closes: the old immediate commit made Alt+Esc
+                // undeliverable (it always decoded as two Escape keypresses, unwinding two focus
+                // scopes), even though the Kitty (CSI 27;3u) and Win32 wires both report it.
+                _state = State.EscapeEscape;
                 return;
         }
 
@@ -419,7 +466,27 @@ public sealed class VtSequenceClassifier
             return;
         }
 
-        // C0 control inside Escape — execute and stay.
+        // ───────────────────── ESC + C0/DEL = Alt+<control key> ─────────────────────
+        // Under meta-sends-escape the terminal prefixes ESC to whatever the key would otherwise
+        // send, and for the control keys that "whatever" is a C0 byte: Alt+Enter is ESC CR,
+        // Alt+Tab is ESC HT, Alt+Backspace is ESC BS or ESC DEL, Alt+Ctrl+<letter> is ESC + the
+        // Ctrl code. Route them to OnAltExecute and return to Ground.
+        //
+        // BUG this fixes: these bytes used to go to OnExecute *while staying in Escape*, so
+        // Alt+Enter decoded as a plain Enter (wrong action) plus a phantom Escape at the 50 ms
+        // ambiguity flush (which additionally unwound a focus scope). ESC is excluded — the
+        // switch above parks it — so `b < 0x20` here is a genuine control byte. Bytes >= 0x80
+        // are deliberately left on the old path: they are UTF-8 continuation bytes of an
+        // Alt+<non-ASCII> keypress (ESC C3 A9 = Alt+é), which needs a UTF-8 assembler the
+        // classifier doesn't have.
+        if (b < 0x20 || b == VtInputSequences.Delete)
+        {
+            sink.OnAltExecute(b);
+            ResetToGround();
+            return;
+        }
+
+        // 8-bit C1 / UTF-8 continuation inside Escape — execute and stay.
         sink.OnExecute(b);
     }
 
@@ -438,7 +505,51 @@ public sealed class VtSequenceClassifier
             return;
         }
 
+        if (b == VtInputSequences.Escape)
+        {
+            // ESC aborts the in-flight ESC-intermediate sequence. A lone pending intermediate was
+            // Alt+<symbol> typed under meta-sends-escape (e.g. Alt+/ then a second Alt key, fast
+            // enough to beat the idle timer) — surface it, exactly as the Flush() leg does, so the
+            // keystroke is reported whether it arrives alone-then-idle or back-to-back. Symmetric
+            // with the StepCsiParam / StepOscString / StepSs3 ESC-abort recoveries.
+            RecoverAltSymbolOrDrop(sink);
+            _state = State.Escape;
+            return;
+        }
+
         sink.OnExecute(b);
+    }
+
+    // A third byte inside an `ESC ESC` burst: the pair was a standalone Escape keypress followed by
+    // a sequence that itself opens with ESC (Alt+<key> as ESC + the key's own sequence, or simply a
+    // fast Escape-then-anything). Commit the first ESC and replay the byte through Escape — the
+    // pre-Alt+Esc behavior, preserved so `ESC ESC [ A`, `ESC ESC O P`, and `ESC ESC g` keep decoding
+    // as they always did. Only the burst-ends-here case (Flush) becomes Alt+Esc.
+    private void StepEscapeEscape(byte b, IVtSequenceTokenSink sink)
+    {
+        sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, 0);
+        ResetSequenceBuffers();
+        _state = State.Escape;
+        StepEscape(b, sink);
+    }
+
+    // Recover a parked ESC-intermediate state as Alt+<symbol>, or drop it. Exactly one buffered
+    // intermediate means the wire carried `ESC <0x20-0x2F>` and nothing else — Alt+Space, Alt+/,
+    // Alt+-, Alt+. and friends, which meta-sends-escape spells with a byte in the ESC-intermediate
+    // range. OnEscDispatch(empty, symbol) is the shape VtInputInterpreter already maps to a clean
+    // Alt+<character>, so the symbol keys agree with the letter/digit keys that take the
+    // 0x30-0x7E final path. Two or more intermediates is a genuine (now-truncated) multi-byte ESC
+    // sequence — `ESC ( B`, `ESC SP F` — and is dropped, never re-read as a keypress. Callers own
+    // the state transition; this only clears the buffers.
+    //
+    // BUG this fixes: these keystrokes used to be swallowed outright — StepEscape parked them in
+    // EscapeIntermediate and Flush's default arm discarded the buffer, making Alt+/ unusable.
+    private void RecoverAltSymbolOrDrop(IVtSequenceTokenSink sink)
+    {
+        if (_intermediateLength == 1)
+            sink.OnEscDispatch(ReadOnlySpan<byte>.Empty, _intermediateBuffer[0]);
+
+        ResetSequenceBuffers();
     }
 
     // ---- SS3 (single shift 3) ----
@@ -816,6 +927,7 @@ public sealed class VtSequenceClassifier
     {
         Ground,
         Escape,
+        EscapeEscape,
         EscapeIntermediate,
         Ss3,
         CsiEntry,

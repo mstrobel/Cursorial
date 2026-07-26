@@ -78,17 +78,161 @@ public class VtSequenceClassifierTests
     }
 
     [Fact]
-    public void DoubleEsc_CommitsFirstEscThenStartsNewSequence()
+    public void DoubleEsc_WithoutFlush_DispatchesNothing()
+    {
+        // The pair is held pending: it is either Alt+Esc (resolved at Flush) or an Escape press
+        // that introduced a following ESC-sequence (resolved by the next byte). Committing the
+        // first ESC eagerly — which is what this state machine used to do — made Alt+Esc
+        // undeliverable, because the pair always decoded as two separate Escape keypresses.
+        Feed(0x1B, 0x1B);
+        Assert.Empty(_sink.Tokens);
+    }
+
+    [Fact]
+    public void DoubleEsc_FlushedAfterTimeout_DispatchesAsAltEscape()
     {
         Feed(0x1B, 0x1B);
-        // First ESC committed; second ESC pending.
+        Flush();
+
+        var alt = Assert.IsType<RecordedToken.AltExecute>(Assert.Single(_sink.Tokens));
+        Assert.Equal(0x1B, alt.ControlChar);
+    }
+
+    [Fact]
+    public void DoubleEsc_FollowedByCsi_CommitsBareEscThenParsesTheSequence()
+    {
+        // `ESC ESC [ A` is what macOS Terminal.app (option-as-meta) and rxvt send for Alt+Up:
+        // ESC + the key's ordinary sequence. We can't yet fold the prefix into the CSI, but the
+        // cursor key MUST survive — the pair is committed as a bare Escape and the CSI parses
+        // exactly as it did before Alt+Esc decoding existed.
+        Feed(0x1B, 0x1B, (byte) '[', (byte) 'A');
+
+        Assert.Collection(
+            _sink.Tokens,
+            t => Assert.Equal(0, Assert.IsType<RecordedToken.EscDispatch>(t).Final),
+            t => Assert.Equal((byte) 'A', Assert.IsType<RecordedToken.CsiDispatch>(t).Final));
+
+        Assert.False(_classifier.HasPendingSequence);
+    }
+
+    [Fact]
+    public void DoubleEsc_FollowedByPrintable_CommitsBareEscThenAltCharacter()
+    {
+        // Escape pressed, then Alt+g inside the same burst.
+        Feed(0x1B, 0x1B, (byte) 'g');
+
+        Assert.Collection(
+            _sink.Tokens,
+            t => Assert.Equal(0, Assert.IsType<RecordedToken.EscDispatch>(t).Final),
+            t => Assert.Equal((byte) 'g', Assert.IsType<RecordedToken.EscDispatch>(t).Final));
+    }
+
+    [Fact]
+    public void TripleEsc_CommitsOneBareEscAndHoldsTheRemainingPairAsAltEscape()
+    {
+        // The third ESC resolves the first pair as "Escape, then something ESC-introduced"; the
+        // second and third then park as their own pending pair and flush as Alt+Esc.
+        Feed(0x1B, 0x1B, 0x1B);
+
         var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
         Assert.Equal(0, esc.Final);
 
         Flush();
-        Assert.Equal(2, _sink.Tokens.Count);
-        var second = Assert.IsType<RecordedToken.EscDispatch>(_sink.Tokens[1]);
-        Assert.Equal(0, second.Final);
+        Assert.Equal(0x1B, Assert.IsType<RecordedToken.AltExecute>(_sink.Tokens[1]).ControlChar);
+    }
+
+    // ---- ESC + C0 = Alt+<control key> ----
+
+    [Theory]
+    [InlineData((byte) 0x0D)] // Alt+Enter  (CR)
+    [InlineData((byte) 0x0A)] // Alt+Enter  (LF — terminals in LNM/newline mode)
+    [InlineData((byte) 0x09)] // Alt+Tab
+    [InlineData((byte) 0x08)] // Alt+Backspace (BS)
+    [InlineData((byte) 0x7F)] // Alt+Backspace (DEL — the common modern spelling)
+    [InlineData((byte) 0x00)] // Alt+Ctrl+Space (NUL)
+    [InlineData((byte) 0x01)] // Alt+Ctrl+A
+    public void EscPlusC0_DispatchesAltExecuteAndReturnsToGround(byte controlChar)
+    {
+        Feed(0x1B, controlChar);
+
+        var alt = Assert.IsType<RecordedToken.AltExecute>(Assert.Single(_sink.Tokens));
+        Assert.Equal(controlChar, alt.ControlChar);
+
+        // Returning to Ground is half the fix: the old code executed the byte and STAYED in
+        // Escape, so the idle flush then emitted a phantom bare-Escape on top of the wrong key.
+        Assert.False(_classifier.HasPendingSequence);
+
+        Flush();
+        Assert.Single(_sink.Tokens);
+    }
+
+    [Fact]
+    public void EscPlusC0_FollowedByAnotherKey_BothDecodeIndependently()
+    {
+        Feed(0x1B, 0x0D, (byte) 'x');
+
+        Assert.Collection(
+            _sink.Tokens,
+            t => Assert.Equal(0x0D, Assert.IsType<RecordedToken.AltExecute>(t).ControlChar),
+            t => Assert.Equal("x"u8.ToArray(), Assert.IsType<RecordedToken.Print>(t).Bytes));
+    }
+
+    [Fact]
+    public void GroundStateC0_StillDispatchesPlainExecute()
+    {
+        // The Alt framing must key off the ESC introducer only — an unprefixed control byte is
+        // still a plain keypress.
+        Feed(0x0D);
+
+        Assert.Equal(0x0D, Assert.IsType<RecordedToken.Execute>(Assert.Single(_sink.Tokens)).ControlChar);
+    }
+
+    // ---- ESC + intermediate-range byte = Alt+<symbol> ----
+
+    [Theory]
+    [InlineData((byte) '/')]
+    [InlineData((byte) '.')]
+    [InlineData((byte) '-')]
+    [InlineData((byte) ' ')]
+    [InlineData((byte) '!')]
+    public void EscPlusIntermediateRangeByte_FlushedAfterTimeout_DispatchesAsAltSymbol(byte symbol)
+    {
+        // 0x20-0x2F is the ESC-intermediate range, so these park in EscapeIntermediate awaiting a
+        // final byte a single keypress never sends. Before this recovery, Flush's default arm
+        // discarded the buffer outright and Alt+/ was simply unusable.
+        Feed(0x1B, symbol);
+        Assert.Empty(_sink.Tokens);
+
+        Flush();
+
+        var esc = Assert.IsType<RecordedToken.EscDispatch>(Assert.Single(_sink.Tokens));
+        Assert.Equal(symbol, esc.Final);
+        Assert.Empty(esc.Intermediates);
+    }
+
+    [Fact]
+    public void EscPlusIntermediate_InterruptedByEsc_SurfacesAltSymbolThenTheNextKey()
+    {
+        // Alt+/ then Alt+g, typed fast enough to beat the idle timer — the EscapeIntermediate twin
+        // of the CSI / OSC / SS3 ESC-abort recoveries.
+        Feed(0x1B, (byte) '/', 0x1B, (byte) 'g');
+
+        Assert.Collection(
+            _sink.Tokens,
+            t => Assert.Equal((byte) '/', Assert.IsType<RecordedToken.EscDispatch>(t).Final),
+            t => Assert.Equal((byte) 'g', Assert.IsType<RecordedToken.EscDispatch>(t).Final));
+    }
+
+    [Fact]
+    public void TruncatedMultiIntermediateEsc_IsDroppedNotReadAsAltSymbol()
+    {
+        // Two buffered intermediates can only come from a genuine (now-truncated) ESC sequence —
+        // `ESC SP F` style — never from one Alt keypress. Drop it.
+        Feed(0x1B, (byte) ' ', (byte) '!');
+        Flush();
+
+        Assert.Empty(_sink.Tokens);
+        Assert.False(_classifier.HasPendingSequence);
     }
 
     [Fact]

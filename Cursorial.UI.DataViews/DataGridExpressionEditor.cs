@@ -88,7 +88,7 @@ internal sealed class DataGridExpressionEditor
         toolbar.Children.Add(DataGridDialogHelpers.Caption("[ ] Columns:"));
         _columnsMenu = new ComboBox { ItemsSource = _fields.Select(f => f.DisplayName ?? f.Name).ToList(), MinWidth = 10 };
         _columnsMenu.SelectionChanged += (_, _) => OnInserterPicked(_columnsMenu,
-            index => $"[{_fields[index].Name}]");
+            index => $"[{CriteriaExpression.GetAuthoringName(_fields[index], _fields)}]");
         toolbar.Children.Add(_columnsMenu);
         toolbar.Children.Add(DataGridDialogHelpers.Caption("ƒ Functions:"));
         _functionsMenu = new ComboBox { ItemsSource = FunctionTokens.Select(f => f.TrimEnd('(')).ToList(), MinWidth = 10 };
@@ -272,9 +272,13 @@ internal sealed class DataGridExpressionEditor
             var fields = new List<CompletionItem>(_fields.Count);
             foreach (var field in _fields)
             {
+                // Author what the grid SHOWS. The criteria language resolves a display alias back to its
+                // column, so an expression reads in the user's vocabulary rather than the record type's;
+                // GetAuthoringName falls back to the canonical name only when the alias would bind a
+                // DIFFERENT column or be ambiguous, which is the one case where the header cannot be used.
                 fields.Add(new CompletionItem(field.DisplayName ?? field.Name)
                 {
-                    InsertText = $"[{field.Name}]", // the CANONICAL name, whatever the header alias shows
+                    InsertText = $"[{CriteriaExpression.GetAuthoringName(field, _fields)}]",
                     KindLabel = "field",
                 });
             }

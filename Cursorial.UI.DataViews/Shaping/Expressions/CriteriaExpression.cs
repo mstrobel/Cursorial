@@ -21,6 +21,55 @@ public static class CriteriaExpression
     /// <summary>Parses only (the text editor's per-keystroke validation lane — no type binding).</summary>
     public static CriteriaParser.Result Parse(string text) => CriteriaParser.Parse(text);
 
+    /// <summary>
+    /// The token a UI should <b>author</b> for <paramref name="field"/> — the inverse of the compiler's
+    /// name resolution. A user edits the criteria language in terms of what the grid SHOWS, so the display
+    /// alias (the column header) is preferred; the canonical field name is the fallback.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is not simply <c>DisplayName ?? Name</c>, because the alias is only safe to author when it
+    /// round-trips back to <i>this</i> field through <c>CriteriaCompiler.Resolve</c>, whose order is
+    /// "exact canonical name wins, else a UNIQUE display alias". Two cases therefore fall back:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>Another field's CANONICAL name equals this alias — the exact-name pass would win and silently
+    /// bind the WRONG column. This is the dangerous one: it produces a valid expression with the wrong
+    /// meaning, where the alternative is merely a longer token.</item>
+    /// <item>Another field shares this alias — ambiguous, which the compiler reports as a diagnostic rather
+    /// than guessing. Authoring it would hand the user an expression that cannot compile.</item>
+    /// </list>
+    /// <para>
+    /// Comparisons use <see cref="StringComparison.OrdinalIgnoreCase"/> to match the resolver exactly; a
+    /// looser test here than there would re-open the very shadowing this avoids.
+    /// </para>
+    /// </remarks>
+    /// <param name="field">The field being inserted into an expression.</param>
+    /// <param name="fields">The full binding set the expression will be compiled against.</param>
+    /// <returns>The display alias when it resolves unambiguously back to <paramref name="field"/>; else the canonical name.</returns>
+    public static string GetAuthoringName(in Field field, IReadOnlyList<Field> fields)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+
+        if (field.DisplayName is not { Length: > 0 } alias || string.Equals(alias, field.Name, StringComparison.OrdinalIgnoreCase))
+            return field.Name;
+
+        foreach (var other in fields)
+        {
+            if (string.Equals(other.Name, field.Name, StringComparison.OrdinalIgnoreCase))
+                continue; // this field itself — its own canonical name never shadows its own alias
+
+            // Shadowed by another column's canonical name, or ambiguous against another column's alias.
+            if (string.Equals(other.Name, alias, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(other.DisplayName, alias, StringComparison.OrdinalIgnoreCase))
+            {
+                return field.Name;
+            }
+        }
+
+        return alias;
+    }
+
     /// <summary>The compile product: a FilterNode (null on failure) + diagnostics.</summary>
     public readonly record struct FilterResult(FilterNode? Filter, IReadOnlyList<CriteriaDiagnostic> Diagnostics)
     {

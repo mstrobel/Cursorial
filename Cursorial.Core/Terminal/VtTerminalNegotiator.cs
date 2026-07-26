@@ -1298,7 +1298,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (MatchIdentifier(name, "mintty")) return TerminalFamily.Mintty;
         if (MatchIdentifier(name, "contour")) return TerminalFamily.Contour;
 
-        if (MatchIdentifier(name, "xterm")) return TerminalFamily.Xterm;
+        if (MatchIdentifier(name, "xterm(?![.]js)")) return TerminalFamily.Xterm;
 
         if (MatchIdentifier(name, "Apple_Terminal")) return TerminalFamily.AppleTerminal;
 
@@ -1737,7 +1737,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                          {
                              TerminalFamily.Kitty            => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
                              TerminalFamily.Ghostty          => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),
-                             TerminalFamily.Rio              => new GraphicsCapabilities(Sixel: true,  KittyGraphics: true,  ITerm2InlineImages: true),  // sixel per Rio docs.
+                             TerminalFamily.Rio              => new GraphicsCapabilities(Sixel: false, KittyGraphics: true,  ITerm2InlineImages: false),  // sixel per Rio docs.
                              TerminalFamily.ITerm2           => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
                              TerminalFamily.WezTerm          => new GraphicsCapabilities(Sixel: true,  KittyGraphics: true,  ITerm2InlineImages: true),  // ships kitty graphics too.
                              TerminalFamily.Foot             => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
@@ -1746,7 +1746,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                              TerminalFamily.Contour          => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // kitty graphics is experimental.
                              TerminalFamily.Mintty           => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
                              TerminalFamily.WaveTerminal     => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),
-                             TerminalFamily.VisualStudioCode => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // xterm image addon (on).
+                             TerminalFamily.VisualStudioCode => new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: false),  // xterm image addon (on).
                              TerminalFamily.Zellij           => new GraphicsCapabilities(Sixel: true,  KittyGraphics: false, ITerm2InlineImages: false),  // reimplemented; blocks kitty graphics.
                              _                               => GraphicsCapabilities.None,
                          };

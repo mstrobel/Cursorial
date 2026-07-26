@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Input;
@@ -469,6 +470,71 @@ public sealed class Section46_BreadcrumbBar
 
         Assert.Equal([("Home", (object?) "docs")], picked);
         Assert.Equal(0, Popups(host));
+    }
+
+    [Fact] // BC12c: picking a child focuses the PICKED chip, even when the host rebuilds the trail around it
+    public void BC12c_PickingAChildFocusesTheNewSegment()
+    {
+        // The host answers the pick by drilling — truncate to the anchor, then append the pick — which DETACHES
+        // the chip the drop-down hung from. Popup.CloseCore's focus restore is guarded on IsAttachedToTree, so it
+        // silently skips, and focus used to fall to the first chip in the ring (the leftmost visible one) rather
+        // than to what the user just chose.
+        var trail = new ObservableCollection<string> { "Home", "Projects", "assets" };
+        var (host, bar) = Show();
+        using var _ = host;
+        bar.SetCurrentValue(ItemsControl.ItemsSourceProperty, trail);
+        host.RunUntilIdle();
+
+        bar.DropDownOpening += (_, e) =>
+        {
+            e.Children.Add("docs");
+            e.Children.Add("src");
+        };
+        bar.ChildActivated += (_, e) =>
+        {
+            while (trail.Count > e.Index + 1)
+                trail.RemoveAt(trail.Count - 1);
+            trail.Add((string) e.SelectedChild!);
+        };
+
+        var separator = Chip(bar, 0).SeparatorPart!;   // the "Home" chip's ▸
+        var origin = separator.TranslateToWindow(0, 0);
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Enter);                        // pick "docs"
+        host.RunUntilIdle();
+
+        Assert.Equal(["Home", "docs"], trail);
+
+        // Focus is on the PICK — not on "Home" (the anchor, which survived) and not on the first chip in the ring.
+        var focused = UIApplication.Current!.FocusManager.FocusedElement;
+        Assert.Same(Chip(bar, 1), focused);
+
+        // …and ←/→ continue from where focus actually landed rather than from a stale active index.
+        host.SendKey(Key.LeftArrow);
+        host.RunUntilIdle();
+        Assert.Same(Chip(bar, 0), UIApplication.Current!.FocusManager.FocusedElement);
+    }
+
+    [Fact] // BC12d: a plain dismiss (Esc) leaves the popup's own focus restore alone — back to the anchor chip
+    public void BC12d_DismissingTheDropDownRestoresTheAnchorChip()
+    {
+        var (host, bar) = Show();
+        using var _ = host;
+
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+
+        var separator = Chip(bar, 0).SeparatorPart!;
+        var origin = separator.TranslateToWindow(0, 0);
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.Equal(0, Popups(host));
+        Assert.Same(Chip(bar, 0), UIApplication.Current!.FocusManager.FocusedElement);
     }
 
     [Fact] // BC12b: with no handler (or an empty child list) the separator press is inert — no popup, no navigation

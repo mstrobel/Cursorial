@@ -135,6 +135,11 @@ public class BreadcrumbBar : ItemsControl
     private ContextMenu? _dropDown;
     private bool _dropDownIsOverflow; // the open drop-down is the ellipsis list (vs. a separator's sibling list)
 
+    // Where focus should land once a drop-down pick has been applied. Captured at pick time, consumed on Closed.
+    private object? _pendingFocusChild;
+    private int _pendingFocusAnchor = -1;
+    private bool _hasPendingFocus;
+
     static BreadcrumbBar()
     {
         // ND16: the whole trail is ONE tab stop with arrow navigation inside — the Toolbar shape. Tab in, arrow
@@ -396,8 +401,16 @@ public class BreadcrumbBar : ItemsControl
         foreach (var child in children)
         {
             var captured = child;
-            entries.Add((captured, () => RaiseEvent(new BreadcrumbBarDropDownEventArgs(
-                                                        ChildActivatedEvent, this, item, index, children, captured))));
+            entries.Add((captured, () =>
+            {
+                // Remember what was picked BEFORE the host reshapes the trail, and where the drop-down hung from.
+                // The landing spot is resolved on Closed — see OnDropDownClosed for why it cannot be done here.
+                _pendingFocusChild = captured;
+                _pendingFocusAnchor = index;
+                _hasPendingFocus = true;
+
+                RaiseEvent(new BreadcrumbBarDropDownEventArgs(ChildActivatedEvent, this, item, index, children, captured));
+            }));
         }
 
         ShowDropDown(chip, entries, isOverflow: false);
@@ -749,7 +762,12 @@ public class BreadcrumbBar : ItemsControl
         if (entries.Count == 0 || !IsAttachedToTree)
             return;
 
-        _dropDown ??= new ContextMenu();
+        if (_dropDown is null)
+        {
+            _dropDown = new ContextMenu();
+            _dropDown.Closed += OnDropDownClosed;
+        }
+
         _dropDown.Items.Clear();
 
         foreach (var (header, invoke) in entries)
@@ -768,6 +786,82 @@ public class BreadcrumbBar : ItemsControl
     {
         _dropDown?.Close();
         _dropDownIsOverflow = false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    // Where focus goes after a drop-down pick.
+    //
+    // This CANNOT be done in the pick handler itself. Popup.CloseCore restores focus to the element that was
+    // focused when the popup opened — the chip the drop-down hung from — and it does that AFTER our handler has
+    // run and BEFORE it raises Closed, so anything we focus during the pick is immediately overwritten.
+    //
+    // Worse, the restore is guarded on `restoreFocusTo is { IsAttachedToTree: true }`. A host that answers
+    // ChildActivated by rebuilding the trail detaches that very chip, so the restore is SKIPPED, focus is left
+    // wherever the teardown dropped it, and the next focus query lands on the first chip in the ring — the
+    // leftmost visible one, which is neither the pick nor the chip the user was on.
+    //
+    // So: land it on Closed, which runs after the restore. The pick is what the user chose, so the pick is what
+    // gets focus; if the host did not put it in the trail (it may have navigated elsewhere, or ignored the pick),
+    // fall back to the anchor chip, and finally to the ring's usual landing spot.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+    private void OnDropDownClosed(object? sender, RoutedEventArgs e)
+    {
+        if (!_hasPendingFocus)
+            return; // a plain dismiss (Esc / light-dismiss) — leave the popup's own restore alone
+
+        var child = _pendingFocusChild;
+        var anchor = _pendingFocusAnchor;
+        _pendingFocusChild = null;
+        _pendingFocusAnchor = -1;
+        _hasPendingFocus = false;
+
+        if (!IsAttachedToTree)
+            return;
+
+        BuildFocusRing();
+        if (_ring.Count == 0)
+            return;
+
+        if (FocusableContainerForItem(child) is { } picked)
+        {
+            SetActiveContainer(picked);
+            return;
+        }
+
+        if (anchor >= 0 && ItemContainerGenerator.ContainerFromIndex(anchor) is { } anchorChip && _ring.Contains(anchorChip))
+        {
+            SetActiveContainer(anchorChip);
+            return;
+        }
+
+        RestoreChipFocus();
+    }
+
+    /// <summary>The focusable container currently bound to <paramref name="item"/>, or null when the host did not
+    /// place it in the trail (or the fold has collapsed it out of the ring).</summary>
+    private UIElement? FocusableContainerForItem(object? item)
+    {
+        var count = ItemContainerGenerator.ContainerCount;
+        for (var i = 0; i < count; i++)
+        {
+            if (Equals(ItemContainerGenerator.ItemFromIndex(i), item) &&
+                ItemContainerGenerator.ContainerFromIndex(i) is { } container &&
+                _ring.Contains(container))
+            {
+                return container;
+            }
+        }
+
+        return null;
+    }
+
+    private void SetActiveContainer(UIElement container)
+    {
+        var index = ItemContainerGenerator.IndexFromContainer(container);
+        if (index >= 0)
+            _activeIndex = index; // keep ←/→ continuing from where focus actually landed
+
+        container.Focus(FocusNavigationMethod.Programmatic);
     }
 
     // ───────────────────────────── :current bookkeeping ─────────────────────────────

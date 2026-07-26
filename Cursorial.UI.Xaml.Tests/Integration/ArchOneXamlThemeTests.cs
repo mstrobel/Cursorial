@@ -460,4 +460,68 @@ public sealed class ArchOneXamlThemeTests
         // return cells.ToArray();
         return cells.Select(c => $"'{c.Item1}', #{c.Item2.Red:X2}{c.Item2.Green:X2}{c.Item2.Blue:X2}, #{c.Item3.Red:X2}{c.Item3.Green:X2}{c.Item3.Blue:X2}").ToArray();
     }
+    [Fact] // the XAML CompletionPopup theme templates the overlay: PART_List on a popup surface, matches bolded
+    public void XamlCompletionPopupTheme_OpensAndBoldsTheMatch()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 12) });
+        host.Application.Theme = CursorialDefaultTheme.LoadControls();
+
+        var box = new UIControls.TextBox
+        {
+            Width = 16,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var completion = new UIControls.CompletionPopup
+        {
+            Target = box,
+            Provider = new UIControls.DelegateCompletionProvider(query => new UIControls.CompletionContext(
+                0,
+                query.Text.Length,
+                query.Text,
+                [new UIControls.CompletionItem("Price") { KindLabel = "field" }])),
+        };
+
+        var root = new UIControls.Grid();
+        root.Children.Add(box);
+        root.Children.Add(completion);
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        box.Focus();
+        Assert.True(host.RunUntilIdle());
+        host.SendText("Pr");
+        Assert.True(host.RunUntilIdle());
+
+        // The declarative template really expanded: the required PART_Popup / PART_List parts resolved
+        // (a missing one throws at instantiation), the list is hosted on its own popup surface, and the
+        // header/footer strips the control pushes into are present.
+        Assert.True(completion.IsOpen);
+        Assert.Equal(1, Popups(host));
+        Assert.True(RenderContains(host, "Price", 60, 12));
+        Assert.True(RenderContains(host, "1 match", 60, 12));
+        Assert.True(RenderContains(host, "Esc dismiss", 60, 12));
+
+        // …and the fuzzy highlight survives the XAML half too: "Pr" bold, "ice" not.
+        var (column, row) = FindCells(host, "Price", 60, 12);
+        Assert.True((host.GetCell(column, row).Style.Attributes & TextAttributes.Bold) != 0);
+        Assert.True((host.GetCell(column + 2, row).Style.Attributes & TextAttributes.Bold) == 0);
+    }
+
+    private static (int Column, int Row) FindCells(UIHeadlessHost host, string text, int cols, int rows)
+    {
+        for (var r = 0; r < rows; r++)
+        {
+            var line = string.Concat(Enumerable.Range(0, cols).Select(c => host.GetCell(c, r).Grapheme ?? " "));
+            var index = line.IndexOf(text, StringComparison.Ordinal);
+
+            if (index >= 0)
+                return (index, r);
+        }
+
+        return (-1, -1);
+    }
+
 }

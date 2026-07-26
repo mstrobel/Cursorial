@@ -59,6 +59,9 @@ internal static class ControlThemes
         dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
         dict[typeof(BreadcrumbBar)] = BreadcrumbBarTheme();
         dict[typeof(BreadcrumbBarItem)] = BreadcrumbBarItemTheme();
+        dict[typeof(CompletionPopup)] = CompletionPopupTheme();
+        dict[typeof(CompletionList)] = CompletionListTheme();
+        dict[typeof(CompletionListItem)] = CompletionListItemTheme();
         dict[typeof(TreeView)] = TreeViewTheme();
         dict[typeof(TreeViewItem)] = TreeViewItemTheme();
         dict[typeof(Calendar)] = CalendarTheme();
@@ -684,6 +687,127 @@ internal static class ControlThemes
         theme.Children.Add(new Style("^:focus-visible")
                               .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
                               .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        return theme;
+    }
+
+    // ───────────────────────────── CompletionPopup / CompletionListItem ─────────────────────────────
+
+    // A completion overlay: an elevated occluding-by-caps panel over [header | PART_List | footer]. The control
+    // element itself contributes nothing to the host layout — the template root is a Grid holding only the Popup,
+    // which measures 0x0 — so a host can drop one in the same Grid cell as the field it decorates.
+    //
+    // Occludes is left FALSE here, exactly like the ComboBox drop-down: the blanket caps rules in
+    // CursorialThemeStyles (:is(Border) under RequiresCapabilities="NoColor"/"Ansi16") already force it true on
+    // every Border wholesale, and a per-control override would fight them on the tiers that can paint a real fill.
+    //
+    // NOTE — no {TemplateBinding} below the Popup. A Popup's Child is a LOGICAL child, and the template's
+    // TemplatedParent stamp (ControlTemplate.StampTemplatedParent) walks VISUAL children only, so a
+    // TemplateBinding authored inside the popup's content never resolves. DynamicResource / inheritance DO
+    // cross the seam (they walk LogicalParent ?? TemplatedParent), which is why the palette references here are
+    // fine. The three values that must reach the content — header text, footer text, the list's height cap —
+    // are pushed onto the parts by CompletionPopup.UpdateChrome instead.
+    private static ControlTemplate CompletionPopupTemplate() => new(ctx =>
+    {
+        // The "3 matches" strip. Collapsed until the control pushes text into it (ShowHeader + a live count) —
+        // Collapsed rather than Hidden because the popup surface is sized to its content and a Hidden strip would
+        // reserve a blank row.
+        var header = new TextBlock { Visibility = Visibility.Collapsed };
+        header.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_Header", header);
+        DockPanel.SetDock(header, Dock.Top);
+
+        var footer = new TextBlock { Visibility = Visibility.Collapsed };
+        footer.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Footer", footer);
+        DockPanel.SetDock(footer, Dock.Bottom);
+
+        var list = new CompletionList();
+        ctx.RegisterName("PART_List", list);
+
+        var stack = new DockPanel();
+        stack.Children.Add(header);
+        stack.Children.Add(footer);
+        stack.Children.Add(list); // last child fills what the docked strips leave
+
+        var content = new Border { Occludes = false, MinWidth = 16, Child = stack };
+        content.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        content.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+
+        // StaysOpen: a hint overlay is not light-dismissable — an outside press is the user dismissing the FIELD,
+        // and the field's focus-out is what closes us. (The control re-asserts this in OnApplyTemplate so a custom
+        // template cannot accidentally re-arm light dismiss.)
+        var popup = new Popup { Child = content, StaysOpen = true };
+        ctx.RegisterName("PART_Popup", popup);
+
+        var root = new Grid(); // the Popup adds no layout (0x0), so the control is a zero-size overlay anchor
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style CompletionPopupTheme()
+        => new Style { Key = "Theme.CompletionPopup" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, CompletionPopupTemplate());
+
+    // The list inside the popup: the ListBox chrome (Border > ScrollViewer > PART_ItemsHost) with NO recessed
+    // WellBrush fill and no frame — the popup's own content Border already carries the elevation and the rule,
+    // and a second well inside it reads as a box-in-a-box. It is its own theme entry rather than a
+    // ControlThemeKey alias to ListBox because the declarative twin authors that rule as
+    // <Style TargetType="ListBox">, which does not reach a subclass — aliasing the key would leave the XAML
+    // half's list untemplated (no items host, so no visible rows) while the code-first half worked.
+    private static Style CompletionListTheme()
+        => new Style { Key = "Theme.CompletionList" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListBoxTemplate())
+            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
+
+    // A completion row: [icon] display-with-the-match-bolded … description  kind. Each side column carries its own
+    // gutter margin and the control collapses it when its value is absent, so an icon-less / label-less candidate
+    // costs no column. The display TextBlock is fed MARKUP (not Text) — that is how the fuzzy matcher's MatchSpans
+    // become bold cells.
+    private static ControlTemplate CompletionListItemTemplate() => new(ctx =>
+    {
+        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0), Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_Icon", icon);
+        DockPanel.SetDock(icon, Dock.Left);
+
+        var kind = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        kind.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_KindLabel", kind);
+        DockPanel.SetDock(kind, Dock.Right);
+
+        var description = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        description.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Description", description);
+        DockPanel.SetDock(description, Dock.Right);
+
+        var display = new TextBlock(); // inherits the row Foreground so the selection bar's flip reaches it
+        ctx.RegisterName("PART_Display", display);
+
+        var row = new DockPanel();
+        row.Children.Add(icon);
+        row.Children.Add(kind);
+        row.Children.Add(description);
+        row.Children.Add(display);
+
+        var border = new Border { Padding = new Margins(1, 0), Child = row };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
+        return border;
+    });
+
+    private static Style CompletionListItemTheme()
+    {
+        // No :focus-visible rule: completion rows are never focusable (focus stays in the completed field), so the
+        // keyboard cue rides :selected alone — the one place this row differs from the ListBoxItem bar it copies.
+        var theme = new Style { Key = "Theme.CompletionListItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.TemplateProperty, CompletionListItemTemplate());
+        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
+        theme.Children.Add(new Style("^:selected")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
         return theme;
     }

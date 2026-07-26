@@ -1033,6 +1033,97 @@
     </Style.Children>
   </Style>
 
+  <!-- CompletionPopup (the completion / "IntelliSense" overlay): an elevated panel over
+       [PART_Header | PART_List | PART_Footer], hosted in a StaysOpen Popup so an outside press dismisses the FIELD
+       rather than the hint. The control element itself is layout-free — the template root is a Grid holding only
+       the Popup, which measures 0x0 — so a host drops one straight into the field's Grid cell. Occludes stays
+       False here for the same reason as the ComboBox drop-down: the blanket :is(Border) caps rules in Styles.xaml
+       already force it true on the NoColor / Ansi16 tiers.
+
+       NOTE - no {TemplateBinding} below the Popup. A Popup's Child is a LOGICAL child and the template's
+       TemplatedParent stamp walks VISUAL children only, so a TemplateBinding authored inside the popup content
+       never resolves; DynamicResource and inheritance do cross the seam, which is why the palette references
+       below are fine. Header text, footer text and the list's height cap are pushed onto the parts by
+       CompletionPopup.UpdateChrome instead. The declarative twin of ControlThemes.CompletionPopupTheme(). -->
+  <ControlTemplate x:Key="CompletionPopupTemplate" TargetType="CompletionPopup">
+    <Grid>
+      <Popup x:Name="PART_Popup" StaysOpen="True">
+        <Border Occludes="False" MinWidth="16"
+                Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
+                BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+          <DockPanel>
+            <TextBlock x:Name="PART_Header" DockPanel.Dock="Top" Visibility="Collapsed"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+            <TextBlock x:Name="PART_Footer" DockPanel.Dock="Bottom" Visibility="Collapsed"
+                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"/>
+            <CompletionList x:Name="PART_List"/>
+          </DockPanel>
+        </Border>
+      </Popup>
+    </Grid>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type CompletionPopup}" TargetType="CompletionPopup">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource CompletionPopupTemplate}"/>
+  </Style>
+
+  <!-- CompletionList: the ListBox chrome (Border > ScrollViewer > PART_ItemsHost) reused verbatim, but with NO
+       recessed WellBrush fill and no frame - the popup's content Border already carries the elevation and the
+       rule, and a second well inside it reads as a box-in-a-box. It is its own keyed rule rather than an alias
+       of {x:Type ListBox} because a Style authored with TargetType="ListBox" does not reach a subclass: aliasing
+       would leave this list untemplated here (no items host, so no visible rows) while the code-first half
+       worked. The declarative twin of ControlThemes.CompletionListTheme(). -->
+  <Style x:Key="{x:Type CompletionList}" TargetType="CompletionList">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
+    <Setter Property="Template"   Value="{StaticResource ListBoxTemplate}"/>
+    <Setter Property="ItemsPanel">
+      <ItemsPanelTemplate>
+        <VirtualizingStackPanel IsItemsHost="True"
+                                KeyboardNavigation.TabNavigation="Once"
+                                IsVirtualizing="{Binding Path=(VirtualizingPanel.IsVirtualizing), RelativeSource={RelativeSource TemplatedParent}}"
+                                VirtualizationMode="{Binding Path=(VirtualizingPanel.VirtualizationMode), RelativeSource={RelativeSource TemplatedParent}}"
+                                ScrollUnit="{Binding Path=(VirtualizingPanel.ScrollUnit), RelativeSource={RelativeSource TemplatedParent}}"/>
+      </ItemsPanelTemplate>
+    </Setter>
+  </Style>
+
+  <!-- CompletionListItem: [icon] display-with-the-match-bolded … description  kind. PART_Display is fed MARKUP,
+       not Text — that is how the fuzzy matcher's MatchSpans become bold cells. Each side column carries its own
+       gutter margin and the control collapses it when its value is absent, so an icon-less candidate costs no
+       icon column. No :focus-visible rule — completion rows are never focusable (focus stays in the field), so
+       the keyboard cue rides :selected alone. The declarative twin of ControlThemes.CompletionListItemTheme(). -->
+  <ControlTemplate x:Key="CompletionListItemTemplate" TargetType="CompletionListItem">
+    <Border Padding="1,0" Background="{TemplateBinding Background}"
+            TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+      <DockPanel>
+        <ContentPresenter x:Name="PART_Icon" DockPanel.Dock="Left" Margin="0,0,1,0" Visibility="Collapsed"/>
+        <TextBlock x:Name="PART_KindLabel" DockPanel.Dock="Right" Margin="1,0,0,0" Visibility="Collapsed"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+        <TextBlock x:Name="PART_Description" DockPanel.Dock="Right" Margin="1,0,0,0" Visibility="Collapsed"
+                   Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"/>
+        <TextBlock x:Name="PART_Display"/>
+      </DockPanel>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type CompletionListItem}" TargetType="CompletionListItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
+    <Setter Property="Template"   Value="{StaticResource CompletionListItemTemplate}"/>
+    <Style.Children>
+      <Style Selector="^:pointerover" TargetType="CompletionListItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
+      </Style>
+      <Style Selector="^:selected" TargetType="CompletionListItem">
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}"/>
+      </Style>
+      <Style Selector="^:disabled" TargetType="CompletionListItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundDisabled}}"/>
+      </Style>
+    </Style.Children>
+  </Style>
+
   <!-- BreadcrumbBar: the chip trail [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill —
        a trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
        BreadcrumbBarItem (so it inherits the chip look) docked LEFT of the items host: it is not a segment, and a

@@ -292,6 +292,7 @@ public class BreadcrumbBar : ItemsControl
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
+        ClearPendingFocus(); // a pick armed for an in-flight navigation must not outlive the bar's attachment
         CloseDropDown(); // close the popup FIRST so no surface is stranded past the detach
         base.OnDetachedFromTree(in e);
     }
@@ -322,6 +323,31 @@ public class BreadcrumbBar : ItemsControl
         // are now on screen. A separator's sibling list is unrelated to the fold and is left alone.
         if (!hasOverflow && _dropDownIsOverflow)
             CloseDropDown();
+
+        ResolvePendingFocusAfterLayout();
+    }
+
+    // A drop-down pick armed for a host that navigates ASYNCHRONOUSLY lands HERE rather than on the generator's
+    // ContainersChanged. That channel fires while the new container is not yet in the tree — the ItemsPresenter
+    // adopts it from the same event, and this bar subscribes first — so the chip is not focusable yet and a
+    // lookup there silently finds nothing. By the time the panel has arranged, the containers are adopted AND the
+    // fold has settled, which is also what makes "is this chip actually visible" answerable.
+    private void ResolvePendingFocusAfterLayout()
+    {
+        if (!_hasPendingFocus || _dropDown is { IsOpen: true })
+            return; // still open ⇒ Closed owns the landing (and focus is on the menu, not the bar)
+
+        // Only steal focus back if focus is STILL inside the bar. If the user tabbed away, clicked the listing, or
+        // the host moved focus itself while the navigation was in flight, the pick is stale — yanking focus out of
+        // wherever they now are is worse than not restoring it. This also stops the arm lingering across an
+        // unrelated later layout pass.
+        if (!IsKeyboardFocusWithin)
+        {
+            ClearPendingFocus();
+            return;
+        }
+
+        TryLandPendingFocus();
     }
 
     // ───────────────────────────── activation ─────────────────────────────
@@ -431,6 +457,8 @@ public class BreadcrumbBar : ItemsControl
         ApplyTemplate(); // the box may not be realized yet if the bar has never been measured
         if (_editBox is null)
             return false;
+
+        ClearPendingFocus(); // entering the edit box supersedes any pick still waiting on a navigation
 
         var args = new BreadcrumbBarEditEventArgs(EditingStartedEvent, this, _text);
         RaiseEvent(args);
@@ -809,32 +837,53 @@ public class BreadcrumbBar : ItemsControl
         if (!_hasPendingFocus)
             return; // a plain dismiss (Esc / light-dismiss) — leave the popup's own restore alone
 
-        var child = _pendingFocusChild;
-        var anchor = _pendingFocusAnchor;
-        _pendingFocusChild = null;
-        _pendingFocusAnchor = -1;
-        _hasPendingFocus = false;
-
         if (!IsAttachedToTree)
+        {
+            ClearPendingFocus();
             return;
+        }
+
+        if (TryLandPendingFocus())
+            return;
+
+        // The pick is not in the trail YET. A host that navigates ASYNCHRONOUSLY (the file dialogs enumerate off
+        // the UI thread so a slow share cannot stall the frame loop) has not rebuilt anything by the time this
+        // runs, so there is nothing to focus — the arm STAYS SET and OnContainersChanged lands it once the new
+        // trail arrives. Meanwhile put focus somewhere sane rather than leaving it stranded.
+        var anchor = _pendingFocusAnchor;
+        if (anchor >= 0 && ItemContainerGenerator.ContainerFromIndex(anchor) is { } anchorChip && _ring.Contains(anchorChip))
+            SetActiveContainer(anchorChip);
+        else
+            RestoreChipFocus();
+    }
+
+    /// <summary>
+    /// Lands a pending drop-down pick on its chip if that chip now exists and is focusable, clearing the arm.
+    /// Returns whether it landed. Called once on Closed (the synchronous host lands here) and again on every
+    /// structural change (the asynchronous host lands there).
+    /// </summary>
+    private bool TryLandPendingFocus()
+    {
+        if (!_hasPendingFocus || _isEditing || !IsAttachedToTree)
+            return false;
 
         BuildFocusRing();
         if (_ring.Count == 0)
-            return;
+            return false;
 
-        if (FocusableContainerForItem(child) is { } picked)
-        {
-            SetActiveContainer(picked);
-            return;
-        }
+        if (FocusableContainerForItem(_pendingFocusChild) is not { } picked)
+            return false;
 
-        if (anchor >= 0 && ItemContainerGenerator.ContainerFromIndex(anchor) is { } anchorChip && _ring.Contains(anchorChip))
-        {
-            SetActiveContainer(anchorChip);
-            return;
-        }
+        ClearPendingFocus();
+        SetActiveContainer(picked);
+        return true;
+    }
 
-        RestoreChipFocus();
+    private void ClearPendingFocus()
+    {
+        _pendingFocusChild = null;
+        _pendingFocusAnchor = -1;
+        _hasPendingFocus = false;
     }
 
     /// <summary>The focusable container currently bound to <paramref name="item"/>, or null when the host did not
@@ -866,7 +915,13 @@ public class BreadcrumbBar : ItemsControl
 
     // ───────────────────────────── :current bookkeeping ─────────────────────────────
 
-    private void OnContainersChanged(object? sender, ContainersChangedEventArgs e) => UpdateCurrentFlags();
+    private void OnContainersChanged(object? sender, ContainersChangedEventArgs e)
+    {
+        UpdateCurrentFlags();
+
+        // NOTE: a pending drop-down pick is deliberately NOT resolved here — the new container is not in the tree
+        // yet at this point (see ResolvePendingFocusAfterLayout). It lands after the panel arranges.
+    }
 
     // :current is POSITIONAL — the trailing segment. Re-stamped on every container-set change (owner-written with
     // SetCurrentValue so an author's own binding on IsCurrent survives).

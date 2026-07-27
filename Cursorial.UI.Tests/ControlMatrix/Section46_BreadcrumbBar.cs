@@ -596,14 +596,100 @@ public sealed class Section46_BreadcrumbBar
         host.SendKey(Key.Enter);
         host.RunUntilIdle();
 
-        outside.Focus(FocusNavigationMethod.Programmatic); // the user moves on mid-flight
+        host.SendKey(Key.Tab); // the USER moves on mid-flight — a real gesture, not a programmatic move
         host.RunUntilIdle();
+        Assert.Same(outside, UIApplication.Current!.FocusManager.FocusedElement);
 
         pendingNavigation!();
         host.RunUntilIdle();
 
         // Focus stays where the user put it — stealing it back into the bar would be worse than not restoring.
         Assert.Same(outside, UIApplication.Current!.FocusManager.FocusedElement);
+    }
+
+    // The real dialog toolbar shape: focusable controls on BOTH sides of the bar
+    // ([◂ ▸ ▴ ↻] · path bar · [▤▥▦] · search), which is what makes a lost focus land on a BUTTON rather than
+    // merely on the wrong chip. Driven by keyboard only — the pointer path never focuses the anchor chip the
+    // same way, so it does not exercise the same restore.
+    private static (UIHeadlessHost Host, BreadcrumbBar Bar, Button Before, Button After, ObservableCollection<string> Trail)
+        ShowToolbar()
+    {
+        var host = UIHeadlessHost.Create(
+            new UIHeadlessHostOptions { InitialSize = new Size(80, 10), Capabilities = HeadlessCapabilities.KittyTruecolor });
+
+        var trail = new ObservableCollection<string> { "Home", "Projects", "assets" };
+        var before = new Button { Content = "◂", Width = 3, Height = 1 };
+        var after = new Button { Content = "▤", Width = 3, Height = 1 };
+        var bar = new BreadcrumbBar { ItemsSource = trail, Width = 40, Height = 1 };
+
+        var toolbar = new StackPanel { Orientation = Orientation.Horizontal };
+        toolbar.Children.Add(before);
+        toolbar.Children.Add(bar);
+        toolbar.Children.Add(after);
+
+        host.ShowRoot(toolbar);
+        host.RunUntilIdle();
+        return (host, bar, before, after, trail);
+    }
+
+    [Fact] // BC12g: keyboard-only, in a real toolbar — the pick keeps focus in the bar, never on a neighbouring button
+    public void BC12g_KeyboardPickInAToolbarDoesNotFallToANeighbouringButton()
+    {
+        var (host, bar, before, after, trail) = ShowToolbar();
+        using var _ = host;
+
+        Action? pendingNavigation = null;
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+        bar.ChildActivated += (_, e) =>
+        {
+            var index = e.Index;
+            var child = (string) e.SelectedChild!;
+
+            // The REAL shape: FileDialogViewModel.RebuildSegments does Segments.Clear() then Add(...) because it
+            // recomputes the trail from the new path. That Reset recycles EVERY container — including the focused
+            // chip — where an incremental RemoveAt would have left the surviving ones (and the focus) alone.
+            pendingNavigation = () =>
+            {
+                var kept = trail.Take(index + 1).Append(child).ToArray();
+                trail.Clear();
+                foreach (var segment in kept)
+                    trail.Add(segment);
+            };
+        };
+
+        // Keyboard only, from the button to the LEFT of the bar.
+        before.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+        host.SendKey(Key.Tab);                 // into the bar (one tab stop)
+        host.RunUntilIdle();
+        Assert.True(bar.IsKeyboardFocusWithin);
+
+        host.SendKey(Key.DownArrow);           // open the active segment's drop-down
+        host.RunUntilIdle();
+        Assert.Equal(1, Popups(host));
+
+        host.SendKey(Key.Enter);               // pick "docs"
+        host.RunUntilIdle();
+
+        pendingNavigation!();                  // the awaited enumeration completes
+        host.RunUntilIdle();
+
+        var focused = UIApplication.Current!.FocusManager.FocusedElement;
+        Assert.NotSame(before, focused);       // the reported symptom: focus fell to the first toolbar button
+        Assert.NotSame(after, focused);
+        Assert.True(bar.IsKeyboardFocusWithin);
+        Assert.Same(FocusableContainerFor(bar, "docs"), focused);
+    }
+
+    private static UIElement? FocusableContainerFor(BreadcrumbBar bar, object item)
+    {
+        for (var i = 0; i < bar.ItemContainerGenerator.ContainerCount; i++)
+        {
+            if (Equals(bar.ItemContainerGenerator.ItemFromIndex(i), item))
+                return bar.ItemContainerGenerator.ContainerFromIndex(i);
+        }
+
+        return null;
     }
 
     [Fact] // BC12d: a plain dismiss (Esc) leaves the popup's own focus restore alone — back to the anchor chip

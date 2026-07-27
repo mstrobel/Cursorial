@@ -337,16 +337,10 @@ public class BreadcrumbBar : ItemsControl
         if (!_hasPendingFocus || _dropDown is { IsOpen: true })
             return; // still open ⇒ Closed owns the landing (and focus is on the menu, not the bar)
 
-        // Only steal focus back if focus is STILL inside the bar. If the user tabbed away, clicked the listing, or
-        // the host moved focus itself while the navigation was in flight, the pick is stale — yanking focus out of
-        // wherever they now are is worse than not restoring it. This also stops the arm lingering across an
-        // unrelated later layout pass.
-        if (!IsKeyboardFocusWithin)
-        {
-            ClearPendingFocus();
-            return;
-        }
-
+        // Whether the arm is still live was decided in OnLostFocus, by HOW focus left rather than by where it is
+        // now: a user walking away (Tab / pointer / directional / access key) clears it, a repair displacing it
+        // does not. Checking IsKeyboardFocusWithin here instead would abandon exactly the case this exists for,
+        // because a Clear()+Add() rebuild destroys the focused chip and the repair lands outside the bar.
         TryLandPendingFocus();
     }
 
@@ -688,6 +682,15 @@ public class BreadcrumbBar : ItemsControl
     {
         base.OnLostFocus(e);
 
+        // A pending drop-down pick is abandoned only when the USER walked away — Tab, a pointer press, directional
+        // navigation, an access key. It must NOT be abandoned when focus was merely DISPLACED: a host that rebuilds
+        // its trail with Clear()+Add() (which is what a view-model recomputing segments from a path does) resets
+        // every container, so the focused chip is destroyed and the framework repairs focus programmatically —
+        // landing it on whatever is focusable nearby, typically the first button in the enclosing toolbar. Treating
+        // that repair as "the user moved on" is what made a keyboard pick end up on the Back button.
+        if (_hasPendingFocus && !IsKeyboardFocusWithin && IsUserInitiated(e.Method))
+            ClearPendingFocus();
+
         // Focus left the bar AND its drop-down (IsKeyboardFocusWithin covers the popup, whose Child is a logical
         // descendant). An edit left dangling behind the user's back commits — the WPF editable-ComboBox rule — but
         // without dragging focus back to a chip.
@@ -885,6 +888,14 @@ public class BreadcrumbBar : ItemsControl
         _pendingFocusAnchor = -1;
         _hasPendingFocus = false;
     }
+
+    /// <summary>Whether a focus change was driven by the USER (as opposed to a programmatic move or a repair after
+    /// the focused element was destroyed) — the test for abandoning a pending drop-down pick.</summary>
+    private static bool IsUserInitiated(FocusNavigationMethod method)
+        => method is FocusNavigationMethod.Tab
+                  or FocusNavigationMethod.Pointer
+                  or FocusNavigationMethod.Directional
+                  or FocusNavigationMethod.AccessKey;
 
     /// <summary>The focusable container currently bound to <paramref name="item"/>, or null when the host did not
     /// place it in the trail (or the fold has collapsed it out of the ring).</summary>

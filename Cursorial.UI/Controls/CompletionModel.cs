@@ -279,6 +279,44 @@ public sealed class DelegateCompletionProvider : ICompletionProvider
     public CompletionContext? GetCompletions(in CompletionQuery query) => _callback(query);
 }
 
+/// <summary>
+/// The argument to <see cref="CompletionPopup.Picked"/> — the picker-mode twin of
+/// <see cref="CompletionCommittedEventArgs"/>. There is no <c>Commit</c> here because a picker splices no
+/// text: it has no field, so the whole answer is "this candidate, by this gesture", and the host does
+/// whatever that means to it (navigate, filter, insert a row).
+/// <para>
+/// <see cref="KeepOpen"/> is the picker's replacement for <see cref="CompletionCommit.KeepOpen"/>. Leave it
+/// <see langword="false"/> and the pick closes the popup, which is what a one-shot chooser wants; set it and
+/// the popup clears its filter pattern and re-queries the provider, which is how a drill-down picker (pick a
+/// folder, keep picking inside it) is built without ever closing and re-opening the surface.
+/// </para>
+/// </summary>
+public sealed class CompletionPickedEventArgs : EventArgs
+{
+    /// <summary>Creates the event argument.</summary>
+    /// <param name="item">The picked candidate.</param>
+    /// <param name="reason">The gesture that picked it.</param>
+    public CompletionPickedEventArgs(CompletionItem item, CompletionAcceptReason reason)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        Item = item;
+        Reason = reason;
+    }
+
+    /// <summary>The picked candidate (its <see cref="CompletionItem.Data"/> is the host's payload).</summary>
+    public CompletionItem Item { get; }
+
+    /// <summary>The gesture that picked it — <see cref="CompletionAcceptReason.Enter"/> or
+    /// <see cref="CompletionAcceptReason.Pointer"/> for the two user gestures a picker offers.</summary>
+    public CompletionAcceptReason Reason { get; }
+
+    /// <summary>
+    /// Set by a handler to keep the picker up: the filter pattern is cleared and the provider is re-queried
+    /// with <see cref="CompletionTrigger.Continued"/>. Default <see langword="false"/> ⇒ the pick closes it.
+    /// </summary>
+    public bool KeepOpen { get; set; }
+}
+
 /// <summary>The argument to <see cref="CompletionPopup.Committed"/> — what was accepted, how, and what the field became.</summary>
 public sealed class CompletionCommittedEventArgs : EventArgs
 {

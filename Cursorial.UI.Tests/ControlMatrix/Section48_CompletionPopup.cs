@@ -101,6 +101,17 @@ public sealed class Section48_CompletionPopup
             return new CompletionContext(start, text.Length, text[start..caret], items);
         });
 
+    /// <summary>
+    /// A PICKER's provider: a fixed candidate list handed back whole, with the popup's own
+    /// <see cref="CompletionPopup.Pattern"/> arriving as the query text (there is no field to read).
+    /// </summary>
+    private static CountingProvider PickerProvider(params string[] names)
+        => new(query => new CompletionContext(
+            0,
+            query.Text.Length,
+            query.Text,
+            names.Select(name => new CompletionItem(name)).ToList()));
+
     private static (UIHeadlessHost Host, TextBox Box, CompletionPopup Popup) Show(
         ICompletionProvider provider,
         string seed = "",
@@ -139,6 +150,42 @@ public sealed class Section48_CompletionPopup
         host.RunUntilIdle();
 
         return (host, box, popup);
+    }
+
+    /// <summary>
+    /// The picker fixture: a focusable <see cref="Button"/> standing in for "any element at all" and a
+    /// target-less popup anchored to it, in the same <see cref="Grid"/> cell (the overlay is layout-free).
+    /// </summary>
+    private static (UIHeadlessHost Host, Button Anchor, CompletionPopup Popup) ShowPicker(ICompletionProvider provider)
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(60, 20),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+            CaptureFrameBytes = true,
+        });
+
+        var anchor = new Button
+        {
+            Content = "open",
+            Width = 10,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var popup = new CompletionPopup { Anchor = anchor, Provider = provider };
+
+        var root = new Grid();
+        root.Children.Add(anchor);
+        root.Children.Add(popup);
+
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+        anchor.Focus();
+        host.RunUntilIdle();
+
+        return (host, anchor, popup);
     }
 
     /// <summary>Finds <paramref name="needle"/> in the composited frame, or <c>(-1, -1)</c>.</summary>
@@ -702,5 +749,190 @@ public sealed class Section48_CompletionPopup
 
         Assert.False(popup.IsOpen);
         Assert.Empty(host.Application.WindowManager!.Popups);
+    }
+
+    // ───────────────────────────── picker mode (Anchor, no Target) ─────────────────────────────
+
+    [Fact] // C46.16: an Anchor and no Target — keys come from the anchor, and accepting splices no text anywhere
+    public void C46_16_PickerMode_ReportsThePick_AndEditsNoText()
+    {
+        var provider = PickerProvider("docs", "downloads", "desktop", "music");
+        var (host, anchor, popup) = ShowPicker(provider);
+        using var _ = host;
+
+        Assert.True(popup.IsPicker);
+        Assert.True(popup.Open());
+        host.RunUntilIdle();
+
+        Assert.True(popup.IsOpen);
+        Assert.Equal(4, popup.MatchCount);
+        Assert.Same(anchor, host.Application.FocusManager.FocusedElement); // still a hint overlay: focus never moves
+
+        var picks = new List<CompletionItem>();
+        var commits = 0;
+        var clicks = 0;
+        popup.Picked += (_, e) => picks.Add(e.Item);
+        popup.Committed += (_, _) => commits++;
+        anchor.Click += (_, _) => clicks++;
+
+        host.SendText("do"); // the popup OWNS the pattern — there is no field for the keys to land in
+        host.RunUntilIdle();
+
+        Assert.Equal("do", popup.Pattern);
+
+        // "music" is gone; the two prefix hits lead and "desktop" trails as a scattered subsequence
+        // (d…o) — the same FuzzyMatcher ranking the text mode uses, on a pattern the popup owns.
+        Assert.Equal(["docs", "downloads", "desktop"], popup.Entries.Select(e => e.Item.Display));
+
+        host.SendKey(Key.DownArrow);
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal(["downloads"], picks.Select(item => item.Display));
+        Assert.Equal(0, commits); // Committed is the TEXT path's report; nothing was written to anything
+        Assert.Equal(0, clicks);  // …and the picker claimed Enter, so the anchor button never activated
+        Assert.False(popup.IsOpen);
+        Assert.Equal("", popup.Pattern); // a closed picker owns no filter — the next Open() starts whole
+    }
+
+    [Fact] // C46.17: the picker's filter is VISIBLE (in the header) and reversible — Backspace, then Escape
+    public void C46_17_PickerPattern_IsShown_AndEscapePeelsItBeforeDismissing()
+    {
+        var provider = PickerProvider("docs", "downloads", "desktop", "music");
+        var (host, _, popup) = ShowPicker(provider);
+        using var __ = host;
+
+        popup.Open();
+        host.RunUntilIdle();
+        Assert.Equal("4 matches", popup.HeaderText);
+
+        host.SendText("de");
+        host.RunUntilIdle();
+
+        Assert.Equal("desktop", Assert.Single(popup.Entries).Item.Display);
+        Assert.Equal("de · 1 match", popup.HeaderText);
+        Assert.True(FindOnScreen(host, "de · 1 match").Row >= 0); // …and it really reaches the frame
+
+        host.SendKey(Key.Backspace);
+        host.RunUntilIdle();
+        Assert.Equal("d", popup.Pattern);
+        Assert.Equal(3, popup.MatchCount);
+
+        // Escape peels the FILTER off first. The pattern is invisible to everything but this header, so an
+        // Escape that always dismissed would make one mistyped character cost the whole list.
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.True(popup.IsOpen);
+        Assert.Equal("", popup.Pattern);
+        Assert.Equal(4, popup.MatchCount);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(popup.IsOpen);
+    }
+
+    [Fact] // C46.18: a picker filtered to NOTHING stays up on "no matches" — the one place it must not close
+    public void C46_18_PickerStaysOpenWithNoMatches()
+    {
+        var provider = PickerProvider("docs", "downloads");
+        var (host, _, popup) = ShowPicker(provider);
+        using var __ = host;
+
+        popup.Open();
+        host.RunUntilIdle();
+
+        host.SendText("dz");
+        host.RunUntilIdle();
+
+        // Text mode closes here and is right to: the field still holds what was typed. A picker cannot —
+        // the pattern lives only in the popup, so closing would discard it AND leave the Backspace that
+        // fixes the typo with nowhere to land.
+        Assert.True(popup.IsOpen);
+        Assert.Equal(0, popup.MatchCount);
+        Assert.Equal("dz · no matches", popup.HeaderText);
+        Assert.Equal(-1, popup.SelectedIndex);
+        Assert.False(popup.AcceptSelected(CompletionAcceptReason.Enter)); // nothing to take
+
+        host.SendKey(Key.Backspace);
+        host.RunUntilIdle();
+
+        Assert.Equal(2, popup.MatchCount);
+        Assert.Equal(0, popup.SelectedIndex);
+    }
+
+    [Fact] // C46.19: Anchor is DORMANT while a Target is set — picker mode is purely additive to the text path
+    public void C46_19_TargetWinsOverAnchor()
+    {
+        var provider = ExpressionProvider("Price");
+        var (host, box, popup) = Show(provider);
+        using var _ = host;
+
+        var anchor = new Button { Content = "x", Width = 3, Height = 1, VerticalAlignment = VerticalAlignment.Bottom };
+        ((Grid) popup.VisualParent!).Children.Add(anchor);
+        host.RunUntilIdle();
+
+        host.SendText("[P");
+        host.RunUntilIdle();
+        Assert.True(popup.IsOpen);
+
+        popup.Anchor = anchor; // writing a dormant property must not disturb a live session
+        host.RunUntilIdle();
+
+        Assert.False(popup.IsPicker);
+        Assert.True(popup.IsOpen);
+        Assert.Same(box, popup.PopupPart!.PlacementTarget); // still hanging off the FIELD
+
+        var committed = 0;
+        var picked = 0;
+        popup.Committed += (_, _) => committed++;
+        popup.Picked += (_, _) => picked++;
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal("[Price]", box.Text); // the accept still splices
+        Assert.Equal(1, committed);
+        Assert.Equal(0, picked);
+    }
+
+    [Fact] // C46.20: a pick may KEEP the picker up — the drill-down chooser, restarted on a cleared pattern
+    public void C46_20_PickerKeepOpen_ClearsThePatternAndReQueries()
+    {
+        var level = 0;
+
+        var provider = new CountingProvider(query => new CompletionContext(
+            0,
+            query.Text.Length,
+            query.Text,
+            level == 0
+                ? new List<CompletionItem> { new("folder"), new("other") }
+                : new List<CompletionItem> { new("inner-a"), new("inner-b") }));
+
+        var (host, _, popup) = ShowPicker(provider);
+        using var __ = host;
+
+        popup.Picked += (_, e) =>
+        {
+            if (e.Item.Display != "folder")
+                return;
+
+            level = 1;
+            e.KeepOpen = true;
+        };
+
+        popup.Open();
+        host.RunUntilIdle();
+
+        host.SendText("fo");
+        host.RunUntilIdle();
+        Assert.Equal("folder", Assert.Single(popup.Entries).Item.Display);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.True(popup.IsOpen);
+        Assert.Equal("", popup.Pattern); // the pattern that found the folder cannot filter the folder's contents
+        Assert.Equal(["inner-a", "inner-b"], popup.Entries.Select(e => e.Item.Display));
+        Assert.Equal(CompletionTrigger.Continued, provider.LastTrigger);
     }
 }

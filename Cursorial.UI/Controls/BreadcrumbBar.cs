@@ -37,6 +37,17 @@ namespace Cursorial.UI.Controls;
 /// spend the gesture on, and swallowing it would strand the user in a dialog they can't dismiss.
 /// </para>
 /// <para>
+/// <b>The drop-downs are pickers, not menus.</b> A chip's <c>▸</c> (and <c>↓</c> on the active chip) drops that
+/// segment's children, and the leading <c>…</c> drops the folded-away ancestors — both as a
+/// <see cref="CompletionPopup"/> in picker mode rather than a <see cref="ContextMenu"/>. A menu was the wrong
+/// container for what those lists actually are: it does not SCROLL, so a directory with hundreds of folders
+/// produced something taller than the terminal with no way to reach the bottom of it, and its type-ahead is a
+/// prefix jump next to the picker's fuzzy filtering. The entries are sorted (by <c>Display</c>, ordinal
+/// ignore-case, behind <see cref="CompletionItem.SortGroup"/> so a host can still group), and typing filters
+/// them with match highlighting. The bar still enumerates nothing itself — see
+/// <see cref="DropDownOpening"/>.
+/// </para>
+/// <para>
 /// <b>Edit mode is a hand-off, not a parser.</b> The bar owns only the state machine (chips ↔
 /// <c>PART_EditBox</c>, text pre-selected on entry, <c>Escape</c> discards, <c>Enter</c> commits, focus-out
 /// commits) and raises <see cref="EditingStarted"/> / <see cref="EditCommitted"/> / <see cref="EditCanceled"/> at
@@ -48,11 +59,13 @@ namespace Cursorial.UI.Controls;
 [TemplatePart(PartChipsHost, typeof(UIElement))]
 [TemplatePart(PartOverflowChip, typeof(BreadcrumbBarItem))]
 [TemplatePart(PartEditBox, typeof(TextBox))]
+[TemplatePart(PartDropDown, typeof(CompletionPopup))]
 public class BreadcrumbBar : ItemsControl
 {
     private const string PartChipsHost = "PART_ChipsHost";
     private const string PartOverflowChip = "PART_OverflowChip";
     private const string PartEditBox = "PART_EditBox";
+    private const string PartDropDown = "PART_DropDown";
 
     /// <summary>Whether the bar offers the raw-text edit mode at all (<c>F2</c> and <see cref="BeginEdit"/> are
     /// inert when false — the default; a host opts in when it can render and parse its own path text).</summary>
@@ -107,9 +120,11 @@ public class BreadcrumbBar : ItemsControl
     public static readonly RoutedEvent<BreadcrumbBarEditEventArgs> EditCanceledEvent =
         RoutedEvent<BreadcrumbBarEditEventArgs>.Register(nameof(EditCanceled), RoutingStrategy.Bubble, typeof(BreadcrumbBar));
 
-    /// <summary>Raised when a chip's <c>▸</c> separator is pressed: fill
+    /// <summary>Raised when a chip's <c>▸</c> separator is pressed (or <c>↓</c> struck on it): fill
     /// <see cref="BreadcrumbBarDropDownEventArgs.Children"/> to offer the Explorer-style sibling list (leave it
-    /// empty and the press is inert).</summary>
+    /// empty and the press is inert). Add plain objects and each row is its <c>ToString()</c>; add
+    /// <see cref="CompletionItem"/>s to carry an icon, a kind label and a sort group. Raised ONCE per opening —
+    /// the filtering that follows is local, so a slow enumeration is never repeated per keystroke.</summary>
     public static readonly RoutedEvent<BreadcrumbBarDropDownEventArgs> DropDownOpeningEvent =
         RoutedEvent<BreadcrumbBarDropDownEventArgs>.Register(nameof(DropDownOpening), RoutingStrategy.Bubble, typeof(BreadcrumbBar));
 
@@ -120,6 +135,14 @@ public class BreadcrumbBar : ItemsControl
         RoutedEvent<BreadcrumbBarDropDownEventArgs>.Register(nameof(ChildActivated), RoutingStrategy.Bubble, typeof(BreadcrumbBar));
 
     private readonly List<UIElement> _ring = []; // reused arrow-navigation ring (no per-keystroke allocation)
+
+    // The open drop-down's contents. Two lists rather than one because they are read by two different
+    // parties: _dropDownItems is what the picker's provider hands back verbatim on every keystroke (so it
+    // has to be a materialized IReadOnlyList<CompletionItem>, not a projection that re-allocates per
+    // filter), and _dropDownEntries is what maps a pick back onto the thing to DO about it.
+    private readonly List<DropDownEntry> _dropDownEntries = [];
+    private readonly List<CompletionItem> _dropDownItems = [];
+    private readonly ICompletionProvider _dropDownProvider;
 
     private string _text = "";
     private bool _isEditing;
@@ -132,7 +155,7 @@ public class BreadcrumbBar : ItemsControl
     private UIElement? _chipsHost;
     private BreadcrumbBarItem? _overflowChip;
     private TextBox? _editBox;
-    private ContextMenu? _dropDown;
+    private CompletionPopup? _dropDown;
     private bool _dropDownIsOverflow; // the open drop-down is the ellipsis list (vs. a separator's sibling list)
 
     // Where focus should land once a drop-down pick has been applied. Captured at pick time, consumed on Closed.
@@ -164,6 +187,12 @@ public class BreadcrumbBar : ItemsControl
 
         // :current follows POSITION, so it is re-stamped whenever the container set changes (add/remove/reset).
         ItemContainerGenerator.ContainersChanged += OnContainersChanged;
+
+        // One provider for the bar's whole life, reading the list the open drop-down refills. The picker
+        // re-queries it on every keystroke, so the host is asked for children exactly ONCE (on the opening
+        // event) and every later filter is local — a directory of five hundred entries is never re-enumerated
+        // between keystrokes.
+        _dropDownProvider = new DropDownProvider(_dropDownItems);
     }
 
     /// <inheritdoc cref="IsEditableProperty"/>
@@ -236,7 +265,7 @@ public class BreadcrumbBar : ItemsControl
     // Test / inspection seams (template-private parts).
     internal BreadcrumbBarItem? OverflowChipPart => _overflowChip;
     internal TextBox? EditBoxPart => _editBox;
-    internal ContextMenu? DropDownPart => _dropDown;
+    internal CompletionPopup? DropDownPart => _dropDown;
 
     // ───────────────────────────── container policy ─────────────────────────────
 
@@ -256,9 +285,19 @@ public class BreadcrumbBar : ItemsControl
         if (_editBox is not null)
             _editBox.KeyDown -= OnEditBoxKeyDown;
 
+        UnhookDropDown();
+
         _chipsHost = GetTemplatePart<UIElement>(PartChipsHost);
         _overflowChip = GetTemplatePart<BreadcrumbBarItem>(PartOverflowChip);
         _editBox = GetTemplatePart<TextBox>(PartEditBox);
+        _dropDown = GetTemplatePart<CompletionPopup>(PartDropDown);
+
+        if (_dropDown is not null)
+        {
+            _dropDown.Provider = _dropDownProvider;
+            _dropDown.Picked += OnDropDownPicked;
+            _dropDown.Closed += OnDropDownClosed;
+        }
 
         if (_overflowChip is not null)
         {
@@ -283,10 +322,32 @@ public class BreadcrumbBar : ItemsControl
         if (_editBox is not null)
             _editBox.KeyDown -= OnEditBoxKeyDown;
 
+        UnhookDropDown();
+
         _chipsHost = null;
         _overflowChip = null;
         _editBox = null;
+        _dropDown = null;
         base.OnTemplateDetaching(old);
+    }
+
+    // The drop-down part is a real control with a live Popup surface, not an inert Border: a template swap
+    // while a list is up must take that surface down with it, and it must stop driving the chip it hangs
+    // from. (Provider is cleared too — the outgoing popup keeps whatever tree it lands in from re-querying
+    // the list this bar is about to refill.)
+    private void UnhookDropDown()
+    {
+        if (_dropDown is null)
+            return;
+
+        _dropDown.Close();
+        _dropDown.Picked -= OnDropDownPicked;
+        _dropDown.Closed -= OnDropDownClosed;
+        _dropDown.Anchor = null;
+        _dropDown.Provider = null;
+        _dropDownIsOverflow = false;
+        _dropDownEntries.Clear();
+        _dropDownItems.Clear();
     }
 
     /// <inheritdoc/>
@@ -416,12 +477,13 @@ public class BreadcrumbBar : ItemsControl
             return;
 
         var children = new List<object?>(opening.Children); // snapshot: the args are the host's list, not ours
-        var entries = new List<(object? Header, Action Invoke)>(children.Count);
+        var entries = new List<DropDownEntry>(children.Count);
 
-        foreach (var child in children)
+        for (var order = 0; order < children.Count; order++)
         {
-            var captured = child;
-            entries.Add((captured, () =>
+            var captured = children[order];
+
+            entries.Add(new DropDownEntry(ToCandidate(captured), order, () =>
             {
                 // Remember what was picked BEFORE the host reshapes the trail, and where the drop-down hung from.
                 // The landing spot is resolved on Closed — see OnDropDownClosed for why it cannot be done here.
@@ -429,12 +491,23 @@ public class BreadcrumbBar : ItemsControl
                 _pendingFocusAnchor = index;
                 _hasPendingFocus = true;
 
+                // The ORIGINAL host object, never the candidate the bar wrapped it in: the file dialog reads
+                // SelectedChild back as its own FileDialogPathSegment and the gallery as its own TrailNode.
                 RaiseEvent(new BreadcrumbBarDropDownEventArgs(ChildActivatedEvent, this, item, index, children, captured));
             }));
         }
 
         ShowDropDown(chip, entries, isOverflow: false);
     }
+
+    /// <summary>
+    /// The host's child as a drop-down candidate. A host that already speaks the completion vocabulary hands
+    /// over a <see cref="CompletionItem"/> and keeps its icon, kind label and
+    /// <see cref="CompletionItem.SortGroup"/> verbatim; anything else is wrapped around its
+    /// <see cref="object.ToString"/>, which is exactly what the drop-down showed when it was a menu.
+    /// </summary>
+    private static CompletionItem ToCandidate(object? child)
+        => child as CompletionItem ?? new CompletionItem(child?.ToString() ?? "");
 
     // ───────────────────────────── edit mode ─────────────────────────────
 
@@ -770,75 +843,162 @@ public class BreadcrumbBar : ItemsControl
         if (_overflowChip is null || _firstVisibleIndex <= 0)
             return;
 
-        var entries = new List<(object? Header, Action Invoke)>(_firstVisibleIndex);
+        var entries = new List<DropDownEntry>(_firstVisibleIndex);
 
         for (var i = 0; i < _firstVisibleIndex; i++)
         {
             var index = i;
-            entries.Add((ItemContainerGenerator.ItemFromIndex(index), () => ActivateItem(index)));
+
+            // SortGroup := the segment's DEPTH, overriding whatever the item carried. The overflow list is an
+            // ordered path PREFIX, not a sibling set — "Home ▸ Projects ▸ assets" re-sorted alphabetically
+            // would destroy the one thing it means — and SortGroup is the first key of both the sort below and
+            // the picker's ranking, so one segment per group pins trail order through the initial sort AND
+            // through every later fuzzy filter.
+            var candidate = ToCandidate(ItemContainerGenerator.ItemFromIndex(index)) with { SortGroup = index };
+            entries.Add(new DropDownEntry(candidate, index, () => ActivateItem(index)));
         }
 
         ShowDropDown(_overflowChip, entries, isOverflow: true);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-    // Both drop-downs ride a ContextMenu rather than a hand-rolled Popup + ListBox, on purpose. A Popup only
-    // PLACES on the closed→open edge and PlacementRect is never read, so re-anchoring one under a DIFFERENT chip
-    // (which is exactly what the separator list does) means close-then-reopen plus manual offset arithmetic —
-    // and light-dismiss, Escape, focus-into and the on-close focus restore would all have to be rebuilt.
-    // ContextMenu.Open already funnels every one of those, including the close-then-reopen relocation.
+    // Both drop-downs ride a CompletionPopup in PICKER mode rather than a ContextMenu.
+    //
+    // A menu was the wrong container for what these lists actually are. A ContextMenu does not SCROLL, so a
+    // directory with three hundred folders produced a menu taller than the terminal with no way to reach the
+    // bottom of it, and its TextSearch is a prefix jump next to the picker's fuzzy filtering. A CompletionList
+    // is a ListBox, so scrolling and virtualization are already there; the pattern the user types filters and
+    // highlights through the same FuzzyMatcher the completion overlay uses.
+    //
+    // The mechanics the menu used to hand us for free are all still here, just spelled differently: the picker
+    // never takes focus, so the anchor chip keeps it and drives the list through its own PreviewKeyDown — which
+    // is also why ShowDropDown focuses the chip before opening. Re-anchoring under a DIFFERENT chip is a plain
+    // Anchor write followed by Open(); the popup's own OpenOrRelocate does the close-then-reopen a Popup needs
+    // to move (it only places on the closed→open edge). Light dismiss survives the swap too — a target-less
+    // CompletionPopup arms it, exactly because a chooser is not the hint-over-a-field the type usually is.
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-    private void ShowDropDown(UIElement anchor, List<(object? Header, Action Invoke)> entries, bool isOverflow)
+    private void ShowDropDown(UIElement anchor, List<DropDownEntry> entries, bool isOverflow)
     {
         if (entries.Count == 0 || !IsAttachedToTree)
             return;
 
+        ApplyTemplate(); // the drop-down part may not be realized yet if the bar has never been measured
+
         if (_dropDown is null)
-        {
-            _dropDown = new ContextMenu();
-            _dropDown.Closed += OnDropDownClosed;
-        }
+            return; // a template without PART_DropDown: the affordance is inert, exactly as it is without PART_EditBox
 
-        _dropDown.Items.Clear();
+        // …and the part's OWN template too, for the same reason one level down. This is the one place the
+        // swap away from ContextMenu needed a second ApplyTemplate: a menu built its surface on demand, but
+        // PART_DropDown reaches its Popup through its template, and CompletionPopup.OpenOrRelocate returns
+        // silently when that part is missing — so a drop-down requested before the bar's first measure (a
+        // host calling RequestDropDownAt straight after ShowRoot) came up empty and never recovered, because
+        // the later template expansion only re-opens a popup that already believes it is open.
+        _dropDown.ApplyTemplate();
 
-        foreach (var (header, invoke) in entries)
+        // Take whatever list is already up DOWN first, and only then fill ours. The close raises Closed, and
+        // that handler drops the open list's state — so filling before closing would wipe the entries we just
+        // built. (Two paths get here with a list already up: pressing a DIFFERENT chip's "▸", and the anchor
+        // focus move below, which closes the old picker through its own LostFocus.)
+        CloseDropDown();
+
+        // ── SORTED, and sorted HERE rather than by the picker ────────────────────────────────────────────
+        // An EMPTY filter pattern deliberately preserves PROVIDER order (running it through the matcher's
+        // length-then-ordinal tiebreak would re-sort a directory listing by name length), so "sorted before
+        // anything is typed" is something the provider has to arrange — it is not a property the picker
+        // supplies. SortGroup leads because it is also the picker's first ranking key, so the order the user
+        // sees before typing is the order that survives the first keystroke.
+        entries.Sort(CompareCandidates);
+
+        _dropDownEntries.Clear();
+        _dropDownItems.Clear();
+
+        foreach (var entry in entries)
         {
-            var menuItem = new MenuItem { Header = header };
-            var action = invoke;
-            menuItem.Click += (_, _) => action();
-            _dropDown.Items.Add(menuItem);
+            _dropDownEntries.Add(entry);
+            _dropDownItems.Add(entry.Candidate);
         }
 
         _dropDownIsOverflow = isOverflow;
-        _dropDown.Open(anchor, new CellPosition(0, 0)); // Bottom placement under the pressed chip
+
+        // Focus the chip the list hangs from FIRST. The picker is non-focusable by design, so the anchor's
+        // PreviewKeyDown is the ONLY thing that can drive it — and the pointer path deliberately marks the
+        // "▸" press handled before ButtonBase.OnMouseDown gets to focus the chip itself, so without this the
+        // list would come up with the keyboard pointed at whatever the user was on before.
+        anchor.Focus(FocusNavigationMethod.Programmatic);
+
+        _dropDown.Anchor = anchor;
+        _dropDown.Open();
+    }
+
+    // The bar does not know its hosts' semantics, so the only ordering it can defensibly impose is by the
+    // text it shows, case-insensitively (a folder named "Documents" must not sort miles away from one named
+    // "assets"). SortGroup comes first so a host can still group — the file dialog's folders-before-files —
+    // and the host's fill order is the final tiebreak, because List.Sort is UNSTABLE and two same-named
+    // children would otherwise swap places between one opening of the list and the next.
+    private static int CompareCandidates(DropDownEntry left, DropDownEntry right)
+    {
+        if (left.Candidate.SortGroup != right.Candidate.SortGroup)
+            return left.Candidate.SortGroup.CompareTo(right.Candidate.SortGroup);
+
+        var display = string.Compare(left.Candidate.Display, right.Candidate.Display, StringComparison.OrdinalIgnoreCase);
+        return display != 0 ? display : left.Order.CompareTo(right.Order);
+    }
+
+    private void OnDropDownPicked(object? sender, CompletionPickedEventArgs e)
+    {
+        // Reference identity, NOT List.IndexOf: CompletionItem is a record, so two children that display the
+        // same string compare EQUAL, and a value-based lookup would invoke the wrong one of them.
+        foreach (var entry in _dropDownEntries)
+        {
+            if (ReferenceEquals(entry.Candidate, e.Item))
+            {
+                entry.Invoke();
+                return;
+            }
+        }
     }
 
     private void CloseDropDown()
     {
-        _dropDown?.Close();
+        _dropDown?.Close(); // Closed → ReleaseDropDown, which is where the state actually drops
+        ReleaseDropDown();  // …and again for the already-closed case, which raises nothing
+    }
+
+    // Everything the open list owned, dropped the moment it is down. The Anchor matters most: the picker
+    // hooks the chip's LostFocus and PreviewKeyDown, and a host that answers a pick by rebuilding the trail
+    // DETACHES that chip — holding the reference would leave the picker subscribed to a dead element until
+    // the next drop-down happened to replace it.
+    private void ReleaseDropDown()
+    {
         _dropDownIsOverflow = false;
+        _dropDownEntries.Clear();
+        _dropDownItems.Clear();
+
+        if (_dropDown is not null)
+            _dropDown.Anchor = null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────
     // Where focus goes after a drop-down pick.
     //
-    // This CANNOT be done in the pick handler itself. Popup.CloseCore restores focus to the element that was
-    // focused when the popup opened — the chip the drop-down hung from — and it does that AFTER our handler has
-    // run and BEFORE it raises Closed, so anything we focus during the pick is immediately overwritten.
+    // This CANNOT be done in the pick handler itself. The pick runs while the list is still up, and the close
+    // that follows it can move focus out from under anything we set: a host that answers ChildActivated by
+    // rebuilding the trail DETACHES the chip that held focus, and the framework then repairs focus onto
+    // whatever is focusable nearby — typically the first button in the enclosing toolbar, which is neither the
+    // pick nor the chip the user was on. (Under the old ContextMenu the same thing happened for a second
+    // reason: Popup.CloseCore restores focus to the opening element, after our handler and before Closed, and
+    // it skips that restore entirely when the element has been detached.)
     //
-    // Worse, the restore is guarded on `restoreFocusTo is { IsAttachedToTree: true }`. A host that answers
-    // ChildActivated by rebuilding the trail detaches that very chip, so the restore is SKIPPED, focus is left
-    // wherever the teardown dropped it, and the next focus query lands on the first chip in the ring — the
-    // leftmost visible one, which is neither the pick nor the chip the user was on.
-    //
-    // So: land it on Closed, which runs after the restore. The pick is what the user chose, so the pick is what
+    // So: land it on Closed, which runs after all of that. The pick is what the user chose, so the pick is what
     // gets focus; if the host did not put it in the trail (it may have navigated elsewhere, or ignored the pick),
     // fall back to the anchor chip, and finally to the ring's usual landing spot.
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-    private void OnDropDownClosed(object? sender, RoutedEventArgs e)
+    private void OnDropDownClosed(object? sender, EventArgs e)
     {
+        ReleaseDropDown();
+
         if (!_hasPendingFocus)
-            return; // a plain dismiss (Esc / light-dismiss) — leave the popup's own restore alone
+            return; // a plain dismiss (Esc, an outside press, focus walking off the chip) — nothing to land
 
         if (!IsAttachedToTree)
         {
@@ -945,5 +1105,26 @@ public class BreadcrumbBar : ItemsControl
             if (ItemContainerGenerator.ContainerFromIndex(i) is BreadcrumbBarItem chip)
                 chip.SetCurrentValue(BreadcrumbBarItem.IsCurrentProperty, i == count - 1);
         }
+    }
+
+    // ───────────────────────────── the drop-down's completion seam ─────────────────────────────
+
+    /// <summary>One row of an open drop-down: what the picker shows, where the host put it, and what picking it does.</summary>
+    /// <param name="Candidate">The candidate handed to the picker — the host's own <see cref="CompletionItem"/>
+    /// when it supplied one, otherwise the bar's wrapper around <c>ToString()</c>.</param>
+    /// <param name="Order">The host's fill order, kept as the sort's final tiebreak (<c>List.Sort</c> is unstable).</param>
+    /// <param name="Invoke">What picking this row does — raise <c>ChildActivated</c>, or activate an elided ancestor.</param>
+    private readonly record struct DropDownEntry(CompletionItem Candidate, int Order, Action Invoke);
+
+    /// <summary>
+    /// The drop-down's completion provider: hand back the snapshot the host filled, and let the picker do the
+    /// filtering, ranking and highlighting. The query's <c>Text</c> is the picker's own filter pattern (there
+    /// is no field), so the span it reports is the whole of it — nothing is ever spliced anywhere, but a
+    /// context has to carry one.
+    /// </summary>
+    private sealed class DropDownProvider(List<CompletionItem> items) : ICompletionProvider
+    {
+        public CompletionContext? GetCompletions(in CompletionQuery query)
+            => items.Count == 0 ? null : new CompletionContext(0, query.Text.Length, query.Text, items);
     }
 }

@@ -100,11 +100,31 @@ public sealed class BreadcrumbBarDropDownEventArgs(
 
     /// <summary>
     /// The children to offer. On <see cref="BreadcrumbBar.DropDownOpening"/> this arrives empty and a handler
-    /// fills it (leaving it empty means "no drop-down" — the press is inert). The entries are shown through the
-    /// usual content/template chain, so view-models with a <c>DataTemplate</c> render as authored.
+    /// fills it (leaving it empty means "no drop-down" — the press is inert).
+    /// <para>
+    /// <b>Two ways to fill it.</b> Add anything at all and the row shows its <see cref="object.ToString"/> —
+    /// which is what every host did before the drop-downs became pickers, and still works unchanged. Or add a
+    /// <see cref="CompletionItem"/> and the row is yours: the icon, the right-aligned kind label, the
+    /// description, and — the one that changes ORDER rather than paint — <see cref="CompletionItem.SortGroup"/>,
+    /// which the bar honours ahead of its own by-display sort so a host can still put folders above files.
+    /// The two forms mix freely inside one list.
+    /// </para>
+    /// <para>
+    /// <b>Not a template chain.</b> The list is a completion popup, not an items control over the
+    /// content/template chain: a <c>DataTemplate</c> registered for the child's type does <em>not</em> render
+    /// it. That is the price of the swap, and it buys scrolling (a directory with five hundred folders is
+    /// usable) and fuzzy filtering with match highlighting. A view-model that needs more than a string should
+    /// supply a <see cref="CompletionItem"/> — with the view-model itself as
+    /// <see cref="CompletionItem.Data"/> if the host wants it back.
+    /// </para>
     /// </summary>
     public IList<object?> Children { get; } = children;
 
-    /// <summary>The picked child — set only on <see cref="BreadcrumbBar.ChildActivated"/>.</summary>
+    /// <summary>
+    /// The picked child — set only on <see cref="BreadcrumbBar.ChildActivated"/>. It is the object the host put
+    /// in <see cref="Children"/>, <b>never</b> a wrapper the bar built around it: a host that filled the list
+    /// with its own path segments gets a path segment back, and one that filled it with
+    /// <see cref="CompletionItem"/>s gets the same instance it added.
+    /// </summary>
     public object? SelectedChild { get; } = selectedChild;
 }

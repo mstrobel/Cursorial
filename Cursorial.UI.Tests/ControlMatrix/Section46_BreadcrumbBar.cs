@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -50,6 +51,23 @@ public sealed class Section46_BreadcrumbBar
         => Assert.IsType<BreadcrumbBarItem>(bar.ItemContainerGenerator.ContainerFromIndex(index));
 
     private static int Popups(UIHeadlessHost host) => host.Application.WindowManager!.Popups.Count;
+
+    /// <summary>Finds <paramref name="needle"/> in the composited frame, or <c>(-1, -1)</c>.</summary>
+    private static (int Column, int Row) FindOnScreen(UIHeadlessHost host, string needle)
+    {
+        for (var row = 0; row < host.FrameBuffer.Rows; row++)
+        {
+            var column = host.GetRowText(row).IndexOf(needle, StringComparison.Ordinal);
+
+            if (column >= 0)
+                return (column, row);
+        }
+
+        return (-1, -1);
+    }
+
+    private static bool IsBold(UIHeadlessHost host, int column, int row)
+        => (host.GetCell(column, row).Style.Attributes & TextAttributes.Bold) != 0;
 
     // ───────────────────────────── BC1 — the trail ─────────────────────────────
 
@@ -275,16 +293,40 @@ public sealed class Section46_BreadcrumbBar
         host.RunUntilIdle();
 
         Assert.Equal(1, Popups(host));
-        var menu = bar.DropDownPart!;
-        Assert.Equal(2, menu.Items.Count); // exactly the two elided ancestors
-        Assert.Equal("Home", Assert.IsType<MenuItem>(menu.Items[0]).Header);
-        Assert.Equal("Projects", Assert.IsType<MenuItem>(menu.Items[1]).Header);
+        var picker = bar.DropDownPart!;
+        Assert.Equal(2, picker.MatchCount); // exactly the two elided ancestors …
+        Assert.Equal(["Home", "Projects"], picker.Entries.Select(e => e.Item.Display)); // … in TRAIL order
 
-        host.SendKey(Key.Enter); // the menu focused its first item on open
+        // The picker never takes focus: the "…" chip keeps it and drives the list through its PreviewKeyDown.
+        Assert.Same(bar.OverflowChipPart, UIApplication.Current!.FocusManager.FocusedElement);
+
+        host.SendKey(Key.Enter); // the picker opened with its first row highlighted
         host.RunUntilIdle();
 
         Assert.Equal([0], activated);
-        Assert.Equal(0, Popups(host)); // a leaf invoke dismisses the menu
+        Assert.Equal(0, Popups(host)); // a pick dismisses the list
+    }
+
+    [Fact] // BC6b: the overflow list keeps TRAIL order, not alphabetical order — it is a path prefix, not a sibling set
+    public void BC6b_OverflowListKeepsTrailOrder()
+    {
+        // "zulu" before "alpha" is the whole point: sorting an ordered path by name would destroy the one
+        // thing it means. The bar pins it by stamping SortGroup with the segment's DEPTH, which the picker
+        // ranks on before anything else — so the order survives a fuzzy filter too.
+        var (host, bar) = Show(width: 14, items: ["zulu", "alpha", "mike", "leaf"]);
+        using var _ = host;
+
+        Assert.True(bar.HasOverflow);
+        bar.OverflowChipPart!.Focus();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        var picker = bar.DropDownPart!;
+        Assert.Equal(["zulu", "alpha", "mike"], picker.Entries.Select(e => e.Item.Display));
+
+        host.SendText("l"); // "zulu" and "alpha" both carry an 'l'; "mike" drops out — and depth still leads
+        host.RunUntilIdle();
+        Assert.Equal(["zulu", "alpha"], picker.Entries.Select(e => e.Item.Display));
     }
 
     // ───────────────────────────── BC7 — one tab stop ─────────────────────────────
@@ -463,9 +505,9 @@ public sealed class Section46_BreadcrumbBar
 
         Assert.Equal([0], openedFor);
         Assert.Equal(1, Popups(host));
-        Assert.Equal(2, bar.DropDownPart!.Items.Count);
+        Assert.Equal(["docs", "src"], bar.DropDownPart!.Entries.Select(e => e.Item.Display));
 
-        host.SendKey(Key.Enter); // the menu opened focused on its first entry
+        host.SendKey(Key.Enter); // the list opened with its first row highlighted
         host.RunUntilIdle();
 
         Assert.Equal([("Home", (object?) "docs")], picked);
@@ -728,6 +770,263 @@ public sealed class Section46_BreadcrumbBar
 
         Assert.Equal(0, Popups(host));
         Assert.Equal(0, activated); // and it did NOT fall through to activating the chip
+    }
+
+    // ───────────────────────────── BC13–BC16 — the drop-down IS a picker ─────────────────────────────
+
+    [Fact] // BC13: the child list SCROLLS — the whole reason the drop-downs left ContextMenu behind
+    public void BC13_LargeChildListScrolls()
+    {
+        // A ContextMenu is not scrollable, so a directory with five hundred folders produced a menu taller
+        // than the terminal with no way to reach the bottom of it. A CompletionList is a ListBox: the picker
+        // caps at MaxVisibleItems and the highlight drags the viewport along behind it.
+        var host = UIHeadlessHost.Create(
+            new UIHeadlessHostOptions
+            {
+                InitialSize = new Size(60, 24),
+                Capabilities = HeadlessCapabilities.KittyTruecolor,
+                CaptureFrameBytes = true
+            });
+
+        using var _ = host;
+
+        var bar = new BreadcrumbBar
+        {
+            ItemsSource = Trail,
+            Width = 40,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+
+        host.ShowRoot(bar);
+        host.RunUntilIdle();
+
+        bar.DropDownOpening += (_, e) =>
+        {
+            for (var i = 0; i < 500; i++)
+                e.Children.Add($"folder-{i:000}");
+        };
+
+        Chip(bar, 0).Focus();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        var picker = bar.DropDownPart!;
+        Assert.Equal(500, picker.MatchCount);
+        Assert.Equal(12, picker.MaxVisibleItems); // the theme's cap, in ROWS — one row is one terminal cell
+
+        // The window opens on the first rows and the rest of the list is genuinely off-screen.
+        Assert.True(FindOnScreen(host, "folder-000").Row >= 0);
+        Assert.Equal(-1, FindOnScreen(host, "folder-020").Row);
+
+        for (var i = 0; i < 20; i++)
+            host.SendKey(Key.DownArrow);
+
+        host.RunUntilIdle();
+
+        Assert.Equal(20, picker.SelectedIndex);
+        Assert.True(FindOnScreen(host, "folder-020").Row >= 0); // driven past the window, the list scrolled …
+        Assert.Equal(-1, FindOnScreen(host, "folder-000").Row); // … and the rows it started on are gone
+    }
+
+    [Fact] // BC14: typing while the drop-down is open filters it FUZZILY, with the matched cells bold
+    public void BC14_TypingFiltersTheDropDownWithHighlight()
+    {
+        var (host, bar) = Show();
+        using var _ = host;
+
+        bar.DropDownOpening += (_, e) =>
+        {
+            e.Children.Add("source-images");
+            e.Children.Add("src");
+            e.Children.Add("tests");
+        };
+
+        Chip(bar, 0).Focus();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.Equal(3, bar.DropDownPart!.MatchCount);
+
+        host.SendText("src");
+        host.RunUntilIdle();
+
+        // "src" is a literal prefix of itself and a scattered subsequence of "source-images" (s…r,c);
+        // "tests" is gone. The prefix tier leads — this is the completion popup's ranking, not a StartsWith.
+        Assert.Equal(["src", "source-images"], bar.DropDownPart!.Entries.Select(e => e.Item.Display));
+
+        var (column, row) = FindOnScreen(host, "source-images");
+        Assert.True(column >= 0, "the filtered row never rendered");
+        Assert.True(IsBold(host, column, row));      // the matched 's' …
+        Assert.False(IsBold(host, column + 1, row)); // … and the unmatched 'o' beside it
+    }
+
+    [Fact] // BC15: entries are SORTED — by Display, ordinal-ignore-case, with SortGroup ahead of it
+    public void BC15_DropDownEntriesAreSorted()
+    {
+        var (host, bar) = Show();
+        using var _ = host;
+
+        bar.DropDownOpening += (_, e) =>
+        {
+            // Deliberately out of order and deliberately mixed-case: a host adds whatever its enumeration
+            // produced, and "Apple" must not sort miles away from "mango" just for being capitalized.
+            e.Children.Add("zebra");
+            e.Children.Add("Apple");
+            e.Children.Add("mango");
+            e.Children.Add(new CompletionItem("bin") { SortGroup = -1 });
+        };
+
+        Chip(bar, 0).Focus();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        // The bar sorts BEFORE handing the list over, because the picker deliberately preserves provider
+        // order for an empty pattern — "sorted with nothing typed" is arranged here, never assumed.
+        Assert.Equal(["bin", "Apple", "mango", "zebra"], bar.DropDownPart!.Entries.Select(e => e.Item.Display));
+    }
+
+    [Fact] // BC16: a host MAY fill Children with real CompletionItems — and gets that same instance back
+    public void BC16_HostSuppliedCompletionItemsKeepTheirChromeAndIdentity()
+    {
+        var (host, bar) = Show();
+        using var _ = host;
+
+        var folder = new CompletionItem("bin") { KindLabel = "folder", SortGroup = 0 };
+        var file = new CompletionItem("readme.md") { KindLabel = "file", SortGroup = 1 };
+
+        bar.DropDownOpening += (_, e) =>
+        {
+            e.Children.Add(file);     // out of order on purpose
+            e.Children.Add(folder);
+            e.Children.Add("assets"); // …and a PLAIN object in the same list still works, through ToString()
+        };
+
+        object? selected = null;
+        bar.ChildActivated += (_, e) => selected = e.SelectedChild;
+
+        Chip(bar, 0).Focus();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+
+        // SortGroup leads, so the host's grouping survives the bar's by-display sort: the file falls below
+        // both group-0 rows even though "readme.md" would otherwise sort between "assets" and "bin".
+        Assert.Equal(["assets", "bin", "readme.md"], bar.DropDownPart!.Entries.Select(e => e.Item.Display));
+        Assert.True(FindOnScreen(host, "folder").Row >= 0); // the item's own kind label is rendered, not swallowed
+
+        host.SendKey(Key.DownArrow); // onto "bin"
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        // The SAME instance the host added — the bar never reports a wrapper it built (BC12 pins the plain
+        // object case, which the file dialog and the gallery both depend on).
+        Assert.Same(folder, selected);
+    }
+
+    [Fact] // BC17: pressing a second chip's "▸" RE-ANCHORS the list under it, with that chip's children
+    public void BC17_OpeningASecondDropDownReAnchorsIt()
+    {
+        // The list is a Popup, and a Popup only PLACES on the closed→open edge — so moving it means closing
+        // and re-opening, which raises Closed, which drops the open list's state. Building the new entries
+        // before that close ran wiped them and left the second press showing nothing at all.
+        var (host, bar) = Show();
+        using var _ = host;
+
+        bar.DropDownOpening += (_, e) => e.Children.Add($"child-of-{e.Index}");
+
+        var first = Chip(bar, 0).SeparatorPart!.TranslateToWindow(0, 0);
+        host.SendClick(first.Column, first.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, Popups(host));
+        Assert.Equal("child-of-0", Assert.Single(bar.DropDownPart!.Entries).Item.Display);
+
+        var second = Chip(bar, 1).SeparatorPart!.TranslateToWindow(0, 0);
+        host.SendClick(second.Column, second.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal(1, Popups(host)); // one list, moved — not two stacked on each other
+        Assert.Equal("child-of-1", Assert.Single(bar.DropDownPart!.Entries).Item.Display);
+        Assert.Same(Chip(bar, 1), UIApplication.Current!.FocusManager.FocusedElement);
+
+        // …and it really drives the NEW anchor: Enter picks out of the second chip's list.
+        var picked = new List<object?>();
+        bar.ChildActivated += (_, e) => picked.Add(e.SelectedChild);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal(["child-of-1"], picked);
+        Assert.Equal(0, Popups(host));
+    }
+
+    [Fact] // BC18: an OUTSIDE press dismisses the list, even on dead space that takes no focus
+    public void BC18_AnOutsidePressDismissesTheDropDown()
+    {
+        // The picker is a chooser, not a hint over a field, so it light-dismisses like every other chooser in
+        // the framework. Only a FOCUS-taking press reaches the anchor's LostFocus, so without this a press on
+        // a label, a panel background or a dialog's chrome left the list floating with the keyboard still
+        // pointed at it — the one thing the ContextMenu it replaced always got right.
+        var host = UIHeadlessHost.Create(
+            new UIHeadlessHostOptions
+            {
+                InitialSize = new Size(60, 10),
+                Capabilities = HeadlessCapabilities.KittyTruecolor,
+                CaptureFrameBytes = true
+            });
+
+        using var _ = host;
+
+        var bar = new BreadcrumbBar
+        {
+            ItemsSource = Trail,
+            Width = 40,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+
+        var root = new Grid();
+        root.Children.Add(bar);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+
+        Chip(bar, 0).Focus();
+        host.SendKey(Key.DownArrow);
+        host.RunUntilIdle();
+        Assert.Equal(1, Popups(host));
+
+        host.SendClick(55, 9); // dead space: nothing focusable there, and nothing below the list either
+        host.RunUntilIdle();
+
+        Assert.Equal(0, Popups(host));
+        Assert.False(bar.DropDownPart!.IsOpen);
+        Assert.Null(bar.DropDownPart!.Anchor); // …and the picker let go of the chip it was driving
+    }
+
+    [Fact] // BC19: a drop-down requested before the bar's first measure still comes up
+    public void BC19_DropDownWorksBeforeTheFirstLayoutPass()
+    {
+        // PART_DropDown reaches its Popup surface through its OWN template, and CompletionPopup returns
+        // silently when that part is missing — so realizing the bar's template is only half the job. The
+        // affordance used to come up empty and never recover, because the later template expansion only
+        // re-opens a popup that already believes it is open. (The ContextMenu it replaced built its surface
+        // on demand and needed no template at all, which is how the gap survived the swap.)
+        using var host = UIHeadlessHost.Create(
+            new UIHeadlessHostOptions { InitialSize = new Size(60, 10), Capabilities = HeadlessCapabilities.KittyTruecolor });
+
+        var bar = new BreadcrumbBar { ItemsSource = Trail, Width = 40, Height = 1 };
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+
+        host.ShowRoot(bar);
+        bar.RequestDropDownAt(0); // deliberately BEFORE the first measure/arrange pass
+        host.RunUntilIdle();
+
+        Assert.Equal(1, Popups(host));
+        Assert.True(bar.DropDownPart!.IsOpen);
+        Assert.Equal("docs", Assert.Single(bar.DropDownPart!.Entries).Item.Display);
     }
 
     private sealed class RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null) : ICommand

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Globalization;
 
 using Cursorial.Input;
 using Cursorial.UI.Input;
@@ -40,6 +41,33 @@ namespace Cursorial.UI.Controls;
 /// <see cref="Popup"/>, which measures 0×0) and it is not hit-testable, so it never covers the field
 /// it decorates.
 /// </para>
+/// <para>
+/// <b>Picker mode.</b> Set <see cref="Anchor"/> instead of <see cref="Target"/> and the same control
+/// becomes a target-LESS chooser: a scrollable, fuzzy-filtered list hanging off any element at all (a
+/// breadcrumb chip, a toolbar button). <see cref="Target"/> plays three roles at once — the placement
+/// anchor, the key source, and the text being edited — and a picker wants the first two without the
+/// third, which is precisely the split <see cref="Anchor"/> makes. Everything else is the same
+/// architecture: the popup stays non-focusable, focus stays on the anchor, and the anchor's
+/// <see cref="UIElement.PreviewKeyDown"/> drives it. The one mechanical departure is light dismiss — a
+/// picker takes it, a text-mode hint does not; see <c>UpdateDismissPolicy</c> for why the field is the
+/// whole of the difference.
+/// </para>
+/// <para>
+/// The one thing the popup has to grow for it is a <see cref="Pattern"/> of its own. In text mode the
+/// pattern comes back from the provider (it is a slice of the field's text, and the field is what echoes
+/// it); a picker has no field, so printable keys typed while it is open append to <see cref="Pattern"/>,
+/// <c>Backspace</c> deletes from it, and it is <see cref="Pattern"/> that drives the same
+/// <see cref="FuzzyMatcher"/> filtering, ranking and highlighting. It is also shown in the header
+/// (<c>doc · 3 matches</c>) — a filter the user cannot see is a filter the user cannot correct.
+/// </para>
+/// <para>
+/// Two picker-mode divergences are deliberate, and both exist so the user can always get back out of a
+/// filter. Filtering down to <b>nothing</b> keeps the popup open on <c>no matches</c> rather than closing
+/// it — text mode can close because the field still holds the text, but here closing would throw the
+/// typed pattern away and the next keystroke would have nowhere to land. And <c>Escape</c> peels the
+/// <b>pattern</b> off first, closing only once it is empty. <c>Tab</c> is not an accept: outside a text
+/// field it is the focus gesture, and focus leaving the anchor closes the picker anyway.
+/// </para>
 /// </summary>
 [TemplatePart(PartPopup, typeof(Popup), IsRequired = true)]
 [TemplatePart(PartList, typeof(CompletionList), IsRequired = true)]
@@ -68,6 +96,19 @@ public class CompletionPopup : Control
     /// <summary>The <see cref="TextBox"/> being completed — the placement anchor, the key source, and the text this popup edits.</summary>
     public static readonly StyledProperty<TextBox?> TargetProperty =
         UIProperty.Register<CompletionPopup, TextBox?>(nameof(Target), changed: OnTargetChanged);
+
+    /// <summary>
+    /// The element a target-less <b>picker</b> hangs from: the placement anchor <em>and</em> the key source,
+    /// with none of <see cref="Target"/>'s third role (there is no text to edit).
+    /// <para>
+    /// <see cref="Target"/> wins outright. Its three roles are indivisible — the field it completes is the
+    /// thing it must be placed under, must read keys from, and must splice into — so with a
+    /// <see cref="Target"/> set this property is dormant and the control behaves exactly as it did before
+    /// picker mode existed.
+    /// </para>
+    /// </summary>
+    public static readonly StyledProperty<UIElement?> AnchorProperty =
+        UIProperty.Register<CompletionPopup, UIElement?>(nameof(Anchor), changed: OnAnchorChanged);
 
     /// <summary>The completion seam. <see langword="null"/> ⇒ the popup never opens.</summary>
     public static readonly StyledProperty<ICompletionProvider?> ProviderProperty =
@@ -106,9 +147,19 @@ public class CompletionPopup : Control
     public static readonly DirectProperty<CompletionPopup, int> MatchCountProperty =
         UIProperty.RegisterDirect<CompletionPopup, int>(nameof(MatchCount), static c => c._matchCount);
 
-    /// <summary>The header's text (<c>"1 match"</c> / <c>"7 matches"</c>) — what the default template's <c>PART_Header</c> shows.</summary>
+    /// <summary>The header's text (<c>"1 match"</c> / <c>"7 matches"</c>, prefixed by the picker's
+    /// <see cref="Pattern"/>) — what the default template's <c>PART_Header</c> shows.</summary>
     public static readonly DirectProperty<CompletionPopup, string?> HeaderTextProperty =
         UIProperty.RegisterDirect<CompletionPopup, string?>(nameof(HeaderText), static c => c._headerText);
+
+    /// <summary>
+    /// The picker's own filter pattern — what the user has typed into a popup that has no field to type
+    /// into. Empty in text mode, where the pattern belongs to the provider's
+    /// <see cref="CompletionContext.Pattern"/> instead. Writing it re-filters an open picker.
+    /// </summary>
+    public static readonly DirectProperty<CompletionPopup, string> PatternProperty =
+        UIProperty.RegisterDirect<CompletionPopup, string>(
+            nameof(Pattern), static c => c._pattern, static (c, v) => c.Pattern = v, unsetValue: "");
 
     private readonly List<CompletionEntry> _entries = [];
 
@@ -116,10 +167,12 @@ public class CompletionPopup : Control
     private CompletionList? _list;
     private TextBlock? _header;
     private TextBlock? _footer;
+    private UIElement? _hookedAnchor; // the Anchor whose keys/focus we are currently listening to (picker mode only)
 
     private bool _isOpen;
     private int _matchCount;
     private string? _headerText;
+    private string _pattern = "";
     private int _replaceStart;
     private int _replaceEnd;
 
@@ -160,6 +213,9 @@ public class CompletionPopup : Control
     /// <inheritdoc cref="TargetProperty"/>
     public TextBox? Target { get => GetValue(TargetProperty); set => SetValue(TargetProperty, value); }
 
+    /// <inheritdoc cref="AnchorProperty"/>
+    public UIElement? Anchor { get => GetValue(AnchorProperty); set => SetValue(AnchorProperty, value); }
+
     /// <inheritdoc cref="ProviderProperty"/>
     public ICompletionProvider? Provider { get => GetValue(ProviderProperty); set => SetValue(ProviderProperty, value); }
 
@@ -187,6 +243,25 @@ public class CompletionPopup : Control
     /// <inheritdoc cref="HeaderTextProperty"/>
     public string? HeaderText => _headerText;
 
+    /// <inheritdoc cref="PatternProperty"/>
+    public string Pattern
+    {
+        get => _pattern;
+        set
+        {
+            if (SetPattern(value))
+                Update(CompletionTrigger.TextChanged, allowOpen: false); // a filter edit refines a session; it never starts one
+        }
+    }
+
+    /// <summary>
+    /// Whether this popup is a target-less <b>picker</b> (an <see cref="Anchor"/> and no
+    /// <see cref="Target"/>) rather than a text-field completion overlay. A plain CLR property on purpose:
+    /// it is derived from the two properties that are already observable, and it can only change when one of
+    /// them is written.
+    /// </summary>
+    public bool IsPicker => Target is null && Anchor is not null;
+
     /// <summary>
     /// The commit hook — the whole point of the control's generality. It receives the accepted
     /// candidate, the field's text, the span the session owns and the gesture that accepted, and
@@ -198,6 +273,14 @@ public class CompletionPopup : Control
     /// expression editor. A path bar overrides it to make Enter on a FOLDER insert a trailing
     /// separator and keep completing, while Enter on a FILE commits and closes — which is precisely
     /// the divergence the <see cref="CompletionAcceptReason"/> parameter exists to express.
+    /// </para>
+    /// <para>
+    /// <b>Never consulted in picker mode.</b> Every member of <see cref="CompletionAccept"/> and
+    /// <see cref="CompletionCommit"/> is about text, and a picker has none; handing a hook a <c>Text</c> of
+    /// <c>""</c> over a span of <c>[0,0)</c> just to keep the shape would be a lie the host would have to
+    /// pattern-match its way around. A picker reports through <see cref="Picked"/> instead, whose args carry
+    /// the same "does this end the session?" decision as
+    /// <see cref="CompletionPickedEventArgs.KeepOpen"/>.
     /// </para>
     /// </summary>
     public Func<CompletionAccept, CompletionCommit>? CommitHandler { get; set; }
@@ -234,8 +317,16 @@ public class CompletionPopup : Control
     /// <summary>Raised after the popup closes, for any reason (accept, Escape, no candidates, detach).</summary>
     public event EventHandler? Closed;
 
-    /// <summary>Raised after a candidate has been accepted and the commit written to the target.</summary>
+    /// <summary>Raised after a candidate has been accepted and the commit written to the target.
+    /// Text mode only — a picker writes to no target, and reports through <see cref="Picked"/> instead.</summary>
     public event EventHandler<CompletionCommittedEventArgs>? Committed;
+
+    /// <summary>
+    /// Raised when a candidate is chosen out of a <b>picker</b> (an <see cref="Anchor"/> and no
+    /// <see cref="Target"/>) — the whole answer, since nothing was spliced anywhere. A handler may set
+    /// <see cref="CompletionPickedEventArgs.KeepOpen"/> to keep the picker up on a cleared pattern.
+    /// </summary>
+    public event EventHandler<CompletionPickedEventArgs>? Picked;
 
     // Test/inspection seams (template-private parts).
     internal Popup? PopupPart => _popup;
@@ -250,6 +341,27 @@ public class CompletionPopup : Control
     /// can never be applied to a stale one.
     /// </summary>
     public void Refresh() => Update(CompletionTrigger.Explicit, allowOpen: true);
+
+    /// <summary>
+    /// Opens a <b>picker</b> on a cleared <see cref="Pattern"/>, returning whether it came up (a provider
+    /// with nothing to offer leaves it closed). Picker mode only: a text-mode session is started by typing
+    /// in the field or by <see cref="Refresh"/>, never by a host command, because "open a completion list
+    /// the user did not ask for" is not a gesture a text field has.
+    /// <para>
+    /// The pattern reset is the point of having this at all rather than making the host write
+    /// <c>Pattern = ""</c> then <see cref="Refresh"/>: a picker that reopened still filtered by whatever
+    /// was typed into it last time would show a mystery subset of a list the user just asked to see whole.
+    /// </para>
+    /// </summary>
+    public bool Open()
+    {
+        if (!IsPicker)
+            return false;
+
+        SetPattern("");
+        Update(CompletionTrigger.Explicit, allowOpen: true);
+        return _isOpen;
+    }
 
     /// <summary>
     /// Closes the popup, keeping whatever the user has typed. This is what Escape does — dismissing a
@@ -267,15 +379,19 @@ public class CompletionPopup : Control
 
     /// <summary>
     /// Accepts <paramref name="entry"/>, running it through <see cref="CommitHandler"/> and writing the
-    /// result to the target. Returns <see langword="false"/> when the popup is closed, the entry is
-    /// <see langword="null"/>, or there is no target.
+    /// result to the target — or, in picker mode, reporting it through <see cref="Picked"/> and splicing
+    /// nothing. Returns <see langword="false"/> when the popup is closed, the entry is
+    /// <see langword="null"/>, or there is neither a target nor an anchor.
     /// </summary>
     /// <param name="entry">The row to accept — normally one of <see cref="Entries"/>.</param>
-    /// <param name="reason">The gesture to report to the commit hook.</param>
+    /// <param name="reason">The gesture to report to the commit hook / the pick event.</param>
     public bool Accept(CompletionEntry? entry, CompletionAcceptReason reason = CompletionAcceptReason.Programmatic)
     {
-        if (!_isOpen || entry is null || _accepting || Target is not { } target)
+        if (!_isOpen || entry is null || _accepting)
             return false;
+
+        if (Target is not { } target)
+            return IsPicker && AcceptPicked(entry, reason);
 
         var text = target.Text;
         var start = Math.Clamp(_replaceStart, 0, text.Length);
@@ -310,6 +426,43 @@ public class CompletionPopup : Control
         return true;
     }
 
+    /// <summary>
+    /// The picker's accept: report the pick and get out of the way. There is no text to write, so the
+    /// whole of the text path's clamping / splicing / caret arithmetic is not merely skipped but absent.
+    /// </summary>
+    private bool AcceptPicked(CompletionEntry entry, CompletionAcceptReason reason)
+    {
+        var args = new CompletionPickedEventArgs(entry.Item, reason);
+
+        // The same fence as the text path, for a related reason. A host answers a pick by doing something
+        // structural — navigating, rebuilding the tree the ANCHOR lives in — and detaching the anchor fires
+        // its LostFocus, which closes this session out from under the accept. Closing mid-accept is correct
+        // (the surface must never outlive what it hangs from); re-QUERYING mid-accept is not, and the fence
+        // is what stops the KeepOpen branch below from racing a session the handler already tore down.
+        _accepting = true;
+
+        try
+        {
+            Picked?.Invoke(this, args);
+        }
+        finally
+        {
+            _accepting = false;
+        }
+
+        if (args.KeepOpen)
+        {
+            SetPattern(""); // the drill-in starts over: the pattern that found the pick cannot filter its children
+            Update(CompletionTrigger.Continued, allowOpen: true);
+        }
+        else
+        {
+            CloseSession();
+        }
+
+        return true;
+    }
+
     // ───────────────────────────── template ─────────────────────────────
 
     /// <inheritdoc/>
@@ -333,10 +486,8 @@ public class CompletionPopup : Control
 
         if (_popup is not null)
         {
-            // A hint overlay is not light-dismissable: the user is typing in the field, and an outside
-            // press is how they DISMISS the field, not the hint — the field's own focus-out closes us.
-            _popup.StaysOpen = true;
-            _popup.PlacementTarget = Target;
+            UpdateDismissPolicy();
+            _popup.PlacementTarget = AnchorElement;
             _popup.Closed += OnPopupClosed;
         }
 
@@ -380,7 +531,11 @@ public class CompletionPopup : Control
         base.OnDetachedFromTree(in e);
     }
 
-    // ───────────────────────────── the target wiring ─────────────────────────────
+    // ───────────────────────────── the target / anchor wiring ─────────────────────────────
+
+    /// <summary>What the popup hangs from and reads keys from: the <see cref="Target"/> when there is one,
+    /// otherwise the picker's <see cref="Anchor"/>.</summary>
+    private UIElement? AnchorElement => Target ?? Anchor;
 
     private static void OnTargetChanged(UIObject sender, TextBox? oldValue, TextBox? newValue)
     {
@@ -390,6 +545,25 @@ public class CompletionPopup : Control
         popup.UnhookTarget(oldValue);
         popup.CloseSession(); // the old field's session cannot mean anything on the new one
         popup.HookTarget(newValue);
+        popup.UpdateAnchorHook(); // gaining/losing a Target is what arms/disarms picker mode
+
+        if (popup._popup is not null)
+            popup._popup.PlacementTarget = popup.AnchorElement;
+    }
+
+    private static void OnAnchorChanged(UIObject sender, UIElement? oldValue, UIElement? newValue)
+    {
+        if (sender is not CompletionPopup popup)
+            return;
+
+        popup.UpdateAnchorHook();
+
+        // With a Target set the Anchor is dormant, and writing a dormant property must not disturb a live
+        // text-mode session — that is what makes picker mode purely ADDITIVE for every existing consumer.
+        if (popup.Target is not null)
+            return;
+
+        popup.CloseSession(); // the old anchor's session cannot mean anything on the new one
 
         if (popup._popup is not null)
             popup._popup.PlacementTarget = newValue;
@@ -427,6 +601,30 @@ public class CompletionPopup : Control
         target.SelectionChanged -= OnTargetSelectionChanged;
         target.LostFocus -= OnTargetLostFocus;
         target.PreviewKeyDown -= OnTargetPreviewKeyDown;
+    }
+
+    // The picker's half of the wiring: focus-out and keys, and neither of the two TEXT channels — an anchor
+    // has no text to change and no caret to move, which is the whole difference between the two modes.
+    private void UpdateAnchorHook()
+    {
+        var wanted = Target is null ? Anchor : null;
+
+        if (ReferenceEquals(wanted, _hookedAnchor))
+            return;
+
+        if (_hookedAnchor is not null)
+        {
+            _hookedAnchor.LostFocus -= OnAnchorLostFocus;
+            _hookedAnchor.PreviewKeyDown -= OnAnchorPreviewKeyDown;
+        }
+
+        _hookedAnchor = wanted;
+
+        if (_hookedAnchor is not null)
+        {
+            _hookedAnchor.LostFocus += OnAnchorLostFocus;
+            _hookedAnchor.PreviewKeyDown += OnAnchorPreviewKeyDown;
+        }
     }
 
     private void OnTargetTextChanged(object? sender, RoutedEventArgs e) => Update(CompletionTrigger.TextChanged, allowOpen: true);
@@ -483,6 +681,110 @@ public class CompletionPopup : Control
         e.Handled = true;
     }
 
+    private void OnAnchorLostFocus(object? sender, FocusChangedEventArgs e)
+    {
+        // Focus IS the picker's lifetime: the surface is non-focusable, so the anchor holding focus is the
+        // only reason keys reach it at all. Losing focus therefore means the picker can no longer be driven,
+        // and a list nobody can drive must not stay on screen.
+        if (Anchor is { IsKeyboardFocusWithin: true })
+            return;
+
+        CloseSession();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────
+    // The picker's keymap. Same tunnel-on-the-anchor mechanism as text mode, with three departures that
+    // all come from the same fact: the anchor is a chip or a button, not an editor, so there is no field
+    // to "let the key fall through to".
+    //
+    //  • Printable keys and Backspace EDIT THE PATTERN instead of the field. Space included — a folder
+    //    called "My Documents" is unreachable otherwise, and swallowing it is also what stops the
+    //    ButtonBase underneath from treating the space as an activation.
+    //  • Home/End are borrowed (first/last candidate). Text mode deliberately refuses to — there they are
+    //    caret motion the user needs far more often — but a picker has no caret to move.
+    //  • Enter is claimed even when nothing is highlighted. Letting it through would activate the anchor
+    //    button, i.e. a filter that matched nothing would silently turn Enter into a navigation.
+    //
+    // Tab is NOT an accept here (it is in text mode, where it means "complete this far"): outside a field
+    // Tab is the focus gesture, and letting it move focus closes the picker through OnAnchorLostFocus,
+    // which is exactly what a user pressing Tab meant.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────
+    private void OnAnchorPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!_isOpen || e.Handled)
+            return;
+
+        if (TryTypePattern(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Modifier-free only, for the text-mode reason: an overlay may borrow the plain keys, never the
+        // chorded ones (Shift+Tab must still walk the tab order, Ctrl+Home must still reach the host).
+        if (e.Modifiers != KeyModifiers.None)
+            return;
+
+        var page = VisibleRowCapacity();
+
+        switch (e.Key)
+        {
+            case Key.DownArrow: MoveSelection(1); break;
+            case Key.UpArrow: MoveSelection(-1); break;
+            case Key.PageDown: MoveSelection(page); break;
+            case Key.PageUp: MoveSelection(-page); break;
+            case Key.Home: SelectIndex(0); break;
+            case Key.End: SelectIndex(_entries.Count - 1); break;
+            case Key.Backspace: BackspacePattern(); break;
+
+            // Escape peels the FILTER off before it dismisses. The pattern is invisible to everything but
+            // this popup's header, so an Escape that always closed would leave a user who mistyped one
+            // character choosing between backspacing blind and losing the list — and the state that most
+            // provokes an Escape ("no matches") is exactly the one where the pattern is the problem.
+            case Key.Escape when _pattern.Length > 0: Pattern = ""; break;
+            case Key.Escape: CloseSession(); break;
+
+            case Key.Enter: Accept(SelectedEntry, CompletionAcceptReason.Enter); break;
+
+            default: return;
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>Whether <paramref name="e"/> is a printable keystroke, and appends it to the pattern if so.</summary>
+    private bool TryTypePattern(KeyEventArgs e)
+    {
+        // The dispatcher's own TextInput rule (§7.5 step 7): Shift is part of typing, everything else is a
+        // chord. Control characters are filtered because a terminal delivers some of them as Key.Character.
+        if (e.Key != Key.Character || e.Text.IsEmpty || (e.Modifiers & ~KeyModifiers.Shift) != KeyModifiers.None)
+            return false;
+
+        var typed = e.Text.Span;
+
+        if (char.IsControl(typed[0]))
+            return false;
+
+        Pattern = _pattern + typed.ToString();
+        return true;
+    }
+
+    private void BackspacePattern()
+    {
+        if (_pattern.Length == 0)
+            return;
+
+        // One TEXT ELEMENT, not one char: a pattern can hold surrogate pairs and combining marks, and
+        // lopping a char off the end of either leaves a broken cluster the matcher would then filter on.
+        var enumerator = StringInfo.GetTextElementEnumerator(_pattern);
+        var lastStart = 0;
+
+        while (enumerator.MoveNext())
+            lastStart = enumerator.ElementIndex;
+
+        Pattern = _pattern[..lastStart];
+    }
+
     // ───────────────────────────── the session ─────────────────────────────
 
     /// <summary>
@@ -499,14 +801,33 @@ public class CompletionPopup : Control
         if (!allowOpen && !_isOpen)
             return;
 
-        if (Target is not { } target || Provider is not { } provider)
+        if (Provider is not { } provider)
         {
             CloseSession();
             return;
         }
 
-        var text = target.Text;
-        var caret = Math.Clamp(target.CaretIndex, 0, text.Length);
+        string text;
+        int caret;
+
+        if (Target is { } target)
+        {
+            text = target.Text;
+            caret = Math.Clamp(target.CaretIndex, 0, text.Length);
+        }
+        else if (Anchor is { IsAttachedToTree: true })
+        {
+            // Picker mode queries with its OWN pattern standing in for the field's text, caret at the end.
+            // Reusing the one seam rather than growing a second "just give me items" one is what keeps the
+            // async story (return what you have, call Refresh from the continuation) true for both modes.
+            text = _pattern;
+            caret = text.Length;
+        }
+        else
+        {
+            CloseSession(); // no field to complete and no anchor to hang from
+            return;
+        }
 
         if (provider.GetCompletions(new CompletionQuery(text, caret, trigger)) is not { } context)
         {
@@ -516,7 +837,11 @@ public class CompletionPopup : Control
 
         RebuildEntries(context);
 
-        if (_entries.Count == 0)
+        // Filtering to nothing closes a TEXT session — the field still holds what was typed, so nothing is
+        // lost and an empty hint would just be noise. A PICKER has to stay up on "no matches" instead: the
+        // pattern lives only in this popup, so closing would throw it away, and there would be nowhere for
+        // the Backspace that fixes the typo to land.
+        if (_entries.Count == 0 && !(_isOpen && IsPicker))
         {
             CloseSession();
             return;
@@ -526,7 +851,7 @@ public class CompletionPopup : Control
         _replaceEnd = Math.Clamp(context.ReplaceEnd, _replaceStart, text.Length);
 
         SetAndRaise(MatchCountProperty, ref _matchCount, _entries.Count);
-        SetAndRaise(HeaderTextProperty, ref _headerText, _entries.Count == 1 ? "1 match" : $"{_entries.Count} matches");
+        SetAndRaise(HeaderTextProperty, ref _headerText, ComposeHeaderText(_entries.Count));
 
         PushEntriesToList();
         UpdateChrome();
@@ -552,6 +877,7 @@ public class CompletionPopup : Control
         _replaceStart = 0;
         _replaceEnd = 0;
         _entries.Clear();
+        SetPattern(""); // a closed picker owns no filter — the next Open() must start from the whole list
         SetAndRaise(MatchCountProperty, ref _matchCount, 0);
         SetAndRaise(HeaderTextProperty, ref _headerText, null);
 
@@ -559,6 +885,26 @@ public class CompletionPopup : Control
             _list.ItemsSource = NoEntries; // drop the containers so a stale row can never flash on re-open
 
         SetOpenState(false);
+    }
+
+    /// <summary>Writes <see cref="Pattern"/> without re-filtering, returning whether it actually changed.</summary>
+    private bool SetPattern(string? value) => SetAndRaise(PatternProperty, ref _pattern, value ?? "");
+
+    /// <summary>
+    /// The header strip: <c>"7 matches"</c>, prefixed by the picker's filter when there is one
+    /// (<c>"doc · 3 matches"</c>). Text mode never sees the prefix (its pattern is echoed by the field
+    /// itself) and never sees the zero case (it closes instead), so its header is unchanged.
+    /// </summary>
+    private string ComposeHeaderText(int count)
+    {
+        var matches = count switch
+        {
+            0 => "no matches",
+            1 => "1 match",
+            _ => $"{count} matches"
+        };
+
+        return _pattern.Length > 0 && IsPicker ? $"{_pattern} · {matches}" : matches;
     }
 
     private void SetOpenState(bool value)
@@ -629,22 +975,43 @@ public class CompletionPopup : Control
         }
 
         _popup.Placement = placement;
-        _popup.PlacementTarget = Target;
+        _popup.PlacementTarget = AnchorElement;
+        UpdateDismissPolicy(); // the mode can have changed since the template was applied (Target/Anchor are writable)
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
         SetOpenState(true);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────
+    // Light dismiss is exactly where the two modes part company, and the reason is the field.
+    //
+    // A TEXT-mode hint is not light-dismissable: the user is typing in the field, and an outside press is
+    // how they dismiss the FIELD, not the hint — the field's own focus-out closes us, and swallowing that
+    // press to close a hint the user was not looking at would cost them the click they meant to spend.
+    //
+    // A PICKER has no field, so there is nothing for that argument to protect. It is a chooser the user
+    // opened deliberately, and every chooser in the framework (ContextMenu, ComboBox's list, MenuItem's
+    // submenu) goes away on an outside press. Without this, a press on non-focusable dead space — a label,
+    // a panel background, a dialog's chrome — left the list floating with the keyboard still pointed at it,
+    // because only a FOCUS-taking press reaches OnAnchorLostFocus. This is what the drop-downs had when
+    // they were ContextMenus, restored.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────
+    private void UpdateDismissPolicy()
+    {
+        if (_popup is not null)
+            _popup.StaysOpen = !IsPicker;
+    }
+
     private PlacementMode ChoosePlacement()
     {
-        if (UIApplication.Current?.WindowManager is not { } manager || Target is not { IsAttachedToTree: true } target)
+        if (UIApplication.Current?.WindowManager is not { } manager || AnchorElement is not { IsAttachedToTree: true } anchor)
             return PlacementMode.Bottom;
 
         // Screen space, not window space: a dialog's field is offset by its window's surface origin,
         // and the viewport the manager clamps against is the screen.
-        var surfaceTop = manager.SurfaceForElement(target)?.Top ?? 0;
-        var (_, windowRow) = target.TranslateToWindow(0, 0);
+        var surfaceTop = manager.SurfaceForElement(anchor)?.Top ?? 0;
+        var (_, windowRow) = anchor.TranslateToWindow(0, 0);
         var anchorTop = surfaceTop + windowRow;
-        var anchorBottom = anchorTop + target.Bounds.Rows;
+        var anchorBottom = anchorTop + anchor.Bounds.Rows;
 
         var wanted = VisibleRowCapacity() + (ShowHeader ? 1 : 0) + (ShowFooter ? 1 : 0) + ChromeRows;
         var roomBelow = manager.ScreenSize.Rows - anchorBottom;

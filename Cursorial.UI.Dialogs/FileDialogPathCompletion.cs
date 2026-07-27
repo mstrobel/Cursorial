@@ -34,6 +34,10 @@ internal sealed class FileDialogPathCompletionProvider : ICompletionProvider
     private readonly FileDialogViewModel _model;
     private readonly Action _requestRefresh;
 
+    // The last text this provider was queried with, so an empty final segment can tell "the user just typed the
+    // separator" from "the field arrived already ending in one". See the empty-segment rule in GetCompletions.
+    private string? _lastText;
+
     /// <summary>Creates the provider.</summary>
     /// <param name="model">The dialog's view-model — the base directory, the provider, and the listing cache.</param>
     /// <param name="requestRefresh">
@@ -55,6 +59,18 @@ internal sealed class FileDialogPathCompletionProvider : ICompletionProvider
         var text = query.Text;
         var caret = Math.Clamp(query.CaretIndex, 0, text.Length);
 
+        // Snapshot-and-advance FIRST, before any early return: several exits below (an unresolvable prefix, a
+        // directory not yet enumerated) answer null while the user is still mid-path, and leaving the tracker
+        // behind on those turns would make the next keystroke look like an edit-from-nowhere.
+        //
+        // Advance on TextChanged ONLY. One keystroke produces TWO queries — CaretMoved first, then
+        // TextChanged, both carrying the ALREADY-updated text — so advancing on both would let the CaretMoved
+        // turn consume the evidence and leave TextChanged comparing the new text against itself. That is
+        // precisely how the typed-separator test below silently never fires.
+        var previousText = _lastText;
+        if (query.Trigger is CompletionTrigger.TextChanged)
+            _lastText = text;
+
         var replaceStart = LastSeparator(text, caret) + 1;
         var replaceEnd = NextSeparator(text, caret);
         var pattern = text[replaceStart..caret];
@@ -69,15 +85,29 @@ internal sealed class FileDialogPathCompletionProvider : ICompletionProvider
         if (directory is not { Length: > 0 } || !_model.FileSystem.DirectoryExists(directory))
             return null; // nothing to complete against — the session closes
 
-        // ── an EMPTY segment does not open the popup by itself ────────────────────────────────────
+        // ── an EMPTY segment does not open the popup by itself — unless the user JUST TYPED the separator ──
         // Entering edit mode seeds the field with the current path plus its trailing separator, which is an
         // empty final segment — and without this rule that alone would drop the whole directory listing over
         // the dialog before the user has typed a thing, adding a phantom rung to the Escape ladder (design
         // page S2 → S3: the popup opens on ↓, Ctrl+Space, or Tab, never on arrival). An EXPLICIT request
         // still opens it, and so does CONTINUED — that one IS the folder drill, where showing the level you
         // just stepped into is the entire point.
-        if (pattern.Length == 0 && query.Trigger is CompletionTrigger.TextChanged or CompletionTrigger.CaretMoved)
+        //
+        // But "arrived ending in a separator" and "the user just typed one" produce an identical query, and
+        // suppressing both broke the second: a user who finishes a segment by hand instead of accepting it
+        // from the list, then types '/', got the session CLOSED — while accepting that same folder from the
+        // list drills in and keeps completing (KeepOpen ⇒ Continued). Two routes to the same state, diverging.
+        // Typing the separator IS the drill gesture, so it is treated as one.
+        var typedSeparator = query.Trigger is CompletionTrigger.TextChanged
+                             && caret > 0
+                             && IsSeparator(text[caret - 1])
+                             && IsSingleInsertionAt(previousText, text, caret);
+
+        if (pattern.Length == 0 && !typedSeparator &&
+            query.Trigger is CompletionTrigger.TextChanged or CompletionTrigger.CaretMoved)
+        {
             return null;
+        }
 
         if (_model.TryGetCachedListing(directory) is not { } listing)
         {
@@ -140,6 +170,26 @@ internal sealed class FileDialogPathCompletionProvider : ICompletionProvider
     // day and a path bar that stops completing the moment they do is worse than useless.
 
     private static bool IsSeparator(char c) => c is '/' or '\\';
+
+    /// <summary>
+    /// Whether <paramref name="text"/> is <paramref name="previous"/> with exactly ONE character inserted
+    /// ending at <paramref name="caret"/> — i.e. the user typed a single key, rather than the field being
+    /// seeded, pasted into, or edited elsewhere.
+    /// </summary>
+    /// <remarks>
+    /// A paste of a whole path that happens to end in a separator grows the text by more than one character
+    /// and so does NOT open the popup, which matches the arrival rule: a path the user did not type their way
+    /// into should not drop a listing over the dialog unasked.
+    /// </remarks>
+    private static bool IsSingleInsertionAt(string? previous, string text, int caret)
+    {
+        if (previous is null || text.Length != previous.Length + 1 || caret < 1)
+            return false;
+
+        // Everything before the inserted character, and everything after it, must be untouched.
+        return text.AsSpan(0, caret - 1).SequenceEqual(previous.AsSpan(0, caret - 1))
+            && text.AsSpan(caret).SequenceEqual(previous.AsSpan(caret - 1));
+    }
 
     private static int LastSeparator(string text, int caret)
     {

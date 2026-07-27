@@ -573,4 +573,37 @@ public sealed class FileDialogViewModelTests
         Assert.True(acceptRaised > 0);
         Assert.True(model.AcceptCommand.CanExecute(null));
     }
+
+    // ── the home collapse (display only) ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ToDisplayPath_CollapsesHome()
+    {
+        using var model = await OpenAsync();
+
+        Assert.Equal("~/Projects/assets", model.ToDisplayPath("/home/ada/Projects/assets"));
+        Assert.Equal("~", model.ToDisplayPath("/home/ada"));
+        Assert.Equal("~", model.ToDisplayPath("/home/ada/"));   // a trailing separator is not a segment
+    }
+
+    [Fact] // only home itself, and only on a SEGMENT boundary
+    public async Task ToDisplayPath_LeavesEverythingElseAlone()
+    {
+        using var model = await OpenAsync();
+
+        Assert.Equal("/mnt/cloud", model.ToDisplayPath("/mnt/cloud"));
+        Assert.Equal("/home", model.ToDisplayPath("/home"));            // the PARENT of home is not home
+        Assert.Equal("/home/adam", model.ToDisplayPath("/home/adam"));  // a string prefix of home is not home
+        Assert.Equal("", model.ToDisplayPath(""));
+    }
+
+    [Fact] // display only — a "~" path resolves with no un-collapsing step, which is why there is no parse half
+    public async Task TildePath_ResolvesBackToTheRealDirectory()
+    {
+        using var model = await OpenAsync();
+
+        var displayed = model.ToDisplayPath(model.CurrentDirectory);
+        Assert.StartsWith("~", displayed);
+        Assert.Equal(model.CurrentDirectory, model.FileSystem.ResolvePath(displayed, model.CurrentDirectory));
+    }
 }

@@ -178,6 +178,43 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <summary>The hierarchy every operation goes through.</summary>
     public IFileSystemProvider FileSystem => _fileSystem;
 
+    /// <summary>
+    /// <paramref name="path"/> as it should be SHOWN to the user: the home directory collapsed to <c>~</c>, the
+    /// shell convention every terminal user already reads (the design page's <c>~/Projects/assets/</c>). A path
+    /// outside home, or a provider with no home place, comes back unchanged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Display only — there is no matching parse step, because both providers' <c>ResolvePath</c> already expand
+    /// a leading <c>~</c>. That asymmetry is the point: the text the user edits is the text they typed, and a
+    /// path they type with <c>~</c> resolves whether or not it was ever collapsed for them.
+    /// </para>
+    /// <para>
+    /// Compared with <see cref="StringComparison.Ordinal"/>, since the home path and
+    /// <see cref="CurrentDirectory"/> both come from the same provider and so share its casing. On a
+    /// case-insensitive platform a path that reached the dialog with different casing simply does not collapse
+    /// — a cosmetic miss, never a wrong path.
+    /// </para>
+    /// </remarks>
+    /// <param name="path">An absolute, provider-rooted path.</param>
+    public string ToDisplayPath(string path)
+    {
+        if (string.IsNullOrEmpty(path) || _fileSystem.GetPlacePath(FileSystemPlace.Home) is not { Length: > 0 } home)
+            return path;
+
+        var separator = _fileSystem.DirectorySeparator;
+        var trimmedHome = home.TrimEnd(separator);
+        if (trimmedHome.Length == 0)
+            return path; // home IS the root; collapsing it would turn every path into "~/…" and say nothing
+
+        if (string.Equals(path.TrimEnd(separator), trimmedHome, StringComparison.Ordinal))
+            return "~";
+
+        return path.StartsWith(trimmedHome + separator, StringComparison.Ordinal)
+            ? string.Concat("~", path.AsSpan(trimmedHome.Length))
+            : path;
+    }
+
     /// <summary>The type-filter rows, in selector order. Never empty — an empty request list becomes a lone
     /// <see cref="FileDialogFilter.AllFiles"/>.</summary>
     public IReadOnlyList<FileDialogFilter> Filters { get; }

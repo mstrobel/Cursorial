@@ -569,8 +569,12 @@ internal sealed class FileDialogView
     {
         // Seeded WITH the trailing separator so the very first keystroke is already completing a new segment
         // (the design page's "~/Projects/assets/te" state), and pre-selected by the bar so typing replaces.
+        // Home collapses to "~" for the same reason the chips show a place name rather than "/home/ada": the
+        // path is there to be read and retyped, and nobody types their home directory out in full. It round-
+        // trips for free — both providers' ResolvePath expand a leading "~", so a committed or completed path
+        // needs no un-collapsing step.
         var separator = _model.FileSystem.DirectorySeparator;
-        var path = _model.CurrentDirectory;
+        var path = _model.ToDisplayPath(_model.CurrentDirectory);
         e.Text = path.Length > 0 && path[^1] != separator ? path + separator : path;
 
         AttachCompletion();

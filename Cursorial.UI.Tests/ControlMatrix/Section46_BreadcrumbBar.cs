@@ -517,6 +517,95 @@ public sealed class Section46_BreadcrumbBar
         Assert.Same(Chip(bar, 0), UIApplication.Current!.FocusManager.FocusedElement);
     }
 
+    [Fact] // BC12e: an ASYNC host still lands focus on the pick — the arm survives until the new trail arrives
+    public void BC12e_PickFocusSurvivesAnAsynchronousNavigation()
+    {
+        // The file dialogs enumerate off the UI thread (a slow share must not stall the frame loop), so nothing is
+        // rebuilt by the time the drop-down closes. A synchronous lookup finds no chip to focus; the arm has to
+        // outlive the close and land when the trail actually arrives.
+        var trail = new ObservableCollection<string> { "Home", "Projects", "assets" };
+        var (host, bar) = Show();
+        using var _ = host;
+        bar.SetCurrentValue(ItemsControl.ItemsSourceProperty, trail);
+        host.RunUntilIdle();
+
+        Action? pendingNavigation = null;
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+        bar.ChildActivated += (_, e) =>
+        {
+            var index = e.Index;
+            var child = (string) e.SelectedChild!;
+            pendingNavigation = () =>          // deferred: stands in for the awaited enumeration
+            {
+                while (trail.Count > index + 1)
+                    trail.RemoveAt(trail.Count - 1);
+                trail.Add(child);
+            };
+        };
+
+        var separator = Chip(bar, 0).SeparatorPart!;
+        var origin = separator.TranslateToWindow(0, 0);
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        Assert.Equal(["Home", "Projects", "assets"], trail); // nothing has happened yet — the "await" is in flight
+
+        pendingNavigation!();                                // the navigation completes
+        host.RunUntilIdle();
+
+        Assert.Equal(["Home", "docs"], trail);
+        Assert.Same(Chip(bar, 1), UIApplication.Current!.FocusManager.FocusedElement);
+    }
+
+    [Fact] // BC12f: an armed pick NEVER yanks focus back if the user moved on while the navigation was in flight
+    public void BC12f_PickFocusIsAbandonedWhenFocusLeftTheBar()
+    {
+        var trail = new ObservableCollection<string> { "Home", "Projects", "assets" };
+        var outside = new Button { Content = "elsewhere", Width = 12, Height = 1 };
+        var root = new StackPanel { Orientation = Orientation.Vertical };
+
+        using var host = UIHeadlessHost.Create(
+            new UIHeadlessHostOptions { InitialSize = new Size(60, 10), Capabilities = HeadlessCapabilities.KittyTruecolor });
+
+        var bar = new BreadcrumbBar { ItemsSource = trail, Width = 40, Height = 1 };
+        root.Children.Add(bar);
+        root.Children.Add(outside);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        Action? pendingNavigation = null;
+        bar.DropDownOpening += (_, e) => e.Children.Add("docs");
+        bar.ChildActivated += (_, e) =>
+        {
+            var index = e.Index;
+            var child = (string) e.SelectedChild!;
+            pendingNavigation = () =>
+            {
+                while (trail.Count > index + 1)
+                    trail.RemoveAt(trail.Count - 1);
+                trail.Add(child);
+            };
+        };
+
+        var separator = Chip(bar, 0).SeparatorPart!;
+        var origin = separator.TranslateToWindow(0, 0);
+        host.SendClick(origin.Column, origin.Row);
+        host.RunUntilIdle();
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+
+        outside.Focus(FocusNavigationMethod.Programmatic); // the user moves on mid-flight
+        host.RunUntilIdle();
+
+        pendingNavigation!();
+        host.RunUntilIdle();
+
+        // Focus stays where the user put it — stealing it back into the bar would be worse than not restoring.
+        Assert.Same(outside, UIApplication.Current!.FocusManager.FocusedElement);
+    }
+
     [Fact] // BC12d: a plain dismiss (Esc) leaves the popup's own focus restore alone — back to the anchor chip
     public void BC12d_DismissingTheDropDownRestoresTheAnchorChip()
     {

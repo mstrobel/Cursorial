@@ -36,6 +36,13 @@ namespace Cursorial.Gallery.ViewModels;
 /// activate the active chip, and <c>F2</c> enters edit mode (<c>Enter</c> commits, <c>Esc</c> reverts). In chip mode
 /// <c>Esc</c> is deliberately left UNHANDLED, so it falls through to the shell's quit binding.
 /// </para>
+/// <para>
+/// <b>The drop-downs are pickers.</b> <c>↓</c> (or a press on a <c>▸</c>) drops the segment's child list as a
+/// scrollable, fuzzy-filtered list: type to filter it, <c>↑</c>/<c>↓</c> to move, <c>Enter</c> to drill,
+/// <c>Esc</c> to clear the filter and again to dismiss. This page fills it with plain
+/// <see cref="TrailNode"/>s, so each row is the node's <c>ToString()</c>; a host that wants icons and kind
+/// labels puts <see cref="CompletionItem"/>s in <see cref="BreadcrumbBarDropDownEventArgs.Children"/> instead.
+/// </para>
 /// </summary>
 public sealed class BreadcrumbViewModel : PageViewModel
 {
@@ -242,7 +249,7 @@ public sealed class BreadcrumbViewModel : PageViewModel
             return;
 
         // Picking a CHILD drills: truncate to the anchor segment, then append the pick one level below it. The
-        // anchor chip itself always survives, so the closing menu still has a live element to restore focus to.
+        // anchor chip itself always survives, so the closing list still has a live element to fall back to.
         SetDepth(e.Index + 1);
         Trail.Add(child);
         RaiseTrailChanged();
@@ -320,8 +327,9 @@ public sealed class BreadcrumbViewModel : PageViewModel
     /// <param name="Kind">What this segment IS in the hierarchy ("galaxy", "planet", "city").</param>
     public sealed record TrailNode(string Label, string Kind)
     {
-        /// <summary>The <c>▸</c> drop-down builds plain <c>MenuItem</c>s whose Header is the item itself, so the
-        /// menu row reads as the label rather than as a type name.</summary>
+        /// <summary>The <c>▸</c> drop-down shows a plain child's <c>ToString()</c> (a host that wants an icon or a
+        /// kind label supplies a <c>CompletionItem</c> instead), so the row reads as the label rather than as a
+        /// type name — and it is what the fuzzy filter matches on.</summary>
         public override string ToString() => Label;
     }
 }

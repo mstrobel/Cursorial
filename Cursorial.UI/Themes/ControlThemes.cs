@@ -585,11 +585,20 @@ internal static class ControlThemes
 
     // ───────────────────────────── BreadcrumbBar / BreadcrumbBarItem ─────────────────────────────
 
+    /// <summary>Rows the "▸" / ellipsis drop-down shows before it scrolls. Twelve fits a 24-row terminal with the
+    /// chrome (header + footer + the content border's two rules) and still leaves the trail itself visible.</summary>
+    private const int BreadcrumbDropDownRows = 12;
+
+    /// <summary>The drop-down's key hints. ASCII-only, like every other popup footer: the arrow glyphs are
+    /// ambiguous-width and would mis-measure on the terminals the renderer's width defense exists for.</summary>
+    private const string BreadcrumbDropDownFooter = "^v move   type to filter   Enter open   Esc dismiss";
+
     // A breadcrumb trail: [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill — it is a
     // trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
     // BreadcrumbBarItem so it inherits the chip look for free; it is Collapsed until the panel's fold reports
     // elided ancestors (the BreadcrumbBar flips it). The chips band and the raw-text edit box overlap in a Grid,
-    // exactly like the ComboBox's two faces — the collapsed one takes no space.
+    // exactly like the ComboBox's two faces — the collapsed one takes no space, and the drop-down picker joins
+    // them there at zero size.
     private static ControlTemplate BreadcrumbBarTemplate() => new(ctx =>
     {
         var overflowChip = new BreadcrumbBarItem
@@ -616,9 +625,23 @@ internal static class ControlThemes
         var edit = new TextBox { Visibility = Visibility.Collapsed };
         ctx.RegisterName("PART_EditBox", edit);
 
+        // The "▸" / ellipsis drop-down: a CompletionPopup in PICKER mode (scrollable, fuzzy-filtered, sorted),
+        // parked in the template because a Popup surface needs an element IN THE TREE to hang from. It costs
+        // the trail nothing — the control's own template root is a Grid holding only its Popup, so it measures
+        // 0x0 and is not hit-testable. MaxVisibleItems is the whole point of the swap over a ContextMenu: past
+        // twelve rows the list SCROLLS instead of growing taller than the terminal. The footer is ASCII for the
+        // same reason CompletionPopup's default is (^v, not the ambiguous-width arrows).
+        var dropDown = new CompletionPopup
+        {
+            MaxVisibleItems = BreadcrumbDropDownRows,
+            FooterText = BreadcrumbDropDownFooter
+        };
+        ctx.RegisterName("PART_DropDown", dropDown);
+
         var content = new Grid();
         content.Children.Add(chips);
         content.Children.Add(edit);
+        content.Children.Add(dropDown);
 
         var root = new Border { Child = content };
         root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -734,13 +757,21 @@ internal static class ControlThemes
         content.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
         content.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
 
-        // StaysOpen: a hint overlay is not light-dismissable — an outside press is the user dismissing the FIELD,
-        // and the field's focus-out is what closes us. (The control re-asserts this in OnApplyTemplate so a custom
-        // template cannot accidentally re-arm light dismiss.)
+        // StaysOpen: a TEXT-mode hint overlay is not light-dismissable — an outside press is the user dismissing
+        // the FIELD, and the field's focus-out is what closes us. The control OWNS this value and rewrites it
+        // before every open (CompletionPopup.UpdateDismissPolicy), because a target-less PICKER has no field for
+        // that argument to protect and DOES light-dismiss, like every other chooser. What is set here is only the
+        // initial value, and a custom template cannot accidentally settle the question either way.
         var popup = new Popup { Child = content, StaysOpen = true };
         ctx.RegisterName("PART_Popup", popup);
 
-        var root = new Grid(); // the Popup adds no layout (0x0), so the control is a zero-size overlay anchor
+        // The Popup adds no layout (0x0), so the control is a zero-size overlay anchor — but a Grid STRETCHES
+        // to its cell, and the hit test gates IsHitTestVisible on the LEAF only (RenderTree §5.8: children stay
+        // hittable, deliberately unlike WPF's subtree semantics). So the control's own IsHitTestVisible=false
+        // does NOT cover this root, and an overlay parked in the same cell as the thing it decorates would eat
+        // every press over that cell — the field it hangs off would stop taking clicks entirely. The popup's
+        // Child lives on its own surface layer, so the rows themselves stay clickable.
+        var root = new Grid { IsHitTestVisible = false };
         root.Children.Add(popup);
         return root;
     });

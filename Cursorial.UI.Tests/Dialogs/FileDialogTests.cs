@@ -310,6 +310,55 @@ public sealed class FileDialogTests
         Complete(host, task);
     }
 
+    [Fact] // typing the separator by hand is the SAME drill gesture as accepting the folder from the list
+    public void Open_PathEdit_TypingTheSeparatorOpensTheNextLevel()
+    {
+        using var host = CreateHostWithRoot();
+        var task = ShowOpen(host, InMemoryFileSystemProvider.CreateSample());
+
+        host.SendKey(Key.F4);    // the whole path arrives pre-selected, so typing replaces it
+
+        // Finish the segment BY HAND rather than accepting "Projects" from the list — the popup filters the
+        // whole time, but it is never used to complete.
+        host.SendText("/home/ada/Projects");
+        Assert.True(host.RunUntilIdle());
+
+        host.SendText("/");      // …then type the separator yourself
+        Assert.True(host.RunUntilIdle());
+
+        // The session must ADVANCE to the level just entered, exactly as accepting the folder would have.
+        // Before the fix the empty final segment suppressed the query and the session CLOSED instead.
+        var screen = ScreenText(host);
+        Assert.Contains("Tab complete", screen);   // the popup is still up…
+        Assert.Contains("assets", screen);         // …and listing INSIDE Projects
+
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        Complete(host, task);
+    }
+
+    [Fact] // the rule that motivated the suppression still holds: arriving in edit mode opens nothing
+    public void Open_PathEdit_ArrivingWithATrailingSeparatorDoesNotOpenTheList()
+    {
+        using var host = CreateHostWithRoot();
+        var task = ShowOpen(host, InMemoryFileSystemProvider.CreateSample());
+
+        host.SendKey(Key.F4);    // seeded with the current path AND its trailing separator
+        host.SendKey(Key.End);
+        Assert.True(host.RunUntilIdle());
+
+        // An empty final segment on ARRIVAL must not drop the whole listing over the dialog — that would add
+        // a phantom rung to the Escape ladder (design page S2 → S3: the popup opens on ↓/Tab, never on arrival).
+        Assert.DoesNotContain("Tab complete", ScreenText(host));
+
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        Complete(host, task);
+    }
+
     [Fact]
     public void Open_PathEdit_EnterOnAFolderDrills_AndASecondEnterNavigates()
     {

@@ -414,10 +414,26 @@ public class BreadcrumbBar : ItemsControl
         if (index < 0 || index >= ItemContainerGenerator.ContainerCount)
             return;
 
+        var item = ItemContainerGenerator.ItemFromIndex(index);
+
+        // Arm the SAME landing a drop-down pick uses. Activating a segment is a navigation request the host
+        // answers by REPLACING the items — that is this control's whole contract — so the chip just activated
+        // is detached along with everything after it. Focus is then repaired to whatever happens to be nearby,
+        // which is typically a DEEPER chip that is itself about to be removed, and the second detach leaves
+        // focus nowhere visible at all: activating "mike.strobel" in "/ ▸ Users ▸ mike.strobel ▸ Applications"
+        // lands on it, slides to the doomed "Applications", then vanishes. The activated item is where focus
+        // belongs; say so, and let the post-layout resolve place it once the rebuilt trail exists.
+        //
+        // This covers the overflow list too — its entries call straight back into here — so picking an elided
+        // ancestor lands on that ancestor rather than on whatever happened to survive the fold.
+        _pendingFocusChild = item;
+        _pendingFocusAnchor = index;
+        _hasPendingFocus = true;
+
         RaiseEvent(new BreadcrumbBarItemEventArgs(
             ItemActivatedEvent,
             this,
-            ItemContainerGenerator.ItemFromIndex(index),
+            item,
             index,
             ItemContainerGenerator.ContainerFromIndex(index) as BreadcrumbBarItem));
     }

@@ -207,12 +207,23 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
         if (trimmedHome.Length == 0)
             return path; // home IS the root; collapsing it would turn every path into "~/…" and say nothing
 
-        if (string.Equals(path.TrimEnd(separator), trimmedHome, StringComparison.Ordinal))
+        if (IsSamePath(path, home))
             return "~";
 
         return path.StartsWith(trimmedHome + separator, StringComparison.Ordinal)
             ? string.Concat("~", path.AsSpan(trimmedHome.Length))
             : path;
+    }
+
+    /// <summary>
+    /// Whether two provider paths name the same directory, ignoring a trailing separator. Ordinal, because both
+    /// sides come from the same provider and so share its casing — the trail's <c>~</c> chip and
+    /// <see cref="ToDisplayPath"/> must agree on what "is home" means, so they share this one test.
+    /// </summary>
+    private bool IsSamePath(string left, string right)
+    {
+        var separator = _fileSystem.DirectorySeparator;
+        return string.Equals(left.TrimEnd(separator), right.TrimEnd(separator), StringComparison.Ordinal);
     }
 
     /// <summary>The type-filter rows, in selector order. Never empty — an empty request list becomes a lone
@@ -1134,8 +1145,21 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     {
         var trail = new List<FileDialogPathSegment>();
 
+        // Home becomes a single "~" chip and the walk STOPS there, so a path under home reads "~ ▸ Applications"
+        // rather than "/ ▸ Users ▸ mike.strobel ▸ Applications". Those leading segments are pure overhead —
+        // every path the user opens carries them, so they say nothing while costing the fold two chips of the
+        // width it needs for the segments that do. The chip keeps the REAL home path, so activating it
+        // navigates like any other segment; only the label collapses.
+        var home = _fileSystem.GetPlacePath(FileSystemPlace.Home);
+
         for (var path = _currentDirectory; path is { Length: > 0 }; path = _fileSystem.GetParentPath(path))
         {
+            if (home is { Length: > 0 } && IsSamePath(path, home))
+            {
+                trail.Add(new FileDialogPathSegment("~", path));
+                break;
+            }
+
             trail.Add(new FileDialogPathSegment(SegmentName(path), path));
 
             if (_fileSystem.GetParentPath(path) is null)

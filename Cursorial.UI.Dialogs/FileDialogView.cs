@@ -346,22 +346,37 @@ internal sealed class FileDialogView
     // icon rides a ContentPresenter over the IconCarrier rather than a hand-built Icon, so it picks up the
     // implicit IconCarrier data template — and with it the framework's whole capability ladder (Nerd Font →
     // emoji → Unicode floor), live-re-resolving when the user toggles a capability.
+    //
+    // A DOCK panel, not a stack. A StackPanel arranges each child at its DESIRED width and lets the row run
+    // past the slot ("LD17 — overflow, don't clip", StackPanel.ArrangeOverride), so a name longer than the
+    // Name column got an arrange rect the full width of the text and painted straight across Size, Type and
+    // Modified. The neighbouring cells repaint afterwards, which is what made the damage look so strange:
+    // the name survived only in the gaps between them, e.g. "Creative Cloud Files— Foldertrobel@g2024-…".
+    // DockPanel's LastChildFill hands the final child the REMAINING rect, so the name is bounded by the
+    // column and the formatter stops at its edge.
     private static DataTemplate NameCellTemplate()
         => new()
            {
                DataType = typeof(FileDialogEntry),
                Content = new FuncTemplateContent(_ =>
                          {
-                             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+                             var row = new DockPanel();
 
-                             var icon = new ContentPresenter();
+                             var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
                              icon.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Icon)));
+                             DockPanel.SetDock(icon, Dock.Left);
 
-                             var text = new TextBlock();
+                             // Trimming is inert while TextBlock drops the paragraph's trim setting, but it costs
+                             // nothing and the cut becomes an ellipsis the moment that plumbing lands.
+                             var text = new TextBlock
+                                        {
+                                            TextWrapping = WrapMode.NoWrap,
+                                            TextTrimming = TextTrimming.CharacterEllipsis
+                                        };
                              text.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogEntry.Name)));
 
                              row.Children.Add(icon);
-                             row.Children.Add(text);
+                             row.Children.Add(text); // last child fills — the name gets the rest of the column
                              return row;
                          })
            };

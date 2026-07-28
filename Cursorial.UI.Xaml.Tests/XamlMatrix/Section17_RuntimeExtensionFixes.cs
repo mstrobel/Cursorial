@@ -21,6 +21,40 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
 {
     private const string Pre = " xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\"";
 
+    [Fact] // An unresolvable {x:Static} x:Key reports at ITS OWN entry, not at the containing dictionary
+    public void UnresolvableStaticKey_ReportsTheEntryPosition()
+    {
+        // Both key paths took the CONTAINING member's line/column, so every broken key in a dictionary
+        // reported the same spot near its closing tag — and identical diagnostics collapse, so sixteen
+        // broken keys surfaced in the editor as ONE problem pointing at a line that was perfectly fine.
+        var xaml =
+            $"<ResourceDictionary{Pre}>\n" +
+            "  <Border x:Key=\"fine\"/>\n" +
+            "  <Border x:Key=\"{x:Static Colors.NoSuchColor}\"/>\n" +
+            "</ResourceDictionary>";
+
+        var ex = ThrowsLoad("CUR2102", () => LoadRaw(xaml));
+
+        Assert.Equal(3, ex.Line); // the BROKEN entry — not line 4 (the container's close), not line 1
+        Assert.Contains("NoSuchColor", ex.Message);
+    }
+
+    [Fact] // …and the same for the IMMEDIATE-add path (an inline <X.Resources>), which is a separate call site
+    public void UnresolvableStaticKey_InInlineResources_ReportsTheEntryPosition()
+    {
+        var xaml =
+            $"<Border{Pre}>\n" +
+            "  <Border.Resources>\n" +
+            "    <Border x:Key=\"fine\"/>\n" +
+            "    <Border x:Key=\"{x:Static Colors.NoSuchColor}\"/>\n" +
+            "  </Border.Resources>\n" +
+            "</Border>";
+
+        var ex = ThrowsLoad("CUR2102", () => LoadRaw(xaml));
+
+        Assert.Equal(4, ex.Line); // the BROKEN entry, not the <Border.Resources> member it sits in
+    }
+
     [Fact] // A Type-typed Setter.Value token resolves to the System.Type at load — the generator bakes typeof(T).
     public void TypeTypedSetterValue_ResolvesToType()
     {

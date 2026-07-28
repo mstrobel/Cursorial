@@ -674,6 +674,45 @@ public sealed class Section46_BreadcrumbBar
         return (host, bar, before, after, trail);
     }
 
+    [Fact] // BC12h: ACTIVATING an ancestor keeps focus on it — the truncation must not strand focus on a doomed chip
+    public void BC12h_ActivatingAnAncestorKeepsFocusOnTheActivatedChip()
+    {
+        var (host, bar, before, after, trail) = ShowToolbar();
+        using var _ = host;
+
+        // The reported trail shape: activating a MIDDLE segment removes every chip after it — including the
+        // one focus tends to be repaired onto. Rebuilt with Clear()+Add(), as a view model recomputing a path
+        // from scratch does, so every container is recycled and nothing survives by luck.
+        bar.ItemActivated += (_, e) =>
+        {
+            var kept = trail.Take(e.Index + 1).ToArray();
+            trail.Clear();
+            foreach (var segment in kept)
+                trail.Add(segment);
+        };
+
+        before.Focus(FocusNavigationMethod.Programmatic);
+        host.RunUntilIdle();
+        host.SendKey(Key.Tab);          // into the bar — the active chip is the first
+        host.RunUntilIdle();
+        host.SendKey(Key.RightArrow);   // …move to "Projects", the middle segment
+        host.RunUntilIdle();
+
+        host.SendKey(Key.Enter);        // activate it
+        host.RunUntilIdle();
+
+        Assert.Equal(["Home", "Projects"], trail);
+
+        // Focus is ON the activated chip. Before the fix it landed there, slid to the doomed trailing chip as
+        // the truncation detached it, and ended up nowhere visible at all.
+        var focused = UIApplication.Current!.FocusManager.FocusedElement;
+        Assert.NotNull(focused);
+        Assert.Same(Chip(bar, 1), focused);
+        Assert.True(bar.IsKeyboardFocusWithin);
+        Assert.NotSame(before, focused);
+        Assert.NotSame(after, focused);
+    }
+
     [Fact] // BC12g: keyboard-only, in a real toolbar — the pick keeps focus in the bar, never on a neighbouring button
     public void BC12g_KeyboardPickInAToolbarDoesNotFallToANeighbouringButton()
     {

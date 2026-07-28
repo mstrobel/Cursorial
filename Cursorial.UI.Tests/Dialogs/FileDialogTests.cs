@@ -339,6 +339,34 @@ public sealed class FileDialogTests
         Complete(host, task);
     }
 
+    [Fact] // the editor shows "~", and a path typed against it still resolves — no un-collapsing step exists
+    public void Open_PathEdit_ShowsHomeAsTilde_AndStillCommits()
+    {
+        using var host = CreateHostWithRoot();
+        var task = ShowOpen(host, InMemoryFileSystemProvider.CreateSample());
+
+        host.SendKey(Key.F4);
+        Assert.True(host.RunUntilIdle());
+
+        var screen = ScreenText(host);
+        Assert.Contains("~/Projects/assets", screen);        // …not "/home/ada/Projects/assets"
+        Assert.DoesNotContain("/home/ada/Projects", screen);
+
+        // And it round-trips: retype a "~" path by hand and commit it.
+        host.SendText("~/Projects");
+        host.SendKey(Key.Enter);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Contains("assets", ScreenText(host));   // navigated INTO ~/Projects, which contains assets
+        Assert.False(task.IsCompleted);
+
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        host.SendKey(Key.Escape);
+        Complete(host, task);
+    }
+
     [Fact] // the rule that motivated the suppression still holds: arriving in edit mode opens nothing
     public void Open_PathEdit_ArrivingWithATrailingSeparatorDoesNotOpenTheList()
     {

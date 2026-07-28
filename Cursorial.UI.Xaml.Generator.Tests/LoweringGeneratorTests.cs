@@ -115,6 +115,50 @@ namespace GenApp { public partial class PlainView : StackPanel { public PlainVie
         Assert.DoesNotContain("new global::Cursorial.UI.Controls.Button()", view); // not the lowering
     }
 
+    [Fact] // CURG3001 must point at the entry it is ABOUT — it reported the PREVIOUS one, which reads as a false positive
+    public void LoweringOptIn_UnloweredDictionaryEntry_ReportsItsOwnPosition()
+    {
+        // Two entries on their own lines: a perfectly valid one, then one whose {x:Static} key names a member
+        // that does not exist. Todo() reports whatever Context.CurrentLineInfo happens to hold, and the entry
+        // path never sets it — so the position was left pointing at the LAST member of the entry BEFORE, i.e.
+        // a line the reader inspects and finds nothing wrong with. (Real report: a renamed ThemeKeys member
+        // blamed the untouched brush above it.)
+        var xaml =
+            $"<ResourceDictionary {Ns}>\n" +
+            "  <SolidColorBrush x:Key=\"Fine\" Color=\"#3050C0\"/>\n" +           // line 2 — valid
+            "  <SolidColorBrush x:Key=\"{x:Static ThemeKeys.NoSuchMember}\" Color=\"#112233\"/>\n" + // line 3 — broken
+            "</ResourceDictionary>";
+
+        var (_, diagnostics) = GeneratorHarness.RunWithCodeBehind("", loweringFull: true, ("Palette.xaml", xaml));
+
+        var gap = Assert.Single(diagnostics, d => d.Id == "CURG3001");
+        var line = gap.Location.GetLineSpan().StartLinePosition.Line + 1; // GetLineSpan is 0-based
+
+        Assert.Equal(3, line); // the BROKEN entry, not the valid one above it
+
+        // …and the message says what is actually wrong. "no x:Static key" about a line that visibly HAS one
+        // sends the reader hunting for a malformed key that does not exist.
+        Assert.Contains("could not be resolved", gap.GetMessage());
+        Assert.Contains("NoSuchMember", gap.GetMessage());
+    }
+
+    [Fact] // EVERY unresolvable entry is reported — one-at-a-time turns a bulk rename into a fix-rebuild treadmill
+    public void LoweringOptIn_EveryUnloweredDictionaryEntry_IsReported()
+    {
+        var xaml =
+            $"<ResourceDictionary {Ns}>\n" +
+            "  <SolidColorBrush x:Key=\"{x:Static ThemeKeys.GoneA}\" Color=\"#111111\"/>\n" +
+            "  <SolidColorBrush x:Key=\"{x:Static ThemeKeys.GoneB}\" Color=\"#222222\"/>\n" +
+            "  <SolidColorBrush x:Key=\"{x:Static ThemeKeys.GoneC}\" Color=\"#333333\"/>\n" +
+            "</ResourceDictionary>";
+
+        var (_, diagnostics) = GeneratorHarness.RunWithCodeBehind("", loweringFull: true, ("Palette.xaml", xaml));
+
+        var gaps = diagnostics.Where(d => d.Id == "CURG3001").ToList();
+        Assert.Equal(3, gaps.Count);
+        Assert.Equal([2, 3, 4], gaps.Select(g => g.Location.GetLineSpan().StartLinePosition.Line + 1).OrderBy(l => l).ToArray());
+    }
+
     [Fact] // a member the lowering can't emit (here a Converter-bearing binding) surfaces a CURG3001 warning — never silent
     public void LoweringOptIn_UnsupportedFeature_EmitsCurg3001Warning()
     {

@@ -564,6 +564,13 @@ internal static class LoweringEmitter
 
     private static void EmitDictionaryEntry(Context c, string dictVar, int childIndex, bool defer = false)
     {
+        // Point the diagnostic cursor at THIS entry before anything can report against it. Context.CurrentLineInfo
+        // is a mutable cursor that only advances where someone sets it, so an entry that failed before emitting
+        // any member left it on the LAST member of the entry BEFORE — and the warning blamed a line the reader
+        // inspects and finds nothing wrong with. (Real report: a renamed ThemeKeys member blamed the untouched
+        // brush declared above it, in a different theme file than the one the reader opened.)
+        c.CurrentLineInfo = c.Doc.Objects[childIndex].PackedLineInfo;
+
         if (TypeSymbolOf(c.Doc, c.Doc.Objects[childIndex].TypeId) is { } t && SymbolXamlModel.IsResourceDictionary(t))
         {
             EmitResourceDictionaryBody(c, dictVar, childIndex); // <Foo.Resources><ResourceDictionary>…: fold (re-decides)
@@ -572,7 +579,13 @@ internal static class LoweringEmitter
 
         if (ResourceKeyExpr(c, childIndex) is not { } keyExpr)
         {
-            c.Todo("resource entry with no plain/x:Static/x:Type x:Key not yet lowered");
+            // Two different failures wore one message. An entry with NO supported key form is a shape the
+            // lowering has not implemented; an {x:Static}/{x:Type} key that did not RESOLVE is a broken
+            // reference in the document — usually a renamed or deleted member — and saying "no x:Static key"
+            // about a line that visibly has one sends the reader hunting for a malformed key that isn't there.
+            c.Todo(RawKey(c, childIndex) is { } raw && raw.StartsWith("{", System.StringComparison.Ordinal)
+                       ? $"resource entry whose x:Key {raw} could not be resolved (renamed or missing member?) not yet lowered"
+                       : "resource entry with no plain/x:Static/x:Type x:Key not yet lowered");
             return;
         }
 

@@ -105,7 +105,11 @@ public sealed class FileDialogTests
         Assert.Contains("Quick access", screen);       // the places rail's first band
         Assert.Contains("Name", screen);               // the details header strip
         Assert.Contains("Modified", screen);
-        Assert.Contains("hero-banner.png", screen);    // a listing row
+        // A listing row. The PREFIX, not the whole name: the Name cell is now held to its column, and in the
+        // emoji tier the 2-cell glyph leaves 14 cells for the text, one short of "hero-banner.png". Before
+        // the cell was clipped it simply painted over Size/Type, which is what made the full name appear
+        // here regardless of tier — this assertion was reading the bug.
+        Assert.Contains("hero-banner.p", screen);
         Assert.Contains("1.4 MB", screen);             // …and its rendered size
         Assert.Contains("PNG image", screen);          // …and its kind label
         Assert.Contains("File name:", screen);         // the footer
@@ -644,5 +648,48 @@ public sealed class FileDialogTests
 
         var result = Complete(host, task);
         Assert.True(result.IsDismissed);
+    }
+
+    // Both tiers, because the icon's width is what the name's slot is measured against: the Nerd Font glyph
+    // is 1 cell and the emoji fallback is 2, so the emoji tier is where a cut could land mid-grapheme.
+    [Theory] // A name wider than the Name column stops at the column — it does not paint across the row
+    [MemberData(nameof(CapabilityPresets))]
+    public void Open_AnOverlongName_StaysInsideTheNameColumn(string caps)
+    {
+        const string Overlong = "creative-cloud-files-personal-account-archive.png";
+
+        var provider = InMemoryFileSystemProvider.CreateSample();
+        provider.AddFile($"{Assets}/{Overlong}", size: 1234, lastModified: new DateTimeOffset(2026, 2, 17, 10, 35, 0, TimeSpan.Zero));
+
+        using var host = CreateHostWithRoot(caps);
+        var task = ShowOpen(host, provider);
+
+        var row = RowContaining(host, "creative");
+
+        // The row must not carry the whole name — the Name column is far narrower than 48 cells.
+        Assert.DoesNotContain(Overlong, row);
+
+        // The defect is subtler than plain overflow: the neighbouring cells repaint on top of the escaped
+        // text, so the name survives only in the GAPS between them ("…file1 KBrPNG imageount2026-02-17").
+        // The invariant that catches it is that the columns are separated by BLANKS and nothing else.
+        var listing = row[row.IndexOf("creative", StringComparison.Ordinal)..];
+        Assert.Matches(@"^[\w.\-\u2026]+\s+1 KB\s+PNG image\s", listing);
+
+        host.SendKey(Key.Escape); // don't leak the modal
+        Complete(host, task);
+    }
+
+    /// <summary>The first screen row containing <paramref name="needle"/> (asserts one exists).</summary>
+    private static string RowContaining(UIHeadlessHost host, string needle)
+    {
+        for (var row = 0; row < host.FrameBuffer.Rows; row++)
+        {
+            var text = host.GetRowText(row);
+            if (text.Contains(needle, StringComparison.Ordinal))
+                return text;
+        }
+
+        Assert.Fail($"no rendered row contained '{needle}'.\n{ScreenText(host)}");
+        return string.Empty;
     }
 }

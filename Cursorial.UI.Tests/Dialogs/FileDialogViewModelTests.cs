@@ -210,14 +210,46 @@ public sealed class FileDialogViewModelTests
     }
 
     [Fact]
-    public async Task Segments_AreTheBreadcrumbTrail_RootFirst_WithPlaceNames()
+    public async Task Segments_AreTheBreadcrumbTrail_HomeCollapsedToTilde()
     {
         using var model = await OpenAsync();
 
-        // The root chip shows its PLACE name ("▤ Local (C:)") and so does the home folder ("▣ Home") — the
-        // design page's trail, not a raw path split.
-        Assert.Equal(["Local (C:)", "home", "Home", "Projects", "assets"], model.Segments.Select(s => s.Name).ToArray());
+        // The trail STARTS at "~" — the segments above home ("Local (C:)", "home", the account folder) are on
+        // every path the user ever opens, so they say nothing and cost the fold three chips of width.
+        Assert.Equal(["~", "Projects", "assets"], model.Segments.Select(s => s.Name).ToArray());
         Assert.Equal(Assets, model.Segments[^1].Path);
+
+        // Only the LABEL collapses: the chip still carries the real path, so activating it navigates.
+        Assert.Equal("/home/ada", model.Segments[0].Path);
+    }
+
+    [Fact] // a path outside home keeps its full trail, place names and all
+    public async Task Segments_OutsideHome_AreNotCollapsed()
+    {
+        using var model = await OpenAsync(directory: "/mnt/cloud");
+
+        Assert.DoesNotContain("~", model.Segments.Select(s => s.Name));
+        Assert.Equal("/mnt/cloud", model.Segments[^1].Path);
+    }
+
+    [Fact] // at home itself the trail is a single "~" chip, not "~" plus an empty tail
+    public async Task Segments_AtHome_AreASingleTildeChip()
+    {
+        using var model = await OpenAsync(directory: "/home/ada");
+
+        Assert.Equal(["~"], model.Segments.Select(s => s.Name).ToArray());
+        Assert.Equal("/home/ada", model.Segments[0].Path);
+    }
+
+    [Fact] // activating the "~" chip navigates to the real home directory
+    public async Task Segments_ActivatingTheTildeChip_NavigatesHome()
+    {
+        using var model = await OpenAsync();
+
+        await model.NavigateAsync(model.Segments[0].Path);
+
+        Assert.Equal("/home/ada", model.CurrentDirectory);
+        Assert.Equal(["~"], model.Segments.Select(s => s.Name).ToArray());
     }
 
     // ── the type-ahead buffer + the Backspace rule ───────────────────────────────────────────────

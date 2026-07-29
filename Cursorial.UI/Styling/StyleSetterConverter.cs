@@ -10,7 +10,9 @@ namespace Cursorial.UI;
 /// <summary>
 /// The seal-time setter-value conversion ladder (style matrix SD9 — the non-XAML converter set;
 /// conversion runs exactly once at <see cref="Style.Seal"/>, never at activation). The v1 ladder,
-/// in order: <see cref="UIProperty.UnsetValue"/> → valueless entry; <see langword="null"/> for
+/// in order: <see cref="UIProperty.UnsetValue"/> → valueless entry; the two <b>descriptors</b>
+/// (<c>ResourceReference</c> B10, <c>BindingBase</c> B15) pass through unconverted for the frame to
+/// resolve per element; <see langword="null"/> for
 /// reference/nullable property types; exact/assignable values pass through; enum targets accept
 /// member names (ordinal) and integral values; <c>Cursorial.Output.Color</c> targets accept
 /// <c>#RGB</c>/<c>#RRGGBB</c> hex strings; <c>IBrush</c> targets accept <c>Color</c> values and hex

@@ -36,7 +36,10 @@ public class Icon : Control
 {
     /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
     public static readonly StyledProperty<IBrush?> IconBrushProperty =
-        UIProperty.RegisterAttached<Icon, UIElement, IBrush?>("IconBrush", inherits: true);
+        UIProperty.RegisterAttached<Control, UIElement, IBrush?>(
+            nameof(IconBrush),
+            inherits: true,
+            changed: static (sender, _, _) => (sender as Icon)?.UpdateEffectiveIconBrush());
 
     /// <summary>The Nerd Font codepoint(s) — the preferred tier when <see cref="UIApplication.NerdFontAvailable"/>.</summary>
     public static readonly StyledProperty<string?> GlyphProperty =
@@ -48,12 +51,12 @@ public class Icon : Control
                                        defaultValue: 1,
                                        coerce: (_, baseValue) => Math.Max(1, baseValue));
 
-    /// <inheritdoc cref="IconTierProperty"/>
-    protected static readonly UIPropertyKey<IconTier> IconTierPropertyKey =
-        UIProperty.RegisterReadOnly<Icon, IconTier>(nameof(IconTier));
+    /// <inheritdoc cref="TierProperty"/>
+    protected static readonly UIPropertyKey<IconTier> TierPropertyKey =
+        UIProperty.RegisterReadOnly<Icon, IconTier>(nameof(Tier));
 
-    /// <summary>The image as explicit bytes — the middle tier when a graphics protocol can carry it.</summary>
-    protected static readonly StyledProperty<IconTier> IconTierProperty = IconTierPropertyKey.Property;
+    /// <summary>The tier currently rendered (test observability).</summary>
+    protected static readonly StyledProperty<IconTier> TierProperty = TierPropertyKey.Property;
 
     /// <summary>The image as explicit bytes — the middle tier when a graphics protocol can carry it.</summary>
     public static readonly StyledProperty<ImageData?> ImageProperty =
@@ -91,6 +94,11 @@ public class Icon : Control
     private UIApplication? _subscribedApp; // the app whose capability/nerd-font events we're subscribed to
     private IBrush? _cachedEffectiveBrush;
 
+    static Icon()
+    {
+        IconBrushProperty.AddOwner<Icon>();
+    }
+    
     /// <inheritdoc cref="GlyphProperty"/>
     public string? Glyph { get => GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }
 
@@ -112,8 +120,11 @@ public class Icon : Control
     /// <inheritdoc cref="ResolvedContentProperty"/>
     internal object? ResolvedContent { get => GetValue(ResolvedContentProperty); private set => SetValue(ResolvedContentProperty, value); }
 
-    /// <summary>The tier currently rendered (test observability).</summary>
-    public IconTier Tier { get => GetValue(IconTierProperty); protected set => SetValue(IconTierPropertyKey, value); }
+    /// <inheritdoc cref="TierProperty"/>
+    public IconTier Tier { get => GetValue(TierProperty); protected set => SetValue(TierPropertyKey, value); }
+
+    /// <inheritdoc cref="IconBrushProperty"/>
+    public IBrush? IconBrush { get => GetValue(IconBrushProperty); protected set => SetValue(IconBrushProperty, value); }
     
     /// <summary>
     /// The foreground brush with which to render the glyph/emoji/text tiers. Prefers <see cref="IconBrushProperty"/>,
@@ -232,17 +243,22 @@ public class Icon : Control
 
     private void EnsureContent()
     {
+        if (IsAttachedToTree is false) return;
+
         var tier = Tier;
 
         if (tier is IconTier.Glyph)
         {
-            var text = new TextBlock { TextAlignment = TextAlignment.Center, Width = GlyphWidth };
+            var text = new TextBlock { TextAlignment = TextAlignment.Center, Width = GlyphWidth, TextWrapping = WrapMode.NoWrap };
+
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
+            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+
             if (GlyphWidth > 1)
                 text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this, StringFormat = "{0}" + new string(' ', GlyphWidth - 1)});
             else
                 text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
-            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+    
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
@@ -255,24 +271,35 @@ public class Icon : Control
                                 PlaceholderContent = Text,
                                 HorizontalAlignment = HorizontalAlignment.Center
                             };
+
             presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(nameof(Image)) { Source = this });
             presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(nameof(ImageUri)) { Source = this });
+
             ResolvedContent = presenter;
         }
         else if (tier is IconTier.Emoji)
         {
-            var text = new TextBlock { TextAlignment = TextAlignment.Center, MinWidth = 2 };
+            var text = new TextBlock
+                       {
+                           TextAlignment = TextAlignment.Center,
+                           MinWidth = 2,
+                           TextWrapping = WrapMode.NoWrap
+                       };
+
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this  });
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this });
+
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
         else
         {
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
-            var text = new TextBlock { TextAlignment = TextAlignment.Center };
+            var text = new TextBlock { TextAlignment = TextAlignment.Center, TextWrapping = WrapMode.NoWrap };
+
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this  });
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this });
+
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
@@ -292,8 +319,8 @@ public class Icon : Control
     // carry an inline image (mirrors the protocol gate in ImagePresenter.IsImageVisible; the per-image format check
     // lives there, behind the placeholder).
     private static bool GraphicsSupported
-        => UIApplication.Current?.EffectiveCapabilities.Output.Graphics is { } g
-           && (g.ITerm2InlineImages || g.KittyGraphics || g.Sixel);
+        => UIApplication.Current?.EffectiveCapabilities.Output.Graphics is {} g &&
+           (g.ITerm2InlineImages || g.KittyGraphics || g.Sixel);
 }
 
 /// <summary>The representation an <see cref="Icon"/> resolved to (test observability).</summary>

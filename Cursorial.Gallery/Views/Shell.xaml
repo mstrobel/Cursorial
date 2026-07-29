@@ -31,24 +31,79 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
-              <Border Grid.Column="0" Padding="2,1" Title="Task Dialogs"
+              <Border Grid.Column="0" Padding="2,1" Title="Task Dialog"
                       BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-                <StackPanel Spacing="1" Orientation="Vertical">
-                  <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include _Secondary Message" />
+                <StackPanel Orientation="Vertical">
+                  <CheckBox IsChecked="{Binding TaskDialogIncludeContent}"         Content="Include Se_condary Message" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeProgressBar}"     Content="Include _Progress Bar" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeCommandLinks}"    Content="Include Command _Links" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeButtons}"         Content="Include _Buttons" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeVerification}"    Content="Include _Verification" />
                   <CheckBox IsChecked="{Binding TaskDialogIncludeExpandedContent}" Content="Include E_xpanded Content" />
-                  <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog" MaxWidth="24" />
+                  <StackPanel Orientation="Horizontal" Spacing="1" Margin="0,1,0,0">
+                    <Label Target="{x:Reference SeveritySelector}" Content="Severit_y:"
+                           Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
+                    <ComboBox x:Name="SeveritySelector"
+                              MinWidth="18"
+                              ItemsSource="{i:EnumValuesSource EnumType={x:Type TaskDialogSeverity}}"
+                              SelectedItem="{Binding TaskDialogSeverity, Mode=TwoWay}"/>
+                  </StackPanel>
+                  <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog"
+                            MaxWidth="24" Margin="0,1,0,0" />
                 </StackPanel>
               </Border>
-              <Border Grid.Column="1" Padding="2,1" Title="Message Boxes"
-                      BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
-                <StackPanel Spacing="1" Orientation="Vertical">
-                  <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
-                </StackPanel>
-              </Border>
+              
+              <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*" MinHeight="10" />
+                  <RowDefinition Height="2*" MinHeight="15" />
+                </Grid.RowDefinitions>
+                <Border Padding="2,1" Title="Message Box"
+                        BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+                  <StackPanel Spacing="1" Orientation="Vertical">
+                    <UniformWrapPanel Orientation="Horizontal">
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                        <RadioButton.CommandParameter>
+                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.Ok}" />
+                        </RadioButton.CommandParameter>
+                      </RadioButton>
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                        <RadioButton.CommandParameter>
+                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.OkCancel}" />
+                        </RadioButton.CommandParameter>
+                      </RadioButton>
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                        <RadioButton.CommandParameter>
+                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.YesNo}" />
+                        </RadioButton.CommandParameter>
+                      </RadioButton>
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                        <RadioButton.CommandParameter>
+                          <CheckableCommandParameter Tag="{x:Static MessageBoxButton.SaveDontSave}" />
+                        </RadioButton.CommandParameter>
+                      </RadioButton>
+                    </UniformWrapPanel>
+                    <Button Command="{Binding ShowMessageDialogCommand}" Content="Show _Message Dialog" MaxWidth="24" />
+                  </StackPanel>
+                </Border>
+                <Border Grid.Row="1"
+                        Padding="2,1" Title="File Dialogs"
+                        BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+                  <StackPanel Spacing="0" Orientation="Vertical">
+                    <CheckBox IsChecked="{Binding FileDialogUseRealFileSystem}"    Content="Use _Real File System" />
+                    <CheckBox IsChecked="{Binding FileDialogShowHidden}"           Content="Show _Hidden Entries" />
+                    <CheckBox IsChecked="{Binding FileDialogConfirmOverwrite}"     Content="Confirm Over_write" />
+                    <CheckBox IsChecked="{Binding FileDialogCanCreateDirectories}" Content="Can Create _Directories" />
+                    <CheckBox IsChecked="{Binding FileDialogFileMustExist}"        Content="File must e_xist to open" />
+
+                    <UniformWrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <Button Command="{Binding ShowFileOpenDialogCommand}" Content="_Open File" Width="11" Margin="0,1,1,0" />
+                      <Button Command="{Binding ShowFileSaveDialogCommand}" Content="_Save File" Width="11" Margin="1,1,0,0" />
+                    </UniformWrapPanel>
+                  </StackPanel>
+                </Border>
+
+              </Grid>
             </Grid>
           </DockPanel>
             
@@ -829,10 +884,13 @@
               <ListViewColumn Header="Name" Width="*" MinWidth="14" SortMemberPath="Name">
                 <ListViewColumn.CellTemplate>
                   <DataTemplate>
-                    <StackPanel Orientation="Horizontal">
-                      <ContentPresenter Content="{Binding Icon}" Margin="0,0,1,0" />
-                      <TextBlock Text="{Binding Name}" />
-                    </StackPanel>
+                    <DockPanel>
+                      <ContentPresenter DockPanel.Dock="Left" Content="{Binding Icon}" Margin="0,0,1,0" />
+                      <ContentPresenter Content="{Binding Name}"
+                                        TextBlock.TextWrapping="NoWrap"
+                                        TextBlock.TextTrimming="CharacterEllipsis"
+                                        ShowTrimmedContentInToolTip="True"/>
+                    </DockPanel>
                   </DataTemplate>
                 </ListViewColumn.CellTemplate>
               </ListViewColumn>

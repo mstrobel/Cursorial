@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Cursorial.Rendering;
-using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Dialogs;
@@ -28,7 +27,7 @@ public sealed class FileSaveDialog : Window
     private readonly FileDialogView _view;
 
     /// <summary>Control themes resolve exact-key, so a <see cref="Window"/> subclass must opt into the base
-    /// window chrome or it has no template at all and measures 0×0.</summary>
+    /// window chrome, or it has no template at all and measures 0×0.</summary>
     protected override object ControlThemeKey => typeof(Window);
 
     private FileSaveDialog(FileDialogViewModel model, string title)
@@ -47,7 +46,7 @@ public sealed class FileSaveDialog : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         AutoFitToViewport = true;
         Shadow = WindowShadow.Default;
-
+        
         model.Completed += (_, result) => Close(result);
         ContentRendered += OnContentRendered;
     }

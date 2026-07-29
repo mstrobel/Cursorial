@@ -1,6 +1,5 @@
 using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 
 namespace Cursorial.UI.Controls;
@@ -144,21 +143,19 @@ public class Border : Decorator
         var occludes = Occludes;
         var resolved = TextElement.ComposeAttributes(this);
         var attrs = resolved.Flags;
-        // var forceOpaque = UIApplication.Current?.ActualThemeVariant is { Tier: ColorDepth.NoColor };
 
         // An effective TextElement Inverse (e.g., the caps-nocolor reverse-video cue) needs an OPAQUE
         // fill to composite the attribute onto the WHOLE face — the transparent FillRectangle tint
         // would drop it — so an attribute-bearing (or occluding) face uses FillOpaque; otherwise the
         // default transparent tint (None ⇒ the ordinary fill path, unchanged).
-        var inverse = resolved.Inverse;
         var background = Background;
 
         // if (forceOpaque) background ??= Brushes.Default;
 
-        // The surface: FillOpaque for a floating surface, the glyph-transparent FillRectangle tint otherwise.
+        // The surface: FillOpaque for a floating surface, the glyph-transparent PaintRectangle tint otherwise.
         if (background is not null)
         {
-            if (occludes/* || forceOpaque*/)
+            if (occludes)
                 context.FillOpaque(bounds, background, attrs, overwrite: false);
             else
                 context.PaintRectangle(bounds, background, attrs, overwrite: true);

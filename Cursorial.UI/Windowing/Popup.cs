@@ -1,5 +1,6 @@
 using Cursorial.Input;
 using Cursorial.Rendering;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 // ReSharper disable CheckNamespace
@@ -335,17 +336,44 @@ public class Popup : UIElement
         // The Child is the Popup's LOGICAL child (so it inherits DataContext + key/Escape routing flows back
         // through the logical parent at the surface root); it is the popup surface's visual root, not a visual
         // child of the Popup.
-        if (oldValue is { } oldChild && ReferenceEquals(oldChild.LogicalParent, popup))
-            popup.RemoveLogicalChild(oldChild);
-        if (newValue is { } newChild && newChild.LogicalParent is null)
-            popup.AddLogicalChild(newChild);
+        if (oldValue is {} oldChild)
+        {
+            if (ReferenceEquals(oldChild.LogicalParent, popup))
+                popup.RemoveLogicalChild(oldChild);
+
+            if (BindingOperations.GetBinding(oldChild, MaxWidthProperty) is AnchoredBinding { Source: {} mwSrc } &&
+                ReferenceEquals(mwSrc, popup))
+            {
+                BindingOperations.ClearBinding(oldChild, MaxWidthProperty);
+            }
+
+            if (BindingOperations.GetBinding(oldChild, MaxHeightProperty) is AnchoredBinding { Source: {} mhSrc } &&
+                ReferenceEquals(mhSrc, popup))
+            {
+                BindingOperations.ClearBinding(oldChild, MaxHeightProperty);
+            }
+        }
+
+        if (newValue is {} newChild)
+        {
+            if (newChild.LogicalParent is null)
+                popup.AddLogicalChild(newChild);
+            
+            if (newChild.GetValueSource(MaxWidthProperty) is { Kind: ValueSourceKind.Default })
+                BindingOperations.Install(newChild, MaxWidthProperty, new Binding(MaxWidthProperty) { Source = popup });
+
+            if (newChild.GetValueSource(MaxHeightProperty) is { Kind: ValueSourceKind.Default })
+                BindingOperations.Install(newChild, MaxHeightProperty, new Binding(MaxHeightProperty) { Source = popup });
+        }
 
         // Content swap while open: W4-a re-hosts the new child (scene-reusing swap is W4-b). Clearing the
         // Child while open closes the popup cleanly (write-back + Closed) — there is nothing left to show.
         if (popup._open)
         {
             if (newValue is null)
+            {
                 popup.CloseCore(PopupCloseReason.Programmatic);
+            }
             else if (popup._manager is { } manager)
             {
                 manager.ClosePopup(popup);

@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -183,7 +184,13 @@ public class BreadcrumbBar : ItemsControl
         // The horizontal, left-overflowing items panel is control identity, not chrome — a vertical StackPanel would
         // not be a breadcrumb — so it is set here rather than in the theme (Menu does the same for its horizontal
         // row). A consumer can still replace it; the fold simply stops.
-        ItemsPanel = new ItemsPanelTemplate(static _ => new BreadcrumbBarPanel());
+        ItemsPanel = new ItemsPanelTemplate(
+            static _ =>
+            {
+                var panel = new BreadcrumbBarPanel { Occludes = true };
+                panel.SetBinding(Panel.BackgroundProperty, new TemplateBinding(BackgroundProperty));
+                return panel;
+            });
 
         // :current follows POSITION, so it is re-stamped whenever the container set changes (add/remove/reset).
         ItemContainerGenerator.ContainersChanged += OnContainersChanged;
@@ -294,6 +301,7 @@ public class BreadcrumbBar : ItemsControl
 
         if (_dropDown is not null)
         {
+            _dropDown.MaxWidth = 48;
             _dropDown.Provider = _dropDownProvider;
             _dropDown.Picked += OnDropDownPicked;
             _dropDown.Closed += OnDropDownClosed;
@@ -371,6 +379,7 @@ public class BreadcrumbBar : ItemsControl
         _firstVisibleIndex = containerCount == 0 ? 0 : firstVisibleIndex;
 
         var hasOverflow = _firstVisibleIndex > 0;
+
         SetAndRaise(HasOverflowProperty, ref _hasOverflow, hasOverflow);
         SetAndRaise(OverflowCountProperty, ref _overflowCount, _firstVisibleIndex);
 
@@ -670,6 +679,7 @@ public class BreadcrumbBar : ItemsControl
     private void RestoreChipFocus()
     {
         BuildFocusRing();
+
         if (_ring.Count == 0)
             return;
 
@@ -677,6 +687,7 @@ public class BreadcrumbBar : ItemsControl
         // the sane landing spot — it is the one the trail is "about".
         var active = _activeIndex >= 0 ? ItemContainerGenerator.ContainerFromIndex(_activeIndex) : null;
         var index = active is null ? -1 : _ring.IndexOf(active);
+
         _ring[index >= 0 ? index : _ring.Count - 1].Focus(FocusNavigationMethod.Programmatic);
     }
 
@@ -766,6 +777,19 @@ public class BreadcrumbBar : ItemsControl
         }
     }
 
+    protected override void OnMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+
+        if (e.Handled) return;
+
+        if (IsEditing is false)
+        {
+            BeginEdit();
+            e.Handled = true;
+        }
+    }
+
     /// <inheritdoc/>
     protected override void OnLostFocus(FocusChangedEventArgs e)
     {
@@ -777,7 +801,7 @@ public class BreadcrumbBar : ItemsControl
         // every container, so the focused chip is destroyed and the framework repairs focus programmatically —
         // landing it on whatever is focusable nearby, typically the first button in the enclosing toolbar. Treating
         // that repair as "the user moved on" is what made a keyboard pick end up on the Back button.
-        if (_hasPendingFocus && !IsKeyboardFocusWithin && IsUserInitiated(e.Method))
+        if (_hasPendingFocus && !IsKeyboardFocusWithin && e.Method.IsUserInitiated())
             ClearPendingFocus();
 
         // Focus left the bar AND its drop-down (IsKeyboardFocusWithin covers the popup, whose Child is a logical
@@ -800,18 +824,17 @@ public class BreadcrumbBar : ItemsControl
     {
         _ring.Clear();
 
-        if (_overflowChip is { Visibility: Visibility.Visible, Focusable: true } chip && chip.IsEffectivelyEnabled)
+        if (_overflowChip is { Visibility: Visibility.Visible, Focusable: true, IsEffectivelyEnabled: true } chip)
             _ring.Add(chip);
 
         var count = ItemContainerGenerator.ContainerCount;
 
         for (var i = 0; i < count; i++)
         {
-            if (ItemContainerGenerator.ContainerFromIndex(i) is { Visibility: Visibility.Visible, Focusable: true } container
-                && container.IsEffectivelyEnabled)
-            {
+            var container = ItemContainerGenerator.ContainerFromIndex(i);
+
+            if (container is { Visibility: Visibility.Visible, Focusable: true, IsEffectivelyEnabled: true })
                 _ring.Add(container);
-            }
         }
     }
 
@@ -840,6 +863,7 @@ public class BreadcrumbBar : ItemsControl
             current = delta > 0 ? -1 : _ring.Count;
 
         var next = Math.Clamp(current + delta, 0, _ring.Count - 1); // edges hold — no wrap (Home/End are the jumps)
+
         _ring[next].Focus(FocusNavigationMethod.Directional);
     }
 
@@ -1047,6 +1071,7 @@ public class BreadcrumbBar : ItemsControl
             return false;
 
         BuildFocusRing();
+
         if (_ring.Count == 0)
             return false;
 
@@ -1064,14 +1089,6 @@ public class BreadcrumbBar : ItemsControl
         _pendingFocusAnchor = -1;
         _hasPendingFocus = false;
     }
-
-    /// <summary>Whether a focus change was driven by the USER (as opposed to a programmatic move or a repair after
-    /// the focused element was destroyed) — the test for abandoning a pending drop-down pick.</summary>
-    private static bool IsUserInitiated(FocusNavigationMethod method)
-        => method is FocusNavigationMethod.Tab
-                  or FocusNavigationMethod.Pointer
-                  or FocusNavigationMethod.Directional
-                  or FocusNavigationMethod.AccessKey;
 
     /// <summary>The focusable container currently bound to <paramref name="item"/>, or null when the host did not
     /// place it in the trail (or the fold has collapsed it out of the ring).</summary>
@@ -1115,11 +1132,20 @@ public class BreadcrumbBar : ItemsControl
     private void UpdateCurrentFlags()
     {
         var count = ItemContainerGenerator.ContainerCount;
+        var isFocusScope = FocusManager.GetIsFocusScope(this);
+
+        if (isFocusScope)
+            ClearValue(FocusManager.FocusedElementProperty);
 
         for (var i = 0; i < count; i++)
         {
             if (ItemContainerGenerator.ContainerFromIndex(i) is BreadcrumbBarItem chip)
+            {
                 chip.SetCurrentValue(BreadcrumbBarItem.IsCurrentProperty, i == count - 1);
+
+                if (isFocusScope && (_activeIndex < 0 ? i == count - 1 : _activeIndex == i))
+                    FocusManager.SetFocusedElement(this, chip);
+            }
         }
     }
 

@@ -10,6 +10,12 @@ namespace Cursorial.UI.Data;
 /// </summary>
 public sealed class Binding : AnchoredBinding
 {
+    /// <summary>
+    /// A sentinel value that, if returned by a value converter, indicates that no value should be forwarded to
+    /// the binding target.
+    /// </summary>
+    public static readonly object DoNothing = new UIProperty.SentinelValue($"{nameof(Binding)}.{nameof(DoNothing)}");
+
     /// <summary>Creates a binding with an empty path (the source object itself).</summary>
     public Binding()
     {

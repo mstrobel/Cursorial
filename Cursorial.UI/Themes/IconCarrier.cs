@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
+using Cursorial.Drawing.Media;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Themes;
@@ -18,7 +19,8 @@ public record IconCarrier
                        int? glyphWidth = null,
                        Uri? imageUri = null,
                        string? emoji = null,
-                       string? text = null)
+                       string? text = null,
+                       IBrush? iconBrush = null)
     {
         ArgumentNullException.ThrowIfNull(text);
 
@@ -27,6 +29,7 @@ public record IconCarrier
         GlyphWidth = glyphWidth ?? 1;
         ImageUri = imageUri;
         Emoji = emoji;
+        IconBrush =  iconBrush;
     }
 
     /// <inheritdoc cref="Icon.Glyph"/>
@@ -44,13 +47,17 @@ public record IconCarrier
     /// <inheritdoc cref="Icon.Text"/>
     public string? Text { get; init; }
 
-    public void Deconstruct(out string? glyph, out int glyphWidth, out Uri? imageUri, out string? emoji, out string? text)
+    /// <inheritdoc cref="Icon.IconBrush"/>
+    public IBrush? IconBrush { get; init; }
+
+    public void Deconstruct(out string? glyph, out int glyphWidth, out Uri? imageUri, out string? emoji, out string? text, out IBrush? iconBrush)
     {
         glyph = Glyph;
         glyphWidth = GlyphWidth;
         imageUri = ImageUri;
         emoji = Emoji;
         text = Text;
+        iconBrush = IconBrush;
     }
 }
 
@@ -66,14 +73,19 @@ public sealed class IconCarrierConverter : TypeConverter
     {
         if (value is IconCarrier c && destinationType.IsAssignableFrom(typeof(Icon)))
         {
-            return new Icon
-                   {
-                       Glyph = c.Glyph,
-                       GlyphWidth = c.GlyphWidth,
-                       ImageUri = c.ImageUri,
-                       Emoji = c.Emoji,
-                       Text = c.Text
-                   };
+            var icon = new Icon
+                            {
+                                Glyph = c.Glyph,
+                                GlyphWidth = c.GlyphWidth,
+                                ImageUri = c.ImageUri,
+                                Emoji = c.Emoji,
+                                Text = c.Text
+                            };
+
+            if (c.IconBrush is {} iconBrush)
+                Icon.SetIconBrush(icon, iconBrush);
+
+            return icon;
         }
 
         return base.ConvertTo(context, culture, value, destinationType);

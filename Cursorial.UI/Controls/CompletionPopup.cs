@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Globalization;
 
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 using Cursorial.UI.Matching;
 
@@ -71,8 +72,8 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 [TemplatePart(PartPopup, typeof(Popup), IsRequired = true)]
 [TemplatePart(PartList, typeof(CompletionList), IsRequired = true)]
-[TemplatePart(PartHeader, typeof(TextBlock))]
-[TemplatePart(PartFooter, typeof(TextBlock))]
+[TemplatePart(PartHeader, typeof(ContentPresenter))]
+[TemplatePart(PartFooter, typeof(ContentPresenter))]
 public class CompletionPopup : Control
 {
     private const string PartPopup = "PART_Popup";
@@ -132,8 +133,8 @@ public class CompletionPopup : Control
         UIProperty.Register<CompletionPopup, bool>(nameof(ShowFooter), defaultValue: true, changed: OnChromeVisibilityChanged);
 
     /// <summary>The key-hint footer's text.</summary>
-    public static readonly StyledProperty<string?> FooterTextProperty =
-        UIProperty.Register<CompletionPopup, string?>(nameof(FooterText), defaultValue: DefaultFooterText, changed: OnFooterTextChanged);
+    public static readonly StyledProperty<object?> FooterContentProperty =
+        UIProperty.Register<CompletionPopup, object?>(nameof(FooterContent), defaultValue: DefaultFooterText, changed: OnFooterContentChanged);
 
     /// <summary>The suffix appended to a row's kind label when it only matched fuzzily; <see langword="null"/> suppresses it.</summary>
     public static readonly StyledProperty<string?> FuzzyLabelProperty =
@@ -147,10 +148,10 @@ public class CompletionPopup : Control
     public static readonly DirectProperty<CompletionPopup, int> MatchCountProperty =
         UIProperty.RegisterDirect<CompletionPopup, int>(nameof(MatchCount), static c => c._matchCount);
 
-    /// <summary>The header's text (<c>"1 match"</c> / <c>"7 matches"</c>, prefixed by the picker's
+    /// <summary>The header's content (<c>"1 match"</c> / <c>"7 matches"</c>, prefixed by the picker's
     /// <see cref="Pattern"/>) — what the default template's <c>PART_Header</c> shows.</summary>
-    public static readonly DirectProperty<CompletionPopup, string?> HeaderTextProperty =
-        UIProperty.RegisterDirect<CompletionPopup, string?>(nameof(HeaderText), static c => c._headerText);
+    public static readonly DirectProperty<CompletionPopup, object?> HeaderContentProperty =
+        UIProperty.RegisterDirect<CompletionPopup, object?>(nameof(HeaderContent), static c => c._headerContent);
 
     /// <summary>
     /// The picker's own filter pattern — what the user has typed into a popup that has no field to type
@@ -165,18 +166,18 @@ public class CompletionPopup : Control
 
     private Popup? _popup;
     private CompletionList? _list;
-    private TextBlock? _header;
-    private TextBlock? _footer;
+    private ContentPresenter? _header;
+    private ContentPresenter? _footer;
     private UIElement? _hookedAnchor; // the Anchor whose keys/focus we are currently listening to (picker mode only)
 
     private bool _isOpen;
     private int _matchCount;
-    private string? _headerText;
+    private object? _headerContent;
     private string _pattern = "";
     private int _replaceStart;
     private int _replaceEnd;
 
-    // ── the three re-entrancy guards ────────────────────────────────────────────────────────────────
+    // ── the three reentrancy guards ────────────────────────────────────────────────────────────────
     //
     // _accepting is the one the model REQUIRES: committing writes Target.Text, which raises
     // TextChanged, which would re-query the provider against the just-committed text and re-open the
@@ -194,7 +195,7 @@ public class CompletionPopup : Control
 
     /// <summary>ASCII-only by design: <c>↑↓</c> are ambiguous-width and would mis-measure on the terminals the
     /// renderer's width defense exists for, exactly like the ComboBox caret's <c>v</c>.</summary>
-    private const string DefaultFooterText = "^v move   Tab/Enter accept   Esc dismiss";
+    private const string DefaultFooterText = "⇥ complete  ↑↓ select  ⏎ accept  ⎋ cancel";
 
     static CompletionPopup()
     {
@@ -228,8 +229,8 @@ public class CompletionPopup : Control
     /// <inheritdoc cref="ShowFooterProperty"/>
     public bool ShowFooter { get => GetValue(ShowFooterProperty); set => SetValue(ShowFooterProperty, value); }
 
-    /// <inheritdoc cref="FooterTextProperty"/>
-    public string? FooterText { get => GetValue(FooterTextProperty); set => SetValue(FooterTextProperty, value); }
+    /// <inheritdoc cref="FooterContentProperty"/>
+    public object? FooterContent { get => GetValue(FooterContentProperty); set => SetValue(FooterContentProperty, value); }
 
     /// <inheritdoc cref="FuzzyLabelProperty"/>
     public string? FuzzyLabel { get => GetValue(FuzzyLabelProperty); set => SetValue(FuzzyLabelProperty, value); }
@@ -240,8 +241,8 @@ public class CompletionPopup : Control
     /// <inheritdoc cref="MatchCountProperty"/>
     public int MatchCount => _matchCount;
 
-    /// <inheritdoc cref="HeaderTextProperty"/>
-    public string? HeaderText => _headerText;
+    /// <inheritdoc cref="HeaderContentProperty"/>
+    public object? HeaderContent => _headerContent;
 
     /// <inheritdoc cref="PatternProperty"/>
     public string Pattern
@@ -331,8 +332,8 @@ public class CompletionPopup : Control
     // Test/inspection seams (template-private parts).
     internal Popup? PopupPart => _popup;
     internal CompletionList? ListPart => _list;
-    internal TextBlock? HeaderPart => _header;
-    internal TextBlock? FooterPart => _footer;
+    internal ContentPresenter? HeaderPart => _header;
+    internal ContentPresenter? FooterPart => _footer;
 
     /// <summary>
     /// Re-queries the provider against the target's current text and caret, opening, updating or
@@ -398,9 +399,10 @@ public class CompletionPopup : Control
         var end = Math.Clamp(_replaceEnd, start, text.Length);
         var accept = new CompletionAccept(entry.Item, text, start, end, reason);
         var commit = CommitHandler is { } handler ? handler(accept) : CompletionCommit.Splice(accept);
+        // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
         var newText = commit.NewText ?? text;
 
-        // THE re-entrancy fence. Writing Text raises TextChanged and writing CaretIndex raises
+        // THE reentrancy fence. Writing Text raises TextChanged and writing CaretIndex raises
         // SelectionChanged; both are wired to Update, which would re-query the provider mid-accept and
         // resurrect the session we are closing (and, for a KeepOpen commit, race the Continued query
         // below). Both target writes live inside the guard, and every inbound handler checks it.
@@ -481,12 +483,14 @@ public class CompletionPopup : Control
 
         _popup = GetTemplatePart<Popup>(PartPopup);
         _list = GetTemplatePart<CompletionList>(PartList);
-        _header = GetTemplatePart<TextBlock>(PartHeader);
-        _footer = GetTemplatePart<TextBlock>(PartFooter);
+        _header = GetTemplatePart<ContentPresenter>(PartHeader);
+        _footer = GetTemplatePart<ContentPresenter>(PartFooter);
 
         if (_popup is not null)
         {
             UpdateDismissPolicy();
+            _popup.SetBinding(MaxWidthProperty, new Binding(MaxWidthProperty) { Source = this });
+            _popup.SetBinding(MaxHeightProperty, new Binding(MaxHeightProperty) { Source = this });
             _popup.PlacementTarget = AnchorElement;
             _popup.Closed += OnPopupClosed;
         }
@@ -851,7 +855,7 @@ public class CompletionPopup : Control
         _replaceEnd = Math.Clamp(context.ReplaceEnd, _replaceStart, text.Length);
 
         SetAndRaise(MatchCountProperty, ref _matchCount, _entries.Count);
-        SetAndRaise(HeaderTextProperty, ref _headerText, ComposeHeaderText(_entries.Count));
+        SetAndRaise(HeaderContentProperty, ref _headerContent, ComposeHeaderText(_entries.Count));
 
         PushEntriesToList();
         UpdateChrome();
@@ -879,7 +883,7 @@ public class CompletionPopup : Control
         _entries.Clear();
         SetPattern(""); // a closed picker owns no filter — the next Open() must start from the whole list
         SetAndRaise(MatchCountProperty, ref _matchCount, 0);
-        SetAndRaise(HeaderTextProperty, ref _headerText, null);
+        SetAndRaise(HeaderContentProperty, ref _headerContent, null);
 
         if (_list is not null)
             _list.ItemsSource = NoEntries; // drop the containers so a stale row can never flash on re-open
@@ -1190,7 +1194,7 @@ public class CompletionPopup : Control
     private static void OnChromeVisibilityChanged(UIObject sender, bool oldValue, bool newValue)
         => (sender as CompletionPopup)?.UpdateChrome();
 
-    private static void OnFooterTextChanged(UIObject sender, string? oldValue, string? newValue)
+    private static void OnFooterContentChanged(UIObject sender, object? oldValue, object? newValue)
         => (sender as CompletionPopup)?.UpdateChrome();
 
     private static void OnMaxVisibleItemsChanged(UIObject sender, int oldValue, int newValue)
@@ -1202,7 +1206,7 @@ public class CompletionPopup : Control
     // Popup's Child is a LOGICAL child, not a visual one. ControlTemplate.StampTemplatedParent walks
     // `VisualChildrenForTemplateStamp` only, so nothing under a Popup.Child ever receives a
     // TemplatedParent stamp, and a `{TemplateBinding}` written there silently resolves to nothing.
-    // (The bug is easy to miss because the neighbouring idioms DO work across the same seam:
+    // (The bug is easy to miss because the neighboring idioms DO work across the same seam:
     // DynamicResource / SetResourceReference walk `LogicalParent ?? TemplatedParent`, and the Popup is
     // itself a stamped part, so resource lookup and inheritance cross the surface boundary fine. Only
     // TemplateBinding, which needs the stamp on the binding TARGET, does not — which is how the same
@@ -1218,20 +1222,19 @@ public class CompletionPopup : Control
         if (_list is not null)
         {
             var cap = MaxVisibleItems;
-            _list.SetCurrentValue(UIElement.MaxHeightProperty, cap > 0 ? cap : LayoutMath.Unbounded);
+            _list.SetCurrentValue(MaxHeightProperty, cap > 0 ? cap : LayoutMath.Unbounded);
         }
 
-        if (_header is not null)
+        if (_header is not null && _headerContent is var header)
         {
-            _header.Text = _headerText;
-            _header.Visibility = ShowHeader && !string.IsNullOrEmpty(_headerText) ? Visibility.Visible : Visibility.Collapsed;
+            _header.Content = header;
+            _header.Visibility = ShowHeader && header is not (null or "") ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        if (_footer is not null)
+        if (_footer is not null && FooterContent is var footer)
         {
-            var footer = FooterText;
-            _footer.Text = footer;
-            _footer.Visibility = ShowFooter && !string.IsNullOrEmpty(footer) ? Visibility.Visible : Visibility.Collapsed;
+            _footer.Content = footer;
+            _footer.Visibility = ShowFooter && footer is not (null or "") ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

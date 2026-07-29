@@ -302,7 +302,7 @@ public sealed class FileDialogTests
         Assert.True(host.RunUntilIdle());
 
         var screen = ScreenText(host);
-        Assert.Contains("Tab complete", screen);   // the popup's key-hint footer — proof it is up
+        Assert.Contains("⇥ complete", screen);   // the popup's key-hint footer — proof it is up
         Assert.Contains("matches", screen);        // …and its "N matches" header
         Assert.Contains("template.json", screen);  // a file candidate
         Assert.Contains("folder", screen);         // the folder candidate's kind label
@@ -333,7 +333,7 @@ public sealed class FileDialogTests
         // The session must ADVANCE to the level just entered, exactly as accepting the folder would have.
         // Before the fix the empty final segment suppressed the query and the session CLOSED instead.
         var screen = ScreenText(host);
-        Assert.Contains("Tab complete", screen);   // the popup is still up…
+        Assert.Contains("⇥ complete", screen);   // the popup is still up…
         Assert.Contains("assets", screen);         // …and listing INSIDE Projects
 
         host.SendKey(Key.Escape);
@@ -383,7 +383,7 @@ public sealed class FileDialogTests
 
         // An empty final segment on ARRIVAL must not drop the whole listing over the dialog — that would add
         // a phantom rung to the Escape ladder (design page S2 → S3: the popup opens on ↓/Tab, never on arrival).
-        Assert.DoesNotContain("Tab complete", ScreenText(host));
+        Assert.DoesNotContain("⇥ complete", ScreenText(host));
 
         host.SendKey(Key.Escape);
         host.SendKey(Key.Escape);
@@ -444,7 +444,7 @@ public sealed class FileDialogTests
         host.SendKey(Key.End);
         host.SendKey(Key.Tab); // an EMPTY final segment: nothing to complete ⇒ Tab does the ordinary thing
         Assert.True(host.RunUntilIdle());
-        Assert.DoesNotContain("Tab complete", ScreenText(host));
+        Assert.DoesNotContain("⇥ complete", ScreenText(host));
 
         host.SendKey(Key.F4);
         host.SendKey(Key.End);
@@ -453,11 +453,11 @@ public sealed class FileDialogTests
 
         host.SendKey(Key.Escape); // close the popup, KEEPING the typed text
         Assert.True(host.RunUntilIdle());
-        Assert.DoesNotContain("Tab complete", ScreenText(host));
+        Assert.DoesNotContain("⇥ complete", ScreenText(host));
 
         host.SendKey(Key.Tab); // a partial segment is there ⇒ Tab completes (re-opens the popup)
         Assert.True(host.RunUntilIdle());
-        Assert.Contains("Tab complete", ScreenText(host));
+        Assert.Contains("⇥ complete", ScreenText(host));
 
         host.SendKey(Key.Escape);
         host.SendKey(Key.Escape);
@@ -544,10 +544,11 @@ public sealed class FileDialogTests
 
         var screen = ScreenText(host);
         Assert.Contains("Save As", screen);
-        Assert.Contains("New folder", screen);
+        Assert.True(screen.Contains("▤＋") || screen.Contains("＋📁"));
         Assert.Contains("Save as type:", screen);
-        Assert.Contains("PNG image (*.png)", screen);
-        Assert.DoesNotContain("Files of type:", screen);
+        Assert.Contains("PNG image", screen);
+        Assert.Contains("*.png", screen);
+        Assert.DoesNotContain("Filter:", screen);
 
         host.SendKey(Key.Escape);
         Complete(host, task);
@@ -656,10 +657,10 @@ public sealed class FileDialogTests
     [MemberData(nameof(CapabilityPresets))]
     public void Open_AnOverlongName_StaysInsideTheNameColumn(string caps)
     {
-        const string Overlong = "creative-cloud-files-personal-account-archive.png";
+        const string overlong = "creative-cloud-files-personal-account-archive.png";
 
         var provider = InMemoryFileSystemProvider.CreateSample();
-        provider.AddFile($"{Assets}/{Overlong}", size: 1234, lastModified: new DateTimeOffset(2026, 2, 17, 10, 35, 0, TimeSpan.Zero));
+        provider.AddFile($"{Assets}/{overlong}", size: 1234, lastModified: new DateTimeOffset(2026, 2, 17, 10, 35, 0, TimeSpan.Zero));
 
         using var host = CreateHostWithRoot(caps);
         var task = ShowOpen(host, provider);
@@ -667,7 +668,7 @@ public sealed class FileDialogTests
         var row = RowContaining(host, "creative");
 
         // The row must not carry the whole name — the Name column is far narrower than 48 cells.
-        Assert.DoesNotContain(Overlong, row);
+        Assert.DoesNotContain(overlong, row);
 
         // The defect is subtler than plain overflow: the neighbouring cells repaint on top of the escaped
         // text, so the name survives only in the GAPS between them ("…file1 KBrPNG imageount2026-02-17").

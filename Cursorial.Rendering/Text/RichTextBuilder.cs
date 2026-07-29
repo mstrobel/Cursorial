@@ -31,6 +31,9 @@ public sealed class RichTextBuilder
 {
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
     private readonly Style _defaultStyle;
+    private readonly TextTrimming _defaultTrimming;
+    private readonly WrapMode _defaultWrap;
+
     private ImmutableArray<Inline>.Builder? _openInlines;
 
     // Per-paragraph configuration captured at the moment the paragraph is opened. Fields are
@@ -39,8 +42,8 @@ public sealed class RichTextBuilder
     // particular, WrapMode.NoWrap is NOT the desired default. FlushOpenParagraph resets these
     // to the same values after closing a paragraph.
     private TextAlignment? _openAlignment;
-    private WrapMode _openWrap = WrapMode.WordWrap;
-    private TextTrimming _openTrim = TextTrimming.None;
+    private WrapMode _openWrap;
+    private TextTrimming _openTrim;
     private int? _openMaxLines;
     private Margins _openMargin;
 
@@ -51,11 +54,39 @@ public sealed class RichTextBuilder
     private readonly Stack<string?> _hyperlinks = new();
     private readonly Stack<object?> _tags = new();
 
-    public RichTextBuilder(Style defaultStyle = default)
+    public RichTextBuilder(Style defaultStyle = default,
+                           TextTrimming? defaultTrimming = null,
+                           WrapMode? defaultWrap = null)
     {
         _defaultStyle = defaultStyle;
+        _defaultTrimming = defaultTrimming ?? TextTrimming.None;
+        _defaultWrap = defaultWrap ?? WrapMode.WordWrap;
+        _openWrap = _defaultWrap;
+        _openTrim = _defaultTrimming;
     }
 
+    /// <summary>
+    /// Optionally initialize the builder with a default trimming and wrapping mode. 
+    /// </summary>
+    /// <param name="trimming">The new default text trimming mode, or <c>null</c> to leave it unchanged.</param>
+    /// <param name="wrapping">The new default text wrapping mode, or <c>null</c> to leave it unchanged.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if any content has already been added to this builder.
+    /// </exception>
+    internal void Initialize(TextTrimming? trimming, WrapMode? wrapping)
+    {
+        if (HasContent)
+            throw new InvalidOperationException($"{nameof(Initialize)} must be called before adding any content.");
+
+        if (trimming is {} t)
+            _openTrim = t;
+
+        if (wrapping is {} w)
+            _openWrap = w;
+    }
+
+    internal bool HasContent => _blocks.Count > 0 || _openInlines?.Count > 0;
+    
     /// <summary>
     /// Push <paramref name="style"/> onto the style stack. The pushed layer is merged with the
     /// previous top (child wins per <see cref="StyleExtensions.Compose"/>); subsequent
@@ -183,17 +214,17 @@ public sealed class RichTextBuilder
     /// per-paragraph options. Subsequent inline appends accumulate into the new paragraph.
     /// </summary>
     public RichTextBuilder Paragraph(
-        WrapMode wrap = WrapMode.WordWrap,
+        WrapMode? wrap = null,
         TextAlignment? alignment = null,
-        TextTrimming trim = TextTrimming.None,
+        TextTrimming? trim = null,
         int? maxLines = null,
         Margins? margin = null)
     {
         FlushOpenParagraph();
         _openInlines = ImmutableArray.CreateBuilder<Inline>();
-        _openWrap = wrap;
+        _openWrap = wrap ?? _defaultWrap;
         _openAlignment = alignment;
-        _openTrim = trim;
+        _openTrim = trim ?? _defaultTrimming;
         _openMaxLines = maxLines;
         _openMargin = margin ?? TextParagraph.DefaultMargins;
         return this;
@@ -320,9 +351,9 @@ public sealed class RichTextBuilder
                     });
 
         _openInlines = null;
-        _openWrap = WrapMode.WordWrap;
+        _openWrap = _defaultWrap;
         _openAlignment = TextAlignment.Left;
-        _openTrim = TextTrimming.None;
+        _openTrim = _defaultTrimming;
         _openMaxLines = null;
         _openMargin = default;
     }

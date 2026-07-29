@@ -175,7 +175,7 @@ public sealed class FocusManager
     /// child of its owning items control, so this reaches the owning toolbar in one hop whether the item is on the
     /// row or in the overflow popup band.
     /// </summary>
-    internal static UIElement? FindReturningScope(UIElement element)
+    internal static UIElement? FindReturningScope(UIElement? element)
     {
         for (UIElement? node = element; node is not null; node = node.UIParent ?? node.VisualParent)
         {
@@ -353,7 +353,7 @@ public sealed class FocusManager
     /// that element is no longer a valid focus target.
     /// </summary>
     /// <param name="elementInScope">An element within the non-retaining scope (typically the just-invoked control).</param>
-    public bool RestoreRetainedFocus(UIElement elementInScope)
+    public bool RestoreRetainedFocus(UIElement? elementInScope)
     {
         ArgumentNullException.ThrowIfNull(elementInScope);
         _dispatcher.VerifyAccess();
@@ -363,13 +363,13 @@ public sealed class FocusManager
     // The implicit INVOKE return (ButtonBase calls this after a click): returns focus only when the scope was
     // ENTERED by a one-shot interaction (Pointer/AccessKey ⇒ RetainedReturnAuto). A Tab/Directional entry keeps
     // focus AND its return target (only the explicit Escape path returns from there).
-    internal bool TryAutoReturnFocus(UIElement elementInScope)
+    internal bool TryAutoReturnFocus(UIElement? elementInScope)
     {
         _dispatcher.VerifyAccess();
         return ReturnRetainedFocus(elementInScope, requireAuto: true);
     }
 
-    private bool ReturnRetainedFocus(UIElement elementInScope, bool requireAuto)
+    private bool ReturnRetainedFocus(UIElement? elementInScope, bool requireAuto)
     {
         if (FindReturningScope(elementInScope) is not {} scope)
             return false;
@@ -395,7 +395,7 @@ public sealed class FocusManager
             returnScope = GetFocusScope(parent);
         }
 
-        var target = GetFocusedElement(returnScope);
+        var target = GetFocusedElement(returnScope) ?? ResolveFocusEntry(returnScope);
         if (target is null || !IsValidFocusTarget(target) || ReferenceEquals(target, FocusedElement))
             return false; // nothing valid to return to, or focus is already there (don't report a no-op as a return)
 

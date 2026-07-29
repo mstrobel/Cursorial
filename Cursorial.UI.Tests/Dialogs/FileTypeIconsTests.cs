@@ -71,7 +71,7 @@ public sealed class FileTypeIconsTests
     [InlineData("atlas.lua", "Lua source")]
     [InlineData("build.sh", "Shell script")]
     [InlineData("gradients.json", "JSON file")]
-    [InlineData("credits.pdf", "PDF document")]
+    [InlineData("credits.pdf", "PDF")]
     [InlineData("palette.aco", "Swatch file")]
     [InlineData("/home/mike/assets/hero-banner.PNG", "PNG image")]
     [InlineData(@"C:\Users\mike\assets\hero-banner.png", "PNG image")]
@@ -86,9 +86,9 @@ public sealed class FileTypeIconsTests
     [InlineData("archive.tar.xz", "XZ tarball")]
     [InlineData("archive.gz", "Gzip archive")] // …but a lone .gz is NOT a tarball
     [InlineData("archive.tar", "TAR archive")]
-    [InlineData("api.d.ts", "TypeScript declarations")]
-    [InlineData("api.ts", "TypeScript source")]
-    [InlineData("notes.v2.txt", "Text document")] // unknown compound falls through to the last extension
+    [InlineData("api.d.ts", "TS declarations")]
+    [InlineData("api.ts", "TS source")]
+    [InlineData("notes.v2.txt", "Text")] // unknown compound falls through to the last extension
     public void ForFileName_HonorsCompoundExtensions(string fileName, string expectedLabel)
         => Assert.Equal(expectedLabel, FileTypeIcons.ForFileName(fileName).KindLabel);
 
@@ -122,7 +122,7 @@ public sealed class FileTypeIconsTests
     public void ForFileName_StemRule_DoesNotSwallowRealExtensions()
     {
         Assert.Equal("PNG image", FileTypeIcons.ForFileName("license.png").KindLabel);
-        Assert.Equal("Word document", FileTypeIcons.ForFileName("readme.docx").KindLabel);
+        Assert.Equal("Word", FileTypeIcons.ForFileName("readme.docx").KindLabel);
         Assert.Equal("JSON file", FileTypeIcons.ForFileName("changelog.json").KindLabel);
     }
 
@@ -145,7 +145,7 @@ public sealed class FileTypeIconsTests
     [InlineData("folder", "\ue5ff")]          // nf-custom-folder U+E5FF
     [InlineData("png", "\ue60d")]             // nf-seti-image U+E60D
     [InlineData("jpeg", "\ue60d")]            // nf-seti-image U+E60D
-    [InlineData("svg", "\U000F0721")]         // page: nf-mdi-svg U+FC1F (v2, vacated) → nf-md-svg U+F0721
+    [InlineData("svg", "\ue698")]         // page: nf-mdi-svg U+FC1F (v2, vacated) → nf-md-svg U+F0721
     [InlineData("pdf", "\uf1c1")]             // nf-fa-file_pdf U+F1C1
     [InlineData("json", "\ue60b")]            // nf-seti-json U+E60B
     [InlineData("lua", "\ue620")]             // nf-seti-lua U+E620
@@ -178,7 +178,7 @@ public sealed class FileTypeIconsTests
     [InlineData("logo.svg", "SVG image")]
     [InlineData("thumbnail.jpg", "JPEG image")]
     [InlineData("palette.aco", "Swatch file")]
-    [InlineData("credits.pdf", "PDF document")]
+    [InlineData("credits.pdf", "PDF")]
     [InlineData("atlas.lua", "Lua source")]
     [InlineData("build.sh", "Shell script")]
     [InlineData("gradients.json", "JSON file")]
@@ -373,7 +373,7 @@ public sealed class FileTypeIconsTests
         var carrier = png.ToIconCarrier();
 
         Assert.Equal(png.Glyph, carrier.Glyph);
-        Assert.Equal(1, carrier.GlyphWidth);
+        Assert.Equal(2, carrier.GlyphWidth);
         Assert.Equal(png.Emoji, carrier.Emoji);
         Assert.Equal(png.Text, carrier.Text);
 
@@ -390,7 +390,7 @@ public sealed class FileTypeIconsTests
 
         Assert.Equal(IconTier.Glyph, icon.Tier);
         Assert.Contains(descriptor.Glyph, host.GetRowText(0));
-        Assert.Equal(1, icon.Bounds.Columns);
+        Assert.Equal(2, icon.Bounds.Columns);
     }
 
     [Fact] // no Nerd Font, emoji present (the framework default) → the emoji tier, measured at TWO cells

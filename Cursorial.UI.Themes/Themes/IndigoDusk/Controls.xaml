@@ -1114,7 +1114,7 @@
         <TextBox x:Name="PART_EditBox" Visibility="Collapsed"/>
         <CompletionPopup x:Name="PART_DropDown"
                          MaxVisibleItems="12"
-                         FooterText="^v move   type to filter   Enter open   Esc dismiss"/>
+                         FooterContent="^v move   type to filter   Enter open   Esc dismiss"/>
       </Grid>
     </Border>
   </ControlTemplate>

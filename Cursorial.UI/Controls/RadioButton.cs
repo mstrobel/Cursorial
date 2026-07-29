@@ -40,6 +40,7 @@ public class RadioButton : ToggleButton
     private protected override void OnIsCheckedChangedCore(bool? oldValue, bool? newValue)
     {
         base.OnIsCheckedChangedCore(oldValue, newValue);
+
         if (newValue == true)
             UncheckGroupPeers();
     }
@@ -61,7 +62,7 @@ public class RadioButton : ToggleButton
         {
             e.Handled = true;
             neighbor.Focus(FocusNavigationMethod.Directional);
-            neighbor.IsChecked = true;
+            neighbor.OnClick();
         }
     }
 
@@ -70,7 +71,12 @@ public class RadioButton : ToggleButton
         foreach (var peer in EnumerateGroup())
         {
             if (!ReferenceEquals(peer, this) && peer.IsChecked == true)
-                peer.SetCurrentValue(IsCheckedProperty, false); // SetCurrentValue preserves the peer's binding (C216)
+            {
+                if (peer.ReadLocalValue(IsCheckedProperty) is true)
+                    peer.SetCurrentValue(IsCheckedProperty, false); // SetCurrentValue preserves the peer's binding (C216)
+                else
+                    peer.OnCommandStateChanged();
+            }
         }
     }
 
@@ -89,7 +95,7 @@ public class RadioButton : ToggleButton
 
             if (ReferenceEquals(peer, this))
             {
-                if (!forward)
+                if (!forward && previous is not null)
                     return previous; // the radio before self (null wraps below)
                 seenSelf = true;
             }
@@ -126,8 +132,9 @@ public class RadioButton : ToggleButton
             yield break;
         }
 
-        // Named grouping spans the surface root (logical tree, depth-first, document order).
-        var root = ResourceServices.LogicalRoot(this);
+        // Named grouping spans the surface root unless part of a template (logical tree, depth-first, document order).
+        var root = ResourceServices.LogicalRoot(this, stopAtTemplateBoundary: true);
+
         foreach (var descendant in EnumerateLogicalDepthFirst(root))
         {
             if (descendant is RadioButton radio && string.Equals(radio.GroupName, groupName, StringComparison.Ordinal))

@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 
 using Cursorial.Input;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
@@ -132,6 +133,9 @@ public class ListView : SelectingItemsControl
     private ListViewHeaderPresenter? _headerPart;
     private int _columnStructureVersion;
     private bool _sorting; // suppresses the removal re-select while the built-in sort permutes the list
+    private int? _pendingFocusRepairIndex;
+    private object? _pendingFocusRepairItem;
+    private bool _pendingFocusRepairScheduled;
 
     /// <summary>Creates a list view (Details, single selection; the list itself is not a tab stop — its items host is).</summary>
     public ListView()
@@ -317,6 +321,8 @@ public class ListView : SelectingItemsControl
         if (details && _columnLayout.Reconcile(Columns, ColumnSpacing))
             InvalidateColumnConsumers();
 
+        ScheduleFocusRepair();
+
         return size;
     }
 
@@ -327,6 +333,11 @@ public class ListView : SelectingItemsControl
         if (sender is not ListView listView)
             return;
 
+        var oldPanel = ItemsPanelFromItemsControl(listView);
+        var oldFocus = oldPanel?.GetValue(FocusManager.FocusedElementProperty);
+        var oldFocusIndex = oldFocus is not null ? listView.ItemContainerGenerator.IndexFromContainer(oldFocus) : -1;
+        var oldFocusItem = oldFocusIndex >= 0 ? listView.ItemContainerGenerator.ItemFromIndex(oldFocusIndex) : null;
+
         // ① the panel swap — ItemsPresenter.RebuildPanel() tears down, rebuilds and re-adopts every container.
         listView.SetCurrentValue(ItemsPanelProperty, PanelTemplateFor(newValue));
 
@@ -334,14 +345,16 @@ public class ListView : SelectingItemsControl
         listView.ApplyViewToTemplate();
         listView.PushViewToContainers();
         listView.InvalidateColumnStructure();
+        listView.RepairFocusedIndex(oldFocusIndex, oldFocusItem);
     }
 
-    private static ItemsPanelTemplate PanelTemplateFor(ListViewViewMode view) => view switch
-    {
-        ListViewViewMode.List or ListViewViewMode.SmallIcons => ColumnMajorPanelTemplate,
-        ListViewViewMode.Tiles => RowMajorPanelTemplate,
-        _ => DetailsPanelTemplate
-    };
+    private static ItemsPanelTemplate PanelTemplateFor(ListViewViewMode view)
+        => view switch
+           {
+               ListViewViewMode.List or ListViewViewMode.SmallIcons => ColumnMajorPanelTemplate,
+               ListViewViewMode.Tiles                               => RowMajorPanelTemplate,
+               _                                                    => DetailsPanelTemplate
+           };
 
     // The scroll axis IS the view mode: a column-major wrap grows sideways, a row-major wrap grows downward,
     // and Details must not scroll horizontally at all — its header is pinned outside the viewport, so a
@@ -351,10 +364,17 @@ public class ListView : SelectingItemsControl
         var view = View;
         var columnMajor = view is ListViewViewMode.List or ListViewViewMode.SmallIcons;
 
-        SetCurrentValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,
-                        columnMajor ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
-        SetCurrentValue(ScrollViewer.VerticalScrollBarVisibilityProperty,
-                        columnMajor ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
+        if (GetValueSource(ScrollViewer.HorizontalScrollBarVisibilityProperty) is { Kind: ValueSourceKind.Default })
+        {
+            SetCurrentValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,
+                            columnMajor ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+        }
+
+        if (GetValueSource(ScrollViewer.VerticalScrollBarVisibilityProperty) is { Kind: ValueSourceKind.Default })
+        {
+            SetCurrentValue(ScrollViewer.VerticalScrollBarVisibilityProperty,
+                            columnMajor ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
+        }
 
         _headerPart?.SetCurrentValue(VisibilityProperty,
                                      view == ListViewViewMode.Details ? Visibility.Visible : Visibility.Collapsed);
@@ -367,6 +387,84 @@ public class ListView : SelectingItemsControl
         {
             if (ItemContainerGenerator.ContainerFromIndex(i) is ListViewItem item)
                 item.SetViewFromOwner(view);
+        }
+    }
+
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        base.OnLostFocus(e);
+
+        if (_pendingFocusRepairIndex >= 0 && (IsKeyboardFocusWithin is false || e.Method.IsUserInitiated()))
+            ClearPendingFocus();
+    }
+
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        ClearPendingFocus();
+        base.OnDetachedFromTree(in e);
+    }
+
+    private void RepairFocusedIndex(int focusIndex, object? item)
+    {
+        ClearPendingFocus();
+
+        _pendingFocusRepairIndex = focusIndex;
+        _pendingFocusRepairItem = item;
+
+        ScheduleFocusRepair();
+    }
+
+    private void ClearPendingFocus()
+    {
+        _pendingFocusRepairIndex = null;
+        _pendingFocusRepairItem = null;
+        _pendingFocusRepairScheduled = false;
+    }
+
+    private void ScheduleFocusRepair()
+    {
+        if (_pendingFocusRepairScheduled || _pendingFocusRepairIndex is not >= 0)
+            return;
+
+        _pendingFocusRepairScheduled = true;
+        UIApplication.Current?.Dispatcher.Post(TryRestorePendingFocus);
+    }
+
+    private void TryRestorePendingFocus()
+    {
+        _pendingFocusRepairScheduled = false;
+
+        if (GetLayoutManager()?.HasQueuedWork is true) return;
+
+        if (_pendingFocusRepairIndex is {} focusIndex and >= 0 &&
+            IsAttachedToTree &&
+            ItemContainerGenerator is { ContainerCount: var cc and > 0 } cg &&
+            focusIndex < cc &&
+            cg.ContainerFromIndex(focusIndex) is {} restoredFocus &&
+            cg.ItemFromContainer(restoredFocus) is var restoredItem &&
+            ItemsPanelFromItemsControl(this) is {} itemsPanel &&
+            UIApplication.Current?.FocusManager.FocusedElement is var focused)
+        {
+            if (_pendingFocusRepairItem is null || Equals(_pendingFocusRepairItem, restoredItem))
+            {
+                if (itemsPanel.IsKeyboardFocusWithin ||
+                    focused is null ||
+                    FocusManager.GetFocusScope(focused) is {} fs && FocusManager.GetRetainsFocus(fs) is false)
+                {
+                    restoredFocus.Focus(FocusNavigationMethod.Restore);
+                }
+                else
+                {
+                    if (FindItemsScrollViewer() is { Presenter: {} scp } sv &&
+                        scp.TryGetContentRect(restoredFocus, out var rect))
+                    {
+                        sv.EnsureVisible(rect);
+                    }
+                    itemsPanel.SetValue(FocusManager.FocusedElementProperty, restoredFocus);
+                }
+            }
+
+            ClearPendingFocus();
         }
     }
 
@@ -393,10 +491,14 @@ public class ListView : SelectingItemsControl
     {
         var presenter = new ContentPresenter { HorizontalAlignment = column.HorizontalAlignment };
 
-        if (column.CellTemplate is { } template)
+        if (column.CellTemplate is {} template)
             presenter.ContentTemplate = template;
+        else
+            presenter.ShowTrimmedContentInToolTip = true;
 
-        presenter.SetBinding(ContentPresenter.ContentProperty, PathBinding(column.CellTemplate is null ? column.DisplayMemberPath : null));
+        presenter.SetBinding(ContentPresenter.ContentProperty,
+                             PathBinding(column.CellTemplate is null ? column.DisplayMemberPath : null));
+
         return presenter;
     }
 
@@ -405,7 +507,7 @@ public class ListView : SelectingItemsControl
     {
         // An explicit ItemTemplate is the escape hatch: the caller has said exactly what an item looks like,
         // so the icon/name/secondary composition below must not second-guess it.
-        if (ItemTemplate is { } itemTemplate)
+        if (ItemTemplate is {} itemTemplate)
         {
             var templated = new ContentPresenter { ContentTemplate = itemTemplate };
             templated.SetBinding(ContentPresenter.ContentProperty, PathBinding(null));
@@ -426,9 +528,12 @@ public class ListView : SelectingItemsControl
                 if (SecondaryMemberPath is not { Length: > 0 } secondaryPath)
                     return head;
 
-                var tile = new StackPanel { Orientation = Orientation.Vertical };
+                var tile = new DockPanel();
+                var secondaryCell = BuildTextCell(secondaryPath);
+                TextElement.SetTextWeight(secondaryCell, TextWeight.Faint);
+                DockPanel.SetDock(secondaryCell, Dock.Bottom);
+                tile.Children.Add(secondaryCell);
                 tile.Children.Add(head);
-                tile.Children.Add(BuildTextCell(secondaryPath));
                 return tile;
             }
 
@@ -439,16 +544,25 @@ public class ListView : SelectingItemsControl
 
     private static UIElement IconRow(UIElement icon, UIElement primary)
     {
-        icon.Margin = new Margins(0, 0, 1, 0); // one cell of air between the glyph and the name
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        var row = new DockPanel { LastChildFill = true, Height = 1 };
+
+        icon.Margin = new Margins(0, 0, 1, 0);
+
         row.Children.Add(icon);
         row.Children.Add(primary);
+
         return row;
     }
 
     private static ContentPresenter BuildTextCell(string? path)
     {
-        var presenter = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Left };
+        var presenter = new ContentPresenter
+                        {
+                            HorizontalAlignment = HorizontalAlignment.Left,
+                            ForwardsFromTemplatedParent = false,
+                            ShowTrimmedContentInToolTip = true
+                        };
+        presenter.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         presenter.SetBinding(ContentPresenter.ContentProperty, PathBinding(path));
         return presenter;
     }

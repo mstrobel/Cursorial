@@ -71,7 +71,7 @@ internal static class ContentRealization
             {
                 AdoptElementContent(host, ForwardTextAttributeAxes(host, element));
                 // Icon-as-content gets the Inverse cue (§2.1), but the forward is a framework binding on
-                // BORROWED content — the presenter must own its lifecycle (it is torn down on unhost, else
+                // BORROWED content — the presenter must own its lifecycle (it is torn down on un-host, else
                 // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the install is
                 // driven by ContentPresenter.RebuildChild, not here.
                 return element;
@@ -144,9 +144,21 @@ internal static class ContentRealization
                 if (host.ForwardTextInverse || axis != TextElement.InverseProperty)
                     leaf.SetBinding(axis, new Binding(axis) { Source = source });
             }
-            
-            leaf.SetBinding(TextBlock.TextWrappingProperty, 
-                            new Binding(TextBlock.TextWrappingProperty) { Source = source });
+
+            if (leaf is TextBlock)
+            {
+                if (leaf.GetValueSource(TextBlock.TextWrappingProperty) is { Kind: ValueSourceKind.Default })
+                {
+                    leaf.SetBinding(TextBlock.TextWrappingProperty,
+                                    new Binding(TextBlock.TextWrappingProperty) { Source = source });
+                }
+
+                if (leaf.GetValueSource(TextBlock.TextTrimmingProperty) is { Kind: ValueSourceKind.Default })
+                {
+                    leaf.SetBinding(TextBlock.TextTrimmingProperty,
+                                    new Binding(TextBlock.TextTrimmingProperty) { Source = source });
+                }
+            }
         }
 
         return leaf;

@@ -616,7 +616,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         var culture = _binding.EffectiveCulture;
         var targetType = _targetProperty.PropertyType;
 
-        if (Converter is {} converter)
+        if (Converter is {} converter && !ReferenceEquals(value, Binding.DoNothing))
         {
             try
             {
@@ -637,6 +637,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (value is null && _binding.HasTargetNullValue)
             value = _binding.TargetNullValue;
 
+        if (ReferenceEquals(value, Binding.DoNothing))
+            return HandleDoNothing(out isUnset, targetType);
+
         if (_binding.StringFormat is {} format)
         {
             if (targetType == typeof(string) || targetType == typeof(object))
@@ -646,7 +649,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             else
             {
                 MaybeTrace(BindingFailureKind.None, BindingTraceLevel.Warning,
-                           $"StringFormat '{format}' ignored: target type '{targetType.Name}' is not string or object.");
+                           $"StringFormat '{format}' ignored: target type '{targetType.Name}' " +
+                           $"is not string or object.");
             }
         }
 
@@ -656,6 +660,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private object? CoerceToTargetType(object? value, out bool isUnset)
     {
         isUnset = false;
+
         var targetType = _targetProperty.PropertyType;
         var converted = ValueConversion.Convert(value, targetType, _binding.EffectiveCulture);
 
@@ -667,14 +672,31 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return FallbackOrUnset(out isUnset);
         }
 
+        if (ReferenceEquals(converted, Binding.DoNothing))
+            return HandleDoNothing(out isUnset, targetType);
+
         return converted;
     }
 
-    private object? FallbackOrUnset(out bool isUnset)
+    private object? HandleDoNothing(out bool isUnset, Type targetType)
     {
-        if (_binding.HasFallbackValue)
+        if (BindingDiagnostics.ShouldConstruct(BindingTraceLevel.Verbose, _binding.Trace))
         {
-            var converted = ValueConversion.Convert(_binding.FallbackValue, _targetProperty.PropertyType, _binding.EffectiveCulture);
+            MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Verbose,
+                       $"converter returned '{Binding.DoNothing}' during attempted conversion to target type " +
+                       $"'{targetType.Name}'; no value will be produced.");
+        }
+
+        return FallbackOrUnset(out isUnset, allowFallback: false);
+    }
+
+    private object? FallbackOrUnset(out bool isUnset, bool allowFallback = true)
+    {
+        if (allowFallback && _binding.HasFallbackValue)
+        {
+            object? converted = ValueConversion.Convert(_binding.FallbackValue,
+                                                        _targetProperty.PropertyType,
+                                                        _binding.EffectiveCulture);
 
             if (!ReferenceEquals(converted, ValueConversion.Failed))
             {
@@ -683,7 +705,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             }
 
             MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Warning,
-                       $"the fallback value '{_binding.FallbackValue}' could not be converted to target type '{_targetProperty.PropertyType.Name}'.");
+                       $"the fallback value '{_binding.FallbackValue}' could not be converted to " +
+                       $"target type '{_targetProperty.PropertyType.Name}'.");
         }
 
         isUnset = true;

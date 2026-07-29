@@ -4,6 +4,9 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
+
+// ReSharper disable once CheckNamespace
+
 namespace Cursorial.UI.Dialogs;
 
 /// <summary>
@@ -82,7 +85,8 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
     }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default,
+                                                                   bool showHidden = false)
         => new(Task.Run<IReadOnlyList<FileSystemEntry>>(() =>
         {
             var roots = new List<FileSystemEntry>();
@@ -94,10 +98,18 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
                 try
                 {
                     ready = drive.IsReady;
+
+                    var driveName = drive.Name;
+
+                    if (showHidden is false && IsHiddenVolume(driveName))
+                        continue;
+                    
                     // VolumeLabel throws on an unready drive, which is exactly when we still want the row.
                     name = ready && drive.VolumeLabel.Length > 0
-                        ? $"{drive.VolumeLabel} ({drive.Name.TrimEnd(Path.DirectorySeparatorChar)})"
-                        : drive.Name;
+                               ? drive.Name is { Length: > 0 } n && n != drive.VolumeLabel
+                                     ? $"{drive.VolumeLabel} ({n.TrimEnd(Path.DirectorySeparatorChar)})"
+                                     : DisplayNameFor(drive)
+                               : DisplayNameFor(drive);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
@@ -114,16 +126,40 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
             return roots;
         }, cancellationToken));
 
+    private static bool IsHiddenVolume(string driveName)
+    {
+        if (OperatingSystem.IsMacOS()) return IsHiddenMacOSVolume(driveName); 
+        if (OperatingSystem.IsLinux()) return IsHiddenLinuxVolume(driveName); 
+        return OperatingSystem.IsWindows() && IsHiddenWindowsVolume(driveName);
+    }
+
+    // ReSharper disable UnusedParameter.Local
+
+    private static bool IsHiddenWindowsVolume(string driveName) => false;
+
+    private static bool IsHiddenLinuxVolume(string driveName)
+        => driveName.Equals("/dev", StringComparison.Ordinal) ||
+           driveName.Equals("/proc", StringComparison.Ordinal);
+
+    // ReSharper restore UnusedParameter.Local
+
+    private static bool IsHiddenMacOSVolume(string driveName)
+    {
+        return driveName.StartsWith("/System/Volumes/", StringComparison.Ordinal) ||
+               driveName.Equals("/dev", StringComparison.Ordinal) ||
+               driveName.StartsWith("/private/", StringComparison.Ordinal);
+    }
+
     private static FileSystemPlace PlaceForDrive(DriveInfo drive)
     {
         try
         {
             return drive.DriveType switch
-            {
-                DriveType.Removable => FileSystemPlace.RemovableDrive,
-                DriveType.Network => FileSystemPlace.NetworkDrive,
-                _ => FileSystemPlace.Drive,
-            };
+                   {
+                       DriveType.Removable => FileSystemPlace.RemovableDrive,
+                       DriveType.Network   => FileSystemPlace.NetworkDrive,
+                       _                   => FileSystemPlace.Drive
+                   };
         }
         catch (IOException)
         {
@@ -153,6 +189,20 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
     {
         var leaf = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
         return leaf.Length > 0 ? leaf : place.ToString();
+    }
+
+    private static string DisplayNameFor(DriveInfo drive)
+    {
+        const string macVolumesPrefix = "/Volumes/";
+
+        if (OperatingSystem.IsMacOS() &&
+            drive is { RootDirectory.FullName: {} path } &&
+            path.StartsWith(macVolumesPrefix) && path.LastIndexOf('/') == macVolumesPrefix.Length - 1)
+        {
+            return path.Substring(macVolumesPrefix.Length);
+        }
+
+        return drive.RootDirectory.FullName;
     }
 
     /// <inheritdoc/>

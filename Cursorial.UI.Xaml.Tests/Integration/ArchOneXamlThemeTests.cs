@@ -502,7 +502,7 @@ public sealed class ArchOneXamlThemeTests
         Assert.Equal(1, Popups(host));
         Assert.True(RenderContains(host, "Price", 60, 12));
         Assert.True(RenderContains(host, "1 match", 60, 12));
-        Assert.True(RenderContains(host, "Esc dismiss", 60, 12));
+        Assert.True(RenderContains(host, "⎋ cancel", 60, 12));
 
         // …and the fuzzy highlight survives the XAML half too: "Pr" bold, "ice" not.
         var (column, row) = FindCells(host, "Price", 60, 12);

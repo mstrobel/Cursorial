@@ -41,6 +41,11 @@ public interface ICheckableCommandParameter
     /// expressible. Ignored while <see cref="Handled"/> is <see langword="false"/>. Default <see langword="false"/>.
     /// </summary>
     bool? IsCheckedOverride { get; set; }
+ 
+    /// <summary>
+    /// An inner parameter or tag that can be used to attach additional information to command queries.
+    /// </summary>
+    object? Tag { get; set; }
     
     /// <summary>
     /// The effective checked state based on whether the command has been <see cref="Handled"/>
@@ -58,6 +63,8 @@ public interface ICheckableCommandParameter
 /// </summary>
 public class CheckableCommandParameter(bool? isChecked = false) : ICheckableCommandParameter, INotifyPropertyChanged
 {
+    public CheckableCommandParameter() : this(false) {}
+
     /// <inheritdoc cref="ICheckableCommandParameter.IsChecked"/>
     public bool? IsChecked { get; set => Set(ref field, value, IsCheckedChangedArgs); } = isChecked;
 
@@ -66,7 +73,10 @@ public class CheckableCommandParameter(bool? isChecked = false) : ICheckableComm
 
     /// <inheritdoc cref="ICheckableCommandParameter.IsCheckedOverride"/>
     public bool? IsCheckedOverride { get; set => Set(ref field, value, IsCheckedOverrideChangedArgs); }
-    
+
+    /// <inheritdoc cref="ICheckableCommandParameter.Tag"/>
+    public object? Tag { get; set => Set(ref field, value, TagChangedArgs); }
+
     /// <inheritdoc cref="ICheckableCommandParameter.IsCheckedEffective"/>
     public bool? IsCheckedEffective => Handled ? IsCheckedOverride : IsChecked;
 
@@ -105,4 +115,5 @@ public class CheckableCommandParameter(bool? isChecked = false) : ICheckableComm
     private static readonly PropertyChangedEventArgs IsCheckedChangedArgs = new(nameof(IsChecked));
     private static readonly PropertyChangedEventArgs HandledChangedArgs = new(nameof(Handled));
     private static readonly PropertyChangedEventArgs IsCheckedOverrideChangedArgs = new(nameof(IsCheckedOverride));
+    private static readonly PropertyChangedEventArgs TagChangedArgs = new(nameof(Tag));
 }

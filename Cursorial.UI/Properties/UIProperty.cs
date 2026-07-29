@@ -18,7 +18,7 @@ public abstract class UIProperty
     /// <c>SetValue(p, UnsetValue, LocalValue)</c> spelling is equivalent to <c>ClearValue</c> in
     /// full (matrix PD5). It is a write-side sentinel only — reads never return it.
     /// </summary>
-    public static readonly object UnsetValue = UnsetValueSentinel.Instance;
+    public static readonly object UnsetValue = new SentinelValue(nameof(UnsetValue));
 
     /// <summary>
     /// The unregistered sentinel property (ledger A14): <see cref="Id"/> is −1 and it is absent from
@@ -427,13 +427,24 @@ public abstract class UIProperty
 
     // ───────────────────────────── sentinels ─────────────────────────────
 
-    private sealed class UnsetValueSentinel
+    internal sealed record SentinelValue
     {
-        internal static readonly UnsetValueSentinel Instance = new();
+        private readonly string _toString; 
 
-        private UnsetValueSentinel() { }
+        public SentinelValue(string Name)
+        {
+            this.Name = Name;
+            _toString = '{' + Name + '}';
+        }
 
-        public override string ToString() => "{UnsetValue}";
+        public string Name { get; init; }
+
+        public override string ToString() => _toString;
+
+        public void Deconstruct(out string Name)
+        {
+            Name = this.Name;
+        }
     }
 
     private sealed class SentinelProperty : UIProperty

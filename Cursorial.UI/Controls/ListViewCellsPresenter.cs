@@ -64,7 +64,7 @@ public sealed class ListViewCellsPresenter : Panel
     {
         Children.Clear();
 
-        if (_owner is not { } owner)
+        if (_owner is not {} owner || IsAttachedToTree is false)
         {
             _builtStructureVersion = -1;
             return;

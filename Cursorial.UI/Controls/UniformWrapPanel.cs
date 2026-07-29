@@ -41,11 +41,25 @@ public class UniformWrapPanel : Panel
         UIProperty.Register<UniformWrapPanel, int?>(nameof(ItemWidth), coerce: static (_, value) => value is < 0 ? 0 : value);
 
     /// <summary>
+    /// The maximum slot width in cells, or <see langword="null"/> (default) to derive it from the widest
+    /// child. <c>[AffectsMeasure]</c>; negative values coerce to 0.
+    /// </summary>
+    public static readonly StyledProperty<int?> MaxItemWidthProperty =
+        UIProperty.Register<UniformWrapPanel, int?>(nameof(MaxItemWidth), coerce: static (_, value) => value is < 0 ? 0 : value);
+
+    /// <summary>
     /// The uniform slot height in cells, or <see langword="null"/> (default) to derive it from the tallest
     /// child. <c>[AffectsMeasure]</c>; negative values coerce to 0.
     /// </summary>
     public static readonly StyledProperty<int?> ItemHeightProperty =
         UIProperty.Register<UniformWrapPanel, int?>(nameof(ItemHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
+
+    /// <summary>
+    /// The maximum slot height in cells, or <see langword="null"/> (default) to derive it from the widest
+    /// child. <c>[AffectsMeasure]</c>; negative values coerce to 0.
+    /// </summary>
+    public static readonly StyledProperty<int?> MaxItemHeightProperty =
+        UIProperty.Register<UniformWrapPanel, int?>(nameof(MaxItemHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
 
     /// <summary>The number of slots on one line — items per ROW when horizontal, items per COLUMN when
     /// vertical. Read-only; republished by every arrange (and, so an un-arranged panel still answers, by
@@ -81,8 +95,14 @@ public class UniformWrapPanel : Panel
     /// <inheritdoc cref="ItemWidthProperty"/>
     public int? ItemWidth { get => GetValue(ItemWidthProperty); set => SetValue(ItemWidthProperty, value); }
 
+    /// <inheritdoc cref="MaxItemWidthProperty"/>
+    public int? MaxItemWidth { get => GetValue(MaxItemWidthProperty); set => SetValue(MaxItemWidthProperty, value); }
+
     /// <inheritdoc cref="ItemHeightProperty"/>
     public int? ItemHeight { get => GetValue(ItemHeightProperty); set => SetValue(ItemHeightProperty, value); }
+
+    /// <inheritdoc cref="MaxItemHeightProperty"/>
+    public int? MaxItemHeight { get => GetValue(MaxItemHeightProperty); set => SetValue(MaxItemHeightProperty, value); }
 
     /// <inheritdoc cref="ItemsPerLineProperty"/>
     public int ItemsPerLine => _itemsPerLine;
@@ -100,6 +120,13 @@ public class UniformWrapPanel : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         var horizontal = Orientation == Orientation.Horizontal;
+
+        var viewportSize = /*VisualParent is ItemsPresenter { UIParent: ScrollViewer { ResolvedViewport: var vp } }
+                               ? vp
+                               : */default(Size?);
+
+        var maxWidth = MaxItemWidth ?? viewportSize?.Columns ?? LayoutMath.Unbounded;
+        var maxHeight = MaxItemHeight ?? viewportSize?.Rows ?? LayoutMath.Unbounded;
         var explicitWidth = ItemWidth;
         var explicitHeight = ItemHeight;
 
@@ -110,6 +137,8 @@ public class UniformWrapPanel : Panel
         // and pass 2 re-measures everyone AT that slot, so a child that stretches (a selection bar) fills
         // its cell instead of collapsing to its text width.
         var probe = new Size(explicitWidth ?? availableSize.Columns, explicitHeight ?? availableSize.Rows);
+        // var probe = new Size(Math.Max(explicitWidth ?? availableSize.Columns, maxWidth),
+        //                      Math.Max(explicitHeight ?? availableSize.Rows, maxHeight));
 
         var cellWidth = explicitWidth ?? 0;
         var cellHeight = explicitHeight ?? 0;
@@ -119,17 +148,21 @@ public class UniformWrapPanel : Panel
         for (var i = 0; i < children.Count; i++)
         {
             var child = children[i];
+
             child.Measure(probe);
 
             if (child.Visibility == Visibility.Collapsed)
                 continue;
 
             visibleCount++;
+
             var desired = child.DesiredSize;
+
             if (explicitWidth is null)
-                cellWidth = Math.Max(cellWidth, desired.Columns);
+                cellWidth = Math.Min(maxWidth, Math.Max(cellWidth, desired.Columns));
+
             if (explicitHeight is null)
-                cellHeight = Math.Max(cellHeight, desired.Rows);
+                cellHeight = Math.Min(maxHeight, Math.Max(cellHeight, desired.Rows));
         }
 
         // A zero-extent cell would make items-per-line infinite; one cell is the terminal's atom.

@@ -1,9 +1,12 @@
 using System;
 using System.ComponentModel;
 
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
@@ -35,7 +38,7 @@ internal sealed class FileDialogView
 {
     private readonly FileDialogViewModel _model;
     private readonly FileDialogPathBar _pathBar = new() { IsEditable = true };
-    private readonly CompletionPopup _completion = new();
+    private readonly CompletionPopup _completion = new() { IsHitTestVisible = false, Width = 0, Height = 0 };
     private readonly FileDialogPathCompletionProvider _completionProvider;
     private readonly ListView _listView = new();
     private readonly TextBox _fileNameBox = new();
@@ -52,6 +55,9 @@ internal sealed class FileDialogView
 
     private bool _syncingSelection;
     private TextBox? _completionHost; // the edit box the completion popup is currently attached to
+    private DataTemplate? _nameCellTemplate;
+    private DataTemplate? _itemTemplate;
+    private DataTemplate? _tileTemplate;
 
     /// <summary>Builds the chrome for <paramref name="model"/>.</summary>
     /// <param name="model">The view-model every control binds to.</param>
@@ -88,8 +94,18 @@ internal sealed class FileDialogView
                               DisplayMemberPath = nameof(FileDialogEntry.ModifiedText),
                               SortMemberPath = "Modified"
                           };
+        
+        _placesPanel.Styles.Add(
+            new Style(Selectors.Is<ButtonBase>())
+               .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush));
+
+        _errorLine.Classes.Add(ThemeClass.Danger);
+        _errorLine.Visibility = Visibility.Collapsed;
+        _errorLine.TextWrapping = WrapMode.WordWrap;
 
         Root = Build();
+        Root.MouseDown += OnRootMouseDown;
+
         model.PropertyChanged += OnModelPropertyChanged;
         RebuildPlacesRail();
         SyncSortIndicator();
@@ -112,35 +128,96 @@ internal sealed class FileDialogView
 
     private UIElement Build()
     {
-        var root = new DockPanel { LastChildFill = true, Margin = new Margins(1, 0) };
-        KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Cycle);
+        var panel = new DockPanel { LastChildFill = true };
+        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+
+        var root = new Border { Child = panel };
+        root.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.PanelBrush);
 
         var toolbar = BuildToolbar();
         DockPanel.SetDock(toolbar, Dock.Top);
-        root.Children.Add(toolbar);
+        panel.Children.Add(toolbar);
 
         var footer = BuildFooter();
         DockPanel.SetDock(footer, Dock.Bottom);
-        root.Children.Add(footer);
+        panel.Children.Add(footer);
 
-        root.Children.Add(BuildBody());
+        panel.Children.Add(BuildBody());
+        
+        root.QueryCursor += OnRootQueryCursor;
         return root;
+    }
+
+    private void OnRootQueryCursor(object? sender, QueryCursorEventArgs e)
+    {
+        if (_model.IsBusy)
+        {
+            e.Cursor = MouseCursorShape.Wait;
+            e.Handled = true;
+        }
+    }
+
+    private void OnRootMouseDown(object? sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+
+        var command = e.Button switch
+                      {
+                          MouseButton.X1 => _model.BackCommand,
+                          MouseButton.X2 => _model.ForwardCommand,
+                          _              => null
+                      };
+
+        if (command is null) return;
+
+        e.Handled = true;
+
+        if (command.CanExecute(null) is true)
+            command.Execute(null);
     }
 
     private UIElement BuildToolbar()
     {
-        var toolbar = new DockPanel { LastChildFill = true, Margin = new Margins(0, 0, 0, 1) };
+        var toolbar = new DockPanel { LastChildFill = true, Occludes = true };
+
+        toolbar.SetResourceReference(Control.BackgroundProperty, ThemeKeys.PanelBrush);
+
+        toolbar.Styles.Add(
+            new Style(":is(ButtonBase)")
+                {
+                    Children =
+                    {
+                        new Style("^:disabled")
+                           .Set(Control.BackgroundProperty, Brushes.Transparent)
+                    }
+                }
+               .Set(Control.BackgroundProperty, Brushes.Transparent));
 
         // ── nav buttons (+ New folder on Save): one region, arrows inside ──────────────────────────
         var nav = Region(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 0 }, tabIndex: 0);
-        nav.Children.Add(GlyphButton("◂", _model.BackCommand, "Back"));
-        nav.Children.Add(GlyphButton("▸", _model.ForwardCommand, "Forward"));
-        nav.Children.Add(GlyphButton("▴", _model.UpCommand, "Up"));
-        nav.Children.Add(GlyphButton("↻", _model.RefreshCommand, "Refresh"));
+        nav.Children.Add(GlyphButton(Glyph("◂", null, "\U000f0731", glyphWidth: 1), _model.BackCommand, "Back", "Go to previous location.", "Alt+Left"));
+        nav.Children.Add(GlyphButton(Glyph("▸", null, "\U000f0734", glyphWidth: 1), _model.ForwardCommand, "Forward", "Go to next location.", "Alt+Right"));
+        nav.Children.Add(GlyphButton(Glyph("▴", null, "\U000f0737", glyphWidth: 1), _model.UpCommand, "Up", "Go up a level.", "Alt+Up"));
+        nav.Children.Add(GlyphButton(Glyph("↻", null, "\U000f0450", glyphWidth: 1), _model.RefreshCommand, "Refresh", "Refresh the file view.", "F5"));
+        FocusManager.SetIsFocusScope(nav, true);
+        FocusManager.SetRetainsFocus(nav, false);
 
         if (_model.CanCreateDirectories)
         {
-            var newFolder = new Button { Content = "▤＋ _New folder", Command = _model.NewFolderCommand, Margin = new Margins(1, 0, 0, 0) };
+            var newFolder = new BarButton
+                            {
+                                Icon = new IconCarrier
+                                       {
+                                           Glyph = "\uEA80",
+                                           GlyphWidth = 2,
+                                           Emoji = "＋📁",
+                                           Text = "▤＋"
+                                       },
+                                Content = "_New folder",
+                                Command = _model.NewFolderCommand
+                            };
+            Ribbon.SetButtonSize(newFolder, RibbonButtonSize.Small);
+            ToolTipService.SetTip(newFolder, "Create a new folder in the current directory.");
             nav.Children.Add(newFolder);
         }
 
@@ -149,18 +226,21 @@ internal sealed class FileDialogView
 
         // ── view switcher (right-most), then the search box left of it ─────────────────────────────
         var views = Region(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 0 }, tabIndex: 3);
-        views.Children.Add(ViewButton("▤", ListViewViewMode.Details));
-        views.Children.Add(ViewButton("▥", ListViewViewMode.SmallIcons));
-        views.Children.Add(ViewButton("▦", ListViewViewMode.Tiles));
+        FocusManager.SetIsFocusScope(views, true);
+        FocusManager.SetRetainsFocus(views, false);
+        views.Children.Add(ViewButton(Glyph("▤", glyph: "󱒇", glyphWidth: 1), ListViewViewMode.Details, "Details View"));
+        views.Children.Add(ViewButton(Glyph("▥", glyph: "󱗼", glyphWidth: 1), ListViewViewMode.SmallIcons, "Small Icons View"));
+        views.Children.Add(ViewButton(Glyph("▦", glyph: "󱇙", glyphWidth: 1), ListViewViewMode.Tiles, "Tiles View"));
         DockPanel.SetDock(views, Dock.Right);
         toolbar.Children.Add(views);
 
         _searchBox.Placeholder = "⌕ Search";
         _searchBox.Width = 16;
         _searchBox.TabIndex = 2;
-        _searchBox.Margin = new Margins(1, 0);
+        // _searchBox.Margin = new Margins(1, 0);
         _searchBox.SetBinding(TextBox.TextProperty,
                               new Binding(nameof(FileDialogViewModel.SearchText)) { Source = _model, Mode = BindingMode.TwoWay });
+        _searchBox.KeyDown += OnSearchBoxKeyDown;
         DockPanel.SetDock(_searchBox, Dock.Right);
         toolbar.Children.Add(_searchBox);
 
@@ -178,9 +258,20 @@ internal sealed class FileDialogView
         _pathBar.EditCanceled += (_, _) => DetachCompletion();
         _pathBar.TemplateApplied += (_, _) => DetachCompletion();
 
+        // FocusManager.SetIsFocusScope(_pathBar, true);
+        // FocusManager.SetRetainsFocus(_pathBar, true);
+
         _completion.CommitHandler = _completionProvider.Commit;
         _completion.Provider = _completionProvider;
-        _completion.FooterText = "Tab complete   ^v select   Enter open   Esc cancel";
+        _completion.FooterContent = new TextBlock
+                                    {
+                                        Markup = $"[brush={ThemeKeys.TextDimBrush}]⇥[/brush] complete  " +
+                                                 $"[brush={ThemeKeys.TextDimBrush}]↑↓[/brush] select  " +
+                                                 $"[brush={ThemeKeys.TextDimBrush}]⏎[/brush] open  " +
+                                                 $"[brush={ThemeKeys.TextDimBrush}]⎋[/brush] cancel",
+                                        TextWrapping = WrapMode.NoWrap,
+                                        TextTrimming = TextTrimming.CharacterEllipsis
+                                    };
         _completion.Committed += OnCompletionCommitted;
 
         var pathCell = new Grid();
@@ -191,12 +282,181 @@ internal sealed class FileDialogView
         return toolbar;
     }
 
+    private void OnSearchBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled) return;
+
+        if (e is { Key: Key.DownArrow })
+        {
+            _listView.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private UIElement BuildFooter()
+    {
+        var footer = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(1) };
+
+        footer.Children.Add(_errorLine);
+
+        // ── File name + type filter ────────────────────────────────────────────────────────────────
+        var inputsRow = new Grid();
+
+        var isSaveDialog = _model.IsSaveDialog;
+
+        inputsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inputsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star(1) });
+        inputsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.FromCells(1) });
+        inputsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        inputsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        inputsRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        inputsRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.FromCells(1) });
+        inputsRow.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        (int c, int r, int span) nameLabelPosition = (0, 0, 1);
+        (int c, int r, int span) nameEditorPosition = (1, 0, 1);
+        (int c, int r, int span) filterLabelPosition = (3, 0, 1);
+        (int c, int r, int span) filterSelectorPosition = (4, 0, 1);
+        (int c, int r, int span) buttonRowPosition = (3, 2, 2);
+        (int c, int r, int span) summaryPosition = (0, 2, 2);
+
+        var nameLabel = new Label
+                        {
+                            Content = "F_ile name:",
+                            Target = _fileNameBox,
+                            Margin = new Margins(0, 0, 1, 0)
+                        };
+
+        Grid.SetColumn(nameLabel, nameLabelPosition.c);
+        Grid.SetColumnSpan(nameLabel, nameLabelPosition.span);
+        Grid.SetRow(nameLabel, nameLabelPosition.r);
+
+        var filterBox = new ComboBox
+                        {
+                            ItemsSource = _model.Filters,
+                            Width = /*isSaveDialog ? 32 : */24,
+                            TabIndex = 7,
+                            HorizontalAlignment = HorizontalAlignment.Left
+                        };
+
+        Grid.SetColumn(filterBox, filterSelectorPosition.c);
+        Grid.SetColumnSpan(filterBox, filterSelectorPosition.span);
+        Grid.SetRow(filterBox, filterSelectorPosition.r);
+
+        TextSearch.SetTextPath(filterBox, nameof(FileDialogFilter.Label));
+
+        filterBox.ItemTemplate =
+            new DataTemplate
+            {
+                Content = new FuncTemplateContent(
+                    _ =>
+                    {
+                        var panel = new DockPanel { LastChildFill = true };
+
+                        var label = new TextBlock
+                                    {
+                                        Margin = new Margins(0, 0, 1, 0),
+                                        TextTrimming = TextTrimming.CharacterEllipsis,
+                                        TextWrapping = WrapMode.NoWrap
+                                    };
+
+                        var pattern = new TextBlock();
+
+                        label.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogFilter.Label)));
+                        pattern.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogFilter.Pattern)));
+                        TextElement.SetTextWeight(pattern, TextWeight.Faint);
+                        DockPanel.SetDock(pattern, Dock.Right);
+                        panel.Children.Add(pattern);
+                        panel.Children.Add(label);
+                        return panel;
+                    })
+            };
+
+        filterBox.SetBinding(SelectingItemsControl.SelectedItemProperty,
+                             new Binding(nameof(FileDialogViewModel.SelectedFilter))
+                             {
+                                 Source = _model,
+                                 Mode = BindingMode.TwoWay
+                             });
+
+        var filterLabel = new Label
+                          {
+                              Content = isSaveDialog ? "Save as _type:" : "_Type:",
+                              Target = filterBox,
+                              Margin = new Margins(1, 0)
+                          };
+
+        Grid.SetColumn(filterLabel, filterLabelPosition.c);
+        Grid.SetColumnSpan(filterLabel, filterLabelPosition.span);
+        Grid.SetRow(filterLabel, filterLabelPosition.r);
+
+        _fileNameBox.TabIndex = 6;
+        _fileNameBox.SetBinding(TextBox.TextProperty,
+                                new Binding(nameof(FileDialogViewModel.FileName)) { Source = _model, Mode = BindingMode.TwoWay });
+
+        Grid.SetColumn(_fileNameBox, nameEditorPosition.c);
+        Grid.SetColumnSpan(_fileNameBox, nameEditorPosition.span);
+        Grid.SetRow(_fileNameBox, nameEditorPosition.r);
+
+        footer.Children.Add(inputsRow);
+
+        // ── selection summary + the two buttons ────────────────────────────────────────────────────
+        var buttons = new StackPanel
+                      {
+                          Orientation = Orientation.Horizontal,
+                          HorizontalAlignment = HorizontalAlignment.Right,
+                          Spacing = 1,
+                          Margin = new Margins(1, 0, 0, 0)
+                      };
+
+        AcceptButton = new Button
+                       {
+                           Content = isSaveDialog ? "_Save" : "_Open",
+                           Command = _model.AcceptCommand,
+                           IsDefault = true,
+                           TabIndex = 8
+                       };
+
+        CancelButton = new Button
+                       {
+                           Content = "_Cancel",
+                           Command = _model.CancelCommand,
+                           IsCancel = true,
+                           TabIndex = 9
+                       };
+
+        buttons.Children.Add(AcceptButton);
+        buttons.Children.Add(CancelButton);
+        
+        Grid.SetColumn(buttons, buttonRowPosition.c);
+        Grid.SetColumnSpan(buttons, buttonRowPosition.span);
+        Grid.SetRow(buttons, buttonRowPosition.r);
+
+        _summaryLine.Text = _model.SelectionSummary;
+        _summaryLine.TextWeight = TextWeight.Faint;
+        
+        Grid.SetColumn(_summaryLine, summaryPosition.c);
+        Grid.SetColumnSpan(_summaryLine, summaryPosition.span);
+        Grid.SetRow(_summaryLine, summaryPosition.r);
+
+        inputsRow.Children.Add(nameLabel);
+        inputsRow.Children.Add(_fileNameBox);
+        inputsRow.Children.Add(filterLabel);
+        inputsRow.Children.Add(filterBox);
+        if (summaryPosition.r >= 0) inputsRow.Children.Add(_summaryLine);
+        inputsRow.Children.Add(buttons);
+
+        return footer;
+    }
+
     private UIElement BuildBody()
     {
-        var body = new DockPanel { LastChildFill = true };
+        var body = new DockPanel { LastChildFill = true, Margin = new Margins(1, 0) };
 
         // ── places rail ────────────────────────────────────────────────────────────────────────────
         _placesPanel.Orientation = Orientation.Vertical;
+
         Region(_placesPanel, tabIndex: 4);
 
         var rail = new Border
@@ -227,10 +487,13 @@ internal sealed class FileDialogView
         DockPanel.SetDock(_newFolderRow, Dock.Top);
         listArea.Children.Add(_newFolderRow);
 
+        _nameCellTemplate ??= NameCellTemplate();
+        _itemTemplate ??= ItemTemplate();
+        _tileTemplate ??= TileTemplate();
+
         _listView.ItemsSource = _model.Entries;
         _listView.SelectionMode = SelectionMode.Single;
         _listView.TabIndex = 5;
-        _listView.View = _model.ViewMode;
 
         // A ListView is a container, not a control — its items host is the tab stop and its ROWS take focus,
         // so it is unfocusable by default. The dialog needs a focus floor for the empty-directory case (see
@@ -247,7 +510,8 @@ internal sealed class FileDialogView
         _listView.IconMemberPath = nameof(FileDialogEntry.Icon);
         _listView.SecondaryMemberPath = nameof(FileDialogEntry.TypeText);
 
-        _nameColumn.CellTemplate = NameCellTemplate();
+        _nameColumn.CellTemplate = _nameCellTemplate;
+
         _listView.Columns.Add(_nameColumn);
         _listView.Columns.Add(_sizeColumn);
 
@@ -260,86 +524,18 @@ internal sealed class FileDialogView
         _listView.SelectionChanged += OnListSelectionChanged;
         _listView.ItemInvoked += (_, e) => _model.ActivateCommand.Execute(e.Item);
         _listView.TextInput += OnListTextInput;
+
         _listView.LostFocus += (_, _) =>
-        {
-            if (!_listView.IsKeyboardFocusWithin)
-                _model.ResetTypeAhead();
-        };
+                               {
+                                   if (!_listView.IsKeyboardFocusWithin)
+                                       _model.ResetTypeAhead();
+                               };
+
+        SyncViewMode();
 
         listArea.Children.Add(_listView);
         body.Children.Add(listArea);
         return body;
-    }
-
-    private UIElement BuildFooter()
-    {
-        var footer = new StackPanel { Orientation = Orientation.Vertical, Margin = new Margins(0, 1, 0, 0) };
-
-        _errorLine.Visibility = Visibility.Collapsed;
-        _errorLine.TextWrapping = WrapMode.WordWrap;
-        _errorLine.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.DangerBrush);
-        footer.Children.Add(_errorLine);
-
-        // ── File name + type filter ────────────────────────────────────────────────────────────────
-        var nameRow = new DockPanel { LastChildFill = true };
-
-        var nameLabel = new TextBlock { Text = "File name: ", Margin = new Margins(0, 0, 1, 0) };
-        DockPanel.SetDock(nameLabel, Dock.Left);
-        nameRow.Children.Add(nameLabel);
-
-        var filterBox = new ComboBox { ItemsSource = _model.Filters, Width = 30, TabIndex = 7 };
-        filterBox.SetBinding(SelectingItemsControl.SelectedItemProperty,
-                             new Binding(nameof(FileDialogViewModel.SelectedFilter)) { Source = _model, Mode = BindingMode.TwoWay });
-        DockPanel.SetDock(filterBox, Dock.Right);
-        nameRow.Children.Add(filterBox);
-
-        var filterLabel = new TextBlock
-                          {
-                              Text = _model.IsSaveDialog ? " Save as type: " : " Files of type: ",
-                              Margin = new Margins(1, 0, 1, 0)
-                          };
-
-        DockPanel.SetDock(filterLabel, Dock.Right);
-        nameRow.Children.Add(filterLabel);
-
-        _fileNameBox.TabIndex = 6;
-        _fileNameBox.SetBinding(TextBox.TextProperty,
-                                new Binding(nameof(FileDialogViewModel.FileName)) { Source = _model, Mode = BindingMode.TwoWay });
-        nameRow.Children.Add(_fileNameBox);
-        footer.Children.Add(nameRow);
-
-        // ── selection summary + the two buttons ────────────────────────────────────────────────────
-        var buttonRow = new DockPanel { LastChildFill = true, Margin = new Margins(0, 1, 0, 0) };
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 1 };
-
-        AcceptButton = new Button
-                       {
-                           Content = _model.IsSaveDialog ? "_Save" : "_Open",
-                           Command = _model.AcceptCommand,
-                           IsDefault = true,
-                           TabIndex = 8
-                       };
-
-        CancelButton = new Button
-                       {
-                           Content = "_Cancel",
-                           Command = _model.CancelCommand,
-                           IsCancel = true,
-                           TabIndex = 9
-                       };
-
-        buttons.Children.Add(AcceptButton);
-        buttons.Children.Add(CancelButton);
-        DockPanel.SetDock(buttons, Dock.Right);
-        buttonRow.Children.Add(buttons);
-
-        _summaryLine.Text = _model.SelectionSummary;
-        _summaryLine.Opacity = 0.6;
-        buttonRow.Children.Add(_summaryLine);
-
-        footer.Children.Add(buttonRow);
-        return footer;
     }
 
     // A cell that is icon + name, because the Name column is the one place the file-type glyph belongs. The
@@ -350,7 +546,7 @@ internal sealed class FileDialogView
     // A DOCK panel, not a stack. A StackPanel arranges each child at its DESIRED width and lets the row run
     // past the slot ("LD17 — overflow, don't clip", StackPanel.ArrangeOverride), so a name longer than the
     // Name column got an arrange rect the full width of the text and painted straight across Size, Type and
-    // Modified. The neighbouring cells repaint afterwards, which is what made the damage look so strange:
+    // Modified. The neighboring cells repaint afterwards, which is what made the damage look so strange:
     // the name survived only in the gaps between them, e.g. "Creative Cloud Files— Foldertrobel@g2024-…".
     // DockPanel's LastChildFill hands the final child the REMAINING rect, so the name is bounded by the
     // column and the formatter stops at its edge.
@@ -360,28 +556,149 @@ internal sealed class FileDialogView
                DataType = typeof(FileDialogEntry),
                Content = new FuncTemplateContent(_ =>
                          {
-                             var row = new DockPanel();
-
+                             var row = new DockPanel { Background = Brushes.Transparent, Occludes = true };
                              var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
+
                              icon.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Icon)));
                              DockPanel.SetDock(icon, Dock.Left);
 
                              // Trimming is inert while TextBlock drops the paragraph's trim setting, but it costs
                              // nothing and the cut becomes an ellipsis the moment that plumbing lands.
-                             var text = new TextBlock
-                                        {
-                                            TextWrapping = WrapMode.NoWrap,
-                                            TextTrimming = TextTrimming.CharacterEllipsis
-                                        };
-                             text.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogEntry.Name)));
+                             var host = new ContentPresenter { ForwardsFromTemplatedParent = false };
+                             
+                             host.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+                             host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
+                             host.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Name)));
 
                              row.Children.Add(icon);
-                             row.Children.Add(text); // last child fills — the name gets the rest of the column
+                             row.Children.Add(host); // last child fills — the name gets the rest of the column
+                             
+                             PrepareToolTip(row);
+                             
                              return row;
                          })
            };
 
-    private static TPanel Region<TPanel>(TPanel panel, int tabIndex) where TPanel : Panel
+    private static DataTemplate ItemTemplate()
+        => new()
+           {
+               DataType = typeof(FileDialogEntry),
+               Content = new FuncTemplateContent(
+                   _ =>
+                   {
+                       var head = BuildTemplateHead();
+                       PrepareToolTip(head);
+                       return head;
+                   })
+           };
+
+    private static DataTemplate TileTemplate()
+        => new()
+           {
+               DataType = typeof(FileDialogEntry),
+               Content = new FuncTemplateContent(
+                   _ =>
+                   {
+                       var head = BuildTemplateHead();
+                       var tile = new DockPanel();
+                       var secondaryCell = new ContentPresenter { ForwardsFromTemplatedParent = false };
+
+                       secondaryCell.SetBinding(
+                           UIElement.VisibilityProperty,
+                           new Binding(ContentPresenter.ContentProperty)
+                           {
+                               RelativeSource = RelativeSource.Self,
+                               Converter = ContentToVisibilityConverter.Instance
+                           });
+
+                       secondaryCell.SetBinding(
+                           ContentPresenter.ContentProperty,
+                           new Binding
+                           {
+                               Converter = ValueConverter.Create(
+                                   (value, _, _, _) =>
+                                   {
+                                       if (value is not FileDialogEntry e)
+                                           return UIProperty.UnsetValue;
+                       
+                                       if (Equals(FileDialogEntry.NoSize, e.SizeText))
+                                           return e.TypeText;
+                       
+                                       return $"{e.TypeText} ({e.SizeText})";
+                                   })
+                           });
+                       
+                       DockPanel.SetDock(secondaryCell, Dock.Bottom);
+                       TextElement.SetTextWeight(secondaryCell, TextWeight.Faint);
+                       tile.Children.Add(secondaryCell);
+                       tile.Children.Add(head);
+
+                       PrepareToolTip(tile);
+                       
+                       return tile;
+                   })
+           };
+
+    private static DockPanel BuildTemplateHead()
+    {
+        var head = new DockPanel
+                   {
+                       Background = Brushes.Transparent,
+                       Occludes = true,
+                       HorizontalAlignment = HorizontalAlignment.Left
+                   };
+
+        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
+
+        icon.SetBinding(ContentPresenter.ContentProperty,
+                        new Binding(nameof(FileDialogEntry.Icon)));
+
+        DockPanel.SetDock(icon, Dock.Left);
+
+        // Trimming is inert while TextBlock drops the paragraph's trim setting, but it costs
+        // nothing and the cut becomes an ellipsis the moment that plumbing lands.
+        var host = new ContentPresenter { ForwardsFromTemplatedParent = false };
+
+        host.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
+
+        host.SetBinding(ContentPresenter.ContentProperty,
+                        new Binding(nameof(FileDialogEntry.Name)));
+
+        head.Children.Add(icon);
+        head.Children.Add(host); // last child fills — the name gets the rest of the column
+        return head;
+    }
+
+    private static void PrepareToolTip(UIElement host)
+    {
+        host.SetBinding(
+            SuperTip.TitleProperty,
+            new Binding
+            {
+                Converter = ValueConverter.Create(
+                    (value, _, _, _) =>
+                    {
+                        if (value is not FileDialogEntry e)
+                            return UIProperty.UnsetValue;
+
+                        if (Equals(FileDialogEntry.NoSize, e.SizeText))
+                            return e.TypeText;
+
+                        return $"{e.TypeText} ({e.SizeText})";
+                    })
+            });
+
+        host.SetBinding(SuperTip.DescriptionProperty,
+                       new Binding(nameof(FileDialogEntry.Name)));
+
+        host.SetBinding(SuperTip.FooterProperty,
+                        new Binding(nameof(FileDialogEntry.ModifiedText)) { StringFormat = "Last Modified {0}" });
+
+        SuperTip.SetAutoPopulatedTip(host, useCompactLayout: true);
+    }
+
+    private static TPanel Region<TPanel>(TPanel panel, int tabIndex) where TPanel : UIElement
     {
         // ND16: one Tab stop for the whole region, arrows inside. The same rule the toolbar, the breadcrumb
         // and the items host all use — see the design page's "why the breadcrumb is one tab stop".
@@ -391,17 +708,46 @@ internal sealed class FileDialogView
         return panel;
     }
 
-    private static Button GlyphButton(string glyph, System.Windows.Input.ICommand command, string name)
-        => new() { Content = glyph, Command = command, Width = 3, Name = name };
+    private static IconCarrier Glyph(string text, string? emoji = null, string? glyph = null, int? glyphWidth = null)
+    {
+        return new IconCarrier(glyph, glyphWidth, null, emoji, text);
+    }
 
-    private Button ViewButton(string glyph, ListViewViewMode mode)
-        => new()
-           {
-               Content = glyph,
-               Command = _model.SetViewModeCommand,
-               CommandParameter = mode,
-               Width = 3
-           };
+    private static BarButton GlyphButton(IconCarrier glyph, System.Windows.Input.ICommand command, string name,
+                                         string? toolTip = null, string? inputGestureText = null)
+    {
+        var button = new BarButton { Icon = glyph, Command = command, Name = name, MinWidth = 3 };
+
+        Ribbon.SetButtonSize(button, RibbonButtonSize.Small);
+
+        var tip = new SuperTip { Title = name, Anchor = button };
+
+        if (toolTip is not null)
+            tip.Description = toolTip;
+
+        if (inputGestureText is not null)
+            button.InputGestureText = tip.InputGestureText = inputGestureText;
+
+        ToolTipService.SetTip(button, tip);
+        
+        return button;
+    }
+
+    private BarToggleButton ViewButton(IconCarrier glyph, ListViewViewMode mode, string? tip = null)
+    {
+        var button = new BarToggleButton
+                     {
+                         Icon = glyph,
+                         Command = _model.SetViewModeCommand,
+                         CommandParameter = new CheckableCommandParameter { Tag = mode },
+                         Width = 3
+                     };
+
+        if (tip is not null)
+            ToolTipService.SetTip(button, new SuperTip { Title = tip, Anchor = button });
+
+        return button;
+    }
 
     // ───────────────────────────── the places rail ─────────────────────────────
 
@@ -409,24 +755,45 @@ internal sealed class FileDialogView
     {
         _placesPanel.Children.Clear();
 
-        foreach (var group in _model.PlaceGroups)
+        for (var i = 0; i < _model.PlaceGroups.Count; i++)
         {
-            var header = new TextBlock { Text = group.Header, Opacity = 0.6, Margin = new Margins(0, 1, 0, 0) };
+            var group = _model.PlaceGroups[i];
+            var header = new TextBlock { Text = group.Header, Opacity = 0.6 };
+
+            if (i > 0) header.Margin = new Margins(0, 1, 0, 0);
+
             _placesPanel.Children.Add(header); // unfocusable, so arrowing the rail skips straight over it
 
             foreach (var place in group.Places)
             {
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Occludes = true };
                 row.Children.Add(place.Type.CreateIcon());
                 row.Children.Add(new TextBlock { Text = place.Name });
 
-                _placesPanel.Children.Add(new Button
+                var button = new Button
+                             {
+                                 Content = row,
+                                 Command = _model.NavigateCommand,
+                                 CommandParameter = place.FullPath,
+                                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                                 HorizontalContentAlignment = HorizontalAlignment.Left
+                             };
+
+                button.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+
+                ToolTipService.SetTip(button,
+                                      new StackPanel
+                                      {
+                                          Orientation = Orientation.Horizontal,
+                                          Spacing = 1,
+                                          Children =
                                           {
-                                              Content = row,
-                                              Command = _model.NavigateCommand,
-                                              CommandParameter = place.FullPath,
-                                              HorizontalAlignment = HorizontalAlignment.Stretch
-                                          });
+                                              place.Type.CreateIcon(),
+                                              new TextBlock { Text = place.Name }
+                                          }
+                                      });
+
+                _placesPanel.Children.Add(button);
             }
         }
     }
@@ -446,7 +813,7 @@ internal sealed class FileDialogView
                 break;
 
             case nameof(FileDialogViewModel.ViewMode):
-                _listView.View = _model.ViewMode;
+                SyncViewMode();
                 break;
 
             case nameof(FileDialogViewModel.SortKey):
@@ -466,7 +833,32 @@ internal sealed class FileDialogView
             case nameof(FileDialogViewModel.IsCreatingFolder):
                 SyncNewFolderRow();
                 break;
+
+            case nameof(FileDialogViewModel.FileName):
+                _fileNameBox.ClearSelection(caretToEnd: true);
+                break;
+
+            case nameof(FileDialogViewModel.IsBusy):
+                UIApplication.Current?.InputDispatcher.UpdateCursor();
+                break;
         }
+    }
+
+    private void SyncViewMode()
+    {
+        var viewMode = _model.ViewMode;
+
+        if (_listView is not { View: var currentMode } lv || currentMode == viewMode) return;
+
+        lv.View = viewMode;
+
+        lv.ItemTemplate = _listView.View switch
+                          {
+                              ListViewViewMode.Details    => _nameCellTemplate,
+                              ListViewViewMode.SmallIcons => _itemTemplate,
+                              ListViewViewMode.Tiles      => _tileTemplate,
+                              _                           => _itemTemplate
+                          };
     }
 
     private void SyncSelectionToList()
@@ -700,18 +1092,17 @@ internal sealed class FileDialogView
         if (e.Item is not FileDialogPathSegment segment)
             return;
 
-        if (_model.FileSystem.GetParentPath(segment.Path) is not { } parent)
-            return;
+        var segmentPath = segment.Path;
 
-        if (_model.TryGetCachedListing(parent) is not { } listing)
+        if (_model.TryGetCachedListing(segmentPath) is not {} listing)
         {
-            _model.PrimeListing(parent);
+            _model.PrimeListing(segmentPath);
             return;
         }
 
         foreach (var entry in listing)
         {
-            if (entry.IsDirectory)
+            if (entry.IsDirectory && (_model.ShowHiddenEntries || !entry.IsHidden))
                 e.Children.Add(new FileDialogPathSegment(entry.Name, entry.FullPath));
         }
     }
@@ -743,7 +1134,7 @@ internal sealed class FileDialogView
     /// The dialog's ACCELERATORS, called from the window's tunnelling <c>OnPreviewKeyDown</c> — i.e. before
     /// any control on the route sees the key. Returns whether the key was handled.
     /// </summary>
-    /// <param name="e">The tunnelling key event.</param>
+    /// <param name="e">The tunneling key event.</param>
     /// <remarks>
     /// <b>Why these tunnel.</b> <c>Alt+↑</c> is a dialog command, but <c>↑</c> is the file list's own
     /// navigation and <see cref="ListView"/> claims it modifiers and all — so an accelerator handled on the
@@ -752,7 +1143,7 @@ internal sealed class FileDialogView
     /// NOT: they must yield to the control that owns them first (see <see cref="HandleKey"/>).
     /// <para>
     /// <c>F2</c> is absent on purpose — <see cref="BreadcrumbBar"/> already implements it (enter edit mode
-    /// when the bar is focused), and claiming it here would only pre-empt the control with the same behaviour.
+    /// when the bar is focused), and claiming it here would only preempt the control with the same behavior.
     /// </para>
     /// </remarks>
     internal bool HandlePreviewKey(KeyEventArgs e)
@@ -822,7 +1213,8 @@ internal sealed class FileDialogView
 
             // Backspace navigates up ONLY when no type-ahead is running; while one is, it EDITS that buffer.
             // The design page had the two collide; the view-model owns the resolution so both callers agree.
-            case Key.Backspace when e.Modifiers == KeyModifiers.None && _listView.IsKeyboardFocusWithin:
+            case Key.Backspace when e.Modifiers == KeyModifiers.None &&
+                                    _listView.IsKeyboardFocusWithin:
                 if (!_model.TypeAheadBackspace())
                 {
                     _model.UpCommand.Execute(null);
@@ -832,6 +1224,13 @@ internal sealed class FileDialogView
                 FocusSelectedRow();
                 return true;
 
+            case Key.Character when IsLetter(e, '/') && 
+                                    (e.Modifiers is KeyModifiers.Alt or KeyModifiers.Super ||
+                                     e.Modifiers is KeyModifiers.None && _listView.IsKeyboardFocusWithin):
+                BeginPathEdit();
+                _pathBar.EditBox?.CaretIndex = _pathBar.EditBox.Text.Length;
+                return true;
+
             default:
                 return false;
         }
@@ -839,13 +1238,20 @@ internal sealed class FileDialogView
 
     private bool HandleEscape()
     {
+        if (Root.IsKeyboardFocusWithin &&
+            UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus &&
+            focus.RestoreRetainedFocus(focused))
+        {
+            return true;
+        }
+
         if (_model.IsCreatingFolder)
         {
             _model.CancelNewFolderCommand.Execute(null);
             return true;
         }
 
-        if (_pathBar.IsKeyboardFocusWithin)
+        if (_pathBar.IsKeyboardFocusWithin || _searchBox.IsKeyboardFocusWithin)
         {
             FocusFileList();
             return true;
@@ -874,7 +1280,7 @@ internal sealed class FileDialogView
         // must not overwrite the name the user has already typed. An EMPTY listing has no row to land on, and
         // focus has to land somewhere or the next Escape would read as "still in the breadcrumb" and refuse to
         // cancel — hence the opt-in Focusable on the ListView itself as the floor.
-        if (_listView.ItemContainerGenerator.ContainerFromIndex(0) is { } first)
+        if (_listView.ItemContainerGenerator.ContainerFromIndex(0) is {} first)
             first.Focus(FocusNavigationMethod.Programmatic);
         else
             _listView.Focus(FocusNavigationMethod.Programmatic);

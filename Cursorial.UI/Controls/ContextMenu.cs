@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -167,6 +168,8 @@ public sealed class ContextMenu : ItemsControl
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant
         popup.SetValue(MenuItem.IsWithinMenuPropertyKey, true);
+        popup.SetBinding(MaxWidthProperty, new Binding(MaxWidthProperty) { Source = this });
+        popup.SetBinding(MaxHeightProperty, new Binding(MaxHeightProperty) { Source = this });
         popup.Closed += OnPopupClosed;
         return popup;
     }

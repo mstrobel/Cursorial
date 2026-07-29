@@ -56,7 +56,23 @@ public sealed class ToolTipService
         // stream it observes is app-wide, so one controller serves every tip-bearing element).
         if (newValue is not null && UIApplication.Current is {} app)
             ToolTipController.Ensure(app);
+
+        if (oldValue is UIElement oldTip && 
+            oldTip.GetInheritanceParent() is {} oip &&
+            ReferenceEquals(oip, sender) is false)
+        {
+            oldTip.SetInheritanceParent((sender as UIElement)?.UIParent);
+        }
+
+        if (newValue is UIElement newTip &&
+            newTip.GetInheritanceParent() is null)
+        {
+            newTip.SetInheritanceParent(sender);
+        }
     }
+
+    public const int MaxToolTipWidth = 42;
+    public const int MaxToolTipHeight = 12;
 }
 
 /// <summary>

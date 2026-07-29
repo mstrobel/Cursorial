@@ -44,7 +44,8 @@ public interface IFileSystemProvider
     /// The roots of the hierarchy — drives on Windows, a single <c>/</c> on Unix, or whatever a synthetic
     /// provider chooses. Populates the places rail's "This PC" group.
     /// </summary>
-    ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default,
+                                                            bool showHidden = false);
 
     /// <summary>The well-known places for the rail's "Quick access" group, in display order.</summary>
     ValueTask<IReadOnlyList<FileSystemEntry>> GetPlacesAsync(CancellationToken cancellationToken = default);

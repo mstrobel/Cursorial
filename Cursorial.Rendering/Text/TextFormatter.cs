@@ -689,7 +689,7 @@ public sealed class TextFormatter
     private static LineDraft ClipDraft(LineDraft line, int maxWidth)
     {
         var (head, _) = SplitWordAtChar(line.AsWord(), maxWidth);
-        return LineDraft.FromWord(head);
+        return LineDraft.FromWord(head, trimmed: true);
     }
 
     private LineDraft AppendEllipsisCharacter(LineDraft line, int maxWidth)
@@ -879,7 +879,7 @@ public sealed class TextFormatter
             }
         }
     
-        return new FormattedLine(newRuns.ToImmutable(), columns);
+        return new FormattedLine(newRuns.ToImmutable(), columns, line.Trimmed);
     }
 
     private static bool IsAllSpaces(string s)
@@ -917,6 +917,7 @@ public sealed class TextFormatter
         public List<FormattedRun> Runs { get; } = [];
         public int Width { get; set; }
         public bool EndedByHardBreak { get; set; }
+        public bool Trimmed { get; set; }
 
         public void AppendWord(WordAtom word)
         {
@@ -949,11 +950,11 @@ public sealed class TextFormatter
 
         public WordAtom AsWord() => new([..Runs], Width, ImmutableArray<SoftBreakPoint>.Empty);
 
-        public FormattedLine ToFormattedLine() => new([..Runs], Width);
+        public FormattedLine ToFormattedLine() => new([..Runs], Width, Trimmed);
 
-        public static LineDraft FromWord(WordAtom word)
+        public static LineDraft FromWord(WordAtom word, bool trimmed = false)
         {
-            var draft = new LineDraft { Width = word.Width };
+            var draft = new LineDraft { Width = word.Width, Trimmed = trimmed };
             foreach (var run in word.Runs) draft.Runs.Add(run);
             return draft;
         }

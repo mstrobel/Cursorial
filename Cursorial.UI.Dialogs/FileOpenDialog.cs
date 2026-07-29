@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Cursorial.Rendering;
-using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Dialogs;
@@ -15,7 +14,7 @@ namespace Cursorial.UI.Dialogs;
 /// that it is an ordinary <see cref="Window"/> in the application's own tree rather than a shell dialog, so it
 /// is themed, keyboard-complete and testable frame by frame.
 /// <para>
-/// All of the behaviour lives in <see cref="FileDialogViewModel"/> and all of the chrome in
+/// All the behavior lives in <see cref="FileDialogViewModel"/> and all the chrome in
 /// <see cref="FileDialogView"/>; this type is the entry point, the window, and the mapping from "the
 /// view-model says it is finished" to "the window closes with that result".
 /// </para>
@@ -26,7 +25,7 @@ public sealed class FileOpenDialog : Window
     private readonly FileDialogView _view;
 
     /// <summary>Control themes resolve exact-key, so a <see cref="Window"/> subclass must opt into the base
-    /// window chrome or it has no template at all and measures 0×0.</summary>
+    /// window chrome, or it has no template at all and measures 0×0.</summary>
     protected override object ControlThemeKey => typeof(Window);
 
     private FileOpenDialog(FileDialogViewModel model, string title)
@@ -97,7 +96,7 @@ public sealed class FileOpenDialog : Window
         // Shutdown race — the MARSHALED path ONLY: a marshaled show can be dispatched while teardown removes
         // the window manager on this same UI thread, and ShowDialogAsync would throw. Scoping the check here
         // keeps a direct on-UI-thread show against a not-yet-started application failing loudly.
-        if (viaMarshal && UIApplication.Current?.WindowManager is null)
+        if (viaMarshal && application.WindowManager is null)
             return FileDialogResult.Dismissed;
 
         var model = new FileDialogViewModel(request);

@@ -196,14 +196,15 @@ public sealed class InMemoryFileSystemProvider : IFileSystemProvider
     }
 
     /// <inheritdoc/>
-    public ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default,
+                                                                   bool showHidden = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_roots.Count == 0)
         {
             return new ValueTask<IReadOnlyList<FileSystemEntry>>(
-                (IReadOnlyList<FileSystemEntry>) [new FileSystemEntry(RootPath, RootPath, isDirectory: true) { Place = FileSystemPlace.Drive }]);
+                [new FileSystemEntry(RootPath, RootPath, isDirectory: true) { Place = FileSystemPlace.Drive }]);
         }
 
         var roots = new List<FileSystemEntry>(_roots.Count);

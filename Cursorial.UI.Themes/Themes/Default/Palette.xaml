@@ -24,6 +24,25 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.OnHoverBrush}"                   Color="#343b58"/>
     </ResourceDictionary>
 
+    <ResourceDictionary x:Key="Truecolor">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlack}"                      Color="#15161e"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiRed}"                        Color="#d9536a"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiGreen}"                      Color="#5aa457"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiYellow}"                     Color="#b0862f"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlue}"                       Color="#5a7ec9"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiMagenta}"                    Color="#a072cf"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiCyan}"                       Color="#3f9dbf"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiWhite}"                      Color="#a9b1d6"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlack}"                 Color="#565f89"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightRed}"                   Color="#f7768e"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightGreen}"                 Color="#9ece6a"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightYellow}"                Color="#e0af68"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlue}"                  Color="#7aa2f7"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightMagenta}"               Color="#bb9af7"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightCyan}"                  Color="#7dcfff"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightWhite}"                 Color="#e6e7ee"/>
+    </ResourceDictionary>
+
     <!-- ───────────────────────────── Dark · Ansi256 (RGB, Tokyo Night) ───────────────────────────── -->
     <ResourceDictionary x:Key="Dark+Ansi256">
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"                  Color="#0d0f19"/>
@@ -183,6 +202,23 @@
 
     <ResourceDictionary x:Key="Ansi256">
       <x:String x:Key="{x:Static ThemeKeys.ListItemSelectionGlyph}">▍</x:String>
+      
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlack}"                      Color="Palette(234)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiRed}"                        Color="Palette(167)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiGreen}"                      Color="Palette(71)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiYellow}"                     Color="Palette(136)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlue}"                       Color="Palette(68)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiMagenta}"                    Color="Palette(134)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiCyan}"                       Color="Palette(73)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiWhite}"                      Color="Palette(146)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlack}"                 Color="Palette(60)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightRed}"                   Color="Palette(210)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightGreen}"                 Color="Palette(149)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightYellow}"                Color="Palette(179)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlue}"                  Color="Palette(111)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightMagenta}"               Color="Palette(141)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightCyan}"                  Color="Palette(117)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightWhite}"                 Color="Palette(254)"/>
 
       <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
       <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
@@ -288,6 +324,10 @@
 
       <DynamicResource x:Key="{x:Static ThemeKeys.ToolTipBorderPen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.TabUnderlinePen}" ResourceKey="{x:Static ThemeKeys.BorderPen}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbNormalBrush}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbHoverBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbDragBrush}" ResourceKey="{x:Static ThemeKeys.AccentInverseBrush}" />
     </ResourceDictionary>
     
     <!-- ───────────────────────────── Dark · Ansi16 (palette indices) ───────────────────────────── -->
@@ -453,6 +493,23 @@
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Ansi16">
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlack}"                      Color="Palette(0)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiRed}"                        Color="Palette(1)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiGreen}"                      Color="Palette(2)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiYellow}"                     Color="Palette(3)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiBlue}"                       Color="Palette(4)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiMagenta}"                    Color="Palette(5)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiCyan}"                       Color="Palette(6)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiWhite}"                      Color="Palette(7)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlack}"                 Color="Palette(8)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightRed}"                   Color="Palette(9)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightGreen}"                 Color="Palette(10)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightYellow}"                Color="Palette(11)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightBlue}"                  Color="Palette(12)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightMagenta}"               Color="Palette(13)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightCyan}"                  Color="Palette(14)"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.AnsiLightWhite}"                 Color="Palette(15)"/>
+
       <!--  Base / shared — the 3 spec-named aliases whose guide name differs from our role token. -->
       <DynamicResource x:Key="{x:Static ThemeKeys.AccentForegroundBrush}" ResourceKey="{x:Static ThemeKeys.OnAccentBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.SelectionActiveBrush}" ResourceKey="{x:Static ThemeKeys.SelectionBrush}" />
@@ -576,6 +633,10 @@
       <DynamicResource x:Key="{x:Static ThemeKeys.WarningDarkBrush}" ResourceKey="{x:Static ThemeKeys.WarningInverseBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.Info2Brush}" ResourceKey="{x:Static ThemeKeys.InfoBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.InfoDarkBrush}" ResourceKey="{x:Static ThemeKeys.InfoInverseBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbNormalBrush}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbHoverBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbDragBrush}" ResourceKey="{x:Static ThemeKeys.AccentInverseBrush}" />
     </ResourceDictionary>
     
     <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
@@ -742,6 +803,10 @@
       <DynamicResource x:Key="{x:Static ThemeKeys.WarningDarkBrush}" ResourceKey="{x:Static ThemeKeys.WarningInverseBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.Info2Brush}" ResourceKey="{x:Static ThemeKeys.InfoBrush}" />
       <DynamicResource x:Key="{x:Static ThemeKeys.InfoDarkBrush}" ResourceKey="{x:Static ThemeKeys.InfoInverseBrush}" />
+
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbNormalBrush}" ResourceKey="{x:Static ThemeKeys.TextBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbHoverBrush}" ResourceKey="{x:Static ThemeKeys.AccentBrush}" />
+      <DynamicResource x:Key="{x:Static ThemeKeys.ScrollBarThumbDragBrush}" ResourceKey="{x:Static ThemeKeys.AccentInverseBrush}" />
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

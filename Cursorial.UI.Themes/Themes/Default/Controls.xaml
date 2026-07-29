@@ -36,7 +36,9 @@
     <Border Background="{TemplateBinding Background}"
             BorderPen="{TemplateBinding BorderPen}"
             Padding="{TemplateBinding Padding}"
-            TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
+            TextElement.Foreground="{TemplateBinding TextElement.Foreground}"
+            TextElement.Inverse="{TemplateBinding TextElement.Inverse}"
+            Occludes="True">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
     </Border>
   </ControlTemplate>
@@ -52,7 +54,7 @@
            matching AddButtonStates + the :default the code-first ButtonTheme appends). -->
       <Style Selector="^:default" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundNormal}}"/>
-        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ButtonForegroundDefault}}"/>
       </Style>
       <Style Selector="^:pointerover" TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ButtonBackgroundHover}}"/>
@@ -261,21 +263,25 @@
        RepeatButton { Padding=0 }` workaround rule lived here while resting styles beat template literals.) -->
   <ControlTemplate x:Key="ScrollBarTemplateVertical">
     <DockPanel>
+<!--
       <RepeatButton x:Name="PART_LineUpButton" Template="{StaticResource BareGlyphButtonTemplate}"
                     Content="▲" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Top"/>
       <RepeatButton x:Name="PART_LineDownButton" Template="{StaticResource BareGlyphButtonTemplate}"
                     Content="▼" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
-      <Track x:Name="PART_Track"/>
+-->
+      <Track x:Name="PART_Track" TrackDisplayMode="Hidden" Width="1"/>
     </DockPanel>
   </ControlTemplate>
 
   <ControlTemplate x:Key="ScrollBarTemplateHorizontal">
     <DockPanel>
+<!--
       <RepeatButton x:Name="PART_LineUpButton"   Content="◀" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Left"/>
-      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
+      &lt;!&ndash;Template="{StaticResource BareGlyphButtonTemplate}"&ndash;&gt;
       <RepeatButton x:Name="PART_LineDownButton" Content="▶" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
-      <!--Template="{StaticResource BareGlyphButtonTemplate}"-->
-      <Track x:Name="PART_Track"/>
+      &lt;!&ndash;Template="{StaticResource BareGlyphButtonTemplate}"&ndash;&gt;
+-->
+      <Track x:Name="PART_Track" TrackDisplayMode="Hidden" Height="1"/>
     </DockPanel>
   </ControlTemplate>
 
@@ -1058,10 +1064,14 @@
                 Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
                 BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
           <DockPanel>
-            <TextBlock x:Name="PART_Header" DockPanel.Dock="Top" Visibility="Collapsed"
-                       Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
-            <TextBlock x:Name="PART_Footer" DockPanel.Dock="Bottom" Visibility="Collapsed"
-                       Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"/>
+            <ContentPresenter x:Name="PART_Header" DockPanel.Dock="Top" Visibility="Collapsed"
+                              TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"
+                              TextBlock.TextWrapping="NoWrap"
+                              TextBlock.TextTrimming="None"/>
+            <ContentPresenter x:Name="PART_Footer" DockPanel.Dock="Bottom" Visibility="Collapsed" Margin="1,0"
+                              TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
+                              TextBlock.TextWrapping="NoWrap"
+                              TextBlock.TextTrimming="None"/>
             <CompletionList x:Name="PART_List"/>
           </DockPanel>
         </Border>
@@ -1162,7 +1172,7 @@
         <TextBox x:Name="PART_EditBox" Visibility="Collapsed"/>
         <CompletionPopup x:Name="PART_DropDown"
                          MaxVisibleItems="12"
-                         FooterText="^v move   type to filter   Enter open   Esc dismiss"/>
+                         FooterContent="^v move   type to filter   Enter open   Esc dismiss"/>
       </Grid>
     </Border>
   </ControlTemplate>

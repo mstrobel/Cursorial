@@ -11,7 +11,7 @@ using Cursorial.UI.Data;
 namespace Cursorial.UI.Dialogs;
 
 /// <summary>
-/// The whole behaviour of <see cref="FileOpenDialog"/> and <see cref="FileSaveDialog"/>, with no
+/// The whole behavior of <see cref="FileOpenDialog"/> and <see cref="FileSaveDialog"/>, with no
 /// <see cref="Window"/> anywhere in sight: the current directory, the listing (filtered, sorted, folders
 /// first), the selection, the File name field, the type filter, the sort key and direction, the view mode, the
 /// places rail, the back/forward history, the type-ahead buffer and the new-folder session — plus an
@@ -21,9 +21,9 @@ namespace Cursorial.UI.Dialogs;
 /// of accepting) is asserted without instantiating a single control.
 /// <para>
 /// <b>WPF/Avalonia parity.</b> WPF's <c>Microsoft.Win32.OpenFileDialog</c> and Avalonia's
-/// <c>IStorageProvider.OpenFilePickerAsync</c> are both thin wrappers over a shell dialog whose behaviour is
+/// <c>IStorageProvider.OpenFilePickerAsync</c> are both thin wrappers over a shell dialog whose behavior is
 /// the operating system's and is therefore untestable and unstyleable. There is no shell here, so this class
-/// <i>is</i> that behaviour; making it a view-model rather than burying it in a control is what keeps it
+/// <i>is</i> that behavior; making it a view-model rather than burying it in a control is what keeps it
 /// inspectable and keeps the two dialogs from drifting apart.
 /// </para>
 /// <para>
@@ -36,10 +36,10 @@ namespace Cursorial.UI.Dialogs;
 /// <para>
 /// <b>Commands do not auto-requery.</b> This framework has no <c>CommandManager</c>, so every state change that
 /// a <c>canExecute</c> predicate reads calls <see cref="DelegateCommand.RaiseCanExecuteChanged"/> explicitly —
-/// funnelled through <see cref="RaiseCommandStates"/> so a new command cannot be half-wired.
+/// funneled through <see cref="RequeryCommands"/> so a new command cannot be half-wired.
 /// </para>
 /// </summary>
-public sealed class FileDialogViewModel : ObservableObject, IDisposable
+internal sealed class FileDialogViewModel : ObservableObject, IDisposable
 {
     /// <summary>How long a type-ahead buffer survives without a keystroke before the next one starts fresh —
     /// the same one second <c>TextSearchController</c> uses, so the two feel identical.</summary>
@@ -89,7 +89,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <see cref="TimeProvider.System"/>.
     /// </param>
     public FileDialogViewModel(FileOpenDialogRequest request, TimeProvider? timeProvider = null)
-        : this(request?.FileSystem!, request?.Filters!, request?.SelectedFilterIndex ?? 0, timeProvider)
+        : this(request.FileSystem, request.Filters, request.SelectedFilterIndex, timeProvider)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -108,7 +108,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// hierarchy every operation goes through.</param>
     /// <param name="timeProvider">See the Open overload — the type-ahead clock.</param>
     public FileDialogViewModel(FileSaveDialogRequest request, TimeProvider? timeProvider = null)
-        : this(request?.FileSystem!, request?.Filters!, request?.SelectedFilterIndex ?? 0, timeProvider)
+        : this(request.FileSystem, request.Filters, request.SelectedFilterIndex, timeProvider)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -141,27 +141,52 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
         BackCommand = new DelegateCommand(() => Run(GoBackAsync()), () => CanGoBack);
         ForwardCommand = new DelegateCommand(() => Run(GoForwardAsync()), () => CanGoForward);
         UpCommand = new DelegateCommand(() => Run(GoUpAsync()), () => CanGoUp);
-        RefreshCommand = new DelegateCommand(() => Run(RefreshAsync()));
+        RefreshCommand = new DelegateCommand(() => Run(RefreshAsync()), () => !IsBusy);
         NewFolderCommand = new DelegateCommand(BeginCreateFolder, () => CanCreateDirectories && !IsCreatingFolder);
         CommitNewFolderCommand = new DelegateCommand(() => Run(CommitCreateFolderAsync()), () => IsCreatingFolder);
         CancelNewFolderCommand = new DelegateCommand(CancelCreateFolder, () => IsCreatingFolder);
         AcceptCommand = new DelegateCommand(() => Run(AcceptAsync()), () => CanAccept);
         CancelCommand = new DelegateCommand(Cancel);
-        SetViewModeCommand = new DelegateCommand(parameter =>
-        {
-            if (parameter is ListViewViewMode mode)
-                ViewMode = mode;
-        });
-        SortCommand = new DelegateCommand(parameter =>
-        {
-            if (TryCoerceSortKey(parameter, out var key))
-                Sort(key);
-        });
-        ActivateCommand = new DelegateCommand(parameter =>
-        {
-            if (parameter is FileDialogEntry entry)
-                Run(ActivateAsync(entry));
-        });
+
+        SetViewModeCommand = new DelegateCommand(
+            parameter =>
+            {
+                if (parameter is ICheckableCommandParameter { Tag: ListViewViewMode mode } p)
+                {
+                    ViewMode = mode;
+
+                    p.IsCheckedOverride = true;
+                    p.Handled = true;
+                }
+                else if (parameter is ListViewViewMode viewMode)
+                {
+                    ViewMode = viewMode;
+                }
+            },
+            parameter =>
+            {
+                if (parameter is ICheckableCommandParameter { Tag: ListViewViewMode mode } p)
+                {
+                    p.IsCheckedOverride = mode == ViewMode;
+                    p.Handled = true;
+                }
+
+                return true;
+            });
+
+        SortCommand = new DelegateCommand(
+            parameter =>
+            {
+                if (TryCoerceSortKey(parameter, out var key))
+                    Sort(key);
+            });
+
+        ActivateCommand = new DelegateCommand(
+            parameter =>
+            {
+                if (parameter is FileDialogEntry entry)
+                    Run(ActivateAsync(entry));
+            });
     }
 
     // ───────────────────────────── shape ─────────────────────────────
@@ -266,7 +291,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(CanGoUp));
             RebuildSegments();
-            RaiseCommandStates();
+            RequeryCommands();
         }
     }
 
@@ -304,7 +329,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
                 FileName = value.Name;
 
             OnPropertyChanged(nameof(SelectionSummary));
-            RaiseCommandStates();
+            RequeryCommands();
         }
     }
 
@@ -314,11 +339,12 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
         get => _fileName;
         set
         {
+            // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
             if (!SetProperty(ref _fileName, value ?? ""))
                 return;
 
             ErrorMessage = null;
-            RaiseCommandStates();
+            RequeryCommands();
         }
     }
 
@@ -330,6 +356,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
         get => _searchText;
         set
         {
+            // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
             if (SetProperty(ref _searchText, value ?? ""))
                 ApplyView();
         }
@@ -374,7 +401,19 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     public ListViewViewMode ViewMode
     {
         get => _viewMode;
-        set => SetProperty(ref _viewMode, value);
+        set
+        {
+            var wasBusy = IsBusy;
+
+            try
+            {
+                SetProperty(ref _viewMode, value);
+            }
+            finally
+            {
+                IsBusy = wasBusy;
+            }
+        }
     }
 
     /// <summary>Whether entries the provider marks hidden are listed.</summary>
@@ -401,7 +440,11 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     public bool IsBusy
     {
         get => _isBusy;
-        private set => SetProperty(ref _isBusy, value);
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+                RequeryCommands();
+        }
     }
 
     /// <summary>Whether the New Folder row is showing its editor (the design page's inline green row).</summary>
@@ -413,7 +456,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
             if (!SetProperty(ref _isCreatingFolder, value))
                 return;
 
-            RaiseCommandStates();
+            RequeryCommands();
         }
     }
 
@@ -421,6 +464,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
     public string NewFolderName
     {
         get => _newFolderName;
+        // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
         set => SetProperty(ref _newFolderName, value ?? "");
     }
 
@@ -465,48 +509,48 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
     /// <summary>Navigates to a directory. Parameter: a path <see cref="string"/>, a
     /// <see cref="FileDialogPathSegment"/>, a <see cref="FileDialogEntry"/> or a <see cref="FileSystemEntry"/>.</summary>
-    public ICommand NavigateCommand { get; }
+    public IRequeryCommand NavigateCommand { get; }
 
     /// <summary>Goes back through the navigation history (the design page's <c>◂</c>, <c>Alt+←</c>).</summary>
-    public ICommand BackCommand { get; }
+    public IRequeryCommand BackCommand { get; }
 
     /// <summary>Goes forward through the navigation history (<c>▸</c>, <c>Alt+→</c>).</summary>
-    public ICommand ForwardCommand { get; }
+    public IRequeryCommand ForwardCommand { get; }
 
     /// <summary>Goes to the containing directory (<c>▴</c>, <c>Alt+↑</c>, and <c>Backspace</c> when no
     /// type-ahead is running).</summary>
-    public ICommand UpCommand { get; }
+    public IRequeryCommand UpCommand { get; }
 
     /// <summary>Re-reads the current directory (<c>↻</c>, <c>F5</c>).</summary>
-    public ICommand RefreshCommand { get; }
+    public IRequeryCommand RefreshCommand { get; }
 
     /// <summary>Opens the New Folder editor (<c>Alt+N</c>; Save As only).</summary>
-    public ICommand NewFolderCommand { get; }
+    public IRequeryCommand NewFolderCommand { get; }
 
     /// <summary>Creates the folder named in <see cref="NewFolderName"/> and refreshes.</summary>
-    public ICommand CommitNewFolderCommand { get; }
+    public IRequeryCommand CommitNewFolderCommand { get; }
 
     /// <summary>Abandons the New Folder editor.</summary>
-    public ICommand CancelNewFolderCommand { get; }
+    public IRequeryCommand CancelNewFolderCommand { get; }
 
     /// <summary>Resolves <see cref="FileName"/> and finishes the dialog (<c>Open</c> / <c>Save</c>,
     /// <c>Alt+O</c>). A name that turns out to be a DIRECTORY navigates into it instead — that is what typing
     /// a folder name into the field means everywhere else, too.</summary>
-    public ICommand AcceptCommand { get; }
+    public IRequeryCommand AcceptCommand { get; }
 
     /// <summary>Finishes the dialog with <see cref="FileDialogResult.Dismissed"/> (<c>Cancel</c>,
     /// <c>Alt+C</c>, <c>Esc</c> at the dialog's top level).</summary>
-    public ICommand CancelCommand { get; }
+    public IRequeryCommand CancelCommand { get; }
 
     /// <summary>Switches the listing's presentation. Parameter: a <see cref="ListViewViewMode"/>.</summary>
-    public ICommand SetViewModeCommand { get; }
+    public IRequeryCommand SetViewModeCommand { get; }
 
     /// <summary>Cycles the sort. Parameter: a <see cref="FileDialogSortKey"/>, or the member-path string a
     /// <see cref="Controls.ListViewSortingEventArgs"/> carries (<c>"Name"</c>, <c>"SizeText"</c>, …).</summary>
-    public ICommand SortCommand { get; }
+    public IRequeryCommand SortCommand { get; }
 
     /// <summary>Invokes a row — Enter or a double-click. Parameter: the <see cref="FileDialogEntry"/>.</summary>
-    public ICommand ActivateCommand { get; }
+    public IRequeryCommand ActivateCommand { get; }
 
     // ───────────────────────────── lifecycle ─────────────────────────────
 
@@ -892,7 +936,9 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
         // One listing at a time: the previous enumeration is abandoned rather than raced, so a user clicking
         // impatiently through a slow share can never have an older answer land on top of a newer one.
-        _navigation?.Cancel();
+        if (_navigation is {} navigation)
+            await navigation.CancelAsync();
+
         _navigation?.Dispose();
         _navigation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
 
@@ -961,7 +1007,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanGoForward));
-        RaiseCommandStates();
+        RequeryCommands();
     }
 
     private async Task GoBackAsync()
@@ -971,7 +1017,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
         var target = _back[^1];
         _back.RemoveAt(_back.Count - 1);
-        await NavigateCoreAsync(target, HistoryAction.Back, default).ConfigureAwait(true);
+        await NavigateCoreAsync(target, HistoryAction.Back, CancellationToken.None).ConfigureAwait(true);
     }
 
     private async Task GoForwardAsync()
@@ -981,7 +1027,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
 
         var target = _forward[^1];
         _forward.RemoveAt(_forward.Count - 1);
-        await NavigateCoreAsync(target, HistoryAction.Forward, default).ConfigureAwait(true);
+        await NavigateCoreAsync(target, HistoryAction.Forward, CancellationToken.None).ConfigureAwait(true);
     }
 
     private async Task GoUpAsync()
@@ -992,7 +1038,7 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
         // Coming up from a child selects that child, which is what makes ▴ + ▾ a round trip rather than a
         // one-way trip that loses your place (Explorer and every file manager since do the same).
         var child = _currentDirectory;
-        await NavigateCoreAsync(parent, HistoryAction.Push, default).ConfigureAwait(true);
+        await NavigateCoreAsync(parent, HistoryAction.Push, CancellationToken.None).ConfigureAwait(true);
         SelectedEntry = FindByPath(child);
     }
 
@@ -1352,15 +1398,18 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable
                               TaskScheduler.Default);
     }
 
-    private void RaiseCommandStates()
+    private void RequeryCommands()
     {
-        (BackCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (ForwardCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (UpCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (AcceptCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (NewFolderCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (CommitNewFolderCommand as DelegateCommand)?.RaiseCanExecuteChanged();
-        (CancelNewFolderCommand as DelegateCommand)?.RaiseCanExecuteChanged();
+        BackCommand.RaiseCanExecuteChanged();
+        ForwardCommand.RaiseCanExecuteChanged();
+        UpCommand.RaiseCanExecuteChanged();
+        AcceptCommand.RaiseCanExecuteChanged();
+        NewFolderCommand.RaiseCanExecuteChanged();
+        CommitNewFolderCommand.RaiseCanExecuteChanged();
+        CancelNewFolderCommand.RaiseCanExecuteChanged();
+        SetViewModeCommand.RaiseCanExecuteChanged();
+        RefreshCommand.RaiseCanExecuteChanged();
+        NavigateCommand.RaiseCanExecuteChanged();
     }
 
     /// <summary>Cancels every in-flight listing. Called by the dialog when its window closes.</summary>

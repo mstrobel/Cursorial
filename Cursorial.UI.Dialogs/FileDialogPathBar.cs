@@ -1,6 +1,8 @@
 using System;
 
+using Cursorial.Drawing.Media;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Dialogs;
 
@@ -26,6 +28,12 @@ internal sealed class FileDialogPathBar : BreadcrumbBar
     /// <summary>The edit box's part name, as declared by <see cref="BreadcrumbBar"/>'s
     /// <see cref="TemplatePartAttribute"/> (a private constant there, so it is restated here).</summary>
     private const string PartEditBox = "PART_EditBox";
+
+    static FileDialogPathBar()
+    {
+        BackgroundProperty.OverrideMetadata<FileDialogPathBar>(
+            new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.ElevationWell });
+    }
 
     /// <inheritdoc/>
     protected override object ControlThemeKey => typeof(BreadcrumbBar);

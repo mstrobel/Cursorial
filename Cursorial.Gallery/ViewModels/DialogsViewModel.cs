@@ -1,9 +1,12 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
+using Cursorial.UI.Dialogs.Themes;
 
 using MessageBox = Cursorial.UI.Dialogs.MessageBox;
 using MessageBoxButton = Cursorial.UI.Dialogs.MessageBoxButton;
@@ -19,9 +22,44 @@ public class DialogsViewModel : PageViewModel
 
     public DialogsViewModel(UIApplication? application = null)
     {
+        RuntimeHelpers.RunModuleConstructor(typeof(CursorialDialogThemes).Module.ModuleHandle);
+
         Application = application ?? UIApplication.Current;
         ShowTaskDialogCommand = new RelayCommand(ShowTaskDialog, () => !_isDialogShowing);
         ShowMessageDialogCommand = new RelayCommand(ShowMessageDialog, () => !_isDialogShowing);
+        ShowFileOpenDialogCommand = new RelayCommand(ShowFileOpenDialog, () => !_isDialogShowing);
+        ShowFileSaveDialogCommand = new RelayCommand(ShowFileSaveDialog, () => !_isDialogShowing);
+
+        ToggleMessageBoxButtonCommand = new RelayCommand<ICheckableCommandParameter?>(
+            ExecuteToggleMessageBoxButtonCommand,
+            CanExecuteToggleMessageBoxButtonCommand);
+    }
+
+    private bool CanExecuteToggleMessageBoxButtonCommand(ICheckableCommandParameter? p)
+    {
+        p?.Handled = true;
+        
+        if (p?.Tag is not MessageBoxButton button)
+        {
+            p?.IsCheckedOverride = false;
+            return false;
+        }
+
+        p.IsCheckedOverride = MessageBoxButtons == button;
+        return true;
+    }
+
+    private void ExecuteToggleMessageBoxButtonCommand(ICheckableCommandParameter? p)
+    {
+        if (p?.Tag is not MessageBoxButton button)
+            return;
+
+        MessageBoxButtons = button;
+
+        p.IsCheckedOverride = true;
+        p.Handled = true;
+        
+        ToggleMessageBoxButtonCommand.RaiseCanExecuteChanged();
     }
 
     private UIApplication? Application { get; }
@@ -30,12 +68,21 @@ public class DialogsViewModel : PageViewModel
 
     public ICommand ShowMessageDialogCommand { get; }
 
+    public ICommand ShowFileOpenDialogCommand { get; }
+
+    public ICommand ShowFileSaveDialogCommand { get; }
+
+    public RelayCommand<ICheckableCommandParameter?> ToggleMessageBoxButtonCommand { get; }
+
     public string? Status
     {
         get;
         set => Set(ref field, value);
     }
+
+    public MessageBoxButton MessageBoxButtons { get; set => Set(ref field, value); } = MessageBoxButton.YesNo;
     
+    public TaskDialogSeverity TaskDialogSeverity { get; set => Set(ref field, value); } = TaskDialogSeverity.None;
     public bool TaskDialogIncludeContent { get; set => Set(ref field, value); } = true;
     public bool TaskDialogIncludeCommandLinks { get; set => Set(ref field, value); } = true;
     public bool TaskDialogIncludeButtons { get; set => Set(ref field, value); } = true;
@@ -43,6 +90,12 @@ public class DialogsViewModel : PageViewModel
     public bool TaskDialogIncludeVerification { get; set => Set(ref field, value); } = true;
     public bool TaskDialogIncludeProgressBar { get; set => Set(ref field, value); } = true;
 
+    public bool FileDialogFileMustExist {  get; set => Set(ref field, value); } = true;
+    public bool FileDialogUseRealFileSystem {  get; set => Set(ref field, value); } = true;
+    public bool FileDialogShowHidden {  get; set => Set(ref field, value); } = false;
+    public bool FileDialogConfirmOverwrite {  get; set => Set(ref field, value); } = true;
+    public bool FileDialogCanCreateDirectories {  get; set => Set(ref field, value); } = true;
+    
     private async void ShowMessageDialog()
     {
         try
@@ -54,14 +107,34 @@ public class DialogsViewModel : PageViewModel
 
             _isDialogShowing = true;
 
+            var buttons = MessageBoxButtons;
+
+            var defaultButton = buttons switch
+                                {
+                                    _ when buttons.HasFlag(MessageBoxButton.Save) => MessageBoxButton.Save,
+                                    _ when buttons.HasFlag(MessageBoxButton.Yes)  => MessageBoxButton.Yes,
+                                    _ when buttons.HasFlag(MessageBoxButton.Ok)   => MessageBoxButton.Ok,
+                                    _ when buttons is MessageBoxButton.Cancel     => MessageBoxButton.Cancel,
+                                    _                                             => default(MessageBoxButton?)
+                                };
+
+            var cancelButton = buttons switch
+                               {
+                                   _ when buttons.HasFlag(MessageBoxButton.Cancel)   => MessageBoxButton.Cancel,
+                                   _ when buttons.HasFlag(MessageBoxButton.No)       => MessageBoxButton.No,
+                                   _ when buttons.HasFlag(MessageBoxButton.DontSave) => MessageBoxButton.DontSave,
+                                   _                                                 => default(MessageBoxButton?)
+                               };
 
             var result = await MessageBox.ShowAsync(
                              app,
                              message: "Would you like to drink the purple vial?",
                              title: "Make a Choice",
-                             buttons: MessageBoxButton.YesNo,
-                             defaultButton: MessageBoxButton.Yes,
-                             cancelButton: MessageBoxButton.No);
+                             buttons,
+                             focusedButton: defaultButton,
+                             defaultButton,
+                             cancelButton,
+                             app.Dispatcher.ShutdownToken);
 
             Status = $"You chose: {result}";
         }
@@ -130,7 +203,7 @@ public class DialogsViewModel : PageViewModel
                         VerificationText = TaskDialogIncludeVerification ? "I am a meat _popsicle" : null,
                         ExpandedInformation = TaskDialogIncludeExpandedContent ? "Curiosity is a virtue. 🩷" : null,
                         ExpandedInformationContainsMarkup = true,
-                        Severity = TaskDialogSeverity.Question
+                        Severity = TaskDialogSeverity
                     };
 
             int progress = 0;
@@ -156,7 +229,7 @@ public class DialogsViewModel : PageViewModel
                                                              TimeSpan.FromMilliseconds(30d));
             }
 
-            var result = await TaskDialog.ShowAsync(app, r);
+            var result = await TaskDialog.ShowAsync(app, r, app.Dispatcher.ShutdownToken);
 
             if (timer is not null)
                 await timer.DisposeAsync();
@@ -174,5 +247,105 @@ public class DialogsViewModel : PageViewModel
         {
             _isDialogShowing = false;
         }
+    }
+    
+    private async void ShowFileOpenDialog()
+    {
+        try
+        {
+            if (Application is not {} app)
+                return;
+
+            if (_isDialogShowing) return;
+
+            _isDialogShowing = true;
+
+            IFileSystemProvider fileSystem = FileDialogUseRealFileSystem 
+                                                 ? PhysicalFileSystemProvider.Instance
+                                                 : InMemoryFileSystemProvider.CreateSample();
+
+            var filters = MakeFileFilters();
+
+            var result = await FileOpenDialog.ShowAsync(
+                             app,
+                             new FileOpenDialogRequest("Open File")
+                             {
+                                 FileSystem = fileSystem,
+                                 ShowHiddenEntries = FileDialogShowHidden,
+                                 Filters = filters,
+                                 SelectedFilterIndex = filters.Count - 1,
+                                 MustExist = FileDialogFileMustExist,
+                                 View = ListViewViewMode.SmallIcons
+                             });
+
+            Status = result.IsDismissed 
+                         ? "You dismissed without opening a file."
+                         : $"You opened: {result.FilePath}";
+        }
+        catch (Exception e)
+        {
+            Status = $"Error: {e.Message}";
+        }
+        finally
+        {
+            _isDialogShowing = false;
+        }
+    }
+
+    private async void ShowFileSaveDialog()
+    {
+        try
+        {
+            if (Application is not {} app)
+                return;
+
+            if (_isDialogShowing) return;
+
+            _isDialogShowing = true;
+
+            IFileSystemProvider fileSystem = FileDialogUseRealFileSystem 
+                                                 ? PhysicalFileSystemProvider.Instance
+                                                 : InMemoryFileSystemProvider.CreateSample();
+
+            var filters = MakeFileFilters();
+
+            var result = await FileSaveDialog.ShowAsync(
+                             app,
+                             new FileSaveDialogRequest("Save File")
+                             {
+                                 FileSystem = fileSystem,
+                                 ShowHiddenEntries = FileDialogShowHidden,
+                                 CanCreateDirectories = FileDialogCanCreateDirectories,
+                                 ConfirmOverwrite = FileDialogConfirmOverwrite,
+                                 Filters = filters,
+                                 SelectedFilterIndex = filters.Select((f, i) => f.Matches("new_file.txt") ? i : -i).FirstOrDefault(i => i > 0),
+                                 InitialFileName = "new_file",
+                                 View = ListViewViewMode.SmallIcons
+                             });
+
+            Status = result.IsDismissed 
+                         ? "You dismissed without saving."
+                         : $"You saved to: {result.FilePath}";
+        }
+        catch (Exception e)
+        {
+            Status = $"Error: {e.Message}";
+        }
+        finally
+        {
+            _isDialogShowing = false;
+        }
+    }
+
+    private static IReadOnlyList<FileDialogFilter> MakeFileFilters()
+    {
+        return [
+                   new("C# source", "*.cs"),
+                   new("PDF document", "*.pdf"),
+                   new("PNG image", "*.png"),
+                   new("Xaml source", "*.xaml"),
+                   new("Plain text", "*.txt"),
+                   new("All files", "*.*")
+               ];
     }
 }

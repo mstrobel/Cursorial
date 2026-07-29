@@ -91,7 +91,7 @@ public static class FileTypeIcons
         internal const string MdDesktopTower = "\U000F01C5";         // nf-md-desktop_tower
         internal const string MdFileDocument = "\U000F0219";         // nf-md-file_document
         internal const string MdFileDocumentMultiple = "\U000F1517"; // nf-md-file_document_multiple
-        internal const string MdSvg = "\U000F0721";                  // nf-md-svg (v3 home of the design page's nf-mdi-svg)
+        internal const string MdSvg = "\ue698";                      // nf-md-svg (v3 home of the design page's nf-mdi-svg)
 
         internal const string FaFile = "\uf15b";                     // nf-fa-file
         internal const string FaFilePdf = "\uf1c1";                  // nf-fa-file_pdf
@@ -216,12 +216,12 @@ public static class FileTypeIcons
         // ── source ──────────────────────────────────────────────────────────────────────────────────────────
         Ext("cs",         Cat.Source,   "C# source",                 Nf.SetiCSharp,     "cs csx");
         Ext("fsharp",     Cat.Source,   "F# source",                 Nf.SetiFSharp,     "fs fsi fsx");
-        Ext("vb",         Cat.Source,   "Visual Basic source",       Nf.OctFileCode,    "vb");
-        Ext("ts",         Cat.Source,   "TypeScript source",         Nf.SetiTypeScript, "ts mts cts");
-        Ext("dts",        Cat.Source,   "TypeScript declarations",   Nf.SetiTypeScript, "d.ts");
-        Ext("tsx",        Cat.Source,   "TypeScript React source",   Nf.SetiReact,      "tsx");
-        Ext("js",         Cat.Source,   "JavaScript source",         Nf.SetiJavaScript, "js mjs cjs");
-        Ext("jsx",        Cat.Source,   "JavaScript React source",   Nf.SetiReact,      "jsx");
+        Ext("vb",         Cat.Source,   "VB source",                 Nf.OctFileCode,    "vb");
+        Ext("ts",         Cat.Source,   "TS source",                 Nf.SetiTypeScript, "ts mts cts");
+        Ext("dts",        Cat.Source,   "TS declarations",           Nf.SetiTypeScript, "d.ts");
+        Ext("tsx",        Cat.Source,   "TS React source",           Nf.SetiReact,      "tsx");
+        Ext("js",         Cat.Source,   "JS source",                 Nf.SetiJavaScript, "js mjs cjs");
+        Ext("jsx",        Cat.Source,   "JS React source",           Nf.SetiReact,      "jsx");
         Ext("py",         Cat.Source,   "Python source",             Nf.SetiPython,     "py pyw pyi");
         Ext("rs",         Cat.Source,   "Rust source",               Nf.SetiRust,       "rs");
         Ext("go",         Cat.Source,   "Go source",                 Nf.SetiGo,         "go");
@@ -239,21 +239,21 @@ public static class FileTypeIcons
         Ext("ps1",        Cat.Source,   "PowerShell script",         Nf.SetiPowerShell, "ps1 psm1 psd1");
 
         // ── markup & prose ──────────────────────────────────────────────────────────────────────────────────
-        Ext("html",       Cat.Markup,   "HTML document",             Nf.SetiHtml,       "html htm xhtml");
-        Ext("css",        Cat.Markup,   "Stylesheet",                Nf.SetiCss,        "css");
-        Ext("scss",       Cat.Markup,   "Sass stylesheet",           Nf.SetiSass,       "scss sass less");
-        Ext("xml",        Cat.Markup,   "XML document",              Nf.SetiXml,        "xml xsd xsl");
-        Ext("xaml",       Cat.Markup,   "XAML markup",               Nf.SetiXml,        "xaml");
-        Ext("md",         Cat.Text,     "Markdown document",         Nf.SetiMarkdown,   "md markdown mdown");
-        Ext("txt",        Cat.Text,     "Text document",             Nf.SetiText,       "txt text log");
+        Ext("html",       Cat.Markup,   "HTML",                      Nf.SetiHtml,       "html htm xhtml");
+        Ext("css",        Cat.Markup,   "Stylesheet",                       Nf.SetiCss,        "css");
+        Ext("scss",       Cat.Markup,   "Sass",                      Nf.SetiSass,       "scss sass less");
+        Ext("xml",        Cat.Markup,   "XML",                       Nf.SetiXml,        "xml xsd xsl");
+        Ext("xaml",       Cat.Markup,   "XAML",                      Nf.SetiXml,        "xaml");
+        Ext("md",         Cat.Text,     "Markdown",                  Nf.SetiMarkdown,   "md markdown mdown");
+        Ext("txt",        Cat.Text,     "Text",                      Nf.SetiText,       "txt text log");
 
         // ── data & configuration ────────────────────────────────────────────────────────────────────────────
         Ext("json",       Cat.Data,     "JSON file",                 Nf.SetiJson,       "json jsonc json5"); // design page
         Ext("yaml",       Cat.Data,     "YAML file",                 Nf.SetiYml,        "yaml yml");
         Ext("toml",       Cat.Data,     "TOML file",                 Nf.CustomToml,     "toml");
-        Ext("ini",        Cat.Data,     "Configuration file",        Nf.SetiConfig,     "ini cfg conf config properties");
+        Ext("ini",        Cat.Data,     "Configuration",             Nf.SetiConfig,     "ini cfg conf config properties");
         Ext("csv",        Cat.Data,     "CSV file",                  Nf.SetiCsv,        "csv tsv");
-        Ext("db",         Cat.Data,     "Database file",             Nf.SetiDatabase,   "db sqlite sqlite3 mdb");
+        Ext("db",         Cat.Data,     "Database",                  Nf.SetiDatabase,   "db sqlite sqlite3 mdb");
         Ext("sql",        Cat.Data,     "SQL script",                Nf.SetiDatabase,   "sql");
         Ext("csproj",     Cat.Data,     "C# project",                Nf.SetiCSharp,     "csproj");
         Ext("sln",        Cat.Data,     "Solution file",             Nf.SetiProject,    "sln slnx");
@@ -268,8 +268,8 @@ public static class FileTypeIcons
         Ext("ico",        Cat.Image,    "Icon image",                Nf.SetiFavicon,    "ico icns cur");
         Ext("svg",        Cat.Vector,   "SVG image",                 Nf.MdSvg,          "svg"); // design page (v3 codepoint)
         Ext("aco",        Cat.Vector,   "Swatch file",               Nf.FaPaintBrush,   "aco ase swatches gpl"); // design page
-        Ext("psd",        Cat.Vector,   "Photoshop document",        Nf.SetiPhotoshop,  "psd psb");
-        Ext("ai",         Cat.Vector,   "Illustrator document",      Nf.SetiIllustrator, "ai");
+        Ext("psd",        Cat.Vector,   "Photoshop",                 Nf.SetiPhotoshop,  "psd psb");
+        Ext("ai",         Cat.Vector,   "Illustrator",               Nf.SetiIllustrator, "ai");
 
         // ── media ───────────────────────────────────────────────────────────────────────────────────────────
         Ext("mp3",        Cat.Audio,    "MP3 audio",                 Nf.SetiAudio,      "mp3");
@@ -278,11 +278,11 @@ public static class FileTypeIcons
         Ext("ogg",        Cat.Audio,    "Ogg audio",                 Nf.SetiAudio,      "ogg opus");
         Ext("aac",        Cat.Audio,    "AAC audio",                 Nf.SetiAudio,      "aac m4a");
         Ext("mp4",        Cat.Video,    "MP4 video",                 Nf.SetiVideo,      "mp4 m4v");
-        Ext("mov",        Cat.Video,    "QuickTime video",           Nf.SetiVideo,      "mov qt");
+        Ext("mov",        Cat.Video,    "QuickTime",                 Nf.SetiVideo,      "mov qt");
         Ext("avi",        Cat.Video,    "AVI video",                 Nf.SetiVideo,      "avi");
         Ext("mkv",        Cat.Video,    "Matroska video",            Nf.SetiVideo,      "mkv");
-        Ext("webm",       Cat.Video,    "WebM video",                Nf.SetiVideo,      "webm");
-        Ext("wmv",        Cat.Video,    "Windows Media video",       Nf.SetiVideo,      "wmv");
+        Ext("webm",       Cat.Video,    "WebM",                      Nf.SetiVideo,      "webm");
+        Ext("wmv",        Cat.Video,    "Windows Media",             Nf.SetiVideo,      "wmv");
 
         // ── archives ────────────────────────────────────────────────────────────────────────────────────────
         // The compound rows come first only for readability; ForFileName always probes the two-segment
@@ -299,18 +299,18 @@ public static class FileTypeIcons
         Ext("rar",        Cat.Archive,  "RAR archive",               Nf.SetiZip,        "rar");
 
         // ── documents ───────────────────────────────────────────────────────────────────────────────────────
-        Ext("pdf",        Cat.Document, "PDF document",              Nf.FaFilePdf,      "pdf"); // design page
-        Ext("doc",        Cat.Document, "Word document",             Nf.SetiWord,       "doc docx");
-        Ext("xls",        Cat.Document, "Excel workbook",            Nf.SetiXls,        "xls xlsx xlsm");
-        Ext("ppt",        Cat.Document, "PowerPoint presentation",   Nf.FaFilePowerPoint, "ppt pptx");
-        Ext("rtf",        Cat.Document, "Rich text document",        Nf.MdFileDocument, "rtf odt");
+        Ext("pdf",        Cat.Document, "PDF",              Nf.FaFilePdf,      "pdf"); // design page
+        Ext("doc",        Cat.Document, "Word",             Nf.SetiWord,       "doc docx");
+        Ext("xls",        Cat.Document, "Excel",            Nf.SetiXls,        "xls xlsx xlsm");
+        Ext("ppt",        Cat.Document, "PowerPoint",       Nf.FaFilePowerPoint, "ppt pptx");
+        Ext("rtf",        Cat.Document, "Rich Text",        Nf.MdFileDocument, "rtf odt");
 
         // ── binaries & fonts ────────────────────────────────────────────────────────────────────────────────
         Ext("exe",        Cat.Executable, "Application",             Nf.OctFileBinary,  "exe com");
-        Ext("msi",        Cat.Executable, "Installer package",       Nf.OctFileBinary,  "msi pkg deb rpm");
+        Ext("msi",        Cat.Executable, "Installer",               Nf.OctFileBinary,  "msi pkg deb rpm");
         Ext("bin",        Cat.Executable, "Binary file",             Nf.OctFileBinary,  "bin dat");
-        Ext("dll",        Cat.Library,    "Dynamic library",         Nf.OctFileBinary,  "dll");
-        Ext("so",         Cat.Library,    "Shared library",          Nf.OctFileBinary,  "so dylib a lib");
+        Ext("dll",        Cat.Library,    "Dynamic Lib",             Nf.OctFileBinary,  "dll");
+        Ext("so",         Cat.Library,    "Shared Lib",              Nf.OctFileBinary,  "so dylib a lib");
         Ext("ttf",        Cat.Font,       "TrueType font",           Nf.SetiFont,       "ttf ttc");
         Ext("otf",        Cat.Font,       "OpenType font",           Nf.SetiFont,       "otf");
         Ext("woff",       Cat.Font,       "Web font",                Nf.SetiFont,       "woff woff2 eot");

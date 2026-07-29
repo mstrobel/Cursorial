@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 
@@ -67,13 +68,53 @@ public sealed record FileTypeDescriptor(string Id,
     /// When <see langword="true"/>, <see cref="Ascii"/> takes the <see cref="Icon.Text"/> slot instead of
     /// <see cref="Text"/> — a 7-bit floor for terminals (or transcripts) that cannot carry the Unicode one.
     /// </param>
-    public IconCarrier ToIconCarrier(bool asciiFloor = false) => new()
-                                                                {
-                                                                    Glyph = Glyph,
-                                                                    GlyphWidth = 1, // every Nerd Font codepoint in the table is single-cell
-                                                                    Emoji = Emoji,
-                                                                    Text = asciiFloor ? Ascii : Text
-                                                                };
+    public IconCarrier ToIconCarrier(bool asciiFloor = false)
+        => new()
+           {
+               Glyph = Glyph,
+               GlyphWidth = 2, // some Nerd Font codepoints are variably-sized or double-cell
+               Emoji = Emoji,
+               Text = asciiFloor ? Ascii : Text,
+               IconBrush = CategoryBrush(Category)
+           };
+
+    private IBrush? CategoryBrush(FileTypeCategory category)
+    {
+        string? key = category switch
+                      {
+                          FileTypeCategory.Unknown    => null,
+                          FileTypeCategory.Folder     => ThemeKeys.AnsiCyan,
+                          FileTypeCategory.Drive      => null,
+                          FileTypeCategory.Place      => null,
+                          FileTypeCategory.Text       => ThemeKeys.AnsiLightBlack,
+                          FileTypeCategory.Document   => ThemeKeys.AnsiLightBlack,
+                          FileTypeCategory.Source     => ThemeKeys.AnsiGreen,
+                          FileTypeCategory.Markup     => ThemeKeys.AnsiGreen,
+                          FileTypeCategory.Data       => ThemeKeys.AnsiYellow,
+                          FileTypeCategory.Image      => ThemeKeys.AnsiMagenta,
+                          FileTypeCategory.Vector     => ThemeKeys.AnsiMagenta,
+                          FileTypeCategory.Audio      => ThemeKeys.AnsiBlue,
+                          FileTypeCategory.Video      => ThemeKeys.AnsiBlue,
+                          FileTypeCategory.Archive    => ThemeKeys.AnsiRed,
+                          FileTypeCategory.Executable => ThemeKeys.AnsiLightCyan,
+                          FileTypeCategory.Library    => ThemeKeys.AmberBrush,
+                          FileTypeCategory.Font       => ThemeKeys.RedBrush,
+                          _                           => ThemeKeys.AnsiLightBlack
+                      };
+
+        if (key is null) return null;
+
+        var themeVariant = UIApplication.Current?.ActualThemeVariant;
+        if (themeVariant is null) return null;
+
+        return ResourceExtensions.WalkApplicationTail(key,
+                                                      themeVariant.GetValueOrDefault(),
+                                                      null,
+                                                      out object? value) &&
+               value is IBrush
+                   ? (IBrush) value
+                   : null;
+    }
 
     /// <summary>
     /// Builds a fresh <see cref="Icon"/> for the row. A new instance every call — an <see cref="Icon"/> is a
@@ -84,7 +125,7 @@ public sealed record FileTypeDescriptor(string Id,
     public Icon CreateIcon(bool asciiFloor = false) => new()
                                                       {
                                                           Glyph = Glyph,
-                                                          GlyphWidth = 1,
+                                                          GlyphWidth = 2,
                                                           Emoji = Emoji,
                                                           Text = asciiFloor ? Ascii : Text
                                                       };

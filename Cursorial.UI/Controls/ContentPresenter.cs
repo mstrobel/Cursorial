@@ -13,9 +13,9 @@ namespace Cursorial.UI.Controls;
 public sealed class ContentPresenter : UIElement
 {
     private UIElement? _child;
-    private object? _realizedContent;          // the content identity the current Child was built from
-    private DataTemplate? _realizedTemplate;    // the template identity the current Child was built from
-    private bool _realizing;                    // recursion guard (C147)
+    private object? _realizedContent;        // the content identity the current Child was built from
+    private DataTemplate? _realizedTemplate; // the template identity the current Child was built from
+    private bool _realizing;                 // recursion guard (C147)
     private IDisposable? _aliasContentObserver;
     private IDisposable? _aliasTemplateObserver;
     private IDisposable? _aliasStringFormatObserver;
@@ -23,7 +23,8 @@ public sealed class ContentPresenter : UIElement
     private string? _realizedStringFormat; // the string format the current Child was built from (no-template reuse key)
     private IDisposable? _hAlignObserver;
     private IDisposable? _vAlignObserver;
-    private ContentControl? _alignmentSource;        // the templated parent we read through to (CD21)
+    private ContentControl? _alignmentSource; // the templated parent we read through to (CD21)
+    private IDisposable? _isTrimmedObserver;
 
     /// <summary>The presenter's content (any object); mirrors <see cref="ContentControl.Content"/>.</summary>
     public static readonly StyledProperty<object?> ContentProperty =
@@ -51,6 +52,17 @@ public sealed class ContentPresenter : UIElement
         UIProperty.Register<ContentPresenter, bool>(nameof(ForwardTextInverse),
                                                     changed: OnForwardingDetailsChanged,
                                                     defaultValue: true);
+
+    /// <inheritdoc cref="TextBlock.IsTrimmedProperty"/>
+    public static readonly StyledProperty<bool> IsTrimmedProperty =
+        TextBlock.IsTrimmedProperty.AddOwner<ContentPresenter>();
+
+    /// <summary>Whether trimmed content should be displayed in a tool tip on this content host</summary>
+    public static readonly StyledProperty<bool> ShowTrimmedContentInToolTipProperty =
+        UIProperty.Register<ContentPresenter, bool>(
+            nameof(ShowTrimmedContentInToolTip),
+            defaultValue: false,
+            changed: static (s, _, _) => (s as ContentPresenter)?.RebuildToolTip());
 
     /// <summary>
     /// When <c>false</c>, <see cref="TextElement">text formatting</see> and other forwarded properties will
@@ -90,6 +102,12 @@ public sealed class ContentPresenter : UIElement
 
     /// <inheritdoc cref="ForwardsFromTemplatedParentProperty"/>
     public bool ForwardsFromTemplatedParent { get => GetValue(ForwardsFromTemplatedParentProperty); set => SetValue(ForwardsFromTemplatedParentProperty, value); }
+
+    /// <inheritdoc cref="IsTrimmedProperty"/>
+    public bool IsTrimmed => GetValue(IsTrimmedProperty);
+
+    /// <inheritdoc cref="ShowTrimmedContentInToolTipProperty"/>
+    public bool ShowTrimmedContentInToolTip { get => GetValue(ShowTrimmedContentInToolTipProperty); set => SetValue(ShowTrimmedContentInToolTipProperty, value); }
 
     /// <summary>The realized visual child (diagnostic; null before first measure / empty content).</summary>
     public UIElement? Child => _child;
@@ -334,6 +352,9 @@ public sealed class ContentPresenter : UIElement
             _adoptedContentForward?.Dispose();
             _adoptedContentForward = null;
 
+            _isTrimmedObserver?.Dispose();
+            _isTrimmedObserver = null;
+
             // A presenter-BUILT child (a TextBlock realized from string/object content — NOT borrowed element content,
             // where the child IS the content and the author owns it) is presenter-owned and discarded here. Tear its
             // bindings down: RemoveVisualChild does NOT run TearDown (by design), so a Source-anchored binding it
@@ -347,6 +368,7 @@ public sealed class ContentPresenter : UIElement
                 RemoveLogicalChild(old);
 
             RemoveVisualChild(old);
+
             _child = null;
             _childLogicallyOwned = false;
         }
@@ -378,7 +400,54 @@ public sealed class ContentPresenter : UIElement
                 else if (content is UIElement && built == content)
                     _adoptedContentForward = ContentRealization.ForwardInverseOnly(this, built);
             }
+
+            RebuildToolTip();
         }
+    }
+
+    private void RebuildToolTip()
+    {
+        var toolTipSource = GetValueSource(ToolTipService.TipProperty);
+
+        var canSetToolTip = ShowTrimmedContentInToolTip &&
+                            toolTipSource is { Kind: ValueSourceKind.Default };
+
+        if (canSetToolTip is false) return;
+        if (canSetToolTip is false)
+        {
+            _isTrimmedObserver?.Dispose();
+            _isTrimmedObserver = null;
+
+            if (toolTipSource.IsCurrentValue)
+                ClearValue(ToolTipService.TipProperty);
+
+            return;
+        }
+
+        var toolTipSet = false;
+
+        if (_child is TextBlock tb)
+        {
+            _isTrimmedObserver = tb.AddObserver(IsTrimmedProperty, new IsTrimmedObserver(this));
+
+            if (tb is { IsTrimmed: true } && tb.GetUntrimmedText(ToolTipService.MaxToolTipWidth) is {} tip)
+            {
+                SetCurrentValue(
+                    ToolTipService.TipProperty,
+                    new TextBlock
+                    {
+                        Text = tip,
+                        TextWrapping = WrapMode.WordWrap,
+                        MaxHeight = Math.Max(1, UIApplication.Current?.WindowManager?.ScreenSize.Rows / 2 ?? 8),
+                        TextTrimming = TextTrimming.ClipFromEnd
+                    });
+
+                toolTipSet = true;
+            }
+        }
+
+        if (toolTipSet is false && toolTipSource.IsCurrentValue)
+            ClearValue(ToolTipService.TipProperty);
     }
 
     // WPF parity for BORROWED element content — a UIElement hosted here whose LOGICAL owner is a foreign control.
@@ -497,5 +566,11 @@ public sealed class ContentPresenter : UIElement
     {
         public void OnPropertyChanged(UIObject source, UIProperty property, VerticalAlignment oldValue, VerticalAlignment newValue, BindingPriority priority)
             => presenter.InvalidateArrange();
+    }
+
+    private sealed class IsTrimmedObserver(ContentPresenter presenter) : IValueObserver<bool>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, bool oldValue, bool newValue, BindingPriority priority)
+            => presenter.RebuildToolTip();
     }
 }

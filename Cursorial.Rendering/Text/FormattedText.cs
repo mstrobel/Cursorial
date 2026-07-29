@@ -21,6 +21,19 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
     public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty, 0);
 
+    public bool HasTrimmedLines { get; init; } = AnyTrimmedLines(Blocks);
+
+    private static bool AnyTrimmedLines(ImmutableArray<FormattedBlock> blocks)
+    {
+        foreach (var block in blocks)
+        {
+            if (block.HasTrimmedLines)
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Paint the formatted document into <paramref name="buffer"/> at the supplied
     /// <paramref name="bounds"/>. Blocks stack top-to-bottom inside the rect, observing their
@@ -347,7 +360,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 /// <see cref="Block"/> hierarchy. <see cref="Size"/> is the block's content footprint (excluding
 /// <see cref="Margin"/>); <see cref="Margin"/> is the inter-block spacing the formatter requested.
 /// </summary>
-public abstract record FormattedBlock(Size Size, TextAlignment Alignment)
+public abstract record FormattedBlock(Size Size, TextAlignment Alignment, bool HasTrimmedLines)
 {
     /// <summary>Inter-block top/bottom margin applied during stacking; horizontal margins are ignored at block level.</summary>
     public Margins Margin { get; init; }
@@ -358,7 +371,20 @@ public abstract record FormattedBlock(Size Size, TextAlignment Alignment)
 /// runs have already had glyph maps applied and trimming / alignment padding inserted as
 /// regular space runs, so paint can be a straight walk.
 /// </summary>
-public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment) : FormattedBlock(Size, Alignment);
+public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment)
+    : FormattedBlock(Size, Alignment, AnyTrimmedLines(Lines))
+{
+    private static bool AnyTrimmedLines(ImmutableArray<FormattedLine> lines)
+    {
+        foreach (var line in lines)
+        {
+            if (line.Trimmed)
+                return true;
+        }
+
+        return false;
+    }
+}
 
 /// <summary>
 /// A formatted horizontal rule. The painter repeats <see cref="Glyph"/> across the line, up to
@@ -366,14 +392,14 @@ public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Siz
 /// when the rule is narrower than the available column budget (rare for HRs but supported).
 /// </summary>
 public sealed record FormattedHorizontalRule(
-    string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
+    string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A formatted FIGlet headline. <see cref="Face"/> drives both measurement (already reflected
 /// in <see cref="Size"/>) and paint; <see cref="Text"/> is the source string.
 /// </summary>
 public sealed record FormattedFigletBlock(
-    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
+    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A formatted Kitty-OSC-66 sized-text headline. When the negotiated capabilities support OSC 66,
@@ -382,21 +408,21 @@ public sealed record FormattedFigletBlock(
 /// </summary>
 public sealed record FormattedSizedTextBlock(
     string Text, TextSizing Sizing, Style Style, IGlyphFont? Fallback,
-    TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
+    TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to
 /// <see cref="IContent.Paint"/> at the block's anchor with a rect of <see cref="Size"/>.
 /// </summary>
 public sealed record FormattedContentBlock(
-    IContent Content, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment);
+    IContent Content, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A single line of formatted content. <see cref="Columns"/> is the line's visible cell width
 /// (after alignment padding); <see cref="Runs"/> is the ordered sequence of styled text
 /// fragments that compose it. Lines never contain trailing whitespace.
 /// </summary>
-public sealed record FormattedLine(ImmutableArray<FormattedRun> Runs, int Columns);
+public sealed record FormattedLine(ImmutableArray<FormattedRun> Runs, int Columns, bool Trimmed);
 
 /// <summary>
 /// The atomic unit of paintable content inside a <see cref="FormattedLine"/>. Concrete

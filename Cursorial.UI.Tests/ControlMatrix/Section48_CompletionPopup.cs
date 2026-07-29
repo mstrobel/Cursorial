@@ -653,9 +653,9 @@ public sealed class Section48_CompletionPopup
         host.RunUntilIdle();
 
         Assert.Equal(2, popup.MatchCount);
-        Assert.Equal("2 matches", popup.HeaderText);
+        Assert.Equal("2 matches", popup.HeaderContent);
         Assert.True(FindOnScreen(host, "2 matches").Row >= 0);
-        Assert.True(FindOnScreen(host, "Tab/Enter accept").Row >= 0);
+        Assert.True(FindOnScreen(host, "⇥ complete  ↑↓ select  ⏎ accept  ⎋ cancel").Row >= 0);
 
         popup.ShowHeader = false;
         popup.ShowFooter = false;
@@ -669,7 +669,7 @@ public sealed class Section48_CompletionPopup
         popup.ShowHeader = true;
         host.SendText("i");
         host.RunUntilIdle();
-        Assert.Equal("1 match", popup.HeaderText);
+        Assert.Equal("1 match", popup.HeaderContent);
         Assert.True(FindOnScreen(host, "1 match").Row >= 0);
     }
 
@@ -804,13 +804,13 @@ public sealed class Section48_CompletionPopup
 
         popup.Open();
         host.RunUntilIdle();
-        Assert.Equal("4 matches", popup.HeaderText);
+        Assert.Equal("4 matches", popup.HeaderContent);
 
         host.SendText("de");
         host.RunUntilIdle();
 
         Assert.Equal("desktop", Assert.Single(popup.Entries).Item.Display);
-        Assert.Equal("de · 1 match", popup.HeaderText);
+        Assert.Equal("de · 1 match", popup.HeaderContent);
         Assert.True(FindOnScreen(host, "de · 1 match").Row >= 0); // …and it really reaches the frame
 
         host.SendKey(Key.Backspace);
@@ -849,7 +849,7 @@ public sealed class Section48_CompletionPopup
         // fixes the typo with nowhere to land.
         Assert.True(popup.IsOpen);
         Assert.Equal(0, popup.MatchCount);
-        Assert.Equal("dz · no matches", popup.HeaderText);
+        Assert.Equal("dz · no matches", popup.HeaderContent);
         Assert.Equal(-1, popup.SelectedIndex);
         Assert.False(popup.AcceptSelected(CompletionAcceptReason.Enter)); // nothing to take
 

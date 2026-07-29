@@ -27,7 +27,7 @@ namespace Cursorial.UI.Dialogs;
 public sealed class FileDialogEntry
 {
     /// <summary>The em dash the Size column shows for a directory or a place (the design page's <c>—</c>).</summary>
-    private const string NoSize = "—";
+    public const string NoSize = "—";
 
     /// <summary>Creates a row for <paramref name="entry"/>.</summary>
     /// <param name="entry">The provider's snapshot of the file-system entry.</param>

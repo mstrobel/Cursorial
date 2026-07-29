@@ -70,6 +70,11 @@ internal sealed class StyleRuleFrame : ValueFrame
     private readonly ResourceBackedEntry[]? _resourceEntries;
     private ResourceSubscription[]? _resourceSubscriptions;
 
+    // The binding-valued setters (B15). Null when the rule carries none — the common case, so a rule
+    // without bindings pays nothing. Installed per element at OnInstalled; the expressions live as the
+    // frame's HOSTED entries and the store evicts (and disposes) them when the frame is removed.
+    private readonly BindingBackedSetter[]? _bindingSetters;
+
     internal StyleRuleFrame(
         UIElement? owner, CompiledRule rule, StyleSortKey sortKey, StyleLayer layer, object? scopeOwner,
         bool isActive = false)
@@ -88,26 +93,41 @@ internal sealed class StyleRuleFrame : ValueFrame
         var setters = rule.Setters;
         var entries = new IValueEntry[setters.Length];
         List<ResourceBackedEntry>? resourceEntries = null;
+        List<BindingBackedSetter>? bindingSetters = null;
+        var entryCount = 0;
 
         for (var i = 0; i < setters.Length; i++)
         {
             var setter = setters[i];
+
+            // A binding-valued setter (B15) contributes through a HOSTED entry that the expression adds
+            // to this frame at OnInstalled — so it deliberately does NOT take a slot in _entries. Two
+            // entries for one property in a single frame would be the store arbitrating a setter against
+            // itself; the hosted entry is the whole contribution.
+            if (setter.Value is Data.BindingBase binding)
+            {
+                (bindingSetters ??= []).Add(new BindingBackedSetter(setter.Property, binding));
+                continue;
+            }
 
             // A DynamicResource setter installs a VALUELESS entry (the store promotes the next source
             // until the first resolve); the resolved value flows in at OnInstalled / on each pulse.
             if (setter.Value is ResourceReference reference)
             {
                 var entry = setter.Property.CreateStyleEntry(boxedValue: null, hasValue: false);
-                entries[i] = entry;
+                entries[entryCount++] = entry;
                 (resourceEntries ??= []).Add(new ResourceBackedEntry(setter.Property, (IStyleSetterEntry)entry, reference.Key));
                 continue;
             }
 
-            entries[i] = setter.Property.CreateStyleEntry(setter.Value, hasValue: !setter.IsUnset);
+            entries[entryCount++] = setter.Property.CreateStyleEntry(setter.Value, hasValue: !setter.IsUnset);
         }
 
-        _entries = entries;
+        // Compacted only when a binding setter actually skipped a slot — the overwhelmingly common rule
+        // (no bindings) keeps the exact-size array it always had, with no extra allocation.
+        _entries = entryCount == entries.Length ? entries : entries[..entryCount];
         _resourceEntries = resourceEntries?.ToArray();
+        _bindingSetters = bindingSetters?.ToArray();
     }
 
     /// <summary>The styled element (null only for conformance-kit frames hosted on bare <see cref="UIObject"/>s).</summary>
@@ -198,6 +218,8 @@ internal sealed class StyleRuleFrame : ValueFrame
     /// <inheritdoc/>
     internal override void OnInstalled()
     {
+        InstallBindingSetters();
+
         if (_resourceEntries is not { Length: > 0 } resourceEntries || Owner is not { } owner)
             return;
 
@@ -227,6 +249,33 @@ internal sealed class StyleRuleFrame : ValueFrame
 
         _resourceSubscriptions = null;
     }
+
+    // ───────────────────────────── binding-valued setters (ledger B15) ─────────────────────────────
+
+    // One frame-hosted install per binding setter, against the owner element. Frame-hosted is the whole
+    // point: the produced entry belongs to THIS frame, so it arbitrates at the frame's own priority
+    // (Style for a resting rule, StyleTrigger for a conditional one) rather than clobbering LocalValue
+    // the way a free-standing Bind would — and the store evicts and disposes it when the frame is
+    // removed, so there is nothing to undo in OnRemoving.
+    //
+    // Installed here, at frame INSTALL, and deliberately left alive across deactivation: the store never
+    // evicts on an activation toggle (ValueStore.OnFrameActivationChanged — "PD3: never evicts"), it only
+    // re-arbitrates, so a deactivated rule's binding stays warm and its value is simply outranked. That
+    // matches the When-watcher lifetime rule (B16 — watchers stay live across deactivation) and the
+    // resource subscriptions immediately below, which arm the same way.
+    private void InstallBindingSetters()
+    {
+        if (_bindingSetters is not { Length: > 0 } bindingSetters || Owner is not { } owner)
+            return;
+
+        foreach (var backed in bindingSetters)
+            Data.BindingOperations.Install(owner, backed.Property, backed.Binding, this);
+    }
+
+    // A binding-valued setter as compiled: the target property and the authored (unattached) descriptor.
+    // The descriptor is shared by every element the rule matches — installing it is what makes the
+    // per-element expression, exactly as one Binding instance can be installed on many targets.
+    private readonly record struct BindingBackedSetter(UIProperty Property, Data.BindingBase Binding);
 
     // Pushes a resolved resource value into a backed entry and re-emits in place. A miss
     // (UnsetValue) or a type-incompatible resource leaves the entry valueless so the store promotes the

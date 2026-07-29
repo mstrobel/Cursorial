@@ -143,6 +143,32 @@ public sealed class Style
     }
 
     /// <summary>
+    /// Adds a binding-valued setter and returns <see langword="this"/> for chaining (ledger B15). The
+    /// <paramref name="binding"/> is a descriptor, not a live install: it is installed once per styled
+    /// element against that element (so one authored binding serves every element the rule matches),
+    /// sourced by default from the element's <see cref="UIElement.DataContext"/>.
+    /// <para>
+    /// The contribution is <b>frame-hosted</b> — it arbitrates at the rule's own priority
+    /// (<see cref="BindingPriority.Style"/>, or <see cref="BindingPriority.StyleTrigger"/> for a
+    /// <c>When</c>-guarded rule), so an explicit local value still wins and the expression is disposed
+    /// when the rule stops matching. A binding that produces <see cref="UIProperty.UnsetValue"/> leaves
+    /// the setter valueless, so the store promotes the next source rather than clobbering it. Throws if
+    /// the style is already sealed (S42).
+    /// </para>
+    /// </summary>
+    /// <typeparam name="T">The property's value type.</typeparam>
+    /// <param name="property">The target styled property.</param>
+    /// <param name="binding">The binding descriptor installed per styled element.</param>
+    /// <returns>This style, for fluent chaining.</returns>
+    public Style SetBinding<T>(StyledProperty<T> property, Data.BindingBase binding)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(binding);
+        Setters.Add(new Setter(property, binding));
+        return this;
+    }
+
+    /// <summary>
     /// Nested styles whose selectors start with <c>^</c> and AND-compose with this style's selector
     /// into flattened rules (<c>Widget.primary</c> + <c>^:pointerover</c> ⇒ one rule
     /// <c>Widget.primary:pointerover</c>; composition is transitive through grandchildren).

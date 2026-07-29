@@ -46,6 +46,32 @@ internal static class StyleSetterConverter
         if (value is ResourceReference)
             return new CompiledSetter(property, value, isUnset: false);
 
+        // A binding-valued setter (B15): like a DynamicResource the value is a descriptor, not the
+        // property's value type, so it passes through seal verbatim and the frame installs it per element
+        // (StyleRuleFrame.OnInstalled → BindingOperations.Install with the frame as host).
+        //
+        // This MUST sit above the assignability ladder below. BindingBase is assignable to an
+        // object?-typed property — DataContext, ContentPresenter.Content, ButtonBase.CommandParameter —
+        // so the IsInstanceOfType early-out would otherwise take the descriptor as the LITERAL value and
+        // set the property to a Binding object: no error, no evaluation, just a wrong value. Ordering the
+        // check here is what makes "a Binding in a setter is always a binding" true for every property
+        // type, which is also the WPF rule.
+        if (value is Data.BindingBase)
+        {
+            // A direct property is not frame-hostable: BindingExpressionCore.Lane tests IsDirect BEFORE
+            // the host frame, so the expression takes the DirectProperty lane and PushToDirectProperty
+            // writes the value with no entry at all — leaving frame retraction nothing to evict, and the
+            // value stranded on the element after the rule stops matching. Refuse at seal, where the
+            // (style, rule, property) triple can still be named, rather than shipping a leak (A24).
+            if (property.IsDirect)
+            {
+                throw SealError(style, ruleIndex, property,
+                                "a direct property has no store ladder and cannot host a binding-valued setter (ledger A24)");
+            }
+
+            return new CompiledSetter(property, value, isUnset: false);
+        }
+
         var targetType = property.PropertyType;
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 

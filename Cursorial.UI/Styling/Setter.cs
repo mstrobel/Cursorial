@@ -3,15 +3,23 @@
 namespace Cursorial.UI;
 
 /// <summary>
-/// One property assignment inside a <see cref="Style"/> (design doc §3.1). At P3 the value
-/// vocabulary is <b>constants and <see cref="UIProperty.UnsetValue"/></b> (style matrix SD9):
-/// constants are validated and converted against the property exactly once at
+/// One property assignment inside a <see cref="Style"/> (design doc §3.1). The value vocabulary is
+/// <b>constants, <see cref="UIProperty.UnsetValue"/>, and two descriptors</b> (style matrix SD9).
+/// <para>
+/// Constants are validated and converted against the property exactly once at
 /// <see cref="Style.Seal"/> (exact/assignable values pass through; <see cref="IConvertible"/>
 /// primitives convert with the invariant culture; enum names and integral values convert to enum
 /// types; <c>#hex</c> strings convert to <c>Color</c>, and <c>Color</c>/<c>#hex</c> values to
 /// solid brushes); an <see cref="UIProperty.UnsetValue"/> setter compiles to a valueless entry that
-/// contributes nothing while the rule is active. Resource references and bindings join the
-/// vocabulary at P5/P4.
+/// contributes nothing while the rule is active.
+/// </para>
+/// <para>
+/// The two <b>descriptors</b> skip conversion entirely and are resolved <em>per styled element</em> by
+/// the rule's frame: a <c>ResourceReference</c> (from <c>{DynamicResource}</c> or
+/// <see cref="Style.SetResource{T}"/>) against the element's resource chain (ledger B10), and a
+/// <c>BindingBase</c> (from <c>{Binding}</c> or <see cref="Style.SetBinding{T}"/>) through a
+/// frame-hosted install, so one authored binding serves every element the rule matches (ledger B15).
+/// </para>
 /// </summary>
 [Cursorial.Markup.ContentProperty("Value")]
 public sealed class Setter

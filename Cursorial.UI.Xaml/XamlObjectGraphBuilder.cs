@@ -1554,6 +1554,11 @@ internal sealed class XamlObjectGraphBuilder
                             value = new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
                         else if (ext.Kind == ExtensionKind.StaticResource)
                             value = _extensionHandler.ResolveStaticResource(this, _extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column), line, column);
+                        // A binding-valued setter (B15) stores the DESCRIPTOR. There is deliberately no
+                        // install here: one authored binding serves every element the rule matches, so the
+                        // styling engine installs it per element from StyleRuleFrame.OnInstalled.
+                        else if (ext.Kind == ExtensionKind.Binding)
+                            value = _extensionHandler.BuildBindingDescriptor(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
                         break;
                     }
                 }

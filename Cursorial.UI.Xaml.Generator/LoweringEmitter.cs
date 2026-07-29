@@ -1191,7 +1191,7 @@ internal static class LoweringEmitter
                 valueExpr = v;
             else
             {
-                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} / same-dict {StaticResource} / inline object supported)");
+                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {Binding} / {DynamicResource} / same-dict {StaticResource} / inline object supported)");
                 return;
             }
         }
@@ -1321,9 +1321,27 @@ internal static class LoweringEmitter
     {
         XamlValueKind.Text => SetterTextValueExpr(c, c.Doc.Strings[member.ValueIndex], propValueType),
         XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
-        XamlValueKind.Extension => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        XamlValueKind.Extension => SetterExtensionValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
         _ => null,
     };
+
+    // An extension Setter.Value: a {Binding} DESCRIPTOR (B15) or a *Resource carrier. The binding arm has
+    // to stay in lock-step with the loader's BuildSetter — the two lanes share the frontend, so once the
+    // parser admits {Binding} in a Setter.Value a lowered build would otherwise parse the same document
+    // happily and then DROP the setter through the CURG3001 gap: reflective styles, AOT silently doesn't.
+    // Emitting the descriptor (never an install) is what keeps the lanes identical; the styling engine
+    // installs it per element either way.
+    private static string? SetterExtensionValueExpr(Context c, in ExtensionRecord ext)
+    {
+        if (ext.Kind == ExtensionKind.Binding)
+        {
+            return c.Doc.ParsedExtensions[ext.Payload] is { } node
+                       ? ReflectiveBindingExpr(c, node, "in a Setter")
+                       : null;
+        }
+
+        return ResourceValueExpr(c, in ext);
+    }
 
     // A Text Setter value, converted to the property's value type via the (AOT-clean) converter ladder — matching
     // the reflection frontend's parse-time context-free fold. An object/string (or unknown) value type keeps the raw

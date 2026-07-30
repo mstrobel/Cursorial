@@ -50,6 +50,29 @@ public sealed partial class UIApplication
     public event EventHandler? EmojiAvailableChanged;
 
     /// <summary>
+    /// Whether the scroll dead zone is active (<see cref="Configuration.UserOptionKeys.ScrollDeadZone"/>):
+    /// wheel gestures rail onto their dominant axis, suppressing the stray cross-axis ticks a
+    /// trackpad sheds during fast one-axis scrolling (the gesture model is
+    /// <see cref="Cursorial.Input.WheelAxisLock"/>'s). Default <see langword="false"/> — filtering
+    /// raw input is an opt-in. Takes effect live: the toggle reaches into the already-running
+    /// input chain (the filter is always assembled, §10.4) rather than rebuilding the single-shot
+    /// device.
+    /// </summary>
+    public bool ScrollDeadZoneEnabled
+    {
+        get => field;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            if (field == value)
+                return;
+            field = value;
+            if (_wheelAxisLock is { } axisLock)
+                axisLock.Enabled = value;
+        }
+    }
+
+    /// <summary>
     /// The per-axis capability overrides (FB-5): assigning a new set re-stamps the <c>caps-*</c>
     /// classes on every surface root and re-folds <see cref="EffectiveCapabilities"/> in the same
     /// tick — no restart. Overrides are application state (the same posture as

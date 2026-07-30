@@ -22,8 +22,9 @@ Global options and application-specific options, stored separately.
   - Platform-specfic key bindings or PC-standard (e.g., `Ctrl` instead of
     `Super` (⌘, Win)
 - Mouse/Pointer options
-  - Toggle dead zone for horizontal scrolling (avoids accidental drift during
-    horizontal scrolling).
+  - Toggle scroll dead zone (rails wheel gestures onto their dominant axis,
+    avoiding accidental drift along the other — both directions, since a
+    trackpad sheds drift whichever axis dominates).
 - Disable image support, if terminal is capable.
 
 ## User Experience

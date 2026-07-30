@@ -39,7 +39,8 @@ public sealed class UserConfigurationBuilderTests
                 "capabilities.nerdFont": "true",
                 "capabilities.emoji": "false",
                 "capabilities.kittyGraphics": "on",
-                "appearance.animations": "false"
+                "appearance.animations": "false",
+                "input.scrollDeadZone": "true"
             }
             """);
 
@@ -61,6 +62,7 @@ public sealed class UserConfigurationBuilderTests
         Assert.True(tree.App.NerdFontAvailable);
         Assert.False(tree.App.EmojiAvailable);
         Assert.False(tree.App.AnimationScheduler.AnimationsEnabled);
+        Assert.True(tree.App.ScrollDeadZoneEnabled);
         Assert.NotNull(tree.App.UserOptions);
         Assert.Empty(tree.App.UserOptions!.LoadDiagnostics);
     }

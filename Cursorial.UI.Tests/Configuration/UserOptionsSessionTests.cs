@@ -53,6 +53,22 @@ public sealed class UserOptionsSessionTests
     }
 
     [Fact]
+    public void ScrollDeadZone_LiveAppliesAndClearingReverts()
+    {
+        using var root = new TempConfigRoot();
+        using var host = CreateHost(root);
+        var app = host.Application;
+
+        var session = new UserOptionsSession(app);
+
+        session.SetValue(UserOptionScope.Global, UserOptionKeys.ScrollDeadZone, "true");
+        Assert.True(app.ScrollDeadZoneEnabled); // live, no Save needed — reaches into the running chain
+
+        session.SetValue(UserOptionScope.Global, UserOptionKeys.ScrollDeadZone, null);
+        Assert.False(app.ScrollDeadZoneEnabled); // absent means the documented default (off)
+    }
+
+    [Fact]
     public void PerAppOverlay_WinsLive_AndClearingReinherits()
     {
         using var root = new TempConfigRoot();

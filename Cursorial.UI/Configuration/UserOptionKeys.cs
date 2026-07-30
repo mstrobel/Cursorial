@@ -99,7 +99,7 @@ public static class UserOptionKeys
     /// Dead zone that suppresses accidental vertical drift during horizontal scrolling:
     /// <c>"true"</c>/<c>"false"</c>. <b>Key reserved — not yet consumed by the framework.</b>
     /// </summary>
-    public const string HorizontalScrollDeadZone = "input.horizontalScrollDeadZone";
+    public const string ScrollDeadZone = "input.scrollDeadZone";
 
     /// <summary>
     /// Whether ANY Cursorial application has completed (or skipped) the first-run wizard on this

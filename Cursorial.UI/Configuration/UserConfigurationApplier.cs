@@ -27,7 +27,7 @@ internal static class UserConfigurationApplier
         application.CapabilityOverrides = ReadCapabilityOverrides(store);
 
         // Reserved keys (Translucency, AlwaysShowAccessKeyCues, KeyboardProfile,
-        // HorizontalScrollDeadZone) are defined in UserOptionKeys but have no framework consumer
+        // ScrollDeadZone) are defined in UserOptionKeys but have no framework consumer
         // yet — they round-trip through the store untouched.
     }
 

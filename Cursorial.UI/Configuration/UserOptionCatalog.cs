@@ -203,9 +203,9 @@ public static class UserOptionCatalog
         },
         new()
         {
-            Key = UserOptionKeys.HorizontalScrollDeadZone,
-            DisplayName = "Horizontal scroll dead zone",
-            Description = "Suppresses accidental vertical drift while scrolling horizontally.",
+            Key = UserOptionKeys.ScrollDeadZone,
+            DisplayName = "Scroll dead zone",
+            Description = "When scrolling along one axis, suppresses accidental drift along the other axis.",
             Category = UserOptionCategory.Input,
             Kind = UserOptionKind.Boolean,
             DefaultValue = "false",

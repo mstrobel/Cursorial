@@ -62,6 +62,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     private FrameRenderer? _renderer;
     private WindowManager? _windowManager;
     private IAsyncInputDevice? _device; // decorated; NEVER disposed by S6 — the host owns transport lifecycle
+    private WheelAxisLock? _wheelAxisLock; // always in the chain; ScrollDeadZoneEnabled toggles it live
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCts;
     private Exception? _pumpFault; // Interlocked slot, exchanged-to-null on raise (fires once)

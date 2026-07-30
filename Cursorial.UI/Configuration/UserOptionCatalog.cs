@@ -208,8 +208,7 @@ public static class UserOptionCatalog
             Description = "When scrolling along one axis, suppresses accidental drift along the other axis.",
             Category = UserOptionCategory.Input,
             Kind = UserOptionKind.Boolean,
-            DefaultValue = "false",
-            ReservedForFuture = true
+            DefaultValue = "false"
         },
 
         // ── Advanced: capability overrides (warning-gated; staged + testable) ────────────

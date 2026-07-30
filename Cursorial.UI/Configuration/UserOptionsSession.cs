@@ -206,6 +206,7 @@ public sealed class UserOptionsSession
         _application.NerdFontAvailable = Store.GetBoolean(UserOptionKeys.NerdFont) ?? false;
         _application.EmojiAvailable = Store.GetBoolean(UserOptionKeys.Emoji) ?? true;
         _application.AnimationScheduler.AnimationsEnabled = Store.GetBoolean(UserOptionKeys.Animations) ?? true;
+        _application.ScrollDeadZoneEnabled = Store.GetBoolean(UserOptionKeys.ScrollDeadZone) ?? false;
 
         // While the timed test holds the STAGED overrides on screen, a safe edit must not clobber
         // them back to committed mid-countdown — the probe would silently show a mixed state and

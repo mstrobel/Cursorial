@@ -46,6 +46,14 @@ namespace Cursorial.Rendering;
 /// emission — the terminal's cursor advance from the wide-left cell covers their position.
 /// Wide-cell consistency in the buffer is <see cref="CellBuffer"/>'s job.
 /// </para>
+/// <para>
+/// <b>Multicell fragments.</b> Cells-layer fragments (OSC 66 sized text) leave multicell blocks
+/// on the terminal whose overwrite semantics are non-local — a partial write blanks whole blocks
+/// or gets cursor-skipped. The renderer therefore never diffs into a previously-committed
+/// fragment rect partially: see <see cref="ComputeFragmentGuardCells"/> for the frame-over-frame
+/// accounting (stale-rect force-rewrite on removal/move, whole-rect expansion of intersecting
+/// writes, and the resulting re-emit rules).
+/// </para>
 /// </remarks>
 public sealed class FrameRenderer
 {
@@ -82,6 +90,12 @@ public sealed class FrameRenderer
     // no protocol erase. The compositor marks the vacated footprint; see SceneCompositor.
     private bool[]? _forceCells;
     private bool _hasForceRepaint;
+
+    // Scratch list for ComputeFragmentGuardCells: the clamped screen rects of Cells-layer fragments
+    // that were live on the terminal last frame AND are still registered, unchanged, at the same
+    // anchor this frame. The guard's write-expansion fixpoint consumes it; only meaningful within a
+    // single render.
+    private readonly List<Rect> _liveFrontFragmentRects = [];
 
     // Reusable scratch buffer for the per-render "is this cell inside a dirty region?"
     // lookup. Only populated when FrameRendererOptions.RestrictToDirtyRegions is opted in AND
@@ -220,12 +234,18 @@ public sealed class FrameRenderer
         ComputeDirtyCells(back);
         ComputeForceCells(back);
 
-        // Scroll detection — only meaningful on incremental renders, only safe when no
-        // fragments are anchored (fragments shouldn't scroll with cell content). When the
-        // back buffer is the front shifted up/down by K rows, emit SU/SD and shift _frontCells
-        // in place so the subsequent EmitDiff only repaints the K newly-uncovered rows.
-        if (!fullRedraw && back.FragmentsInternal.Any(o => o.Value.Fragment.Layer is FragmentLayer.Overlay) is false)
+        // Scroll detection — only meaningful on incremental renders, and only safe when NO
+        // fragments are in play on either side of the diff (fragments shouldn't scroll with cell
+        // content). For Cells-layer fragments the hazard is physical, not just logical: an SU/SD
+        // slides the multicell glyphs a fragment committed to the terminal (OSC 66 sized text)
+        // away from the rect the renderer tracks for them, stranding ghosts the diff can no
+        // longer see — so the previous overlay-only test was not enough. When the back buffer is
+        // the front shifted up/down by K rows, emit SU/SD and shift _frontCells in place so the
+        // subsequent EmitDiff only repaints the K newly-uncovered rows.
+        if (!fullRedraw && back.FragmentsInternal.Count == 0 && _frontFragments.Count == 0)
             TryDetectAndApplyScroll(back, output);
+
+        ComputeFragmentGuardCells(back);
 
         EmitDiff(back, output);
         EmitFragments(back, output);
@@ -359,6 +379,183 @@ public sealed class FrameRenderer
                 for (int c = Math.Max(0, region.Column); c < colEnd; c++)
                     force[r * back.Columns + c] = true;
         }
+    }
+
+    /// <summary>
+    /// The multicell guard: expand this frame's cell emissions so the cell pass can never partially
+    /// overwrite a multicell block (Kitty OSC 66 sized text) that a Cells-layer fragment committed
+    /// to the terminal on a previous frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The kitty text-sizing protocol gives multicells non-local overwrite semantics
+    /// (https://sw.kovidgoyal.net/kitty/text-sizing-protocol/): a write into a multicell's top-left
+    /// cell erases the ENTIRE block, a write into any other top-row cell replaces the block with
+    /// spaces, and a write landing in a row BELOW the first makes the terminal skip the cursor past
+    /// the block before printing. A minimal cell diff that touches only the cells it believes
+    /// changed therefore (a) blanks neighboring cells it believed unchanged (torn rows), (b) leaves
+    /// stale scaled glyphs standing where its model says spaces, and (c) desyncs the tracked cursor
+    /// column from the terminal's when a write is skipped, displacing every subsequent glyph emitted
+    /// on that row by the skipped width.
+    /// </para>
+    /// <para>
+    /// Two guarantees restore coherence, both expressed as force-repaint bits consumed by
+    /// <see cref="EmitDiff"/>:
+    /// </para>
+    /// <list type="number">
+    /// <item><description>
+    /// <b>Stale rects.</b> A Cells-layer fragment live last frame but gone from its anchor this
+    /// frame (removed, moved — e.g. a composite-only slide re-anchoring it — or replaced) leaves
+    /// its glyphs physically on the terminal while the cells under its old rect may compare equal
+    /// (the front recorded the same bg-only placeholders the back still holds), so a plain diff
+    /// would never revisit them. Its entire old rect is force-rewritten this frame.
+    /// </description></item>
+    /// <item><description>
+    /// <b>Write expansion.</b> When any cell emission would land inside the rect of a fragment that
+    /// is still live at its anchor (the panel behind sized text repainting, a popup shadow's tint
+    /// band grazing the footprint, any partial overlap), the emission expands to the fragment's
+    /// whole rect — the terminal blanks whole blocks in response to a one-cell write, so the
+    /// renderer must repaint everything the terminal may blank. Expansion runs to a fixpoint, since
+    /// forcing one rect adds writes that may reach into another.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Because <see cref="EmitDiff"/> walks row-major, a forced rect's TOP row is always written
+    /// first; per the protocol's overwrite rules those writes erase every multicell in the rect
+    /// before any lower-row cell is written, so lower-row writes land on ordinary cells, the
+    /// terminal never skips the cursor, and the <c>_cursorCol += cell.Width</c> advance model stays
+    /// truthful. Fragment re-emission is downstream and needs no extra wiring: every forced cell the
+    /// cell pass emits lands in <see cref="_touchedCells"/>, which
+    /// <see cref="FragmentFootprintTouched"/> already turns into a re-emit — so a fragment repaints
+    /// exactly when it is new, moved, changed, or had any cell of its rect rewritten, and an
+    /// untouched steady fragment still emits nothing.
+    /// </para>
+    /// </remarks>
+    private void ComputeFragmentGuardCells(CellBuffer back)
+    {
+        if (_frontFragments.Count == 0) return;
+
+        // ComputeForceCells leaves the scratch array stale when no force-repaint regions were
+        // marked this frame (the _hasForceRepaint gate makes that safe for readers). The guard is
+        // about to OR its own bits into the same array, so give it a clean slate first.
+        if (!_hasForceRepaint)
+            Array.Clear(_forceCells!);
+
+        var caps = _capabilities ?? OutputCapabilities.None;
+
+        _liveFrontFragmentRects.Clear();
+
+        foreach (var (anchor, frontEntry) in _frontFragments)
+        {
+            if (frontEntry.Fragment.Layer != FragmentLayer.Cells) continue;
+            if (!frontEntry.Fragment.IsSupported(caps)) continue;
+            if (!TryGetFragmentRect(anchor.Column, anchor.Row, frontEntry.Fragment, back, out var rect)) continue;
+
+            if (back.Fragments.TryGetValue(anchor, out var backEntry) && FragmentsMatch(frontEntry, backEntry))
+                _liveFrontFragmentRects.Add(rect); // still live — a candidate for write expansion
+            else
+                ForceFragmentRect(rect, back);     // stale — its on-terminal glyphs must be overwritten
+        }
+
+        // Fixpoint: each pass either consumes at least one live rect or terminates, so this is
+        // bounded by the (small) fragment count.
+        bool expanded = true;
+        while (expanded)
+        {
+            expanded = false;
+            for (int i = _liveFrontFragmentRects.Count - 1; i >= 0; i--)
+            {
+                if (!FragmentRectWillBeTouched(_liveFrontFragmentRects[i], back)) continue;
+                ForceFragmentRect(_liveFrontFragmentRects[i], back);
+                _liveFrontFragmentRects.RemoveAt(i);
+                expanded = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The clamped screen rect of the fragment anchored at (<paramref name="anchorCol"/>,
+    /// <paramref name="anchorRow"/>) — the same footprint walk as <see cref="ComputeCoveredCells"/>,
+    /// expressed as a <see cref="Rect"/>. False when the footprint lies entirely outside the buffer.
+    /// </summary>
+    private static bool TryGetFragmentRect(int anchorCol, int anchorRow, IBufferFragment fragment, CellBuffer back, out Rect rect)
+    {
+        var size = fragment.GetSize();
+        int colStart = Math.Max(0, anchorCol);
+        int rowStart = Math.Max(0, anchorRow);
+        int colEnd = Math.Min(back.Columns, anchorCol + Math.Max(1, size.Columns));
+        int rowEnd = Math.Min(back.Rows, anchorRow + Math.Max(1, size.Rows));
+
+        if (colStart >= colEnd || rowStart >= rowEnd)
+        {
+            rect = Rect.Empty;
+            return false;
+        }
+
+        rect = new Rect(colStart, rowStart, colEnd - colStart, rowEnd - rowStart);
+        return true;
+    }
+
+    /// <summary>
+    /// Mark every cell of <paramref name="rect"/> force-repaint so <see cref="EmitDiff"/> rewrites
+    /// it even where the diff sees no change. When the rect's left edge splits a wide pair, the
+    /// <see cref="CellKind.WideLeft"/> just outside is forced too — a continuation cell can only be
+    /// repainted by emitting its left half.
+    /// </summary>
+    private void ForceFragmentRect(in Rect rect, CellBuffer back)
+    {
+        var force = _forceCells!;
+        _hasForceRepaint = true;
+
+        for (int r = rect.Row; r < rect.RowEnd; r++)
+        {
+            if (rect.Column > 0 && back[rect.Column, r].Kind == CellKind.WideContinuation)
+                force[r * back.Columns + rect.Column - 1] = true;
+
+            for (int c = rect.Column; c < rect.ColumnEnd; c++)
+                force[r * back.Columns + c] = true;
+        }
+    }
+
+    /// <summary>
+    /// Predict whether this frame's cell pass will emit anything inside <paramref name="rect"/> —
+    /// the same per-cell tests <see cref="EmitDiff"/> applies (force-repaint override, dirty-region
+    /// gating, covered-cell substitution, quantization), without emitting. The one-column look-back
+    /// covers writes that start just left of the rect but paint into it: a wide glyph covering its
+    /// continuation column, and the ambiguous-width defense pre-painting its right neighbor.
+    /// </summary>
+    private bool FragmentRectWillBeTouched(in Rect rect, CellBuffer back)
+    {
+        var force = _forceCells!;
+        var front = _frontCells!;
+
+        for (int r = rect.Row; r < rect.RowEnd; r++)
+        {
+            var row = back.GetRowSpan(r);
+
+            for (int c = Math.Max(0, rect.Column - 1); c < rect.ColumnEnd; c++)
+            {
+                int idx = r * back.Columns + c;
+
+                bool forced = _hasForceRepaint && force[idx];
+                if (_hasDirtyRegions && !_dirtyCells![idx] && !forced) continue;
+
+                var cell = Adapt(IntendedCellFor(c, r, row[c], back), c, r);
+                if (cell.Kind == CellKind.WideContinuation) continue; // never emitted directly
+                if (!forced && cell == front[idx]) continue;
+
+                if (c >= rect.Column) return true;
+
+                // c == rect.Column - 1: the write itself lands outside the rect and only touches it
+                // when the emission also paints the column to its right.
+                if (cell.Kind == CellKind.WideLeft) return true;
+
+                if (_capabilities?.TextSizing.ReliableWideGlyphs is false && IsAmbiguousWidthGrapheme(cell.Grapheme))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -674,6 +871,12 @@ public sealed class FrameRenderer
                 WriteGraphemeUtf8(output, cell);
                 _frontCells![frontIdx] = cell;
                 _touchedCells![frontIdx] = true;
+
+                // A wide glyph paints its continuation column as part of the same emission —
+                // record that touch too, so a Cells-layer fragment whose rect starts at the
+                // continuation column still re-emits (FragmentFootprintTouched reads this).
+                if (cell.Kind == CellKind.WideLeft && c + 1 < back.Columns)
+                    _touchedCells![frontIdx + 1] = true;
 
                 if (wideDefense)
                 {

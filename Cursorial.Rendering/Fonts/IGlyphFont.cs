@@ -72,4 +72,12 @@ public interface IGlyphFont
     /// </summary>
     Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
         => Paint(buffer, column, row, text, styleProvider(column, row));
+
+    /// <summary>
+    /// The advance metrics text layout consults to wrap and trim text rendered with this font
+    /// (see <see cref="GlyphMetrics"/>). The default adapts <see cref="Measure"/> per cluster —
+    /// correct for any font, conservative where glyphs kern; fonts with cheaper or exact
+    /// per-cluster knowledge override.
+    /// </summary>
+    GlyphMetrics GetMetrics() => new MeasuredGlyphMetrics(this);
 }

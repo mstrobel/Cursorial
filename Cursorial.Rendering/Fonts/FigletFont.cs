@@ -111,8 +111,13 @@ public sealed class FigletFont : IGlyphFont
         => _glyphs.GetValueOrDefault(codepoint, _spaceGlyph);
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style) 
+    public Style EnsureCompatibleStyle(in Style style)
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
+
+    private GlyphMetrics? _metrics;
+
+    /// <inheritdoc/>
+    public GlyphMetrics GetMetrics() => _metrics ??= new MeasuredGlyphMetrics(this);
 
     /// <inheritdoc/>
     public Size Measure(ReadOnlySpan<char> text)

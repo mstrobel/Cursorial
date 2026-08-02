@@ -94,15 +94,15 @@ public class SizedTextFragmentMultiLineTests
     }
 
     [Fact]
-    public void GetSize_FixedWidth_MultiLine_ClusterCountTimesWidthByLines()
+    public void GetSize_MultiLine_WidthParameterIgnored()
     {
-        // 3 clusters × Width 3 × Scale 2 = 18 cols on the long line.
+        // 'w' is unsupported by decision (see TextSizingWriter.WriteMetadata) — the footprint is
+        // the natural per-line width × scale: max(2, 3) × 2 = 6 columns; 2 lines × 2 = 4 rows.
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2, Width: 3),
             "ab\ncde",
             Style.Default);
-        // Bounding box: max(2, 3) × 3 × 2 = 18; 2 lines × 2 = 4.
-        Assert.Equal(new Size(18, 4), fragment.GetSize());
+        Assert.Equal(new Size(6, 4), fragment.GetSize());
     }
 
     [Fact]

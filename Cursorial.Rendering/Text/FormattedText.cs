@@ -141,16 +141,36 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 PaintHorizontalRule(rule, buffer, column, row, bounds.Columns, resolver);
                 break;
             case FormattedFigletBlock figlet:
-                // With a brush resolver, sample it per rendered cell so a gradient flows across the big glyphs;
-                // without one, the whole headline takes its single block style (one center sample, as before).
-                if (resolver is null)
-                    figlet.Face.Paint(buffer, column, row, figlet.Text, figlet.Style);
-                else
-                    figlet.Face.Paint(buffer, column, row, figlet.Text,
-                                      (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, figlet.Style, c, r, blockRect)));
+            {
+                // One face-height row band per formatted line (the formatter wrapped/trimmed at
+                // the face's metrics). Lines whose band starts beyond the row budget are clipped
+                // whole — never painted into whatever lies below the bounds. With a brush
+                // resolver, sample it per rendered cell so a gradient flows across the big
+                // glyphs; without one, the whole headline takes its single block style.
+                var lines = figlet.EffectiveLines;
+                int lineRows = Math.Max(1, figlet.Face.Measure("M").Rows);
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    int lineRow = row + i * lineRows;
+                    if (i * lineRows >= maxRows) break;
+
+                    int anchor = ComputeAnchorColumn(
+                        new Rect(column, row, block.Size.Columns, Math.Max(1, maxRows)),
+                        figlet.Face.Measure(lines[i]).Columns,
+                        figlet.Alignment);
+
+                    if (resolver is null)
+                        figlet.Face.Paint(buffer, anchor, lineRow, lines[i], figlet.Style);
+                    else
+                        figlet.Face.Paint(buffer, anchor, lineRow, lines[i],
+                                          (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, figlet.Style, c, r, blockRect)));
+                }
+
                 break;
+            }
             case FormattedSizedTextBlock sized:
-                PaintSizedText(sized, buffer, column, row, capabilities, resolver,
+                PaintSizedText(sized, buffer, column, row, maxRows, capabilities, resolver,
                                ResolveStyle(resolver, sized.Style, centerColumn, centerRow, blockRect));
                 break;
             case FormattedContentBlock content:
@@ -317,14 +337,17 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         }
     }
     private static void PaintSizedText(FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
-                                       OutputCapabilities capabilities, BrushedTextResolver? resolver, in Style style)
+                                       int maxRows, OutputCapabilities capabilities, BrushedTextResolver? resolver,
+                                       in Style style)
     {
         // Mirror ScaledText's protocol: try OSC 66 fragment when supported, else fall back to
         // the configured glyph font. ScaledText itself encapsulates the decision tree, so we
         // delegate to a transient instance. The style (already brush-resolved by the caller) colors the
-        // OSC-66 backdrop / the FIGlet fallback glyphs.
+        // OSC-66 backdrop / the FIGlet fallback glyphs. Rows clamp to the caller's budget — the
+        // paragraph path clips lines to maxRows, and a multi-line sized block must not paint
+        // past the same boundary into whatever lies below the bounds.
         var scaled = new ScaledText(sized.Text, sized.Sizing, sized.Fallback) { BrushResolver = resolver };
-        scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, sized.Size.Rows),
+        scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, Math.Min(sized.Size.Rows, maxRows)),
                      style, capabilities);
     }
 
@@ -397,10 +420,18 @@ public sealed record FormattedHorizontalRule(
 /// <summary>
 /// A formatted FIGlet headline. <see cref="Face"/> drives both measurement (already reflected
 /// in <see cref="Size"/>) and paint; <see cref="Text"/> is the source string.
+/// <see cref="Lines"/> holds the wrapped/trimmed lines the formatter placed via the face's
+/// <see cref="GlyphMetrics"/> — the painter renders one per <c>Face</c>-height row band. A
+/// default (unset) <see cref="Lines"/> means the single unwrapped <see cref="Text"/> line.
 /// </summary>
 public sealed record FormattedFigletBlock(
-    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size, bool Trimmed)
-    : FormattedBlock(Size, Alignment, Trimmed);
+    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size, bool Trimmed,
+    ImmutableArray<string> Lines = default)
+    : FormattedBlock(Size, Alignment, Trimmed)
+{
+    /// <summary>The lines to paint — <see cref="Lines"/>, or the raw <see cref="Text"/> when unset.</summary>
+    public ImmutableArray<string> EffectiveLines => Lines.IsDefaultOrEmpty ? [Text] : Lines;
+}
 
 /// <summary>
 /// A formatted Kitty-OSC-66 sized-text headline. When the negotiated capabilities support OSC 66,

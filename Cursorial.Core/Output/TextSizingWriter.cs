@@ -124,8 +124,13 @@ public static class TextSizingWriter
         if (sizing.Scale != 0 && sizing.Scale != 1)
             EmitKv((byte) 's', sizing.Scale, buffer, ref written, ref first);
 
-        if (sizing.Width != 0)
-            EmitKv((byte) 'w', sizing.Width, buffer, ref written, ref first);
+        // 'w' is deliberately NOT emitted. Per the OSC 66 spec it is the fixed width of the
+        // ENTIRE sequence (all text renders in s·w × s cells, chunk-per-escape for longer
+        // text), not a per-cluster width — and the sub-cell layouts it enables (fixed width +
+        // n/d, no scale) cannot be measured in whole cells, which is the only unit this
+        // framework's layout speaks. Emitting a key our measurement cannot honor would make
+        // fragments lie about their footprint, so the parameter is unsupported by decision
+        // (maintainer, 2026-08-02).
 
         if (sizing.Numerator != 0)
             EmitKv((byte) 'n', sizing.Numerator, buffer, ref written, ref first);

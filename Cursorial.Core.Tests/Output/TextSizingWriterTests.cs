@@ -29,10 +29,13 @@ public class TextSizingWriterTests
     }
 
     [Fact]
-    public void Write_WidthOnly_EmitsWEquals()
+    public void Write_WidthOnly_EmitsNoWKey()
     {
+        // 'w' is unsupported by decision (spec-verified 2026-08-02: whole-sequence width, not
+        // per-cluster; sub-cell layouts unmeasurable in whole cells) — a Width-only sizing emits
+        // an empty metadata block, identical to normal text.
         var s = Encode(w => TextSizingWriter.Write(w, new TextSizing(Width: 2), "🐈".AsSpan()));
-        Assert.Equal("\x1b]66;w=2;🐈\x1b\\", s);
+        Assert.Equal("\x1b]66;;🐈\x1b\\", s);
     }
 
     [Fact]
@@ -53,7 +56,7 @@ public class TextSizingWriterTests
             Vertical: TextSizingVerticalAlignment.Center,
             Horizontal: TextSizingHorizontalAlignment.Right);
         var s = Encode(w => TextSizingWriter.Write(w, sizing, "x".AsSpan()));
-        Assert.Equal("\x1b]66;s=2:w=1:n=1:d=2:v=2:h=1;x\x1b\\", s);
+        Assert.Equal("\x1b]66;s=2:n=1:d=2:v=2:h=1;x\x1b\\", s); // no w= — unsupported by decision
     }
 
     [Fact]

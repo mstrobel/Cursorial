@@ -194,15 +194,17 @@ public class FrameRendererFragmentTests
     }
 
     [Fact]
-    public void SizedTextFragment_FixedWidthOverridesNaturalWidth()
+    public void SizedTextFragment_WidthParameterDoesNotAffectMeasurement()
     {
-        // Width=3 forces 3 cells per cluster regardless of natural width. 5 clusters × 3 = 15.
+        // 'w' is unsupported by decision (spec-verified 2026-08-02: it is the fixed width of the
+        // ENTIRE sequence, not per-cluster, and sub-cell layouts are unmeasurable in whole
+        // cells) — it is never emitted and never measured, so the footprint is natural width.
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 1, Width: 3),
             "Hello",
             Style.Default);
 
-        Assert.Equal(new Size(15, 1), fragment.GetSize());
+        Assert.Equal(new Size(5, 1), fragment.GetSize());
     }
 
     private sealed class SentinelFragment(Size size, string sentinel, bool supported = true) : IBufferFragment

@@ -22,8 +22,9 @@ namespace Cursorial.Rendering.Fragments;
 /// The fragment's <see cref="GetSize"/> reports the bounding rectangle of all lines.
 /// </para>
 /// <para>
-/// <b>Coverage.</b> A glyph rendered with <c>Scale=s</c> and <c>Width=w</c> occupies an
-/// <c>s × w</c> cell block per the protocol; the fragment's bounding rectangle is the widest
+/// <b>Coverage.</b> A cluster rendered at <c>Scale=s</c> occupies its natural width × <c>s</c>
+/// columns by <c>s</c> rows (the 'w' key is unsupported by decision — see
+/// <see cref="Cursorial.Output.TextSizingWriter"/>); the fragment's bounding rectangle is the widest
 /// line's width by the number of lines (each line band being <c>scale</c> rows tall). Cells
 /// in the bounding rectangle but outside any rendered line — i.e., the unfilled right edges of
 /// shorter lines — receive the renderer's bg-only-space treatment from the cell-emit pass, so
@@ -79,31 +80,20 @@ public sealed class SizedTextFragment : IBufferFragment
     /// <inheritdoc/>
     public Size GetSize()
     {
-        // Cell footprint per the spec: each cluster occupies a (Scale × Width) block. Scale=0
-        // is invalid; treat as 1. Width=0 ("auto") falls back to the cluster's natural width
-        // (1 for narrow, 2 for wide). For multi-line text, the bounding rectangle is the
-        // widest line by the number of lines, each scale-rows tall.
+        // Cell footprint per the OSC 66 spec (w=0): text splits into cells as normal text
+        // would, each cell an s×s block — a line spans its natural width × s columns. The 'w'
+        // key is unsupported by decision (whole-sequence width, sub-cell layouts unmeasurable
+        // in whole cells — see TextSizingWriter.WriteMetadata) and n/d never changes the
+        // footprint, so GetGlyphSize is the whole story. For multi-line text, the bounding
+        // rectangle is the widest line by the number of lines, each scale-rows tall.
 
-        var width = Sizing.Width;
         Size glyphSize = Sizing.GetGlyphSize();
 
         int maxLineColumns = 0;
 
         foreach (var line in _lines)
         {
-            int lineColumns;
-
-            if (width is 0)
-            {
-                // Auto width — sum natural cluster widths.
-                lineColumns = GraphemeWidth.StringWidth(line) * glyphSize.Columns;
-            }
-            else
-            {
-                // Fixed width.
-                int clusters = GraphemeWidth.ClusterCount(line);
-                lineColumns = clusters * glyphSize.Columns * width;
-            }
+            int lineColumns = GraphemeWidth.StringWidth(line) * glyphSize.Columns;
 
             if (lineColumns > maxLineColumns)
                 maxLineColumns = lineColumns;

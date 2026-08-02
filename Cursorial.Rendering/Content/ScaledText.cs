@@ -85,15 +85,26 @@ public sealed class ScaledText : FragmentContent
         }
 
         canCreateFragment = false;
-        
-        // Fallback-font path: ask the font what footprint the text wants. If the font's width
-        // doesn't fit, monospace fallback kicks in at Paint and the footprint becomes
-        // (text.Length, 1).
-        var fontMeasure = FallbackFont.Measure(text);
-        if (fontMeasure.Columns <= availableSpace.Columns)
-            return fontMeasure;
 
-        return new Size(Math.Min(text.Length, availableSpace.Columns), 1);
+        // Fallback-font path: ask the font what footprint the text wants, PER LINE — the
+        // formatter now hands multi-line text through (its wrap points), and a single Measure
+        // over the joined string would count the '\n' characters as glyphs and claim one row.
+        // If the font's width doesn't fit, monospace fallback kicks in at Paint and each line's
+        // footprint becomes (line length, 1).
+        int columns = 0, rows = 0, monospaceColumns = 0;
+
+        foreach (var line in text.AsSpan().EnumerateLines())
+        {
+            var fontMeasure = FallbackFont.Measure(line);
+            columns = Math.Max(columns, fontMeasure.Columns);
+            rows += Math.Max(1, fontMeasure.Rows);
+            monospaceColumns = Math.Max(monospaceColumns, line.Length);
+        }
+
+        if (columns <= availableSpace.Columns)
+            return new Size(columns, Math.Max(1, rows));
+
+        return new Size(Math.Min(monospaceColumns, availableSpace.Columns), Math.Max(1, rows));
     }
 
     protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)

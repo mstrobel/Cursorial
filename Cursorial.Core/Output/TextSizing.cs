@@ -37,13 +37,17 @@ public enum TextSizingHorizontalAlignment : byte
 /// text" (no scaling, auto width) and produces an empty metadata block on the wire.
 /// </summary>
 /// <param name="Scale">
-/// Overall scale factor <c>s</c>. Range 1–7 per the spec. Default 1 (no scale). Combined with
-/// <see cref="Width"/> the rendered block is <c>Scale × Width</c> cells wide by <c>Scale</c>
-/// cells tall.
+/// Overall scale factor <c>s</c>. Range 1–7 per the spec. Default 1 (no scale). Text splits
+/// into cells as normal text would, each cell an <c>s×s</c> block — a cluster occupies its
+/// natural width × <c>s</c> columns by <c>s</c> rows.
 /// </param>
 /// <param name="Width">
-/// Width in cells <c>w</c>. Range 0–7; 0 means "auto-calculate from the glyph's natural width."
-/// Combine with <see cref="Scale"/> to control the block footprint exactly.
+/// Width in cells <c>w</c>. Range 0–7. <b>Unsupported by decision</b> (2026-08-02): per the
+/// OSC 66 spec this is the fixed width of the <i>entire sequence</i> (all text renders in
+/// <c>s·w × s</c> cells), not a per-cluster advance, and the sub-cell layouts it enables
+/// cannot be measured in the whole cells this framework's layout speaks — so the key is never
+/// emitted (<see cref="TextSizingWriter"/>) and never measured. The parameter remains for wire
+/// round-tripping only.
 /// </param>
 /// <param name="Numerator">
 /// Fractional-scale numerator <c>n</c>. Range 0–15. Used with <see cref="Denominator"/> to
@@ -87,27 +91,30 @@ public readonly record struct TextSizing(
                           Numerator != 0 ||
                           Denominator != 0;
 
-        bool needsWidth = Width != 0;
-
-        if (needsWidth && !capabilities.TextSizing.Width) return false;
         if (needsScale && !capabilities.TextSizing.Scale) return false;
 
-        // If neither sub-feature is exercised, the fragment renders identically to plain text, and
-        // a regular MonospaceFont would be the better choice.
-        return needsScale || needsWidth;
+        // Width ('w') is unsupported by decision — never emitted, never measured (see
+        // TextSizingWriter.WriteMetadata for the full rationale) — so it neither gates on a
+        // capability nor makes an otherwise-default sizing worth a fragment. If only scale is
+        // left unexercised, the fragment renders identically to plain text, and a regular
+        // MonospaceFont would be the better choice.
+        return needsScale;
     }
 
     public (int Columns, int Rows) GetGlyphSize()
     {
-        // Cell footprint per the spec: each cluster occupies a (Scale × Width) block. Scale=0
-        // is invalid; treat as 1. Width=0 ("auto") falls back to the cluster's natural width
-        // (1 for narrow, 2 for wide). For multi-line text, the bounding rectangle is the
-        // widest line by the number of lines, each scale-rows tall.
+        // Cell footprint per the OSC 66 spec: with w=0 ("auto"), text splits into cells as
+        // normal text would, and each cell becomes an s×s block — so a cluster occupies
+        // (natural width × s, s). Scale=0 is the record-struct default; treat as 1.
+        //
+        // The FRACTIONAL scale (n/d) deliberately does not participate: per the spec, "the
+        // fractional scale does not affect the number of cells the text occupies, instead it
+        // just adjusts the rendered font size within those cells" — s=2:n=1:d=2 still occupies
+        // 2×2 cells per cluster (half-size glyphs, the spacing makes up the difference).
+        // (Maintainer-verified against kitty, 2026-08-02; the previous n/d division here was a
+        // misreading that collapsed half-height sizing to a zero footprint.)
 
-        int unitSize = Scale;
-
-        if (Numerator is var numerator and > 0 && Denominator is var denominator and > 0)
-            unitSize = unitSize * numerator / denominator;
+        int unitSize = Scale == 0 ? 1 : Scale;
 
         return (unitSize, unitSize);
     }

@@ -26,6 +26,18 @@ public sealed class MonospaceFont : IGlyphFont
     public Style EnsureCompatibleStyle(in Style style) => style;
 
     /// <inheritdoc/>
+    public GlyphMetrics GetMetrics() => GlyphMetrics.Monospace;
+
+    /// <summary>
+    /// Metrics for text this font would render at the given OSC 66 <paramref name="sizing"/> —
+    /// scaled text has no glyph font of its own (the terminal scales the cells), so the identity
+    /// font is where layout comes to ask "how wide is a cluster at this sizing".
+    /// See <see cref="ScaledGlyphMetrics"/> for the advance rules.
+    /// </summary>
+    public GlyphMetrics GetScaledMetrics(in TextSizing sizing)
+        => sizing.IsNormal ? GlyphMetrics.Monospace : new ScaledGlyphMetrics(sizing);
+
+    /// <inheritdoc/>
     public Size Measure(ReadOnlySpan<char> text)
     {
         if (text.IsEmpty) return Size.Empty;

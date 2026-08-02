@@ -45,7 +45,15 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var isDirectory = (child.Attributes & FileAttributes.Directory) != 0;
+                // On Unix an entry that cannot be stat'ed (deleted between the readdir and the stat, or a
+                // broken symlink to an unreadable target) reports (FileAttributes)(-1) instead of throwing —
+                // the same race Length is hardened against below. Every bit is set in that sentinel, so it
+                // would classify as a directory; the entry is effectively gone, so skip it.
+                var attributes = child.Attributes;
+                if (attributes == (FileAttributes)(-1))
+                    continue;
+
+                var isDirectory = (attributes & FileAttributes.Directory) != 0;
                 long? size = null;
                 if (!isDirectory && child is FileInfo file)
                 {
@@ -60,7 +68,7 @@ public sealed class PhysicalFileSystemProvider : IFileSystemProvider
                 {
                     Size = size,
                     LastModified = SafeLastWrite(child),
-                    IsHidden = (child.Attributes & FileAttributes.Hidden) != 0 || child.Name.StartsWith('.'),
+                    IsHidden = (attributes & FileAttributes.Hidden) != 0 || child.Name.StartsWith('.'),
                 });
             }
         }

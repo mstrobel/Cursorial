@@ -416,8 +416,14 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         get => _showHiddenEntries;
         set
         {
-            if (SetProperty(ref _showHiddenEntries, value))
-                ApplyView();
+            if (!SetProperty(ref _showHiddenEntries, value))
+                return;
+
+            ApplyView();
+
+            // The places rail honors the toggle too: hidden volumes (/dev, /System/Volumes/…) appear and
+            // vanish with it, so the roots band is reloaded whenever it flips.
+            Run(LoadPlacesAsync(_lifetime.Token));
         }
     }
 
@@ -905,10 +911,11 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         /// <summary>Push the outgoing directory onto Back and clear Forward (the ordinary hop).</summary>
         Push,
 
-        /// <summary>Push the outgoing directory onto Forward (a Back hop).</summary>
+        /// <summary>Pop the target off Back and push the outgoing directory onto Forward (a Back hop).</summary>
         Back,
 
-        /// <summary>Push the outgoing directory onto Back without clearing Forward (a Forward hop).</summary>
+        /// <summary>Pop the target off Forward and push the outgoing directory onto Back without clearing
+        /// Forward (a Forward hop).</summary>
         Forward,
 
         /// <summary>Leave the history alone (the initial load and every refresh).</summary>
@@ -921,14 +928,26 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
             return;
 
         // One listing at a time: the previous enumeration is abandoned rather than raced, so a user clicking
-        // impatiently through a slow share can never have an older answer land on top of a newer one.
-        if (_navigation is {} navigation)
-            await navigation.CancelAsync();
+        // impatiently through a slow share can never have an older answer land on top of a newer one. The new
+        // source is installed BEFORE the old one's cancellation is awaited: a navigation that enters during
+        // that await supersedes THIS one by cancelling the source it just installed, and the re-check below
+        // rejects the stale flow. Each entrant owns exactly one source — cancelled and disposed only by its
+        // successor — so no live source is ever disposed out from under a running navigation.
+        var navigation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        var token = navigation.Token;
+        var superseded = _navigation;
 
-        _navigation?.Dispose();
-        _navigation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, cancellationToken);
+        _navigation = navigation;
 
-        var token = _navigation.Token;
+        if (superseded is not null)
+        {
+            await superseded.CancelAsync();
+            superseded.Dispose();
+        }
+
+        if (token.IsCancellationRequested)
+            return; // superseded during the await above — the newer navigation owns the state
+
         var previous = _currentDirectory;
 
         IReadOnlyList<FileSystemEntry> entries;
@@ -980,9 +999,11 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
                 _forward.Clear();
                 break;
             case HistoryAction.Back:
+                _back.RemoveAt(_back.Count - 1);
                 _forward.Add(previous);
                 break;
             case HistoryAction.Forward:
+                _forward.RemoveAt(_forward.Count - 1);
                 _back.Add(previous);
                 break;
         }
@@ -997,8 +1018,9 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         if (_back.Count == 0)
             return;
 
+        // Peek, don't pop: the entry leaves the stack only when the navigation COMMITS (in RecordHistory), so
+        // a superseded or failed hop keeps its target and Back can simply be retried.
         var target = _back[^1];
-        _back.RemoveAt(_back.Count - 1);
         await NavigateCoreAsync(target, HistoryAction.Back, CancellationToken.None).ConfigureAwait(true);
     }
 
@@ -1007,8 +1029,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         if (_forward.Count == 0)
             return;
 
+        // Peek, don't pop — see GoBackAsync: the pop is committed by RecordHistory on success only.
         var target = _forward[^1];
-        _forward.RemoveAt(_forward.Count - 1);
         await NavigateCoreAsync(target, HistoryAction.Forward, CancellationToken.None).ConfigureAwait(true);
     }
 
@@ -1057,7 +1079,7 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
             if (quick.Count > 0)
                 groups.Add(new FileDialogPlaceGroup("Quick access", quick));
 
-            var roots = await _fileSystem.GetRootsAsync(cancellationToken).ConfigureAwait(true);
+            var roots = await _fileSystem.GetRootsAsync(cancellationToken, _showHiddenEntries).ConfigureAwait(true);
             var local = new List<FileSystemEntry>(roots.Count);
             var network = new List<FileSystemEntry>();
 
@@ -1410,7 +1432,14 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
 
     private BusyScope EnterBusyScope()
     {
-        Interlocked.Increment(ref _busyDepth);
+        // Notify on the 0 → 1 transition, mirroring the exit side: the ENTRY notification is what lets a view
+        // show its wait cursor and re-query the !IsBusy commands while the work is actually in flight.
+        if (Interlocked.Increment(ref _busyDepth) == 1)
+        {
+            RequeryCommands();
+            OnPropertyChanged(nameof(IsBusy));
+        }
+
         return new BusyScope(this);
     }
 

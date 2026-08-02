@@ -61,7 +61,7 @@ public class Section12_Scrolling
     }
 
     [Fact]
-    public void L202_Measure_ScrollAxisConstraintIsMaxScrollExtent_NotUnbounded()
+    public void L202_Measure_ScrollAxisConstraintIsUnbounded_GreedyContentRemeasuredAtMaxScrollExtent()
     {
         var presenter = new ScrollContentPresenter();
         var content = new Probe(10, 100);
@@ -94,6 +94,55 @@ public class Section12_Scrolling
         Assert.Equal(new Size(20, LayoutLimits.MaxScrollExtent), Assert.Single(content.ArrangeSizes));
         Assert.Equal(new Size(10, LayoutLimits.MaxScrollExtent), presenter.Extent);
         Assert.Equal(new Size(10, 10), presenter.DesiredSize); // min(extent, constraint) per axis
+    }
+
+    [Fact] // L202 addendum: the greedy re-measure caps ONLY the overflowing axis
+    public void L202b_GreedyRemeasure_CapsOnlyTheOverflowingAxis()
+    {
+        // Both axes scrollable; the content is greedy on COLUMNS only, and it keys on the Unbounded
+        // rows sentinel: under a finite rows constraint it would stretch to fill it. If the second
+        // pass clamped both axes, the sentinel would be lost and the published Extent.Rows would
+        // balloon to the cap — a phantom vertical scroll range.
+        var presenter = new ScrollContentPresenter { CanScrollHorizontally = true };
+        var content = new Probe
+        {
+            MeasureResult = size => new Size(40_000, LayoutMath.IsUnbounded(size.Rows) ? 40 : size.Rows)
+        };
+        presenter.Content = content;
+
+        presenter.Measure(new Size(20, 10));
+
+        Assert.Equal(2, content.MeasureConstraints.Count);
+        Assert.Equal(new Size(LayoutMath.Unbounded, LayoutMath.Unbounded), content.MeasureConstraints[0]);
+        // The re-measure caps the overflowing columns axis; rows KEEPS the Unbounded sentinel.
+        Assert.Equal(new Size(LayoutLimits.MaxScrollExtent, LayoutMath.Unbounded), content.MeasureConstraints[1]);
+        Assert.Equal(new Size(LayoutLimits.MaxScrollExtent, 40), presenter.Extent);
+    }
+
+    [Fact] // L202 addendum: a measure-valid content is not re-probed — the two-pass cap must not defeat the measure cache
+    public void L202c_GreedyContent_CleanReMeasureSkipsTheSentinelProbe()
+    {
+        var presenter = new ScrollContentPresenter();
+        var content = new Probe(10, 100) { Natural = new Size(10, LayoutMath.Unbounded) };
+        presenter.Content = content;
+
+        presenter.Measure(new Size(20, 10));
+        Assert.Equal(2, content.MeasureOverrideCount); // the sentinel probe + the capped re-measure
+
+        // A dirty SCP over a CLEAN content: the cached probe answers the sentinel pass and the capped
+        // constraint hits the content's own single-entry measure cache — zero MeasureOverride calls
+        // (the old always-probe shape alternated constraints and re-measured the subtree twice here).
+        presenter.InvalidateMeasure();
+        presenter.Measure(new Size(20, 10));
+        Assert.Equal(2, content.MeasureOverrideCount);
+        Assert.Equal(new Size(10, LayoutLimits.MaxScrollExtent), presenter.Extent);
+
+        // A dirty CONTENT re-probes: the cache must not serve a stale sentinel answer.
+        content.InvalidateMeasure();
+        presenter.InvalidateMeasure();
+        presenter.Measure(new Size(20, 10));
+        Assert.Equal(4, content.MeasureOverrideCount);
+        Assert.Equal(new Size(10, LayoutLimits.MaxScrollExtent), presenter.Extent);
     }
 
     [Fact]

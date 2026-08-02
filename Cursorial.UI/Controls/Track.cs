@@ -169,8 +169,9 @@ public sealed class Track : UIElement
 
     /// <summary>
     /// The thumb's start cell and length along the long axis (matrix C232): length is proportional to
-    /// <c>ViewportSize / (Extent = Max − Min + ViewportSize)</c>, clamped to a minimum of 1 cell; the
-    /// start maps <see cref="RangeBase.Value"/> across the remaining travel.
+    /// <c>ViewportSize / (Extent = Max − Min + ViewportSize)</c>, clamped to a minimum of 1 cell
+    /// (2 when horizontal, capped at the track length); the start maps
+    /// <see cref="RangeBase.Value"/> across the remaining travel.
     /// </summary>
     internal (int Start, int Length) ThumbGeometry()
     {
@@ -186,12 +187,14 @@ public sealed class Track : UIElement
         var minLength = Vertical ? 1 : 2;
         var extent = range + viewport;
 
-        // The proportional thumb length: viewport / extent of the track, at least 1 cell.
+        // The proportional thumb length: viewport / extent of the track, at least 1 cell. The minimum
+        // caps at the track length — a 1-cell horizontal track would otherwise hand Math.Clamp a
+        // min (2) above its max (1), which throws.
         int thumbLength;
         if (extent <= 0 || viewport <= 0)
             thumbLength = length; // nothing to scroll — the thumb fills the rail
         else
-            thumbLength = Math.Clamp((int)Math.Round(length * (viewport / extent)), minLength, length);
+            thumbLength = Math.Clamp((int)Math.Round(length * (viewport / extent)), Math.Min(minLength, length), length);
 
         var travel = length - thumbLength;
         if (range <= 0 || travel <= 0)
@@ -260,11 +263,11 @@ public sealed class Track : UIElement
                 {
                     var col = vertical ? 0 : i;
                     var row = vertical ? i : 0;
-                    var colThumb = vertical ? 0 : start + i;
-                    var rowThumb = vertical ? start + i : 0;
                     var isThumb = i >= start && i < start + thumbLength;
 
-                    var tint = isThumb ? brush?.ColorAt(colThumb, rowThumb, thumbBounds) ?? Colors.Default : fill;
+                    // The cell's own absolute position is the sample coordinate (same as the plain
+                    // loop below) — a gradient thumb tints across its own box, not one offset past it.
+                    var tint = isThumb ? brush?.ColorAt(col, row, thumbBounds) ?? Colors.Default : fill;
 
                     var style = tint.Kind == ColorKind.Default
                                     ? default

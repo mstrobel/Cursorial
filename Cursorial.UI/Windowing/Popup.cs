@@ -153,6 +153,14 @@ public class Popup : UIElement
     /// <summary>The effective placement anchor — explicit <see cref="PlacementTarget"/> or the logical parent.</summary>
     internal UIElement? EffectiveTarget => PlacementTarget ?? LogicalParent;
 
+    /// <summary>
+    /// Whether an open is in effect at the popup's own core state (<c>_open</c>) — unlike the styled
+    /// <see cref="IsOpen"/>, this is already false while <see cref="CloseCore"/> runs its teardown.
+    /// The WM's <c>ClosePopup</c> reads it to tell a genuine close (reset the pointer origin) from a
+    /// deferred close replaying after a re-open (keep the origin the re-open just assigned).
+    /// </summary>
+    internal bool IsOpenRequested => _open;
+
     /// <summary>Raised after the popup opens.</summary>
     public event EventHandler? Opened;
 

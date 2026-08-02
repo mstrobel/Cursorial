@@ -2106,8 +2106,10 @@ internal static class ControlThemes
 
     // ───────────────────────────── ScrollBar / ScrollViewer ─────────────────────────────
 
-    // // A borderless line-step RepeatButton template: a single arrow glyph (no border/padding), so a
-    // // 1-cell-wide ScrollBar's arrows fit (the bordered ButtonContentTemplate would draw a │ frame).
+    // A borderless glyph-button template: a single glyph (no border/padding), so a 1-cell-wide part
+    // fits (the bordered ButtonContentTemplate would draw a │ frame). No built-in template uses it
+    // today (the ScrollBar's arrow line-buttons were retired for the bare-track rendering); kept for
+    // the ComboBox caret and future 1-cell glyph parts.
     private static ControlTemplate BareGlyphButtonTemplate()
     {
         var t = new ControlTemplate(
@@ -2134,52 +2136,15 @@ internal static class ControlThemes
         return t;
     }
 
-    // PART_Track (required) + optional PART_LineUpButton/PART_LineDownButton arrow RepeatButtons
-    // (CD19/C231/C236). The arrows are borderless RepeatButtons with arrow-glyph content; the track is
-    // the internal Track primitive. A DockPanel docks the arrows to the ends, the track filling the rest.
+    // PART_Track (required, CD19/C231/C236) — the bare-track rendering: no arrow line-buttons (a
+    // custom template may still register PART_LineUpButton/PART_LineDownButton; the ScrollBar wiring
+    // stays live). The track is the internal Track primitive in Fill display mode, filling the bar.
     private static ControlTemplate ScrollBarTemplate(bool horizontal)
     {
         var t = new ControlTemplate(
             ctx =>
             {
                var dock = new DockPanel();
-
-               // var bareTemplate = BareGlyphButtonTemplate();
-               //
-               // if (horizontal is false)
-               // {
-               //
-               //     // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
-               //     // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
-               //     // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
-               //     // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
-               //     var lineUp = new RepeatButton
-               //                  {
-               //                      Content = horizontal ? "◀" : "▲",
-               //                      Template = bareTemplate,
-               //                      Padding = Margins.Zero, 
-               //                      Focusable = false,
-               //                      IsTabStop = false
-               //                  };
-               //
-               //     ctx.RegisterName("PART_LineUpButton", lineUp);
-               //     DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
-               //
-               //     var lineDown = new RepeatButton
-               //                    {
-               //                        Content = horizontal ? "▶" : "▼",
-               //                        Template = bareTemplate,
-               //                        Padding = Margins.Zero,
-               //                        Focusable = false,
-               //                        IsTabStop = false
-               //                    };
-               //
-               //     ctx.RegisterName("PART_LineDownButton", lineDown);
-               //     DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
-               //
-               //     dock.Children.Add(lineUp);
-               //     dock.Children.Add(lineDown);
-               // }
 
                var owner = (ScrollBar) (ctx.TemplatedParent ??
                                         throw new InvalidOperationException("The ScrollBar theme template requires a templated parent."));
@@ -2197,10 +2162,6 @@ internal static class ControlThemes
                return dock;
             });
 
-        // (A `/template/ RepeatButton { Padding = 0 }` rule lived here until the 2026-07-12 lattice
-        // amendment: under the old ladder the RepeatButton control theme's resting Padding beat the
-        // parts' `Padding = Margins.Zero` literals, so the template out-layered it with a rule. The
-        // literals are now the parts' resting truth (§20 — Template above resting Style).)
         return t;
     }
 
@@ -2210,13 +2171,8 @@ internal static class ControlThemes
             .Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: false))
             .SetResource(Control.BorderPenProperty, ThemeKeys.BorderPen);
 
-        // A horizontal bar uses the rotated template (arrows on the ends of the long axis).
+        // A horizontal bar uses the rotated template (a 1-row track along the long axis).
         theme.Children.Add(new Style("^:horizontal").Set(Control.TemplateProperty, ScrollBarTemplate(horizontal: true)));
-
-        // (The line buttons' zero padding is set directly in ScrollBarTemplate; their 1-cell width follows from the
-        // 1-wide bar constraining its docked parts. A `^ /template/ RepeatButton` rule placed here would be
-        // element-addressed and never match the parts — part rules belong in ControlTemplate.Styles, see
-        // SliderTemplate — #115.)
 
         return theme;
     }

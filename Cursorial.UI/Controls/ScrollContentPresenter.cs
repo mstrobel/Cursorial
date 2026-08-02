@@ -4,8 +4,10 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The scroll-mechanics element (design doc §5.7): hosts a single <see cref="ScrollContentPresenter.Content"/>
-/// child, measures it at <see cref="LayoutLimits.MaxScrollExtent"/> on scrollable axes (never
-/// <see cref="LayoutMath.Unbounded"/> — the doc's §12 scrolling note), publishes
+/// child, measures it at <see cref="LayoutMath.Unbounded"/> on scrollable axes (the sentinel some
+/// content keys on), re-measuring against <see cref="LayoutLimits.MaxScrollExtent"/> only on an axis
+/// whose desire exceeds it (the published <see cref="ScrollContentPresenter.Extent"/> is always
+/// capped at <see cref="LayoutLimits.MaxScrollExtent"/> per axis), publishes
 /// <see cref="ScrollContentPresenter.Extent"/>/<see cref="ScrollContentPresenter.Viewport"/> readbacks, and slides
 /// the content at composite time via the <b>styled</b> <see cref="ScrollContentPresenter.ScrollOffsetColumn"/>/<see
 /// cref="ScrollContentPresenter.ScrollOffsetRow"/> offsets (<c>[AffectsComposite]</c> — storyboard-animatable;
@@ -113,6 +115,15 @@ public class ScrollContentPresenter : UIElement
     private Size _viewport;
     private bool _extentClampDiagnosed;
 
+    // The cached sentinel-probe result (legacy measure path): the last Unbounded-pass constraint and
+    // the content's desired size under it. Lets a re-measure of a measure-VALID content skip the probe
+    // (its answer cannot have changed), so the capped second pass hits the content's own measure cache
+    // instead of alternating constraints defeating it. Reset when Content changes; a measure-dirty
+    // content never reuses it (IsMeasureValid gates the hit).
+    private Size _probeConstraint;
+    private Size _probeDesired;
+    private bool _hasProbeResult;
+
     /// <inheritdoc cref="CanScrollHorizontallyProperty"/>
     public bool CanScrollHorizontally { get => GetValue(CanScrollHorizontallyProperty); set => SetValue(CanScrollHorizontallyProperty, value); }
 
@@ -164,6 +175,7 @@ public class ScrollContentPresenter : UIElement
 
             _content = value;
             _contentLogicallyOwned = false;
+            _hasProbeResult = false; // the cached sentinel probe belongs to the OLD content
 
             // Discover the delegation seam: a content that opts into IScrollContentHost (the ItemsPresenter forwarding
             // to a virtualizing panel, or a test host) gets the SCP injected as its back-channel ScrollOwner. The
@@ -249,9 +261,10 @@ public class ScrollContentPresenter : UIElement
     // ───────────────────────────── measure / arrange (spec §3.9 mechanics, doc-adjusted) ─────────────────────────────
 
     /// <summary>
-    /// Measures <see cref="Content"/> with <see cref="LayoutLimits.MaxScrollExtent"/> on scrollable
-    /// axes (the constraint passes through unchanged on non-scrollable axes), publishes the capped
-    /// <see cref="Extent"/>, and desires <c>min(extent, constraint)</c> per axis.
+    /// Measures <see cref="Content"/> with <see cref="LayoutMath.Unbounded"/> on scrollable axes
+    /// (the constraint passes through unchanged on non-scrollable axes), re-measures at
+    /// <see cref="LayoutLimits.MaxScrollExtent"/> any scrollable axis whose desire exceeded it,
+    /// publishes the capped <see cref="Extent"/>, and desires <c>min(extent, constraint)</c> per axis.
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -264,20 +277,42 @@ public class ScrollContentPresenter : UIElement
 
         if (_content is {} content)
         {
-            // First pass: measure unbounded, since that's the sentinel some controls look for.
-            content.Measure(
-                new Size(canScrollHorizontally ? LayoutMath.Unbounded : availableSize.Columns,
-                         canScrollVertically ? LayoutMath.Unbounded : availableSize.Rows));
+            var probeConstraint = new Size(
+                canScrollHorizontally ? LayoutMath.Unbounded : availableSize.Columns,
+                canScrollVertically ? LayoutMath.Unbounded : availableSize.Rows);
 
-            var desired = content.DesiredSize;
+            Size desired;
+            if (_hasProbeResult && content.IsMeasureValid && probeConstraint == _probeConstraint)
+            {
+                // A measure-valid content cannot have changed its answer for the same constraint, so
+                // the sentinel probe's outcome is already known. Skipping it matters when the previous
+                // pass engaged the cap: the content's single-entry measure cache is keyed at the
+                // capped constraint, so the re-measure below short-circuits and a clean re-measure of
+                // the SCP costs nothing (instead of two full content-subtree measures).
+                desired = _probeDesired;
+            }
+            else
+            {
+                // First pass: measure unbounded, since that's the sentinel some controls look for.
+                content.Measure(probeConstraint);
+                desired = content.DesiredSize;
+                _probeConstraint = probeConstraint;
+                _probeDesired = desired;
+                _hasProbeResult = true;
+            }
 
             // Optional second pass: measure again constrained to LayoutLimits.MaxScrollExtent only if the content
-            // wanted more space than we can offer.
+            // wanted more space than we can offer — and only on the axis that overflowed; the other scrollable
+            // axis keeps the Unbounded sentinel so sentinel-keyed content doesn't stretch into a phantom extent.
             if (desired.Columns > LayoutLimits.MaxScrollExtent || desired.Rows > LayoutLimits.MaxScrollExtent)
             {
                 content.Measure(
-                    new Size(canScrollHorizontally ? LayoutLimits.MaxScrollExtent : availableSize.Columns,
-                             canScrollVertically ? LayoutLimits.MaxScrollExtent : availableSize.Rows));
+                    new Size(canScrollHorizontally
+                                 ? desired.Columns > LayoutLimits.MaxScrollExtent ? LayoutLimits.MaxScrollExtent : LayoutMath.Unbounded
+                                 : availableSize.Columns,
+                             canScrollVertically
+                                 ? desired.Rows > LayoutLimits.MaxScrollExtent ? LayoutLimits.MaxScrollExtent : LayoutMath.Unbounded
+                                 : availableSize.Rows));
 
                 desired = content.DesiredSize;
             }
@@ -336,6 +371,10 @@ public class ScrollContentPresenter : UIElement
             content.Measure(
                 new Size(canScrollHorizontally ? Math.Min(availableSize.Columns, LayoutLimits.MaxScrollExtent) : availableSize.Columns,
                          canScrollVertically ? Math.Min(availableSize.Rows, LayoutLimits.MaxScrollExtent) : availableSize.Rows));
+
+        // The host path measures the content at the viewport, so any cached legacy sentinel probe no
+        // longer describes the content's latest measure — drop it (the legacy path re-probes on re-engage).
+        _hasProbeResult = false;
 
         var extent = CapHostExtent(host.GetExtent());
         SetAndRaise(ExtentProperty, ref _extent, extent);

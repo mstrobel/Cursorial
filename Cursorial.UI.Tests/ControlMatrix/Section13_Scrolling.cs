@@ -1,5 +1,8 @@
+using Cursorial.Drawing;
+using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -403,12 +406,11 @@ public sealed class Section13_Scrolling
         var bar = new ScrollBar { Orientation = Orientation.Vertical, Height = 10, Minimum = 0, Maximum = 100, ViewportSize = 10 };
         using var host = Show(bar);
 
-        // PART_Track is required; the line buttons are optional RepeatButtons (present in the default theme).
+        // PART_Track is required; the built-in template is bare-track (no line buttons — the optional
+        // arrow parts exist only in custom templates, see C234).
         Assert.NotNull(bar.TemplateInstance);
         var track = bar.TemplateInstance!.NameScope.Find("PART_Track");
         Assert.IsType<Track>(track);
-        // Assert.IsType<RepeatButton>(bar.TemplateInstance!.NameScope.Find("PART_LineUpButton"));
-        // Assert.IsType<RepeatButton>(bar.TemplateInstance!.NameScope.Find("PART_LineDownButton"));
 
         // The :horizontal/:vertical pseudo-classes flip via the Orientation PseudoClassMapping (the
         // class swaps on an Orientation change — the mapping select glyph/orientation styling, C231).
@@ -447,6 +449,131 @@ public sealed class Section13_Scrolling
                 thumbCells++;
         }
         Assert.True(thumbCells >= 1); // at least a 1-cell thumb
+    }
+
+    [Fact] // C232b — the bare-track Fill rendering: the whole rail renders thumb glyphs, non-thumb cells dimmed
+    public void C232b_FillMode_RendersDimmedTrackAroundThumb()
+    {
+        var thumbColor = Color.FromRgb(200, 40, 40);
+        var bar = new ScrollBar
+        {
+            Orientation = Orientation.Vertical,
+            Width = 1,
+            Height = 10,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Minimum = 0,
+            Maximum = 90,
+            ViewportSize = 10,
+            ThumbBrush = new SolidColorBrush(thumbColor)
+        };
+        using var host = Show(bar);
+
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        Assert.Equal(TrackDisplayMode.Fill, track.TrackDisplayMode); // the built-in template opts into Fill
+
+        // Exercise the WithAlpha(63) fallback: with no TrackFillBrush the fill dims the thumb brush itself.
+        track.SetValue(Track.TrackFillBrushProperty, null);
+        track.UpdateBrush();
+        host.RunFrame();
+
+        var (start, length) = track.ThumbGeometry();
+        Assert.True(length >= 1);
+
+        for (var r = 0; r < 10; r++)
+            Assert.Equal("█", host.GetCell(0, r).Grapheme); // Fill mode: every rail cell renders the thumb glyph
+
+        var thumbForeground = host.GetCell(0, start).Style.Foreground;
+        var fillForeground = host.GetCell(0, start == 0 ? 9 : 0).Style.Foreground;
+        Assert.Equal(thumbColor, thumbForeground);        // the thumb run paints the thumb brush solid
+        Assert.NotEqual(thumbForeground, fillForeground); // the rest of the rail is dimmed, not solid
+    }
+
+    [Fact] // C232c — the horizontal bare-track Fill rendering: the ▄ glyph across the whole rail
+    public void C232c_FillMode_Horizontal_RendersLowerBlockRail()
+    {
+        var bar = new ScrollBar
+        {
+            Orientation = Orientation.Horizontal,
+            Width = 10,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Minimum = 0,
+            Maximum = 90,
+            ViewportSize = 10
+        };
+        using var host = Show(bar);
+
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        Assert.Equal(TrackDisplayMode.Fill, track.TrackDisplayMode);
+
+        // Pin the explicit TrackFillBrush branch (the fill cell tint comes from this brush, no dimming).
+        track.SetValue(Track.TrackFillBrushProperty, new SolidColorBrush(Color.FromRgb(60, 60, 60)));
+        track.UpdateBrush();
+        host.RunFrame();
+
+        var (_, length) = track.ThumbGeometry();
+        Assert.True(length >= 2); // horizontal thumbs are at least 2 cells
+
+        for (var c = 0; c < 10; c++)
+            Assert.Equal("▄", host.GetCell(c, 0).Grapheme);
+    }
+
+    [Fact] // C232d — regression: Fill-mode thumb cells sample gradient brushes at the cell's OWN position
+    public void C232d_FillMode_GradientThumbSamplesAtTheCellPosition()
+    {
+        var gradient = new LinearGradientBrush(
+            Color.FromRgb(255, 0, 0), Color.FromRgb(0, 0, 255),
+            RelativePoint.TopLeft, RelativePoint.BottomLeft); // a vertical sweep over the thumb's own box
+        var bar = new ScrollBar
+        {
+            Orientation = Orientation.Vertical,
+            Width = 1,
+            Height = 10,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Minimum = 0,
+            Maximum = 90,
+            ViewportSize = 10,
+            Value = 90, // thumb at the bottom — a wrongly offset sample coordinate lands past the box
+            ThumbBrush = gradient
+        };
+        using var host = Show(bar);
+
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        track.SetValue(Track.TrackFillBrushProperty, new SolidColorBrush(Color.FromRgb(60, 60, 60)));
+        track.UpdateBrush();
+        host.RunFrame();
+
+        var (start, length) = track.ThumbGeometry();
+        Assert.True(start > 0);
+        var thumbBounds = new Rect(0, start, 1, length);
+
+        // Every thumb cell samples the gradient at its own cell (the pre-fix code sampled at
+        // start + row — outside the thumb's box, Pad-clamped to the gradient's end color).
+        for (var i = 0; i < length; i++)
+            Assert.Equal(gradient.ColorAt(0, start + i, thumbBounds), host.GetCell(0, start + i).Style.Foreground);
+    }
+
+    [Fact] // C232e — regression: a 1-cell horizontal track renders without throwing (min thumb 2 caps at the length)
+    public void C232e_OneCellHorizontalTrack_DoesNotThrow()
+    {
+        var bar = new ScrollBar
+        {
+            Orientation = Orientation.Horizontal,
+            Width = 1,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Minimum = 0,
+            Maximum = 10,
+            ViewportSize = 5
+        };
+        using var host = Show(bar); // the render pass computes ThumbGeometry: min length (2) must cap at the 1-cell track
+
+        var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
+        Assert.Equal((0, 1), track.ThumbGeometry());
     }
 
     [Fact] // C233 — track click pages; thumb drag reports a proportional value
@@ -528,12 +655,15 @@ public sealed class Section13_Scrolling
         Assert.Equal(1, endScrolls);
     }
 
-    [Fact(Skip = "ScrollBars redesigned to omit arrow buttons")] // C234 — arrow RepeatButtons step ±SmallChange repeating
-    public void C234_ArrowRepeatButtonsStep()
+    [Fact] // C234 — the optional arrow parts (custom template) still wire ±SmallChange line steps (CD29)
+    public void C234_ArrowRepeatButtonsStep_CustomTemplate()
     {
+        // The built-in template is bare-track (no arrows), but the PART_LineUpButton/PART_LineDownButton
+        // wiring in ScrollBar.OnApplyTemplate stays live for custom templates — pin it through one.
         var bar = new ScrollBar
         {
             Orientation = Orientation.Vertical,
+            Width = 3,
             Height = 12,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
@@ -541,7 +671,8 @@ public sealed class Section13_Scrolling
             Maximum = 100,
             ViewportSize = 10,
             SmallChange = 1,
-            Value = 50
+            Value = 50,
+            Template = ArrowScrollBarTemplate()
         };
         using var host = Show(bar);
 
@@ -558,6 +689,29 @@ public sealed class Section13_Scrolling
         host.RunFrame();
         Assert.Equal(49, bar.Value);
     }
+
+    // A custom ScrollBar template WITH the optional arrow line-buttons (the built-in one is bare-track).
+    private static ControlTemplate ArrowScrollBarTemplate() => new(ctx =>
+    {
+        var owner = (ScrollBar)ctx.TemplatedParent!;
+        var dock = new DockPanel();
+
+        var lineUp = new RepeatButton { Content = "▲", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_LineUpButton", lineUp);
+        DockPanel.SetDock(lineUp, Dock.Top);
+
+        var lineDown = new RepeatButton { Content = "▼", Focusable = false, IsTabStop = false };
+        ctx.RegisterName("PART_LineDownButton", lineDown);
+        DockPanel.SetDock(lineDown, Dock.Bottom);
+
+        var track = new Track(owner);
+        ctx.RegisterName("PART_Track", track);
+
+        dock.Children.Add(lineUp);
+        dock.Children.Add(lineDown);
+        dock.Children.Add(track); // last child fills the remaining space (DockPanel default)
+        return dock;
+    });
 
     // Dispatches a Press-mode click on a button by its window position (down = click for ClickMode.Press).
     private static void ClickButton(UIHeadlessHost host, UIElement button)
@@ -645,15 +799,12 @@ public sealed class Section13_Scrolling
         using var host = Show(sv);
         var focus = host.Application.FocusManager;
 
-        // The scrollbar parts are present and non-focusable / non-tab-stop.
+        // The built-in bare-track template registers no line-button parts at all (arrow parts are
+        // custom-template-only, C234); the Track itself is non-focusable.
         var bar = (ScrollBar)sv.TemplateInstance!.NameScope.Find("PART_VerticalScrollBar")!;
-        var lineUp = (RepeatButton?)bar.TemplateInstance!.NameScope.Find("PART_LineUpButton");
-        var lineDown = (RepeatButton?)bar.TemplateInstance!.NameScope.Find("PART_LineDownButton");
         var track = (Track)bar.TemplateInstance!.NameScope.Find("PART_Track")!;
-        Assert.False(lineUp?.Focusable is true);
-        Assert.False(lineUp?.IsTabStop is true);
-        Assert.False(lineDown?.Focusable is true);
-        Assert.False(lineDown?.IsTabStop is true);
+        Assert.Null(bar.TemplateInstance!.NameScope.Find("PART_LineUpButton"));
+        Assert.Null(bar.TemplateInstance!.NameScope.Find("PART_LineDownButton"));
         Assert.False(track.Focusable); // the Track is a non-focusable UIElement to begin with
 
         // Tab cycles through ONLY the content buttons — never the scrollbar parts. Drive a full cycle
@@ -667,8 +818,6 @@ public sealed class Section13_Scrolling
             host.SendKey(Key.Tab);
             host.RunFrame();
             visited.Add(focus.FocusedElement);
-            Assert.NotSame(lineUp, focus.FocusedElement);
-            Assert.NotSame(lineDown, focus.FocusedElement);
             Assert.NotSame(track, focus.FocusedElement);
         }
 

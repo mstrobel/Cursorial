@@ -53,21 +53,22 @@ public class ScrollViewer : ContentControl
             changed: OnVisibilityChanged);
 
     /// <summary>
-    /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.
+    /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Disabled"/>). <c>AffectsMeasure</c>.
     /// <para>
-    /// <b>v1 limitation:</b> only the vertical axis is banded (doc §5.7), so horizontal
-    /// <see cref="ScrollBarVisibility.Auto"/> — which means "scroll when content overflows, hide the bar
-    /// otherwise" — cannot be honored and degrades to <see cref="ScrollBarVisibility.Disabled"/> (a DEBUG
-    /// <see cref="ControlDiagnosticKind.HorizontalAutoUnsupported"/> diagnostic is emitted). To allow
-    /// horizontal scrolling by wheel/keys today, set <see cref="ScrollBarVisibility.Hidden"/> (scrolls, no
-    /// bar) or <see cref="ScrollBarVisibility.Visible"/>. When the horizontal axis is banded (v2), <c>Auto</c>
-    /// will gain its overflow semantics.
+    /// The default is <b>Disabled</b> — WPF parity, and deliberate: a scroll-enabled axis is
+    /// measured at unbounded width, which silently disarms <c>TextWrapping</c>/<c>TextTrimming</c>
+    /// in the content (text never wraps at <c>int.MaxValue</c> columns; it grows a scrollbar
+    /// instead). Vertical scrolling with wrapping content is the overwhelmingly common shape, so
+    /// horizontal is an explicit opt-in: <see cref="ScrollBarVisibility.Auto"/> scrolls and shows
+    /// the bar on overflow, <see cref="ScrollBarVisibility.Hidden"/> scrolls bar-less,
+    /// <see cref="ScrollBarVisibility.Visible"/> always shows. Controls that want it opt their
+    /// own templates in (ListView's column-major views, DataGrid).
     /// </para>
     /// </summary>
     public static readonly StyledProperty<ScrollBarVisibility> HorizontalScrollBarVisibilityProperty =
         UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(
             nameof(HorizontalScrollBarVisibility),
-            defaultValue: ScrollBarVisibility.Auto,
+            defaultValue: ScrollBarVisibility.Disabled,
             changed: OnVisibilityChanged);
 
     /// <summary>The horizontal scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetColumn</c> (CD28).</summary>
@@ -344,9 +345,10 @@ public class ScrollViewer : ContentControl
         => visibility is not ScrollBarVisibility.Disabled;
 
     /// <summary>
-    /// The horizontal-axis scroll-enable: <c>Visible</c> or <c>Hidden</c> scroll by wheel/keys;
-    /// <c>Disabled</c> never scrolls, and v1 treats <c>Auto</c> as <c>Disabled</c> because the
-    /// horizontal axis is unbanded (doc §5.7) — see <see cref="HorizontalScrollBarVisibility"/>.
+    /// The horizontal-axis scroll-enable: every policy except <c>Disabled</c> scrolls by
+    /// wheel/keys (<c>Auto</c> included — its bar just stays hidden until overflow). Horizontal
+    /// scrolling is off by DEFAULT via the property default instead — see
+    /// <see cref="HorizontalScrollBarVisibility"/> for why.
     /// </summary>
     internal static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
         => visibility is not ScrollBarVisibility.Disabled;
@@ -389,8 +391,8 @@ public class ScrollViewer : ContentControl
     /// <c>Visible</c> always shows; <c>Auto</c> shows only when the axis overflows (<c>Maximum &gt; 0</c>);
     /// <c>Hidden</c>/<c>Disabled</c> collapse the bar (<c>Hidden</c> still scrolls by wheel/keys — that
     /// enable is handled in <see cref="UpdatePresenterScrollAxes"/>). The bar is <c>Collapsed</c>, not
-    /// <c>Hidden</c>, so an absent bar reserves no DockPanel track. The horizontal axis is unbanded in v1,
-    /// so its <c>Auto</c> degrades to <c>Disabled</c> (no bar) — see <see cref="HorizontalScrollBarVisibility"/>.
+    /// <c>Hidden</c>, so an absent bar reserves no DockPanel track. Both axes resolve identically;
+    /// the horizontal axis simply defaults to <c>Disabled</c> — see <see cref="HorizontalScrollBarVisibility"/>.
     /// </summary>
     private void UpdateBarVisibility()
     {
@@ -398,15 +400,7 @@ public class ScrollViewer : ContentControl
             vBar.Visibility = ResolveBarVisibility(VerticalScrollBarVisibility, vBar.Maximum > 0);
 
         if (_horizontalBar is {} hBar)
-        {
-            // v1 bands only the vertical axis (doc §5.7): horizontal Auto degrades to Disabled, so its bar
-            // never shows (it would be a non-functional bar — CanScrollHorizontalAxis is false for Auto).
-            var policy = HorizontalScrollBarVisibility/* == ScrollBarVisibility.Auto
-                             ? ScrollBarVisibility.Disabled
-                             : HorizontalScrollBarVisibility*/;
-
-            hBar.Visibility = ResolveBarVisibility(policy, hBar.Maximum > 0);
-        }
+            hBar.Visibility = ResolveBarVisibility(HorizontalScrollBarVisibility, hBar.Maximum > 0);
     }
 
     private static Visibility ResolveBarVisibility(ScrollBarVisibility policy, bool overflowing)

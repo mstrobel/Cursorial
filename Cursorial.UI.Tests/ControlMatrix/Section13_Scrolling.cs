@@ -1,6 +1,7 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
@@ -69,11 +70,43 @@ public sealed class Section13_Scrolling
     public void C219_ScrollViewerProperties()
     {
         var sv = new ScrollViewer();
-        Assert.Equal(ScrollBarVisibility.Auto, sv.HorizontalScrollBarVisibility);
+        // Horizontal defaults to Disabled (WPF parity): a scroll-enabled axis measures content at
+        // unbounded width, which would silently disarm TextWrapping/TextTrimming in every default
+        // ScrollViewer. Controls that want horizontal scrolling opt in explicitly.
+        Assert.Equal(ScrollBarVisibility.Disabled, sv.HorizontalScrollBarVisibility);
         Assert.Equal(ScrollBarVisibility.Auto, sv.VerticalScrollBarVisibility);
         Assert.Equal(0, sv.HorizontalOffset);
         Assert.Equal(0, sv.VerticalOffset);
         Assert.IsAssignableFrom<ContentControl>(sv);
+    }
+
+    [Fact] // review #12 regression: the wrap-kill
+    public void C219b_DefaultScrollViewer_WrappingTextStillWraps()
+    {
+        // With horizontal scrolling enabled by default, the SCP measured content at UNBOUNDED
+        // width and a wrapping TextBlock never wrapped — it became one long line behind a
+        // horizontal scrollbar, in every plain ScrollViewer. Pin the default-config behavior:
+        // wrapping content wraps.
+        var text = new TextBlock
+        {
+            Text = string.Join(' ', Enumerable.Repeat("word", 30)), // 30×5 cells ≫ any viewport line
+            TextWrapping = WrapMode.WordWrap,
+            TextTrimming = TextTrimming.None
+        };
+
+        var sv = new ScrollViewer
+        {
+            Width = 20,
+            Height = 10,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Content = text
+        };
+
+        using var host = Show(sv);
+
+        Assert.True(text.Bounds.Rows > 1, $"expected wrapped rows, got {text.Bounds.Rows}");
+        Assert.StartsWith("word word", host.GetRowText(0).TrimStart());
     }
 
     [Fact] // C220

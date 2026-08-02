@@ -1282,21 +1282,41 @@ internal sealed class XamlObjectGraphBuilder
     }
 
     // The theme-styles channel (design doc §11.8 #3 / C100): <ResourceDictionary.Styles> populates the
-    // dictionary's Styles collection — selector styles, NOT keyed entries (no x:Key). Each <Style> attaches
-    // (seal-on-attach). Consumed only from UIApplication.Theme by the StyleEngine at Theme(2).
+    // dictionary's Styles collection — selector styles, not dictionary entries. An x:Key here names the
+    // STYLE itself (Style.Key — class-style identity / keyed-theme lookup at P5), exactly as the lowered
+    // builder emits it as a property initializer; without this the two lanes diverge (lowered themes carry
+    // keys, reflectively loaded ones silently don't). Each <Style> attaches (seal-on-attach). Consumed
+    // only from UIApplication.Theme by the StyleEngine at Theme(2).
     private void FillStyles(ResourceDictionary dict, in MemberRecord member, int line, int column)
     {
         var styles = dict.Styles ??= [];
+
+        void AddStyle(int idx)
+        {
+            ref readonly var child = ref _doc.Objects[idx];
+            var style = (Style)InstantiateObject(idx);
+
+            // Key is init-only (immutable once sealed); the reflection lane writes it through the
+            // init accessor pre-seal — the same moment the lowered builder's initializer runs.
+            if (style.Key is null && TryGetKey(in child, out string keyText))
+                StyleKeyProperty.SetValue(style, keyText);
+
+            styles.Add(style);
+        }
+
         if (member.Kind is XamlValueKind.Items)
         {
             foreach (int idx in EnumerateItems(member.ValueIndex, member.ItemCount))
-                styles.Add((Style)InstantiateObject(idx));
+                AddStyle(idx);
         }
         else if (member.Kind == XamlValueKind.Object)
         {
-            styles.Add((Style)InstantiateObject(member.ValueIndex));
+            AddStyle(member.ValueIndex);
         }
     }
+
+    private static readonly System.Reflection.PropertyInfo StyleKeyProperty =
+        typeof(Style).GetProperty(nameof(Style.Key))!;
 
     private void FillThemeDictionaries(ResourceDictionary dict, in MemberRecord member, int line, int column)
     {

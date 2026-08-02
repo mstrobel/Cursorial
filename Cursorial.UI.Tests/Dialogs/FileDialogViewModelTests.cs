@@ -638,4 +638,235 @@ public sealed class FileDialogViewModelTests
         Assert.StartsWith("~", displayed);
         Assert.Equal(model.CurrentDirectory, model.FileSystem.ResolvePath(displayed, model.CurrentDirectory));
     }
+
+    // ── the busy scope notifies on ENTRY as well as exit ─────────────────────────────────────────
+
+    [Fact]
+    public async Task IsBusy_Notifies_AndDisablesRefresh_WhenBusyStarts_NotOnlyWhenItEnds()
+    {
+        using var model = await OpenAsync();
+
+        var observed = new List<(bool IsBusy, bool RefreshEnabled)>();
+        model.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(FileDialogViewModel.IsBusy))
+                observed.Add((model.IsBusy, model.RefreshCommand.CanExecute(null)));
+        };
+
+        model.SearchText = "logo"; // ApplyView runs inside a busy scope
+
+        // The ENTRY notification is what lets a view show its wait cursor and disable Refresh while the work
+        // is in flight — an exit-only notification fires exactly when it is no longer needed.
+        Assert.Equal(new[] { (true, false), (false, true) }, observed);
+    }
+
+    // ── concurrent navigations: the newest one wins ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task Navigate_EnteringWhileAnotherAwaitsACancellation_TheNewestNavigationWins()
+    {
+        var provider = new InstrumentedFileSystemProvider(InMemoryFileSystemProvider.CreateSample());
+        using var model = await OpenAsync(provider);
+        using var cancelBlocker = new ManualResetEventSlim(initialState: false);
+
+        // A parks inside the provider with a cancellation callback registered, so the NEXT navigation's
+        // 'await CancelAsync()' genuinely suspends — the exact re-entrancy window under test.
+        var texturesGate = provider.Hold($"{Assets}/textures", cancelBlocker);
+        var navigateA = model.NavigateAsync($"{Assets}/textures");
+
+        // B enters and suspends awaiting A's cancellation (the blocker holds A's callbacks hostage) …
+        var iconsGate = provider.Hold($"{Assets}/icons");
+        var navigateB = model.NavigateAsync($"{Assets}/icons");
+
+        // … and C — the NEWEST navigation — enters during that window and starts its own listing.
+        var projectsGate = provider.Hold("/home/ada/Projects");
+        var navigateC = model.NavigateAsync("/home/ada/Projects");
+
+        cancelBlocker.Set();
+
+        projectsGate.Open();
+        await navigateC; // C commits …
+
+        texturesGate.Open(); // … and the superseded listings, landing later, must not overwrite it.
+        iconsGate.Open();
+        await navigateA;
+        await navigateB;
+
+        Assert.Equal("/home/ada/Projects", model.CurrentDirectory);
+        Assert.Contains("assets", Names(model));
+    }
+
+    // ── history survives a hop that does not commit ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task Back_ThatFails_KeepsTheHistoryEntry_SoItCanBeRetried()
+    {
+        var provider = new InstrumentedFileSystemProvider(InMemoryFileSystemProvider.CreateSample());
+        using var model = await OpenAsync(provider);
+
+        await model.NavigateAsync($"{Assets}/textures");
+        Assert.True(model.CanGoBack);
+
+        // The target has become unreadable: the hop fails, and the entry must survive for a retry.
+        provider.Fail(Assets);
+        model.BackCommand.Execute(null);
+
+        Assert.Contains("Could not open", model.ErrorMessage);
+        Assert.Equal($"{Assets}/textures", model.CurrentDirectory);
+        Assert.True(model.CanGoBack);
+        Assert.False(model.CanGoForward); // the failed hop pushed nothing onto Forward, either
+
+        provider.Heal(Assets);
+        model.BackCommand.Execute(null);
+
+        Assert.Equal(Assets, model.CurrentDirectory);
+        Assert.False(model.CanGoBack);
+        Assert.True(model.CanGoForward);
+    }
+
+    [Fact]
+    public async Task Forward_ThatFails_KeepsTheHistoryEntry_SoItCanBeRetried()
+    {
+        var provider = new InstrumentedFileSystemProvider(InMemoryFileSystemProvider.CreateSample());
+        using var model = await OpenAsync(provider);
+
+        await model.NavigateAsync($"{Assets}/textures");
+        model.BackCommand.Execute(null); // back at assets, textures on the forward stack
+        Assert.True(model.CanGoForward);
+
+        provider.Fail($"{Assets}/textures");
+        model.ForwardCommand.Execute(null);
+
+        Assert.Contains("Could not open", model.ErrorMessage);
+        Assert.Equal(Assets, model.CurrentDirectory);
+        Assert.True(model.CanGoForward);
+
+        provider.Heal($"{Assets}/textures");
+        model.ForwardCommand.Execute(null);
+
+        Assert.Equal($"{Assets}/textures", model.CurrentDirectory);
+        Assert.False(model.CanGoForward);
+        Assert.True(model.CanGoBack);
+    }
+
+    // ── the hidden toggle reaches the roots call and reloads the rail ────────────────────────────
+
+    [Fact]
+    public async Task ShowHiddenEntries_IsPassedToGetRoots_AndReloadsThePlacesRail()
+    {
+        var provider = new InstrumentedFileSystemProvider(InMemoryFileSystemProvider.CreateSample())
+                       {
+                           HiddenRoot = ("/dev", "dev")
+                       };
+
+        using var model = await OpenAsync(provider);
+
+        Assert.Equal(new[] { false }, provider.RootsRequests);
+        Assert.DoesNotContain("dev", RailNames(model));
+
+        model.ShowHiddenEntries = true;
+
+        Assert.Equal(new[] { false, true }, provider.RootsRequests);
+        Assert.Contains("dev", RailNames(model));
+
+        model.ShowHiddenEntries = false;
+        Assert.DoesNotContain("dev", RailNames(model));
+
+        static IEnumerable<string> RailNames(FileDialogViewModel m)
+            => m.PlaceGroups.SelectMany(g => g.Places).Select(p => p.Name);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // The in-memory tree wrapped with the failure modes the real disk has and the sample tree does not: a
+    // listing that must be RELEASED (a slow share), a directory that throws (a share that died), and a roots
+    // call whose showHidden argument is recorded — with an optional hidden volume, so the flag is observable
+    // end to end.
+    private sealed class InstrumentedFileSystemProvider(InMemoryFileSystemProvider inner) : IFileSystemProvider
+    {
+        private readonly Dictionary<string, Gate> _gates = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _failures = new(StringComparer.Ordinal);
+
+        /// <summary>The <c>showHidden</c> argument of every <see cref="GetRootsAsync"/> call, in order.</summary>
+        public List<bool> RootsRequests { get; } = [];
+
+        /// <summary>A root reported only when <c>showHidden</c> is asked for (a <c>/dev</c> stand-in).</summary>
+        public (string Path, string Name)? HiddenRoot { get; init; }
+
+        public sealed class Gate
+        {
+            internal readonly TaskCompletionSource Released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal ManualResetEventSlim? CancellationBlocker;
+
+            public void Open() => Released.TrySetResult();
+        }
+
+        /// <summary>Parks the next listing of <paramref name="path"/> until the gate is opened. A
+        /// <paramref name="cancellationBlocker"/> holds the token's cancellation callbacks hostage, so a
+        /// navigation cancelling this one genuinely suspends at its <c>await CancelAsync()</c>.</summary>
+        public Gate Hold(string path, ManualResetEventSlim? cancellationBlocker = null)
+        {
+            var gate = new Gate { CancellationBlocker = cancellationBlocker };
+            _gates[path] = gate;
+            return gate;
+        }
+
+        /// <summary>Makes every listing of <paramref name="path"/> throw, until <see cref="Heal"/>.</summary>
+        public void Fail(string path) => _failures.Add(path);
+
+        public void Heal(string path) => _failures.Remove(path);
+
+        public char DirectorySeparator => inner.DirectorySeparator;
+
+        public ValueTask<IReadOnlyList<FileSystemEntry>> GetEntriesAsync(string directoryPath, CancellationToken cancellationToken = default)
+        {
+            if (_failures.Contains(directoryPath))
+                throw new IOException($"'{directoryPath}' is unreadable.");
+
+            if (_gates.Remove(directoryPath, out var gate))
+                return new ValueTask<IReadOnlyList<FileSystemEntry>>(WaitAsync(gate, directoryPath, cancellationToken));
+
+            return inner.GetEntriesAsync(directoryPath, cancellationToken);
+        }
+
+        private async Task<IReadOnlyList<FileSystemEntry>> WaitAsync(Gate gate, string directoryPath, CancellationToken cancellationToken)
+        {
+            if (gate.CancellationBlocker is { } blocker)
+                cancellationToken.Register(blocker.Wait);
+
+            await gate.Released.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await inner.GetEntriesAsync(directoryPath, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        public async ValueTask<IReadOnlyList<FileSystemEntry>> GetRootsAsync(CancellationToken cancellationToken = default,
+                                                                             bool showHidden = false)
+        {
+            RootsRequests.Add(showHidden);
+
+            var roots = await inner.GetRootsAsync(cancellationToken, showHidden).ConfigureAwait(false);
+
+            if (!showHidden || HiddenRoot is not { } hidden)
+                return roots;
+
+            return [.. roots, new FileSystemEntry(hidden.Path, hidden.Name, isDirectory: true)];
+        }
+
+        public ValueTask<IReadOnlyList<FileSystemEntry>> GetPlacesAsync(CancellationToken cancellationToken = default)
+            => inner.GetPlacesAsync(cancellationToken);
+
+        public bool DirectoryExists(string path) => inner.DirectoryExists(path);
+
+        public bool FileExists(string path) => inner.FileExists(path);
+
+        public string? GetParentPath(string path) => inner.GetParentPath(path);
+
+        public string Combine(string directoryPath, string name) => inner.Combine(directoryPath, name);
+
+        public string? ResolvePath(string text, string basePath) => inner.ResolvePath(text, basePath);
+
+        public string? GetPlacePath(FileSystemPlace place) => inner.GetPlacePath(place);
+
+        public ValueTask<FileSystemEntry> CreateDirectoryAsync(string parentPath, string name, CancellationToken cancellationToken = default)
+            => inner.CreateDirectoryAsync(parentPath, name, cancellationToken);
+    }
 }

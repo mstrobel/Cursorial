@@ -17,7 +17,7 @@ public class WelcomeViewModel : PageViewModel
 
     public RichText WelcomeTextPreamble
     {
-        get { return field ??= MakeWelcomeText(FigletFonts.SmallSlant, "welcome to", new(Scale: 2, Width: 3)); }
+        get { return field ??= MakeWelcomeText(FigletFonts.SmallSlant, "welcome to", new(Scale: 2)); }
     }
 
     public RichText WelcomeText
@@ -39,13 +39,8 @@ public class WelcomeViewModel : PageViewModel
         var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default), TextTrimming.CharacterEllipsis, WrapMode.NoWrap);
 
         foreach (var line in text.Split('\n'))
-        {
-            if (sizing is {} sz)
-                rtb.SizedText(line, sz, fallback: font);
-            else
-                rtb.Figlet(line, font);
-
-        }
+            rtb.Run(line, new GlyphSource(font, sizing ?? TextSizing.Normal));
+        
         return rtb.Build();
     }
 }

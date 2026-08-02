@@ -280,6 +280,42 @@ public class Section07_ModesTriggers
     }
 
     [Fact]
+    public void B084a_ConvertBack_DoNothing_SkipsSourceWrite_NoWarning()
+    {
+        // Binding.DoNothing from ConvertBack is an INTENTIONAL skip of the source write (WPF
+        // semantics), not a failure: the source is untouched and nothing is traced as a warning.
+        // BooleanConverter.ConvertBack returns DoNothing by design — the TwoWay round-trip must not
+        // write the sentinel (or a spurious 'source write failed') to the view-model.
+        var vm = new Vm { IsDirty = false };
+        var w = new BindWidget { DataContext = vm };
+        BindingDiagnostics.Level = BindingTraceLevel.Warning;
+        w.SetBinding(BindWidget.FlagProperty, new Binding("IsDirty")
+            { Mode = BindingMode.TwoWay, Converter = new BooleanConverter { TrueValue = true, FalseValue = false } });
+
+        w.Flag = true;
+        Assert.False(vm.IsDirty); // DoNothing ⇒ no write-back
+        Assert.DoesNotContain(BindingDiagnostics.RecentEvents,
+                              static e => e.Kind is BindingFailureKind.SourceUpdateFailed
+                                              or BindingFailureKind.ConvertBackFailed);
+    }
+
+    [Fact]
+    public void B084b_ConvertBack_DoNothing_ObjectTypedLeaf_SentinelNeverStored()
+    {
+        // With an OBJECT-typed source leaf nothing would throw on the set — the DoNothing sentinel
+        // itself would be silently stored, corrupting the view-model. It must short-circuit before
+        // the write.
+        var vm = new LeafSwapVm { Leaf = "orig" };
+        var w = new BindWidget { DataContext = vm };
+        w.SetBinding(BindWidget.TextProperty, new Binding("Leaf")
+            { Mode = BindingMode.TwoWay, Converter = new DoNothingBackConverter() });
+        Assert.Equal("orig", w.Text);
+
+        w.Text = "edited";
+        Assert.Equal("orig", vm.Leaf); // the sentinel was never written to the source
+    }
+
+    [Fact]
     public void B085_TargetNullValue_ReverseMapping()
     {
         var vm = new Vm { Name = "x" };
@@ -387,6 +423,12 @@ public class Section07_ModesTriggers
     {
         public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
         public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => UIProperty.UnsetValue;
+    }
+
+    private sealed class DoNothingBackConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
     }
 }
 

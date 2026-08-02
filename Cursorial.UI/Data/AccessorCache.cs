@@ -24,7 +24,12 @@ internal static class AccessorCache
     public static PropertyAccessor ResolveProperty(object instance, in PathSegment segment)
     {
         var instanceType = instance.GetType();
-        var memberName = segment.Kind == PathSegmentKind.TypeQualified ? $"({segment.QualifierType!.Name}.{segment.Name})" : segment.Name!;
+
+        // Keyed by the qualifier's FULL name — two qualifier types sharing a short name (different
+        // namespaces / outer types) must not serve each other's cached accessor.
+        var memberName = segment.Kind == PathSegmentKind.TypeQualified
+            ? $"({segment.QualifierType!.FullName}.{segment.Name})"
+            : segment.Name!;
         var key = new CacheKey(instanceType, memberName);
 
         var snapshot = _propertyAccessors;
@@ -151,8 +156,17 @@ internal static class AccessorCache
         {
             if (segment.QualifiedProperty is { UIProperty: {} uip } && instance is UIObject)
                 return new UIPropertyAccessor(uip);
-            if (segment.QualifiedProperty is { ClrProperty: {} cp })
+
+            // The parse-time PropertyInfo is only usable when the runtime instance is compatible with its
+            // declaring type — invoking it on an unrelated instance throws TargetException (e.g. a transient
+            // inherited DataContext of another type). Otherwise fall through to by-name resolution on the
+            // runtime type, which binds a same-named property or degrades to the graceful PathError.
+            if (segment.QualifiedProperty is { ClrProperty: {} cp } &&
+                cp.DeclaringType?.IsAssignableFrom(instanceType) == true)
+            {
                 return BuildClrAccessor(instanceType, cp);
+            }
+
             var qualifiedClr = instanceType.GetProperty(segment.Name!, BindingFlags.Public | BindingFlags.Instance);
             if (qualifiedClr is not null)
                 return BuildClrAccessor(instanceType, qualifiedClr);

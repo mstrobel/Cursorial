@@ -159,6 +159,28 @@ public class Section16_PropertyPath
         Assert.Equal(9, accessor.GetValue(widget));
     }
 
+    [Fact] // ResolvedProperty is a proper value type: equality compares the WRAPPED member (not the boxed
+    // struct), the hash is null-safe, and a default instance reports unresolved — which keeps the
+    // FromProperties guard live (an ArgumentException, not an NRE downstream).
+    public void P010_ResolvedProperty_Equality_DefaultIsUnresolved()
+    {
+        ResolvedProperty a = BindWidget.TextProperty;
+        ResolvedProperty b = BindWidget.TextProperty;
+
+        Assert.True(a.Equals(b));
+        Assert.True(a == b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+        Assert.True(a.IsResolved);
+        Assert.False(a == ResolvedProperty.Unresolved);
+
+        Assert.False(default(ResolvedProperty).IsResolved);
+        Assert.True(default(ResolvedProperty) == ResolvedProperty.Unresolved);
+        Assert.Equal(0, default(ResolvedProperty).GetHashCode());
+
+        // The guard fires again for a default (unresolved) step instead of NRE-ing on segment use.
+        Assert.Throws<ArgumentException>(static () => BindingPath.FromProperties(new ResolvedProperty[1]));
+    }
+
     private sealed class StubServiceProvider(IPathTypeResolver resolver) : IServiceProvider
     {
         public object? GetService(Type serviceType)

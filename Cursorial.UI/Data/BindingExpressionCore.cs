@@ -987,6 +987,11 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 return false;
             }
 
+            // DoNothing is an INTENTIONAL skip of the source write (WPF semantics), not a failure:
+            // no write, no warning — and never let the sentinel itself reach the source.
+            if (ReferenceEquals(result, Binding.DoNothing))
+                return false;
+
             sourceValue = result;
             return true;
         }

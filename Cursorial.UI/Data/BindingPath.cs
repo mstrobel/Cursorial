@@ -50,7 +50,8 @@ internal readonly struct PathSegment
     /// <summary>
     /// The <c>UIProperty</c> or <c>PropertyInfo</c> registered on, declared by, or inherited by
     /// <see cref="QualifierType"/> under <see cref="Name"/> (attached OR regular), when one exists;
-    /// <see langword="null"/> when the member was not type-qualified.</summary>
+    /// <see cref="ResolvedProperty.Unresolved"/> when the segment is not type-qualified, or when the
+    /// member was not statically found and resolves by name on the runtime source.</summary>
     public ResolvedProperty QualifiedProperty { get; }
 
     public static PathSegment Property(string name) => new(PathSegmentKind.Property, name, 0, null);
@@ -75,8 +76,8 @@ internal readonly struct ResolvedProperty : IEquatable<ResolvedProperty>
     public static readonly ResolvedProperty Unresolved;
 
     [FieldOffset(0)]
-    private readonly object _property;
-    
+    private readonly object? _property;
+
     private ResolvedProperty(UIProperty property)
     {
         _property = property;
@@ -117,11 +118,11 @@ internal readonly struct ResolvedProperty : IEquatable<ResolvedProperty>
 
     public static implicit operator ResolvedProperty(PropertyInfo property) => new(property);
 
-    public bool Equals(ResolvedProperty other) => _property?.Equals(other) ?? false;
+    public bool Equals(ResolvedProperty other) => Equals(_property, other._property);
 
     public override bool Equals(object? obj) => obj is ResolvedProperty other && Equals(other);
 
-    public override int GetHashCode() => _property.GetHashCode();
+    public override int GetHashCode() => _property?.GetHashCode() ?? 0;
 
     public static bool operator ==(ResolvedProperty left, ResolvedProperty right) => left.Equals(right);
 
@@ -369,19 +370,35 @@ public sealed class BindingPath
 
             _pos++; // consume ')'
 
-            if (_resolver.Resolve(typeToken) is {} ownerType)
+            if (_resolver.Resolve(typeToken) is not {} ownerType)
+                throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
+
+            // A registered UIProperty on the owner (attached OR regular) if one exists; else a CLR property found
+            // statically on the owner. Only the OWNER type must resolve at parse time: when neither lookup finds
+            // the member, the segment stays unresolved here and the member resolves by name on the runtime source
+            // (the disambiguation/clarity case — not necessarily attached; e.g. a member declared on a base
+            // interface, or one that exists only on runtime subtypes).
+            if (UIPropertyRegistry.Find(ownerType, member) is {} uip)
+                return PathSegment.TypeQualified(ownerType, member, uip);
+
+            if (FindClrProperty(ownerType, member) is {} cp)
+                return PathSegment.TypeQualified(ownerType, member, cp);
+
+            return PathSegment.TypeQualified(ownerType, member, ResolvedProperty.Unresolved);
+        }
+
+        private static PropertyInfo? FindClrProperty(Type ownerType, string member)
+        {
+            try
             {
-                // A registered UIProperty on the owner (attached OR regular) if one exists; else null and the member
-                // resolves as a plain CLR property at runtime (the disambiguation/clarity case — not necessarily attached).
-
-                if (UIPropertyRegistry.Find(ownerType, member) is {} uip)
-                    return PathSegment.TypeQualified(ownerType, member, uip);
-
-                if (ownerType.GetProperty(member, ClrPropertyFlags) is {} cp)
-                    return PathSegment.TypeQualified(ownerType, member, cp);
+                return ownerType.GetProperty(member, ClrPropertyFlags);
             }
-
-            throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
+            catch (AmbiguousMatchException)
+            {
+                // A shadowed ('new') property is ambiguous under these flags; treat it as a static miss so the
+                // member resolves by name on the runtime source instead of escaping as a raw reflection exception.
+                return null;
+            }
         }
 
         private PathSegment ParseIndexer()

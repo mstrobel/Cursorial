@@ -225,7 +225,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Accent,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.AccentBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -252,7 +255,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Info,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.InfoBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -292,7 +298,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Cool,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.CoolBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -332,7 +341,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Danger,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.DangerBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
@@ -372,7 +384,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Success,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.SuccessBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -412,7 +427,10 @@ internal static class CursorialThemeStyles
                    Key = ThemeClassKeys.Warning,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.WarningBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)

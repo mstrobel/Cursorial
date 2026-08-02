@@ -24,10 +24,13 @@ public class DataGridViewModel : PageViewModel
                                       "F6 walks the bands (header: ⏎ sorts, ␣ adds a level, ^G groups, ⌥↓ filters); " +
                                       "F2/⏎ edits.";
 
+    public override bool IsContentScrollable => false;
+
+    public enum OrderStatus { Shipped, Processing, [Display(Name = "On Hold")] OnHold, Canceled };
+
     private static readonly string[] Regions = ["East", "West", "North", "South"];
     private static readonly string[] Reps = ["A. Chen", "K. Brooks", "M. Ortiz", "S. Kim", "R. Patel"];
-    public enum Status { Shipped, Processing, [Display(Name = "On Hold")] OnHold, Canceled };
-    private Status[] Statuses = Enum.GetValues<Status>();
+    private static readonly OrderStatus[] OrderStatuses = Enum.GetValues<OrderStatus>();
 
     private readonly Random _random = new(2026);
     private UITimer? _feed;
@@ -45,7 +48,7 @@ public class DataGridViewModel : PageViewModel
                 Rep = Reps[_random.Next(Reps.Length)],
                 Amount = _random.Next(1_000, 50_000),
                 Margin = Math.Round(_random.NextDouble() * 0.5, 2),
-                Status = Statuses[_random.Next(Statuses.Length)],
+                OrderStatus = OrderStatuses[_random.Next(OrderStatuses.Length)],
             });
         }
         Orders = new ObservableCollection<OrderRow>(rows);
@@ -103,7 +106,7 @@ public class DataGridViewModel : PageViewModel
                     Rep = Reps[_random.Next(Reps.Length)],
                     Amount = _random.Next(1_000, 50_000),
                     Margin = Math.Round(_random.NextDouble() * 0.5, 2),
-                    Status = Statuses[_random.Next(Statuses.Length)],
+                    OrderStatus = OrderStatuses[_random.Next(OrderStatuses.Length)],
                 });
             }
         }
@@ -119,7 +122,7 @@ public class DataGridViewModel : PageViewModel
 
         public decimal Amount { get => field; set => Set(ref field, value); }
         public double Margin { get; init => Set(ref field, value); }
-        public Status Status { get => field; set => Set(ref field, value); }
+        public OrderStatus OrderStatus { get => field; set => Set(ref field, value); }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 

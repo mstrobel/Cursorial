@@ -24,19 +24,22 @@ namespace Cursorial.Rendering.Text;
 /// </remarks>
 public sealed class TextFormatter
 {
-    private const char SoftHyphen = '­';
+    public const string DefaultEllipsis = "…";
+    public const char SoftHyphen = '­';
+    public const WrapMode DefaultWrap = WrapMode.WordWrap;
+    public const TextTrimming DefaultTrim = TextTrimming.None;
 
     /// <summary>Default wrap mode when a paragraph doesn't specify its own.</summary>
-    public WrapMode Wrap { get; init; } = WrapMode.WordWrap;
+    public WrapMode Wrap { get; init; } = DefaultWrap;
 
     /// <summary>Default trimming when a paragraph doesn't specify its own; also used for document-level (MaxRows) trim.</summary>
-    public TextTrimming Trim { get; init; } = TextTrimming.None;
+    public TextTrimming Trim { get; init; } = DefaultTrim;
 
     /// <summary>Default horizontal alignment when a paragraph doesn't specify its own.</summary>
     public TextAlignment Alignment { get; init; } = TextAlignment.Left;
 
     /// <summary>Ellipsis appended by <see cref="TextTrimming.CharacterEllipsis"/> and <see cref="TextTrimming.WordEllipsis"/>.</summary>
-    public string Ellipsis { get; init; } = "…";
+    public string Ellipsis { get; init; } = DefaultEllipsis;
 
     /// <summary>Cells per tab character. Tabs expand to spaces of the supplied style at format time.</summary>
     public int TabWidth { get; init; } = 4;
@@ -53,7 +56,35 @@ public sealed class TextFormatter
         OutputCapabilities? capabilities = null,
         bool fillEntireBounds = false)
     {
+        return FormatCore(text, availableColumns, maxRows, capabilities, fillEntireBounds, plainTextOnly: false);
+    }
+
+    public string FormatPlainText(RichText text, int availableColumns, int? maxRows = null)
+        => FormatPlainText(new StringBuilder(), text, availableColumns, maxRows).ToString();
+
+    public StringBuilder FormatPlainText(StringBuilder sb, RichText text, int availableColumns, int? maxRows = null)
+    {
+        var ft = FormatCore(text, availableColumns, maxRows, OutputCapabilities.None, false, plainTextOnly: true);
+
+        foreach (var block in ft.Blocks.OfType<FormattedParagraph>())
+        {
+            foreach (var inline in block.Lines)
+            {
+                if (sb.Length > 0) sb.AppendLine();
+
+                foreach (var run in inline.Runs.OfType<FormattedTextRun>())
+                    sb.Append(run.Text);
+            }
+        }
+
+        return sb;
+    }
+
+    private FormattedText FormatCore(RichText text, int availableColumns, int? maxRows, OutputCapabilities? capabilities,
+                                     bool fillEntireBounds, bool plainTextOnly)
+    {
         ArgumentNullException.ThrowIfNull(text);
+
         if (availableColumns <= 0)
             throw new ArgumentOutOfRangeException(nameof(availableColumns), availableColumns, "Available columns must be positive.");
         if (maxRows is <= 0)
@@ -75,7 +106,10 @@ public sealed class TextFormatter
             int budget = maxRows is { } cap ? cap - rowsBeforeBlock : int.MaxValue;
             if (budget <= 0) break;
 
-            FormattedBlock formatted = FormatBlock(block, availableColumns, caps);
+            FormattedBlock? formatted = FormatBlock(block, availableColumns, caps, plainTextOnly); 
+
+            if (formatted is null) continue;
+
             // Carry margin onto the formatted block so the painter knows the stacking gap.
             formatted = formatted with { Margin = block.Margin };
 
@@ -108,14 +142,15 @@ public sealed class TextFormatter
                                  fillEntireBounds);
     }
 
-    private FormattedBlock FormatBlock(Block block, int availableColumns, OutputCapabilities capabilities) =>
+    private FormattedBlock? FormatBlock(Block block, int availableColumns, OutputCapabilities capabilities,
+                                        bool plainTextOnly) =>
         block switch
         {
-            TextParagraph p  => FormatParagraph(p, availableColumns, capabilities),
-            HorizontalRule r => FormatHorizontalRule(r, availableColumns),
-            FigletBlock f    => FormatFigletBlock(f, availableColumns),
-            SizedTextBlock s => FormatSizedTextBlock(s, availableColumns, capabilities),
-            BlockContent c   => FormatBlockContent(c, availableColumns, capabilities),
+            TextParagraph p  => FormatParagraph(p, availableColumns, capabilities, plainTextOnly),
+            HorizontalRule r => plainTextOnly ? null : FormatHorizontalRule(r, availableColumns),
+            FigletBlock f    => FormatFigletBlock(f, availableColumns, plainTextOnly),
+            SizedTextBlock s => FormatSizedTextBlock(s, availableColumns, capabilities, plainTextOnly),
+            BlockContent c   => plainTextOnly ? null : FormatBlockContent(c, availableColumns, capabilities),
             _                => throw new NotSupportedException($"Block type {block.GetType().Name} is not supported by TextFormatter.")
         };
 
@@ -130,25 +165,72 @@ public sealed class TextFormatter
         return new FormattedHorizontalRule(rule.Glyph, rule.Style, rule.Alignment ?? Alignment, new Size(availableColumns, 1));
     }
 
-    private FormattedFigletBlock FormatFigletBlock(FigletBlock block, int availableColumns)
+    private FormattedBlock FormatFigletBlock(FigletBlock block, int availableColumns, bool plainTextOnly)
     {
+        if (plainTextOnly)
+        {
+            var lines = PlainTextToLines(availableColumns, OutputCapabilities.None, block.Text);
+            return FormatParagraphCore(lines, alignment: block.Alignment ?? Alignment);
+        }
+
         var measured = block.Face.Measure(block.Text);
         // Clip to the column budget; rows are whatever the face produces.
         int columns = Math.Min(measured.Columns, availableColumns);
         return new FormattedFigletBlock(block.Text, block.Face, block.Style, block.Alignment ?? Alignment,
-                                        new Size(columns, measured.Rows));
+                                        new Size(columns, measured.Rows), measured.Columns > availableColumns);
     }
 
-    private FormattedSizedTextBlock FormatSizedTextBlock(
-        SizedTextBlock block, int availableColumns, OutputCapabilities capabilities)
+    private FormattedBlock FormatSizedTextBlock(SizedTextBlock block, int availableColumns,
+                                                OutputCapabilities capabilities, bool plainTextOnly)
     {
         // Use ScaledText to compute the realized footprint — it already encodes the
         // "OSC 66 if supported, otherwise font fallback" logic and the bundled-font selection
         // when no explicit fallback is given.
-        var scaled = new Content.ScaledText(block.Text, block.Sizing, block.Fallback);
+
+        Size cellSize = plainTextOnly ? new Size(1,1) : block.Sizing.GetGlyphSize();
+
+        var lines = PlainTextToLines(availableColumns, capabilities, block.Text, cellSize);
+
+        if (plainTextOnly)
+            return FormatParagraphCore(lines, alignment: block.Alignment ?? Alignment);
+
+        var sb = new StringBuilder(block.Text.Length + lines.Count - 1);
+        var trimmed = false;
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (i > 0) sb.AppendLine();
+            lines[i].ToPlainText(sb);
+            if (lines[i].Trimmed) trimmed = true;
+        }
+
+        var splitText = sb.ToString();
+        var scaled = new Content.ScaledText(splitText, block.Sizing, block.Fallback);
         var measured = scaled.Measure(new Size(availableColumns, int.MaxValue), capabilities);
+
         return new FormattedSizedTextBlock(
-            block.Text, block.Sizing, block.Style, block.Fallback, block.Alignment ?? Alignment, measured);
+            splitText,
+            block.Sizing,
+            block.Style,
+            block.Fallback,
+            block.Alignment ?? Alignment,
+            measured,
+            trimmed);
+    }
+
+    private List<LineDraft> PlainTextToLines(int availableColumns, OutputCapabilities capabilities, string blockText,
+                                             Size? cellSize = null)
+    {
+        var atoms = new Tokenizer(this, availableColumns, capabilities).Run([new TextRun(blockText)]);
+        var lines = PackLines(atoms, availableColumns, Wrap, cellSize);
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].ActualWidth > availableColumns)
+                lines[i] = TrimLine(lines[i], availableColumns, Trim, forceEllipsis: false);
+        }
+
+        return lines;
     }
 
     private FormattedContentBlock FormatBlockContent(
@@ -160,7 +242,8 @@ public sealed class TextFormatter
         return new FormattedContentBlock(block.Content, block.Alignment ?? Alignment, size);
     }
 
-    private FormattedParagraph FormatParagraph(TextParagraph paragraph, int availableColumns, OutputCapabilities capabilities)
+    private FormattedParagraph FormatParagraph(TextParagraph paragraph, int availableColumns,
+                                               OutputCapabilities capabilities, bool plainTextOnly)
     {
         // 1. Decompose inlines into wrap atoms with applied glyph maps and soft-hyphen markers.
         var atoms = new Tokenizer(this, availableColumns, capabilities).Run(paragraph.Inlines);
@@ -178,24 +261,45 @@ public sealed class TextFormatter
         }
 
         var usedWidth = 0;
+        var trimmedLines = false;
+
         for (int i = 0; i < lines.Count; i++)
         {
-            if (lines[i].Width > availableColumns)
+            if (lines[i].ActualWidth > availableColumns)
+            {
                 lines[i] = TrimLine(lines[i], availableColumns, paragraph.Trim, forceEllipsis: false);
-            usedWidth = Math.Max(usedWidth, lines[i].Width);
+                trimmedLines = true;
+            }
+            usedWidth = Math.Max(usedWidth, lines[i].ActualWidth);
         }
+
+        return FormatParagraphCore(lines, 
+                                   usedWidth,
+                                   plainTextOnly ? TextAlignment.Left : paragraph.Alignment,
+                                   trimmedLines);
+    }
+
+    private FormattedParagraph FormatParagraphCore(List<LineDraft> lines, int? knownUsedWidth = null,
+                                                   TextAlignment? alignment = null, bool trimmedLines = false)
+    {
+        var usedWidth = knownUsedWidth ?? lines.Max(l => l.ActualWidth);
 
         // 4. Alignment converts LineDraft → FormattedLine.
         var aligned = ImmutableArray.CreateBuilder<FormattedLine>(lines.Count);
+
         for (int i = 0; i < lines.Count; i++)
         {
             bool isLastLine = i == lines.Count - 1;
             bool endedByHardBreak = lines[i].EndedByHardBreak;
-            aligned.Add(ApplyAlignment(lines[i], usedWidth, paragraph.Alignment ?? Alignment, isLastLine || endedByHardBreak));
+            aligned.Add(ApplyAlignment(lines[i], usedWidth, alignment ?? Alignment, isLastLine || endedByHardBreak));
         }
 
         int width = aligned.Count == 0 ? 0 : aligned.Max(l => l.Columns);
-        return new FormattedParagraph(aligned.ToImmutable(), new Size(width, aligned.Count), paragraph.Alignment ?? Alignment);
+
+        return new FormattedParagraph(aligned.ToImmutable(),
+                                      new Size(width, aligned.Count),
+                                      alignment ?? Alignment,
+                                      trimmedLines);
     }
 
     // ---- Tokenization ----
@@ -388,17 +492,18 @@ public sealed class TextFormatter
 
     // ---- Line packing ----
 
-    private static List<LineDraft> PackLines(List<Atom> atoms, int columns, WrapMode mode)
+    private static List<LineDraft> PackLines(List<Atom> atoms, int columns, WrapMode mode, Size? cellSize = null)
     {
+        var sz = cellSize ?? new  Size(1, 1);
         var lines = new List<LineDraft>();
-        var current = new LineDraft();
+        var current = new LineDraft(sz);
 
         // ReSharper disable AccessToModifiedClosure
         void Emit(bool hardBreak)
         {
             current.EndedByHardBreak = hardBreak;
             lines.Add(current);
-            current = new LineDraft();
+            current = new LineDraft(sz);
         }
         // ReSharper restore AccessToModifiedClosure
 
@@ -415,7 +520,7 @@ public sealed class TextFormatter
                     break;
 
                 case SpaceAtom space:
-                    if (current.Width == 0)
+                    if (current.ActualWidth == 0)
                     {
                         // Leading whitespace dropped (except NoWrap, which keeps everything).
                         if (mode == WrapMode.NoWrap)
@@ -424,7 +529,7 @@ public sealed class TextFormatter
                         break;
                     }
 
-                    if (mode == WrapMode.NoWrap || current.Width + space.Width <= columns)
+                    if (mode == WrapMode.NoWrap || current.ActualWidth + space.Width * sz.Columns <= columns)
                     {
                         current.AppendSpace(space);
                         i++;
@@ -439,51 +544,53 @@ public sealed class TextFormatter
                     break;
 
                 case WordAtom word:
-                    PlaceWord(word, ref current, columns, mode, Emit);
+                    PlaceWord(word, ref current, columns, sz, mode, Emit);
                     i++;
                     break;
             }
         }
 
-        if (current.Width > 0 || lines.Count == 0)
+        if (current.ActualWidth > 0 || lines.Count == 0)
             lines.Add(current);
 
         return lines;
     }
 
-    private static void PlaceWord(
-        WordAtom word, ref LineDraft current, int columns, WrapMode mode, Action<bool> emit)
+    private static void PlaceWord(WordAtom word, ref LineDraft current, int columns, Size cellSize, WrapMode mode,
+                                  Action<bool> emit)
     {
         // Easy case: fits as-is, or we're in NoWrap and never wrap.
-        if (mode == WrapMode.NoWrap || current.Width + word.Width <= columns)
+        var cellWidth = cellSize.Columns;
+
+        if (mode == WrapMode.NoWrap || current.ActualWidth + word.Width * cellWidth <= columns)
         {
             current.AppendWord(word);
             return;
         }
 
-        if (current.Width == 0)
+        if (current.ActualWidth == 0)
         {
             // Word wider than the budget on an empty line. WordWrapOverflow lets it overflow;
             // WordWrap and CharacterWrap split — WordWrap prefers soft hyphens when available,
             // then falls back to a character-boundary split.
-            if (mode == WrapMode.WordWrapOverflow)
+            if (mode is WrapMode.WordWrapOverflow)
             {
                 current.AppendWord(word);
                 return;
             }
 
             if (mode == WrapMode.WordWrap &&
-                TrySplitAtSoftBreak(word, columns, out var first, out var rest))
+                TrySplitAtSoftBreak(word, columns, cellSize, out var first, out var rest))
             {
                 current.AppendWord(first);
                 emit(false);
                 // Rest may still be too long — recurse.
-                PlaceWord(rest, ref current, columns, mode, emit);
+                PlaceWord(rest, ref current, columns, cellSize, mode, emit);
                 return;
             }
 
-            var (head, tail) = SplitWordAtChar(word, columns);
-            if (head.Width == 0 && tail.Width == word.Width)
+            var (head, tail) = SplitWordAtChar(word, cellSize, columns);
+            if (head.Width == 0 && tail.Width * cellWidth == word.Width * cellWidth)
             {
                 // SplitWordAtChar made no progress — the leading run is unsplittable (atomic
                 // inline content) and wider than the column budget. Place it on this empty line
@@ -496,40 +603,43 @@ public sealed class TextFormatter
             if (tail.Width > 0)
             {
                 emit(false);
-                PlaceWord(tail, ref current, columns, mode, emit);
+                PlaceWord(tail, ref current, columns, cellSize, mode, emit);
             }
             return;
         }
 
         // Current line has content; the word doesn't fit.
-        int remaining = columns - current.Width;
+        int remaining = columns - current.ActualWidth;
 
         switch (mode)
         {
             case WrapMode.WordWrap:
             case WrapMode.WordWrapOverflow:
+                // Even in CharacterWrap mode, prefer word wrapping unless it would result in a highly-truncated
+                // line. The threshold for this is currently hard-coded to less than 2/3 of the line being filled.
+            case WrapMode.CharacterWrap when remaining < columns * 2 / 3:
                 {
-                    if (TrySplitAtSoftBreak(word, remaining, out var first, out var rest))
+                    if (TrySplitAtSoftBreak(word, remaining, cellSize, out var first, out var rest))
                     {
                         current.AppendWord(first);
                         emit(false);
-                        PlaceWord(rest, ref current, columns, mode, emit);
+                        PlaceWord(rest, ref current, columns, cellSize, mode, emit);
                         return;
                     }
 
                     current.TrimTrailingSpaces();
                     emit(false);
-                    PlaceWord(word, ref current, columns, mode, emit);
+                    PlaceWord(word, ref current, columns, cellSize, mode, emit);
                     return;
                 }
 
             case WrapMode.CharacterWrap:
                 {
-                    var (head, tail) = SplitWordAtChar(word, remaining);
-                    if (head.Width > 0) current.AppendWord(head);
+                    var (head, tail) = SplitWordAtChar(word, cellSize, remaining);
+                    if (head.Width * cellWidth > 0) current.AppendWord(head);
                     emit(false);
-                    if (tail.Width > 0)
-                        PlaceWord(tail, ref current, columns, mode, emit);
+                    if (tail.Width * cellWidth > 0)
+                        PlaceWord(tail, ref current, columns, cellSize, mode, emit);
                     return;
                 }
         }
@@ -539,8 +649,8 @@ public sealed class TextFormatter
     /// Largest soft-hyphen split such that the first piece (plus a "-" hyphen) fits in
     /// <paramref name="maxWidth"/> cells. Returns false when no soft break is usable.
     /// </summary>
-    private static bool TrySplitAtSoftBreak(
-        WordAtom word, int maxWidth, out WordAtom first, out WordAtom rest)
+    private static bool TrySplitAtSoftBreak(WordAtom word, int maxWidth, Size cellSize, out WordAtom first,
+                                            out WordAtom rest)
     {
         first = null!;
         rest = null!;
@@ -549,7 +659,7 @@ public sealed class TextFormatter
         for (int i = word.SoftBreaks.Length - 1; i >= 0; i--)
         {
             var sb = word.SoftBreaks[i];
-            if (sb.WidthBefore + 1 > maxWidth) continue;
+            if (sb.WidthBefore * cellSize.Columns + 1 > maxWidth) continue;
 
             // first = runs[0..FragmentIndex] + "-"
             var firstRuns = ImmutableArray.CreateBuilder<FormattedRun>(sb.FragmentIndex + 1);
@@ -583,11 +693,12 @@ public sealed class TextFormatter
     /// holds whatever didn't fit. When maxWidth ≤ 0 or the first grapheme alone exceeds it, Head
     /// is empty.
     /// </summary>
-    private static (WordAtom Head, WordAtom Tail) SplitWordAtChar(WordAtom word, int maxWidth)
+    private static (WordAtom Head, WordAtom Tail) SplitWordAtChar(WordAtom word, Size cellSize, int maxWidth)
     {
         if (maxWidth <= 0)
             return (Empty(), word);
 
+        var cellWidth = cellSize.Columns;
         var headRuns = ImmutableArray.CreateBuilder<FormattedRun>();
         var tailRuns = ImmutableArray.CreateBuilder<FormattedRun>();
         int headWidth = 0;
@@ -605,10 +716,12 @@ public sealed class TextFormatter
             // include it; otherwise push it (and everything after) to the tail.
             if (run is not FormattedTextRun text)
             {
-                if (headWidth + run.CellWidth <= maxWidth)
+                var runWidth = run.CellWidth * cellWidth;
+
+                if (headWidth + runWidth <= maxWidth)
                 {
                     headRuns.Add(run);
-                    headWidth += run.CellWidth;
+                    headWidth += runWidth;
                 }
                 else
                 {
@@ -626,7 +739,7 @@ public sealed class TextFormatter
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = GraphemeWidth.ClusterWidth(g);
+                int gw = GraphemeWidth.ClusterWidth(g) * cellWidth;
 
                 if (splittingInProgress && headWidth + headFragmentWidth + gw <= maxWidth)
                 {
@@ -645,17 +758,27 @@ public sealed class TextFormatter
                 // The head keeps this piece's logical start; the tail begins headFragmentWidth further along
                 // the source run. Both share the run's scope, so a char-wrapped brushed run stays continuous.
                 headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink)
-                                 { Tag = text.Tag, LogicalStart = text.LogicalStart, Scope = text.Scope });
+                             {
+                                 Tag = text.Tag,
+                                 LogicalStart = text.LogicalStart,
+                                 Scope = text.Scope
+                             });
                 headWidth += headFragmentWidth;
             }
 
             if (tailFragment.Length > 0)
+            {
                 tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink)
-                                 { Tag = text.Tag, LogicalStart = text.LogicalStart + headFragmentWidth, Scope = text.Scope });
+                             {
+                                 Tag = text.Tag,
+                                 LogicalStart = text.LogicalStart + headFragmentWidth / cellWidth,
+                                 Scope = text.Scope
+                             });
+            }
         }
 
-        var head = new WordAtom(headRuns.ToImmutable(), headWidth, ImmutableArray<SoftBreakPoint>.Empty);
-        var tail = new WordAtom(tailRuns.ToImmutable(), word.Width - headWidth, word.SoftBreaks);
+        var head = new WordAtom(headRuns.ToImmutable(), headWidth / cellWidth, ImmutableArray<SoftBreakPoint>.Empty);
+        var tail = new WordAtom(tailRuns.ToImmutable(), word.Width - headWidth / cellWidth, word.SoftBreaks);
         return (head, tail);
 
         static WordAtom Empty() => new(ImmutableArray<FormattedRun>.Empty, 0, ImmutableArray<SoftBreakPoint>.Empty);
@@ -673,7 +796,7 @@ public sealed class TextFormatter
         if (trim == TextTrimming.None)
             return line;
 
-        bool overflows = line.Width > maxWidth;
+        bool overflows = line.ActualWidth > maxWidth;
 
         if (!overflows && !forceEllipsis) return line;
 
@@ -688,29 +811,31 @@ public sealed class TextFormatter
 
     private static LineDraft ClipDraft(LineDraft line, int maxWidth)
     {
-        var (head, _) = SplitWordAtChar(line.AsWord(), maxWidth);
-        return LineDraft.FromWord(head, trimmed: true);
+        var (head, _) = SplitWordAtChar(line.AsWord(), line.CellSize, maxWidth);
+        return LineDraft.FromWord(head, line.CellSize, trimmed: true);
     }
 
     private LineDraft AppendEllipsisCharacter(LineDraft line, int maxWidth)
     {
-        int ellipsisWidth = GraphemeWidth.StringWidth(Ellipsis);
+        var cellWidth = line.CellSize.Columns;
+        int ellipsisWidth = GraphemeWidth.StringWidth(Ellipsis) * cellWidth;
 
-        if (line.Width + ellipsisWidth <= maxWidth)
+        if (line.ActualWidth + ellipsisWidth <= maxWidth)
         {
-            line.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(line.Runs), null), ellipsisWidth);
+            line.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(line.Runs), null), ellipsisWidth / cellWidth);
             return line;
         }
 
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
         var clipped = ClipDraft(line, budget);
-        clipped.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(clipped.Runs), null), ellipsisWidth);
+        clipped.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(clipped.Runs), null), ellipsisWidth / cellWidth);
         return clipped;
     }
 
     private LineDraft AppendEllipsisAtWordBoundary(LineDraft line, int maxWidth)
     {
-        int ellipsisWidth = GraphemeWidth.StringWidth(Ellipsis);
+        var cellWidth = line.CellSize.Columns;
+        int ellipsisWidth = GraphemeWidth.StringWidth(Ellipsis) * cellWidth;
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
 
         // Walk forward through the line accumulating cell width; remember the latest "space"
@@ -725,9 +850,11 @@ public sealed class TextFormatter
             {
                 // Content runs are atomic; if they fit in budget, advance; otherwise fall back
                 // to character ellipsis (we'd need a way to fold ellipsis into content otherwise).
-                cumulative += line.Runs[r].CellWidth;
+                cumulative += line.Runs[r].CellWidth * cellWidth;
+
                 if (cumulative > budget)
                     return AppendEllipsisCharacter(line, maxWidth);
+
                 continue;
             }
 
@@ -737,7 +864,7 @@ public sealed class TextFormatter
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = GraphemeWidth.ClusterWidth(g);
+                int gw = GraphemeWidth.ClusterWidth(g) * cellWidth;
 
                 if (cumulative + gw > budget)
                 {
@@ -745,7 +872,7 @@ public sealed class TextFormatter
                     {
                         var draft = TruncateAt(line, cutRunIndex, cutCharIndex);
                         var style = LastTextRunStyle(draft.Runs);
-                        draft.Append(new FormattedTextRun(Ellipsis, style, null), ellipsisWidth);
+                        draft.Append(new FormattedTextRun(Ellipsis, style, null), ellipsisWidth / cellWidth);
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
@@ -765,7 +892,7 @@ public sealed class TextFormatter
 
         // Whole line fits already — append ellipsis directly.
         var styleEnd = LastTextRunStyle(line.Runs);
-        line.Append(new FormattedTextRun(Ellipsis, styleEnd, null), ellipsisWidth);
+        line.Append(new FormattedTextRun(Ellipsis, styleEnd, null), ellipsisWidth / cellWidth);
         return line;
     }
 
@@ -783,7 +910,7 @@ public sealed class TextFormatter
     /// </summary>
     private static LineDraft TruncateAt(LineDraft line, int cutRunIndex, int cutCharIndex)
     {
-        var draft = new LineDraft();
+        var draft = new LineDraft(line.CellSize);
 
         for (int r = 0; r < cutRunIndex; r++)
         {
@@ -812,11 +939,11 @@ public sealed class TextFormatter
         if (paragraph.Lines.Length <= budget) return paragraph;
 
         var kept = paragraph.Lines.Take(budget).ToImmutableArray();
-        var last = LineDraft.FromFormatted(kept[^1]);
+        var last = LineDraft.FromFormatted(kept[^1], new Size(1, 1));
         var trimmed = TrimLine(last, columns, Trim, forceEllipsis: true);
         kept = kept.SetItem(budget - 1, trimmed.ToFormattedLine());
 
-        return new FormattedParagraph(kept, new Size(columns, budget), paragraph.Alignment);
+        return new FormattedParagraph(kept, new Size(columns, budget), paragraph.Alignment, true);
     }
 
     // ---- Alignment ----
@@ -914,10 +1041,21 @@ public sealed class TextFormatter
     /// </summary>
     private sealed class LineDraft
     {
+        /// <summary>
+        /// Mutable line buffer used during layout. Converts to an immutable
+        /// <see cref="FormattedLine"/> only at the alignment step.
+        /// </summary>
+        public LineDraft(Size cellSize)
+        {
+            CellSize = cellSize;
+        }
+
+        public Size CellSize { get; }
         public List<FormattedRun> Runs { get; } = [];
         public int Width { get; set; }
+        public int ActualWidth => Width * CellSize.Columns;
         public bool EndedByHardBreak { get; set; }
-        public bool Trimmed { get; set; }
+        public bool Trimmed { get; private set; }
 
         public void AppendWord(WordAtom word)
         {
@@ -952,16 +1090,28 @@ public sealed class TextFormatter
 
         public FormattedLine ToFormattedLine() => new([..Runs], Width, Trimmed);
 
-        public static LineDraft FromWord(WordAtom word, bool trimmed = false)
+        public void ToPlainText(StringBuilder sb)
         {
-            var draft = new LineDraft { Width = word.Width, Trimmed = trimmed };
+            if (Runs.Count == 0)
+                return;
+
+            foreach (var run in Runs)
+            {
+                if (run is FormattedTextRun ftr)
+                    sb.Append(ftr.Text);
+            }
+        }
+
+        public static LineDraft FromWord(WordAtom word, Size cellSize, bool trimmed = false)
+        {
+            var draft = new LineDraft(cellSize) { Width = word.Width, Trimmed = trimmed };
             foreach (var run in word.Runs) draft.Runs.Add(run);
             return draft;
         }
 
-        public static LineDraft FromFormatted(FormattedLine line)
+        public static LineDraft FromFormatted(FormattedLine line, Size cellSize)
         {
-            var draft = new LineDraft { Width = line.Columns };
+            var draft = new LineDraft(cellSize) { Width = line.Columns };
             foreach (var run in line.Runs) draft.Runs.Add(run);
             return draft;
         }

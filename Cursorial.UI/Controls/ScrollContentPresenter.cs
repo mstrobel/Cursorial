@@ -146,7 +146,7 @@ public class ScrollContentPresenter : UIElement
             if (ReferenceEquals(_content, value))
                 return;
 
-            if (_content is { } old)
+            if (_content is {} old)
             {
                 // Symmetric with the adoption below: a visual-only host releases only the visual link.
                 if (_contentLogicallyOwned)
@@ -262,13 +262,26 @@ public class ScrollContentPresenter : UIElement
         var canScrollVertically = CanScrollVertically;
         var extent = Size.Empty;
 
-        if (_content is { } content)
+        if (_content is {} content)
         {
+            // First pass: measure unbounded, since that's the sentinel some controls look for.
             content.Measure(
-                new Size(canScrollHorizontally ? LayoutLimits.MaxScrollExtent : availableSize.Columns,
-                         canScrollVertically ? LayoutLimits.MaxScrollExtent : availableSize.Rows));
+                new Size(canScrollHorizontally ? LayoutMath.Unbounded : availableSize.Columns,
+                         canScrollVertically ? LayoutMath.Unbounded : availableSize.Rows));
 
             var desired = content.DesiredSize;
+
+            // Optional second pass: measure again constrained to LayoutLimits.MaxScrollExtent only if the content
+            // wanted more space than we can offer.
+            if (desired.Columns > LayoutLimits.MaxScrollExtent || desired.Rows > LayoutLimits.MaxScrollExtent)
+            {
+                content.Measure(
+                    new Size(canScrollHorizontally ? LayoutLimits.MaxScrollExtent : availableSize.Columns,
+                             canScrollVertically ? LayoutLimits.MaxScrollExtent : availableSize.Rows));
+
+                desired = content.DesiredSize;
+            }
+
             var columns = Math.Min(desired.Columns, LayoutLimits.MaxScrollExtent);
             var rows = Math.Min(desired.Rows, LayoutLimits.MaxScrollExtent);
 
@@ -319,7 +332,7 @@ public class ScrollContentPresenter : UIElement
         // panel realizes only its band, so it must be constrained to what it will get, not the full extent). On a
         // scrollable axis the available size can be Unbounded under an unconstrained parent; clamp it to a FINITE
         // ceiling exactly as the legacy path does, so a virtualizing panel never receives an int.MaxValue window.
-        if (_content is { } content)
+        if (_content is {} content)
             content.Measure(
                 new Size(canScrollHorizontally ? Math.Min(availableSize.Columns, LayoutLimits.MaxScrollExtent) : availableSize.Columns,
                          canScrollVertically ? Math.Min(availableSize.Rows, LayoutLimits.MaxScrollExtent) : availableSize.Rows));
@@ -375,7 +388,7 @@ public class ScrollContentPresenter : UIElement
         if (_scrollHost is { IsScrollClient: true } host)
             host.SetViewport(finalSize);
 
-        if (_content is { } content)
+        if (_content is {} content)
         {
             content.Arrange(
                 new Rect(

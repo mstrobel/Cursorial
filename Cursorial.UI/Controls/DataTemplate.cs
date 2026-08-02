@@ -34,7 +34,7 @@ public class DataTemplate
             throw new InvalidOperationException("This DataTemplate has no Content to build.");
 
         var scope = new NameScopeDictionary();
-        var context = new TemplateBuildContext(templatedParent: null, scope);
+        var context = new TemplateBuildContext(null, scope);
 
         // Values authored inside data-template content land at LOCAL priority — the template-
         // instantiation scope is deliberately NOT opened here (PD24 as amended 2026-07-12; matches

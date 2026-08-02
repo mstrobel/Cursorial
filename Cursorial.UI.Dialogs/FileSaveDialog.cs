@@ -38,15 +38,9 @@ public sealed class FileSaveDialog : Window
         Title = title;
         DataContext = model;
         Content = _view.Root;
-        Width = 78;
-        Height = 26;
-        MinWidth = 48;
-        MinHeight = 14;
-        Padding = Margins.Zero;
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        AutoFitToViewport = true;
-        Shadow = WindowShadow.Default;
-        
+
+        FileOpenDialog.ApplyDialogAppearance(this);
+
         model.Completed += (_, result) => Close(result);
         ContentRendered += OnContentRendered;
     }

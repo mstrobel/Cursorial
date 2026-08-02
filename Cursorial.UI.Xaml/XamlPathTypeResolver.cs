@@ -18,7 +18,13 @@ internal sealed class XamlPathTypeResolver(IReadOnlyDictionary<string, string> n
     {
         var colon = typeToken.IndexOf(':');
         if (colon < 0)
-            return DefaultPathTypeResolver.Instance.Resolve(typeToken); // unprefixed: registry short-name owners
+        {
+            var metadataResult = metadata.TryGetType(XmlnsNamespaces.CursorialUi, typeToken);
+
+            return metadataResult is { IsResolved: true } r
+                       ? r.Type!.ClrType.UnderlyingSystemType
+                       : DefaultPathTypeResolver.Instance.Resolve(typeToken); // unprefixed: registry short-name owners
+        }
 
         var prefix = typeToken[..colon];
         var local = typeToken[(colon + 1)..];

@@ -66,7 +66,9 @@ public static class CursorialTheme
         ThemeKeys.CalendarDayForegroundDisabled, ThemeKeys.ProgressFillNormal, ThemeKeys.ProgressFillIndeterminate,
         ThemeKeys.OnHoverBrush, ThemeKeys.ListItemForegroundSelected, ThemeKeys.AlternateRowInk, ThemeKeys.SelectionInk,
         ThemeKeys.MenuForegroundHover, ThemeKeys.MenuForegroundHighlighted, ThemeKeys.MenuIconCheckedForeground,
-        ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground
+        ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground,
+        ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
+        ThemeKeys.ScrollBarThumbDragBrush
     };
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -360,6 +362,7 @@ public static class CursorialTheme
         Alias(ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.TextBrush);
         Alias(ThemeKeys.ScrollBarThumbHoverBrush, ThemeKeys.AccentBrush);
         Alias(ThemeKeys.ScrollBarThumbDragBrush, ThemeKeys.AccentInverseBrush);
+        Alias(ThemeKeys.ScrollBarTrackBrush, ThemeKeys.WellBrush);
 
         // Calendar (day cells + Year/Decade cells; DatePicker).
         Alias(ThemeKeys.CalendarDayForeground, ThemeKeys.TextBrush);
@@ -446,16 +449,6 @@ public static class CursorialTheme
         rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));
         rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#30364f") : Color.FromHex("#9ea0a8"));
         rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#171A26") : Color.FromHex("#e9e9ed"));
-        // rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#ffffff"));
-        // rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
-        // rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8"));
-        // rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
-        // rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#16161e") : Color.FromHex("#f6f6f8")) { Opacity = 0.95 };
-        // rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
-        // rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
-        // rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));
-        // rgb[ThemeKeys.SurfaceBrush] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#9EA0A8"));
-        // rgb[ThemeKeys.PanelBrush] = new SolidColorBrush(dark ? Color.FromHex("#171A26") : Color.FromHex("#e9e9ed"));
         rgb[ThemeKeys.WellBrush] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#e4e4e4") : Color.FromHex("#3a3a3a"));
         rgb[ThemeKeys.TextDimBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
@@ -506,8 +499,9 @@ public static class CursorialTheme
         // --on-accent, so it tracks OnAccentBrush exactly: #0d0f19 dark / #e9e9ed light).
         rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e9e9ed"));
 
-        rgb[ThemeKeys.ScrollBarThumbNormalBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed3f") : Color.FromHex("#4a547d3f")/*dark ? Color.FromHex("#30364f7f") : Color.FromHex("#9ea0a87f")*/);
-        
+        rgb[ThemeKeys.ScrollBarThumbNormalBrush] = new SolidColorBrush(/*dark ? Color.FromHex("#8d9fed3f") : Color.FromHex("#4a547d3f")*/dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
+        rgb[ThemeKeys.ScrollBarTrackBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed3f") : Color.FromHex("#4a547d4f")) { Opacity = 1.0d };
+
         // Opt-in chrome (no shipped control reads these by default): border = faint ink, focus ring = accent heavy.
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392"));
         rgb[ThemeKeys.MenuBorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392")) /*{ Corners = CornerStyle.Rounded }*/;

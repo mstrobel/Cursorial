@@ -15,8 +15,7 @@ internal static class ValueConversion
 
     /// <summary>
     /// Converts <paramref name="value"/> to <paramref name="targetType"/>. Returns
-    /// <see cref="Failed"/> when no conversion succeeds (the caller traces and unsets / drops the
-    /// write).
+    /// <see cref="Failed"/> when no conversion succeeds (the caller traces and unsets / drops the write).
     /// </summary>
     public static object? Convert(object? value, Type targetType, CultureInfo culture)
     {

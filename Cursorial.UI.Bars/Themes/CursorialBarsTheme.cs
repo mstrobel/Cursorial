@@ -504,7 +504,7 @@ internal static class CursorialBarsTheme
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
-                var selected = new ContentPresenter(); // the read-only face value (visible when !IsEditable)
+                var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true }; // the read-only face value (visible when !IsEditable)
                 ctx.RegisterName("PART_ContentSite", selected);
                 selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
                 selected.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));

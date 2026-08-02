@@ -85,7 +85,6 @@ public sealed class ListViewPageViewModel : PageViewModel
     ];
 
     private ListView? _view;
-    private ListViewViewMode _viewMode = ListViewViewMode.Details;
     private string _selectionSummary;
     private string _sortSummary = "unsorted";
     private string _invokedSummary = "";
@@ -103,15 +102,21 @@ public sealed class ListViewPageViewModel : PageViewModel
         "Icons wrap column-major (↓ walks the column, ←/→ jump one); Tiles wrap row-major. Space toggles, " +
         "Shift+arrow extends, Ctrl+arrow moves focus only, Enter or double-click invokes.";
 
+    public override bool IsContentScrollable => false;
+
     /// <summary>The rows — an <see cref="ObservableCollection{T}"/> because the built-in sort permutes the LIVE
     /// list with Remove/Insert and needs a source that can report each hop.</summary>
     public ObservableCollection<AssetRow> Rows { get; }
 
     /// <summary>The presentation mode, two-way with both the view switcher and <see cref="ListView.View"/>.</summary>
-    public ListViewViewMode ViewMode { get => _viewMode; set => Set(ref _viewMode, value); }
+    public ListViewViewMode ViewMode
+    {
+        get;
+        set => Set(ref field, value);
+    } = ListViewViewMode.Details;
 
     /// <summary>The live status line: the selection count, the sort in effect, and the last invocation.</summary>
-    public string Status => _invokedSummary is { Length: > 0 }
+    public override string Status => _invokedSummary is { Length: > 0 }
         ? $"{_selectionSummary} · sort: {_sortSummary} · {_invokedSummary}"
         : $"{_selectionSummary} · sort: {_sortSummary}";
 

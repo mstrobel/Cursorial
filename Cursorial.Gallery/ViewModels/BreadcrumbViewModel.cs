@@ -89,7 +89,6 @@ public sealed class BreadcrumbViewModel : PageViewModel
 
     private BreadcrumbBar? _bar;
     private int? _barWidth = 34;
-    private string _status = "Tab into the trail, then ←/→ to move · Enter activates · F2 edits.";
 
     public BreadcrumbViewModel()
     {
@@ -140,7 +139,11 @@ public sealed class BreadcrumbViewModel : PageViewModel
         : $"{Trail[^1].Label} — {Trail[^1].Kind} · depth {Trail.Count} of {Chain.Length}";
 
     /// <summary>The live readout of the last thing the bar reported.</summary>
-    public string Status { get => _status; private set => Set(ref _status, value); }
+    public override string? Status
+    {
+        get;
+        protected set => Set(ref field, value);
+    } = "Tab into the trail, then ←/→ to move · Enter activates · F2 edits.";
 
     // ───────────────────────────── the control wiring ─────────────────────────────
     //

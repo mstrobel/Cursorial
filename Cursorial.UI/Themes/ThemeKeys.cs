@@ -497,6 +497,8 @@ public static class ThemeKeys
     public const string ScrollBarThumbHoverBrush = "Theme.ScrollBarThumbHoverBrush";
     /// <summary>ScrollBar thumb pressed fill.</summary>
     public const string ScrollBarThumbDragBrush = "Theme.ScrollBarThumbDragBrush";
+    /// <summary>ScrollBar track fill.</summary>
+    public const string ScrollBarTrackBrush = "Theme.ScrollBarTrackBrush";
 
     // Calendar (day cells + Year/Decade cells; DatePicker).
     /// <summary>Calendar day-cell ink.</summary>

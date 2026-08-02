@@ -371,8 +371,8 @@ public abstract record FormattedBlock(Size Size, TextAlignment Alignment, bool H
 /// runs have already had glyph maps applied and trimming / alignment padding inserted as
 /// regular space runs, so paint can be a straight walk.
 /// </summary>
-public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment)
-    : FormattedBlock(Size, Alignment, AnyTrimmedLines(Lines))
+public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment, bool TrimmedLines)
+    : FormattedBlock(Size, Alignment, TrimmedLines || AnyTrimmedLines(Lines))
 {
     private static bool AnyTrimmedLines(ImmutableArray<FormattedLine> lines)
     {
@@ -399,7 +399,8 @@ public sealed record FormattedHorizontalRule(
 /// in <see cref="Size"/>) and paint; <see cref="Text"/> is the source string.
 /// </summary>
 public sealed record FormattedFigletBlock(
-    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
+    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size, bool Trimmed)
+    : FormattedBlock(Size, Alignment, Trimmed);
 
 /// <summary>
 /// A formatted Kitty-OSC-66 sized-text headline. When the negotiated capabilities support OSC 66,
@@ -408,7 +409,7 @@ public sealed record FormattedFigletBlock(
 /// </summary>
 public sealed record FormattedSizedTextBlock(
     string Text, TextSizing Sizing, Style Style, IGlyphFont? Fallback,
-    TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
+    TextAlignment Alignment, Size Size, bool Trimmed) : FormattedBlock(Size, Alignment, Trimmed);
 
 /// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to

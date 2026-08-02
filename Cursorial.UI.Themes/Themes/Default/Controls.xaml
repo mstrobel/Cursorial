@@ -39,7 +39,7 @@
             TextElement.Foreground="{TemplateBinding TextElement.Foreground}"
             TextElement.Inverse="{TemplateBinding TextElement.Inverse}"
             Occludes="True">
-      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+      <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True" ShowTrimmedContentInToolTip="True"/>
     </Border>
   </ControlTemplate>
 
@@ -79,7 +79,7 @@
        mnemonic underlines on Alt; no fill/frame, content in the inherited TextBrush, muted when disabled.
        The declarative twin of ControlThemes.LabelTheme(). -->
   <ControlTemplate x:Key="LabelTemplate">
-    <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+    <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True" ShowTrimmedContentInToolTip="True"/>
   </ControlTemplate>
 
   <Style x:Key="{x:Type Label}" TargetType="Label">
@@ -150,18 +150,20 @@
        StackPanel row); the glyph + content paint in the inherited Foreground, disabled = muted ink, focus = the
        in-box caret (driven by ToggleButton). The declarative twin of ControlThemes.ToggleGlyphTheme(). -->
   <ControlTemplate x:Key="CheckBoxTemplate">
-    <Border Background="{TemplateBinding Background}">
-      <StackPanel Orientation="Horizontal" Spacing="1">
-        <Grid>
+    <Border Background="{TemplateBinding Background}"
+            TextElement.Inverse="{TemplateBinding TextElement.Inverse}">
+      <DockPanel LastChildFill="True">
+        <Grid DockPanel.Dock="Left" Margin="0,0,1,0" VerticalAlignment="Top">
           <ToggleGlyph x:Name="PART_Glyph"
                        GlyphKey="{x:Static ThemeKeys.CheckBoxGlyphs}"
                        CheckedMarkKey="{x:Static ThemeKeys.ToggleGlyphChecked}"
                        IndeterminateMarkKey="{x:Static ThemeKeys.ToggleGlyphIndeterminate}"
-                       TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}"/>
+                       TextElement.Inverse="{TemplateBinding Property=TextElement.Inverse}"/>
           <Caret x:Name="PART_Caret" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"/>
         </Grid>
-        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
-      </StackPanel>
+        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"
+                          ShowTrimmedContentInToolTip="True"/>
+      </DockPanel>
     </Border>
     <ControlTemplate.Styles>
       <Style Selector="CheckBox">
@@ -269,7 +271,7 @@
       <RepeatButton x:Name="PART_LineDownButton" Template="{StaticResource BareGlyphButtonTemplate}"
                     Content="▼" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Bottom"/>
 -->
-      <Track x:Name="PART_Track" TrackDisplayMode="Hidden" Width="1"/>
+      <Track x:Name="PART_Track" TrackDisplayMode="Fill" Width="1"/>
     </DockPanel>
   </ControlTemplate>
 
@@ -281,7 +283,7 @@
       <RepeatButton x:Name="PART_LineDownButton" Content="▶" Padding="0" Focusable="False" IsTabStop="False" DockPanel.Dock="Right"/>
       &lt;!&ndash;Template="{StaticResource BareGlyphButtonTemplate}"&ndash;&gt;
 -->
-      <Track x:Name="PART_Track" TrackDisplayMode="Hidden" Height="1"/>
+      <Track x:Name="PART_Track" TrackDisplayMode="Fill" Height="1"/>
     </DockPanel>
   </ControlTemplate>
 
@@ -379,7 +381,7 @@
   <ControlTemplate x:Key="ListBoxItemTemplate">
     <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
             TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
-      <ContentPresenter x:Name="PART_ContentPresenter"/>
+      <ContentPresenter x:Name="PART_ContentPresenter" ShowTrimmedContentInToolTip="True"/>
     </Border>
   </ControlTemplate>
 
@@ -417,7 +419,9 @@
       <DockPanel>
         <ListViewHeaderPresenter x:Name="PART_HeaderPresenter" DockPanel.Dock="Top"
                                  Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"/>
-        <ScrollViewer x:Name="PART_ScrollViewer">
+        <ScrollViewer x:Name="PART_ScrollViewer"
+                      HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
+                      VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}">
           <ItemsPresenter x:Name="PART_ItemsHost"/>
         </ScrollViewer>
       </DockPanel>
@@ -483,7 +487,8 @@
         <TextBlock x:Name="PART_SortIndicator" DockPanel.Dock="Right" Visibility="Collapsed"
                    Foreground="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
         <ContentPresenter x:Name="PART_ContentPresenter"
-                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                          TextElement.Foreground="{TemplateBinding Foreground}"
+                          ShowTrimmedContentInToolTip="True"/>
       </DockPanel>
     </Border>
   </ControlTemplate>
@@ -649,8 +654,8 @@
   <ControlTemplate x:Key="ToolTipTemplate">
     <Border Occludes="False"
             Padding="1,0"
-            Background="{DynamicResource {x:Static ThemeKeys.ElevationPopup}}"
-            BorderPen="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}">
+            Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}">
       <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="False"/>
     </Border>
   </ControlTemplate>
@@ -659,6 +664,8 @@
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.TextBrush}}"/>
     <Setter Property="MaxWidth"   Value="40"/>
     <Setter Property="Template"   Value="{StaticResource ToolTipTemplate}"/>
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.PanelBackgroundBrush}}"/>
+    <Setter Property="BorderPen"  Value="{DynamicResource {x:Static ThemeKeys.ToolTipBorderPen}}"/>
   </Style>
 
   <!-- ───────────────────────────── TabControl / TabItem ─────────────────────────────
@@ -708,7 +715,8 @@
                 Occludes="True">
           <ContentPresenter x:Name="PART_ContentPresenter"
                             RecognizesAccessKey="True"
-                            Content="{TemplateBinding Header}"/>
+                            Content="{TemplateBinding Header}"
+                            ShowTrimmedContentInToolTip="True"/>
         </Border>
         <Separator x:Name="PART_Underline" Margin="1,0,1,0" BorderPen="{DynamicResource {x:Static ThemeKeys.TabUnderlinePen}}"/>
       </StackPanel>
@@ -881,6 +889,39 @@
     </Style.Children>
   </Style>
 
+  <ControlTemplate x:Key="StatusBarItemTemplate" TargetType="StatusBarItem">
+    <Border Padding="{TemplateBinding Padding}"
+            Background="{TemplateBinding Background}"
+            TextElement.Foreground="{TemplateBinding Foreground}">
+      <ContentPresenter x:Name="PART_ContentPresenter" ShowTrimmedContentInToolTip="True"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type StatusBarItem}" TargetType="StatusBarItem">
+    <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}" />
+    <Setter Property="Template"   Value="{StaticResource StatusBarItemTemplate}" />
+    <Style.Children>
+      <Style Selector="^.alternate" TargetType="StatusBarItem">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.StatusBarAltForeground}}" />
+        <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.StatusBarAltBackground}}" />
+      </Style>
+    </Style.Children>
+  </Style>
+
+  <ControlTemplate x:Key="StatusBarTemplate" TargetType="StatusBar">
+    <Border Padding="{TemplateBinding Padding}"
+            Background="{TemplateBinding Background}"
+            BorderPen="{TemplateBinding BorderPen}">
+      <ItemsPresenter x:Name="PART_ItemsHost"/>
+    </Border>
+  </ControlTemplate>
+
+  <Style x:Key="{x:Type StatusBar}" TargetType="StatusBar">
+    <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.StatusBarBackground}}" />
+    <Setter Property="Template"   Value="{StaticResource StatusBarItemTemplate}" />
+  </Style>
+
   <!-- Image: its template hosts a PART_ImagePresenter with Source/placeholder one-way TemplateBound. The twin of
        ControlThemes.ImageTheme(). -->
   <ControlTemplate x:Key="ImageTemplate" TargetType="Image">
@@ -944,7 +985,8 @@
                   TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
             <ContentPresenter x:Name="PART_HeaderPresenter"
                               Content="{TemplateBinding Header}"
-                              ContentTemplate="{TemplateBinding HeaderTemplate}"/>
+                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                              ShowTrimmedContentInToolTip="True"/>
           </Border>
         </DockPanel>
       </Border>
@@ -984,7 +1026,8 @@
           <Button x:Name="PART_DropDown" DockPanel.Dock="Right" Content="▾" Focusable="False" IsTabStop="False"/>
           <!--Template="{StaticResource BareGlyphButtonTemplate}" Padding="0"-->
           <Grid Margin="{TemplateBinding Padding}">
-            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"/>
+            <ContentPresenter x:Name="PART_ContentSite" Content="{TemplateBinding SelectionBoxItem}"
+                              ShowTrimmedContentInToolTip="True"/>
             <TextBox x:Name="PART_EditableTextBox"
                      Visibility="Collapsed"
                      Placeholder="{TemplateBinding PlaceholderText}"
@@ -1015,13 +1058,14 @@
   <ControlTemplate x:Key="ComboBoxItemTemplate">
     <Border Padding="1,0" Background="{TemplateBinding Background}"
             TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
-      <ContentPresenter x:Name="PART_ContentPresenter"/>
+      <ContentPresenter x:Name="PART_ContentPresenter" ShowTrimmedContentInToolTip="True"/>
     </Border>
   </ControlTemplate>
 
   <Style x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
     <Setter Property="Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundNormal}}"/>
     <Setter Property="Template"   Value="{StaticResource ComboBoxItemTemplate}"/>
+    <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis"/>
     <Style.Children>
       <Style Selector="^:pointerover" TargetType="ComboBoxItem">
         <Setter Property="Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundHover}}"/>
@@ -1071,7 +1115,8 @@
             <ContentPresenter x:Name="PART_Footer" DockPanel.Dock="Bottom" Visibility="Collapsed" Margin="1,0"
                               TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
                               TextBlock.TextWrapping="NoWrap"
-                              TextBlock.TextTrimming="None"/>
+                              TextBlock.TextTrimming="None"
+                              ShowTrimmedContentInToolTip="True"/>
             <CompletionList x:Name="PART_List"/>
           </DockPanel>
         </Border>
@@ -1200,7 +1245,8 @@
               Background="{TemplateBinding Background}"
               BorderPen="{TemplateBinding BorderPen}"
               TextElement.Inverse="{Binding Path=(TextElement.Inverse), RelativeSource={RelativeSource TemplatedParent}}">
-        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"/>
+        <ContentPresenter x:Name="PART_ContentPresenter" RecognizesAccessKey="True"
+                          ShowTrimmedContentInToolTip="True"/>
       </Border>
       <TextBlock x:Name="PART_Separator" Text="▸"
                  Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>

@@ -46,7 +46,7 @@ public readonly record struct TerminalCaretState(bool Visible, int Column, int R
 /// <remarks>
 /// <para>
 /// <b>Transform timing.</b> <see cref="GetCaretState(int, int)"/> runs the transform <b>live</b> via
-/// <see cref="UIElement.TranslateToWindow"/> — call it during frame assembly, after the layout pass
+/// <see cref="UIElement.TranslateToWindow(int, int)"/> — call it during frame assembly, after the layout pass
 /// and after <see cref="RenderTree.RunRenderPass"/>'s boundary walk, so arranged bounds, render
 /// offsets, scroll offsets, and the refreshed boundary clips are all current. A caret outside its
 /// zone's effective clip (scrolled out of view, hidden ancestor, covered viewport edge) assembles
@@ -136,7 +136,7 @@ public sealed class TerminalCaretService : ITerminalCaretService
 
     /// <summary>
     /// Assembles the caret for this frame: drops detached owners, transforms the winning (most
-    /// recent) publication to window coordinates via <see cref="UIElement.TranslateToWindow"/>
+    /// recent) publication to window coordinates via <see cref="UIElement.TranslateToWindow(int, int)"/>
     /// (render and scroll offsets folded), gates visibility on effective visibility and the owner's
     /// refreshed zone clip, then folds the surface offset (S4's leg; 0 at P1). Allocation-free.
     /// </summary>
@@ -171,9 +171,7 @@ public sealed class TerminalCaretService : ITerminalCaretService
 
             var (column, row) = owner.TranslateToWindow(publication.Column, publication.Row);
             var visible = owner.IsEffectivelyVisible && IsInsideZoneClip(owner, column, row);
-            var (offsetColumn, offsetRow) = surfaceOffsetResolver is not null
-                ? surfaceOffsetResolver(owner)        // the owning surface's screen offset (S4)
-                : (baseOffsetColumn, baseOffsetRow);  // the constant-offset / origin path (P1 / tests)
+            var (offsetColumn, offsetRow) = surfaceOffsetResolver?.Invoke(owner) ?? (baseOffsetColumn, baseOffsetRow);  // the constant-offset / origin path (P1 / tests)
             return new TerminalCaretState(visible, column + offsetColumn, row + offsetRow, publication.Shape);
         }
 

@@ -650,14 +650,24 @@ public class CompletionPopup : Control
 
     private void OnTargetPreviewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (!_isOpen || e.Handled || _entries.Count == 0)
+        if (e.Handled)
             return;
+
+        if (!_isOpen)
+        {
+            if (ButtonBase.IsActivationSpace(e, KeyModifiers.Control))
+            {
+                Refresh();
+                e.Handled = true;
+            }
+            return;
+        }
 
         // Modifier-free only. Shift+Tab must still walk the tab order, Ctrl+Enter must still reach the
         // field, and Shift+Down must still extend a text selection — an overlay may borrow the plain
         // keys, never the chorded ones. Home/End are never borrowed at all: in a text field they are
         // caret motion the user needs far more often than "first/last candidate".
-        if (e.Modifiers != KeyModifiers.None)
+        if (e.Modifiers != KeyModifiers.None || _entries.Count == 0)
             return;
 
         var page = VisibleRowCapacity();

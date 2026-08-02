@@ -1,3 +1,4 @@
+using Cursorial.Input;
 using Cursorial.Rendering;
 
 namespace Cursorial.UI;
@@ -37,6 +38,9 @@ public readonly record struct LayoutRect
     /// <summary>Creates a rectangle from a (possibly negative) top-left corner and a size.</summary>
     public LayoutRect(int column, int row, Size size) : this(column, row, size.Columns, size.Rows) {}
 
+    /// <summary>Creates a rectangle with a top-left corner at <c>(0, 0)</c> and the given <paramref name="size"/>.</summary>
+    public LayoutRect(Size size) : this(0, 0, size.Columns, size.Rows) {}
+
     /// <summary>An empty rectangle anchored at (0, 0) with zero extent.</summary>
     public static LayoutRect Empty => default;
 
@@ -71,6 +75,25 @@ public readonly record struct LayoutRect
 
     /// <summary>The rectangle's dimensions as a <see cref="Size"/> (dropping the anchor position).</summary>
     public Size Size => new(_columns, _rows);
+
+    /// <summary>The cell position of the top-left corner of the rectangle.</summary>
+    public CellPosition TopLeft => new(Column, Row);
+
+    /// <summary>The cell position of the top-right corner of the rectangle.</summary>
+    public CellPosition TopRight => new(ColumnEnd - 1, Row);
+
+    /// <summary>The cell position of the bottom-left corner of the rectangle.</summary>
+    public CellPosition BottomLeft => new(Column, RowEnd - 1);
+
+    /// <summary>The cell position of the bottom-right corner of the rectangle.</summary>
+    public CellPosition BottomRight => new(ColumnEnd - 1, RowEnd - 1);
+
+    /// <summary>True when the cell at <paramref name="position"/> is inside the rectangle.</summary>
+    public bool Contains(CellPosition position)
+        => position.Row >= Row &&
+           position.Row < RowEnd &&
+           position.Column >= Column &&
+           position.Column < ColumnEnd;
 
     /// <summary>True when the cell at (<paramref name="column"/>, <paramref name="row"/>) is inside the rectangle.</summary>
     public bool Contains(int column, int row)

@@ -73,7 +73,7 @@ public sealed class ListViewCellsPresenter : Panel
         _builtStructureVersion = owner.ColumnStructureVersion;
         _builtView = owner.View;
 
-        if (owner.View == ListViewViewMode.Details && owner.Columns.Count > 0)
+        if (owner is { View: ListViewViewMode.Details, Columns.Count: > 0 })
         {
             foreach (var column in owner.Columns)
                 Children.Add(ListView.BuildDetailsCell(column));

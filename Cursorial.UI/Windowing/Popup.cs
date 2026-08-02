@@ -236,8 +236,8 @@ public class Popup : UIElement
         _restoreFocusTo = UIApplication.Current?.FocusManager.FocusedElement;
 
         _open = true;
-        _manager.OpenPopup(this);
         SyncOwnerInheritanceBridge(); // bridge DataContext/inherited props to the owner (standalone case)
+        _manager.OpenPopup(this);     // open AFTER syncing the inheritance bridge so bindings don't immediately fail
         WatchTarget();                // self-close if the anchor leaves the tree while we're open (surface-orphan gap)
         Opened?.Invoke(this, EventArgs.Empty);
     }

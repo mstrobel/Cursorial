@@ -99,7 +99,7 @@ internal static class ControlThemes
     // and accent pressed/default rules swap. The BorderPen binding stays so an app can opt a frame back in.
     private static ControlTemplate ButtonContentTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         TextElement.ForwardInverse(presenter);
@@ -141,7 +141,7 @@ internal static class ControlThemes
     // Label is a caption, not a control face; the content paints in the inherited TextBrush, muted when disabled.
     private static ControlTemplate LabelTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         
@@ -303,7 +303,7 @@ internal static class ControlThemes
             ctx =>
                  {
                      var panel = new Grid();
-                     var presenter = new ContentPresenter();
+                     var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
                      ctx.RegisterName("PART_ContentPresenter", presenter);
                      var border = new Border { Child = presenter };
                      border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
@@ -432,7 +432,7 @@ internal static class ControlThemes
         indicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.AccentBrush);
         DockPanel.SetDock(indicator, Dock.Right);
 
-        var presenter = new ContentPresenter();
+        var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
 
@@ -476,7 +476,7 @@ internal static class ControlThemes
         // Read-only face: the selection-box value (visible when !IsEditable; the ComboBox toggles visibility). Bound
         // to SelectionBoxItem, NOT SelectedItem directly — when the item is its own ComboBoxItem container, the face
         // must show the unwrapped content, never the live container element (which belongs to the drop-down).
-        var selected = new ContentPresenter();
+        var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentSite", selected);
         selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
 
@@ -562,7 +562,7 @@ internal static class ControlThemes
     // keyboard focus row = reverse-video :focus-visible, disabled = MutedBrush ink).
     private static ControlTemplate ComboBoxItemTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter();
+        var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -574,6 +574,7 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.ComboBoxItem" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis)
             .Set(Control.TemplateProperty, ComboBoxItemTemplate());
         
         theme.Children.Add(new Style("^:pointerover")
@@ -687,7 +688,7 @@ internal static class ControlThemes
     // BreadcrumbBarItem itself, not by a /template/ rule, so both theme halves behave identically.
     private static ControlTemplate BreadcrumbBarItemTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         TextElement.ForwardInverse(presenter);
@@ -752,7 +753,7 @@ internal static class ControlThemes
         // The "3 matches" strip. Collapsed until the control pushes text into it (ShowHeader + a live count) —
         // Collapsed rather than Hidden because the popup surface is sized to its content and a Hidden strip would
         // reserve a blank row.
-        var header = new ContentPresenter { Visibility = Visibility.Collapsed };
+        var header = new ContentPresenter { Visibility = Visibility.Collapsed, ShowTrimmedContentInToolTip = true };
         header.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         header.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
         header.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
@@ -762,7 +763,8 @@ internal static class ControlThemes
         var footer = new ContentPresenter
                      {
                          Visibility = Visibility.Collapsed,
-                         Margin = new(1, 0)
+                         Margin = new(1, 0),
+                         ShowTrimmedContentInToolTip = true
                      };
         footer.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         footer.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
@@ -907,7 +909,8 @@ internal static class ControlThemes
         ctx.RegisterName("PART_Twisty", twisty);
         DockPanel.SetDock(twisty, Dock.Left);
 
-        var header = new ContentPresenter(); // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally
+        // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally.
+        var header = new ContentPresenter { ShowTrimmedContentInToolTip = true }; 
         ctx.RegisterName("PART_HeaderPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
         header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
@@ -1267,14 +1270,16 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
-        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.ToolTipBorderPen);
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
     private static Style ToolTipTheme()
         => new Style { Key = "Theme.ToolTip" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBackgroundBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.ToolTipBorderPen)
             .Set(UIElement.MaxWidthProperty, ToolTipService.MaxToolTipWidth) // spec §12.7: max 40 cells, content wraps
             .Set(Control.TemplateProperty, ToolTipTemplate());
 
@@ -1336,7 +1341,7 @@ internal static class ControlThemes
         var t = new ControlTemplate(
         ctx =>
            {
-               var header = new ContentPresenter { RecognizesAccessKey = true };
+               var header = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                ctx.RegisterName("PART_ContentPresenter", header);
                header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
                // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
@@ -1483,7 +1488,9 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.StatusBarBackground);
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
@@ -1504,7 +1511,7 @@ internal static class ControlThemes
 
     private static ControlTemplate StatusBarItemTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter();
+        var presenter = new ContentPresenter{ ShowTrimmedContentInToolTip = true };
         var root = new Border { Child = presenter };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
@@ -1574,7 +1581,7 @@ internal static class ControlThemes
 
                        var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
 
-                       var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
+                       var headerPresenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
 
                        glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -2008,14 +2015,18 @@ internal static class ControlThemes
         var t = new ControlTemplate(
             ctx =>
                {
-                   var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+                   var row = new DockPanel();
 
                    // The glyph cell overlays a zero-size Caret on the glyph's INNER cell (column 1 — the space inside
                    // [ ] / ( )). A single-cell Grid stacks both; the Caret is Left/Top-pinned with a 1-column left
                    // margin so it lands on the box's middle cell. It shows only under :focus-visible (driven in code by
                    // ToggleButton). Check/radio focus is this IN-BOX CARET, not reverse-video: a check/radio stretches
                    // to its StackPanel's width, so a reverse fill would span the whole row like a selection bar.
-                   var glyphCell = new Grid();
+                   var glyphCell = new Grid
+                                   {
+                                       Margin = new Margins(0, 0, 1, 0),
+                                       VerticalAlignment = VerticalAlignment.Top
+                                   };
                    var glyph = new ToggleGlyph(glyphKey, checkedMarkKey, indeterminateMarkKey);
                    // A checkbox/radio indicator is a GLYPH, not text — only Inverse forwards, so the box
                    // swaps fg/bg in unison with an inverted face and never leaves a half-inverted hole
@@ -2034,8 +2045,15 @@ internal static class ControlThemes
                    glyphCell.Children.Add(glyph);
                    glyphCell.Children.Add(caret);
 
-                   var presenter = new ContentPresenter { RecognizesAccessKey = true };
+                   var presenter = new ContentPresenter
+                                   {
+                                       RecognizesAccessKey = true,
+                                       ShowTrimmedContentInToolTip = true
+                                   };
                    ctx.RegisterName("PART_ContentPresenter", presenter);
+
+                   DockPanel.SetDock(glyphCell, Dock.Left);
+
                    row.Children.Add(glyphCell);
                    row.Children.Add(presenter);
 
@@ -2166,7 +2184,7 @@ internal static class ControlThemes
                var owner = (ScrollBar) (ctx.TemplatedParent ??
                                         throw new InvalidOperationException("The ScrollBar theme template requires a templated parent."));
 
-               var track = new Track(owner) { TrackDisplayMode = TrackDisplayMode.Hidden };
+               var track = new Track(owner) { TrackDisplayMode = TrackDisplayMode.Fill };
 
                if (horizontal)
                    track.Height = 1; // ensure vertical measure
@@ -2373,9 +2391,13 @@ internal static class ControlThemes
                                             };
                 }
 
-                var titleText = new TextBlock { Text = window.Title ?? string.Empty };
+                var titleText = new ContentPresenter
+                                {
+                                    Content = window.Title ?? string.Empty,
+                                    ShowTrimmedContentInToolTip = true
+                                };
 
-                titleText.SetBinding(TextBlock.TextProperty,
+                titleText.SetBinding(ContentPresenter.ContentProperty,
                                      new Binding(nameof(Window.Title)) { Source = window });
 
                 titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title

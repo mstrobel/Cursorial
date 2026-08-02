@@ -10,7 +10,7 @@ namespace Cursorial.UI.Xaml;
 /// metadata providers) to <c>Cursorial.UI</c> + <c>Cursorial.UI.Controls</c> + <c>Cursorial.UI.Data</c>
 /// + … (matrix ③); the intrinsics namespace carries the <c>x:</c> directives.
 /// </summary>
-internal static class XmlnsNamespaces
+public static class XmlnsNamespaces
 {
     /// <summary>The default Cursorial UI namespace URI.</summary>
     public const string CursorialUi = "https://cursorial.dev/ui";

@@ -84,7 +84,7 @@ public static class ResourceServices
             if (stopAtTemplateBoundary)
             {
                 if (next == node.TemplatedParent) return node;
-                if (next is ContentPresenter && node.UIParent is null) return node;
+                if (next is { IsAttachedToTree: true, UIParent: null }) return node;
             }
 
             node = next;

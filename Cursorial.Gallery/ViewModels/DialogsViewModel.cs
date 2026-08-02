@@ -74,10 +74,10 @@ public class DialogsViewModel : PageViewModel
 
     public RelayCommand<ICheckableCommandParameter?> ToggleMessageBoxButtonCommand { get; }
 
-    public string? Status
+    public override string? Status
     {
         get;
-        set => Set(ref field, value);
+        protected set => Set(ref field, value);
     }
 
     public MessageBoxButton MessageBoxButtons { get; set => Set(ref field, value); } = MessageBoxButton.YesNo;

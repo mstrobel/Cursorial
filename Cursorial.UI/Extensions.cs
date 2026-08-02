@@ -6,6 +6,11 @@ public static class Extensions
 {
     extension(Type type)
     {
+        internal Type UnwrapNullable()
+        {
+            return Nullable.GetUnderlyingType(type) ?? type;
+        }
+
         internal bool IsNullableType()
         {
             return type.IsValueType is false ||

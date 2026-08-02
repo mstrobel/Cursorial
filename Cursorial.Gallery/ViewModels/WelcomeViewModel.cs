@@ -14,10 +14,10 @@ public class WelcomeViewModel : PageViewModel
 {
     public override string Title => "Welcome";
     public override string Summary => "This gallery is a showcase of Cursorial.UI, a rich TUI framework inspired by WPF/Avalonia.";
-    
+
     public RichText WelcomeTextPreamble
     {
-        get { return field ??= MakeWelcomeText(FigletFonts.LCDMatrix, "welcome to", new(Scale: 2)); }
+        get { return field ??= MakeWelcomeText(FigletFonts.SmallSlant, "welcome to", new(Scale: 2, Width: 3)); }
     }
 
     public RichText WelcomeText
@@ -28,15 +28,15 @@ public class WelcomeViewModel : PageViewModel
     public ICommand? ShowUserOptionsCommand => UIApplication.Current?.ShowUserOptionsCommand;
 
     public string EpilogueText
-        => $"Based on the detected capabilities of your terminal, you may see a combination of " +
+        => $"[p trim=char wrap=character align=center]Based on the detected capabilities of your terminal, you may see a combination of " +
            $"[brush={ThemeKeys.CoolBrush}]Figlet fonts[/brush] (big ascii art glyphs), " +
            $"[brush={ThemeKeys.RedBrush}]scaled text[/brush], and/or an actual " +
            $"[brush={ThemeKeys.SuccessBrush}]raster image[/brush] above.[br/][br/]" +
-           $"Tiered, capability-based presentation is a core design pillar of Cursorial.";
+           $"Tiered, capability-based presentation is a core design pillar of Cursorial.[/p]";
 
     private static RichText MakeWelcomeText(IGlyphFont font, string text, TextSizing? sizing = null)
     {
-        var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default));
+        var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default), TextTrimming.CharacterEllipsis, WrapMode.NoWrap);
 
         foreach (var line in text.Split('\n'))
         {

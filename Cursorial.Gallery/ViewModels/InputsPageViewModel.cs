@@ -107,7 +107,7 @@ public sealed class InputsPageViewModel : PageViewModel
     public RelayCommand<TextBox> RedoCommand { get; }
 
     /// <summary>The live readout of every bound value — the password as a length, never the plaintext.</summary>
-    public string Status =>
+    public override string Status =>
         $"Name=\"{_name}\"   Password.Length={_password.Length}   Subscribed={_subscribed}   Volume={_volume:0}   Journal.Lines={JournalLineCount}";
 
     private int JournalLineCount => _journal.Length == 0 ? 0 : _journal.AsSpan().Count('\n') + 1;

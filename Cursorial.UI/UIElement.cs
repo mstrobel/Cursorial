@@ -368,25 +368,30 @@ public abstract partial class UIElement : UIObject
     {
         VerifyAccess();
 
-        if (IsAttachedToTree && !ReferenceEquals(_templatedParent, value))
+        var oldValue = _templatedParent;
+
+        if (IsAttachedToTree && !ReferenceEquals(oldValue, value))
         {
             throw new InvalidOperationException(
                 "TemplatedParent can only be stamped while the element is detached — template parts are " +
                 "marked during template expansion, before they attach (S8 contract).");
         }
 
-        if (ReferenceEquals(_templatedParent, value))
+        if (ReferenceEquals(oldValue, value))
             return;
 
         _templatedParent = value;
-        TemplatedParentChanged?.Invoke(this, EventArgs.Empty);
+
+        var args = new TemplatedParentChangedEventArgs(this, oldValue, value);
+        OnTemplatedParentChanged(args);
+        TemplatedParentChanged?.Invoke(this, args);
     }
 
     /// <summary>
     /// Raised when <see cref="TemplatedParent"/> is stamped (the S2 seam — a <c>TemplateBinding</c> /
     /// <c>RelativeSource.TemplatedParent</c> binding installed before the stamp re-resolves here).
     /// </summary>
-    internal event EventHandler? TemplatedParentChanged;
+    public event EventHandler<TemplatedParentChangedEventArgs>? TemplatedParentChanged;
 
     /// <summary>Raised when the element gains a logical parent (the S2 seam — DataContext/namescope wiring rides this).</summary>
     public event EventHandler<LogicalTreeAttachmentEventArgs>? AttachedToLogicalTree;
@@ -406,6 +411,14 @@ public abstract partial class UIElement : UIObject
     {
         OnAttachedToTree(e);
         AttachedToTree?.Invoke(this, e);
+    }
+
+    /// <summary>
+    /// Called when this element's <see cref="TemplatedParent"/> is assigned or cleared.
+    /// Invoked just prior to the <see cref="TemplatedParentChanged"/> event being raised.
+    /// </summary>
+    protected virtual void OnTemplatedParentChanged(in TemplatedParentChangedEventArgs e)
+    {
     }
 
     /// <summary>
@@ -520,8 +533,8 @@ public abstract partial class UIElement : UIObject
         element.IsPromotedBoundary = false;
 
         var root = element._visualRoot!;
-        element.OnDetachedFromTreeCore(new TreeAttachmentEventArgs(root, element._visualParent));
         element._visualRoot = null;
+        element.OnDetachedFromTreeCore(new TreeAttachmentEventArgs(root, element._visualParent));
         element.Depth = 0;
 
         // S7 resource subscription teardown (design doc §11.6): unregister this element's producer
@@ -711,7 +724,7 @@ public abstract partial class UIElement : UIObject
     /// <c>Bounds.Column</c> in content coordinates sits at <c>Bounds.Column − this</c> in the
     /// element's own frame. 0 everywhere except scroll hosts (<c>ScrollContentPresenter</c>
     /// overrides — doc §5.7). Folded by the boundary walk, hit testing, and
-    /// <see cref="TranslateToWindow"/>/<see cref="TranslateFromWindow"/>.
+    /// <see cref="TranslateToWindow(int, int)"/>/<see cref="TranslateFromWindow(int, int)"/>.
     /// </summary>
     internal virtual int ChildScrollOffsetColumn => 0;
 
@@ -721,11 +734,8 @@ public abstract partial class UIElement : UIObject
     // ───────────────────────────── coordinate translation ─────────────────────────────
 
     /// <summary>
-    /// Translates element-local coordinates to window (visual-root) coordinates — a live O(depth)
-    /// parent-chain walk, allocation-free and never stale (no cached absolute bounds exist). Each
-    /// hop folds in the element's <see cref="Bounds"/> position and <see cref="RenderOffsetColumn"/> /
-    /// <see cref="RenderOffsetRow"/>, minus the parent's scroll when crossing into a scroll host
-    /// (<see cref="ChildScrollOffsetColumn"/>/<see cref="ChildScrollOffsetRow"/>).
+    /// Translates element-local coordinates to window (visual-root) coordinates — the inverse of
+    /// <see cref="TranslateFromWindow(int, int)"/>.
     /// </summary>
     public (int Column, int Row) TranslateToWindow(int column, int row)
     {
@@ -745,11 +755,8 @@ public abstract partial class UIElement : UIObject
     }
 
     /// <summary>
-    /// Translates element-local coordinates to screen coordinates — a live O(depth)
-    /// parent-chain walk, allocation-free and never stale (no cached absolute bounds exist). Each
-    /// hop folds in the element's <see cref="Bounds"/> position and <see cref="RenderOffsetColumn"/> /
-    /// <see cref="RenderOffsetRow"/>, minus the parent's scroll when crossing into a scroll host
-    /// (<see cref="ChildScrollOffsetColumn"/>/<see cref="ChildScrollOffsetRow"/>).
+    /// Translates element-local coordinates to screen coordinates — the inverse of
+    /// <see cref="TranslateFromScreen(int, int)"/>.
     /// </summary>
     public (int Column, int Row) TranslateToScreen(int column, int row)
     {
@@ -765,7 +772,10 @@ public abstract partial class UIElement : UIObject
         return (column, row);
     }
 
-    /// <summary>Translates window (visual-root) coordinates to element-local coordinates — the inverse of <see cref="TranslateToWindow"/>.</summary>
+    /// <summary>
+    /// Translates window (visual-root) coordinates to element-local coordinates —
+    /// the inverse of <see cref="TranslateToWindow(int, int)"/>.
+    /// </summary>
     public (int Column, int Row) TranslateFromWindow(int column, int row)
     {
         for (var element = this; element is not null; element = element._visualParent)
@@ -783,7 +793,10 @@ public abstract partial class UIElement : UIObject
         return (column, row);
     }
 
-    /// <summary>Translates screencoordinates to element-local coordinates — the inverse of <see cref="TranslateToScreen"/>.</summary>
+    /// <summary>
+    /// Translates screen coordinates to element-local coordinates — the inverse of
+    /// <see cref="TranslateToScreen(int, int)"/>.
+    /// </summary>
     public (int Column, int Row) TranslateFromScreen(int column, int row)
     {
         (column, row) = TranslateFromWindow(column, row);
@@ -797,6 +810,46 @@ public abstract partial class UIElement : UIObject
         }
 
         return (column, row);
+    }
+
+    /// <summary>
+    /// Translates a rectangle from screen coordinates to element-local coordinates —
+    /// the inverse of <see cref="TranslateToScreen(LayoutRect)"/>.
+    /// </summary>
+    public LayoutRect TranslateFromScreen(LayoutRect rect)
+    {
+        var (column, row) = TranslateFromScreen(rect.Column, rect.Row);
+        return new LayoutRect(column, row, rect.Size);
+    }
+
+    /// <summary>
+    /// Translates a rectangle from element-local coordinates to screen coordinates —
+    /// the inverse of <see cref="TranslateFromScreen(LayoutRect)"/>.
+    /// </summary>
+    public LayoutRect TranslateToScreen(LayoutRect rect)
+    {
+        var (column, row) = TranslateToScreen(rect.Column, rect.Row);
+        return new LayoutRect(column, row, rect.Size);
+    }
+
+    /// <summary>
+    /// Translates a rectangle from window (visual-root) coordinates to element-local coordinates —
+    /// the inverse of <see cref="TranslateToWindow(LayoutRect)"/>.
+    /// </summary>
+    public LayoutRect TranslateFromWindow(LayoutRect rect)
+    {
+        var (column, row) = TranslateFromWindow(rect.Column, rect.Row);
+        return new LayoutRect(column, row, rect.Size);
+    }
+
+    /// <summary>
+    /// Translates a rectangle from element-local coordinates to window (visual-root) coordinates —
+    /// the inverse of <see cref="TranslateFromWindow(LayoutRect)"/>.
+    /// </summary>
+    public LayoutRect TranslateToWindow(LayoutRect rect)
+    {
+        var (column, row) = TranslateToWindow(rect.Column, rect.Row);
+        return new LayoutRect(column, row, rect.Size);
     }
 
     /// <summary>The layout manager owning this element's visual root, or <see langword="null"/> when detached.</summary>

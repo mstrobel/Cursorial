@@ -30,18 +30,19 @@ public class TextBlock : UIElement
 
     /// <summary>The wrap mode (<c>AffectsMeasure | AffectsRender</c>).</summary>
     public static readonly StyledProperty<WrapMode> TextWrappingProperty =
-        UIProperty.Register<TextBlock, WrapMode>(nameof(TextWrapping), defaultValue: WrapMode.NoWrap);
+        TextElement.TextWrappingProperty.AddOwner<TextBlock>();
 
     /// <summary>The horizontal alignment of wrapped lines (<c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
-        UIProperty.Register<TextBlock, TextAlignment>(nameof(TextAlignment), defaultValue: TextAlignment.Left);
+        UIProperty.Register<TextBlock, TextAlignment>(nameof(TextAlignment),
+                                                      defaultValue: TextAlignment.Left);
 
     /// <summary>The trimming mode for overflowing lines (<c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
-        UIProperty.Register<TextBlock, TextTrimming>(nameof(TextTrimming), defaultValue: TextTrimming.None);
+        TextElement.TextTrimmingProperty.AddOwner<TextBlock>();
 
     /// <inheritdoc cref="IsTrimmedProperty"/>
-    private static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
         UIProperty.RegisterReadOnly<TextBlock, bool>(nameof(IsTrimmed));
 
     /// <summary>Indicates whether any of the text content had trimming applied.</summary>
@@ -92,8 +93,8 @@ public class TextBlock : UIElement
         // label, a fixed-width status line) measures identically and would never repaint unless the
         // content properties are ALSO AffectsRender. Text/Markup/TextWrapping change the painted glyphs
         // independently of size, so they carry both lanes.
-        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty, TextTrimmingProperty);
-        AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty, TextTrimmingProperty);
+        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
+        AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
     }
 
     /// <summary>Creates an empty text block.</summary>
@@ -155,13 +156,13 @@ public class TextBlock : UIElement
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
-        var formatted = GetFormatted(Math.Max(1, availableSize.Columns));
+        var formatted = GetFormatted(Math.Max(1, availableSize.Columns), Math.Max(1, availableSize.Rows));
         return formatted.Size;
     }
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var formatted = GetFormatted(Math.Max(1, finalSize.Columns));
+        var formatted = GetFormatted(Math.Max(1, finalSize.Columns), finalSize.Rows);
         SetValue(IsTrimmedPropertyKey, formatted.HasTrimmedLines);
         return finalSize;
     }
@@ -187,7 +188,7 @@ public class TextBlock : UIElement
             context.DrawFormattedText(formatted, context.Bounds, resolved.Flags, resolved.UnderlineShape);
     }
 
-    private FormattedText GetFormatted(int width)
+    private FormattedText GetFormatted(int width, int? height = null)
     {
         var caps = UIApplication.Current is {} app ? app.Capabilities.Output : null;
 
@@ -197,17 +198,18 @@ public class TextBlock : UIElement
             UIApplication.Current?.ActualThemeVariant,
             caps);
 
-        if (_cached is {} cached && _cacheKey.Equals(key))
+        if (_cached is {} cached && _cacheKey.Equals(key) && (cached.Size.Rows > height) is false)
             return cached;
 
-        var formatted = Format(width, caps);
+        var formatted = Format(width, caps, height);
         _cached = formatted;
         _cacheKey = key;
         return formatted;
     }
 
-    private FormattedText Format(int width, 
+    private FormattedText Format(int width,
                                  OutputCapabilities? caps,
+                                 int? maxHeight = null,
                                  TextTrimming? trimmingOverride = null, 
                                  WrapMode? wrappingOverride = null)
     {
@@ -219,6 +221,7 @@ public class TextBlock : UIElement
                         };
 
         RichText document;
+
         if (Markup is {} markup)
         {
             // Markup wins over Text (doc §12.7); [brush=…] resolves via the S7 chain.
@@ -242,7 +245,7 @@ public class TextBlock : UIElement
         if (document.IsEmpty)
             return FormattedText.Empty;
 
-        return formatter.Format(document, width, capabilities: caps);
+        return formatter.Format(document, width, maxHeight, capabilities: caps);
     }
 
     // Builds a single paragraph honoring hard line breaks (\r\n | \n | \r → LineBreak), per the

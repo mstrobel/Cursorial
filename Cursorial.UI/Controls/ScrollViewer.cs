@@ -329,10 +329,10 @@ public class ScrollViewer : ContentControl
         presenter.CanScrollVertically = CanScrollVerticalAxis(VerticalScrollBarVisibility);
         presenter.CanScrollHorizontally = CanScrollHorizontalAxis(HorizontalScrollBarVisibility);
 
-        // v1 bands only the vertical axis (doc §5.7), so horizontal Auto ("show bar on overflow")
-        // cannot be honored and degrades to Disabled — surface that, since it silently swallows intent.
-        if (HorizontalScrollBarVisibility == ScrollBarVisibility.Auto)
-            ControlDiagnostics.HorizontalAutoUnsupported(this);
+        // // v1 bands only the vertical axis (doc §5.7), so horizontal Auto ("show bar on overflow")
+        // // cannot be honored and degrades to Disabled — surface that, since it silently swallows intent.
+        // if (HorizontalScrollBarVisibility == ScrollBarVisibility.Auto)
+        //     ControlDiagnostics.HorizontalAutoUnsupported(this);
     }
 
     /// <summary>
@@ -340,7 +340,7 @@ public class ScrollViewer : ContentControl
     /// lets the axis scroll (<c>Hidden</c>/<c>Auto</c>/<c>Visible</c> all scroll by wheel/keys; the bar
     /// visibility is a separate concern, CD28).
     /// </summary>
-    private static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
+    internal static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
         => visibility is not ScrollBarVisibility.Disabled;
 
     /// <summary>
@@ -348,7 +348,7 @@ public class ScrollViewer : ContentControl
     /// <c>Disabled</c> never scrolls, and v1 treats <c>Auto</c> as <c>Disabled</c> because the
     /// horizontal axis is unbanded (doc §5.7) — see <see cref="HorizontalScrollBarVisibility"/>.
     /// </summary>
-    private static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
+    internal static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
         => visibility is not ScrollBarVisibility.Disabled;
 
     /// <inheritdoc/>

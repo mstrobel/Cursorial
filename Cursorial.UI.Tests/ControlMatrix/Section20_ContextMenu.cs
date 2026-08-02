@@ -215,7 +215,10 @@ public sealed class Section20_ContextMenu
         host.RunUntilIdle();
         Assert.True(menu.IsOpen);
         Assert.Equal(1, Popups(host));                    // not two — relocated, not stacked
-        Assert.Equal(4, wm.Popups[0].VerticalOffset);     // the new offset was applied (not stale)
+
+        var placementBounds = menu.TranslateToScreen(menu.Bounds);
+
+        Assert.Equal(4, placementBounds.Row);     // the new offset was applied (not stale)
         Assert.NotSame(firstSurface, wm.Popups[0].PopupSurface); // re-placed on a fresh surface (close→reopen)
     }
 

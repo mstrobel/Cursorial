@@ -267,6 +267,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             // for disambiguation/clarity; only the OWNER TYPE resolves here, the member stays runtime-resolved.
             Path = new PropertyPath(path, builder.PathTypeResolver),
             Source = namedElementSource ?? ParseSourceValue(builder, node, line, column),
+            TypeResolver = builder.PathTypeResolver,
             // An ElementName is resolved to a concrete Source in the install path (namedElementSource);
             // in the descriptor path (no resolved anchor) it rides the descriptor for runtime resolution.
             ElementName = namedElementSource is null ? Named(node, "ElementName") : null,

@@ -15,8 +15,6 @@ namespace Cursorial.Gallery.ViewModels;
 /// </summary>
 public sealed class BarsViewModel : PageViewModel
 {
-    private string _status = "Ready — invoke a command, or narrow the window to overflow the bar.";
-
     public BarsViewModel()
     {
         Cut = new BarCommand(() => Report("Cut"))     { Text = "Cu_t",   Icon = Icons.IconCut(),   InputGestureText = "Ctrl+X" };
@@ -56,7 +54,11 @@ public sealed class BarsViewModel : PageViewModel
     public override string Summary => "A command Toolbar with discrete overflow — narrow the window to fold the trailing items into the » popup.";
 
     /// <summary>Echoes the last command invocation (bound by the shell status bar + the page body).</summary>
-    public string Status { get => _status; private set => Set(ref _status, value); }
+    public override string? Status
+    {
+        get;
+        protected set => Set(ref field, value);
+    } = "Ready — invoke a command, or narrow the window to overflow the bar.";
 
     public ICommand Cut { get; }
     public ICommand Copy { get; }

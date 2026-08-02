@@ -33,20 +33,37 @@ public sealed class FileOpenDialog : Window
         _model = model;
         _view = new FileDialogView(model);
 
+        ApplyDialogAppearance(this);
+
         Title = title;
         DataContext = model;
         Content = _view.Root;
-        Width = 78;
-        Height = 26;
-        MinWidth = 48;
-        MinHeight = 14;
-        Padding = Margins.Zero;
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        AutoFitToViewport = true;
-        Shadow = WindowShadow.Default;
 
         model.Completed += (_, result) => Close(result);
         ContentRendered += OnContentRendered;
+    }
+
+    internal static void ApplyDialogAppearance(Window w)
+    {
+        Size maxSize;
+
+        if (UIApplication.Current?.WindowManager?.ScreenSize is {} sz)
+            maxSize = sz;
+        else
+            maxSize = new Size(80, 24);
+
+        var elasticWidthCap = maxSize.Columns * 2 / 3;
+        var elasticHeightCap = maxSize.Rows * 4 / 5;
+
+        w.Width = Math.Clamp(elasticWidthCap, 78, 120);
+        w.Height = Math.Clamp(elasticHeightCap, 22, 32);
+        w.MinWidth = 48;
+        w.MinHeight = 14;
+
+        w.Padding = Margins.Zero;
+        w.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        w.AutoFitToViewport = true;
+        w.Shadow = WindowShadow.Default;
     }
 
     /// <summary>

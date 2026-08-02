@@ -23,6 +23,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     /// <summary>The <see cref="Rendering.Text.TextTrimming">text trimming</see> to apply to the rich text.</summary>
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
         UIProperty.Register<RichTextPresenter, TextTrimming>(nameof(TextTrimming),
+                                                             defaultValue: TextTrimming.CharacterEllipsis,
                                                              changed: OnLayoutAffectingPropertyChanged);
 
     /// <summary>The <see cref="Rendering.Text.TextAlignment">text alignment</see> to apply to the rich text.</summary>
@@ -161,12 +162,26 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     /// <inheritdoc/>
     protected override Size MeasurePrimaryContent(Size availableSize)
     {
+        var wasMarkedTrimmed = GetValueSource(TextBlock.IsTrimmedProperty) is
+                               {
+                                   Kind: ValueSourceKind.Default,
+                                   IsCurrentValue: true
+                               };
+
         if (EnsureText(availableSize.Columns) is {} ft)
         {
+            if (ft.HasTrimmedLines)
+                SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
+            else if (wasMarkedTrimmed)
+                ClearValue(TextBlock.IsTrimmedPropertyKey);
+
             return TextAlignment is TextAlignment.Left || LayoutMath.IsUnbounded(availableSize.Columns)
                        ? ft.Size
                        : ft.Size with { Columns = availableSize.Columns };
         }
+
+        if (wasMarkedTrimmed)
+            ClearValue(TextBlock.IsTrimmedPropertyKey);
 
         return Size.Empty;
     }
@@ -193,29 +208,91 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         if (availableColumns is 0)
             return null;
 
-        if (_cachedState is { Text: not null } cs &&
+        if (_cachedState is { Text.Blocks.Length: > 0 } cs &&
             ReferenceEquals(cs.Source, text) &&
             cs.AvailableColumns == availableColumns)
         {
             return cs.Text;
         }
 
-        var tf = new TextFormatter { Trim = TextTrimming, Alignment = TextAlignment };
-
-        var ft = tf.Format(text,
-                           availableColumns,
-                           capabilities: _subscribedApp?.EffectiveCapabilities.Output,
-                           fillEntireBounds: FillEntireBounds,
-                           maxRows: bounds is not { Rows: LayoutMath.Unbounded } &&
-                                    TextTrimming is not TextTrimming.None
-                                        ? bounds.Rows
-                                        : null);
+        var ft = Format(text, availableColumns, null, TextTrimming);
 
         cs = new CachedState(availableColumns, text, ft);
 
         _cachedState = cs;
 
         return cs.Text;
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var result = base.ArrangeOverride(finalSize);
+
+        if (_cachedState is { Text: { Size.Rows: var rows } } && rows > finalSize.Rows)
+        {
+            _cachedState = null;
+            result = MeasurePrimaryContent(finalSize);
+        }
+
+        return result;
+    }
+
+    private FormattedText Format(RichText text,
+                                 int width,
+                                 OutputCapabilities? caps,
+                                 TextTrimming? trimmingOverride = null, 
+                                 WrapMode? wrappingOverride = null)
+    {
+        var bounds = ResolveBounds(width);
+        if (bounds.Columns is 0)
+            return FormattedText.Empty;
+
+        var textTrimming = trimmingOverride ?? TextTrimming;
+
+        var tf = new TextFormatter
+                 {
+                     Alignment = TextAlignment,
+                     Trim = textTrimming,
+                     Wrap = wrappingOverride ?? TextFormatter.DefaultWrap
+                 };
+
+        if (text.IsEmpty)
+            return FormattedText.Empty;
+
+        var ft = tf.Format(text,
+                           width,
+                           capabilities: caps ?? _subscribedApp?.EffectiveCapabilities.Output,
+                           maxRows: bounds is not { Rows: 0 or LayoutMath.Unbounded } &&
+                                    textTrimming is not TextTrimming.None
+                                        ? bounds.Rows
+                                        : null);
+
+        return ft;
+    }
+
+    internal string? GetUntrimmedText(int maxWidth)
+    {
+        if (ResolveSource() is not {} text) return null;
+
+        if (text.IsEmpty) return null;
+
+        var bounds = ResolveBounds(maxWidth);
+        if (bounds.Columns is 0)
+            return null;
+
+        var tf = new TextFormatter
+                 {
+                     Alignment = TextAlignment.Left,
+                     Trim = TextTrimming.None,
+                     Wrap = WrapMode.CharacterWrap
+                 };
+
+        string plainText = tf.FormatPlainText(text,
+                                              maxWidth,
+                                              maxRows: bounds is not { Rows: 0 or LayoutMath.Unbounded }
+                                                           ? bounds.Rows
+                                                           : null);
+        return plainText;
     }
 
     private RichText? ResolveSource()
@@ -239,10 +316,11 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
     private Rect ResolveBounds(int? availableColumns)
     {
+        Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
+
         if (availableColumns is null)
         {
             Size? desiredSize = HasMeasureConstraint ? LastMeasureConstraint : null;
-            Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
 
             if (_cachedState is { Text: not null } cs && ReferenceEquals(cs.Source, Source))
                 availableColumns = cs.AvailableColumns;
@@ -255,8 +333,13 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         }
 
         var bounds = Bounds;
+        var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
 
-        return (bounds with { Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent) }).ToRect();
+        return (bounds with
+                {
+                    Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
+                    Rows = rows
+                }).ToRect();
     }
 
     private RichText ParseRichText(string s)
@@ -279,7 +362,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
                          new TextMarkupOptions
                          {
                              BrushResolver = ResourceBrushResolver.Create(this),
-                             DefaultStyle = style,
+                             DefaultStyle = style
                          });
 
         return rtb.Build();

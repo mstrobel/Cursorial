@@ -114,7 +114,25 @@ public readonly record struct Rect
         init => field = ValidateDimension(in value);
     }
 
-    /// <summary>True when the cell at (<paramref name="row"/>, <paramref name="column"/>) is inside the rectangle.</summary>
+    /// <summary>The cell position of the top-left corner of the rectangle.</summary>
+    public CellPosition TopLeft => new(Column, Row);
+
+    /// <summary>The cell position of the top-right corner of the rectangle.</summary>
+    public CellPosition TopRight => new(ColumnEnd - 1, Row);
+
+    /// <summary>The cell position of the bottom-left corner of the rectangle.</summary>
+    public CellPosition BottomLeft => new(Column, RowEnd - 1);
+
+    /// <summary>The cell position of the bottom-right corner of the rectangle.</summary>
+    public CellPosition BottomRight => new(ColumnEnd - 1, RowEnd - 1);
+
+    /// <summary>True when the cell at <paramref name="position"/> is inside the rectangle.</summary>
+    public bool Contains(CellPosition position)
+        => position.Row >= Row &&
+           position.Row < RowEnd &&
+           position.Column >= Column &&
+           position.Column < ColumnEnd;
+
     public bool Contains(int column, int row)
         => row >= Row && row < RowEnd && column >= Column && column < ColumnEnd;
 

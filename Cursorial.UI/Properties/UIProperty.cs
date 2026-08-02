@@ -87,6 +87,9 @@ public abstract class UIProperty
     /// <summary>The declaring (registering) type. Additional owners register via <c>AddOwner</c>.</summary>
     public Type OwnerType { get; }
 
+    /// <summary>The host (target) type. <see cref="UIObject"/> for non-attached properties; overridable by attached properties.</summary>
+    public virtual Type HostType => typeof(UIObject);
+
     /// <summary>
     /// Whether the property's value inherits down the element tree. Fixed at registration —
     /// deliberately not per-type-overridable (§2.6): the inheriting set stays globally enumerable

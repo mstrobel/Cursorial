@@ -1,6 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
+
+using TTS = Cursorial.UI.Controls.ToolTipService;
 
 namespace Cursorial.UI.Controls;
 
@@ -12,10 +16,13 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public sealed class ContentPresenter : UIElement
 {
+    private static readonly StyledProperty<object?> TipProperty = TTS.TipProperty;
+
     private UIElement? _child;
     private object? _realizedContent;        // the content identity the current Child was built from
     private DataTemplate? _realizedTemplate; // the template identity the current Child was built from
     private bool _realizing;                 // recursion guard (C147)
+    private bool _applyingToolTip;           // RebuildToolTip() recursion guard
     private IDisposable? _aliasContentObserver;
     private IDisposable? _aliasTemplateObserver;
     private IDisposable? _aliasStringFormatObserver;
@@ -25,6 +32,9 @@ public sealed class ContentPresenter : UIElement
     private IDisposable? _vAlignObserver;
     private ContentControl? _alignmentSource; // the templated parent we read through to (CD21)
     private IDisposable? _isTrimmedObserver;
+    private UIElement? _isTrimmedSource;
+    private IDisposable? _ownerToolTipObserver;
+    private UIElement? _ownerToolTipSource;
 
     /// <summary>The presenter's content (any object); mirrors <see cref="ContentControl.Content"/>.</summary>
     public static readonly StyledProperty<object?> ContentProperty =
@@ -62,7 +72,7 @@ public sealed class ContentPresenter : UIElement
         UIProperty.Register<ContentPresenter, bool>(
             nameof(ShowTrimmedContentInToolTip),
             defaultValue: false,
-            changed: static (s, _, _) => (s as ContentPresenter)?.RebuildToolTip());
+            changed: static (s, _, _) => (s as ContentPresenter)?.UpdateOwnerToolTipSubscription());
 
     /// <summary>
     /// When <c>false</c>, <see cref="TextElement">text formatting</see> and other forwarded properties will
@@ -80,6 +90,10 @@ public sealed class ContentPresenter : UIElement
         // The realized child swaps on any of these even when its desired size is unchanged, so the zone must
         // re-render too (a same-length string-format change, an access-key re-fold).
         AffectsRender<ContentPresenter>(ContentProperty, ContentTemplateProperty, ContentStringFormatProperty, RecognizesAccessKeyProperty);
+
+        ToolTipService.TipProperty.OverrideMetadata<ContentPresenter>(
+            new PropertyMetadata<object?>(Changed: OnToolTipChanged)
+        );
     }
 
     /// <inheritdoc cref="ContentProperty"/>
@@ -112,7 +126,7 @@ public sealed class ContentPresenter : UIElement
     /// <summary>The realized visual child (diagnostic; null before first measure / empty content).</summary>
     public UIElement? Child => _child;
 
-    /// <summary>The chain-③ logical adoption of element content for a free-standing presenter (no <c>ContentControl</c> host).</summary>
+    /// <summary>The chain-③ logical adoption of element content for a freestanding presenter (no <c>ContentControl</c> host).</summary>
     internal void AdoptElementContentLogically(UIElement element) => AddLogicalChild(element);
 
     // ───────────────────────────── measure / arrange ─────────────────────────────
@@ -132,7 +146,7 @@ public sealed class ContentPresenter : UIElement
     /// <inheritdoc/>
     protected override Size ArrangeOverride(Size finalSize)
     {
-        if (_child is null)
+        if (_child is not {} child)
             return finalSize;
 
         // Position the content per the templated ContentControl's Horizontal/VerticalContentAlignment (the WPF
@@ -141,25 +155,35 @@ public sealed class ContentPresenter : UIElement
         var (h, v) = EffectiveContentAlignment();
         var width = h == HorizontalAlignment.Stretch ? finalSize.Columns : Math.Min(_child.DesiredSize.Columns, finalSize.Columns);
         var height = v == VerticalAlignment.Stretch ? finalSize.Rows : Math.Min(_child.DesiredSize.Rows, finalSize.Rows);
-        var x = h switch
-        {
-            HorizontalAlignment.Right => Math.Max(0, finalSize.Columns - width),
-            HorizontalAlignment.Center => Math.Max(0, (finalSize.Columns - width) / 2),
-            _ => 0, // Left, Stretch
-        };
-        var y = v switch
-        {
-            VerticalAlignment.Bottom => Math.Max(0, finalSize.Rows - height),
-            VerticalAlignment.Center => Math.Max(0, (finalSize.Rows - height) / 2),
-            _ => 0, // Top, Stretch
-        };
 
-        _child.Arrange(new Rect(x, y, width, height));
+        var x = h switch
+                {
+                    HorizontalAlignment.Right  => Math.Max(0, finalSize.Columns - width),
+                    HorizontalAlignment.Center => Math.Max(0, (finalSize.Columns - width) / 2),
+                    _                          => 0, // Left, Stretch
+                };
+
+        var y = v switch
+                {
+                    VerticalAlignment.Bottom => Math.Max(0, finalSize.Rows - height),
+                    VerticalAlignment.Center => Math.Max(0, (finalSize.Rows - height) / 2),
+                    _                        => 0, // Top, Stretch
+                };
+
+        child.Arrange(new Rect(x, y, width, height));
+
+        if (AdvertisesTrimmedState(child) && (IsShowingTrimmedContentToolTip || CouldShowTrimmedToolTip()))
+            RebuildToolTip();
+
         return finalSize;
     }
 
-    // The content alignment from the templated ContentControl (Stretch for a free-standing / non-ContentControl parent).
-    private (HorizontalAlignment Horizontal, VerticalAlignment Vertical) EffectiveContentAlignment()
+    private bool IsShowingTrimmedContentToolTip
+        => ShowTrimmedContentInToolTip &&
+           GetValueSource(TipProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: true };
+
+    // The content alignment from the templated ContentControl (Stretch for a freestanding / non-ContentControl parent).
+    internal (HorizontalAlignment Horizontal, VerticalAlignment Vertical) EffectiveContentAlignment()
         => TemplatedParent is ContentControl cc
             ? (cc.HorizontalContentAlignment, cc.VerticalContentAlignment)
             : (HorizontalAlignment.Stretch, VerticalAlignment.Stretch);
@@ -170,8 +194,10 @@ public sealed class ContentPresenter : UIElement
     protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
     {
         base.OnAttachedToTree(in e);
+
         UpdateAliasSubscription();
         UpdateAlignmentSubscription();
+        UpdateOwnerToolTipSubscription();
     }
 
     /// <inheritdoc/>
@@ -188,6 +214,8 @@ public sealed class ContentPresenter : UIElement
         // detach (which the templated parent's Detach() triggers via the Root subtree walk — CD20/CD21).
         TearDownAlias();
         TearDownAlignment();
+        TearDownOwnerToolTipSubscription();
+        RebuildToolTip(); // not explicitly invoked by TearDownOwnerToolTipSubscription(), unlike its 'Update' twin. 
         base.OnDetachedFromTree(in e);
     }
 
@@ -218,6 +246,60 @@ public sealed class ContentPresenter : UIElement
         _hAlignObserver = null;
         _vAlignObserver = null;
         _alignmentSource = null;
+    }
+
+    private static void OnToolTipChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is ContentPresenter { _applyingToolTip: false } cp)
+            cp.UpdateOwnerToolTipSubscription(); // Change to subscribability: UpdateToolTipSubscription -> RebuildToolTip.
+    }
+
+    private void UpdateOwnerToolTipSubscription()
+    {
+        var owner = FindTemplateBarrier(this);
+        var lastOwner = _ownerToolTipSource;
+
+        bool? couldShow = null;
+
+        if (ReferenceEquals(owner, lastOwner) is false)
+        {
+            TearDownOwnerToolTipSubscription();
+
+            if (ReferenceEquals(owner, null) is false && (couldShow = CouldShowTrimmedToolTip()) is true)
+            {
+                _ownerToolTipObserver = owner.AddObserver(TipProperty, new OwnerToolTipObserver(this));
+                _ownerToolTipSource = owner;
+            }
+        }
+
+        RebuildToolTip(couldShow);
+    }
+
+    private bool CouldShowTrimmedToolTip()
+    {
+        var toolTipSource = GetValueSource(TipProperty);
+
+        // Do NOT evaluate whether `_ownerToolTipSource` has a ToolTip. That's not part of our criteria for hooking
+        // up the owner's ToolTip observer. We test for that separately in RebuildToolTip().
+
+        return IsAttachedToTree &&                                 // No ToolTip if we aren't attached to a tree.
+               ShowTrimmedContentInToolTip &&                      // Do nothing if this isn't 'true'.
+               AdvertisesTrimmedState(_child) &&                   // Only certain elements report 'IsTrimmed'.
+               toolTipSource is { Kind: ValueSourceKind.Default }; // Never override externally-provided ToolTips.
+    }
+    private void TearDownOwnerToolTipSubscription()
+
+    {
+        _ownerToolTipObserver?.Dispose();
+        _ownerToolTipObserver = null;
+        _ownerToolTipSource = null;
+    }
+
+    private void TearDownIsTrimmedSubscription()
+    {
+        _isTrimmedObserver?.Dispose();
+        _isTrimmedObserver = null;
+        _isTrimmedSource = null;
     }
 
     // The auto-alias is active when neither local property IsSet and the presenter is a template part
@@ -323,7 +405,7 @@ public sealed class ContentPresenter : UIElement
         }
     }
 
-    private bool _childLogicallyOwned; // the presenter adopted the element content logically (free-standing case, chain ③)
+    private bool _childLogicallyOwned; // the presenter adopted the element content logically (freestanding case, chain ③)
 
     // The framework-installed Inverse forward on BORROWED Icon content (§2.1) — the presenter owns its
     // teardown because RebuildChild leaves borrowed content's own bindings alone, so a source-anchored
@@ -351,9 +433,10 @@ public sealed class ContentPresenter : UIElement
             // otherwise pin the unhosted element to the live templated parent on every content swap / recycle.
             _adoptedContentForward?.Dispose();
             _adoptedContentForward = null;
-
-            _isTrimmedObserver?.Dispose();
-            _isTrimmedObserver = null;
+            
+            // While we may keep our `_ownerToolTipObserver` active, the `_isTrimmedObserver` must be attached
+            // to the current child. Dispose it here if it exists.
+            TearDownIsTrimmedSubscription();
 
             // A presenter-BUILT child (a TextBlock realized from string/object content — NOT borrowed element content,
             // where the child IS the content and the author owns it) is presenter-owned and discarded here. Tear its
@@ -361,7 +444,7 @@ public sealed class ContentPresenter : UIElement
             // carries — e.g. the fallback TextBlock's live TextWrapping link back to THIS presenter — would otherwise
             // leak its observer onto us on every content rebuild (each discarded child pinned alive). Borrowed content
             // (old == _realizedContent) is left untouched — its bindings belong to the author, not us.
-            if (!ReferenceEquals(old, _realizedContent))
+            if (!ReferenceEquals(old, _realizedContent) && _realizedContent is not DeferredContent)
                 BindingOperations.TearDown(old);
 
             if (_childLogicallyOwned && ReferenceEquals(old.LogicalParent, this))
@@ -388,6 +471,7 @@ public sealed class ContentPresenter : UIElement
         if (built is not null)
         {
             _childLogicallyOwned = ReferenceEquals(built.LogicalParent, this);
+
             AddVisualChildOnly(built);
             RedirectBorrowedContentInheritance(built);
 
@@ -400,25 +484,42 @@ public sealed class ContentPresenter : UIElement
                 else if (content is UIElement && built == content)
                     _adoptedContentForward = ContentRealization.ForwardInverseOnly(this, built);
             }
-
-            RebuildToolTip();
         }
+
+        UpdateOwnerToolTipSubscription(); // Potential change to subscribability via ContentTemplate:
+                                          // UpdateOwnerToolTipSubscription -> RebuildToolTip.
     }
 
-    private void RebuildToolTip()
+    private static UIElement? FindTemplateBarrier(UIElement node)
     {
-        var toolTipSource = GetValueSource(ToolTipService.TipProperty);
-
-        var canSetToolTip = ShowTrimmedContentInToolTip &&
-                            toolTipSource is { Kind: ValueSourceKind.Default };
-
-        if (canSetToolTip is false) return;
-        if (canSetToolTip is false)
+        for (var current = node; current != null; current = current.VisualParent)
         {
-            _isTrimmedObserver?.Dispose();
-            _isTrimmedObserver = null;
+            if (current.TemplatedParent is not null) return current.TemplatedParent;
+            if (current != node && current is { IsAttachedToTree: true, UIParent: null }) return current;
+        }
 
-            if (toolTipSource.IsCurrentValue)
+        return null;
+    }
+
+    private void RebuildToolTip(bool? knownCouldShow = null)
+    {
+        var child = _child;
+        var toolTipSource = GetValueSource(ToolTipService.TipProperty);
+        var hasDefaultToolTip = toolTipSource is { Kind: ValueSourceKind.Default };
+
+        // If our current tool tip was provided by this method, it will have a 'Default' value source kind
+        // and a SetCurrentValue marker. If those conditions hold, clear the tip we provided.
+        var alreadyHasTrimmedTextTip = hasDefaultToolTip && toolTipSource.IsCurrentValue;
+        var couldShow = knownCouldShow ?? CouldShowTrimmedToolTip();
+
+        if (couldShow is false ||                                   // Conditions laid out in CouldShowTrimmedToolTip.
+            _ownerToolTipSource?.GetValue(TipProperty) is not null) // Never override externally-provided ToolTips.
+        {
+            // If we've reached this point, we don't have the capability to even provide a ToolTip for trimmed
+            // content, so there's no point in keeping track of whether our child TextBlock is trimmed.
+            TearDownIsTrimmedSubscription();
+
+            if (alreadyHasTrimmedTextTip)
                 ClearValue(ToolTipService.TipProperty);
 
             return;
@@ -426,28 +527,78 @@ public sealed class ContentPresenter : UIElement
 
         var toolTipSet = false;
 
-        if (_child is TextBlock tb)
+        if (ReferenceEquals(child, _isTrimmedSource) is false)
         {
-            _isTrimmedObserver = tb.AddObserver(IsTrimmedProperty, new IsTrimmedObserver(this));
+            _isTrimmedSource = child;
+            _isTrimmedObserver = child!.AddObserver(IsTrimmedProperty, new IsTrimmedObserver(this));
+        }
 
-            if (tb is { IsTrimmed: true } && tb.GetUntrimmedText(ToolTipService.MaxToolTipWidth) is {} tip)
+        if (child!.GetValue(TextBlock.IsTrimmedProperty))
+        {
+            if (alreadyHasTrimmedTextTip)
             {
-                SetCurrentValue(
-                    ToolTipService.TipProperty,
-                    new TextBlock
-                    {
-                        Text = tip,
-                        TextWrapping = WrapMode.WordWrap,
-                        MaxHeight = Math.Max(1, UIApplication.Current?.WindowManager?.ScreenSize.Rows / 2 ?? 8),
-                        TextTrimming = TextTrimming.ClipFromEnd
-                    });
-
                 toolTipSet = true;
+            }
+            else if (GetUntrimmedText(child, ToolTipService.MaxToolTipWidth) is {} tip)
+            {
+                _applyingToolTip = true;
+
+                try
+                {
+                    SetCurrentValue(
+                        ToolTipService.TipProperty,
+                        new TextBlock
+                        {
+                            Text = tip,
+                            TextWrapping = WrapMode.WordWrap,
+                            MaxHeight = Math.Max(1, UIApplication.Current?.WindowManager?.ScreenSize.Rows / 2 ?? 8),
+                            TextTrimming = TextTrimming.ClipFromEnd
+                        });
+
+                    toolTipSet = true;
+                }
+                finally
+                {
+                    _applyingToolTip = false;
+                }
             }
         }
 
-        if (toolTipSet is false && toolTipSource.IsCurrentValue)
+        if (toolTipSet is false && alreadyHasTrimmedTextTip)
             ClearValue(ToolTipService.TipProperty);
+    }
+
+    private static bool AdvertisesTrimmedState([NotNullWhen(true)] UIElement? element)
+        => element is TextBlock or 
+                      AccessTextPresenter or 
+                      RichTextPresenter;
+
+    private string? GetUntrimmedText(UIElement? element, int maxToolTipWidth)
+    {
+        if (element is TextBlock t)
+        {
+            if (t.IsTrimmed) return t.GetUntrimmedText(maxToolTipWidth);
+        }
+        else if (element is AccessTextPresenter { Text.Text: { Length: > 0 } text } p &&
+                 p.GetValue(TextBlock.IsTrimmedProperty) is true)
+        {
+            var rt = new RichTextBuilder(defaultTrimming: TextTrimming.CharacterEllipsis,
+                                         defaultWrap: WrapMode.CharacterWrap)
+                    .Run(text)
+                    .Build();
+
+            var tf = new TextFormatter();
+
+            var ft = tf.Format(rt, maxToolTipWidth, capabilities: UIApplication.Current?.Capabilities.Output);
+
+            return ft.ToPlainText();
+        }
+        else if (element is RichTextPresenter rtp && rtp.GetValue(TextBlock.IsTrimmedProperty))
+        {
+            return rtp.GetUntrimmedText(maxToolTipWidth);
+        }
+
+        return null;
     }
 
     // WPF parity for BORROWED element content — a UIElement hosted here whose LOGICAL owner is a foreign control.
@@ -460,7 +611,7 @@ public sealed class ContentPresenter : UIElement
     // inherits through the visual tree. RemoveVisualChild restores it to UIParent on unhost (symmetric).
     //
     // Left untouched (default UIParent-driven inheritance) when the content is logically owned by THIS presenter
-    // (free-standing chain-③ adoption) or by this presenter's OWN templated parent — an ordinary ContentControl
+    // (freestanding chain-③ adoption) or by this presenter's OWN templated parent — an ordinary ContentControl
     // (Button.Content), where UIParent already IS the correct source and no redirect is needed.
     private void RedirectBorrowedContentInheritance(UIElement child)
     {
@@ -477,6 +628,7 @@ public sealed class ContentPresenter : UIElement
     {
         // Re-check whether the alias is still active (a later explicit value stops the read-through).
         UpdateAliasSubscription();
+        UpdateOwnerToolTipSubscription();
         InvalidateMeasure();
     }
 
@@ -525,6 +677,12 @@ public sealed class ContentPresenter : UIElement
         }
     }
 
+    protected override void OnTemplatedParentChanged(in TemplatedParentChangedEventArgs e)
+    {
+        base.OnTemplatedParentChanged(in e);
+        UpdateOwnerToolTipSubscription(); // Changes subscribability: UpdateOwnerToolTipSubscription -> RebuildToolTip.
+    }
+
     private static readonly object NoContentSentinel = new();
 
     // The typed read-through observers on the templated parent (no presenter store entry — CD21).
@@ -571,6 +729,12 @@ public sealed class ContentPresenter : UIElement
     private sealed class IsTrimmedObserver(ContentPresenter presenter) : IValueObserver<bool>
     {
         public void OnPropertyChanged(UIObject source, UIProperty property, bool oldValue, bool newValue, BindingPriority priority)
-            => presenter.RebuildToolTip();
+            => presenter.UpdateOwnerToolTipSubscription(); // Changes subscribability: UpdateOwnerToolTipSubscription -> RebuildToolTip.
+    }
+
+    private sealed class OwnerToolTipObserver(ContentPresenter presenter) : IValueObserver<object?>
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, object? oldValue, object? newValue, BindingPriority priority)
+            => presenter.UpdateOwnerToolTipSubscription(); // Changes subscribability: UpdateOwnerToolTipSubscription -> RebuildToolTip.
     }
 }

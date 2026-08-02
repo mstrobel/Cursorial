@@ -44,8 +44,8 @@ public class UniformWrapPanel : Panel
     /// The maximum slot width in cells, or <see langword="null"/> (default) to derive it from the widest
     /// child. <c>[AffectsMeasure]</c>; negative values coerce to 0.
     /// </summary>
-    public static readonly StyledProperty<int?> MaxItemWidthProperty =
-        UIProperty.Register<UniformWrapPanel, int?>(nameof(MaxItemWidth), coerce: static (_, value) => value is < 0 ? 0 : value);
+    public static readonly StyledProperty<int?> ItemMaxWidthProperty =
+        UIProperty.Register<UniformWrapPanel, int?>(nameof(ItemMaxWidth), coerce: static (_, value) => value is < 0 ? 0 : value);
 
     /// <summary>
     /// The uniform slot height in cells, or <see langword="null"/> (default) to derive it from the tallest
@@ -58,8 +58,8 @@ public class UniformWrapPanel : Panel
     /// The maximum slot height in cells, or <see langword="null"/> (default) to derive it from the widest
     /// child. <c>[AffectsMeasure]</c>; negative values coerce to 0.
     /// </summary>
-    public static readonly StyledProperty<int?> MaxItemHeightProperty =
-        UIProperty.Register<UniformWrapPanel, int?>(nameof(MaxItemHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
+    public static readonly StyledProperty<int?> ItemMaxHeightProperty =
+        UIProperty.Register<UniformWrapPanel, int?>(nameof(ItemMaxHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
 
     /// <summary>The number of slots on one line — items per ROW when horizontal, items per COLUMN when
     /// vertical. Read-only; republished by every arrange (and, so an un-arranged panel still answers, by
@@ -95,14 +95,14 @@ public class UniformWrapPanel : Panel
     /// <inheritdoc cref="ItemWidthProperty"/>
     public int? ItemWidth { get => GetValue(ItemWidthProperty); set => SetValue(ItemWidthProperty, value); }
 
-    /// <inheritdoc cref="MaxItemWidthProperty"/>
-    public int? MaxItemWidth { get => GetValue(MaxItemWidthProperty); set => SetValue(MaxItemWidthProperty, value); }
+    /// <inheritdoc cref="ItemMaxWidthProperty"/>
+    public int? ItemMaxWidth { get => GetValue(ItemMaxWidthProperty); set => SetValue(ItemMaxWidthProperty, value); }
 
     /// <inheritdoc cref="ItemHeightProperty"/>
     public int? ItemHeight { get => GetValue(ItemHeightProperty); set => SetValue(ItemHeightProperty, value); }
 
-    /// <inheritdoc cref="MaxItemHeightProperty"/>
-    public int? MaxItemHeight { get => GetValue(MaxItemHeightProperty); set => SetValue(MaxItemHeightProperty, value); }
+    /// <inheritdoc cref="ItemMaxHeightProperty"/>
+    public int? ItemMaxHeight { get => GetValue(ItemMaxHeightProperty); set => SetValue(ItemMaxHeightProperty, value); }
 
     /// <inheritdoc cref="ItemsPerLineProperty"/>
     public int ItemsPerLine => _itemsPerLine;
@@ -125,8 +125,8 @@ public class UniformWrapPanel : Panel
                                ? vp
                                : */default(Size?);
 
-        var maxWidth = MaxItemWidth ?? viewportSize?.Columns ?? LayoutMath.Unbounded;
-        var maxHeight = MaxItemHeight ?? viewportSize?.Rows ?? LayoutMath.Unbounded;
+        var maxWidth = ItemMaxWidth ?? viewportSize?.Columns ?? LayoutMath.Unbounded;
+        var maxHeight = ItemMaxHeight ?? viewportSize?.Rows ?? LayoutMath.Unbounded;
         var explicitWidth = ItemWidth;
         var explicitHeight = ItemHeight;
 

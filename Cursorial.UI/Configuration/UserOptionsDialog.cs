@@ -199,10 +199,15 @@ public sealed class UserOptionsDialog : Window
             }
 
             tabs.Items.Add(new TabItem
-            {
-                Header = "_" + category.DisplayName,
-                Content = new ScrollViewer { Content = page, MaxHeight = 30 }
-            });
+                           {
+                               Header = "_" + category.DisplayName,
+                               Content = new ScrollViewer
+                                         {
+                                             Content = page,
+                                             MaxHeight = 30,
+                                             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+                                         }
+                           });
 
             foreach (var button in buttons.Children)
                 button.TabIndex = nextTabIndex++;

@@ -20,5 +20,5 @@ public sealed class AttachedProperty<T> : StyledProperty<T>
     }
 
     /// <summary>The kind of instance the property may be set on (DEBUG-asserted; no release check).</summary>
-    public Type HostType { get; }
+    public override Type HostType { get; }
 }

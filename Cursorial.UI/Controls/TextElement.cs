@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
 using CellStyle = Cursorial.Output.Style;
@@ -7,7 +8,7 @@ using CellStyle = Cursorial.Output.Style;
 namespace Cursorial.UI.Controls;
 
 /// <summary>
-/// The text weight axis (proposal-textattributes-decomposition §1). One axis, three values — Bold
+/// The text weight axis (proposal-TextAttributes-decomposition §1). One axis, three values — Bold
 /// and Faint share the terminal's SGR 22 reset, so they are alternatives on a single dial, not
 /// independent flags: mutual exclusion by construction, and a weight conflict ("disabled says
 /// Faint, heading says Bold") arbitrates deterministically through the lattice like any
@@ -28,7 +29,7 @@ public enum TextWeight : byte
 }
 
 /// <summary>
-/// The text posture axis (proposal-textattributes-decomposition §1, amended 2026-07-13): the enum
+/// The text posture axis (proposal-TextAttributes-decomposition §1, amended 2026-07-13): the enum
 /// shape (rather than a bare bool) keeps the <c>Text*</c> property family discoverable as a set
 /// (<see cref="TextWeight"/>/<see cref="TextStyle"/>) and leaves headroom for future terminal
 /// posture standards (SGR 20 fraktur is the historical precedent) — while still refusing WPF's
@@ -45,7 +46,7 @@ public enum TextStyle : byte
 
 /// <summary>
 /// The paint-time resolution of the <see cref="TextElement"/> attribute properties into the Drawing
-/// tier's vocabulary (proposal-textattributes-decomposition §3.1): the folded flag bitset (including
+/// tier's vocabulary (proposal-TextAttributes-decomposition §3.1): the folded flag bitset (including
 /// the <see cref="TextAttributes.Underline"/> presence bit) plus the underline shape, meaningful only
 /// while the presence bit is set. Renderers obtain one per <c>Render</c> call via
 /// <see cref="TextElement.ComposeAttributes"/> — the single meeting point of the per-axis properties
@@ -81,7 +82,7 @@ public readonly record struct ResolvedTextAttributes(TextAttributes Flags, Under
 /// the per-axis text-attribute properties (<see cref="TextWeightProperty"/>/<see cref="TextStyleProperty"/>/
 /// <see cref="UnderlineProperty"/>/…), which are NON-inheriting and "flow like <c>Background</c>":
 /// element-level values delivered to template parts and generated leaves by explicit forwards
-/// (proposal-textattributes-decomposition §2.1). Renderers read the folded effective attributes via
+/// (proposal-TextAttributes-decomposition §2.1). Renderers read the folded effective attributes via
 /// <see cref="ComposeAttributes"/>.
 /// </summary>
 public abstract class TextElement
@@ -106,7 +107,7 @@ public abstract class TextElement
         // Attached properties land on arbitrary host types, so AffectsRender rides the global
         // effects lane (A1) — not a per-owner-type registration. (Foreground fans out to
         // descendants via inheritance; the per-axis attribute properties are non-inheriting and
-        // re-render only their own element — proposal-textattributes-decomposition §2.1.)
+        // re-render only their own element — proposal-TextAttributes-decomposition §2.1.)
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ForegroundProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
@@ -116,6 +117,12 @@ public abstract class TextElement
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, InverseProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, BlinkProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, ConcealedProperty);
+
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextTrimmingProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsMeasure, TextTrimmingProperty);
+
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWrappingProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsMeasure, TextWrappingProperty);
     }
 
     /// <summary>Reads the inherited foreground brush attached to <paramref name="element"/>.</summary>
@@ -130,6 +137,46 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(ForegroundProperty, value);
+    }
+
+    // ─────────────────────────────────────── text formatting properties ────────────────────────────────────────
+
+    /// <summary>The wrap mode (<c>AffectsMeasure | AffectsRender</c>).</summary>
+    public static readonly StyledProperty<WrapMode> TextWrappingProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, WrapMode>("TextWrapping",
+                                                                      defaultValue: WrapMode.NoWrap);
+
+    /// <summary>The trimming mode for overflowing lines (<c>AffectsRender</c>).</summary>
+    public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, TextTrimming>(nameof(TextTrimming),
+                                                                          defaultValue: TextTrimming.CharacterEllipsis);
+
+    /// <summary>Reads the text wrapping mode attached to <paramref name="element"/>.</summary>
+    public static WrapMode GetTextWrapping(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(TextWrappingProperty);
+    }
+
+    /// <summary>Sets the text wrapping mode on <paramref name="element"/>.</summary>
+    public static void SetTextWrapping(UIElement element, WrapMode value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(TextWrappingProperty, value);
+    }
+
+    /// <summary>Reads the text trimming mode attached to <paramref name="element"/>.</summary>
+    public static TextTrimming GetTextTrimming(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(TextTrimmingProperty);
+    }
+
+    /// <summary>Sets the text trimming mode on <paramref name="element"/>.</summary>
+    public static void SetTextTrimming(UIElement element, TextTrimming value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(TextTrimmingProperty, value);
     }
 
     // ───────────────────────────── the per-axis attribute properties (proposal §1) ─────────────────────────────
@@ -277,14 +324,14 @@ public abstract class TextElement
         element.SetValue(BlinkProperty, value);
     }
 
-    /// <summary>Reads the conceal axis attached to <paramref name="element"/>.</summary>
+    /// <summary>Reads the 'conceal' axis attached to <paramref name="element"/>.</summary>
     public static bool GetConcealed(UIElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(ConcealedProperty);
     }
 
-    /// <summary>Sets the conceal axis on <paramref name="element"/>.</summary>
+    /// <summary>Sets the 'conceal' axis on <paramref name="element"/>.</summary>
     public static void SetConcealed(UIElement element, bool value)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -292,11 +339,11 @@ public abstract class TextElement
     }
 
     /// <summary>
-    /// The paint-time fold (proposal-textattributes-decomposition §3.1): resolves the element's
+    /// The paint-time fold (proposal-TextAttributes-decomposition §3.1): resolves the element's
     /// effective text-attribute properties into the Drawing tier's vocabulary. The single
     /// composition point every text-bearing renderer reads — one call per <c>Render</c>; nine
     /// own-value reads (non-inheriting — no walks) plus, during the migration bridge, the legacy
-    /// aggregate OR'd in (the bridge term is deleted at P5). <c>Concealed</c> maps to
+    /// aggregate 'OR'd in (the bridge term is deleted at P5). <c>Concealed</c> maps to
     /// <see cref="TextAttributes.Hidden"/> (SGR 8 "conceal").
     /// </summary>
     public static ResolvedTextAttributes ComposeAttributes(UIElement element)
@@ -310,14 +357,16 @@ public abstract class TextElement
             _                => TextAttributes.None,
         };
 
+        // @formatter:off
         var underline = element.GetValue(UnderlineProperty);
-        if (underline is not null)                        flags |= TextAttributes.Underline;
+        if (underline is not null)                                   flags |= TextAttributes.Underline;
         if (element.GetValue(TextStyleProperty) == TextStyle.Italic) flags |= TextAttributes.Italic;
-        if (element.GetValue(StrikethroughProperty))      flags |= TextAttributes.Strikethrough;
-        if (element.GetValue(OverlineProperty))           flags |= TextAttributes.Overline;
-        if (element.GetValue(InverseProperty))            flags |= TextAttributes.Inverse;
-        if (element.GetValue(BlinkProperty))              flags |= TextAttributes.Blink;
-        if (element.GetValue(ConcealedProperty))          flags |= TextAttributes.Hidden;
+        if (element.GetValue(StrikethroughProperty))                 flags |= TextAttributes.Strikethrough;
+        if (element.GetValue(OverlineProperty))                      flags |= TextAttributes.Overline;
+        if (element.GetValue(InverseProperty))                       flags |= TextAttributes.Inverse;
+        if (element.GetValue(BlinkProperty))                         flags |= TextAttributes.Blink;
+        if (element.GetValue(ConcealedProperty))                     flags |= TextAttributes.Hidden;
+        // @formatter:on
 
         return new ResolvedTextAttributes(flags, underline ?? UnderlineStyle.Single);
     }
@@ -331,6 +380,17 @@ public abstract class TextElement
     [
         TextWeightProperty, TextStyleProperty, UnderlineProperty, StrikethroughProperty,
         OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty,
+    ];
+
+    /// <summary>
+    /// The two text formatting properties: trimming and wrapping modes. The presenter forward
+    /// (<c>ContentRealization</c>) binds both onto a text leaf from the PRESENTER--not its
+    /// templated parent. These require more explicit intent than the <see cref="AllAxisProperties">
+    /// axis properties</see>, by design.
+    /// </summary>
+    internal static readonly UIProperty[] AllFormattingProperties =
+    [
+        TextTrimmingProperty, TextWrappingProperty
     ];
 
     /// <summary>

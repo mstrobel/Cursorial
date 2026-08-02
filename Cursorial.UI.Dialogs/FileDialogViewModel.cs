@@ -71,8 +71,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     private ListViewSortDirection _sortDirection = ListViewSortDirection.Ascending;
     private ListViewViewMode _viewMode = ListViewViewMode.Details;
     private bool _showHiddenEntries;
+    private int _busyDepth;
     private string? _errorMessage;
-    private bool _isBusy;
     private bool _isCreatingFolder;
     private string _newFolderName = "";
     private string _typeAheadBuffer = "";
@@ -162,6 +162,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
                 {
                     ViewMode = viewMode;
                 }
+
+                SetViewModeCommand?.RaiseCanExecuteChanged();
             },
             parameter =>
             {
@@ -403,16 +405,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         get => _viewMode;
         set
         {
-            var wasBusy = IsBusy;
-
-            try
-            {
-                SetProperty(ref _viewMode, value);
-            }
-            finally
-            {
-                IsBusy = wasBusy;
-            }
+            using var busyScope = EnterBusyScope();
+            SetProperty(ref _viewMode, value);
         }
     }
 
@@ -437,15 +431,7 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
 
     /// <summary>Whether a listing is in flight. Bound to nothing load-bearing yet; exposed because a slow
     /// share is exactly the case a host may want to show a hint for.</summary>
-    public bool IsBusy
-    {
-        get => _isBusy;
-        private set
-        {
-            if (SetProperty(ref _isBusy, value))
-                RequeryCommands();
-        }
-    }
+    public bool IsBusy => _busyDepth > 0;
 
     /// <summary>Whether the New Folder row is showing its editor (the design page's inline green row).</summary>
     public bool IsCreatingFolder
@@ -946,7 +932,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         var previous = _currentDirectory;
 
         IReadOnlyList<FileSystemEntry> entries;
-        IsBusy = true;
+
+        using var busyScope = EnterBusyScope();
 
         try
         {
@@ -960,11 +947,6 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         {
             ErrorMessage = $"Could not open '{path}': {e.Message}";
             return;
-        }
-        finally
-        {
-            if (!token.IsCancellationRequested)
-                IsBusy = false;
         }
 
         if (token.IsCancellationRequested)
@@ -1131,6 +1113,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     // to be perfect to be worth anything — a wrong one shows the user a row that is not there.
     private void ApplyView()
     {
+        using var busyScope = EnterBusyScope();
+
         var selectedPath = _selectedEntry?.FullPath;
         var visible = new List<FileDialogEntry>(_allEntries.Count);
 
@@ -1422,5 +1406,35 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         _lifetime.Cancel();
         _navigation?.Dispose();
         _lifetime.Dispose();
+    }
+
+    private BusyScope EnterBusyScope()
+    {
+        Interlocked.Increment(ref _busyDepth);
+        return new BusyScope(this);
+    }
+
+    private void ExitBusyScopeOnce()
+    {
+        var result = Interlocked.Decrement(ref _busyDepth);
+        if (result > 0)
+            return;
+
+        if (result < 0)
+            throw new InvalidOperationException("Busy state depth should never be negative.");
+
+        RequeryCommands();
+        OnPropertyChanged(nameof(IsBusy));
+    } 
+
+    private struct BusyScope(FileDialogViewModel owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                owner.ExitBusyScopeOnce();
+        }
     }
 }

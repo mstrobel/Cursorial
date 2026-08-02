@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
@@ -46,9 +47,6 @@ public sealed class CompletionViewModel : PageViewModel
 
     private readonly Dictionary<string, IReadOnlyList<CompletionItem>> _catalog = BuildCatalog();
 
-    private string _text = "";
-    private string _status = "Type to complete — nothing accepted yet.";
-
     public CompletionViewModel()
     {
         Provider = new TermProvider(_catalog);
@@ -68,10 +66,18 @@ public sealed class CompletionViewModel : PageViewModel
     public ICommand ClearCommand { get; }
 
     /// <summary>The field's text, two-way bound. The page never parses it; the provider does.</summary>
-    public string Text { get => _text; set => Set(ref _text, value); }
+    public string Text
+    {
+        get;
+        set => Set(ref field, value);
+    } = "";
 
     /// <summary>The live readout of what the last accept did — the seam made legible.</summary>
-    public string Status { get => _status; private set => Set(ref _status, value); }
+    public override string? Status
+    {
+        get;
+        protected set => Set(ref field, value);
+    } = "Type to complete — nothing accepted yet.";
 
     // ───────────────────────────── the commit hook ─────────────────────────────
 

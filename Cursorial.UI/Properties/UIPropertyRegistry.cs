@@ -141,6 +141,15 @@ internal static class UIPropertyRegistry
         }
     }
 
+    /// <summary>The attached properties attachable on <paramref name="targetType"/>, registration-ordered.</summary>
+    internal static IReadOnlyList<UIProperty> AttachableOnType(Type targetType)
+    {
+        lock (Gate)
+        {
+            return [.. ById.Where(p => p.IsAttached && p.HostType.IsAssignableFrom(targetType))];
+        }
+    }
+
     /// <summary>The property with dense id <paramref name="id"/>, or <see langword="null"/> (the −1 sentinel included).</summary>
     internal static UIProperty? FindById(int id)
     {

@@ -51,6 +51,13 @@ public sealed class Track : UIElement
         UIProperty.Register<Track, TrackDisplayMode>(nameof(TrackDisplayMode),
                                                      defaultValue: TrackDisplayMode.Line);
 
+    public static readonly StyledProperty<IBrush?> TrackFillBrushProperty =
+        UIProperty.Register<Track, IBrush?>("TrackFillBrush",
+                                            new PropertyMetadata<IBrush?>
+                                            {
+                                                DefaultResourceKey = ThemeKeys.ScrollBarTrackBrush
+                                            });
+
     public static readonly StyledProperty<IBrush?> ThumbNormalBrushProperty =
         UIProperty.Register<Track, IBrush?>("ThumbNormalBrush",
                                             new PropertyMetadata<IBrush?>
@@ -73,6 +80,7 @@ public sealed class Track : UIElement
                                             });
 
     private IBrush? _currentBrush;
+    private IBrush? _trackFill;
     private bool _dragging;
     private int _dragGrabOffset;  // cells from the thumb's start edge where the drag grabbed
 
@@ -131,9 +139,18 @@ public sealed class Track : UIElement
     {
         var owner = Owner;
         var oldBrush = _currentBrush;
-        var normalBrush = owner.ThumbBrush ?? GetValue(ThumbNormalBrushProperty) ?? Brushes.Default;
+        var oldTrackFill = _trackFill;
+
+        var hasThumbBrush = GetValueSource(ThumbNormalBrushProperty) is not { Kind: ValueSourceKind.Default };
+
+        var baseNormalBrush = hasThumbBrush
+                                  ? GetValue(ThumbNormalBrushProperty) ?? owner.ThumbBrush
+                                  : owner.ThumbBrush ?? GetValue(ThumbNormalBrushProperty);
+
+        var normalBrush = baseNormalBrush ?? Brushes.Default;
         var hoverBrush = GetValue(ThumbHoverBrushProperty) ?? normalBrush;
         var dragBrush = GetValue(ThumbDragBrushProperty) ?? hoverBrush;
+        var trackFill = GetValue(TrackFillBrushProperty);
 
         var newBrush = _dragging
                            ? dragBrush
@@ -141,11 +158,11 @@ public sealed class Track : UIElement
                                ? hoverBrush
                                : normalBrush;
 
-        if (oldBrush != newBrush)
-        {
-            _currentBrush = newBrush;
-            if (invalidate) InvalidateVisual();
-        }
+        _currentBrush = newBrush;
+        _trackFill = trackFill;
+
+        if (invalidate && (oldBrush != newBrush || oldTrackFill != trackFill))
+            InvalidateVisual();
     }
 
     // ───────────────────────────── thumb geometry ─────────────────────────────
@@ -227,10 +244,15 @@ public sealed class Track : UIElement
 
         if (displayMode is TrackDisplayMode.Fill)
         {
-            var fill = baseBrush.ColorAt(
-                vertical ? 0 : Math.Max(0, thumbBounds.Column + (thumbBounds.Columns) / 2),
-                vertical ? 0 : Math.Max(0, thumbBounds.Row + (thumbBounds.Rows) / 2),
-                thumbBounds).WithAlpha(63);
+            var fillBrush = _trackFill;
+
+            var fill = (fillBrush ?? baseBrush).ColorAt(
+                vertical ? 0 : Math.Max(0, thumbBounds.Column + thumbBounds.Columns / 2),
+                vertical ? Math.Max(0, thumbBounds.Row + thumbBounds.Rows / 2) : 0,
+                thumbBounds);
+
+            if (fillBrush is null)
+                fill = fill.WithAlpha(63);
 
             if (fill is { Kind: ColorKind.Rgb })
             {

@@ -461,7 +461,11 @@ internal sealed class FileDialogView
 
         var rail = new Border
                    {
-                       Child = new ScrollViewer { Content = _placesPanel },
+                       Child = new ScrollViewer
+                               {
+                                   Content = _placesPanel,
+                                   HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+                               },
                        Width = 18,
                        Padding = new Margins(0, 0, 1, 0)
                    };
@@ -491,6 +495,8 @@ internal sealed class FileDialogView
         _itemTemplate ??= ItemTemplate();
         _tileTemplate ??= TileTemplate();
 
+        _listView.ItemMaxHeight = 2;
+        _listView.ItemMaxWidth = 36;
         _listView.ItemsSource = _model.Entries;
         _listView.SelectionMode = SelectionMode.Single;
         _listView.TabIndex = 5;
@@ -546,7 +552,7 @@ internal sealed class FileDialogView
     // A DOCK panel, not a stack. A StackPanel arranges each child at its DESIRED width and lets the row run
     // past the slot ("LD17 — overflow, don't clip", StackPanel.ArrangeOverride), so a name longer than the
     // Name column got an arrange rect the full width of the text and painted straight across Size, Type and
-    // Modified. The neighboring cells repaint afterwards, which is what made the damage look so strange:
+    // Modified. The neighboring cells repaint afterward, which is what made the damage look so strange:
     // the name survived only in the gaps between them, e.g. "Creative Cloud Files— Foldertrobel@g2024-…".
     // DockPanel's LastChildFill hands the final child the REMAINING rect, so the name is bounded by the
     // column and the formatter stops at its edge.
@@ -554,7 +560,7 @@ internal sealed class FileDialogView
         => new()
            {
                DataType = typeof(FileDialogEntry),
-               Content = new FuncTemplateContent(_ =>
+               Content = new FuncTemplateContent(ctx =>
                          {
                              var row = new DockPanel { Background = Brushes.Transparent, Occludes = true };
                              var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
@@ -573,7 +579,7 @@ internal sealed class FileDialogView
                              row.Children.Add(icon);
                              row.Children.Add(host); // last child fills — the name gets the rest of the column
                              
-                             PrepareToolTip(row);
+                             PrepareToolTip(ctx.TemplatedParent ?? row);
                              
                              return row;
                          })
@@ -584,10 +590,10 @@ internal sealed class FileDialogView
            {
                DataType = typeof(FileDialogEntry),
                Content = new FuncTemplateContent(
-                   _ =>
+                   ctx =>
                    {
                        var head = BuildTemplateHead();
-                       PrepareToolTip(head);
+                       PrepareToolTip(ctx.TemplatedParent ?? head);
                        return head;
                    })
            };
@@ -597,7 +603,7 @@ internal sealed class FileDialogView
            {
                DataType = typeof(FileDialogEntry),
                Content = new FuncTemplateContent(
-                   _ =>
+                   ctx =>
                    {
                        var head = BuildTemplateHead();
                        var tile = new DockPanel();
@@ -633,7 +639,7 @@ internal sealed class FileDialogView
                        tile.Children.Add(secondaryCell);
                        tile.Children.Add(head);
 
-                       PrepareToolTip(tile);
+                       PrepareToolTip(ctx.TemplatedParent ?? tile);
                        
                        return tile;
                    })
@@ -672,30 +678,39 @@ internal sealed class FileDialogView
 
     private static void PrepareToolTip(UIElement host)
     {
-        host.SetBinding(
-            SuperTip.TitleProperty,
-            new Binding
-            {
-                Converter = ValueConverter.Create(
-                    (value, _, _, _) =>
-                    {
-                        if (value is not FileDialogEntry e)
-                            return UIProperty.UnsetValue;
+        ToolTipService.SetTip(
+            host,
+            new DeferredContent(
+                () =>
+                {
+                    var tip = new SuperTip { PopulateFromAnchor = true, UseCompactLayout = true };
 
-                        if (Equals(FileDialogEntry.NoSize, e.SizeText))
-                            return e.TypeText;
+                    tip.SetBinding(
+                        SuperTip.TitleProperty,
+                        new Binding
+                        {
+                            Converter = ValueConverter.Create(
+                                (value, _, _, _) =>
+                                {
+                                    if (value is not FileDialogEntry e)
+                                        return UIProperty.UnsetValue;
 
-                        return $"{e.TypeText} ({e.SizeText})";
-                    })
-            });
+                                    if (Equals(FileDialogEntry.NoSize, e.SizeText))
+                                        return e.TypeText;
 
-        host.SetBinding(SuperTip.DescriptionProperty,
-                       new Binding(nameof(FileDialogEntry.Name)));
+                                    return $"{e.TypeText} ({e.SizeText})";
+                                })
+                        });
 
-        host.SetBinding(SuperTip.FooterProperty,
-                        new Binding(nameof(FileDialogEntry.ModifiedText)) { StringFormat = "Last Modified {0}" });
+                    tip.SetBinding(SuperTip.DescriptionProperty,
+                                   new Binding(nameof(FileDialogEntry.Name)));
 
-        SuperTip.SetAutoPopulatedTip(host, useCompactLayout: true);
+                    tip.SetBinding(SuperTip.FooterProperty,
+                                   new Binding(nameof(FileDialogEntry.ModifiedText))
+                                   { StringFormat = "Last Modified {0}" });
+
+                    return tip;
+                }));
     }
 
     private static TPanel Region<TPanel>(TPanel panel, int tabIndex) where TPanel : UIElement
@@ -766,9 +781,14 @@ internal sealed class FileDialogView
 
             foreach (var place in group.Places)
             {
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Occludes = true };
-                row.Children.Add(place.Type.CreateIcon());
-                row.Children.Add(new TextBlock { Text = place.Name });
+                var row = new DockPanel { Occludes = true };
+                var icon = place.Type.CreateIcon();
+
+                icon.Margin = new Margins(0, 0, 1, 0);
+                DockPanel.SetDock(icon, Dock.Left);
+
+                row.Children.Add(icon);
+                row.Children.Add(new ContentPresenter{ Content = place.Name, ShowTrimmedContentInToolTip = true});
 
                 var button = new Button
                              {
@@ -780,18 +800,6 @@ internal sealed class FileDialogView
                              };
 
                 button.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-
-                ToolTipService.SetTip(button,
-                                      new StackPanel
-                                      {
-                                          Orientation = Orientation.Horizontal,
-                                          Spacing = 1,
-                                          Children =
-                                          {
-                                              place.Type.CreateIcon(),
-                                              new TextBlock { Text = place.Name }
-                                          }
-                                      });
 
                 _placesPanel.Children.Add(button);
             }
@@ -852,13 +860,16 @@ internal sealed class FileDialogView
 
         lv.View = viewMode;
 
-        lv.ItemTemplate = _listView.View switch
-                          {
-                              ListViewViewMode.Details    => _nameCellTemplate,
-                              ListViewViewMode.SmallIcons => _itemTemplate,
-                              ListViewViewMode.Tiles      => _tileTemplate,
-                              _                           => _itemTemplate
-                          };
+        // Details view uses CellTemplate, so no need to update ItemTemplate.
+        if (viewMode is not ListViewViewMode.Details)
+        {
+            lv.ItemTemplate = _listView.View switch
+                              {
+                                  ListViewViewMode.SmallIcons => _itemTemplate,
+                                  ListViewViewMode.Tiles      => _tileTemplate,
+                                  _                           => _itemTemplate
+                              };
+        }
     }
 
     private void SyncSelectionToList()
@@ -930,7 +941,7 @@ internal sealed class FileDialogView
         }
 
         // Deferred by one dispatcher turn: the editor closes from INSIDE the refresh that follows a successful
-        // create, so focusing the listing inline would land on a container the rebuild is about to destroy —
+        // creation, so focusing the listing inline would land on a container the rebuild is about to destroy —
         // and would miss the new folder's row, which is selected only once that rebuild has run.
         if (_newFolderBox.IsKeyboardFocusWithin)
             UIApplication.Current?.Dispatcher.Post(FocusFileList);
@@ -1020,7 +1031,7 @@ internal sealed class FileDialogView
 
     // The Tab contract, in full (design page, "resolving the Tab conflict"):
     //   • popup OPEN                    → the popup accepted it and marked it handled; we never run.
-    //   • popup CLOSED, a partial typed → Refresh opens it and we claim the key: Tab completed.
+    //   • popup CLOSED, a partial typed → Refresh opens it, and we claim the key: Tab completed.
     //   • popup CLOSED, nothing to complete (an empty final segment, or an exact path)
     //                                   → we leave it unhandled and Tab does the ordinary thing: LEAVE the
     //                                     region. The user is never trapped.

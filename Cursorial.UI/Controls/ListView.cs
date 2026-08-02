@@ -26,7 +26,7 @@ namespace Cursorial.UI.Controls;
 /// Everything a ListBox adds beyond the selector base is keyboard navigation, and a ListView's navigation
 /// is <em>not</em> a ListBox's: in a column-major wrap ↓ moves within a column while → jumps a whole
 /// column, and ListBox's mover is private, so inheriting it would mean calling <c>base.OnKeyDown</c> only
-/// to fight the result. The two behaviours it is worth keeping — re-selecting a survivor after a removal
+/// to fight the result. The two behaviors it is worth keeping — re-selecting a survivor after a removal
 /// and focusing the type-ahead match — are three lines each and are reimplemented below.
 /// </para>
 /// </summary>
@@ -112,6 +112,16 @@ public class ListView : SelectingItemsControl
     public static readonly StyledProperty<int?> ItemHeightProperty =
         UIProperty.Register<ListView, int?>(nameof(ItemHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
 
+    /// <summary>The maximum tile width in cells for the wrapping views, or <see langword="null"/> (default) to
+    /// size from the widest item. Forwarded to <see cref="UniformWrapPanel.ItemWidth"/>.</summary>
+    public static readonly StyledProperty<int?> ItemMaxWidthProperty =
+        UIProperty.Register<ListView, int?>(nameof(ItemMaxWidth), coerce: static (_, value) => value is < 0 ? 0 : value);
+
+    /// <summary>The maximum tile height in cells for the wrapping views, or <see langword="null"/> (default).
+    /// Forwarded to <see cref="UniformWrapPanel.ItemHeight"/>.</summary>
+    public static readonly StyledProperty<int?> ItemMaxHeightProperty =
+        UIProperty.Register<ListView, int?>(nameof(ItemMaxHeight), coerce: static (_, value) => value is < 0 ? 0 : value);
+
     /// <summary>Raised before a header click changes the sort — the seam a host uses to sort its own collection.
     /// Bubbles; the args are vetoable (<see cref="ListViewSortingEventArgs.Cancel"/>).</summary>
     public static readonly RoutedEvent<ListViewSortingEventArgs> SortingEvent =
@@ -188,6 +198,12 @@ public class ListView : SelectingItemsControl
 
     /// <inheritdoc cref="ItemHeightProperty"/>
     public int? ItemHeight { get => GetValue(ItemHeightProperty); set => SetValue(ItemHeightProperty, value); }
+
+    /// <inheritdoc cref="ItemMaxWidthProperty"/>
+    public int? ItemMaxWidth { get => GetValue(ItemMaxWidthProperty); set => SetValue(ItemMaxWidthProperty, value); }
+
+    /// <inheritdoc cref="ItemMaxHeightProperty"/>
+    public int? ItemMaxHeight { get => GetValue(ItemMaxHeightProperty); set => SetValue(ItemMaxHeightProperty, value); }
 
     /// <summary>CLR sugar over <see cref="SortingEvent"/>.</summary>
     public event EventHandler<ListViewSortingEventArgs>? Sorting { add => AddHandler(SortingEvent, value!); remove => RemoveHandler(SortingEvent, value!); }
@@ -489,7 +505,11 @@ public class ListView : SelectingItemsControl
     /// on <see cref="ListViewColumn.DisplayMemberPath"/>, else the item itself.</summary>
     internal static UIElement BuildDetailsCell(ListViewColumn column)
     {
-        var presenter = new ContentPresenter { HorizontalAlignment = column.HorizontalAlignment };
+        var presenter = new ContentPresenter
+                        {
+                            HorizontalAlignment = column.HorizontalAlignment,
+                            ShowTrimmedContentInToolTip = true
+                        };
 
         if (column.CellTemplate is {} template)
             presenter.ContentTemplate = template;
@@ -509,7 +529,7 @@ public class ListView : SelectingItemsControl
         // so the icon/name/secondary composition below must not second-guess it.
         if (ItemTemplate is {} itemTemplate)
         {
-            var templated = new ContentPresenter { ContentTemplate = itemTemplate };
+            var templated = new ContentPresenter { ContentTemplate = itemTemplate, ShowTrimmedContentInToolTip = true };
             templated.SetBinding(ContentPresenter.ContentProperty, PathBinding(null));
             return templated;
         }
@@ -597,12 +617,12 @@ public class ListView : SelectingItemsControl
     }
 
     /// <summary>
-    /// Raises <see cref="Sorting"/> and, unless the host cancelled or handled it, optionally runs the built-in
+    /// Raises <see cref="Sorting"/> and, unless the host canceled or handled it, optionally runs the built-in
     /// comparer sort. Public so a host can drive the same funnel from a menu item or a restored setting.
     /// </summary>
     /// <param name="column">The column to sort by.</param>
     /// <param name="direction">The direction to sort in.</param>
-    /// <returns><see langword="false"/> when a handler cancelled; otherwise <see langword="true"/>.</returns>
+    /// <returns><see langword="false"/> when a handler canceled; otherwise <see langword="true"/>.</returns>
     public bool ApplySort(ListViewColumn column, ListViewSortDirection direction)
     {
         ArgumentNullException.ThrowIfNull(column);
@@ -626,7 +646,7 @@ public class ListView : SelectingItemsControl
     // The opt-in convenience sort. It permutes the LIVE list with RemoveAt/Insert so an observable source
     // reports each hop and the generator/selection model stay aligned; a non-observable source is skipped
     // outright (there would be no way to tell anyone the order changed). Selection is captured by ITEM and
-    // restored afterwards, because the removals would otherwise drag it along index-wise.
+    // restored afterward, because the removals would otherwise drag it along index-wise.
     private void SortItemsInPlace(ListViewColumn column, ListViewSortDirection direction)
     {
         if (EffectiveItemList() is not { } list || list.Count < 2)
@@ -850,7 +870,7 @@ public class ListView : SelectingItemsControl
     }
 
     /// <summary>Type-ahead matches the same text the non-Details views display, so
-    /// <see cref="DisplayMemberPath"/> is honoured before falling back to the shared item rules.</summary>
+    /// <see cref="DisplayMemberPath"/> is honored before falling back to the shared item rules.</summary>
     private protected override string? GetTextSearchText(int index)
     {
         if (DisplayMemberPath is { Length: > 0 } path && ItemFromIndex(index) is { } item)
@@ -885,8 +905,10 @@ public class ListView : SelectingItemsControl
 
             // Bound (not copied) so a runtime ItemWidth/ItemHeight change reaches the live panel without a
             // second panel swap — a swap would tear down and re-adopt every container for a sizing tweak.
-            panel.SetBinding(UniformWrapPanel.ItemWidthProperty, new Binding(nameof(ItemWidth)) { Source = ctx.TemplatedParent });
-            panel.SetBinding(UniformWrapPanel.ItemHeightProperty, new Binding(nameof(ItemHeight)) { Source = ctx.TemplatedParent });
+            panel.SetBinding(UniformWrapPanel.ItemMaxHeightProperty, new Binding(ItemMaxHeightProperty) { Source = ctx.TemplatedParent });
+            panel.SetBinding(UniformWrapPanel.ItemMaxWidthProperty, new Binding(ItemMaxWidthProperty) { Source = ctx.TemplatedParent });
+            panel.SetBinding(UniformWrapPanel.ItemWidthProperty, new Binding(ItemWidthProperty) { Source = ctx.TemplatedParent });
+            panel.SetBinding(UniformWrapPanel.ItemHeightProperty, new Binding(ItemHeightProperty) { Source = ctx.TemplatedParent });
 
             return ConfigureItemsHost(panel);
         });

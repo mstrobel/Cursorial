@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.UI.Data;
@@ -59,9 +61,37 @@ public sealed class PropertyPath
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(additionalProperties);
 
-        var steps = new UIProperty[additionalProperties.Length + 1];
+        var steps = new ResolvedProperty[additionalProperties.Length + 1];
+
         steps[0] = property;
-        additionalProperties.CopyTo(steps, 1);
+
+        for (int i = 0; i < additionalProperties.Length; i++)
+        {
+            steps[i + 1] = additionalProperties[i] ??
+                           throw new ArgumentException("Null property segments are not allowed.",
+                                                       nameof(additionalProperties));
+        }
+
+        _parsed = BindingPath.FromProperties(steps);
+        Path = _parsed.ToString();
+        _preResolved = true;
+    }
+
+    public PropertyPath(PropertyInfo property, params PropertyInfo[] additionalProperties)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(additionalProperties);
+
+        var steps = new ResolvedProperty[additionalProperties.Length + 1];
+
+        steps[0] = property;
+
+        for (int i = 0; i < additionalProperties.Length; i++)
+        {
+            steps[i + 1] = additionalProperties[i] ??
+                           throw new ArgumentException("Null property segments are not allowed.",
+                                                       nameof(additionalProperties));
+        }
 
         _parsed = BindingPath.FromProperties(steps);
         Path = _parsed.ToString();

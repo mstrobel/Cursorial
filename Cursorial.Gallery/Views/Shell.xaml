@@ -48,8 +48,9 @@
                               ItemsSource="{i:EnumValuesSource EnumType={x:Type TaskDialogSeverity}}"
                               SelectedItem="{Binding TaskDialogSeverity, Mode=TwoWay}"/>
                   </StackPanel>
-                  <Button   Command="{Binding ShowTaskDialogCommand}"              Content="Show Tas_k Dialog"
-                            MaxWidth="24" Margin="0,1,0,0" />
+                  <Button Command="{Binding ShowTaskDialogCommand}"
+                          Content="Show Tas_k Dialog"
+                          MaxWidth="24" Margin="0,1,0,0"/>
                 </StackPanel>
               </Border>
               
@@ -215,20 +216,20 @@
 
             <Label Grid.Column="0" Grid.Row="0"
                    Content="_Name" Target="{x:Reference NameEditor}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <TextBox Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left"
-                     x:Name="NameEditor" Width="28" Text="{Binding Name, Mode=TwoWay}" Placeholder="full name" />
+            <TextBox Grid.Column="2" Grid.Row="0"
+                     x:Name="NameEditor" Text="{Binding Name, Mode=TwoWay}" Placeholder="full name" />
 
             <Label Grid.Column="0" Grid.Row="1" Margin="0,1,0,0"
                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0" HorizontalAlignment="Left"
-                         x:Name="PasswordEditor" Width="28" Text="{Binding Password, Mode=TwoWay}"
+            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0"
+                         x:Name="PasswordEditor" Text="{Binding Password, Mode=TwoWay}"
                          RevealPassword="{Binding ShowPassword}" Placeholder="password"/>
 
             <Label Grid.Column="4" Grid.Row="0"
-                   Target="{x:Reference ColorSelector}" Content="Favorite _Color"
+                   Target="{x:Reference ColorSelector}" Content="_Color"
                    Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
             <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left"
-                      x:Name="ColorSelector" Width="28" IsEditable="False" ItemsSource="{Binding Colors}"
+                      x:Name="ColorSelector" Width="22" IsEditable="False" ItemsSource="{Binding Colors}"
                       SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:ColorInfo">
@@ -253,17 +254,17 @@
 
             <Label Grid.Column="0" Grid.Row="6"
                    Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <StackPanel Grid.Column="2" Grid.Row="6" HorizontalAlignment="Left"
-                        Orientation="Horizontal" Margin="0,1,0,0">
-              <Slider x:Name="VolumeSlider" Width="24" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
-              <TextBlock Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
+            <DockPanel Grid.Column="2" Grid.Row="6" Margin="0,1,0,0">
+              <TextBlock DockPanel.Dock="Right"
+                         Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
                          Width="4"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
-            </StackPanel>
+              <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+            </DockPanel>
             
             <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
                  parameter (x:Reference), so Undo/Redo stay in the view-model; the field's own Ctrl+Z / Ctrl+Y work too. -->
-            <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="4" Margin="0,1,0,0" LastChildFill="True">
+            <DockPanel Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="7" Margin="0,1,0,0" LastChildFill="True">
               <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,1">
                 <Label Content="_Journal" Target="{x:Reference JournalEditor}"
                        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
@@ -323,11 +324,13 @@
                               Content="Hover here."
                               VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
                 <ToolTipService.Tip>
-                  <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Top" Margin="0,0,1,0"
-                               Text="ℹ" Foreground="{DynamicResource {x:Static ThemeKeys.InfoBrush}}" />
-                    <TextBlock Text="Tips provide helpful context." />
-                  </DockPanel>
+                  <ToolTip Classes="info">
+                    <DockPanel>
+                      <Icon DockPanel.Dock="Left" VerticalAlignment="Top" Margin="0,0,1,0"
+                            Glyph="&#xf05a;" GlyphWidth="2" Emoji="ℹ️" Text="ℹ"/>
+                      <TextBlock Text="Tips provide helpful context."/>
+                    </DockPanel>
+                  </ToolTip>
                 </ToolTipService.Tip>
               </ContentControl>
 
@@ -972,7 +975,7 @@
               DockPanel.Dock="Bottom"
               Header="Dia_gnostics">
       <ScrollViewer VerticalScrollBarVisibility="Auto"
-                    MaxHeight="8">
+                    Height="8">
         <ListBox ItemsSource="{Binding Diagnostics}"
                  VirtualizingPanel.IsVirtualizing="True" />
       </ScrollViewer>
@@ -1019,6 +1022,10 @@
 
     <!-- Content host: the selected page view-model, resolved to its view by the implicit DataTemplates above.
        ContentControl's default theme is a ContentPresenter that auto-aliases Content and resolves the template. -->
-    <ContentControl Content="{Binding SelectedPage}" 
-                    ClipToBounds="True" />
+  <ScrollViewer VerticalScrollBarVisibility="{Binding SelectedPage.IsContentScrollable, 
+                                                      Converter={BooleanConverter TrueValue=Auto, FalseValue=Disabled}}"
+                HorizontalScrollBarVisibility="Disabled">
+    <ContentControl Content="{Binding SelectedPage}"
+                    ClipToBounds="True"/>
+  </ScrollViewer>
 </DockPanel>

@@ -9,7 +9,7 @@ namespace Cursorial.UI.Bars.Input;
 /// </summary>
 public sealed class KeyTipEntry
 {
-    /// <summary>The control the badge sits over (positioned via <see cref="UIElement.TranslateToScreen"/>).</summary>
+    /// <summary>The control the badge sits over (positioned via <see cref="UIElement.TranslateToScreen(int, int)"/>).</summary>
     public required UIElement Target { get; init; }
 
     /// <summary>The badge letters (uppercased; 1–2 chars in v1). Matched case-insensitively against typed input.</summary>

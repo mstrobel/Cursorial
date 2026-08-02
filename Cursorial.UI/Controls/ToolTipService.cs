@@ -16,6 +16,8 @@ namespace Cursorial.UI.Controls;
 /// terminal cannot report motion so hover cannot exist). The focus-triggered show itself is a recorded deferral —
 /// the hover path is the v1 behavior.
 /// </remarks>
+// ReSharper disable once ConvertToStaticClass
+// ReSharper disable once ClassNeverInstantiated.Global
 public sealed class ToolTipService
 {
     private ToolTipService() {} // non-instantiable; the attached-property owner type (mirrors KeyboardNavigation)
@@ -147,7 +149,16 @@ internal sealed class ToolTipController
         if (ToolTipService.GetTip(owner) is not {} tip)
             return; // the tip was cleared while the timer was pending — nothing to show
 
-        _toolTip.Content = tip;
+        if (tip is ToolTip toolTip)
+        {
+            _popup.Child = toolTip;
+        }
+        else
+        {
+            _toolTip.Content = tip;
+            _popup.Child = _toolTip;
+        }
+
         _popup.PlacementTarget = owner;
         _popup.Placement = PlacementMode.Pointer; // below-right of the pointer cell
         _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, 1);
@@ -165,7 +176,10 @@ internal sealed class ToolTipController
         if (_shown)
         {
             _shown = false;
+            _toolTip.Content = null;
             _popup.SetCurrentValue(Popup.IsOpenProperty, false);
+            _popup.Child = null;
+            _popup.PlacementTarget = null;
             StartQuickShowWindow(); // a re-hover within 100 ms shows immediately
         }
 

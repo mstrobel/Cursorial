@@ -5,8 +5,8 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// A mutually-exclusive option in a group (design doc §12.7, CD27): a <see cref="ToggleButton"/>
-/// whose check unchecks every peer in its group via <see cref="UIObject.SetCurrentValue{T}"/> (so a
-/// peer's two-way binding survives — C216). The group is the same logical parent when
+/// whose check unchecks every peer in its group via <see cref="UIObject.SetCurrentValue{T}(StyledProperty{T}, T)"/>
+/// (so a peer's two-way binding survives — C216). The group is the same logical parent when
 /// <see cref="GroupName"/> is null, else every same-named radio under the surface root. A checked
 /// radio can't uncheck itself by clicking (C214); arrow keys move + check within the group (C215).
 /// The default theme draws ASCII <c>( ) (*)</c> glyphs.

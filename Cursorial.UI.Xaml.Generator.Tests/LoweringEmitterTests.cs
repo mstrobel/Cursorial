@@ -45,7 +45,7 @@ namespace TestApp { public partial class MyView : StackPanel { public MyView() =
             CSharpSyntaxTree.ParseText(lowered));
         var assembly = GeneratorHarness.EmitAndLoad(withLowering);
         var viewType = assembly.GetType("TestApp.MyView")!;
-        var view = (StackPanel)System.Activator.CreateInstance(viewType)!;
+        var view = (StackPanel)Activator.CreateInstance(viewType)!;
 
         // The runtime loader builds the reference tree from the same XAML (reflection provider).
         var runtime = (StackPanel)new XamlLoader(
@@ -96,7 +96,7 @@ namespace GenApp { public partial class CapsView : StackPanel { public CapsView(
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.CapsView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
         Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion, loweredStyle.RequiresCapabilities);
     }
@@ -127,7 +127,7 @@ namespace GenApp { public partial class CapsStaticView : StackPanel { public Cap
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.CapsStaticView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.CapsStaticView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["CapsStyle"]);
         Assert.Equal(StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
     }
@@ -157,14 +157,14 @@ namespace GenApp { public partial class StaticColorView : StackPanel { public St
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.StaticColorView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.StaticColorView")!)!;
         var loweredBrush = Assert.IsType<SolidColorBrush>(view.Resources["Ink"]);
 
         var runtime = (StackPanel)new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml.Replace(" x:Class=\"GenApp.StaticColorView\"", ""));
         var runtimeBrush = Assert.IsType<SolidColorBrush>(runtime.Resources["Ink"]);
         Assert.Equal(runtimeBrush.Color, loweredBrush.Color);
-        Assert.Equal(Cursorial.Output.Colors.Red, loweredBrush.Color);
+        Assert.Equal(Output.Colors.Red, loweredBrush.Color);
     }
 
     [Fact] // Same-dictionary BasedOn: the ONE working form — pinned for the first time (identity with the
@@ -194,7 +194,7 @@ namespace GenApp { public partial class BasedOnView : StackPanel { public BasedO
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.BasedOnView")!)!;
         var baseStyle = Assert.IsType<Style>(view.Resources["Base"]);
         var derived = Assert.IsType<Style>(view.Resources["Derived"]);
         Assert.Same(baseStyle, derived.BasedOn);
@@ -236,7 +236,7 @@ namespace GenApp { public partial class BasedOnOuterView : StackPanel { public B
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnOuterView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.BasedOnOuterView")!)!;
         var baseStyle = Assert.IsType<Style>(view.Resources["Base"]);
         var border = Assert.IsType<Border>(view.Children[0]);
         Assert.Same(baseStyle, Assert.IsType<Style>(border.Resources["Derived"]).BasedOn);
@@ -281,13 +281,13 @@ namespace GenApp { public partial class BasedOnAmbientView : StackPanel { public
 
         // The resolve walks the app tiers — host the instantiation so UIApplication.Resources carries the base.
         var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
-            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Rendering.Size(20, 5) });
         try
         {
             var appBase = new Style(Selectors.Is<Border>());
             host.Application.Resources["AppBase"] = appBase;
 
-            var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnAmbientView")!)!;
+            var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.BasedOnAmbientView")!)!;
             Assert.Same(appBase, Assert.IsType<Style>(view.Resources["Derived"]).BasedOn);
         }
         finally
@@ -319,8 +319,8 @@ namespace GenApp { public partial class BasedOnMissView : StackPanel { public Ba
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
-            () => System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnMissView")!));
+        var ex = Assert.Throws<TargetInvocationException>(
+            () => Activator.CreateInstance(assembly.GetType("GenApp.BasedOnMissView")!));
         Assert.IsType<ResourceNotFoundException>(ex.InnerException);
 
         // The loader defers resource realization — its identical throw lands on first entry ACCESS.
@@ -362,7 +362,7 @@ namespace GenApp { public partial class BasedOnFwdView : StackPanel { public Bas
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.BasedOnFwdView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.BasedOnFwdView")!)!;
         var derived = Assert.IsType<Style>(view.Resources["Derived"]);
         var baseStyle = Assert.IsType<Style>(view.Resources["Base"]);
         Assert.Same(baseStyle, derived.BasedOn); // forward reference resolved to the later sibling
@@ -394,10 +394,10 @@ namespace GenApp { public partial class RefMissView : StackPanel { public RefMis
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.RefMissView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.RefMissView")!)!;
         var tpl = Assert.IsType<DataTemplate>(view.Resources["Tpl"]);
         // Building the template resolves x:References — the miss throws (never a silent null Target).
-        Assert.ThrowsAny<System.Exception>(() => tpl.Build(null));
+        Assert.ThrowsAny<Exception>(() => tpl.Build(null));
     }
 
     [Fact] // A document-level {Binding Source={x:Reference X}} in a document with NO document-scope x:Names
@@ -422,7 +422,7 @@ namespace GenApp { public partial class NoScopeView : StackPanel { public NoScop
         // And the generated source compiles + instantiates (the binding is dropped, not mangled).
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.NoScopeView")!));
+        Assert.NotNull(Activator.CreateInstance(assembly.GetType("GenApp.NoScopeView")!));
     }
 
     [Fact] // A <Style.When> whose condition subtree records deferred end-of-scope work ({x:Reference}) and
@@ -462,7 +462,7 @@ namespace GenApp { public partial class WhenLeakView : StackPanel { public WhenL
         // The document must still COMPILE — the discarded reference must not survive into the flush.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.WhenLeakView")!));
+        Assert.NotNull(Activator.CreateInstance(assembly.GetType("GenApp.WhenLeakView")!));
     }
 
     [Fact] // One unlowerable <Style.When> condition drops the WHOLE style: a partially-gated style would
@@ -494,7 +494,7 @@ namespace GenApp { public partial class WhenDropView : StackPanel { public WhenD
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenDropView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.WhenDropView")!)!;
         // Dropped WHOLE: an inert empty placeholder (zero setters ⇒ zero compiled rules) — never a
         // half-gated style that would apply more broadly than authored.
         var placeholder = Assert.IsType<Style>(view.Resources["Gated"]);
@@ -528,7 +528,7 @@ namespace GenApp { public partial class RefTplView : StackPanel { public RefTplV
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.RefTplView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.RefTplView")!)!;
         var tpl = Assert.IsType<DataTemplate>(view.Resources["Tpl"]);
 
         var builtRoot = Assert.IsType<StackPanel>(tpl.Build(null));
@@ -570,13 +570,13 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
         Assert.DoesNotContain("TODO X5", lowered);
         Assert.Contains("NameScopeExtensions.Require(__scope, \"Src\")", lowered);
         // The Install embedding the scope lookup comes AFTER the name registration.
-        Assert.True(lowered.IndexOf("__scope.Register(\"Src\"", System.StringComparison.Ordinal) <
-                    lowered.IndexOf("NameScopeExtensions.Require(__scope, \"Src\")", System.StringComparison.Ordinal));
+        Assert.True(lowered.IndexOf("__scope.Register(\"Src\"", StringComparison.Ordinal) <
+                    lowered.IndexOf("NameScopeExtensions.Require(__scope, \"Src\")", StringComparison.Ordinal));
 
         // And the emitted view compiles + instantiates.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.SrcRefView")!));
+        Assert.NotNull(Activator.CreateInstance(assembly.GetType("GenApp.SrcRefView")!));
     }
 
     [Fact] // {Binding Source={x:Static …}} resolves eagerly to the member reference (the loader's
@@ -587,9 +587,6 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
             $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.SrcStaticView\">" +
             "<TextBlock Text=\"{Binding Source={x:Static co:Colors.Red}, Path=R}\"/>" +
             "</StackPanel>";
-        const string codeBehind = @"
-using Cursorial.UI.Controls;
-namespace GenApp { public partial class SrcStaticView : StackPanel { public SrcStaticView() => InitializeComponent(); } }";
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
@@ -611,9 +608,6 @@ namespace GenApp { public partial class SrcStaticView : StackPanel { public SrcS
             "</StackPanel.Resources>" +
             "<Button x:Name=\"Ok\"/>" +
             "</StackPanel>";
-        const string codeBehind = @"
-using Cursorial.UI.Controls;
-namespace GenApp { public partial class TbNamedView : StackPanel { public TbNamedView() => InitializeComponent(); } }";
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
@@ -662,7 +656,7 @@ namespace GenApp { public partial class StaticMissView : StackPanel { public Sta
         // The lowered source still compiles and instantiates (the entry is dropped, not mangled).
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("GenApp.StaticMissView")!));
+        Assert.NotNull(Activator.CreateInstance(assembly.GetType("GenApp.StaticMissView")!));
     }
 
     [Fact]
@@ -695,7 +689,7 @@ namespace GenApp { public partial class WhenView : StackPanel { public WhenView(
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.WhenView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["DPStyle"]);
 
         var runtime = (StackPanel)new XamlLoader(
@@ -743,7 +737,7 @@ namespace GenApp { public partial class WhenResView : StackPanel { public WhenRe
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.WhenResView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.WhenResView")!)!;
         var loweredStyle = Assert.IsType<Style>(view.Resources["S"]);
 
         var runtime = (StackPanel)new XamlLoader(
@@ -768,7 +762,7 @@ namespace TestApp { public partial class GridView : Grid { public GridView() => 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
 
-        var view = (Grid)System.Activator.CreateInstance(assembly.GetType("TestApp.GridView")!)!;
+        var view = (Grid)Activator.CreateInstance(assembly.GetType("TestApp.GridView")!)!;
         var cell = Assert.IsType<Button>(view.Children[0]);
         Assert.Equal(1, Grid.GetRow(cell));
 
@@ -799,7 +793,7 @@ namespace TestApp
         // Compiles ⇒ the handler exists and its signature matches the event delegate; instantiating wires it.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(System.Activator.CreateInstance(assembly.GetType("TestApp.ClickView")!));
+        Assert.NotNull(Activator.CreateInstance(assembly.GetType("TestApp.ClickView")!));
     }
 
     [Fact] // X5.3 — {x:Static} lowers to a resolved static reference, matching the loader's reflected value
@@ -816,13 +810,13 @@ namespace TestApp { public partial class StaticView : Button { public StaticView
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (Button)System.Activator.CreateInstance(assembly.GetType("TestApp.StaticView")!)!;
+        var view = (Button)Activator.CreateInstance(assembly.GetType("TestApp.StaticView")!)!;
 
         var runtime = (Button)new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
 
         Assert.Same(runtime.Foreground, view.Foreground); // both resolved to the Brushes.TrueBlack singleton
-        Assert.Same(Cursorial.Drawing.Media.Brushes.TrueBlack, view.Foreground);
+        Assert.Same(Brushes.TrueBlack, view.Foreground);
     }
 
     [Fact] // X5.3 — {x:Null} lowers to a null SetValue
@@ -839,7 +833,7 @@ namespace TestApp { public partial class NullView : Button { public NullView() =
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (Button)System.Activator.CreateInstance(assembly.GetType("TestApp.NullView")!)!;
+        var view = (Button)Activator.CreateInstance(assembly.GetType("TestApp.NullView")!)!;
         Assert.Null(view.Foreground);
     }
 
@@ -881,11 +875,11 @@ namespace TestApp
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.BindView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.BindView")!)!;
         var label = Assert.IsType<TextBlock>(view.Children[0]);
 
         var vmType = assembly.GetType("TestApp.BindVm")!;
-        var vm = System.Activator.CreateInstance(vmType)!;
+        var vm = Activator.CreateInstance(vmType)!;
         var caption = vmType.GetProperty("Caption")!;
         caption.SetValue(vm, "Hello");
 
@@ -940,11 +934,11 @@ namespace TestApp
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.ReflectiveView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.ReflectiveView")!)!;
         var label = Assert.IsType<TextBlock>(view.Children[0]);
 
         var outerType = assembly.GetType("TestApp.OuterVm")!;
-        var outer = System.Activator.CreateInstance(outerType)!;
+        var outer = Activator.CreateInstance(outerType)!;
         var inner = outerType.GetProperty("Inner")!.GetValue(outer)!;
         var caption = inner.GetType().GetProperty("Caption")!;
         caption.SetValue(inner, "Nested");
@@ -987,11 +981,11 @@ namespace TestApp
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.IndexerView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.IndexerView")!)!;
         var label = Assert.IsType<TextBlock>(view.Children[0]);
 
         var vmType = assembly.GetType("TestApp.ListVm")!;
-        view.DataContext = System.Activator.CreateInstance(vmType)!;
+        view.DataContext = Activator.CreateInstance(vmType)!;
         Assert.Equal("first", label.Text); // the reflective indexer binding resolves Tags[0]
     }
 
@@ -1038,7 +1032,7 @@ namespace TestApp { public partial class PrefixBindView : StackPanel { public Pr
         var source = new Border();
         Grid.SetRow(source, 3);
 
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.PrefixBindView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.PrefixBindView")!)!;
         var loweredButton = Assert.IsType<Button>(view.Children[0]);
         view.DataContext = source;
 
@@ -1126,11 +1120,11 @@ namespace TestApp
         Assert.Contains("(\"t:Person\", typeof(global::TestApp.Person))", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("TestApp.UnregOwnerView")!)!;
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.UnregOwnerView")!)!;
         var label = Assert.IsType<TextBlock>(view.Children[0]);
 
         var personType = assembly.GetType("TestApp.Person")!;
-        var person = System.Activator.CreateInstance(personType)!;
+        var person = Activator.CreateInstance(personType)!;
         personType.GetProperty("FullName")!.SetValue(person, "Ada");
         view.DataContext = person;
 
@@ -1246,7 +1240,7 @@ namespace TestApp { public partial class AncView : StackPanel { public AncView()
         var lowered = Lower(xaml, compilation);
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.AncView")!)!;
+        var view = (StackPanel) Activator.CreateInstance(assembly.GetType("TestApp.AncView")!)!;
 
         var runtime = (StackPanel) new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
@@ -1282,7 +1276,7 @@ namespace TestApp { public partial class RefView : StackPanel { public RefView()
         var lowered = Lower(xaml, compilation);
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.RefView")!)!;
+        var view = (StackPanel) Activator.CreateInstance(assembly.GetType("TestApp.RefView")!)!;
 
         var runtime = (StackPanel) new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
@@ -1315,7 +1309,7 @@ namespace TestApp {
         var compilation = GeneratorHarness.ReferencedCompilation("ConvHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(code));
         var lowered = Lower(xaml, compilation);
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
-        var view = (StackPanel) System.Activator.CreateInstance(assembly.GetType("TestApp.ConvView")!)!;
+        var view = (StackPanel) Activator.CreateInstance(assembly.GetType("TestApp.ConvView")!)!;
 
         var border = (Border) view.Children[0];
         var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
@@ -1344,7 +1338,7 @@ namespace TestApp { public partial class ArrView : ListBox { public ArrView() =>
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (ListBox) System.Activator.CreateInstance(assembly.GetType("TestApp.ArrView")!)!;
+        var view = (ListBox) Activator.CreateInstance(assembly.GetType("TestApp.ArrView")!)!;
 
         var array = Assert.IsType<string[]>(view.ItemsSource);
         Assert.Equal(["one", "two"], array);
@@ -1374,7 +1368,7 @@ namespace TestApp { public partial class IntArrView : ListBox { public IntArrVie
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (ListBox) System.Activator.CreateInstance(assembly.GetType("TestApp.IntArrView")!)!;
+        var view = (ListBox) Activator.CreateInstance(assembly.GetType("TestApp.IntArrView")!)!;
 
         var array = Assert.IsType<int[]>(view.ItemsSource);
         Assert.Equal([7, 42], array);
@@ -1405,7 +1399,7 @@ namespace TestApp { public partial class NamedArrView : ListBox { public NamedAr
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var viewType = assembly.GetType("TestApp.NamedArrView")!;
-        var view = (ListBox) System.Activator.CreateInstance(viewType)!;
+        var view = (ListBox) Activator.CreateInstance(viewType)!;
 
         var names = (string[]) viewType.GetField("Names", FieldFlags)!.GetValue(view)!;
         Assert.Equal(["a"], names);
@@ -1429,10 +1423,10 @@ namespace TestApp { public partial class NamedIntView : ContentControl { public 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var viewType = assembly.GetType("TestApp.NamedIntView")!;
-        var view = (ContentControl) System.Activator.CreateInstance(viewType)!;
+        var view = (ContentControl) Activator.CreateInstance(viewType)!;
 
         Assert.Equal(42, viewType.GetField("N", FieldFlags)!.GetValue(view));          // field set
-        Assert.Equal(42, Cursorial.UI.NameScope.GetNameScope(view)!.Find("N"));         // registered in the name scope
+        Assert.Equal(42, NameScope.GetNameScope(view)!.Find("N"));         // registered in the name scope
     }
 
     [Fact] // AUDIT: a NAMED reference-type built-in primitive sets its field + registers (hasScope was hardcoded false)
@@ -1451,10 +1445,10 @@ namespace TestApp { public partial class NamedStrView : ContentControl { public 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var viewType = assembly.GetType("TestApp.NamedStrView")!;
-        var view = (ContentControl) System.Activator.CreateInstance(viewType)!;
+        var view = (ContentControl) Activator.CreateInstance(viewType)!;
 
         Assert.Equal("hi", viewType.GetField("S", FieldFlags)!.GetValue(view));         // field set (was null before)
-        Assert.Equal("hi", Cursorial.UI.NameScope.GetNameScope(view)!.Find("S"));       // registered (missing before)
+        Assert.Equal("hi", NameScope.GetNameScope(view)!.Find("S"));       // registered (missing before)
     }
 
     [Fact] // AUDIT: a built-in primitive with an embedded newline (xml:space=preserve) lowers to a COMPILING literal (CS1010 before)
@@ -1473,7 +1467,7 @@ namespace TestApp { public partial class NlView : ContentControl { public NlView
         // The lowered literal escapes the newline (\n), so it compiles (a raw newline would be CS1010).
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (ContentControl) System.Activator.CreateInstance(assembly.GetType("TestApp.NlView")!)!;
+        var view = (ContentControl) Activator.CreateInstance(assembly.GetType("TestApp.NlView")!)!;
 
         // … and round-trips to the same two-line string the reflection loader produces.
         var runtime = (ContentControl) new XamlLoader(
@@ -1506,7 +1500,7 @@ namespace TestApp { public partial class PenView : Border { public PenView() => 
         // Compiles (no CS8852) ⇒ the init-only members went into initializers; instantiate + match the loader.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (Border) System.Activator.CreateInstance(assembly.GetType("TestApp.PenView")!)!;
+        var view = (Border) Activator.CreateInstance(assembly.GetType("TestApp.PenView")!)!;
 
         var runtime = (Border) new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);
@@ -1531,7 +1525,7 @@ namespace TestApp { public partial class ClassesView : Button { public ClassesVi
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        var view = (Button) System.Activator.CreateInstance(assembly.GetType("TestApp.ClassesView")!)!;
+        var view = (Button) Activator.CreateInstance(assembly.GetType("TestApp.ClassesView")!)!;
 
         var runtime = (Button) new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml);

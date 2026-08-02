@@ -19,10 +19,10 @@ public sealed class ButtonsViewModel : PageViewModel
 
     public ICommand ClickCommand { get; }
 
-    public string? Status
+    public override string? Status
     {
         get;
-        private set => Set(ref field, value);
+        protected set => Set(ref field, value);
     }
 
     private void ExecuteClickCommand(string name)

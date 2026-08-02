@@ -164,7 +164,8 @@ public class MultiBlockFormatterTests
             .Build();
         var ft = new TextFormatter().Format(doc, 20);
 
-        var fig = Assert.IsType<FormattedFigletBlock>(Assert.Single(ft.Blocks));
+        // Block sugar: figlet formats as a one-run paragraph whose band height is the face's.
+        var fig = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
         var expected = MonospaceFont.Default.Measure("HI");
         Assert.Equal(expected.Rows, fig.Size.Rows);
     }

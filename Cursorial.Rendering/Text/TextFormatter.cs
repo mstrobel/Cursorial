@@ -119,7 +119,7 @@ public sealed class TextFormatter
             // Carry margin onto the formatted block so the painter knows the stacking gap.
             formatted = formatted with { Margin = block.Margin };
 
-            if (formatted is FormattedParagraph p && p.Lines.Length > budget)
+            if (formatted is FormattedParagraph p && p.Size.Rows > budget)
             {
                 formatted = ApplyDocumentRowCap(p, budget, availableColumns) with { Margin = block.Margin };
                 totalRows = rowsBeforeBlock + formatted.Size.Rows;
@@ -186,79 +186,34 @@ public sealed class TextFormatter
             return FormatParagraphCore(lines, alignment: block.Alignment ?? Alignment);
         }
 
-        // FIGlet participates in formatting through its face's metrics: the same tokenizer /
-        // packer / trimmer that lays out plain text places wrap and trim points at the face's
-        // per-glyph cell widths, instead of the old behavior of clipping the single measured
-        // line at the column budget. Kerning/smushing makes per-glyph sums conservative — a
-        // wrapped line never comes out wider than predicted, only (rarely) a touch narrower.
-        var metrics = block.Face.GetMetrics();
-        var lines2 = PlainTextToLines(availableColumns, OutputCapabilities.None, block.Text, metrics);
-
-        var lineTexts = ImmutableArray.CreateBuilder<string>(lines2.Count);
-        var sb = new StringBuilder();
-        var trimmed = false;
-        int widest = 0;
-
-        foreach (var line in lines2)
-        {
-            sb.Clear();
-            line.ToPlainText(sb);
-            lineTexts.Add(sb.ToString());
-            widest = Math.Max(widest, line.Width);
-            if (line.Trimmed) trimmed = true;
-        }
-
-        int columns = Math.Min(widest, availableColumns);
-        return new FormattedFigletBlock(block.Text, block.Face, block.Style, block.Alignment ?? Alignment,
-                                        new Size(columns, lineTexts.Count * metrics.LineRows), trimmed,
-                                        lineTexts.ToImmutable());
+        // The block form is SUGAR over a one-run paragraph (proposal-glyph-runs): the face's
+        // metrics drive the shared tokenizer / packer / trimmer, the paragraph painter renders
+        // the face per piece, and there is exactly one wrap/trim/paint path to maintain.
+        // Kerning/smushing makes per-glyph sums conservative — a wrapped line never comes out
+        // wider than predicted, only (rarely) a touch narrower.
+        var source = new GlyphSource(block.Face);
+        var lines2 = PlainTextToLines(availableColumns, OutputCapabilities.None, block.Text, source,
+                                      block.Style);
+        return FormatParagraphCore(lines2, alignment: block.Alignment ?? Alignment);
     }
 
     private FormattedBlock FormatSizedTextBlock(SizedTextBlock block, int availableColumns,
                                                 OutputCapabilities capabilities, bool plainTextOnly)
     {
-        // Use ScaledText to compute the realized footprint — it already encodes the
-        // "OSC 66 if supported, otherwise font fallback" logic and the bundled-font selection
-        // when no explicit fallback is given.
+        // The block form is SUGAR over a one-run paragraph (proposal-glyph-runs). The run's
+        // source resolves against the terminal at tokenization — "OSC 66 if supported, otherwise
+        // the (explicit or bundled) fallback face" — so measurement and paint agree per tier,
+        // exactly as the old ScaledText.Measure-based path did.
+        var source = plainTextOnly ? null : new GlyphSource(block.Fallback, block.Sizing);
 
-        var metrics = plainTextOnly
-                          ? GlyphMetrics.Monospace
-                          : MonospaceFont.Default.GetScaledMetrics(block.Sizing);
+        var lines = PlainTextToLines(availableColumns, capabilities, block.Text, source, block.Style);
 
-        var lines = PlainTextToLines(availableColumns, capabilities, block.Text, metrics);
-
-        if (plainTextOnly)
-            return FormatParagraphCore(lines, alignment: block.Alignment ?? Alignment);
-
-        var sb = new StringBuilder(block.Text.Length + lines.Count - 1);
-        var trimmed = false;
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (i > 0) sb.Append('\n'); // '\n' explicitly — SizedTextFragment splits on LF, and Environment.NewLine would smuggle a CR into the payload on Windows
-            lines[i].ToPlainText(sb);
-            if (lines[i].Trimmed) trimmed = true;
-        }
-
-        var splitText = sb.ToString();
-        var scaled = new Content.ScaledText(splitText, block.Sizing, block.Fallback);
-        var measured = scaled.Measure(new Size(availableColumns, int.MaxValue), capabilities);
-
-        return new FormattedSizedTextBlock(
-            splitText,
-            block.Sizing,
-            block.Style,
-            block.Fallback,
-            block.Alignment ?? Alignment,
-            measured,
-            trimmed);
+        return FormatParagraphCore(lines, alignment: block.Alignment ?? Alignment);
     }
 
     private List<LineDraft> PlainTextToLines(int availableColumns, OutputCapabilities capabilities, string blockText,
-                                             GlyphMetrics? metrics = null)
+                                             GlyphSource? source = null, Style style = default)
     {
-        metrics ??= GlyphMetrics.Monospace;
-
         // Author-supplied line breaks are honored as hard breaks. The paragraph lane keeps its
         // documented contract (LineBreak inlines are the channel; a literal '\n' in a TextRun is
         // an ordinary character), but block TEXT (sized text, FIGlet) has no inline channel — the
@@ -272,15 +227,17 @@ public sealed class TextFormatter
         {
             if (i > 0) atoms.Add(HardBreakAtom.Instance);
             // A fresh Tokenizer per segment — Run accumulates into (and returns) instance state.
-            atoms.AddRange(new Tokenizer(this, availableColumns, capabilities, metrics).Run([new TextRun(segments[i])]));
+            // The block's glyph source rides the run; every advance downstream resolves from it.
+            atoms.AddRange(new Tokenizer(this, availableColumns, capabilities)
+                              .Run([new TextRun(segments[i], style) { Source = source }]));
         }
 
-        var lines = PackLines(atoms, availableColumns, Wrap, metrics);
+        var lines = PackLines(atoms, availableColumns, Wrap);
 
         for (int i = 0; i < lines.Count; i++)
         {
             if (lines[i].Width > availableColumns)
-                lines[i] = TrimLine(lines[i], availableColumns, Trim, forceEllipsis: false, metrics);
+                lines[i] = TrimLine(lines[i], availableColumns, Trim, forceEllipsis: false);
         }
 
         return lines;
@@ -329,14 +286,16 @@ public sealed class TextFormatter
             usedWidth = Math.Max(usedWidth, lines[i].Width);
         }
 
-        return FormatParagraphCore(lines, 
+        return FormatParagraphCore(lines,
                                    usedWidth,
                                    plainTextOnly ? TextAlignment.Left : paragraph.Alignment,
-                                   trimmedLines);
+                                   trimmedLines,
+                                   paragraph.VerticalAlignment);
     }
 
     private FormattedParagraph FormatParagraphCore(List<LineDraft> lines, int? knownUsedWidth = null,
-                                                   TextAlignment? alignment = null, bool trimmedLines = false)
+                                                   TextAlignment? alignment = null, bool trimmedLines = false,
+                                                   VerticalTextAlignment? verticalAlignment = null)
     {
         var usedWidth = knownUsedWidth ?? lines.Max(l => l.Width);
 
@@ -352,10 +311,15 @@ public sealed class TextFormatter
 
         int width = aligned.Count == 0 ? 0 : aligned.Max(l => l.Columns);
 
+        // A line's band is Rows tall (max of its runs' LineRows) — the paragraph stacks bands,
+        // so its height is the SUM of line rows, not the line count.
+        int rows = 0;
+        foreach (var l in aligned) rows += l.Rows;
+
         return new FormattedParagraph(aligned.ToImmutable(),
-                                      new Size(width, aligned.Count),
+                                      new Size(width, rows),
                                       alignment ?? Alignment,
-                                      trimmedLines);
+                                      trimmedLines) { VerticalAlignment = verticalAlignment ?? VerticalTextAlignment.Bottom };
     }
 
     // ---- Tokenization ----
@@ -365,11 +329,8 @@ public sealed class TextFormatter
     /// flat list of <see cref="Atom"/>s consumable by the line packer. Held as a class so the
     /// in-progress word buffer can be mutated without ref-parameter closure pain.
     /// </summary>
-    private sealed class Tokenizer(TextFormatter outer, int availableColumns, OutputCapabilities capabilities,
-                                   GlyphMetrics? metrics = null)
+    private sealed class Tokenizer(TextFormatter outer, int availableColumns, OutputCapabilities capabilities)
     {
-        private readonly GlyphMetrics _metrics = metrics ?? GlyphMetrics.Monospace;
-
         private readonly List<Atom> _atoms = [];
         private readonly List<FormattedRun> _wordRuns = [];
         private readonly List<SoftBreakPoint> _softBreaks = [];
@@ -403,6 +364,14 @@ public sealed class TextFormatter
 
         private void EmitRun(TextRun run)
         {
+            // The run's glyph source decides every advance in this run (proposal-glyph-runs) —
+            // and rides every produced FormattedTextRun so splits, trims, and paint stay
+            // per-run-sourced downstream.
+            // Resolve against the terminal ONCE, at layout time — an unsupported sizing falls
+            // back to its face here, so wrap points, trim math, and paint all agree on the tier.
+            var runSource = (run.Source ?? GlyphSource.Default).ResolveFor(capabilities);
+            var metrics = runSource.Metrics;
+
             var fragmentBuilder = new StringBuilder();
             int fragmentWidth = 0;
             // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
@@ -415,7 +384,7 @@ public sealed class TextFormatter
             {
                 if (fragmentBuilder.Length == 0) return;
                 _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
-                                  { Tag = run.Tag, LogicalStart = runOffset, Scope = scope });
+                                  { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource });
                 runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
@@ -448,7 +417,8 @@ public sealed class TextFormatter
                             FragmentIndex: _wordRuns.Count,
                             WidthBefore: _wordWidth,
                             Style: run.Style,
-                            Hyperlink: run.Hyperlink));
+                            Hyperlink: run.Hyperlink,
+                            Source: runSource));
                     }
 
                     chunkStart = idx + 1;
@@ -474,7 +444,7 @@ public sealed class TextFormatter
                         FlushWord();
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope },
+                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
                             outer.TabWidth));
                         runOffset += outer.TabWidth;
                         continue;
@@ -484,17 +454,17 @@ public sealed class TextFormatter
                     {
                         EmitFragment();
                         FlushWord();
-                        int spaceWidth = _metrics.ClusterWidth(g);
+                        int spaceWidth = metrics.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope },
+                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
                             spaceWidth));
                         runOffset += spaceWidth;
                         continue;
                     }
 
                     fragmentBuilder.Append(g);
-                    fragmentWidth += _metrics.ClusterWidth(g);
+                    fragmentWidth += metrics.ClusterWidth(g);
                 }
             }
         }
@@ -551,9 +521,8 @@ public sealed class TextFormatter
 
     // ---- Line packing ----
 
-    private static List<LineDraft> PackLines(List<Atom> atoms, int columns, WrapMode mode, GlyphMetrics? metrics = null)
+    private static List<LineDraft> PackLines(List<Atom> atoms, int columns, WrapMode mode)
     {
-        metrics ??= GlyphMetrics.Monospace;
         var lines = new List<LineDraft>();
         var current = new LineDraft();
 
@@ -603,7 +572,7 @@ public sealed class TextFormatter
                     break;
 
                 case WordAtom word:
-                    PlaceWord(word, ref current, columns, metrics, mode, Emit);
+                    PlaceWord(word, ref current, columns, mode, Emit);
                     i++;
                     break;
             }
@@ -615,7 +584,7 @@ public sealed class TextFormatter
         return lines;
     }
 
-    private static void PlaceWord(WordAtom word, ref LineDraft current, int columns, GlyphMetrics metrics, WrapMode mode,
+    private static void PlaceWord(WordAtom word, ref LineDraft current, int columns, WrapMode mode,
                                   Action<bool> emit)
     {
         // Easy case: fits as-is, or we're in NoWrap and never wrap. All widths are CELLS — the
@@ -638,16 +607,16 @@ public sealed class TextFormatter
             }
 
             if (mode == WrapMode.WordWrap &&
-                TrySplitAtSoftBreak(word, columns, metrics, out var first, out var rest))
+                TrySplitAtSoftBreak(word, columns, out var first, out var rest))
             {
                 current.AppendWord(first);
                 emit(false);
                 // Rest may still be too long — recurse.
-                PlaceWord(rest, ref current, columns, metrics, mode, emit);
+                PlaceWord(rest, ref current, columns, mode, emit);
                 return;
             }
 
-            var (head, tail) = SplitWordAtChar(word, metrics, columns);
+            var (head, tail) = SplitWordAtChar(word, columns);
             if (head.Width == 0 && tail.Width == word.Width)
             {
                 // SplitWordAtChar made no progress — the leading run is unsplittable (atomic
@@ -661,7 +630,7 @@ public sealed class TextFormatter
             if (tail.Width > 0)
             {
                 emit(false);
-                PlaceWord(tail, ref current, columns, metrics, mode, emit);
+                PlaceWord(tail, ref current, columns, mode, emit);
             }
             return;
         }
@@ -680,27 +649,27 @@ public sealed class TextFormatter
                 // remaining < 2/3 ⟺ filled > 1/3 — engaging word-wrap far too eagerly.)
             case WrapMode.CharacterWrap when current.Width >= columns * 2 / 3:
                 {
-                    if (TrySplitAtSoftBreak(word, remaining, metrics, out var first, out var rest))
+                    if (TrySplitAtSoftBreak(word, remaining, out var first, out var rest))
                     {
                         current.AppendWord(first);
                         emit(false);
-                        PlaceWord(rest, ref current, columns, metrics, mode, emit);
+                        PlaceWord(rest, ref current, columns, mode, emit);
                         return;
                     }
 
                     current.TrimTrailingSpaces();
                     emit(false);
-                    PlaceWord(word, ref current, columns, metrics, mode, emit);
+                    PlaceWord(word, ref current, columns, mode, emit);
                     return;
                 }
 
             case WrapMode.CharacterWrap:
                 {
-                    var (head, tail) = SplitWordAtChar(word, metrics, remaining);
+                    var (head, tail) = SplitWordAtChar(word, remaining);
                     if (head.Width > 0) current.AppendWord(head);
                     emit(false);
                     if (tail.Width > 0)
-                        PlaceWord(tail, ref current, columns, metrics, mode, emit);
+                        PlaceWord(tail, ref current, columns, mode, emit);
                     return;
                 }
         }
@@ -710,28 +679,28 @@ public sealed class TextFormatter
     /// Largest soft-hyphen split such that the first piece (plus a "-" hyphen) fits in
     /// <paramref name="maxWidth"/> cells. Returns false when no soft break is usable.
     /// </summary>
-    private static bool TrySplitAtSoftBreak(WordAtom word, int maxWidth, GlyphMetrics metrics, out WordAtom first,
+    private static bool TrySplitAtSoftBreak(WordAtom word, int maxWidth, out WordAtom first,
                                             out WordAtom rest)
     {
         first = null!;
         rest = null!;
 
-        // The appended "-" is measured through the SAME metrics as the text it joins — at scaled
-        // or FIGlet metrics a hyphen is not 1 cell, and budgeting it as 1 let heads through that
-        // overflowed once the hyphen landed.
-        int hyphenWidth = metrics.ClusterWidth("-");
-
         // Walk soft-breaks from rightmost down. WidthBefore is already in cells (the tokenizer
-        // measures through the metrics).
+        // measures through each run's own source).
         for (int i = word.SoftBreaks.Length - 1; i >= 0; i--)
         {
             var sb = word.SoftBreaks[i];
+
+            // The appended "-" measures (and paints) through the SOURCE of the run it joins — at
+            // scaled or FIGlet metrics a hyphen is not 1 cell, and budgeting it as 1 let heads
+            // through that overflowed once the hyphen landed.
+            int hyphenWidth = sb.Source.Metrics.ClusterWidth("-");
             if (sb.WidthBefore + hyphenWidth > maxWidth) continue;
 
             // first = runs[0..FragmentIndex] + "-"
             var firstRuns = ImmutableArray.CreateBuilder<FormattedRun>(sb.FragmentIndex + 1);
             for (int r = 0; r < sb.FragmentIndex; r++) firstRuns.Add(word.Runs[r]);
-            firstRuns.Add(new FormattedTextRun("-", sb.Style, sb.Hyperlink));
+            firstRuns.Add(new FormattedTextRun("-", sb.Style, sb.Hyperlink) { Source = sb.Source });
 
             var restRuns = ImmutableArray.CreateBuilder<FormattedRun>(word.Runs.Length - sb.FragmentIndex);
             for (int r = sb.FragmentIndex; r < word.Runs.Length; r++) restRuns.Add(word.Runs[r]);
@@ -760,7 +729,7 @@ public sealed class TextFormatter
     /// holds whatever didn't fit. When maxWidth ≤ 0 or the first grapheme alone exceeds it, Head
     /// is empty.
     /// </summary>
-    private static (WordAtom Head, WordAtom Tail) SplitWordAtChar(WordAtom word, GlyphMetrics metrics, int maxWidth)
+    private static (WordAtom Head, WordAtom Tail) SplitWordAtChar(WordAtom word, int maxWidth)
     {
         if (maxWidth <= 0)
             return (Empty(), word);
@@ -795,6 +764,7 @@ public sealed class TextFormatter
                 continue;
             }
 
+            var runMetrics = text.Source.Metrics; // each piece splits at its OWN source's advances
             var enumerator = text.Text.GetGraphemeEnumerator();
             var headFragment = new StringBuilder();
             var tailFragment = new StringBuilder();
@@ -803,7 +773,7 @@ public sealed class TextFormatter
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = metrics.ClusterWidth(g);
+                int gw = runMetrics.ClusterWidth(g);
 
                 if (splittingInProgress && headWidth + headFragmentWidth + gw <= maxWidth)
                 {
@@ -825,7 +795,8 @@ public sealed class TextFormatter
                              {
                                  Tag = text.Tag,
                                  LogicalStart = text.LogicalStart,
-                                 Scope = text.Scope
+                                 Scope = text.Scope,
+                                 Source = text.Source
                              });
                 headWidth += headFragmentWidth;
             }
@@ -836,7 +807,8 @@ public sealed class TextFormatter
                              {
                                  Tag = text.Tag,
                                  LogicalStart = text.LogicalStart + headFragmentWidth,
-                                 Scope = text.Scope
+                                 Scope = text.Scope,
+                                 Source = text.Source
                              });
             }
         }
@@ -855,8 +827,7 @@ public sealed class TextFormatter
     /// requests an ellipsis even if the line itself fits — used when MaxLines / MaxRows dropped
     /// content past this line.
     /// </summary>
-    private LineDraft TrimLine(LineDraft line, int maxWidth, TextTrimming trim, bool forceEllipsis,
-                               GlyphMetrics? metrics = null)
+    private LineDraft TrimLine(LineDraft line, int maxWidth, TextTrimming trim, bool forceEllipsis)
     {
         if (trim == TextTrimming.None)
             return line;
@@ -865,44 +836,51 @@ public sealed class TextFormatter
 
         if (!overflows && !forceEllipsis) return line;
 
-        metrics ??= GlyphMetrics.Monospace;
-
         return trim switch
                {
-                   TextTrimming.ClipFromEnd       => ClipDraft(line, maxWidth, metrics),
-                   TextTrimming.CharacterEllipsis => AppendEllipsisCharacter(line, maxWidth, metrics),
-                   TextTrimming.WordEllipsis      => AppendEllipsisAtWordBoundary(line, maxWidth, metrics),
+                   TextTrimming.ClipFromEnd       => ClipDraft(line, maxWidth),
+                   TextTrimming.CharacterEllipsis => AppendEllipsisCharacter(line, maxWidth),
+                   TextTrimming.WordEllipsis      => AppendEllipsisAtWordBoundary(line, maxWidth),
                    _                              => line
                };
     }
 
-    private static LineDraft ClipDraft(LineDraft line, int maxWidth, GlyphMetrics metrics)
+    private static LineDraft ClipDraft(LineDraft line, int maxWidth)
     {
-        var (head, _) = SplitWordAtChar(line.AsWord(), metrics, maxWidth);
+        var (head, _) = SplitWordAtChar(line.AsWord(), maxWidth);
         return LineDraft.FromWord(head, trimmed: true);
     }
 
-    private LineDraft AppendEllipsisCharacter(LineDraft line, int maxWidth, GlyphMetrics metrics)
+    private LineDraft AppendEllipsisCharacter(LineDraft line, int maxWidth)
     {
-        // The ellipsis is measured through the same metrics as the line it joins — at scaled or
-        // FIGlet metrics it is not one cell wide.
-        int ellipsisWidth = metrics.StringWidth(Ellipsis);
+        // The ellipsis measures (and paints) through the SOURCE of the run it visually joins —
+        // at scaled or FIGlet metrics it is not one cell wide.
+        var joins = LastTextRun(line.Runs);
+        var source = joins?.Source ?? GlyphSource.Default;
+        int ellipsisWidth = source.Metrics.StringWidth(Ellipsis);
 
         if (line.Width + ellipsisWidth <= maxWidth)
         {
-            line.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(line.Runs), null), ellipsisWidth);
+            line.Append(new FormattedTextRun(Ellipsis, joins?.Style ?? default, null) { Source = source }, ellipsisWidth);
             return line;
         }
 
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
-        var clipped = ClipDraft(line, budget, metrics);
-        clipped.Append(new FormattedTextRun(Ellipsis, LastTextRunStyle(clipped.Runs), null), ellipsisWidth);
+        var clipped = ClipDraft(line, budget);
+        var clippedJoins = LastTextRun(clipped.Runs);
+        var clippedSource = clippedJoins?.Source ?? source;
+        int clippedEllipsisWidth = clippedSource.Metrics.StringWidth(Ellipsis);
+        clipped.Append(new FormattedTextRun(Ellipsis, clippedJoins?.Style ?? default, null) { Source = clippedSource },
+                       clippedEllipsisWidth);
         return clipped;
     }
 
-    private LineDraft AppendEllipsisAtWordBoundary(LineDraft line, int maxWidth, GlyphMetrics metrics)
+    private LineDraft AppendEllipsisAtWordBoundary(LineDraft line, int maxWidth)
     {
-        int ellipsisWidth = metrics.StringWidth(Ellipsis);
+        // Budget with the ellipsis measured at the LINE-END run's source (the widest the tail
+        // ellipsis can be); the appended ellipsis re-measures at the actual cut run's source.
+        var lineEnd = LastTextRun(line.Runs);
+        int ellipsisWidth = (lineEnd?.Source ?? GlyphSource.Default).Metrics.StringWidth(Ellipsis);
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
 
         // Walk forward through the line accumulating cell width; remember the latest "space"
@@ -920,30 +898,33 @@ public sealed class TextFormatter
                 cumulative += line.Runs[r].CellWidth;
 
                 if (cumulative > budget)
-                    return AppendEllipsisCharacter(line, maxWidth, metrics);
+                    return AppendEllipsisCharacter(line, maxWidth);
 
                 continue;
             }
 
+            var runMetrics = textRun.Source.Metrics;
             var enumerator = textRun.Text.GetGraphemeEnumerator();
             int charIndex = 0;
 
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = metrics.ClusterWidth(g);
+                int gw = runMetrics.ClusterWidth(g);
 
                 if (cumulative + gw > budget)
                 {
                     if (cutRunIndex >= 0)
                     {
-                        var draft = TruncateAt(line, cutRunIndex, cutCharIndex, metrics);
-                        var style = LastTextRunStyle(draft.Runs);
-                        draft.Append(new FormattedTextRun(Ellipsis, style, null), ellipsisWidth);
+                        var draft = TruncateAt(line, cutRunIndex, cutCharIndex);
+                        var joins = LastTextRun(draft.Runs);
+                        var joinSource = joins?.Source ?? GlyphSource.Default;
+                        draft.Append(new FormattedTextRun(Ellipsis, joins?.Style ?? default, null) { Source = joinSource },
+                                     joinSource.Metrics.StringWidth(Ellipsis));
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
-                    return AppendEllipsisCharacter(line, maxWidth, metrics);
+                    return AppendEllipsisCharacter(line, maxWidth);
                 }
 
                 cumulative += gw;
@@ -958,16 +939,19 @@ public sealed class TextFormatter
         }
 
         // Whole line fits already — append ellipsis directly.
-        var styleEnd = LastTextRunStyle(line.Runs);
-        line.Append(new FormattedTextRun(Ellipsis, styleEnd, null), ellipsisWidth);
+        line.Append(new FormattedTextRun(Ellipsis, lineEnd?.Style ?? default, null)
+                        { Source = lineEnd?.Source ?? GlyphSource.Default },
+                    ellipsisWidth);
         return line;
     }
 
-    private static Style LastTextRunStyle(IReadOnlyList<FormattedRun> runs)
+    /// <summary>The last visible text run — the one an appended ellipsis visually joins (its
+    /// style AND glyph source both carry over).</summary>
+    private static FormattedTextRun? LastTextRun(IReadOnlyList<FormattedRun> runs)
     {
         for (int i = runs.Count - 1; i >= 0; i--)
-            if (runs[i] is FormattedTextRun text) return text.Style;
-        return default;
+            if (runs[i] is FormattedTextRun text) return text;
+        return null;
     }
 
     /// <summary>
@@ -975,7 +959,7 @@ public sealed class TextFormatter
     /// charIndex=<paramref name="cutCharIndex"/>), stripping the trailing space that marked the
     /// cut. The new draft's width is recomputed from its surviving runs.
     /// </summary>
-    private static LineDraft TruncateAt(LineDraft line, int cutRunIndex, int cutCharIndex, GlyphMetrics metrics)
+    private static LineDraft TruncateAt(LineDraft line, int cutRunIndex, int cutCharIndex)
     {
         // Cutting content away IS trimming — the draft must say so, or a WordEllipsis-trimmed
         // line reports untrimmed and the trimmed-content tooltip never offers the hidden text.
@@ -996,7 +980,7 @@ public sealed class TextFormatter
             if (partial.Length > 0)
             {
                 draft.Runs.Add(text with { Text = partial });
-                draft.Width += metrics.StringWidth(partial);
+                draft.Width += text.Source.Metrics.StringWidth(partial);
             }
         }
 
@@ -1005,14 +989,30 @@ public sealed class TextFormatter
 
     private FormattedParagraph ApplyDocumentRowCap(FormattedParagraph paragraph, int budget, int columns)
     {
-        if (paragraph.Lines.Length <= budget) return paragraph;
+        if (paragraph.Size.Rows <= budget) return paragraph;
 
-        var kept = paragraph.Lines.Take(budget).ToImmutableArray();
+        // Keep whole line BANDS while they fit the row budget (a mixed-source line is Rows tall
+        // and is kept or dropped whole — no partial bands), always keeping at least one.
+        int keptCount = 0;
+        int keptRows = 0;
+
+        foreach (var line in paragraph.Lines)
+        {
+            if (keptCount > 0 && keptRows + line.Rows > budget) break;
+            keptRows += line.Rows;
+            keptCount++;
+            if (keptRows >= budget) break;
+        }
+
+        var kept = paragraph.Lines.Take(keptCount).ToImmutableArray();
         var last = LineDraft.FromFormatted(kept[^1]);
         var trimmed = TrimLine(last, columns, Trim, forceEllipsis: true);
-        kept = kept.SetItem(budget - 1, trimmed.ToFormattedLine());
+        kept = kept.SetItem(keptCount - 1, trimmed.ToFormattedLine());
 
-        return new FormattedParagraph(kept, new Size(columns, budget), paragraph.Alignment, true);
+        return new FormattedParagraph(kept, new Size(columns, keptRows), paragraph.Alignment, true)
+               {
+                   VerticalAlignment = paragraph.VerticalAlignment
+               };
     }
 
     // ---- Alignment ----
@@ -1075,7 +1075,7 @@ public sealed class TextFormatter
             }
         }
     
-        return new FormattedLine(newRuns.ToImmutable(), columns, line.Trimmed);
+        return new FormattedLine(newRuns.ToImmutable(), columns, line.Trimmed, line.Rows);
     }
 
     private static bool IsAllSpaces(string s)
@@ -1102,7 +1102,7 @@ public sealed class TextFormatter
     }
 
     private readonly record struct SoftBreakPoint(
-        int FragmentIndex, int WidthBefore, Style Style, string? Hyperlink);
+        int FragmentIndex, int WidthBefore, Style Style, string? Hyperlink, GlyphSource Source);
 
     /// <summary>
     /// Mutable line buffer used during layout. Converts to an immutable
@@ -1116,24 +1116,35 @@ public sealed class TextFormatter
         /// <see cref="GlyphMetrics"/> at tokenization, so layout runs in one unit end to end.</summary>
         public int Width { get; set; }
 
+        /// <summary>Rows the line's band stands tall — the max of its runs' <see cref="FormattedRun.LineRows"/>
+        /// (1 for all-identity lines). Never shrinks: a taller run already on the line keeps its band.</summary>
+        public int Rows { get; private set; } = 1;
+
         public bool EndedByHardBreak { get; set; }
         public bool Trimmed { get; set; }
 
         public void AppendWord(WordAtom word)
         {
-            foreach (var run in word.Runs) Runs.Add(run);
+            foreach (var run in word.Runs)
+            {
+                Runs.Add(run);
+                Rows = Math.Max(Rows, run.LineRows);
+            }
+
             Width += word.Width;
         }
 
         public void AppendSpace(SpaceAtom space)
         {
             Runs.Add(space.Run);
+            Rows = Math.Max(Rows, space.Run.LineRows);
             Width += space.Width;
         }
 
         public void Append(FormattedRun run, int width)
         {
             Runs.Add(run);
+            Rows = Math.Max(Rows, run.LineRows);
             Width += width;
         }
 
@@ -1150,7 +1161,7 @@ public sealed class TextFormatter
 
         public WordAtom AsWord() => new([..Runs], Width, ImmutableArray<SoftBreakPoint>.Empty);
 
-        public FormattedLine ToFormattedLine() => new([..Runs], Width, Trimmed);
+        public FormattedLine ToFormattedLine() => new([..Runs], Width, Trimmed, Rows);
 
         public void ToPlainText(StringBuilder sb)
         {
@@ -1166,15 +1177,20 @@ public sealed class TextFormatter
 
         public static LineDraft FromWord(WordAtom word, bool trimmed = false)
         {
-            var draft = new LineDraft { Width = word.Width, Trimmed = trimmed };
-            foreach (var run in word.Runs) draft.Runs.Add(run);
+            var draft = new LineDraft { Trimmed = trimmed };
+            draft.AppendWord(word); // maintains Width AND the band's Rows
             return draft;
         }
 
         public static LineDraft FromFormatted(FormattedLine line)
         {
             var draft = new LineDraft { Width = line.Columns };
-            foreach (var run in line.Runs) draft.Runs.Add(run);
+            foreach (var run in line.Runs)
+            {
+                draft.Runs.Add(run);
+                draft.Rows = Math.Max(draft.Rows, run.LineRows);
+            }
+
             return draft;
         }
     }

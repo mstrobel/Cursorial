@@ -52,6 +52,32 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
 
     /// <summary>Optional per-paragraph row cap. Content past this many wrapped lines is dropped (with the active <see cref="Trim"/> applied to the final visible line).</summary>
     public int? MaxLines { get; init; }
+
+    /// <summary>
+    /// Where shorter runs sit within a taller line band (proposal-glyph-runs): when a line mixes
+    /// glyph sources of different heights, each run aligns within the band by this rule. Default
+    /// <see cref="VerticalTextAlignment.Bottom"/> — terminal text is baseline-bottom, matching
+    /// OSC 66's default. Block-level by design (maintainer decision, 2026-08-02): one rule per
+    /// paragraph keeps mixed lines coherent.
+    /// </summary>
+    public VerticalTextAlignment VerticalAlignment { get; init; }
+}
+
+/// <summary>
+/// Vertical placement of a run within its line band when the line mixes glyph-source heights
+/// (see <see cref="TextParagraph.VerticalAlignment"/>). <see cref="Bottom"/> is the default —
+/// declared first so <c>default</c> means bottom.
+/// </summary>
+public enum VerticalTextAlignment
+{
+    /// <summary>Runs sit on the band's bottom row (baseline-bottom — the terminal default).</summary>
+    Bottom,
+
+    /// <summary>Runs sit on the band's top row.</summary>
+    Top,
+
+    /// <summary>Runs center within the band (rounding up toward the bottom).</summary>
+    Center,
 }
 
 /// <summary>

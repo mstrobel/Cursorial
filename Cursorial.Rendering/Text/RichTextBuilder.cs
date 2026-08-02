@@ -166,6 +166,29 @@ public sealed class RichTextBuilder
         return this;
     }
 
+    /// <summary>
+    /// Append a text run rendered through <paramref name="source"/> (proposal-glyph-runs): an OSC 66
+    /// sizing, a FIGlet face, or both (sizing with the face as fallback). The run is a first-class
+    /// participant in the paragraph flow — it wraps, trims, and aligns like plain text, at the
+    /// source's per-cluster cell advances.
+    /// </summary>
+    public RichTextBuilder Run(string text, GlyphSource source, in Style style = default, object? tag = null)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(source);
+        if (text.Length == 0) return this;
+        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag ?? CurrentTag)
+                     {
+                         Source = source
+                     });
+        return this;
+    }
+
+    /// <summary>Append a text run at the given OSC 66 <paramref name="sizing"/> — shorthand for a
+    /// <see cref="GlyphSource"/> with no fallback face.</summary>
+    public RichTextBuilder Run(string text, in TextSizing sizing, in Style style = default)
+        => Run(text, new GlyphSource(null, sizing), style);
+
     /// <summary>Append a hard line break inside the current paragraph.</summary>
     public RichTextBuilder LineBreak()
     {

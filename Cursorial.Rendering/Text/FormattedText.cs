@@ -99,8 +99,6 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         {
                             FormattedParagraph            => TextAlignment.Left, // paragraphs already align their own lines internally
                             FormattedHorizontalRule hr    => hr.Alignment,
-                            FormattedFigletBlock fig      => fig.Alignment,
-                            FormattedSizedTextBlock sized => sized.Alignment,
                             FormattedContentBlock content => content.Alignment,
                             _                             => TextAlignment.Left
                         };
@@ -140,39 +138,6 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             case FormattedHorizontalRule rule:
                 PaintHorizontalRule(rule, buffer, column, row, bounds.Columns, resolver);
                 break;
-            case FormattedFigletBlock figlet:
-            {
-                // One face-height row band per formatted line (the formatter wrapped/trimmed at
-                // the face's metrics). Lines whose band starts beyond the row budget are clipped
-                // whole — never painted into whatever lies below the bounds. With a brush
-                // resolver, sample it per rendered cell so a gradient flows across the big
-                // glyphs; without one, the whole headline takes its single block style.
-                var lines = figlet.EffectiveLines;
-                int lineRows = Math.Max(1, figlet.Face.Measure("M").Rows);
-
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    int lineRow = row + i * lineRows;
-                    if (i * lineRows >= maxRows) break;
-
-                    int anchor = ComputeAnchorColumn(
-                        new Rect(column, row, block.Size.Columns, Math.Max(1, maxRows)),
-                        figlet.Face.Measure(lines[i]).Columns,
-                        figlet.Alignment);
-
-                    if (resolver is null)
-                        figlet.Face.Paint(buffer, anchor, lineRow, lines[i], figlet.Style);
-                    else
-                        figlet.Face.Paint(buffer, anchor, lineRow, lines[i],
-                                          (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, figlet.Style, c, r, blockRect)));
-                }
-
-                break;
-            }
-            case FormattedSizedTextBlock sized:
-                PaintSizedText(sized, buffer, column, row, maxRows, capabilities, resolver,
-                               ResolveStyle(resolver, sized.Style, centerColumn, centerRow, blockRect));
-                break;
             case FormattedContentBlock content:
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
                                       ResolveStyle(resolver, default, centerColumn, centerRow, blockRect), capabilities);
@@ -191,20 +156,76 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
                                        OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
-        int linesToPaint = Math.Min(paragraph.Lines.Length, maxRows);
-
         // The block's 2-D rect — the sampling bounds for a block/document-scoped brush (6a.1). Built once
         // per paragraph; clamped to ≥1 so a degenerate (zero-width/height) paragraph can't throw.
-        var blockRect = new Rect(column, row, Math.Max(1, paragraph.Size.Columns), Math.Max(1, linesToPaint));
+        var blockRect = new Rect(column, row, Math.Max(1, paragraph.Size.Columns), Math.Max(1, Math.Min(paragraph.Size.Rows, maxRows)));
 
-        for (int i = 0; i < linesToPaint; i++)
+        // Lines are BANDS (line.Rows tall — the max of the line's runs' LineRows); bands stack.
+        // A band that doesn't fully fit the row budget is clipped whole — a half-painted sized
+        // glyph is worse than a missing line, and matches the block painters' whole-band rule.
+        int bandRow = row;
+        int rowsLeft = maxRows;
+
+        foreach (var line in paragraph.Lines)
         {
-            var line = paragraph.Lines[i];
+            if (line.Rows > rowsLeft) break;
+
             int cursor = ComputeAnchorColumn(bounds, line.Columns, paragraph.Alignment);
+
             foreach (var run in line.Runs)
             {
+                // Each run sits within its band per the paragraph's vertical text alignment
+                // (proposal-glyph-runs; maintainer decision 2026-08-02 — block-level, default
+                // Bottom to match both terminal baselines and OSC 66's default).
+                int slack = line.Rows - run.LineRows;
+                int runRow = bandRow + (paragraph.VerticalAlignment switch
+                                        {
+                                            VerticalTextAlignment.Top    => 0,
+                                            VerticalTextAlignment.Center => slack / 2,
+                                            _                            => slack
+                                        });
+
                 switch (run)
                 {
+                    case FormattedTextRun { Source.PaintsAsCells: false } glyphText:
+                    {
+                        int pieceWidth = glyphText.CellWidth;
+
+                        if (glyphText.Source is { Font: { } face, Sizing.IsNormal: true })
+                        {
+                            // A FIGlet-sourced piece: the face paints DIRECTLY at the piece rect
+                            // (per-cell brush sampling, like the old block painter). Never route
+                            // a font piece through ScaledText — its placeholder path formats a
+                            // figlet block, which is itself a font-sourced run: infinite
+                            // recursion by construction.
+                            if (resolver is null)
+                                face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style);
+                            else
+                                face.Paint(buffer, cursor, runRow, glyphText.Text,
+                                           (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, glyphText.Style, c, r, blockRect)));
+                        }
+                        else
+                        {
+                            // A sized piece paints through ScaledText at the piece's own rect —
+                            // normally the OSC 66 fragment (layout resolved the source against
+                            // the terminal, so a sized source at paint means the protocol is
+                            // supported); when paint-time capabilities are LOWER than layout's
+                            // (ToPlainText renders with None), the fallback tree still bottoms
+                            // out in the direct font arm above via the placeholder's figlet
+                            // block, one level deep.
+                            var pieceRect = new Rect(cursor, runRow, pieceWidth, run.LineRows);
+                            var style = ResolveStyle(resolver, glyphText.Style,
+                                                     cursor + pieceWidth / 2, runRow, blockRect);
+                            var scaled = new ScaledText(glyphText.Text, glyphText.Source.Sizing, glyphText.Source.Font)
+                                         {
+                                             BrushResolver = resolver
+                                         };
+                            scaled.Paint(buffer, pieceRect, style, capabilities);
+                        }
+
+                        cursor += pieceWidth;
+                        break;
+                    }
                     case FormattedTextRun text:
                     {
                         // Wrap-invariant inline sampling: a grapheme's logical offset within its source run is
@@ -220,26 +241,30 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // Resolver (when present) recolors per cell. Width is grapheme-driven, so a
                             // substituted style is layout-safe.
                             var style = resolver?.Invoke(
-                                            new BrushedTextContext(text.Style, cursor, row + i, blockRect,
+                                            new BrushedTextContext(text.Style, cursor, runRow, blockRect,
                                                                    text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag))
                                         ?? text.Style;
-                            int width = buffer.Set(cursor, row + i, grapheme.ToString(), style);
+                            int width = buffer.Set(cursor, runRow, grapheme.ToString(), style);
                             cursor += width;
                         }
                         break;
                     }
                     case FormattedContentRun content:
                     {
-                        var contentBounds = new Rect(cursor, row + i, content.Width, 1);
+                        var contentBounds = new Rect(cursor, runRow, content.Width, 1);
                         // Inline content samples one color at its center against the block rect — so a fallback
                         // glyph (when no graphics protocol) is brush-colored; a real image ignores the style.
-                        var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, row + i, blockRect);
+                        var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, runRow, blockRect);
                         content.Content.Paint(buffer, contentBounds, style, capabilities);
                         cursor += content.Width;
                         break;
                     }
                 }
             }
+
+            bandRow += line.Rows;
+            rowsLeft -= line.Rows;
+            if (rowsLeft <= 0) break;
         }
     }
 
@@ -336,21 +361,6 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 sb.AppendLine();
         }
     }
-    private static void PaintSizedText(FormattedSizedTextBlock sized, in CellBufferView buffer, int column, int row,
-                                       int maxRows, OutputCapabilities capabilities, BrushedTextResolver? resolver,
-                                       in Style style)
-    {
-        // Mirror ScaledText's protocol: try OSC 66 fragment when supported, else fall back to
-        // the configured glyph font. ScaledText itself encapsulates the decision tree, so we
-        // delegate to a transient instance. The style (already brush-resolved by the caller) colors the
-        // OSC-66 backdrop / the FIGlet fallback glyphs. Rows clamp to the caller's budget — the
-        // paragraph path clips lines to maxRows, and a multi-line sized block must not paint
-        // past the same boundary into whatever lies below the bounds.
-        var scaled = new ScaledText(sized.Text, sized.Sizing, sized.Fallback) { BrushResolver = resolver };
-        scaled.Paint(buffer, new Rect(column, row, sized.Size.Columns, Math.Min(sized.Size.Rows, maxRows)),
-                     style, capabilities);
-    }
-
     public string ToPlainText(in Rect? bounds = null, bool? fillEntireBounds = null)
     {
         var sb = new StringBuilder();
@@ -397,6 +407,10 @@ public abstract record FormattedBlock(Size Size, TextAlignment Alignment, bool H
 public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Size Size, TextAlignment Alignment, bool TrimmedLines)
     : FormattedBlock(Size, Alignment, TrimmedLines || AnyTrimmedLines(Lines))
 {
+    /// <summary>Where shorter runs sit within a taller line band — see
+    /// <see cref="TextParagraph.VerticalAlignment"/>.</summary>
+    public VerticalTextAlignment VerticalAlignment { get; init; }
+
     private static bool AnyTrimmedLines(ImmutableArray<FormattedLine> lines)
     {
         foreach (var line in lines)
@@ -418,31 +432,6 @@ public sealed record FormattedHorizontalRule(
     string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
-/// A formatted FIGlet headline. <see cref="Face"/> drives both measurement (already reflected
-/// in <see cref="Size"/>) and paint; <see cref="Text"/> is the source string.
-/// <see cref="Lines"/> holds the wrapped/trimmed lines the formatter placed via the face's
-/// <see cref="GlyphMetrics"/> — the painter renders one per <c>Face</c>-height row band. A
-/// default (unset) <see cref="Lines"/> means the single unwrapped <see cref="Text"/> line.
-/// </summary>
-public sealed record FormattedFigletBlock(
-    string Text, IGlyphFont Face, Style Style, TextAlignment Alignment, Size Size, bool Trimmed,
-    ImmutableArray<string> Lines = default)
-    : FormattedBlock(Size, Alignment, Trimmed)
-{
-    /// <summary>The lines to paint — <see cref="Lines"/>, or the raw <see cref="Text"/> when unset.</summary>
-    public ImmutableArray<string> EffectiveLines => Lines.IsDefaultOrEmpty ? [Text] : Lines;
-}
-
-/// <summary>
-/// A formatted Kitty-OSC-66 sized-text headline. When the negotiated capabilities support OSC 66,
-/// the painter attaches a <c>SizedTextFragment</c>; otherwise it paints via
-/// <see cref="Fallback"/> as a FIGlet headline.
-/// </summary>
-public sealed record FormattedSizedTextBlock(
-    string Text, TextSizing Sizing, Style Style, IGlyphFont? Fallback,
-    TextAlignment Alignment, Size Size, bool Trimmed) : FormattedBlock(Size, Alignment, Trimmed);
-
-/// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to
 /// <see cref="IContent.Paint"/> at the block's anchor with a rect of <see cref="Size"/>.
 /// </summary>
@@ -454,7 +443,7 @@ public sealed record FormattedContentBlock(
 /// (after alignment padding); <see cref="Runs"/> is the ordered sequence of styled text
 /// fragments that compose it. Lines never contain trailing whitespace.
 /// </summary>
-public sealed record FormattedLine(ImmutableArray<FormattedRun> Runs, int Columns, bool Trimmed);
+public sealed record FormattedLine(ImmutableArray<FormattedRun> Runs, int Columns, bool Trimmed, int Rows = 1);
 
 /// <summary>
 /// The atomic unit of paintable content inside a <see cref="FormattedLine"/>. Concrete
@@ -466,6 +455,10 @@ public abstract record FormattedRun
 {
     /// <summary>The cell footprint this run occupies on its line.</summary>
     public abstract int CellWidth { get; }
+
+    /// <summary>Rows this run's glyphs stand tall — its line's band is at least this many rows.
+    /// 1 for everything except sized/FIGlet-sourced text runs.</summary>
+    public virtual int LineRows => 1;
 }
 
 /// <summary>
@@ -492,12 +485,22 @@ public sealed record FormattedTextRun : FormattedRun
     }
 
     /// <inheritdoc/>
-    public override int CellWidth => GraphemeWidth.StringWidth(Text);
+    public override int CellWidth => Source.Metrics.StringWidth(Text);
 
     public required string Text { get; init; }
     public required Style Style { get; init; }
 
     public string? Hyperlink { get; init; }
+
+    /// <summary>
+    /// The run's glyph source (proposal-glyph-runs): how its clusters measure and paint. The
+    /// monospace identity by default. Preserved across wrap-splits — every piece of a sized or
+    /// FIGlet run measures and paints through the same source.
+    /// </summary>
+    public GlyphSource Source { get; init; } = GlyphSource.Default;
+
+    /// <inheritdoc/>
+    public override int LineRows => Source.Metrics.LineRows;
 
     /// <summary>
     /// Opaque metadata carried over from the source <see cref="TextRun.Tag"/> (preserved across wrap-splits).

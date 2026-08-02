@@ -154,7 +154,7 @@ public sealed class ScaledText : FragmentContent
         return null;
     }
 
-    private static IGlyphFont PickDefaultFallback(TextSizing sizing, bool isMultiLine = false)
+    internal static IGlyphFont PickDefaultFallback(TextSizing sizing, bool isMultiLine = false)
     {
         if (isMultiLine)
             return MonospaceFont.Default;

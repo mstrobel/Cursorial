@@ -44,7 +44,16 @@ public sealed record TextRun(
     Style Style = default,
     IGlyphMap? Map = null,
     string? Hyperlink = null,
-    object? Tag = null) : Inline;
+    object? Tag = null) : Inline
+{
+    /// <summary>
+    /// The run's glyph source (proposal-glyph-runs): how its clusters measure and paint.
+    /// <see langword="null"/> = the monospace identity. A sized or FIGlet source makes the run a
+    /// first-class participant in the paragraph flow — it wraps, trims, and aligns through the
+    /// same pipeline as plain text, at its own per-cluster cell advances.
+    /// </summary>
+    public Fonts.GlyphSource? Source { get; init; }
+}
 
 /// <summary>
 /// A hard line break inside a paragraph. Ends the current line; subsequent inlines flow onto

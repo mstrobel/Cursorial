@@ -66,38 +66,59 @@ public class TextFormatterMetricsTests
     }
 
     // ---- Sized-text blocks through the formatter ----
+    // The block form is sugar over a one-run paragraph (proposal-glyph-runs); scaled geometry
+    // requires a scale-capable terminal — on lesser tiers the source RESOLVES to the fallback
+    // face at layout time, exactly as the old ScaledText.Measure-based path did.
 
-    private static FormattedSizedTextBlock FormatSized(
+    private static OutputCapabilities ScaleCaps()
+        => OutputCapabilities.None with { TextSizing = new Cursorial.Output.Capabilities.TextSizingCapabilities(Width: true, Scale: true) };
+
+    private static FormattedParagraph FormatSized(
         string text, TextSizing sizing, int columns, TextFormatter? formatter = null)
     {
         var rt = new RichTextBuilder().SizedText(text, sizing).Build();
-        var ft = (formatter ?? new TextFormatter()).Format(rt, columns, capabilities: OutputCapabilities.None);
-        return Assert.IsType<FormattedSizedTextBlock>(Assert.Single(ft.Blocks));
+        var ft = (formatter ?? new TextFormatter()).Format(rt, columns, capabilities: ScaleCaps());
+        return Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+    }
+
+    private static string LinePlainText(FormattedParagraph p, int index)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var run in p.Lines[index].Runs)
+        {
+            if (run is FormattedTextRun text)
+                sb.Append(text.Text);
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     [Fact]
     public void SizedBlock_WrapsAtScaledWidths()
     {
         // "HELLO WORLD" at scale 2: each word is 10 cells, the space 2 — 22 > 12 wraps at the
-        // word boundary, and the split text carries a bare LF (never CRLF; the fragment splits
-        // on LF).
+        // word boundary into two 2-row bands.
         var block = FormatSized("HELLO WORLD", new TextSizing(Scale: 2), columns: 12);
 
-        Assert.Equal("HELLO\nWORLD", block.Text);
-        Assert.False(block.Trimmed);
+        Assert.Equal(2, block.Lines.Length);
+        Assert.Equal("HELLO", LinePlainText(block, 0));
+        Assert.Equal("WORLD", LinePlainText(block, 1));
+        Assert.All(block.Lines, l => Assert.Equal(2, l.Rows));
+        Assert.Equal(4, block.Size.Rows);
+        Assert.False(block.HasTrimmedLines);
     }
 
     [Fact]
     public void SizedBlock_AuthoredLineBreaks_AreHonored()
     {
         // '\n' (and normalized CRLF) in the source is a hard break — the old tokenizer treated
-        // it as a zero-width word character and fused the words into one.
-        // Columns chosen so the UNSPLIT text would char-wrap differently: as one fused word,
-        // "AAA\nBB" (10 cells at scale 2, the \n zero-width) splits after the zero-width \n and
-        // yields "AAA\n\nBB" — only a real hard break produces clean lines.
+        // it as a zero-width word character and fused the words into one. Columns chosen so the
+        // UNSPLIT fused word would char-wrap into different (dirtier) lines than a real break.
         var block = FormatSized("AAA\r\nBB", new TextSizing(Scale: 2), columns: 6);
 
-        Assert.Equal("AAA\nBB", block.Text);
+        Assert.Equal(2, block.Lines.Length);
+        Assert.Equal("AAA", LinePlainText(block, 0));
+        Assert.Equal("BB", LinePlainText(block, 1));
     }
 
     [Fact]
@@ -108,8 +129,8 @@ public class TextFormatterMetricsTests
         var tf = new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.CharacterEllipsis };
         var block = FormatSized("ABCDE", new TextSizing(Scale: 2), columns: 7, tf);
 
-        Assert.Equal("AB…", block.Text);
-        Assert.True(block.Trimmed);
+        Assert.Equal("AB…", LinePlainText(block, 0));
+        Assert.True(block.Lines[0].Trimmed);
         Assert.True(block.HasTrimmedLines);
     }
 
@@ -126,8 +147,11 @@ public class TextFormatterMetricsTests
         var rt = new RichTextBuilder().Figlet("HI HI", face).Build();
         var ft = new TextFormatter().Format(rt, oneWord + 2, capabilities: OutputCapabilities.None);
 
-        var block = Assert.IsType<FormattedFigletBlock>(Assert.Single(ft.Blocks));
-        Assert.Equal(["HI", "HI"], block.EffectiveLines.ToArray());
+        var block = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        Assert.Equal(2, block.Lines.Length);
+        Assert.Equal("HI", LinePlainText(block, 0));
+        Assert.Equal("HI", LinePlainText(block, 1));
+        Assert.All(block.Lines, l => Assert.Equal(face.Height, l.Rows));
         Assert.Equal(2 * face.Height, block.Size.Rows);
     }
 

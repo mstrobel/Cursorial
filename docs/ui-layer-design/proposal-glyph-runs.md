@@ -1,7 +1,11 @@
 # Proposal: scaled text and FIGlet as first-class styled runs
 
-*Status: design sketch (maintainer-requested, 2026-08-02). Builds on the `GlyphMetrics` layer
-landed in the review-fixes round; nothing here is implemented.*
+*Status: **Phase 1 landed** (2026-08-02, `feat/glyph-runs`) — `GlyphSource` on runs,
+capability-resolved at layout (`ResolveFor`: unsupported sizing → fallback face, tier parity),
+band geometry with paragraph-level `VerticalTextAlignment`, per-piece painting (direct face /
+OSC 66 fragment per piece), and the block sugar collapse (`FormattedFigletBlock` /
+`FormattedSizedTextBlock` and their painters deleted; block forms are one-run paragraphs).
+Phases 2–3 remain design.*
 
 ## The ask
 
@@ -116,7 +120,12 @@ path, one trimmed-flag path — is the real payoff beyond the new capability.
 
 1. **Runs + layout** — `GlyphSource` on `TextRun`/`FormattedTextRun`, per-run Tokenizer metrics,
    `FormattedLine.Rows`, paragraph painter (scaled fragments per piece, figlet per piece).
-   Block forms rewritten as sugar; matrix tests move over intact.
+   Block forms rewritten as sugar; matrix tests move over intact. **Landed** — with one addition
+   the sketch missed: sources resolve against the terminal at LAYOUT time (`GlyphSource.ResolveFor`),
+   because measurement must agree with the paint-time fallback tier, and one hazard worth
+   recording: a font-sourced piece must paint through `IGlyphFont.Paint` directly — routing it
+   through `ScaledText` recurses (its placeholder path formats a figlet block, which is itself a
+   font-sourced run).
 2. **Interaction** — `TextEditing` per-run metrics, selection splitting, caret placement
    (incl. the multiple-cursors capability negotiation + glyph-height caret band in
    `TerminalCaretService`).

@@ -928,9 +928,10 @@ public class TextBox : Control
             return _presenter.OffsetFromPoint(Math.Max(0, local.Column), Math.Max(0, local.Row));
 
         var column = Math.Max(0, local.Column) + _presenter.ScrollOffset;
-        // The pointer hits the DISPLAYED text — round in display space, then map the boundary back to the model
-        // (identity for a TextBox; the per-cluster mask correspondence for a PasswordBox).
-        var layout = GraphemeLayout.Build(DisplayText);
+        // The pointer hits the DISPLAYED text — round in display space (at the editor's glyph
+        // source's advances), then map the boundary back to the model (identity for a TextBox;
+        // the per-cluster mask correspondence for a PasswordBox).
+        var layout = GraphemeLayout.Build(DisplayText, _presenter.EditingMetrics);
 
         var before = layout.CharIndexAtOrBeforeColumn(column);
         var after = layout.NextBoundary(before);

@@ -159,6 +159,12 @@ public readonly struct TextLayout
     /// <see cref="WrapMode.CharacterWrap"/> breaks at the exact width with no word-boundary preference.
     /// </summary>
     public static TextLayout Build(string? text, int wrapWidth, WrapMode wrap)
+        => Build(text, wrapWidth, wrap, metrics: null);
+
+    /// <summary>Builds the layout with cluster columns measured through <paramref name="metrics"/>
+    /// (proposal-glyph-runs Phase 2): a uniformly sized/FIGlet-sourced editor wraps and maps
+    /// caret columns at the source's per-cluster cell advances. Null = the monospace identity.</summary>
+    public static TextLayout Build(string? text, int wrapWidth, WrapMode wrap, Fonts.GlyphMetrics? metrics)
     {
         text ??= "";
         var lines = new List<Line>();
@@ -174,7 +180,7 @@ public readonly struct TextLayout
                 j++;
 
             var hard = j < n;
-            AppendLogicalLine(lines, ref maxWidth, text, i, j, hard, wrapWidth, wrap);
+            AppendLogicalLine(lines, ref maxWidth, text, i, j, hard, wrapWidth, wrap, metrics);
 
             if (j >= n)
                 break;
@@ -185,7 +191,7 @@ public readonly struct TextLayout
             // A break that ends the text leaves a blank final visual line so the caret can sit on it.
             if (i == n)
             {
-                AppendLogicalLine(lines, ref maxWidth, text, n, n, hard: false, wrapWidth, wrap);
+                AppendLogicalLine(lines, ref maxWidth, text, n, n, hard: false, wrapWidth, wrap, metrics);
                 break;
             }
         }
@@ -196,10 +202,10 @@ public readonly struct TextLayout
     // Adds the visual line(s) for one logical line [start, contentEnd). With wrapping off it is a single visual
     // line; with wrapping on it is split at the wrap width per the WrapMode (grapheme-aware throughout).
     private static void AppendLogicalLine(List<Line> lines, ref int maxWidth, string text, int start, int contentEnd,
-                                          bool hard, int wrapWidth, WrapMode wrap)
+                                          bool hard, int wrapWidth, WrapMode wrap, Fonts.GlyphMetrics? metrics)
     {
         var slice = text[start..contentEnd];
-        var glyphs = GraphemeLayout.Build(slice);
+        var glyphs = GraphemeLayout.Build(slice, metrics);
 
         if (wrap == WrapMode.NoWrap || wrapWidth <= 0 || glyphs.TotalColumns <= wrapWidth)
         {
@@ -208,10 +214,10 @@ public readonly struct TextLayout
             return;
         }
 
-        foreach (var (segStart, segLen) in WrapSegments(slice, wrapWidth, wrap))
+        foreach (var (segStart, segLen) in WrapSegments(slice, wrapWidth, wrap, metrics))
         {
             var segSlice = slice.Substring(segStart, segLen);
-            var segGlyphs = GraphemeLayout.Build(segSlice);
+            var segGlyphs = GraphemeLayout.Build(segSlice, metrics);
             // Only the final segment of the logical line carries the hard break.
             var isLast = segStart + segLen >= slice.Length;
             lines.Add(new Line(start + segStart, segLen, hard && isLast, segGlyphs));
@@ -224,7 +230,8 @@ public readonly struct TextLayout
     // single word wider than the budget — WordWrap hard-breaks it at the overflowing cluster, WordWrapOverflow
     // keeps it whole (the segment overflows the right edge, matching WPF WrapWithOverflow). CharacterWrap breaks
     // at the exact width with no word-boundary preference. No mode ever produces a zero-length segment.
-    private static List<(int Start, int Length)> WrapSegments(string slice, int wrapWidth, WrapMode wrap)
+    private static List<(int Start, int Length)> WrapSegments(string slice, int wrapWidth, WrapMode wrap,
+                                                              Fonts.GlyphMetrics? metrics)
     {
         // Built eagerly (not a yield iterator) — the grapheme enumerator is a ref struct and cannot cross a
         // yield boundary.
@@ -238,7 +245,7 @@ public readonly struct TextLayout
         while (enumerator.MoveNext())
         {
             var cluster = enumerator.Current;
-            var width = GraphemeWidth.ClusterWidth(cluster);
+            var width = metrics?.ClusterWidth(cluster) ?? GraphemeWidth.ClusterWidth(cluster);
 
             if (segCols + width > wrapWidth && segCols > 0)
             {

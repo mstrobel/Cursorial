@@ -215,6 +215,13 @@ public sealed class RenderContext
         Inner.DrawContent(bounds, content, _capabilities);
     }
 
+    /// <summary>Paints embedded content with an explicit <paramref name="style"/> — the SGR backdrop for
+    /// protocol-backed content (a selection background riding an OSC 66 emission).</summary>
+    public void DrawContent(in Rect bounds, IContent content, in Cursorial.Output.Style style)
+    {
+        Inner.DrawContent(bounds, content, _capabilities, style);
+    }
+
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>
     public void DrawChart(IChart chart, in Rect area)
     {

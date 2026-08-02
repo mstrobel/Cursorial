@@ -42,12 +42,22 @@ public readonly struct GraphemeLayout
     /// <summary>Builds the layout for <paramref name="text"/> (null/empty ⇒ a single zero boundary).</summary>
     public static GraphemeLayout Build(string? text) => Build(text.AsSpan());
 
+    /// <summary>Builds the layout with cluster columns measured through <paramref name="metrics"/>
+    /// (proposal-glyph-runs Phase 2): a uniformly sized/FIGlet-sourced editor lays out — and maps
+    /// caret columns — at the source's per-cluster cell advances. Cluster boundaries are
+    /// unchanged, so caret atomicity (one stop per glyph, whatever its footprint) comes free.</summary>
+    public static GraphemeLayout Build(string? text, Fonts.GlyphMetrics? metrics)
+        => Build(text.AsSpan(), metrics);
+
     /// <summary>
     /// Builds the cluster-boundary layout of <paramref name="text"/> — the allocation-free entry point for a
     /// caller holding a slice (a substring, a cell span) that would otherwise pay a <c>ToString()</c> just to
     /// project boundaries. The <see cref="string"/> overload delegates here, so the two never diverge.
     /// </summary>
-    public static GraphemeLayout Build(ReadOnlySpan<char> text)
+    public static GraphemeLayout Build(ReadOnlySpan<char> text) => Build(text, metrics: null);
+
+    /// <inheritdoc cref="Build(string?, Fonts.GlyphMetrics?)"/>
+    public static GraphemeLayout Build(ReadOnlySpan<char> text, Fonts.GlyphMetrics? metrics)
     {
         if (text.IsEmpty)
             return new GraphemeLayout([0], [0]);
@@ -60,7 +70,7 @@ public readonly struct GraphemeLayout
         {
             var cluster = enumerator.Current;
             ci += cluster.Length;
-            col += GraphemeWidth.ClusterWidth(cluster);
+            col += metrics?.ClusterWidth(cluster) ?? GraphemeWidth.ClusterWidth(cluster);
             charIndex.Add(ci);
             column.Add(col);
         }

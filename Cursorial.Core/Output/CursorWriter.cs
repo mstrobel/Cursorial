@@ -99,6 +99,54 @@ public static class CursorWriter
         writer.Advance(written);
     }
 
+    /// <summary>
+    /// Place Kitty extra cursors — beam shape — on every cell of the single-column rectangle at
+    /// 0-based <paramref name="column"/> spanning rows <paramref name="topRow"/>..<paramref name="bottomRow"/>
+    /// inclusive (<c>CSI &gt; 2 ; 4 : top : left : bottom : right SP q</c>, the multiple-cursors
+    /// protocol's rectangle form; 1-based on the wire like every other cursor writer). Extra
+    /// cursors share the main cursor's color / opacity / blink and are <b>screen-fixed</b> —
+    /// re-emit or <see cref="WriteClearExtraCursors"/> as the band moves. Emit only on terminals
+    /// with the negotiated <c>MultipleCursors</c> capability: others mis-parse the
+    /// <c>&gt; … SP q</c> form (Apple Terminal prints the literal 'q').
+    /// </summary>
+    public static void WriteExtraCursorsBeam(IBufferWriter<byte> writer, int column, int topRow, int bottomRow)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        var buffer = writer.GetSpan(40);
+        int written = 0;
+        buffer[written++] = Escape;
+        buffer[written++] = CsiOpen;
+        buffer[written++] = (byte) '>';
+        buffer[written++] = (byte) '2'; // beam
+        buffer[written++] = CsiSeparator;
+        buffer[written++] = (byte) '4'; // rectangle coordinates: top : left : bottom : right
+        buffer[written++] = (byte) ':';
+        VtWriterUtilities.WriteAsciiInt(Math.Max(0, topRow) + 1, buffer, ref written);
+        buffer[written++] = (byte) ':';
+        VtWriterUtilities.WriteAsciiInt(Math.Max(0, column) + 1, buffer, ref written);
+        buffer[written++] = (byte) ':';
+        VtWriterUtilities.WriteAsciiInt(Math.Max(0, bottomRow) + 1, buffer, ref written);
+        buffer[written++] = (byte) ':';
+        VtWriterUtilities.WriteAsciiInt(Math.Max(0, column) + 1, buffer, ref written);
+        buffer[written++] = (byte) ' ';
+        buffer[written++] = (byte) 'q';
+        writer.Advance(written);
+    }
+
+    /// <summary>
+    /// Clear every Kitty extra cursor from the screen (<c>CSI &gt; 0;4 SP q</c> — shape 0 over the
+    /// whole-screen rectangle; byte-identical to the negotiator's restore-time clear). Same
+    /// capability gate as <see cref="WriteExtraCursorsBeam"/>.
+    /// </summary>
+    public static void WriteClearExtraCursors(IBufferWriter<byte> writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ReadOnlySpan<byte> bytes = "\x1b[>0;4 q"u8;
+        var buffer = writer.GetSpan(bytes.Length);
+        bytes.CopyTo(buffer);
+        writer.Advance(bytes.Length);
+    }
+
     private static void WriteRelativeMove(IBufferWriter<byte> writer, int cells, byte final)
     {
         ArgumentNullException.ThrowIfNull(writer);

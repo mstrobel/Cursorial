@@ -261,6 +261,20 @@ public sealed class VtInputInterpreter : IVtSequenceTokenSink
                 return;
             }
 
+            // Kitty multiple-cursors support reply (CSI > <shapes> SP q) — the answer to the
+            // protocol's support query (CSI > SP q). The parameter run is the semicolon-separated
+            // list of supported extra-cursor shapes ("1;2;3;29"); it is surfaced whole so the
+            // negotiator can scan for the shapes it needs. No collision with DECSCUSR
+            // (CSI Ps SP q): only the reply carries the '>' private prefix.
+            if (privatePrefix == VtInputSequences.SecondaryPrefix &&
+                final == (byte) 'q' &&
+                intermediates.Length == 1 &&
+                intermediates[0] == (byte) ' ')
+            {
+                EmitDeviceResponse(DeviceResponseKind.MultipleCursors, parameters);
+                return;
+            }
+
             // CSI sequences with intermediate bytes are mostly mode-control commands that don't
             // turn into input events. Surface as UnknownEvent rather than dropping silently.
             EmitUnknownCsi(privatePrefix, parameters, intermediates, final);

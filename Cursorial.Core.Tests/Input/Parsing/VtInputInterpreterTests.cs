@@ -1629,6 +1629,18 @@ public class VtInputInterpreterTests
     }
 
     [Fact]
+    public void KittyMultipleCursorsReply_EmitsMultipleCursorsEvent()
+    {
+        // CSI > 1 ; 2 ; 3 ; 29 SP q — the Kitty multiple-cursors support reply (the answer to
+        // CSI > SP q), listing the supported extra-cursor shapes.
+        Feed("\x1b[>1;2;3;29 q");
+
+        var r = _sink.Single<DeviceResponseEvent>();
+        Assert.Equal(DeviceResponseKind.MultipleCursors, r.Kind);
+        Assert.Equal("1;2;3;29", System.Text.Encoding.ASCII.GetString(r.Payload.Span));
+    }
+
+    [Fact]
     public void Da1ResponseOwnsPayloadAcrossLifetime()
     {
         Feed("\x1b[?65;1;9c");

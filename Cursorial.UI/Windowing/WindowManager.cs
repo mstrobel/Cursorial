@@ -536,6 +536,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         return changed;
     }
 
+    /// <summary>
+    /// The caret assembled by the most recent <see cref="RenderFrame"/> — the frame loop reads it
+    /// after the render leg to drive the Kitty glyph-height caret band (proposal-glyph-runs §4),
+    /// which is emitted out-of-band rather than through the <c>CellBuffer</c> cursor state (the
+    /// hardware cursor renders only the band's bottom row).
+    /// </summary>
+    internal TerminalCaretState LastCaret => _lastCaret;
+
     private Func<UIElement, (int Column, int Row)>? _resolveSurfaceOffset;
 
     // Maps a caret owner to its top-level surface's screen offset (③). An element's VisualRoot is the

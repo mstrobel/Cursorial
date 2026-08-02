@@ -137,6 +137,29 @@ public class Section01_PathParsing
     }
 
     [Fact]
+    public void B015a_TypeQualified_MemberNotStaticallyFound_ParsesUnresolved()
+    {
+        // Only the OWNER type must resolve at parse time. A member that is not statically found on it is
+        // NOT a parse failure — the segment stays unresolved and the member resolves by name on the
+        // runtime source (the documented disambiguation/clarity contract).
+        var path = BindingPath.Parse("(BindWidget.NoSuchMember)");
+        Assert.Equal(1, path.SegmentCount);
+        Assert.Equal("(BindWidget.NoSuchMember)", path.ToString());
+        Assert.False(path.Segments[0].QualifiedProperty.IsResolved);
+    }
+
+    [Fact]
+    public void B015b_TypeQualified_ShadowedProperty_AmbiguityIsAStaticMiss_NotAThrow()
+    {
+        // A shadowed ('new') property is ambiguous for reflection on the derived type; the parser treats
+        // that as a static miss (runtime by-name resolution) rather than letting AmbiguousMatchException
+        // escape as a raw reflection exception.
+        var path = BindingPath.Parse("(Shadow.Val)", new MapResolver());
+        Assert.Equal(1, path.SegmentCount);
+        Assert.Equal("(ShadowVm.Val)", path.ToString());
+    }
+
+    [Fact]
     public void B016_PathParsedOncePerDescriptor_Cached()
     {
         var binding = new Binding("Customer.Address.City");
@@ -147,6 +170,24 @@ public class Section01_PathParsing
 
     private sealed class MapResolver : IPathTypeResolver
     {
-        public Type? Resolve(string typeToken) => typeToken == "BindWidget" ? typeof(BindWidget) : null;
+        public Type? Resolve(string typeToken)
+            => typeToken switch
+               {
+                   "BindWidget" => typeof(BindWidget),
+                   "Shadow"     => typeof(ShadowVm),
+                   _            => null
+               };
+    }
+
+    private class ShadowBaseVm
+    {
+        // ReSharper disable once UnusedMember.Local
+        public object? Val { get; set; }
+    }
+
+    private sealed class ShadowVm : ShadowBaseVm
+    {
+        // ReSharper disable once UnusedMember.Local
+        public new string? Val { get; set; }
     }
 }

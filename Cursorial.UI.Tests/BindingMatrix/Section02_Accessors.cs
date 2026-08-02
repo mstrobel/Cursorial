@@ -1,3 +1,4 @@
+using Cursorial.UI;
 using Cursorial.UI.Data;
 
 // ReSharper disable InconsistentNaming
@@ -167,6 +168,59 @@ public class Section02_Accessors
         Assert.Null(AccessorCache.ResolveStringIndexer(box, "Bogus"));
     }
 
+    [Fact]
+    public void B024c_TypeQualifiedClr_MismatchedRuntimeInstance_FallsBackToByName()
+    {
+        // The parse-time PropertyInfo on the qualifier type must not be invoked on an incompatible
+        // runtime instance (that would throw TargetException out of the binding rewire — e.g. a
+        // transient inherited DataContext of another type). The member re-resolves BY NAME on the
+        // runtime type: a same-named property binds, and a missing one degrades to the graceful
+        // unresolved path.
+        var segment = BindingPath.Parse("(ItemVm.Label)", new TypeMapResolver()).Segments[0];
+        Assert.Equal(PathSegmentKind.TypeQualified, segment.Kind);
+        Assert.True(segment.QualifiedProperty.IsClrProperty); // statically resolved on the qualifier
+
+        var matched = new ItemVm { Label = "item" };
+        Assert.Equal("item", AccessorCache.ResolveProperty(matched, in segment).GetValue(matched));
+
+        var sameName = new OtherVm { Label = "other" };
+        Assert.Equal("other", AccessorCache.ResolveProperty(sameName, in segment).GetValue(sameName));
+
+        var noSuchMember = new PlainHolder();
+        var unresolved = AccessorCache.ResolveProperty(noSuchMember, in segment);
+        Assert.IsType<UnresolvableAccessor>(unresolved);
+        Assert.Same(UIProperty.UnsetValue, unresolved.GetValue(noSuchMember));
+    }
+
+    [Fact]
+    public void B024d_TypeQualified_InterfaceInheritedMember_ResolvesByNameOnRuntimeType()
+    {
+        // Reflection does not surface base-interface members on a derived interface type, so the parse
+        // leaves the member unresolved (not a parse failure); the accessor then resolves it by name on
+        // the concrete runtime type.
+        var segment = BindingPath.Parse("(IDerived.Tag)", new TypeMapResolver()).Segments[0];
+        Assert.False(segment.QualifiedProperty.IsResolved);
+
+        var impl = new Impl { Tag = "t" };
+        Assert.Equal("t", AccessorCache.ResolveProperty(impl, in segment).GetValue(impl));
+    }
+
+    [Fact]
+    public void B024e_QualifierShortNameCollision_DistinctCacheEntries()
+    {
+        // Two qualifier types sharing a SHORT name (different outer types / namespaces) must not serve
+        // each other's cached accessor for the same instance type: the cache key uses the qualifier's
+        // full name, so each resolves its own entry.
+        var instance = new Vm { Name = "n" };
+        var segA = PathSegment.TypeQualified(typeof(OuterA.Q), "Name", ResolvedProperty.Unresolved);
+        var segB = PathSegment.TypeQualified(typeof(OuterB.Q), "Name", ResolvedProperty.Unresolved);
+
+        var before = AccessorCache.ResolveCount;
+        Assert.Equal("n", AccessorCache.ResolveProperty(instance, in segA).GetValue(instance));
+        Assert.Equal("n", AccessorCache.ResolveProperty(instance, in segB).GetValue(instance));
+        Assert.Equal(before + 2, AccessorCache.ResolveCount); // two entries, not a short-name cache hit
+    }
+
     private enum Status { Active, Closed }
 
     private sealed class EnumIndexed
@@ -180,5 +234,48 @@ public class Section02_Accessors
     {
         var path = BindingPath.Parse(name);
         return path.Segments[0];
+    }
+
+    private sealed class TypeMapResolver : IPathTypeResolver
+    {
+        public Type? Resolve(string typeToken)
+            => typeToken switch
+               {
+                   "ItemVm"   => typeof(ItemVm),
+                   "IDerived" => typeof(IDerived),
+                   _          => null
+               };
+    }
+
+    private sealed class ItemVm
+    {
+        public string? Label { get; set; }
+    }
+
+    private sealed class OtherVm
+    {
+        public string? Label { get; set; }
+    }
+
+    private interface IBase
+    {
+        string? Tag { get; }
+    }
+
+    private interface IDerived : IBase;
+
+    private sealed class Impl : IDerived
+    {
+        public string? Tag { get; set; }
+    }
+
+    private static class OuterA
+    {
+        internal sealed class Q;
+    }
+
+    private static class OuterB
+    {
+        internal sealed class Q;
     }
 }

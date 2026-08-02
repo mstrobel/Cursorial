@@ -59,11 +59,15 @@ public sealed class ToolTipService
         if (newValue is not null && UIApplication.Current is {} app)
             ToolTipController.Ensure(app);
 
-        if (oldValue is UIElement oldTip && 
-            oldTip.GetInheritanceParent() is {} oip &&
-            ReferenceEquals(oip, sender) is false)
+        // Sever exactly the link the new-tip branch below installs — and ONLY that link. A tip
+        // whose inheritance parent is someone else was parented by its owner, not by us; touching
+        // it would steal it. (The old guard was inverted: it skipped the links we created — so
+        // every discarded tip stayed strongly referenced in the sender's inheritance children —
+        // and re-parented the foreign ones.)
+        if (oldValue is UIElement oldTip &&
+            ReferenceEquals(oldTip.GetInheritanceParent(), sender))
         {
-            oldTip.SetInheritanceParent((sender as UIElement)?.UIParent);
+            oldTip.SetInheritanceParent(null);
         }
 
         if (newValue is UIElement newTip &&

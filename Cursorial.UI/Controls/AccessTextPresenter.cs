@@ -106,7 +106,11 @@ public sealed class AccessTextPresenter : UIElement
         var textWidth = GraphemeWidth.StringWidth(labelText);
         if (textWidth > finalSize.Columns)
         {
-            _cachedLabel = $"{labelText.Substring(0, finalSize.Columns - 1)}{TextFormatter.DefaultEllipsis}";
+            // Cut by GRAPHEME CLUSTERS against the column budget — a char-index Substring reads a
+            // display-column count as a UTF-16 length, which both throws for wide clusters (fewer
+            // chars than columns) and can split a surrogate pair or emoji sequence.
+            int budget = Math.Max(0, finalSize.Columns - GraphemeWidth.StringWidth(TextFormatter.DefaultEllipsis));
+            _cachedLabel = $"{TakeColumns(labelText, budget)}{TextFormatter.DefaultEllipsis}";
             SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
         }
         else
@@ -118,6 +122,30 @@ public sealed class AccessTextPresenter : UIElement
         }
 
         return finalSize;
+    }
+
+    /// <summary>The longest prefix of <paramref name="text"/> whose display width fits in
+    /// <paramref name="columns"/> cells, cut at a grapheme-cluster boundary.</summary>
+    private static string TakeColumns(string text, int columns)
+    {
+        int used = 0;
+        int length = 0;
+        ReadOnlySpan<char> remaining = text;
+
+        while (!remaining.IsEmpty)
+        {
+            int len = StringInfo.GetNextTextElementLength(remaining);
+            if (len <= 0) break;
+
+            int width = GraphemeWidth.ClusterWidth(remaining[..len]);
+            if (used + width > columns) break;
+
+            used += width;
+            length += len;
+            remaining = remaining[len..];
+        }
+
+        return text[..length];
     }
 
     /// <inheritdoc/>

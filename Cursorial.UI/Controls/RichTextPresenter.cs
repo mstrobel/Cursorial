@@ -41,7 +41,12 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<RichTextPresenter>();
 
-    private record CachedState(int AvailableColumns, RichText Source, FormattedText? Text);
+    private record CachedState(int AvailableColumns, RichText Source, FormattedText? Text, int? MaxRows = null)
+    {
+        /// <summary>Whether the row budget this layout was formatted under actually truncated it —
+        /// only then does a taller slot invalidate the cache (the grow-back path).</summary>
+        public bool RowCapBit => MaxRows is {} cap && Text is { Size.Rows: var rows } && rows >= cap;
+    }
 
     private CachedState? _cachedState;
     private UIApplication? _subscribedApp;
@@ -215,9 +220,13 @@ public sealed class RichTextPresenter : DrawnContentPresenter
             return cs.Text;
         }
 
-        var ft = Format(text, availableColumns, null, TextTrimming);
+        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } && TextTrimming is not TextTrimming.None
+                          ? bounds.Rows
+                          : (int?)null;
 
-        cs = new CachedState(availableColumns, text, ft);
+        var ft = Format(text, availableColumns, null, TextTrimming, maxRows: maxRows);
+
+        cs = new CachedState(availableColumns, text, ft, maxRows);
 
         _cachedState = cs;
 
@@ -228,7 +237,11 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     {
         var result = base.ArrangeOverride(finalSize);
 
-        if (_cachedState is { Text: { Size.Rows: var rows } } && rows > finalSize.Rows)
+        // Reformat when the slot shrank below the layout — or GREW past a row cap that actually
+        // truncated it: reusing a capped layout for a taller slot is how text used to stay
+        // trimmed forever after the space it needed came back.
+        if (_cachedState is { Text.Size.Rows: var rows } cs &&
+            (rows > finalSize.Rows || (cs.RowCapBit && finalSize.Rows > cs.MaxRows)))
         {
             _cachedState = null;
             result = MeasurePrimaryContent(finalSize);
@@ -240,8 +253,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     private FormattedText Format(RichText text,
                                  int width,
                                  OutputCapabilities? caps,
-                                 TextTrimming? trimmingOverride = null, 
-                                 WrapMode? wrappingOverride = null)
+                                 TextTrimming? trimmingOverride = null,
+                                 WrapMode? wrappingOverride = null,
+                                 int? maxRows = null)
     {
         var bounds = ResolveBounds(width);
         if (bounds.Columns is 0)
@@ -262,10 +276,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         var ft = tf.Format(text,
                            width,
                            capabilities: caps ?? _subscribedApp?.EffectiveCapabilities.Output,
-                           maxRows: bounds is not { Rows: 0 or LayoutMath.Unbounded } &&
-                                    textTrimming is not TextTrimming.None
-                                        ? bounds.Rows
-                                        : null);
+                           maxRows: maxRows);
 
         return ft;
     }
@@ -287,12 +298,10 @@ public sealed class RichTextPresenter : DrawnContentPresenter
                      Wrap = WrapMode.CharacterWrap
                  };
 
-        string plainText = tf.FormatPlainText(text,
-                                              maxWidth,
-                                              maxRows: bounds is not { Rows: 0 or LayoutMath.Unbounded }
-                                                           ? bounds.Rows
-                                                           : null);
-        return plainText;
+        // Deliberately UNCAPPED rows: this is the trimmed-content tooltip's payload, and its whole
+        // job is to reveal what the presenter's own bounds hid — capping it at those bounds would
+        // re-hide exactly the lines the user hovered to see. Display limits belong to the tooltip.
+        return tf.FormatPlainText(text, maxWidth, maxRows: null);
     }
 
     private RichText? ResolveSource()

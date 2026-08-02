@@ -32,6 +32,7 @@ public sealed class ContentPresenter : UIElement
     private IDisposable? _vAlignObserver;
     private ContentControl? _alignmentSource; // the templated parent we read through to (CD21)
     private IDisposable? _isTrimmedObserver;
+    private IDisposable? _tipTextObserver;
     private UIElement? _isTrimmedSource;
     private IDisposable? _ownerToolTipObserver;
     private UIElement? _ownerToolTipSource;
@@ -205,9 +206,12 @@ public sealed class ContentPresenter : UIElement
     {
         // A directly-hosted UIElement content (the item IS the child — its visual parent is THIS presenter) must
         // release that parentage on detach, so the same item can be re-hosted by another presenter — e.g. a RECYCLED
-        // virtualization container — without an "already has a visual parent" crash. Built children (a TextBlock from
-        // string content) are presenter-owned and not shared, so they stay; either way the next measure re-realizes.
-        if (_child is not null && ReferenceEquals(_child, _realizedContent))
+        // virtualization container — without an "already has a visual parent" crash. A DeferredContent is the same
+        // shape one indirection away: Realize() caches, so its element is SHARED across whoever realizes the wrapper
+        // next — release it too. Built children (a TextBlock from string content) are presenter-owned and not
+        // shared, so they stay; either way the next measure re-realizes.
+        if (_child is not null &&
+            (ReferenceEquals(_child, _realizedContent) || _realizedContent is DeferredContent))
             RebuildChild(null, null, null);
 
         // Lifetime = template instance: the auto-alias observers tear down with the presenter's
@@ -299,6 +303,8 @@ public sealed class ContentPresenter : UIElement
     {
         _isTrimmedObserver?.Dispose();
         _isTrimmedObserver = null;
+        _tipTextObserver?.Dispose();
+        _tipTextObserver = null;
         _isTrimmedSource = null;
     }
 
@@ -531,11 +537,44 @@ public sealed class ContentPresenter : UIElement
         {
             _isTrimmedSource = child;
             _isTrimmedObserver = child!.AddObserver(IsTrimmedProperty, new IsTrimmedObserver(this));
+
+            // The trimmed state can hold steady while the text UNDER it changes (a bound cell
+            // whose long value is replaced by another long value) — the tip must track the text,
+            // not just the trim-state edges.
+            _tipTextObserver?.Dispose();
+            _tipTextObserver = TipTextProperty(child) is {} textProperty
+                                   ? child.AddObserver(textProperty, new TipTextObserver(this))
+                                   : null;
         }
 
         if (child!.GetValue(TextBlock.IsTrimmedProperty))
         {
-            if (alreadyHasTrimmedTextTip)
+            if (alreadyHasTrimmedTextTip &&
+                GetValue(ToolTipService.TipProperty) is TextBlock existingTip &&
+                GetUntrimmedText(child, ToolTipService.MaxToolTipWidth) is {} freshTip)
+            {
+                // Keep the installed tip only while its text is still current; otherwise fall
+                // through and rebuild it (stale tips outlive a Text change that stays trimmed).
+                if (existingTip.Text == freshTip)
+                {
+                    toolTipSet = true;
+                }
+                else
+                {
+                    _applyingToolTip = true;
+
+                    try
+                    {
+                        existingTip.Text = freshTip;
+                        toolTipSet = true;
+                    }
+                    finally
+                    {
+                        _applyingToolTip = false;
+                    }
+                }
+            }
+            else if (alreadyHasTrimmedTextTip)
             {
                 toolTipSet = true;
             }
@@ -730,6 +769,21 @@ public sealed class ContentPresenter : UIElement
     {
         public void OnPropertyChanged(UIObject source, UIProperty property, bool oldValue, bool newValue, BindingPriority priority)
             => presenter.UpdateOwnerToolTipSubscription(); // Changes subscribability: UpdateOwnerToolTipSubscription -> RebuildToolTip.
+    }
+
+    /// <summary>The text-bearing property to watch for tip freshness, per advertised child type.</summary>
+    private static UIProperty? TipTextProperty(UIElement child) => child switch
+    {
+        TextBlock => TextBlock.TextProperty,
+        AccessTextPresenter => AccessTextPresenter.TextProperty,
+        RichTextPresenter => RichTextPresenter.SourceProperty,
+        _ => null
+    };
+
+    private sealed class TipTextObserver(ContentPresenter presenter) : IUntypedValueObserver
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, object? oldValue, object? newValue, BindingPriority priority)
+            => presenter.RebuildToolTip(); // Subscribability is unchanged; only the tip's TEXT needs refreshing.
     }
 
     private sealed class OwnerToolTipObserver(ContentPresenter presenter) : IValueObserver<object?>

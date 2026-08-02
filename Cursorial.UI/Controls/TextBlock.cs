@@ -19,6 +19,7 @@ public class TextBlock : UIElement
 {
     private FormattedText? _cached;
     private CacheKey _cacheKey;
+    private int? _cachedHeight; // the maxRows budget _cached was formatted under (null = unbounded)
 
     /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =
@@ -162,7 +163,9 @@ public class TextBlock : UIElement
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var formatted = GetFormatted(Math.Max(1, finalSize.Columns), finalSize.Rows);
+        // Clamp like MeasureOverride: a zero-row arrange is legal for a visible element (a
+        // collapsed star row, a shrunken window) and the formatter throws on maxRows <= 0.
+        var formatted = GetFormatted(Math.Max(1, finalSize.Columns), Math.Max(1, finalSize.Rows));
         SetValue(IsTrimmedPropertyKey, formatted.HasTrimmedLines);
         return finalSize;
     }
@@ -173,7 +176,10 @@ public class TextBlock : UIElement
         if (context.Bounds.IsEmpty)
             return;
 
-        var formatted = GetFormatted(Math.Max(1, context.Size.Columns));
+        // Paint the same height-capped layout Arrange computed IsTrimmed from — the row-trim
+        // ellipsis only exists in the capped format, and formatting unbounded here would both
+        // paint a bare clip and thrash the single-slot cache against Arrange every frame.
+        var formatted = GetFormatted(Math.Max(1, context.Size.Columns), Math.Max(1, context.Size.Rows));
         if (formatted.Size.Rows == 0)
             return;
 
@@ -198,13 +204,31 @@ public class TextBlock : UIElement
             UIApplication.Current?.ActualThemeVariant,
             caps);
 
-        if (_cached is {} cached && _cacheKey.Equals(key) && (cached.Size.Rows > height) is false)
+        if (_cached is {} cached && _cacheKey.Equals(key) && HeightCompatible(cached, _cachedHeight, height))
             return cached;
 
         var formatted = Format(width, caps, height);
         _cached = formatted;
         _cacheKey = key;
+        _cachedHeight = height;
         return formatted;
+    }
+
+    /// <summary>
+    /// Whether a cached layout built under <paramref name="cachedHeight"/> is the SAME layout a
+    /// fresh format at <paramref name="height"/> would produce. Equal budgets trivially agree; a
+    /// layout whose row cap never bit (or that was built unbounded) is valid for any budget it
+    /// fits in. A layout the cap DID truncate is only valid for that exact budget — reusing it
+    /// for a taller one is how text used to stay trimmed forever after the space it needed came
+    /// back.
+    /// </summary>
+    private static bool HeightCompatible(FormattedText cached, int? cachedHeight, int? height)
+    {
+        if (cachedHeight == height)
+            return true;
+
+        bool capBit = cachedHeight is {} cap && cached.Size.Rows >= cap;
+        return !capBit && (height is null || cached.Size.Rows <= height);
     }
 
     private FormattedText Format(int width,

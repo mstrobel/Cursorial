@@ -83,8 +83,19 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing)
   already splits at byte caps, so boundary splitting is the same machinery with different cut
   points. For FIGlet, the face paints cell-by-cell (`GlyphStyleProvider`), so selection is a
   per-cell style provider — the gradient hook, reused.
-- **Caret**: the terminal caret is one cell; place it at the leading cell of the caret cluster,
-  bottom row of the line band. Kitty renders the hardware cursor fine over OSC 66 cells.
+- **Caret**: the hardware caret is one cell; it anchors at the leading cell of the caret
+  cluster, **bottom row** of the line band (that anchor also keeps IME/accessibility tracking
+  sane). On terminals supporting the kitty *multiple-cursors protocol*
+  (`CSI > SHAPE;COORD_TYPE:COORDS SP q`, maintainer suggestion 2026-08-02), the caret grows to
+  **glyph height**: one rectangle-form escape sets a beam cursor on every row of the band's
+  leading column (`CSI > 2;4:top:col:bottom:col SP q`), and the protocol guarantees extra
+  cursors share the main cursor's color/opacity/blink — so the OSC 12 accent theming and blink
+  phase stay coherent for free. Extra cursors are screen-fixed (unaffected by IND/RI), which
+  suits the frame model exactly: the caret service re-emits the band through the out-of-band
+  control-sequence channel as the caret moves and issues the universal clear
+  (`CSI > 0;4 SP q`-style) on hide. Support is negotiated with the protocol's query
+  (`CSI > SP q`) during host open like the other kitty opt-ins; non-supporting terminals keep
+  the single bottom-row caret.
 - **Editing**: insertion/deletion operate on the source text; runs re-tokenize per edit as they
   do now. A `TextBox` line containing a scaled run becomes `LineRows` tall — the editing
   surface re-measures like any wrap change. Scaled and FIGlet glyphs are **atomic caret
@@ -106,7 +117,9 @@ path, one trimmed-flag path — is the real payoff beyond the new capability.
 1. **Runs + layout** — `GlyphSource` on `TextRun`/`FormattedTextRun`, per-run Tokenizer metrics,
    `FormattedLine.Rows`, paragraph painter (scaled fragments per piece, figlet per piece).
    Block forms rewritten as sugar; matrix tests move over intact.
-2. **Interaction** — `TextEditing` per-run metrics, selection splitting, caret placement.
+2. **Interaction** — `TextEditing` per-run metrics, selection splitting, caret placement
+   (incl. the multiple-cursors capability negotiation + glyph-height caret band in
+   `TerminalCaretService`).
 3. **Adoption** — `TextBox`/`RichTextPresenter` surface the authoring API; theme/styling hooks
    (a `Sizing` setter on `TextElement`, so `<Setter Property="Sizing" …>` works via B15).
 

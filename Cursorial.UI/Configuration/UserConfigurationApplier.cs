@@ -24,11 +24,14 @@ internal static class UserConfigurationApplier
         if (store.GetBoolean(UserOptionKeys.Animations) is {} animations)
             application.AnimationScheduler.AnimationsEnabled = animations;
 
+        if (store.GetBoolean(UserOptionKeys.ScrollDeadZone) is {} scrollDeadZone)
+            application.ScrollDeadZoneEnabled = scrollDeadZone;
+
         application.CapabilityOverrides = ReadCapabilityOverrides(store);
 
-        // Reserved keys (Translucency, AlwaysShowAccessKeyCues, KeyboardProfile,
-        // HorizontalScrollDeadZone) are defined in UserOptionKeys but have no framework consumer
-        // yet — they round-trip through the store untouched.
+        // Reserved keys (Translucency, AlwaysShowAccessKeyCues, KeyboardProfile) are defined
+        // in UserOptionKeys but have no framework consumer yet — they round-trip through the
+        // store untouched.
     }
 
     private static void ApplyThemeBase(UserOptionsStore store, UIApplication application)

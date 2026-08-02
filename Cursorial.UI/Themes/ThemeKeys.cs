@@ -1,3 +1,5 @@
+using Cursorial.Drawing.Media;
+
 namespace Cursorial.UI.Themes;
 
 /// <summary>
@@ -228,6 +230,19 @@ public static class ThemeKeys
     public const string MenuBorderPen = "Theme.MenuBorderPen";
     public const string TabControlBorderPen = "Theme.TabControlBorderPen";
 
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Accent"/> class.</summary>
+    public const string AccentBorderPen = "Theme.AccentBorderPen";
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Info"/> class.</summary>
+    public const string InfoBorderPen = "Theme.InfoBorderPen";
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Cool"/> class.</summary>
+    public const string CoolBorderPen = "Theme.CoolBorderPen";
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Success"/> class.</summary>
+    public const string SuccessBorderPen = "Theme.SuccessBorderPen";
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Warning"/> class.</summary>
+    public const string WarningBorderPen = "Theme.WarningBorderPen";
+    /// <summary>The border pen to be used on dialogs with the <see cref="ThemeClass.Danger"/> class.</summary>
+    public const string DangerBorderPen = "Theme.DangerBorderPen";
+    
     /// <summary>
     /// Heavy pen used for the Separator control outside of menu contexts.
     /// </summary>
@@ -476,6 +491,14 @@ public static class ThemeKeys
     public const string ProgressFillIndeterminate = "Theme.ProgressFillIndeterminate";
     /// <summary>Progress track fill.</summary>
     public const string ProgressTrackBrush = "Theme.ProgressTrackBrush";
+    /// <summary>ScrollBar thumb normal fill.</summary>
+    public const string ScrollBarThumbNormalBrush = "Theme.ScrollBarThumbNormalBrush";
+    /// <summary>ScrollBar thumb hover fill.</summary>
+    public const string ScrollBarThumbHoverBrush = "Theme.ScrollBarThumbHoverBrush";
+    /// <summary>ScrollBar thumb pressed fill.</summary>
+    public const string ScrollBarThumbDragBrush = "Theme.ScrollBarThumbDragBrush";
+    /// <summary>ScrollBar track fill.</summary>
+    public const string ScrollBarTrackBrush = "Theme.ScrollBarTrackBrush";
 
     // Calendar (day cells + Year/Decade cells; DatePicker).
     /// <summary>Calendar day-cell ink.</summary>
@@ -499,22 +522,38 @@ public static class ThemeKeys
     /// <summary>Disabled day ink (--muted).</summary>
     public const string CalendarDayForegroundDisabled = "Theme.CalendarDayForegroundDisabled";
 
-    public const string Ansi0 = "Theme.Ansi0";
-    public const string Ansi1 = "Theme.Ansi1";
-    public const string Ansi2 = "Theme.Ansi2";
-    public const string Ansi3 = "Theme.Ansi3";
-    public const string Ansi4 = "Theme.Ansi4";
-    public const string Ansi5 = "Theme.Ansi5";
-    public const string Ansi6 = "Theme.Ansi6";
-    public const string Ansi7 = "Theme.Ansi7";
-    public const string Ansi8 = "Theme.Ansi8";
-    public const string Ansi9 = "Theme.Ansi9";
-    public const string Ansi10 = "Theme.Ansi10";
-    public const string Ansi11 = "Theme.Ansi11";
-    public const string Ansi12 = "Theme.Ansi12";
-    public const string Ansi13 = "Theme.Ansi13";
-    public const string Ansi14 = "Theme.Ansi14";
-    public const string Ansi15 = "Theme.Ansi15";
+    /// <summary>A brush meant to represent <see cref="Brushes.Black"/> (ANSI-16 palette index <c>0</c>).</summary>
+    public const string AnsiBlack = "Theme.AnsiBlack";
+    /// <summary>A brush meant to represent <see cref="Brushes.Red"/> (ANSI-16 palette index <c>1</c>).</summary>
+    public const string AnsiRed = "Theme.AnsiRed";
+    /// <summary>A brush meant to represent <see cref="Brushes.Green"/> (ANSI-16 palette index <c>2</c>).</summary>
+    public const string AnsiGreen = "Theme.AnsiGreen";
+    /// <summary>A brush meant to represent <see cref="Brushes.Yellow"/> (ANSI-16 palette index <c>3</c>).</summary>
+    public const string AnsiYellow = "Theme.AnsiYellow";
+    /// <summary>A brush meant to represent <see cref="Brushes.Blue"/> (ANSI-16 palette index <c>4</c>).</summary>
+    public const string AnsiBlue = "Theme.AnsiBlue";
+    /// <summary>A brush meant to represent <see cref="Brushes.Magenta"/> (ANSI-16 palette index <c>5</c>).</summary>
+    public const string AnsiMagenta = "Theme.AnsiMagenta";
+    /// <summary>A brush meant to represent <see cref="Brushes.Cyan"/> (ANSI-16 palette index <c>6</c>).</summary>
+    public const string AnsiCyan = "Theme.AnsiCyan";
+    /// <summary>A brush meant to represent <see cref="Brushes.White"/> (ANSI-16 palette index <c>7</c>).</summary>
+    public const string AnsiWhite = "Theme.AnsiWhite";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightBlack"/> (ANSI-16 palette index <c>8</c>).</summary>
+    public const string AnsiLightBlack = "Theme.AnsiLightBlack";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightRed"/> (ANSI-16 palette index <c>9</c>).</summary>
+    public const string AnsiLightRed = "Theme.AnsiLightRed";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightGreen"/> (ANSI-16 palette index <c>10</c>).</summary>
+    public const string AnsiLightGreen = "Theme.AnsiLightGreen";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightYellow"/> (ANSI-16 palette index <c>11</c>).</summary>
+    public const string AnsiLightYellow = "Theme.AnsiLightYellow";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightBlue"/> (ANSI-16 palette index <c>12</c>).</summary>
+    public const string AnsiLightBlue = "Theme.AnsiLightBlue";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightMagenta"/> (ANSI-16 palette index <c>13</c>).</summary>
+    public const string AnsiLightMagenta = "Theme.AnsiLightMagenta";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightCyan"/> (ANSI-16 palette index <c>14</c>).</summary>
+    public const string AnsiLightCyan = "Theme.AnsiLightCyan";
+    /// <summary>A brush meant to represent <see cref="Brushes.LightWhite"/> (ANSI-16 palette index <c>15</c>).</summary>
+    public const string AnsiLightWhite = "Theme.AnsiLightWhite";
 }
 
 /// <summary>

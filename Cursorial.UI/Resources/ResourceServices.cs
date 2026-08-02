@@ -1,5 +1,7 @@
 // ReSharper disable CheckNamespace
 
+using Cursorial.UI.Controls;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -68,14 +70,23 @@ public static class ResourceServices
         return UIApplication.Current?.RegistryForRoot(root);
     }
 
-    internal static UIElement LogicalRoot(UIElement element)
+    internal static UIElement LogicalRoot(UIElement element, bool stopAtTemplateBoundary = false)
     {
         var node = element;
+
         while (true)
         {
             var next = node.LogicalParent ?? node.TemplatedParent ?? node.VisualParent;
+
             if (next is null)
                 return node;
+
+            if (stopAtTemplateBoundary)
+            {
+                if (next == node.TemplatedParent) return node;
+                if (next is { IsAttachedToTree: true, UIParent: null }) return node;
+            }
+
             node = next;
         }
     }

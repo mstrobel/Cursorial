@@ -1,10 +1,8 @@
 using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
@@ -36,6 +34,7 @@ namespace Cursorial.UI;
 public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem, IWindowTopology
 {
     private const int MinVisible = 4; // cells of a window that must stay on-screen so the title bar is grabbable (§8.7)
+    private const int PerfectPlacementScore = 4; // a perfect popup placement score (all 4 corners in-bounds)
 
     private readonly ScenePool _scenePool = new();
     private readonly List<TopLevelSurface> _surfaces = [];   // z-order, bottom→top; [0] is the root surface when present
@@ -1229,13 +1228,34 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         var anchor = AnchorRect(popup);
 
+        (surface.Left, surface.Top) = Place(popup, popup.Placement, anchor, size);
+
+        surface.Opacity = popup.Opacity;
+    }
+
+    private (int, int) Place(Popup popup, PlacementMode placement, in LayoutRect anchor, Size size,
+                             bool allowRetry = true)
+    {
+        var screenBounds = new LayoutRect(ScreenSize);
+        var (left, top) = PlaceCore(popup, placement, anchor, size, allowRetry);
+
+        // Clamp so the whole surface stays on-screen (a content larger than the viewport pins to the origin).
+        left = Math.Clamp(left, 0, Math.Max(0, screenBounds.Columns - size.Columns));
+        top = Math.Clamp(top, 0, Math.Max(0, screenBounds.Rows - size.Rows));
+
+        return (left, top);
+    }
+
+    private (int, int) PlaceCore(Popup popup, PlacementMode placement, in LayoutRect anchor, Size size, bool allowRetry)
+    {
         var (left, top) =
-            popup.Placement switch
+            placement switch
             {
-                PlacementMode.Top     => (anchor.Column, anchor.Row - size.Rows),
-                PlacementMode.Right   => (anchor.ColumnEnd, anchor.Row),
-                PlacementMode.Left    => (anchor.Column - size.Columns, anchor.Row),
-                PlacementMode.Center  => (anchor.Column + (anchor.Columns - size.Columns) / 2, anchor.Row + (anchor.Rows - size.Rows) / 2),
+                PlacementMode.Top   => (anchor.Column, anchor.Row - size.Rows),
+                PlacementMode.Right => (anchor.ColumnEnd, anchor.Row),
+                PlacementMode.Left  => (anchor.Column - size.Columns, anchor.Row),
+                PlacementMode.Center => (anchor.Column + (anchor.Columns - size.Columns) / 2,
+                                         anchor.Row + (anchor.Rows - size.Rows) / 2),
                 // Captured ONCE per open: a content-growth re-fit re-places against the open-time cell, so a strip
                 // whose faces realize a frame late (bound BarCommands) grows in place instead of following the mouse.
                 PlacementMode.Pointer => popup.PointerPlacementOrigin ??= _lastPointer,
@@ -1245,10 +1265,40 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         left += popup.HorizontalOffset;
         top += popup.VerticalOffset;
 
-        // Clamp so the whole surface stays on-screen (a content larger than the viewport pins to the origin).
-        surface.Left = Math.Clamp(left, 0, Math.Max(0, _viewport.Columns - size.Columns));
-        surface.Top = Math.Clamp(top, 0, Math.Max(0, _viewport.Rows - size.Rows));
-        surface.Opacity = popup.Opacity;
+        var screenBounds = new LayoutRect(ScreenSize);
+        var popupBounds = new LayoutRect(left, top, size);
+        var score = ScorePlacement(screenBounds, popupBounds);
+
+        if (allowRetry && score < PerfectPlacementScore)
+        {
+            var newPlacement = placement switch
+                               {
+                                   PlacementMode.Bottom => PlacementMode.Top,
+                                   PlacementMode.Top    => PlacementMode.Bottom,
+                                   PlacementMode.Right  => PlacementMode.Left,
+                                   PlacementMode.Left   => PlacementMode.Right,
+                                   _                    => placement
+                               };
+
+            if (newPlacement != placement)
+            {
+                var (newLeft, newTop) = PlaceCore(popup, newPlacement, anchor, size, allowRetry: false);
+                var newScore = ScorePlacement(screenBounds, new LayoutRect(newLeft, newTop, size));
+
+                if (newScore > score)
+                    (left, top) = (newLeft, newTop);
+            }
+        }
+        
+        return (left, top);
+    }
+
+    private static int ScorePlacement(LayoutRect screenBounds, LayoutRect popupBounds)
+    {
+        return (screenBounds.Contains(popupBounds.TopLeft) ? 1 : 0) +
+               (screenBounds.Contains(popupBounds.TopRight) ? 1 : 0) +
+               (screenBounds.Contains(popupBounds.BottomLeft) ? 1 : 0) +
+               (screenBounds.Contains(popupBounds.BottomRight) ? 1 : 0);
     }
 
     /// <summary>The popup owning <paramref name="surface"/>, or null (a chrome/window/root surface).</summary>
@@ -1585,7 +1635,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             // gate itself) — without this, presses on root content route normally BENEATH the modal (the
             // root-band modal-bypass hole). Popup surfaces are exempt: a popup anchored in the modal is
             // legitimate interaction, and popups anchored in blocked hosts are closed at block time anyway.
-            var rootGated = window is null && !surface.IsPopup && TopmostModal is not null;
+            // The fit badge is exempted from gating; it is always able to receive input.
+            bool rootGated = surface != _fitBadgeSurface &&
+                             window is null &&
+                             !surface.IsPopup &&
+                             TopmostModal is not null;
 
             if (rootGated || (window is not null && _blocked.Contains(window)))
             {

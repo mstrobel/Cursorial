@@ -47,9 +47,10 @@ public class ScrollViewer : ContentControl
 
     /// <summary>The vertical scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.</summary>
     public static readonly StyledProperty<ScrollBarVisibility> VerticalScrollBarVisibilityProperty =
-        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(nameof(VerticalScrollBarVisibility),
-                                                                                  defaultValue: ScrollBarVisibility.Auto,
-                                                                                  changed: OnVisibilityChanged);
+        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(
+            nameof(VerticalScrollBarVisibility),
+            defaultValue: ScrollBarVisibility.Auto,
+            changed: OnVisibilityChanged);
 
     /// <summary>
     /// The horizontal scrollbar policy (default <see cref="ScrollBarVisibility.Auto"/>). <c>AffectsMeasure</c>.
@@ -64,8 +65,10 @@ public class ScrollViewer : ContentControl
     /// </para>
     /// </summary>
     public static readonly StyledProperty<ScrollBarVisibility> HorizontalScrollBarVisibilityProperty =
-        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(nameof(HorizontalScrollBarVisibility), defaultValue: ScrollBarVisibility.Auto,
-                                                                                  changed: OnVisibilityChanged);
+        UIProperty.RegisterAttached<ScrollViewer, UIElement, ScrollBarVisibility>(
+            nameof(HorizontalScrollBarVisibility),
+            defaultValue: ScrollBarVisibility.Auto,
+            changed: OnVisibilityChanged);
 
     /// <summary>The horizontal scroll offset in cells — a two-way mirror of the SCP's styled <c>ScrollOffsetColumn</c> (CD28).</summary>
     public static readonly DirectProperty<ScrollViewer, int> HorizontalOffsetProperty =
@@ -109,6 +112,24 @@ public class ScrollViewer : ContentControl
         return element.GetValue(VerticalScrollBarVisibilityProperty);
     }
 
+    /// <summary>
+    /// Helper for setting HorizontalScrollBarVisibility property.
+    /// </summary>
+    public static void SetHorizontalScrollBarVisibility(UIElement element, ScrollBarVisibility horizontalScrollBarVisibility)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(HorizontalScrollBarVisibilityProperty, horizontalScrollBarVisibility);
+    }
+
+    /// <summary>
+    /// Helper for reading HorizontalScrollBarVisibility property.
+    /// </summary>
+    public static ScrollBarVisibility GetHorizontalScrollBarVisibility(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(HorizontalScrollBarVisibilityProperty);
+    }
+
     /// <inheritdoc cref="VerticalScrollBarVisibilityProperty"/>
     public ScrollBarVisibility VerticalScrollBarVisibility
     {
@@ -142,6 +163,8 @@ public class ScrollViewer : ContentControl
 
     /// <inheritdoc cref="ViewportProperty"/>
     public Size Viewport => _viewport;
+
+    internal Size? ResolvedViewport => _viewport is var vp && LayoutMath.IsBoundedNonEmpty(vp) ? vp : null; 
 
     /// <summary>CLR sugar over <see cref="ScrollChangedEvent"/>.</summary>
     public event EventHandler<ScrollChangedEventArgs>? ScrollChanged { add => AddHandler(ScrollChangedEvent, value!); remove => RemoveHandler(ScrollChangedEvent, value!); }
@@ -306,10 +329,10 @@ public class ScrollViewer : ContentControl
         presenter.CanScrollVertically = CanScrollVerticalAxis(VerticalScrollBarVisibility);
         presenter.CanScrollHorizontally = CanScrollHorizontalAxis(HorizontalScrollBarVisibility);
 
-        // v1 bands only the vertical axis (doc §5.7), so horizontal Auto ("show bar on overflow")
-        // cannot be honored and degrades to Disabled — surface that, since it silently swallows intent.
-        if (HorizontalScrollBarVisibility == ScrollBarVisibility.Auto)
-            ControlDiagnostics.HorizontalAutoUnsupported(this);
+        // // v1 bands only the vertical axis (doc §5.7), so horizontal Auto ("show bar on overflow")
+        // // cannot be honored and degrades to Disabled — surface that, since it silently swallows intent.
+        // if (HorizontalScrollBarVisibility == ScrollBarVisibility.Auto)
+        //     ControlDiagnostics.HorizontalAutoUnsupported(this);
     }
 
     /// <summary>
@@ -317,7 +340,7 @@ public class ScrollViewer : ContentControl
     /// lets the axis scroll (<c>Hidden</c>/<c>Auto</c>/<c>Visible</c> all scroll by wheel/keys; the bar
     /// visibility is a separate concern, CD28).
     /// </summary>
-    private static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
+    internal static bool CanScrollVerticalAxis(ScrollBarVisibility visibility)
         => visibility is not ScrollBarVisibility.Disabled;
 
     /// <summary>
@@ -325,8 +348,8 @@ public class ScrollViewer : ContentControl
     /// <c>Disabled</c> never scrolls, and v1 treats <c>Auto</c> as <c>Disabled</c> because the
     /// horizontal axis is unbanded (doc §5.7) — see <see cref="HorizontalScrollBarVisibility"/>.
     /// </summary>
-    private static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
-        => visibility is ScrollBarVisibility.Visible or ScrollBarVisibility.Hidden;
+    internal static bool CanScrollHorizontalAxis(ScrollBarVisibility visibility)
+        => visibility is not ScrollBarVisibility.Disabled;
 
     /// <inheritdoc/>
     protected override Size ArrangeOverride(Size finalSize)
@@ -378,9 +401,9 @@ public class ScrollViewer : ContentControl
         {
             // v1 bands only the vertical axis (doc §5.7): horizontal Auto degrades to Disabled, so its bar
             // never shows (it would be a non-functional bar — CanScrollHorizontalAxis is false for Auto).
-            var policy = HorizontalScrollBarVisibility == ScrollBarVisibility.Auto
+            var policy = HorizontalScrollBarVisibility/* == ScrollBarVisibility.Auto
                              ? ScrollBarVisibility.Disabled
-                             : HorizontalScrollBarVisibility;
+                             : HorizontalScrollBarVisibility*/;
 
             hBar.Visibility = ResolveBarVisibility(policy, hBar.Maximum > 0);
         }

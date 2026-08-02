@@ -7,4 +7,6 @@ public sealed class EventRoutingViewModel : PageViewModel
     public override string Title => "Event Routing";
 
     public override string Summary => "Interact with the scenarios; the route each mouse/key down will take is rendered live.";
+
+    public override bool IsContentScrollable => false;
 }

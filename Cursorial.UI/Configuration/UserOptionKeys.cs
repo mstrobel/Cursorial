@@ -96,10 +96,12 @@ public static class UserOptionKeys
     public const string KeyboardProfile = "input.keyboardProfile";
 
     /// <summary>
-    /// Dead zone that suppresses accidental vertical drift during horizontal scrolling:
-    /// <c>"true"</c>/<c>"false"</c>. <b>Key reserved — not yet consumed by the framework.</b>
+    /// Dead zone that rails wheel gestures onto their dominant axis, suppressing the accidental
+    /// cross-axis drift trackpads shed during fast one-axis scrolling: <c>"true"</c>/<c>"false"</c>
+    /// (default off). Applied to <see cref="UIApplication.ScrollDeadZoneEnabled"/>; the gesture
+    /// model is <see cref="Cursorial.Input.WheelAxisLock"/>'s.
     /// </summary>
-    public const string HorizontalScrollDeadZone = "input.horizontalScrollDeadZone";
+    public const string ScrollDeadZone = "input.scrollDeadZone";
 
     /// <summary>
     /// Whether ANY Cursorial application has completed (or skipped) the first-run wizard on this

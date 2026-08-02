@@ -39,6 +39,10 @@ public sealed class TextMarkupOptions
     /// null to reject the value. Null (the default) means <c>[brush]</c> is unsupported and raises a parse error.
     /// </summary>
     public Func<string, object?>? BrushResolver { get; init; }
+
+    public WrapMode? DefaultTextWrapping { get; init; }
+
+    public TextTrimming? DefaultTextTrimming { get; init; }
 }
 
 /// <summary>
@@ -96,7 +100,7 @@ public static class TextMarkup
     {
         ArgumentNullException.ThrowIfNull(markup);
         ArgumentNullException.ThrowIfNull(options);
-        var builder = new RichTextBuilder(options.DefaultStyle);
+        var builder = new RichTextBuilder(options.DefaultStyle, options.DefaultTextTrimming, options.DefaultTextWrapping);
         Parse(markup, builder, options);
         return builder.Build();
     }
@@ -112,6 +116,9 @@ public static class TextMarkup
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(options);
 
+        if (builder.HasContent is false)
+            builder.Initialize(options.DefaultTextTrimming, options.DefaultTextWrapping);
+        
         new TextMarkupParser(markup, builder, options).Run();
     }
 
@@ -352,9 +359,9 @@ public static class TextMarkup
                 throw Error(token.Position, "[p] cannot be nested inside another [p].");
 
             var attrs = ParseAttributes(token.Value, token.Position);
-            var wrap = attrs.TryGetValue("wrap", out var w) ? ParseWrapMode(w, token.Position) : WrapMode.WordWrap;
+            var wrap = attrs.TryGetValue("wrap", out var w) ? ParseWrapMode(w, token.Position) : options.DefaultTextWrapping;
             var align = attrs.TryGetValue("align", out var a) ? ParseAlignment(a, token.Position) : TextAlignment.Left;
-            var trim = attrs.TryGetValue("trim", out var t) ? ParseTrimming(t, token.Position) : TextTrimming.None;
+            var trim = attrs.TryGetValue("trim", out var t) ? ParseTrimming(t, token.Position) : options.DefaultTextTrimming;
 
             int? maxLines = attrs.TryGetValue("maxlines", out var m)
                 ? int.Parse(m, CultureInfo.InvariantCulture)

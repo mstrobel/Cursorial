@@ -43,15 +43,19 @@ internal static class CursorialThemeStyles
 
     internal static Style ActiveSelectionStyles()
     {
-        return new Style("ListBox:focus-within, TreeView:focus-within")
+        return new Style(":is(ListBox):focus-within, :is(TreeView):focus-within, :is(ListView):focus-within")
                {
                    Key = "Theme.ActiveSelectionStyle",
                    Children =
                    {
-                       new Style("^ :is(ListBoxItem):selected, ^ :is(TreeViewItem):selected")
+                       new Style("^ :is(ListBoxItem):selected, " +
+                                 "^ :is(TreeViewItem):selected, " +
+                                 "^ :is(ListViewItem):selected")
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundSelected),
-                       new Style("^ :is(ListBoxItem):focus-visible:selected, ^ :is(TreeViewItem):focus-visible:selected")
+                       new Style("^ :is(ListBoxItem):focus-visible:selected, " +
+                                 "^ :is(TreeViewItem):focus-visible:selected, " +
+                                 "^ :is(ListViewItem):focus-visible:selected")
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.ListItemForegroundFocus)
                    }
@@ -218,10 +222,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".accent")
                {
-                   Key = ThemeClasses.Accent,
+                   Key = ThemeClassKeys.Accent,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.AccentBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.AccentBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -245,10 +252,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".info")
                {
-                   Key = ThemeClasses.Info,
+                   Key = ThemeClassKeys.Info,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.InfoBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.InfoBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -261,7 +271,19 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.InfoDarkBrush),
+                       new Style("^Window")
+                          .Set(Window.IconProperty, new IconCarrier("\uf05a", 2, null, "ℹ️", "ℹ")),
+                       new Style("^Window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                       new Style("^Window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.AnsiCyan),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.AnsiLightCyan)
                    }
                };
     }
@@ -273,10 +295,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".cool")
                {
-                   Key = ThemeClasses.Cool,
+                   Key = ThemeClassKeys.Cool,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.CoolBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.CoolBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -289,7 +314,19 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.CoolDarkBrush),
+                       new Style("^Window")
+                          .Set(Window.IconProperty, new IconCarrier("\uf059", 2, null, "❔", "︖")),
+                       new Style("^Window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                       new Style("^Window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.CoolInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.CoolBrush)
                    }
                };
     }
@@ -301,10 +338,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".danger")
                {
-                   Key = ThemeClasses.Danger,
+                   Key = ThemeClassKeys.Danger,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.DangerBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.DangerBrush)
@@ -317,7 +357,19 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.DangerDarkBrush),
+                       new Style("^Window")
+                          .Set(Window.IconProperty, new IconCarrier("\uf530", 2, null, "⛔️", "⛒")),
+                       new Style("^Window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                       new Style("^Window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.DangerInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.DangerBrush)
                    }
                };
     }
@@ -329,10 +381,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".success")
                {
-                   Key = ThemeClasses.Success,
+                   Key = ThemeClassKeys.Success,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.SuccessBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.SuccessBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -345,7 +400,19 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.SuccessDarkBrush),
+                       new Style("^Window")
+                          .Set(Window.IconProperty, new IconCarrier("\uf058", 2, null, "✅", "✓")),
+                       new Style("^Window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                       new Style("^Window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.SuccessBrush)
                    }
                };
     }
@@ -357,10 +424,13 @@ internal static class CursorialThemeStyles
     {
         return new Style(".warning")
                {
-                   Key = ThemeClasses.Warning,
+                   Key = ThemeClassKeys.Warning,
                    Children =
                    {
-                       new Style("^TextBlock, ^Label, ^ToolTip")
+                       new Style("^TextBlock, ^Label")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
+                       new Style("^ToolTip")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.WarningBorderPen)
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.WarningBrush),
                        new Style("^Button")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
@@ -373,7 +443,19 @@ internal static class CursorialThemeStyles
                           .SetResource(Panel.BackgroundProperty, ThemeKeys.TextBrush),
                        new Style("^Button:pressed")
                           .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
-                          .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush)
+                          .SetResource(Panel.BackgroundProperty, ThemeKeys.WarningDarkBrush),
+                       new Style("^Window")
+                          .Set(Window.IconProperty, new IconCarrier("\uf071", 2, null, "⚠️", "⚠")),
+                       new Style("^Window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar :is(ButtonBase)")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                       new Style("^Window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentInverseBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.WarningInverseBrush),
+                       new Style("^Window:active-window /template/ Border#PART_TitleBar")
+                          .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                          .SetResource(Border.BackgroundProperty, ThemeKeys.WarningBrush)
                    }
                };
     }
@@ -514,5 +596,32 @@ internal static class CursorialThemeStyles
                }.Set(Panel.OccludesProperty, false)
                 .Set(TextElement.TextWeightProperty, TextWeight.Faint)
                 .Set(Panel.BackgroundProperty, Brushes.Transparent);
+    }
+
+    internal static Style CapsAnsi16ThemeClassWindowBorders()
+    {
+        // Owner-anchor FIDELITY (review): the template legs keep develop's owner shapes — Border chrome of
+        // ANY owner, Panel chrome only of PANEL owners or the SURFACE ROOT (the root-owner legs ride the
+        // still-stamped back-compat caps-* classes; "owner is a surface root" has no class-free selector).
+        return new Style(":is(Window)")
+               {
+                   Key = "Theme.CapsAnsi16.ThemeClassWindowBorders",
+                   RequiresCapabilities = StyleCapabilities.Ansi16,
+                   Children =
+                   {
+                       new Style("^.accent")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.AccentBorderPen),
+                       new Style("^.info")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.InfoBorderPen),
+                       new Style("^.cool")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.CoolBorderPen),
+                       new Style("^.success")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.SuccessBorderPen),
+                       new Style("^.warning")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.WarningBorderPen),
+                       new Style("^.danger")
+                          .SetResource(Control.BorderPenProperty, ThemeKeys.DangerBorderPen),
+                   }
+               };
     }
 }

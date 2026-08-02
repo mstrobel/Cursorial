@@ -39,6 +39,13 @@ public static class UIProperties
         return UIPropertyRegistry.AttachedByOwner(ownerType);
     }
 
+    /// <summary>The attached properties attachable on <paramref name="targetType"/>.</summary>
+    public static IReadOnlyList<UIProperty> AttachableOn(Type targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        return UIPropertyRegistry.AttachableOnType(targetType);
+    }
+
     /// <summary>
     /// Every registered inheriting property — the set that MIGHT carry an inherited value on any
     /// element (retrieving an inherited value is easy; knowing which properties to ask was not).

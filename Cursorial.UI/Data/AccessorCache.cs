@@ -149,8 +149,10 @@ internal static class AccessorCache
         // CLR property qualified for clarity, resolved by name on the runtime source.
         if (segment.Kind == PathSegmentKind.TypeQualified)
         {
-            if (segment.QualifiedProperty is { } qualifiedProperty && instance is UIObject)
-                return new UIPropertyAccessor(qualifiedProperty);
+            if (segment.QualifiedProperty is { UIProperty: {} uip } && instance is UIObject)
+                return new UIPropertyAccessor(uip);
+            if (segment.QualifiedProperty is { ClrProperty: {} cp })
+                return BuildClrAccessor(instanceType, cp);
             var qualifiedClr = instanceType.GetProperty(segment.Name!, BindingFlags.Public | BindingFlags.Instance);
             if (qualifiedClr is not null)
                 return BuildClrAccessor(instanceType, qualifiedClr);

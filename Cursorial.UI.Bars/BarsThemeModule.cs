@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Cursorial.UI.Themes;
+using Cursorial.UI.Xaml;
 
 namespace Cursorial.UI.Bars;
 
@@ -19,5 +20,9 @@ internal static class BarsThemeModule
 #pragma warning disable CA2255
     [ModuleInitializer]
 #pragma warning restore CA2255
-    internal static void Initialize() => ThemeContributions.Register(CursorialBarsTheme.BuildContribution());
+    internal static void Initialize()
+    {
+        XamlSchemaContext.Default.RegisterAssembly(typeof(BarsThemeModule).Assembly);
+        ThemeContributions.Register(CursorialBarsTheme.BuildContribution());
+    }
 }

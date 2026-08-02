@@ -129,6 +129,12 @@ public abstract partial class UIElement
     /// bridges a placement-target-only popup/tooltip to its owner.</summary>
     internal UIElement? StylingParent => UIParent ?? VisualParent;
 
+    /// <summary>Whether <paramref name="pseudoClass"/> (with leading colon) is set in the pseudo set.</summary>
+    public bool HasPseudoClass(string pseudoClass)
+        => InteractionPseudoClasses.TryGetState(pseudoClass, out var state)
+               ? (_interactionState & state) != 0
+               : _pseudoClasses?.CustomClasses.Contains(pseudoClass) ?? false;
+
     /// <summary>Whether <paramref name="pseudoClass"/> (with leading colon) is set in the custom pseudo set.</summary>
     internal bool HasCustomPseudoClass(string pseudoClass) => _pseudoClasses?.ContainsCustom(pseudoClass) ?? false;
 

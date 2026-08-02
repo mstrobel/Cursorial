@@ -2,6 +2,11 @@ using System.Windows.Input;
 
 namespace Cursorial.UI;
 
+public interface IRequeryCommand : IPreviewableCommand
+{
+    void RaiseCanExecuteChanged();
+}
+
 /// <summary>
 /// The plain delegate-backed <see cref="ICommand"/> (and, when the preview delegates are supplied, the delegate-backed
 /// <see cref="IPreviewableCommand"/>): <c>execute</c>/<c>canExecute</c> for the ordinary command surface, plus the
@@ -16,7 +21,7 @@ namespace Cursorial.UI;
 /// standalone and the gating state changes).
 /// </para>
 /// </summary>
-public class DelegateCommand : IPreviewableCommand
+public class DelegateCommand : IRequeryCommand
 {
     private readonly Action<object?> _execute;
     private readonly Func<object?, bool>? _canExecute;

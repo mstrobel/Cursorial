@@ -52,8 +52,16 @@ internal static class ControlThemes
         dict[typeof(ItemsControl)] = ItemsControlTheme();
         dict[typeof(ListBox)] = ListBoxTheme();
         dict[typeof(ListBoxItem)] = ListBoxItemTheme();
+        dict[typeof(ListView)] = ListViewTheme();
+        dict[typeof(ListViewItem)] = ListViewItemTheme();
+        dict[typeof(ListViewColumnHeader)] = ListViewColumnHeaderTheme();
         dict[typeof(ComboBox)] = ComboBoxTheme();
         dict[typeof(ComboBoxItem)] = ComboBoxItemTheme();
+        dict[typeof(BreadcrumbBar)] = BreadcrumbBarTheme();
+        dict[typeof(BreadcrumbBarItem)] = BreadcrumbBarItemTheme();
+        dict[typeof(CompletionPopup)] = CompletionPopupTheme();
+        dict[typeof(CompletionList)] = CompletionListTheme();
+        dict[typeof(CompletionListItem)] = CompletionListItemTheme();
         dict[typeof(TreeView)] = TreeViewTheme();
         dict[typeof(TreeViewItem)] = TreeViewItemTheme();
         dict[typeof(Calendar)] = CalendarTheme();
@@ -91,11 +99,11 @@ internal static class ControlThemes
     // and accent pressed/default rules swap. The BorderPen binding stays so an app can opt a frame back in.
     private static ControlTemplate ButtonContentTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         TextElement.ForwardInverse(presenter);
-        var border = new Border { Child = presenter };
+        var border = new Border { Child = presenter, Occludes = true };
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         // The face consumes the Inverse AXIS for its fill (non-inheriting — "flows like Background"):
@@ -133,7 +141,7 @@ internal static class ControlThemes
     // Label is a caption, not a control face; the content paints in the inherited TextBrush, muted when disabled.
     private static ControlTemplate LabelTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter { RecognizesAccessKey = true };
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         
@@ -295,7 +303,7 @@ internal static class ControlThemes
             ctx =>
                  {
                      var panel = new Grid();
-                     var presenter = new ContentPresenter();
+                     var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
                      ctx.RegisterName("PART_ContentPresenter", presenter);
                      var border = new Border { Child = presenter };
                      border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
@@ -334,6 +342,129 @@ internal static class ControlThemes
         return t;
     }
 
+    // ───────────────────────────── ListView / ListViewItem / ListViewColumnHeader ─────────────────────────────
+
+    // A ListView is a ListBox with a PINNED header strip: the PART_HeaderPresenter docks to the top OUTSIDE the
+    // ScrollViewer, so the column headings never scroll away vertically (and, symmetrically, why the control
+    // disables horizontal scrolling in Details — the body would slide out from under them). The header strip
+    // collapses itself in the three wrapping views; the ListView drives that from ApplyViewToTemplate.
+    private static ControlTemplate ListViewTemplate() => new(ctx =>
+    {
+        var header = new ListViewHeaderPresenter();
+        ctx.RegisterName("PART_HeaderPresenter", header);
+        header.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.PanelBrush);
+        DockPanel.SetDock(header, Dock.Top);
+
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+
+        var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the UIParent bridge
+        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty,
+                          new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty,
+                          new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+        ctx.RegisterName("PART_ScrollViewer", scroll);
+
+        var layout = new DockPanel(); // LastChildFill: the scroll band takes everything under the header
+        layout.Children.Add(header);
+        layout.Children.Add(scroll);
+
+        var border = new Border { Child = layout };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        return border;
+    });
+
+    private static Style ListViewTheme()
+        => new Style { Key = "Theme.ListView" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush) // a list is a recessed well
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListViewTemplate());
+
+    // The row face is the ListBoxItem selection bar with the ContentPresenter swapped for PART_Cells: a details
+    // row cannot carry the ListBoxItem selection glyph in a gutter, because the gutter would shift every cell out
+    // from under its heading. Selection reads purely as the fill/ink flip.
+    private static ControlTemplate ListViewItemTemplate() => new(ctx =>
+    {
+        var cells = new ListViewCellsPresenter();
+        ctx.RegisterName("PART_Cells", cells);
+
+        var border = new Border { Child = cells };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        // The row face forwards the Inverse axis so the NoColor selection/focus cue paints the WHOLE bar.
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        TextElement.ForwardInverse(cells);
+        return border;
+    });
+
+    private static Style ListViewItemTheme()
+    {
+        var theme = new Style { Key = "Theme.ListViewItem" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundNormal)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, ListViewItemTemplate());
+        // Ordered hover → selected → focus-visible → disabled: document order breaks the pseudo-class tie, so a
+        // hovered-selected row reads as selected and the keyboard current row reads as the reverse-video cue.
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:selected")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
+        theme.Children.Add(new Style("^:focus-visible")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled")
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        // A tile is two rows tall and pads on both axes; a details/list row is one row with side padding only.
+        theme.Children.Add(new Style("^:tiles").Set(Control.PaddingProperty, new Margins(1, 0, 1, 0)));
+        return theme;
+    }
+
+    // A column heading: [Header … ▲] on a PanelBrush strip. The sort indicator docks RIGHT so it hugs the column
+    // edge and the heading text keeps the leading cell — the arrangement a sorted table is read by.
+    private static ControlTemplate ListViewColumnHeaderTemplate() => new(ctx =>
+    {
+        var indicator = new TextBlock { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_SortIndicator", indicator);
+        indicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.AccentBrush);
+        DockPanel.SetDock(indicator, Dock.Right);
+
+        var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+        var row = new DockPanel();
+        row.Children.Add(indicator); // docked right
+        row.Children.Add(presenter); // fills the rest
+
+        var border = new Border { Child = row };
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        TextElement.ForwardInverse(presenter);
+        return border;
+    });
+
+    private static Style ListViewColumnHeaderTheme()
+    {
+        var theme = new Style { Key = "Theme.ListViewColumnHeader" }
+            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBrush)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.PaddingProperty, Margins.Zero)
+            .Set(Control.TemplateProperty, ListViewColumnHeaderTemplate());
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:pressed")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.DisabledForegroundBrush));
+        return theme;
+    }
+
     // ───────────────────────────── ComboBox / ComboBoxItem ─────────────────────────────
 
     // A combo box face: a recessed WellBrush field [selected-item … 'v' drop glyph] that the control toggles on
@@ -345,7 +476,7 @@ internal static class ControlThemes
         // Read-only face: the selection-box value (visible when !IsEditable; the ComboBox toggles visibility). Bound
         // to SelectionBoxItem, NOT SelectedItem directly — when the item is its own ComboBoxItem container, the face
         // must show the unwrapped content, never the live container element (which belongs to the drop-down).
-        var selected = new ContentPresenter();
+        var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentSite", selected);
         selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
 
@@ -431,7 +562,7 @@ internal static class ControlThemes
     // keyboard focus row = reverse-video :focus-visible, disabled = MutedBrush ink).
     private static ControlTemplate ComboBoxItemTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter();
+        var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
@@ -443,13 +574,302 @@ internal static class ControlThemes
     {
         var theme = new Style { Key = "Theme.ComboBoxItem" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis)
             .Set(Control.TemplateProperty, ComboBoxItemTemplate());
-        theme.Children.Add(new Style("^:pointerover").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover));
-        theme.Children.Add(new Style("^:selected").SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected));
+        
+        theme.Children.Add(new Style("^:pointerover")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:selected")
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelectedInactive)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelectedInactive));
         theme.Children.Add(new Style("^:focus-visible")
-            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
-            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+                          .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                          .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
+        theme.Children.Add(new Style("^:disabled")
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+
+        return theme;
+    }
+
+    // ───────────────────────────── BreadcrumbBar / BreadcrumbBarItem ─────────────────────────────
+
+    /// <summary>Rows the "▸" / ellipsis drop-down shows before it scrolls. Twelve fits a 24-row terminal with the
+    /// chrome (header + footer + the content border's two rules) and still leaves the trail itself visible.</summary>
+    private const int BreadcrumbDropDownRows = 12;
+
+    /// <summary>The drop-down's key hints. ASCII-only, like every other popup footer: the arrow glyphs are
+    /// ambiguous-width and would mis-measure on the terminals the renderer's width defense exists for.</summary>
+    private const string BreadcrumbDropDownFooter = //"^v move   type to filter   Enter open   Esc dismiss" +
+                                                    $"[brush={ThemeKeys.TextDimBrush}]↑↓[/brush]  " +
+                                                    $"[brush={ThemeKeys.TextDimBrush}]type[/brush] to filter  " +
+                                                    $"[brush={ThemeKeys.TextDimBrush}]⏎[/brush] open  " +
+                                                    $"[brush={ThemeKeys.TextDimBrush}]⎋[/brush] cancel";
+
+    // A breadcrumb trail: [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill — it is a
+    // trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
+    // BreadcrumbBarItem so it inherits the chip look for free; it is Collapsed until the panel's fold reports
+    // elided ancestors (the BreadcrumbBar flips it). The chips band and the raw-text edit box overlap in a Grid,
+    // exactly like the ComboBox's two faces — the collapsed one takes no space, and the drop-down picker joins
+    // them there at zero size.
+    private static ControlTemplate BreadcrumbBarTemplate() => new(ctx =>
+    {
+        var overflowChip = new BreadcrumbBarItem
+        {
+            Content = "…",
+            Visibility = Visibility.Collapsed, // raised by BreadcrumbBar.SetOverflowState when the fold elides
+            IsTabStop = false
+        };
+        ctx.RegisterName("PART_OverflowChip", overflowChip);
+        DockPanel.SetDock(overflowChip, Dock.Left);
+
+        var host = new ItemsPresenter();
+        ctx.RegisterName("PART_ItemsHost", host);
+
+        // Docked LEFT (not in the items panel): the ellipsis is not a segment, and a non-item child inside the
+        // items host would break the ItemsPresenter's index-aligned container adoption. Docking it also makes the
+        // reserve automatic — the DockPanel hands the panel the width that is left, which is exactly the width the
+        // fold must pack into.
+        var chips = new DockPanel();
+        chips.Children.Add(overflowChip);
+        chips.Children.Add(host);
+        ctx.RegisterName("PART_ChipsHost", chips);
+
+        var edit = new TextBox { Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_EditBox", edit);
+
+        // The "▸" / ellipsis drop-down: a CompletionPopup in PICKER mode (scrollable, fuzzy-filtered, sorted),
+        // parked in the template because a Popup surface needs an element IN THE TREE to hang from. It costs
+        // the trail nothing — the control's own template root is a Grid holding only its Popup, so it measures
+        // 0x0 and is not hit-testable. MaxVisibleItems is the whole point of the swap over a ContextMenu: past
+        // twelve rows the list SCROLLS instead of growing taller than the terminal. The footer is ASCII for the
+        // same reason CompletionPopup's default is (^v, not the ambiguous-width arrows).
+        var dropDown = new CompletionPopup
+                       {
+                           MaxVisibleItems = BreadcrumbDropDownRows,
+                           FooterContent = new TextBlock
+                                           {
+                                               Markup = BreadcrumbDropDownFooter,
+                                               TextTrimming = TextTrimming.CharacterEllipsis,
+                                               TextWrapping = WrapMode.NoWrap
+                                           }
+                       };
+        ctx.RegisterName("PART_DropDown", dropDown);
+
+        var content = new Grid();
+        content.Children.Add(chips);
+        content.Children.Add(edit);
+        content.Children.Add(dropDown);
+
+        var root = new Border { Child = content, Occludes = true };
+        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        return root;
+    });
+
+    private static Style BreadcrumbBarTheme()
+        => new Style
+           {
+               Key = "Theme.BreadcrumbBar",
+               Children =
+               {
+                   // In edit mode the bar IS a field, so it takes the recessed well (the trail has no resting fill —
+                   // it sits on the page). This also keeps the gutter around PART_EditBox from reading as page.
+                   new Style("^:editing").SetResource(Control.BackgroundProperty, ThemeKeys.WellBrush)
+               }
+           }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, BreadcrumbBarTemplate());
+
+    // A chip + its trailing "▸". The fill rides the chip Border only (bound to Control.Background) so the
+    // separator stays on the page between two filled chips — a hover that swallowed the separator would read as
+    // one wide button rather than a trail. The current (deepest) segment hides its separator; that is driven by
+    // BreadcrumbBarItem itself, not by a /template/ rule, so both theme halves behave identically.
+    private static ControlTemplate BreadcrumbBarItemTemplate() => new(ctx =>
+    {
+        var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
+        ctx.RegisterName("PART_ContentPresenter", presenter);
+        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        TextElement.ForwardInverse(presenter);
+
+        var chip = new Border { Child = presenter, Occludes = true };
+        chip.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        chip.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        chip.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        chip.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+
+        var separator = new TextBlock { Text = "▸" };
+        separator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_Separator", separator);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(chip);
+        row.Children.Add(separator);
+        return row;
+    });
+
+    private static Style BreadcrumbBarItemTheme()
+    {
+        // Ancestors are dim ink, the current segment is full-strength: the trail visibly brightens toward where
+        // you are. Ordered :current → :pointerover → :pressed → :focus-visible → :disabled, so interaction always
+        // wins the pseudo-class tie (document order breaks it).
+        var theme = new Style { Key = "Theme.BreadcrumbBarItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextDimBrush)
+            .Set(Control.PaddingProperty, new Margins(1, 0))
+            .Set(Control.TemplateProperty, BreadcrumbBarItemTemplate());
+        theme.Children.Add(new Style("^:current").SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush));
+        theme.Children.Add(new Style("^:pointerover")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:pressed")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundPressed)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundPressed));
+        theme.Children.Add(new Style("^:focus-visible")
+                              .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundFocus)
+                              .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundFocus));
         theme.Children.Add(new Style("^:disabled").SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
+        return theme;
+    }
+
+    // ───────────────────────────── CompletionPopup / CompletionListItem ─────────────────────────────
+
+    // A completion overlay: an elevated occluding-by-caps panel over [header | PART_List | footer]. The control
+    // element itself contributes nothing to the host layout — the template root is a Grid holding only the Popup,
+    // which measures 0x0 — so a host can drop one in the same Grid cell as the field it decorates.
+    //
+    // Occludes is left FALSE here, exactly like the ComboBox drop-down: the blanket caps rules in
+    // CursorialThemeStyles (:is(Border) under RequiresCapabilities="NoColor"/"Ansi16") already force it true on
+    // every Border wholesale, and a per-control override would fight them on the tiers that can paint a real fill.
+    //
+    // NOTE — no {TemplateBinding} below the Popup. A Popup's Child is a LOGICAL child, and the template's
+    // TemplatedParent stamp (ControlTemplate.StampTemplatedParent) walks VISUAL children only, so a
+    // TemplateBinding authored inside the popup's content never resolves. DynamicResource / inheritance DO
+    // cross the seam (they walk LogicalParent ?? TemplatedParent), which is why the palette references here are
+    // fine. The three values that must reach the content — header text, footer text, the list's height cap —
+    // are pushed onto the parts by CompletionPopup.UpdateChrome instead.
+    private static ControlTemplate CompletionPopupTemplate() => new(ctx =>
+    {
+        // The "3 matches" strip. Collapsed until the control pushes text into it (ShowHeader + a live count) —
+        // Collapsed rather than Hidden because the popup surface is sized to its content and a Hidden strip would
+        // reserve a blank row.
+        var header = new ContentPresenter { Visibility = Visibility.Collapsed, ShowTrimmedContentInToolTip = true };
+        header.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        header.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
+        header.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_Header", header);
+        DockPanel.SetDock(header, Dock.Top);
+
+        var footer = new ContentPresenter
+                     {
+                         Visibility = Visibility.Collapsed,
+                         Margin = new(1, 0),
+                         ShowTrimmedContentInToolTip = true
+                     };
+        footer.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+        footer.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
+        footer.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Footer", footer);
+        DockPanel.SetDock(footer, Dock.Bottom);
+
+        var list = new CompletionList();
+        ctx.RegisterName("PART_List", list);
+
+        var stack = new DockPanel();
+        stack.Children.Add(header);
+        stack.Children.Add(footer);
+        stack.Children.Add(list); // last child fills what the docked strips leave
+
+        var content = new Border { Occludes = false, MinWidth = 16, Child = stack };
+        content.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
+        content.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
+
+        // StaysOpen: a TEXT-mode hint overlay is not light-dismissable — an outside press is the user dismissing
+        // the FIELD, and the field's focus-out is what closes us. The control OWNS this value and rewrites it
+        // before every open (CompletionPopup.UpdateDismissPolicy), because a target-less PICKER has no field for
+        // that argument to protect and DOES light-dismiss, like every other chooser. What is set here is only the
+        // initial value, and a custom template cannot accidentally settle the question either way.
+        var popup = new Popup { Child = content, StaysOpen = true };
+        ctx.RegisterName("PART_Popup", popup);
+
+        // The Popup adds no layout (0x0), so the control is a zero-size overlay anchor — but a Grid STRETCHES
+        // to its cell, and the hit test gates IsHitTestVisible on the LEAF only (RenderTree §5.8: children stay
+        // hittable, deliberately unlike WPF's subtree semantics). So the control's own IsHitTestVisible=false
+        // does NOT cover this root, and an overlay parked in the same cell as the thing it decorates would eat
+        // every press over that cell — the field it hangs off would stop taking clicks entirely. The popup's
+        // Child lives on its own surface layer, so the rows themselves stay clickable.
+        var root = new Grid { IsHitTestVisible = false };
+        root.Children.Add(popup);
+        return root;
+    });
+
+    private static Style CompletionPopupTheme()
+        => new Style { Key = "Theme.CompletionPopup" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, CompletionPopupTemplate());
+
+    // The list inside the popup: the ListBox chrome (Border > ScrollViewer > PART_ItemsHost) with NO recessed
+    // WellBrush fill and no frame — the popup's own content Border already carries the elevation and the rule,
+    // and a second well inside it reads as a box-in-a-box. It is its own theme entry rather than a
+    // ControlThemeKey alias to ListBox because the declarative twin authors that rule as
+    // <Style TargetType="ListBox">, which does not reach a subclass — aliasing the key would leave the XAML
+    // half's list untemplated (no items host, so no visible rows) while the code-first half worked.
+    private static Style CompletionListTheme()
+        => new Style { Key = "Theme.CompletionList" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+            .Set(Control.TemplateProperty, ListBoxTemplate())
+            .Set(ItemsControl.ItemsPanelProperty, VirtualizingItemsPanelTemplate());
+
+    // A completion row: [icon] display-with-the-match-bolded … description  kind. Each side column carries its own
+    // gutter margin and the control collapses it when its value is absent, so an icon-less / label-less candidate
+    // costs no column. The display TextBlock is fed MARKUP (not Text) — that is how the fuzzy matcher's MatchSpans
+    // become bold cells.
+    private static ControlTemplate CompletionListItemTemplate() => new(ctx =>
+    {
+        var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0), Visibility = Visibility.Collapsed };
+        ctx.RegisterName("PART_Icon", icon);
+        DockPanel.SetDock(icon, Dock.Left);
+
+        var kind = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        kind.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        ctx.RegisterName("PART_KindLabel", kind);
+        DockPanel.SetDock(kind, Dock.Right);
+
+        var description = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
+        description.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        ctx.RegisterName("PART_Description", description);
+        DockPanel.SetDock(description, Dock.Right);
+
+        var display = new TextBlock(); // inherits the row Foreground so the selection bar's flip reaches it
+        ctx.RegisterName("PART_Display", display);
+
+        var row = new DockPanel();
+        row.Children.Add(icon);
+        row.Children.Add(kind);
+        row.Children.Add(description);
+        row.Children.Add(display);
+
+        var border = new Border { Padding = new Margins(1, 0), Child = row };
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
+        return border;
+    });
+
+    private static Style CompletionListItemTheme()
+    {
+        // No :focus-visible rule: completion rows are never focusable (focus stays in the completed field), so the
+        // keyboard cue rides :selected alone — the one place this row differs from the ListBoxItem bar it copies.
+        var theme = new Style { Key = "Theme.CompletionListItem" }
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundNormal)
+            .Set(Control.TemplateProperty, CompletionListItemTemplate());
+        theme.Children.Add(new Style("^:pointerover")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundHover)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundHover));
+        theme.Children.Add(new Style("^:selected")
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ListItemBackgroundSelected)
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundSelected));
+        theme.Children.Add(new Style("^:disabled")
+            .SetResource(Control.ForegroundProperty, ThemeKeys.ListItemForegroundDisabled));
         return theme;
     }
 
@@ -489,7 +909,8 @@ internal static class ControlThemes
         ctx.RegisterName("PART_Twisty", twisty);
         DockPanel.SetDock(twisty, Dock.Left);
 
-        var header = new ContentPresenter(); // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally
+        // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally.
+        var header = new ContentPresenter { ShowTrimmedContentInToolTip = true }; 
         ctx.RegisterName("PART_HeaderPresenter", header);
         header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
         header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
@@ -655,10 +1076,11 @@ internal static class ControlThemes
     private static ControlTemplate IconTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter();
+        var border = new Border { Child = presenter, Occludes = true, Background = Brushes.Transparent };
         presenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Icon.ResolvedContentProperty));
         presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
         TextElement.ForwardInverse(presenter);
-        return presenter;
+        return border;
     });
 
     private static Style IconTheme()
@@ -848,15 +1270,17 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.PanelBackgroundBrush);
-        border.SetResourceReference(Border.BorderPenProperty, ThemeKeys.ToolTipBorderPen);
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
     private static Style ToolTipTheme()
         => new Style { Key = "Theme.ToolTip" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(UIElement.MaxWidthProperty, 40) // spec §12.7: max 40 cells, content wraps
+            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBackgroundBrush)
+            .SetResource(Control.BorderPenProperty, ThemeKeys.ToolTipBorderPen)
+            .Set(UIElement.MaxWidthProperty, ToolTipService.MaxToolTipWidth) // spec §12.7: max 40 cells, content wraps
             .Set(Control.TemplateProperty, ToolTipTemplate());
 
     // ───────────────────────────── TabControl / TabItem ─────────────────────────────
@@ -917,7 +1341,7 @@ internal static class ControlThemes
         var t = new ControlTemplate(
         ctx =>
            {
-               var header = new ContentPresenter { RecognizesAccessKey = true };
+               var header = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                ctx.RegisterName("PART_ContentPresenter", header);
                header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
                // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
@@ -1064,7 +1488,9 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetResourceReference(Border.BackgroundProperty, ThemeKeys.StatusBarBackground);
+        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
     });
 
@@ -1085,7 +1511,7 @@ internal static class ControlThemes
 
     private static ControlTemplate StatusBarItemTemplate() => new(ctx =>
     {
-        var presenter = new ContentPresenter();
+        var presenter = new ContentPresenter{ ShowTrimmedContentInToolTip = true };
         var root = new Border { Child = presenter };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
@@ -1155,7 +1581,7 @@ internal static class ControlThemes
 
                        var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
 
-                       var headerPresenter = new ContentPresenter { RecognizesAccessKey = true };
+                       var headerPresenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
 
                        glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -1589,14 +2015,18 @@ internal static class ControlThemes
         var t = new ControlTemplate(
             ctx =>
                {
-                   var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+                   var row = new DockPanel();
 
                    // The glyph cell overlays a zero-size Caret on the glyph's INNER cell (column 1 — the space inside
                    // [ ] / ( )). A single-cell Grid stacks both; the Caret is Left/Top-pinned with a 1-column left
                    // margin so it lands on the box's middle cell. It shows only under :focus-visible (driven in code by
                    // ToggleButton). Check/radio focus is this IN-BOX CARET, not reverse-video: a check/radio stretches
                    // to its StackPanel's width, so a reverse fill would span the whole row like a selection bar.
-                   var glyphCell = new Grid();
+                   var glyphCell = new Grid
+                                   {
+                                       Margin = new Margins(0, 0, 1, 0),
+                                       VerticalAlignment = VerticalAlignment.Top
+                                   };
                    var glyph = new ToggleGlyph(glyphKey, checkedMarkKey, indeterminateMarkKey);
                    // A checkbox/radio indicator is a GLYPH, not text — only Inverse forwards, so the box
                    // swaps fg/bg in unison with an inverted face and never leaves a half-inverted hole
@@ -1615,8 +2045,15 @@ internal static class ControlThemes
                    glyphCell.Children.Add(glyph);
                    glyphCell.Children.Add(caret);
 
-                   var presenter = new ContentPresenter { RecognizesAccessKey = true };
+                   var presenter = new ContentPresenter
+                                   {
+                                       RecognizesAccessKey = true,
+                                       ShowTrimmedContentInToolTip = true
+                                   };
                    ctx.RegisterName("PART_ContentPresenter", presenter);
+
+                   DockPanel.SetDock(glyphCell, Dock.Left);
+
                    row.Children.Add(glyphCell);
                    row.Children.Add(presenter);
 
@@ -1706,44 +2143,56 @@ internal static class ControlThemes
             ctx =>
             {
                var dock = new DockPanel();
-               var bareTemplate = BareGlyphButtonTemplate();
 
-               // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
-               // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
-               // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
-               // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
-               var lineUp = new RepeatButton
-                            {
-                                Content = horizontal ? "◀" : "▲",
-                                Template = bareTemplate,
-                                Padding = Margins.Zero, 
-                                Focusable = false,
-                                IsTabStop = false
-                            };
-
-               ctx.RegisterName("PART_LineUpButton", lineUp);
-               DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
-
-               var lineDown = new RepeatButton
-                              {
-                                  Content = horizontal ? "▶" : "▼",
-                                  Template = bareTemplate,
-                                  Padding = Margins.Zero,
-                                  Focusable = false,
-                                  IsTabStop = false
-                              };
-
-               ctx.RegisterName("PART_LineDownButton", lineDown);
-               DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
+               // var bareTemplate = BareGlyphButtonTemplate();
+               //
+               // if (horizontal is false)
+               // {
+               //
+               //     // The line buttons drop out of Tab navigation (Focusable = false, IsTabStop = false): a
+               //     // ScrollBar and its parts are driven by the scrolled content's keyboard + the mouse, never by
+               //     // tabbing onto the arrows (WPF/Avalonia parity — ButtonBase opts Focusable in by default, so
+               //     // these scrollbar parts must opt back out). The Track is already a non-focusable UIElement.
+               //     var lineUp = new RepeatButton
+               //                  {
+               //                      Content = horizontal ? "◀" : "▲",
+               //                      Template = bareTemplate,
+               //                      Padding = Margins.Zero, 
+               //                      Focusable = false,
+               //                      IsTabStop = false
+               //                  };
+               //
+               //     ctx.RegisterName("PART_LineUpButton", lineUp);
+               //     DockPanel.SetDock(lineUp, horizontal ? Dock.Left : Dock.Top);
+               //
+               //     var lineDown = new RepeatButton
+               //                    {
+               //                        Content = horizontal ? "▶" : "▼",
+               //                        Template = bareTemplate,
+               //                        Padding = Margins.Zero,
+               //                        Focusable = false,
+               //                        IsTabStop = false
+               //                    };
+               //
+               //     ctx.RegisterName("PART_LineDownButton", lineDown);
+               //     DockPanel.SetDock(lineDown, horizontal ? Dock.Right : Dock.Bottom);
+               //
+               //     dock.Children.Add(lineUp);
+               //     dock.Children.Add(lineDown);
+               // }
 
                var owner = (ScrollBar) (ctx.TemplatedParent ??
                                         throw new InvalidOperationException("The ScrollBar theme template requires a templated parent."));
 
-               var track = new Track(owner);
+               var track = new Track(owner) { TrackDisplayMode = TrackDisplayMode.Fill };
+
+               if (horizontal)
+                   track.Height = 1; // ensure vertical measure
+               else
+                   track.Width = 1; // ensure horizontal measure
+               
                ctx.RegisterName("PART_Track", track);
 
-               dock.Children.Add(lineUp);
-               dock.Children.Add(lineDown);
                dock.Children.Add(track); // last child fills the remaining space (DockPanel default)
                return dock;
             });
@@ -1776,6 +2225,7 @@ internal static class ControlThemes
     private static ControlTemplate ScrollViewerTemplate() => new(ctx =>
     {
         var dock = new DockPanel();
+        dock.SetBinding(Panel.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
 
         var vBar = new ScrollBar { Orientation = Orientation.Vertical };
         ctx.RegisterName("PART_VerticalScrollBar", vBar);
@@ -1812,6 +2262,7 @@ internal static class ControlThemes
                        icon.SetBinding(Icon.ImageUriProperty, new Binding(nameof(IconCarrier.ImageUri)));
                        icon.SetBinding(Icon.EmojiProperty, new Binding(nameof(IconCarrier.Emoji)));
                        icon.SetBinding(Icon.TextProperty, new Binding(nameof(IconCarrier.Text)));
+                       icon.SetBinding(Icon.IconBrushProperty, new Binding(nameof(IconCarrier.IconBrush)) { TargetNullValue = Binding.DoNothing });
                        
                        return icon;
                    })
@@ -1828,205 +2279,270 @@ internal static class ControlThemes
     // here. The title band doubles as the Drag grab; its fill + ink track the window's active state via the
     // active-look below (the interim's Activated/Deactivated mechanism, relocated into the theme template; a
     // declarative `^:active-window /template/ …` rule is a future refinement now the Template lane exists).
-    private static ControlTemplate WindowChromeTemplate() => new(ctx =>
+    private static ControlTemplate WindowChromeTemplate()
     {
-        var window = (Window) (ctx.TemplatedParent
-                               ?? throw new InvalidOperationException("The window chrome template requires a templated parent."));
+        var t = new ControlTemplate(
+            ctx =>
+            {
+                var window = (Window) (ctx.TemplatedParent
+                                       ?? throw new InvalidOperationException(
+                                           "The window chrome template requires a templated parent."));
 
-        var presenter = new ContentPresenter();
-        ctx.RegisterName("PART_ContentPresenter", presenter);
-        presenter.SetBinding(UIElement.MarginProperty, new TemplateBinding(Control.PaddingProperty)); // opt-in frame only
-        
+                var presenter = new ContentPresenter();
+                ctx.RegisterName("PART_ContentPresenter", presenter);
 
-        var root = new Border();
-        ctx.RegisterName("PART_Root", root);
-        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty)); // opt-in frame only
+                presenter.SetBinding(UIElement.MarginProperty,
+                                     new TemplateBinding(Control.PaddingProperty)); // opt-in frame only
 
-        if (window.WindowStyle == WindowStyle.None)
-        {
-            root.Child = presenter; // chrome-less, still an opaque occluding fill
-            return root;
-        }
+                var root = new Border();
+                ctx.RegisterName("PART_Root", root);
+                root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
 
-        var layout = new DockPanel();
+                root.SetBinding(Border.BorderPenProperty,
+                                new TemplateBinding(Control.BorderPenProperty)); // opt-in frame only
 
-        // The title bar is a filled band that doubles as the Drag grab area (§8.3); its fill + ink track the
-        // window's active state (ApplyActiveLook): an accent band + on-accent ink when active, a recessed
-        // surface band + dim ink when inactive — the borderless focus cue is the band colour, not a border.
-        var titleBar = new Border { Padding = new Margins(1, 0) };
-        WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag);
-        ctx.RegisterName("PART_TitleBar", titleBar);
+                if (window.WindowStyle == WindowStyle.None)
+                {
+                    root.Child = presenter; // chrome-less, still an opaque occluding fill
+                    return root;
+                }
 
-        var titleBarContent = new DockPanel(); // LastChildFill → the title fills the remainder
+                var layout = new DockPanel();
 
-        // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
-        // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
-        // intentionally leaves Close off).
-        var closeButton = new Button { Focusable = false, IsTabStop = false, Content = "✕"};
+                // The title bar is a filled band that doubles as the Drag grab area (§8.3); its fill + ink track the
+                // window's active state (ApplyActiveLook): an accent band + on-accent ink when active, a recessed
+                // surface band + dim ink when inactive — the borderless focus cue is the band colour, not a border.
+                var titleBar = new Border { Padding = new Margins(1, 0) };
 
-        closeButton.SetBinding(UIElement.VisibilityProperty,
-                               new TemplateBinding(Window.CanCloseProperty)
+                titleBar.SetResourceReference(Border.BackgroundProperty, ThemeKeys.WindowTitleBarBackground);
+
+                titleBar.SetResourceReference(TextElement.ForegroundProperty,
+                                              ThemeKeys.WindowTitleBarForeground);
+
+                WindowChrome.SetHitTestRole(titleBar, WindowHitTestRole.Drag);
+                ctx.RegisterName("PART_TitleBar", titleBar);
+
+                var titleBarContent = new DockPanel(); // LastChildFill → the title fills the remainder
+
+                var icon = new ContentPresenter
+                           {
+                               Margin = new Margins(0, 0, 1, 0),
+                               Visibility = Visibility.Collapsed,
+                               ForwardsFromTemplatedParent = false,
+                               ForwardTextInverse =
+                                   false // we toggle the icon's inverse directly; see `IconToggleStyle()`.
+                           };
+
+                icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Window.IconProperty));
+                ctx.RegisterName("PART_Icon", icon);
+                DockPanel.SetDock(icon, Dock.Left);
+                titleBarContent.Children.Add(icon);
+
+                // Close ✕ — a bare glyph on the band: a transparent local Background beats the Button theme's fills,
+                // so it reads as a glyph, not a button face. Close stays the button's own Click (the role switch
+                // intentionally leaves Close off).
+                var closeButton = new Button { Focusable = false, IsTabStop = false, Content = "✕" };
+
+                closeButton.SetBinding(UIElement.VisibilityProperty,
+                                       new TemplateBinding(Window.CanCloseProperty)
+                                       {
+                                           Converter = BooleanToVisibilityConverter.Instance
+                                       });
+
+                WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
+
+                closeButton.Click += (_, _) =>
+                                     {
+                                         if (window.CanClose)
+                                             window.Close(WindowCloseReason.ChromeAction);
+                                     };
+
+                DockPanel.SetDock(closeButton, Dock.Right);
+                titleBarContent.Children.Add(closeButton); // docked right → rightmost control
+                ctx.RegisterName("PART_CloseButton", closeButton);
+
+                // Maximize ▢ — a role-driven glyph (its press bubbles to the window, which toggles Maximized via the
+                // Maximize role, like the ◢ grip's ResizeSE). Only when the window can resize.
+                Button? maximizeButton = null;
+
+                if (window.CanResize)
+                {
+                    maximizeButton = new Button { Focusable = false, IsTabStop = false };
+
+                    maximizeButton.SetBinding(ContentControl.ContentProperty,
+                                              new TemplateBinding(Window.WindowStateProperty)
+                                              {
+                                                  Converter = new WindowStateToGlyphConverter()
+                                              });
+
+                    // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
+                    DockPanel.SetDock(maximizeButton, Dock.Right);
+                    titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph
+                    ctx.RegisterName("PART_MaximizeButton", maximizeButton);
+
+                    maximizeButton.Click += (_, _) =>
+                                            {
+                                                window.WindowState = window.WindowState is WindowState.Maximized
+                                                                         ? WindowState.Normal
+                                                                         : WindowState.Maximized;
+
+                                                maximizeButton.Content =
+                                                    window.WindowState is WindowState.Maximized ? "⧈" : "⛶";
+                                            };
+                }
+
+                var titleText = new ContentPresenter
+                                {
+                                    Content = window.Title ?? string.Empty,
+                                    ShowTrimmedContentInToolTip = true
+                                };
+
+                titleText.SetBinding(ContentPresenter.ContentProperty,
+                                     new Binding(nameof(Window.Title)) { Source = window });
+
+                titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
+                ctx.RegisterName("PART_Title", titleText);
+
+                titleBar.Child = titleBarContent;
+                DockPanel.SetDock(titleBar, Dock.Top);
+                layout.Children.Add(titleBar);
+
+                // The active-state look (the band/ink that tracks Window.IsActive) is wired in Window.OnApplyTemplate
+                // against the PART_TitleBar/PART_Title/PART_CloseButton/PART_MaximizeButton parts and unhooked in
+                // Window.OnTemplateDetaching — so re-templating a live window never leaks the Activated/Deactivated
+                // handlers (the P9-closeout fix for the interim's lifetime-of-the-window subscription edge).
+
+                if (window.CanResize)
+                {
+                    // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE), stacked over the
+                    // presenter in a single-cell Grid so it costs no layout row.
+                    var body = new Grid();
+                    body.Children.Add(presenter);
+
+                    var grip = new TextBlock
                                {
-                                   Converter = BooleanToVisibilityConverter.Instance
-                               });
+                                   Text = "◢",
+                                   HorizontalAlignment = HorizontalAlignment.Right,
+                                   VerticalAlignment = VerticalAlignment.Bottom,
+                                   Cursor = MouseCursorShape.NwseResize
+                               };
 
-        WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
-        closeButton.Click += (_, _) =>
-                             {
-                                 if (window.CanClose)
-                                     window.Close(WindowCloseReason.ChromeAction);
-                             };
-        DockPanel.SetDock(closeButton, Dock.Right);
-        titleBarContent.Children.Add(closeButton); // docked right → rightmost control
-        ctx.RegisterName("PART_CloseButton", closeButton);
+                    grip.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+                    WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
+                    ctx.RegisterName("PART_ResizeGrip", grip);
+                    body.Children.Add(grip);
 
-        // Maximize ▢ — a role-driven glyph (its press bubbles to the window, which toggles Maximized via the
-        // Maximize role, like the ◢ grip's ResizeSE). Only when the window can resize.
-        Button? maximizeButton = null;
-        if (window.CanResize)
-        {
-            maximizeButton = new Button { Focusable = false, IsTabStop = false };
+                    layout.Children.Add(body); // fills the remainder
+                }
+                else
+                {
+                    layout.Children.Add(presenter); // fills the remainder
+                }
 
-            maximizeButton.SetBinding(ContentControl.ContentProperty,
-                                      new TemplateBinding(Window.WindowStateProperty)
-                                      {
-                                          Converter = new WindowStateToGlyphConverter()
-                                      });
+                root.Child = layout;
 
-            // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
-            DockPanel.SetDock(maximizeButton, Dock.Right);
-            titleBarContent.Children.Add(maximizeButton); // docked right → left of the close glyph
-            ctx.RegisterName("PART_MaximizeButton", maximizeButton);
-            
-            maximizeButton.Click += (_, _) =>
+                var overlayHost = new Border
+                                  {
+                                      Name = "PART_ObscuredOverlay",
+                                      Visibility = Visibility.Collapsed,
+                                      IsRenderBoundary = true,
+                                      IsHitTestVisible = true
+                                  };
+
+                overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
+                ctx.RegisterName("PART_ObscuredOverlay", overlayHost);
+
+                var chrome = new Grid { Children = { root, overlayHost } };
+
+                closeButton.Style = new Style
                                     {
-                                        window.WindowState = window.WindowState is WindowState.Maximized
-                                                                 ? WindowState.Normal
-                                                                 : WindowState.Maximized;
-
-                                        maximizeButton.Content = window.WindowState is WindowState.Maximized ? "⧈" : "⛶";
+                                        Children =
+                                        {
+                                            new Style(Selectors.Nesting().PseudoClass(":pointerover"))
+                                               .SetResource(Control.BackgroundProperty, ThemeKeys.RedBrush)
+                                               .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                                            new Style(Selectors.Nesting().PseudoClass(":pressed"))
+                                               .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
+                                               .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
+                                        }
                                     };
-        }
 
-        var titleText = new TextBlock { Text = window.Title ?? string.Empty };
-        titleText.SetBinding(TextBlock.TextProperty, new Binding(nameof(Window.Title)) { Source = window });
-        titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
-        ctx.RegisterName("PART_Title", titleText);
+                maximizeButton?.Style = new Style
+                                        {
+                                            Children =
+                                            {
+                                                new Style(Selectors.Nesting().PseudoClass(":pointerover"))
+                                                   .SetResource(Control.BackgroundProperty, ThemeKeys.GreenBrush)
+                                                   .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                                                new Style(Selectors.Nesting().PseudoClass(":pressed"))
+                                                   .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
+                                                   .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
+                                            }
+                                        };
 
-        titleBar.Child = titleBarContent;
-        DockPanel.SetDock(titleBar, Dock.Top);
-        layout.Children.Add(titleBar);
+                chrome.Styles.Add(
+                    new Style(Selectors.Is<Window>().Class("obscured"))
+                    {
+                        Children =
+                        {
+                            new Style(Selectors.Nesting().Template().Name("PART_ObscuredOverlay"))
+                               .Set(UIElement.VisibilityProperty, Visibility.Visible)
+                        }
+                    });
 
-        titleBar.Style =
-            new Style
-            {
-                Children =
-                {
-                    new Style(Selectors.Nesting())
-                        .SetResource(Border.BackgroundProperty, ThemeKeys.WindowTitleBarBackground)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.WindowTitleBarForeground),
-                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
-                        .SetResource(Border.BackgroundProperty, ThemeKeys.WindowTitleBarActiveBackground)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.WindowTitleBarActiveForeground),
-                    new Style(Selectors.Nesting().PseudoClass(":active-window").Descendant().OfType<Button>())
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush)
-                    
-                }
-            };
-        
-        closeButton.Style =
-            new Style
-            {
-                Children =
-                {
-                    new Style(Selectors.Nesting())
-                        .Set(Control.BackgroundProperty, null)
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.RedBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
-                        .SetResource(Control.BackgroundProperty, ThemeKeys.RedBrush)
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":pressed"))
-                        .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
-                }
-            };
-
-        maximizeButton?.Style =
-            new Style
-            {
-                Children =
-                {
-                    new Style(Selectors.Nesting())
-                        .Set(Control.BackgroundProperty, null)
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.GreenBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":active-window"))
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":pointerover"))
-                        .SetResource(Control.BackgroundProperty, ThemeKeys.GreenBrush)
-                        .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush),
-                    new Style(Selectors.Nesting().PseudoClass(":pressed"))
-                        .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationHighest)
-                        .SetResource(TextElement.ForegroundProperty, ThemeKeys.TextBrush)
-                }
-            };
-        
-        // The active-state look (the band/ink that tracks Window.IsActive) is wired in Window.OnApplyTemplate
-        // against the PART_TitleBar/PART_Title/PART_CloseButton/PART_MaximizeButton parts and unhooked in
-        // Window.OnTemplateDetaching — so re-templating a live window never leaks the Activated/Deactivated
-        // handlers (the P9-closeout fix for the interim's lifetime-of-the-window subscription edge).
-
-        if (window.CanResize)
-        {
-            // The ◢ resize grip overlays the content's bottom-right corner (ResizeSE), stacked over the
-            // presenter in a single-cell Grid so it costs no layout row.
-            var body = new Grid();
-            body.Children.Add(presenter);
-
-            var grip = new TextBlock
-                       {
-                           Text = "◢",
-                           HorizontalAlignment = HorizontalAlignment.Right,
-                           VerticalAlignment = VerticalAlignment.Bottom,
-                           Cursor = MouseCursorShape.NwseResize
-                       };
-            grip.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
-            WindowChrome.SetHitTestRole(grip, WindowHitTestRole.ResizeSE);
-            ctx.RegisterName("PART_ResizeGrip", grip);
-            body.Children.Add(grip);
-
-            layout.Children.Add(body); // fills the remainder
-        }
-        else
-        {
-            layout.Children.Add(presenter); // fills the remainder
-        }
-        root.Child = layout;
-
-        var overlayHost = new Border
-                          {
-                              Name = "PART_ObscuredOverlay",
-                              Visibility = Visibility.Collapsed,
-                              IsRenderBoundary = true,
-                              IsHitTestVisible = true
-                          };
-
-        overlayHost.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ObscuredOverlayBrush);
-        ctx.RegisterName("PART_ObscuredOverlay", overlayHost);
-
-        var chrome = new Grid { Children = { root, overlayHost } };
-        
-        chrome.Styles.Add(
-            new Style(Selectors.Is<Window>().Class("obscured"))
-            {
-                Children = { new Style(Selectors.Nesting().Template().Name("PART_ObscuredOverlay"))
-                                .Set(UIElement.VisibilityProperty, Visibility.Visible) }
+               return chrome;
             });
 
-        return chrome;
-    });
+        t.Styles.Add(
+            new Style(Selectors.OfType<Window>()
+                               .PseudoClass(":has-icon")
+                               .Template()
+                               .Name("PART_TitleBar")
+                               .Descendant()
+                               .Name("PART_Icon"))
+               .Set(UIElement.VisibilityProperty, Visibility.Visible));
+
+        t.Styles.Add(
+            new Style(Selectors.Is<Window>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().PseudoClass(":active-window").Template().Name("PART_TitleBar"))
+                       .SetResource(Border.BackgroundProperty, ThemeKeys.WindowTitleBarActiveBackground)
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.WindowTitleBarActiveForeground),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window").Template().Name("PART_TitleBar").Descendant().OfType<Button>())
+                       .SetResource(TextElement.ForegroundProperty, ThemeKeys.OnAccentBrush),
+                }
+            });
+
+        t.Styles.Add(
+            new Style(Selectors.Is<Window>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().Name("PART_CloseButton"))
+                       .Set(Control.BackgroundProperty, null)
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.RedBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window").Template().Name("PART_CloseButton"))
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                }
+            });
+
+        t.Styles.Add(
+            new Style(Selectors.Is<Window>())
+            {
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().Name("PART_MaximizeButton"))
+                       .Set(Control.BackgroundProperty, null)
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.GreenBrush),
+                    new Style(Selectors.Nesting().PseudoClass(":active-window").Template().Name("PART_MaximizeButton"))
+                       .SetResource(Control.ForegroundProperty, ThemeKeys.OnAccentBrush)
+                }
+            });
+
+        return t;
+    }
 
     private static Style WindowTheme()
         => new Style

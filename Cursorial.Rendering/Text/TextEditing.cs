@@ -138,8 +138,8 @@ public static class TextNavigation
     public static int NextWord(ReadOnlySpan<char> text, int index)
     {
         var i = Math.Clamp(index, 0, text.Length);
-        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
-        while (i < text.Length && !char.IsWhiteSpace(text[i])) i++;
+        while (i < text.Length && IsWordBoundary(text[i])) i++;
+        while (i < text.Length && !IsWordBoundary(text[i])) i++;
         return i;
     }
 
@@ -150,8 +150,10 @@ public static class TextNavigation
     public static int PrevWord(ReadOnlySpan<char> text, int index)
     {
         var i = Math.Clamp(index, 0, text.Length);
-        while (i > 0 && char.IsWhiteSpace(text[i - 1])) i--;
-        while (i > 0 && !char.IsWhiteSpace(text[i - 1])) i--;
+        while (i > 0 && IsWordBoundary(text[i - 1])) i--;
+        while (i > 0 && !IsWordBoundary(text[i - 1])) i--;
         return i;
     }
+
+    private static bool IsWordBoundary(char c) => char.IsWhiteSpace(c) || c is ':' or '/' or '\\' or ';' or '|' or '.';
 }

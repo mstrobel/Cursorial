@@ -1,15 +1,23 @@
+using Cursorial.UI.Input;
+
 namespace Cursorial.UI;
 
-internal static class Extensions
+public static class Extensions
 {
     extension(Type type)
     {
-        public bool IsNullableType()
+        internal Type UnwrapNullable()
+        {
+            return Nullable.GetUnderlyingType(type) ?? type;
+        }
+
+        internal bool IsNullableType()
         {
             return type.IsValueType is false ||
                    Nullable.GetUnderlyingType(type) is not null;
         }
-        public bool IsIntegralType()
+
+        internal bool IsIntegralType()
         {
             return Type.GetTypeCode(type) switch
                    {
@@ -24,5 +32,18 @@ internal static class Extensions
                        _ => false
                    };
         }
+    }
+
+    extension(FocusNavigationMethod method)
+    {
+        /// <summary>
+        /// Whether a focus change was driven by the USER (as opposed to a programmatic move or a repair after
+        /// the focused element was destroyed) — the test for abandoning a pending drop-down pick.
+        /// </summary>
+        public bool IsUserInitiated()
+            => method is FocusNavigationMethod.Tab or
+                         FocusNavigationMethod.Pointer or
+                         FocusNavigationMethod.Directional or
+                         FocusNavigationMethod.AccessKey;
     }
 }

@@ -82,4 +82,12 @@ public static class InputDeviceTransformExtensions
     /// </summary>
     public static IAsyncInputDevice WithNumpadKeyTranslation(this IAsyncInputDevice device)
         => device.Transform(new NumpadKeyTranslator());
+
+    /// <summary>
+    /// Wrap <paramref name="device"/> with a <see cref="WheelAxisLock"/> using the supplied options
+    /// (or the defaults): wheel gestures rail onto their dominant axis, suppressing accidental
+    /// cross-axis drift (the "scroll dead zone").
+    /// </summary>
+    public static IAsyncInputDevice WithWheelAxisLock(this IAsyncInputDevice device, WheelAxisLockOptions? options = null)
+        => device.Transform(new WheelAxisLock(options));
 }

@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.UI.Input;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 
@@ -28,6 +29,7 @@ public class ScrollBar : RangeBase
 
     private RepeatButton? _lineUp;
     private RepeatButton? _lineDown;
+    private Track? _track;
     private bool _suppressScrollEvent;     // set during a Value set whose owner re-raises with its own type
 
     /// <summary>The bar's axis (S1-owned <see cref="Controls.Orientation"/>; default <see cref="Orientation.Vertical"/>). <c>AffectsMeasure</c> + the <c>:horizontal</c>/<c>:vertical</c> classes.</summary>
@@ -40,7 +42,18 @@ public class ScrollBar : RangeBase
 
     /// <summary>The thumb fill brush (the proportional <c>█</c> run; <c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<IBrush?> ThumbBrushProperty =
-        UIProperty.Register<ScrollBar, IBrush?>(nameof(ThumbBrush));
+        UIProperty.Register<ScrollBar, IBrush?>(
+            nameof(ThumbBrush),
+            new PropertyMetadata<IBrush?>
+            {
+                DefaultResourceKey = ThemeKeys.ScrollBarThumbNormalBrush,
+                Changed = (s, _, _) =>
+                          {
+                              if (s is not ScrollBar bar) return;
+                              bar.InvalidateVisual();
+                              bar._track?.UpdateBrush();
+                          }
+            });
 
     /// <summary>The bubbling scroll event raised whenever <see cref="RangeBase.Value"/> changes (<see cref="ScrollEventArgs"/>).</summary>
     public static readonly RoutedEvent<ScrollEventArgs> ScrollEvent =
@@ -101,22 +114,26 @@ public class ScrollBar : RangeBase
         // the optional arrow RepeatButtons step ±SmallChange on each repeat (CD29/C234).
         _lineUp = GetTemplatePart<RepeatButton>(PartLineUp);
         _lineDown = GetTemplatePart<RepeatButton>(PartLineDown);
+        _track = GetTemplatePart<Track>(PartTrack);
 
-        if (_lineUp is { } up)
+        if (_lineUp is {} up)
             up.Click += OnLineUp;
-        if (_lineDown is { } down)
+        if (_lineDown is {} down)
             down.Click += OnLineDown;
     }
 
     /// <inheritdoc/>
     protected override void OnTemplateDetaching(TemplateInstance old)
     {
-        if (_lineUp is { } up)
+        if (_lineUp is {} up)
             up.Click -= OnLineUp;
-        if (_lineDown is { } down)
+        if (_lineDown is {} down)
             down.Click -= OnLineDown;
+
         _lineUp = null;
         _lineDown = null;
+        _track = null;
+
         base.OnTemplateDetaching(old);
     }
 

@@ -62,6 +62,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     private FrameRenderer? _renderer;
     private WindowManager? _windowManager;
     private IAsyncInputDevice? _device; // decorated; NEVER disposed by S6 — the host owns transport lifecycle
+    private WheelAxisLock? _wheelAxisLock; // always in the chain; ScrollDeadZoneEnabled toggles it live
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCts;
     private Exception? _pumpFault; // Interlocked slot, exchanged-to-null on raise (fires once)
@@ -124,7 +125,10 @@ public sealed partial class UIApplication : IAsyncDisposable
         StyleHooks = StyleEngineInternal;            // B1: the Phase-3 flush slot
         InteractionStates.Observer = StyleEngineInternal; // SD22: the production observer (slot stays assignable)
         _focusManager = new FocusManager(Dispatcher, InteractionStates);
-        _accessKeys = new AccessKeyManager(Dispatcher, _focusManager, InteractionStates);
+        // The clock is load-bearing, not decoration: the manager's post-Escape activation-suppression
+        // window (AccessKeyManager.EscapeSuppressionWindow) must sample the SAME clock domain as the
+        // frame loop and the parser, so a headless FakeTimeProvider drives it deterministically.
+        _accessKeys = new AccessKeyManager(Dispatcher, _focusManager, InteractionStates, _options.TimeProvider);
         // The P2 topology: one implicit surface (the shown root). S4's WindowManager substitutes
         // the real IWindowTopology at P7 with no dispatcher rewrite (matrix ND5).
         _inputDispatcher = new InputDispatcher(Dispatcher, _focusManager, _accessKeys, InteractionStates, new SingleRootWindowTopology(this));

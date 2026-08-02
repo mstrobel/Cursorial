@@ -1,5 +1,7 @@
 using System.Collections;
 
+using Cursorial.UI.Themes;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -128,5 +130,27 @@ public sealed class ClassSet : IReadOnlyCollection<string>
         }
 
         return string.Intern(name);
+    }
+}
+
+public static class ClassSetExtensions
+{
+    extension(ClassSet target)
+    {
+        public bool Add(ThemeClass themeClass)
+        {
+            ArgumentNullException.ThrowIfNull(themeClass);
+            return target.Add(themeClass.ClassName);
+        }
+        public bool Contains(ThemeClass themeClass)
+        {
+            ArgumentNullException.ThrowIfNull(themeClass);
+            return target.Contains(themeClass.ClassName);
+        }
+        public bool Remove(ThemeClass themeClass)
+        {
+            ArgumentNullException.ThrowIfNull(themeClass);
+            return target.Remove(themeClass.ClassName);
+        }
     }
 }

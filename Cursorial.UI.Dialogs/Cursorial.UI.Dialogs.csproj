@@ -23,8 +23,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
     <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
     <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cursorial.UI.Tests" />
   </ItemGroup>
 
 </Project>

@@ -29,7 +29,7 @@ internal static class CursorialBarsTheme
     // literals folded); the icon presenter shows the (shared-identity) Icon property.
     private static ControlTemplate BarItemTemplate() => new(ctx =>
     {
-        var border = new Border();
+        var border = new Border { Occludes = true };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         // The bar face forwards the Inverse cue axis (non-inheriting; the labels ride the presenter forwards).
@@ -504,7 +504,7 @@ internal static class CursorialBarsTheme
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
-                var selected = new ContentPresenter(); // the read-only face value (visible when !IsEditable)
+                var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true }; // the read-only face value (visible when !IsEditable)
                 ctx.RegisterName("PART_ContentSite", selected);
                 selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
                 selected.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
@@ -1088,34 +1088,43 @@ internal static class CursorialBarsTheme
     // [bold Title … muted accelerator], a muted Description block, and a faint Footer. Empty fields (null Text/Content)
     // render nothing, so a title-only SuperTip collapses to one line.
     public static Style SuperTipStyle()
-        => new Style { Key = "Bars.SuperTip" }
-            .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
+    {
+        var t = new ControlTemplate(
+            ctx =>
             {
                 var titlePanel = new WrapPanel { Orientation = Orientation.Horizontal };
 
                 var title = new TextBlock();
-                title.SetValue(TextElement.TextWeightProperty, Cursorial.UI.Controls.TextWeight.Bold);
-                title.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.TitleProperty));
-                title.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
+
+                title.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
+
+                title.SetBinding(TextBlock.TextProperty,
+                                 new TemplateBinding(SuperTip.TitleProperty));
+
+                title.SetResourceReference(TextElement.ForegroundProperty,
+                                           ThemeKeys.TextBrush);
 
                 var gesture = new TextBlock { Margin = new Margins(1, 0, 1, 0) };
-                gesture.SetBinding(TextBlock.TextProperty, 
-                                   new TemplateBinding(SuperTip.InputGestureTextProperty) { StringFormat = "({0})" });
-                gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+
+                gesture.SetBinding(TextBlock.TextProperty,
+                                   new TemplateBinding(SuperTip.InputGestureTextProperty)
+                                   { StringFormat = "({0})" });
+
+                gesture.SetResourceReference(
+                    TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+
                 gesture.SetBinding(UIElement.VisibilityProperty,
                                    new TemplateBinding(SuperTip.InputGestureTextProperty)
                                    {
                                        Converter = ValueConverter.Create(
-                                           convert: (value, _, _, _) => 
+                                           convert: (value, _, _, _) =>
                                                         value switch
                                                         {
-                                                            "" or null => Visibility.Collapsed,
-                                                            _          => Visibility.Visible
-                                                           
+                                                            "" or null => Visibility
+                                                                .Collapsed,
+                                                            _ => Visibility.Visible
                                                         })
                                    });
-
 
                 titlePanel.Children.Add(title);
                 titlePanel.Children.Add(gesture);
@@ -1123,53 +1132,109 @@ internal static class CursorialBarsTheme
                 // The KeyTip drill hops (e.g. "Alt, H, F, B"), in amber to echo the badges. Collapsed by the SuperTip
                 // when there is no sequence (KeyTips off / not reachable).
                 var hops = new TextBlock();
-                hops.SetBinding(TextBlock.TextProperty, new TemplateBinding(SuperTip.KeyTipSequenceProperty));
-                hops.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
+
+                hops.SetBinding(TextBlock.TextProperty,
+                                new TemplateBinding(SuperTip.KeyTipSequenceProperty));
+
+                hops.SetResourceReference(TextElement.ForegroundProperty,
+                                          ThemeKeys.MutedBrush);
+
                 DockPanel.SetDock(hops, Dock.Right);
-                ctx.RegisterName("PART_KeyTips", hops);
 
                 var header = new DockPanel();
-                header.Children.Add(hops); // Dock.Right — the accelerator
-                header.Children.Add(titlePanel);   // fills — the command name
 
-                var description = new ContentPresenter { Margin = new Margins(0, 1, 0, 0)};
-                description.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.DescriptionProperty));
-                description.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextDimBrush);
+                header.Children.Add(hops);       // Dock.Right — the accelerator
+                header.Children.Add(titlePanel); // fills — the command name
+
+                var description = new ContentPresenter
+                                  {
+                                      Margin = new Margins(0, 1, 0, 0),
+                                      ForwardsFromTemplatedParent = false
+                                  };
+
+                description.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+                description.SetValue(TextBlock.TextWrappingProperty, WrapMode.CharacterWrap);
+
+                description.SetBinding(ContentPresenter.ContentProperty,
+                                       new TemplateBinding(SuperTip.DescriptionProperty));
+
+                description.SetResourceReference(
+                    TextElement.ForegroundProperty, ThemeKeys.TextDimBrush);
+
                 description.SetBinding(UIElement.VisibilityProperty,
                                        new TemplateBinding(SuperTip.DescriptionProperty)
                                        {
                                            Converter = ValueConverter.Create(
-                                               convert: (value, _, _, _) => 
-                                                   value switch
-                                                       {
-                                                           "" or null => Visibility.Collapsed,
-                                                           _          => Visibility.Visible
-                                                           
-                                                       })
+                                               convert: (value, _, _, _) =>
+                                                            value switch
+                                                            {
+                                                                "" or null => Visibility
+                                                                    .Collapsed,
+                                                                _ => Visibility.Visible
+                                                            })
                                        });
 
                 var footer = new ContentPresenter { Margin = new Margins(0, 1, 0, 0) };
-                footer.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(SuperTip.FooterProperty));
-                footer.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.FaintBrush);
+
+                footer.SetBinding(ContentPresenter.ContentProperty,
+                                  new TemplateBinding(SuperTip.FooterProperty));
+
+                footer.SetResourceReference(TextElement.ForegroundProperty,
+                                            ThemeKeys.FaintBrush);
+
                 footer.SetBinding(UIElement.VisibilityProperty,
                                   new TemplateBinding(SuperTip.FooterProperty)
                                   {
                                       Converter = ValueConverter.Create(
-                                          convert: (value, _, _, _) => 
-                                              value switch
-                                              {
-                                                  "" or null => Visibility.Collapsed,
-                                                  _          => Visibility.Visible
-                                                  
-                                              })
+                                          convert: (value, _, _, _) =>
+                                                       value switch
+                                                       {
+                                                           "" or null => Visibility
+                                                               .Collapsed,
+                                                           _ => Visibility.Visible
+                                                       })
                                   });
+
+                ctx.RegisterName("PART_KeyTips", hops);
+                ctx.RegisterName("PART_Footer", footer);
+                ctx.RegisterName("PART_Description", description);
 
                 var stack = new StackPanel { Orientation = Orientation.Vertical };
                 stack.Children.Add(header);
                 stack.Children.Add(description);
                 stack.Children.Add(footer);
                 return stack;
-            }));
+            });
+
+        t.Styles.Add(
+            new Style(Selectors.OfType<SuperTip>())
+            {
+                When =
+                {
+                    new DataCondition
+                    {
+                        Binding = new Binding(SuperTip.UseCompactLayoutProperty)
+                                  {
+                                      RelativeSource = RelativeSource.Ancestor<SuperTip>()
+                                  },
+                        Value = true
+                    }
+                },
+                Children =
+                {
+                    new Style(Selectors.Nesting().Template().Name("PART_Description"))
+                        .Set(UIElement.MarginProperty, Margins.Zero),
+                    new Style(Selectors.Nesting().Template().Name("PART_Footer"))
+                        .Set(UIElement.MarginProperty, Margins.Zero)
+                }
+            });
+
+        return new Style { Key = "Bars.SuperTip" }
+               .Set(UIElement.MaxWidthProperty, ToolTipService.MaxToolTipWidth)
+               .Set(UIElement.MaxHeightProperty, ToolTipService.MaxToolTipHeight)
+               .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
+               .Set(Control.TemplateProperty, t);
+    }
 
     /// <summary>
     /// The text inverse application for BarButton-embedded icons. Rather than forward the inverse property
@@ -1204,7 +1269,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".accent")
                {
-                   Key = "Bars" + ThemeClasses.Accent,
+                   Key = "Bars" + ThemeClassKeys.Accent,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +
@@ -1243,7 +1308,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".info")
                {
-                   Key = "Bars" + ThemeClasses.Info,
+                   Key = "Bars" + ThemeClassKeys.Info,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +
@@ -1282,7 +1347,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".cool")
                {
-                   Key = "Bars" + ThemeClasses.Cool,
+                   Key = "Bars" + ThemeClassKeys.Cool,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +
@@ -1321,7 +1386,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".danger")
                {
-                   Key = "Bars" + ThemeClasses.Danger,
+                   Key = "Bars" + ThemeClassKeys.Danger,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +
@@ -1360,7 +1425,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".success")
                {
-                   Key = "Bars" + ThemeClasses.Success,
+                   Key = "Bars" + ThemeClassKeys.Success,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +
@@ -1399,7 +1464,7 @@ internal static class CursorialBarsTheme
     {
         return new Style(".warning")
                {
-                   Key = "Bars" + ThemeClasses.Warning,
+                   Key = "Bars" + ThemeClassKeys.Warning,
                    Children =
                    {
                        new Style($"^:is(BarButton), " +

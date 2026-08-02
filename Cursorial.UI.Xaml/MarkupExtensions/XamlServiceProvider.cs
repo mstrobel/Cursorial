@@ -2,6 +2,8 @@
 
 using System.Globalization;
 
+using Cursorial.UI.Data;
+
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
@@ -48,6 +50,7 @@ internal sealed class XamlServiceProvider :
         if (serviceType == typeof(IXamlLineInfo)) return this;
         if (serviceType == typeof(IAmbientResources)) return this;
         if (serviceType == typeof(INameScopeProvider)) return this;
+        if (serviceType == typeof(IPathTypeResolver)) return _builder.PathTypeResolver;
         return null;
     }
 

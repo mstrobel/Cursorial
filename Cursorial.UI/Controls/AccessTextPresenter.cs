@@ -3,6 +3,7 @@ using System.Globalization;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI.Input;
 
@@ -52,6 +53,8 @@ public sealed class AccessTextPresenter : UIElement
         AffectsRender<AccessTextPresenter>(TextProperty, IndicatorBrushProperty, KeyWeightProperty, KeyInverseProperty, KeyUnderlineProperty);
     }
 
+    private string? _cachedLabel;
+
     /// <summary>Creates an empty presenter.</summary>
     public AccessTextPresenter()
     {
@@ -85,14 +88,45 @@ public sealed class AccessTextPresenter : UIElement
     protected override Size MeasureOverride(Size availableSize)
     {
         var text = Text.Text;
+        _cachedLabel = null;
         return string.IsNullOrEmpty(text) ? Size.Empty : new Size(GraphemeWidth.StringWidth(text), 1);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var label = Text;
+        var labelText = label.Text.Trim();
+        
+        if (string.IsNullOrEmpty(labelText) || finalSize.IsEffectivelyEmpty)
+        {
+            _cachedLabel = string.Empty;
+            return finalSize;
+        }
+
+        var textWidth = GraphemeWidth.StringWidth(labelText);
+        if (textWidth > finalSize.Columns)
+        {
+            _cachedLabel = $"{labelText.Substring(0, finalSize.Columns - 1)}{TextFormatter.DefaultEllipsis}";
+            SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
+        }
+        else
+        {
+            _cachedLabel = labelText;
+
+            if (GetValueSource(TextBlock.IsTrimmedProperty) is { Kind: ValueSourceKind.Default, IsCurrentValue: true })
+                ClearValue(TextBlock.IsTrimmedPropertyKey);
+        }
+
+        return finalSize;
     }
 
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
         var label = Text;
-        if (string.IsNullOrEmpty(label.Text) || context.Bounds.IsEmpty)
+        var labelText = _cachedLabel ?? label.Text;
+
+        if (string.IsNullOrEmpty(labelText) || context.Bounds.IsEmpty)
             return;
 
         // The effective TextElement attributes ride the content text, so a NoColor reverse-video state
@@ -107,19 +141,19 @@ public sealed class AccessTextPresenter : UIElement
 
         var foreground = Foreground;
         if (foreground is {} brush)
-            context.DrawText(0, 0, label.Text, brush, baseStyle: baseTextStyle);
+            context.DrawText(0, 0, labelText, brush, baseStyle: baseTextStyle);
         else
-            context.DrawText(0, 0, label.Text, Color.Default, baseStyle: baseTextStyle);
+            context.DrawText(0, 0, labelText, Color.Default, baseStyle: baseTextStyle);
 
         // The cue: underline the KeyIndex grapheme when AccessKeyManager.ShowUnderline is set on us.
         // The theme's ':access-keys AccessTextPresenter' rule flips ShowUnderline on EVERY presenter
         // under the cue-bearing root regardless of whether its label carries a mnemonic, so the HasKey
         // clause — not a false ShowUnderline — is what guarantees a mnemonic-less label draws no
         // underline even while the cue is active.
-        if (!label.HasKey || !AccessKeyManager.GetShowUnderline(this))
+        if (!label.HasKey || label.KeyIndex >= labelText.Length || !AccessKeyManager.GetShowUnderline(this))
             return;
 
-        var (column, cluster) = GraphemeAt(label.Text, label.KeyIndex);
+        var (column, cluster) = GraphemeAt(labelText, label.KeyIndex);
         if (cluster is null)
             return;
 

@@ -96,4 +96,19 @@ public readonly record struct TextSizing(
         // a regular MonospaceFont would be the better choice.
         return needsScale || needsWidth;
     }
+
+    public (int Columns, int Rows) GetGlyphSize()
+    {
+        // Cell footprint per the spec: each cluster occupies a (Scale × Width) block. Scale=0
+        // is invalid; treat as 1. Width=0 ("auto") falls back to the cluster's natural width
+        // (1 for narrow, 2 for wide). For multi-line text, the bounding rectangle is the
+        // widest line by the number of lines, each scale-rows tall.
+
+        int unitSize = Scale;
+
+        if (Numerator is var numerator and > 0 && Denominator is var denominator and > 0)
+            unitSize = unitSize * numerator / denominator;
+
+        return (unitSize, unitSize);
+    }
 }

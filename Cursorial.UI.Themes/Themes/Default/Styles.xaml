@@ -33,13 +33,17 @@
     <!--
       Active selection brushes for ListBoxItem, TreeViewItem inside a :focus-within parent. 
     -->
-    <Style Selector="ListBox:focus-within, TreeView:focus-within">
+    <Style Selector="ListBox:focus-within, TreeView:focus-within, ListView:focus-within">
       <Style.Children>
-        <Style Selector="^ :is(ListBoxItem):selected, ^ :is(TreeViewItem):selected">
+        <Style Selector="^ :is(ListBoxItem):selected,
+                         ^ :is(TreeViewItem):selected,
+                         ^ :is(ListViewItem):selected">
           <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundSelected}}" />
           <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundSelected}}" />
         </Style>
-        <Style Selector="^ :is(ListBoxItem):focus-visible:selected, ^ :is(TreeViewItem):focus-visible:selected">
+        <Style Selector="^ :is(ListBoxItem):focus-visible:selected, 
+                         ^ :is(TreeViewItem):focus-visible:selected,
+                         ^ :is(ListViewItem):focus-visible:selected">
           <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ListItemBackgroundFocus}}" />
           <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.ListItemForegroundFocus}}" />
         </Style>
@@ -195,6 +199,29 @@
 
     <Style Selector="MenuItem Separator, Menu Separator">
       <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.MenuBorderPen}}"/>
+    </Style>
+
+    <Style Selector=":is(Window)">
+      <Style.Children>
+        <Style Selector="^.accent">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.AccentBorderPen}}" />
+        </Style>
+        <Style Selector="^.info">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.InfoBorderPen}}" />
+        </Style>
+        <Style Selector="^.cool">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.CoolBorderPen}}" />
+        </Style>
+        <Style Selector="^.success">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.SuccessBorderPen}}" />
+        </Style>
+        <Style Selector="^.warning">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.WarningBorderPen}}" />
+        </Style>
+        <Style Selector="^.danger">
+          <Setter Property="Control.BorderPen" Value="{DynamicResource {x:Static ThemeKeys.DangerBorderPen}}" />
+        </Style>
+      </Style.Children>
     </Style>
 
     <Style x:Key="{x:Static ThemeClasses.Accent}" Selector=".accent">

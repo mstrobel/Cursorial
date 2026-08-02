@@ -162,6 +162,19 @@ public static class TaskDialog
                          Resources = { MergedDictionaries = { CursorialDialogThemes.BuiltIn } }
                      };
 
+        var themeClass = request.Severity switch
+                         {
+                             TaskDialogSeverity.Information => ThemeClass.Info,
+                             TaskDialogSeverity.Question    => ThemeClass.Cool,
+                             TaskDialogSeverity.Warning     => ThemeClass.Warning,
+                             TaskDialogSeverity.Error       => ThemeClass.Danger,
+                             TaskDialogSeverity.Success     => ThemeClass.Success,
+                             _                              => null
+                         };
+
+        if (themeClass is not null)
+            window.Classes.Add(themeClass);
+        
         window.SetResourceReference(Control.BackgroundProperty, ThemeKeys.ElevationDialog);
 
         Button? focusTarget = null;

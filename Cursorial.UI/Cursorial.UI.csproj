@@ -34,6 +34,7 @@
              direct-draw rows presenter), mirroring the Bars grant. Third-party data controls stay public-only. -->
         <InternalsVisibleTo Include="Cursorial.UI.DataViews" />
         <InternalsVisibleTo Include="Cursorial.UI.DataViews.Tests" />
+        <InternalsVisibleTo Include="Cursorial.UI.Dialogs" />
         <InternalsVisibleTo Include="Cursorial.Demo" />
         <InternalsVisibleTo Include="Cursorial.Gallery" />
         <InternalsVisibleTo Include="cursorial-demo" />

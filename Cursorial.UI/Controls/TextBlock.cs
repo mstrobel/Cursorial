@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 
@@ -29,15 +30,23 @@ public class TextBlock : UIElement
 
     /// <summary>The wrap mode (<c>AffectsMeasure | AffectsRender</c>).</summary>
     public static readonly StyledProperty<WrapMode> TextWrappingProperty =
-        UIProperty.Register<TextBlock, WrapMode>(nameof(TextWrapping), defaultValue: WrapMode.NoWrap);
+        TextElement.TextWrappingProperty.AddOwner<TextBlock>();
 
     /// <summary>The horizontal alignment of wrapped lines (<c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
-        UIProperty.Register<TextBlock, TextAlignment>(nameof(TextAlignment), defaultValue: TextAlignment.Left);
+        UIProperty.Register<TextBlock, TextAlignment>(nameof(TextAlignment),
+                                                      defaultValue: TextAlignment.Left);
 
     /// <summary>The trimming mode for overflowing lines (<c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
-        UIProperty.Register<TextBlock, TextTrimming>(nameof(TextTrimming), defaultValue: TextTrimming.None);
+        TextElement.TextTrimmingProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="IsTrimmedProperty"/>
+    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+        UIProperty.RegisterReadOnly<TextBlock, bool>(nameof(IsTrimmed));
+
+    /// <summary>Indicates whether any of the text content had trimming applied.</summary>
+    public static readonly StyledProperty<bool> IsTrimmedProperty = IsTrimmedPropertyKey.Property;
 
     /// <summary>The text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
@@ -84,8 +93,8 @@ public class TextBlock : UIElement
         // label, a fixed-width status line) measures identically and would never repaint unless the
         // content properties are ALSO AffectsRender. Text/Markup/TextWrapping change the painted glyphs
         // independently of size, so they carry both lanes.
-        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty);
-        AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextWrappingProperty, TextAlignmentProperty, TextTrimmingProperty);
+        AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
+        AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
     }
 
     /// <summary>Creates an empty text block.</summary>
@@ -138,26 +147,25 @@ public class TextBlock : UIElement
     /// <inheritdoc cref="TextTrimmingProperty"/>
     public TextTrimming TextTrimming { get => GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
 
+    /// <inheritdoc cref="IsTrimmedProperty"/>
+    public bool IsTrimmed { get => GetValue(IsTrimmedProperty); protected set => SetValue(IsTrimmedPropertyKey, value); }
+
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
-
+    
     /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize)
     {
-        var formatted = GetFormatted(Math.Max(1, availableSize.Columns));
+        var formatted = GetFormatted(Math.Max(1, availableSize.Columns), Math.Max(1, availableSize.Rows));
         return formatted.Size;
     }
 
-    /*
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var formatted = GetFormatted(Math.Max(1, finalSize.Columns));
-        if (formatted.Size.Columns < finalSize.Columns || formatted.Size.Rows < finalSize.Rows)
-            InvalidateMeasure();
-        
-        return base.ArrangeOverride(finalSize);
+        var formatted = GetFormatted(Math.Max(1, finalSize.Columns), finalSize.Rows);
+        SetValue(IsTrimmedPropertyKey, formatted.HasTrimmedLines);
+        return finalSize;
     }
-    */
 
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
@@ -180,7 +188,7 @@ public class TextBlock : UIElement
             context.DrawFormattedText(formatted, context.Bounds, resolved.Flags, resolved.UnderlineShape);
     }
 
-    private FormattedText GetFormatted(int width)
+    private FormattedText GetFormatted(int width, int? height = null)
     {
         var caps = UIApplication.Current is {} app ? app.Capabilities.Output : null;
 
@@ -190,34 +198,44 @@ public class TextBlock : UIElement
             UIApplication.Current?.ActualThemeVariant,
             caps);
 
-        if (_cached is {} cached && _cacheKey.Equals(key))
+        if (_cached is {} cached && _cacheKey.Equals(key) && (cached.Size.Rows > height) is false)
             return cached;
 
-        var formatted = Format(width, caps);
+        var formatted = Format(width, caps, height);
         _cached = formatted;
         _cacheKey = key;
         return formatted;
     }
 
-    private FormattedText Format(int width, Output.Capabilities.OutputCapabilities? caps)
+    private FormattedText Format(int width,
+                                 OutputCapabilities? caps,
+                                 int? maxHeight = null,
+                                 TextTrimming? trimmingOverride = null, 
+                                 WrapMode? wrappingOverride = null)
     {
         var formatter = new TextFormatter
                         {
-                            Wrap = TextWrapping,
                             Alignment = TextAlignment,
-                            Trim = TextTrimming
+                            Trim = trimmingOverride ?? TextTrimming,
+                            Wrap = wrappingOverride ?? TextWrapping
                         };
 
         RichText document;
+
         if (Markup is {} markup)
         {
             // Markup wins over Text (doc §12.7); [brush=…] resolves via the S7 chain.
-            var options = new TextMarkupOptions { BrushResolver = ResourceBrushResolver.Create(this) };
+            var options = new TextMarkupOptions
+                          {
+                              BrushResolver = ResourceBrushResolver.Create(this),
+                              DefaultTextTrimming = trimmingOverride ?? TextTrimming,
+                              DefaultTextWrapping = wrappingOverride ?? TextWrapping
+                          };
             document = TextMarkup.Parse(markup, options);
         }
         else if (Text is { Length: > 0 } text)
         {
-            document = BuildPlainText(text);
+            document = BuildPlainText(text, trimmingOverride, wrappingOverride);
         }
         else
         {
@@ -227,29 +245,36 @@ public class TextBlock : UIElement
         if (document.IsEmpty)
             return FormattedText.Empty;
 
-        return formatter.Format(document, width, capabilities: caps);
+        return formatter.Format(document, width, maxHeight, capabilities: caps);
     }
 
     // Builds a single paragraph honoring hard line breaks (\r\n | \n | \r → LineBreak), per the
     // P2.6 text-tier behavior the matrix pins (C162).
-    private static RichText BuildPlainText(string text)
+    private RichText BuildPlainText(string text,
+                                    TextTrimming? trimmingOverride = null,
+                                    WrapMode? wrappingOverride = null)
     {
-        var builder = new RichTextBuilder();
+        var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
+                                          defaultWrap: wrappingOverride ?? TextWrapping);
+
         var start = 0;
 
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];
+
             if (c is not ('\n' or '\r'))
                 continue;
 
             if (i > start)
                 builder.Run(text[start..i]);
+
             builder.LineBreak();
 
             // Treat \r\n as one break.
             if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
                 i++;
+
             start = i + 1;
         }
 
@@ -257,6 +282,19 @@ public class TextBlock : UIElement
             builder.Run(text[start..]);
 
         return builder.Build();
+    }
+
+    internal string? GetUntrimmedText(int maxWidth)
+    {
+        var formattedText = Format(maxWidth,
+                                   UIApplication.Current?.EffectiveCapabilities.Output,
+                                   trimmingOverride: TextTrimming.CharacterEllipsis,
+                                   wrappingOverride: WrapMode.CharacterWrap);
+
+        if (formattedText == FormattedText.Empty)
+            return null;
+
+        return formattedText.ToPlainText();
     }
 
     private readonly record struct CacheKey(

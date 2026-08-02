@@ -67,12 +67,32 @@ public class Section12_Scrolling
         var content = new Probe(10, 100);
         presenter.Content = content;
 
-        presenter.Measure(new Size(20, 10));
+        // The scrollable-axis constraint is LayoutMath.Unbounded for measure UNLESS the content requests more
+        // than LayoutLimits.MaxScrollExtent, in which case it is remeasured with the LayoutLimits.MaxScrollExtent.
 
-        // The scrollable-axis constraint is LayoutLimits.MaxScrollExtent (doc §12 scrolling note —
-        // supersedes the spec's Unbounded); the non-scrollable axis passes through.
-        Assert.Equal(new Size(20, LayoutLimits.MaxScrollExtent), Assert.Single(content.MeasureConstraints));
+        // Verify the content is given LayoutMath.Unbounded when it isn't greedy.
+        presenter.Measure(new Size(20, 10));
+        presenter.Arrange(new Rect(content.LastMeasureConstraint));
+        Assert.Equal(new Size(20, LayoutMath.Unbounded), Assert.Single(content.MeasureConstraints));
         Assert.Equal(new Size(10, 100), presenter.Extent);
+        Assert.Equal(new Size(10, 10), presenter.DesiredSize); // min(extent, constraint) per axis
+
+        // Clear results, prepare for greedy run.
+        content.MeasureConstraints.Clear();
+        content.ArrangeSizes.Clear();
+        content.InvalidateMeasure();
+        content.InvalidateArrange();
+
+        // Verify the content is remeasured with LayoutLimits.MaxScrollExtent when it tries to take too much.
+        content.Natural = new Size(10, LayoutMath.Unbounded);
+        presenter.Measure(new Size(20, 10));
+        presenter.Arrange(new Rect(content.LastMeasureConstraint));
+        Assert.Equal(2, content.MeasureConstraints.Count);
+        Assert.Equal(new Size(20, LayoutMath.Unbounded), content.MeasureConstraints[0]);
+        Assert.Equal(new Size(20, LayoutLimits.MaxScrollExtent), content.MeasureConstraints[1]);
+
+        Assert.Equal(new Size(20, LayoutLimits.MaxScrollExtent), Assert.Single(content.ArrangeSizes));
+        Assert.Equal(new Size(10, LayoutLimits.MaxScrollExtent), presenter.Extent);
         Assert.Equal(new Size(10, 10), presenter.DesiredSize); // min(extent, constraint) per axis
     }
 

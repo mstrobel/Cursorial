@@ -564,6 +564,13 @@ internal static class LoweringEmitter
 
     private static void EmitDictionaryEntry(Context c, string dictVar, int childIndex, bool defer = false)
     {
+        // Point the diagnostic cursor at THIS entry before anything can report against it. Context.CurrentLineInfo
+        // is a mutable cursor that only advances where someone sets it, so an entry that failed before emitting
+        // any member left it on the LAST member of the entry BEFORE — and the warning blamed a line the reader
+        // inspects and finds nothing wrong with. (Real report: a renamed ThemeKeys member blamed the untouched
+        // brush declared above it, in a different theme file than the one the reader opened.)
+        c.CurrentLineInfo = c.Doc.Objects[childIndex].PackedLineInfo;
+
         if (TypeSymbolOf(c.Doc, c.Doc.Objects[childIndex].TypeId) is { } t && SymbolXamlModel.IsResourceDictionary(t))
         {
             EmitResourceDictionaryBody(c, dictVar, childIndex); // <Foo.Resources><ResourceDictionary>…: fold (re-decides)
@@ -572,7 +579,13 @@ internal static class LoweringEmitter
 
         if (ResourceKeyExpr(c, childIndex) is not { } keyExpr)
         {
-            c.Todo("resource entry with no plain/x:Static/x:Type x:Key not yet lowered");
+            // Two different failures wore one message. An entry with NO supported key form is a shape the
+            // lowering has not implemented; an {x:Static}/{x:Type} key that did not RESOLVE is a broken
+            // reference in the document — usually a renamed or deleted member — and saying "no x:Static key"
+            // about a line that visibly has one sends the reader hunting for a malformed key that isn't there.
+            c.Todo(RawKey(c, childIndex) is { } raw && raw.StartsWith("{", System.StringComparison.Ordinal)
+                       ? $"resource entry whose x:Key {raw} could not be resolved (renamed or missing member?) not yet lowered"
+                       : "resource entry with no plain/x:Static/x:Type x:Key not yet lowered");
             return;
         }
 
@@ -1178,7 +1191,7 @@ internal static class LoweringEmitter
                 valueExpr = v;
             else
             {
-                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {DynamicResource} / same-dict {StaticResource} / inline object supported)");
+                c.Todo("Setter Value (only literal / {x:Static} / {x:Null} / {Binding} / {DynamicResource} / same-dict {StaticResource} / inline object supported)");
                 return;
             }
         }
@@ -1308,9 +1321,27 @@ internal static class LoweringEmitter
     {
         XamlValueKind.Text => SetterTextValueExpr(c, c.Doc.Strings[member.ValueIndex], propValueType),
         XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
-        XamlValueKind.Extension => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        XamlValueKind.Extension => SetterExtensionValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
         _ => null,
     };
+
+    // An extension Setter.Value: a {Binding} DESCRIPTOR (B15) or a *Resource carrier. The binding arm has
+    // to stay in lock-step with the loader's BuildSetter — the two lanes share the frontend, so once the
+    // parser admits {Binding} in a Setter.Value a lowered build would otherwise parse the same document
+    // happily and then DROP the setter through the CURG3001 gap: reflective styles, AOT silently doesn't.
+    // Emitting the descriptor (never an install) is what keeps the lanes identical; the styling engine
+    // installs it per element either way.
+    private static string? SetterExtensionValueExpr(Context c, in ExtensionRecord ext)
+    {
+        if (ext.Kind == ExtensionKind.Binding)
+        {
+            return c.Doc.ParsedExtensions[ext.Payload] is { } node
+                       ? ReflectiveBindingExpr(c, node, "in a Setter")
+                       : null;
+        }
+
+        return ResourceValueExpr(c, in ext);
+    }
 
     // A Text Setter value, converted to the property's value type via the (AOT-clean) converter ladder — matching
     // the reflection frontend's parse-time context-free fold. An object/string (or unknown) value type keeps the raw

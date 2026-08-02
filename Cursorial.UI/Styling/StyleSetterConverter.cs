@@ -10,7 +10,9 @@ namespace Cursorial.UI;
 /// <summary>
 /// The seal-time setter-value conversion ladder (style matrix SD9 — the non-XAML converter set;
 /// conversion runs exactly once at <see cref="Style.Seal"/>, never at activation). The v1 ladder,
-/// in order: <see cref="UIProperty.UnsetValue"/> → valueless entry; <see langword="null"/> for
+/// in order: <see cref="UIProperty.UnsetValue"/> → valueless entry; the two <b>descriptors</b>
+/// (<c>ResourceReference</c> B10, <c>BindingBase</c> B15) pass through unconverted for the frame to
+/// resolve per element; <see langword="null"/> for
 /// reference/nullable property types; exact/assignable values pass through; enum targets accept
 /// member names (ordinal) and integral values; <c>Cursorial.Output.Color</c> targets accept
 /// <c>#RGB</c>/<c>#RRGGBB</c> hex strings; <c>IBrush</c> targets accept <c>Color</c> values and hex
@@ -45,6 +47,32 @@ internal static class StyleSetterConverter
         // variant flip / chain shadowing pulse). The entry installs valueless until the first resolve.
         if (value is ResourceReference)
             return new CompiledSetter(property, value, isUnset: false);
+
+        // A binding-valued setter (B15): like a DynamicResource the value is a descriptor, not the
+        // property's value type, so it passes through seal verbatim and the frame installs it per element
+        // (StyleRuleFrame.OnInstalled → BindingOperations.Install with the frame as host).
+        //
+        // This MUST sit above the assignability ladder below. BindingBase is assignable to an
+        // object?-typed property — DataContext, ContentPresenter.Content, ButtonBase.CommandParameter —
+        // so the IsInstanceOfType early-out would otherwise take the descriptor as the LITERAL value and
+        // set the property to a Binding object: no error, no evaluation, just a wrong value. Ordering the
+        // check here is what makes "a Binding in a setter is always a binding" true for every property
+        // type, which is also the WPF rule.
+        if (value is Data.BindingBase)
+        {
+            // A direct property is not frame-hostable: BindingExpressionCore.Lane tests IsDirect BEFORE
+            // the host frame, so the expression takes the DirectProperty lane and PushToDirectProperty
+            // writes the value with no entry at all — leaving frame retraction nothing to evict, and the
+            // value stranded on the element after the rule stops matching. Refuse at seal, where the
+            // (style, rule, property) triple can still be named, rather than shipping a leak (A24).
+            if (property.IsDirect)
+            {
+                throw SealError(style, ruleIndex, property,
+                                "a direct property has no store ladder and cannot host a binding-valued setter (ledger A24)");
+            }
+
+            return new CompiledSetter(property, value, isUnset: false);
+        }
 
         var targetType = property.PropertyType;
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;

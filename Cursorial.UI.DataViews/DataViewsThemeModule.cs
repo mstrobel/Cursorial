@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 
 using Cursorial.UI.Themes;
+using Cursorial.UI.Xaml;
 
 namespace Cursorial.UI.DataViews;
 
@@ -15,5 +16,9 @@ internal static class DataViewsThemeModule
 #pragma warning disable CA2255
     [ModuleInitializer]
 #pragma warning restore CA2255
-    internal static void Initialize() => ThemeContributions.Register(Themes.CursorialDataViewsTheme.BuildContribution());
+    internal static void Initialize()
+    {
+        XamlSchemaContext.Default.RegisterAssembly(typeof(DataViewsThemeModule).Assembly);
+        ThemeContributions.Register(Themes.CursorialDataViewsTheme.BuildContribution());
+    }
 }

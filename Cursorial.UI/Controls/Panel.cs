@@ -74,9 +74,13 @@ public abstract class Panel : UIElement
         if (bounds.IsEmpty || Background is not {} background)
             return;
 
-        if (Occludes)
-            context.FillOpaque(bounds, background, overwrite: true);
+        var occludes = Occludes;
+        var resolved = TextElement.ComposeAttributes(this);
+        var attrs = resolved.Flags;
+
+        if (occludes)
+            context.FillOpaque(bounds, background, attrs, overwrite: false);
         else
-            context.FillRectangle(bounds, background);
+            context.PaintRectangle(bounds, background, attrs, overwrite: true);
     }
 }

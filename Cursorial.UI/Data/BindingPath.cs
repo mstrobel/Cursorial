@@ -1,3 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Cursorial.UI.Data;
@@ -23,7 +26,8 @@ internal enum PathSegmentKind : byte
 /// <summary>One parsed hop of a <see cref="BindingPath"/> (design doc §6.3 / spec §3.2).</summary>
 internal readonly struct PathSegment
 {
-    private PathSegment(PathSegmentKind kind, string? name, int intIndex, Type? qualifierType, UIProperty? qualifiedProperty)
+    private PathSegment(PathSegmentKind kind, string? name, int intIndex, Type? qualifierType,
+                        ResolvedProperty qualifiedProperty = default)
     {
         Kind = kind;
         Name = name;
@@ -40,21 +44,88 @@ internal readonly struct PathSegment
     /// <summary>The integer index (<see cref="PathSegmentKind.IntIndexer"/>).</summary>
     public int IntIndex { get; }
 
-    /// <summary>The resolved owner type of a type-qualified segment (the <c>Owner</c> in <c>(Owner.Member)</c>).</summary>
+    /// <summary>The resolved owner of a type-qualified segment (the <c>Owner</c> in <c>(Owner.Member)</c>).</summary>
     public Type? QualifierType { get; }
 
-    /// <summary>The <c>UIProperty</c> registered on <see cref="QualifierType"/> under <see cref="Name"/> (attached OR
-    /// regular), when one exists; <see langword="null"/> when the member is a plain CLR property qualified for clarity.</summary>
-    public UIProperty? QualifiedProperty { get; }
+    /// <summary>
+    /// The <c>UIProperty</c> or <c>PropertyInfo</c> registered on, declared by, or inherited by
+    /// <see cref="QualifierType"/> under <see cref="Name"/> (attached OR regular), when one exists;
+    /// <see langword="null"/> when the member was not type-qualified.</summary>
+    public ResolvedProperty QualifiedProperty { get; }
 
-    public static PathSegment Property(string name) => new(PathSegmentKind.Property, name, 0, null, null);
+    public static PathSegment Property(string name) => new(PathSegmentKind.Property, name, 0, null);
 
-    public static PathSegment IntIndexer(int index) => new(PathSegmentKind.IntIndexer, null, index, null, null);
+    public static PathSegment IntIndexer(int index) => new(PathSegmentKind.IntIndexer, null, index, null);
 
-    public static PathSegment StringIndexer(string key) => new(PathSegmentKind.StringIndexer, key, 0, null, null);
+    public static PathSegment StringIndexer(string key) => new(PathSegmentKind.StringIndexer, key, 0, null);
 
-    public static PathSegment TypeQualified(Type owner, string member, UIProperty? property)
+    public static PathSegment TypeQualified(Type owner, string member, ResolvedProperty property)
         => new(PathSegmentKind.TypeQualified, member, 0, owner, property);
+
+    public static PathSegment TypeQualified(Type owner, string member, UIProperty property)
+        => new(PathSegmentKind.TypeQualified, member, 0, owner, property);
+
+    public static PathSegment TypeQualified(Type owner, string member, PropertyInfo property)
+        => new(PathSegmentKind.TypeQualified, member, 0, owner, property);
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal readonly struct ResolvedProperty : IEquatable<ResolvedProperty>
+{
+    public static readonly ResolvedProperty Unresolved;
+
+    [FieldOffset(0)]
+    private readonly object _property;
+    
+    private ResolvedProperty(UIProperty property)
+    {
+        _property = property;
+    }
+
+    private ResolvedProperty(PropertyInfo property)
+    {
+        _property = property;
+    }
+
+    public string? Name
+        => UIProperty?.Name ??
+           ClrProperty?.Name;
+
+    public Type? OwnerType
+        => UIProperty?.OwnerType ??
+           ClrProperty?.ReflectedType ??
+           ClrProperty?.DeclaringType;
+
+    public Type? PropertyType
+        => UIProperty?.PropertyType ??
+           ClrProperty?.PropertyType;
+
+    [MemberNotNullWhen(true, nameof(Name))]
+    [MemberNotNullWhen(true, nameof(OwnerType))]
+    [MemberNotNullWhen(true, nameof(PropertyType))]
+    public bool IsResolved => this != Unresolved;
+
+    public bool IsUIProperty => _property is UIProperty;
+
+    public bool IsClrProperty => _property is PropertyInfo;
+
+    public UIProperty? UIProperty => _property as UIProperty;
+
+    public PropertyInfo? ClrProperty => _property as PropertyInfo;
+
+    public static implicit operator ResolvedProperty(UIProperty property) => new(property);
+
+    public static implicit operator ResolvedProperty(PropertyInfo property) => new(property);
+
+    public bool Equals(ResolvedProperty other) => _property?.Equals(other) ?? false;
+
+    public override bool Equals(object? obj) => obj is ResolvedProperty other && Equals(other);
+
+    public override int GetHashCode() => _property.GetHashCode();
+
+    public static bool operator ==(ResolvedProperty left, ResolvedProperty right) => left.Equals(right);
+
+    public static bool operator !=(ResolvedProperty left, ResolvedProperty right) => !left.Equals(right);
 }
 
 /// <summary>
@@ -120,17 +191,18 @@ public sealed class BindingPath
     /// type-qualified hop (its exact <c>UIProperty</c> baked in, read via <c>UIPropertyAccessor</c> at runtime),
     /// so nothing parses or resolves lazily. Zero properties ⇒ <see cref="Empty"/>.
     /// </summary>
-    internal static BindingPath FromProperties(UIProperty[] properties)
+    internal static BindingPath FromProperties(Span<ResolvedProperty> properties)
     {
-        ArgumentNullException.ThrowIfNull(properties);
         if (properties.Length == 0)
             return Empty;
 
         var segments = new PathSegment[properties.Length];
+
         for (var i = 0; i < properties.Length; i++)
         {
-            var property = properties[i]
-                           ?? throw new ArgumentException("A binding-path property step may not be null.", nameof(properties));
+            if (properties[i] is not { IsResolved: true } property)
+                throw new ArgumentException("A binding-path property step may not be null.", nameof(properties));
+
             segments[i] = PathSegment.TypeQualified(property.OwnerType, property.Name, property);
         }
 
@@ -183,8 +255,15 @@ public sealed class BindingPath
 
     private ref struct Parser(string text, IPathTypeResolver resolver)
     {
+        private const BindingFlags ClrPropertyFlags = BindingFlags.Public |
+                                                      BindingFlags.NonPublic |
+                                                      BindingFlags.Instance;
+
+        // ReSharper disable ReplaceWithPrimaryConstructorParameter
         private readonly string _text = text;
         private readonly IPathTypeResolver _resolver = resolver;
+        // ReSharper restore ReplaceWithPrimaryConstructorParameter
+
         private int _pos;
 
         public PathSegment[] ParseAll()
@@ -284,18 +363,25 @@ public sealed class BindingPath
                 throw Fail(open, "unterminated type-qualified segment; missing ')'.");
 
             var member = _text[memberStart.._pos];
+
             if (member.Length == 0)
                 throw Fail(memberStart, "empty member in type-qualified segment.");
 
             _pos++; // consume ')'
 
-            var ownerType = _resolver.Resolve(typeToken)
-                            ?? throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
+            if (_resolver.Resolve(typeToken) is {} ownerType)
+            {
+                // A registered UIProperty on the owner (attached OR regular) if one exists; else null and the member
+                // resolves as a plain CLR property at runtime (the disambiguation/clarity case — not necessarily attached).
 
-            // A registered UIProperty on the owner (attached OR regular) if one exists; else null and the member
-            // resolves as a plain CLR property at runtime (the disambiguation/clarity case — not necessarily attached).
-            var property = UIPropertyRegistry.Find(ownerType, member);
-            return PathSegment.TypeQualified(ownerType, member, property);
+                if (UIPropertyRegistry.Find(ownerType, member) is {} uip)
+                    return PathSegment.TypeQualified(ownerType, member, uip);
+
+                if (ownerType.GetProperty(member, ClrPropertyFlags) is {} cp)
+                    return PathSegment.TypeQualified(ownerType, member, cp);
+            }
+
+            throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
         }
 
         private PathSegment ParseIndexer()

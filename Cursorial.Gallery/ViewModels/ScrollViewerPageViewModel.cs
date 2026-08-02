@@ -31,6 +31,8 @@ public sealed class ScrollViewerPageViewModel : PageViewModel
     public override string Title => "ScrollViewer";
     public override string Summary => "Every scrollbar policy x content size; wheel / arrows / PageUp-Down scroll.";
 
+    public override bool IsContentScrollable => false;
+
     /// <summary>The vertical scrollbar policy bound to the <c>ScrollViewer</c>.</summary>
     public ScrollBarVisibility VerticalScrollBarVisibility
     {
@@ -57,7 +59,7 @@ public sealed class ScrollViewerPageViewModel : PageViewModel
     public ICommand ToggleWidthCommand { get; }
 
     /// <summary>The live state line under the toggles.</summary>
-    public string Status =>
+    public override string Status =>
         $"V-bar={_vertical}  H-bar={_horizontal}  content={(_tall ? "tall(60)" : "short(3)")}/{(_wide ? "wide" : "fit")}" +
         "   .   wheel + Up/Down scroll, PgUp/PgDn page, Home/End ends";
 

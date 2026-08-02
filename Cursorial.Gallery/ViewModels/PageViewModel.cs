@@ -11,4 +11,13 @@ public abstract class PageViewModel : ViewModelBase
 
     /// <summary>A one-line description shown under the page heading.</summary>
     public abstract string Summary { get; }
+
+    public virtual bool IsContentScrollable => true;
+
+    public virtual string? Status
+    {
+        get => null;
+        // ReSharper disable once ValueParameterNotUsed
+        protected set {}
+    }
 }

@@ -599,6 +599,13 @@ public abstract partial class UIElement : IInteractionStateSink
         remove => RemoveHandler(LostMouseCaptureEvent, value);
     }
 
+    /// <inheritdoc cref="QueryCursorEvent"/>
+    public event EventHandler<QueryCursorEventArgs> QueryCursor
+    {
+        add => AddHandler(QueryCursorEvent, value);
+        remove => RemoveHandler(QueryCursorEvent, value);
+    }
+
     /// <summary>Class stage for <see cref="PreviewKeyDownEvent"/> at every tunnel node.</summary>
     protected virtual void OnPreviewKeyDown(KeyEventArgs e) {}
 

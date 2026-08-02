@@ -31,6 +31,12 @@ static string FormatElement(UIObject? element)
     return $"{element.GetType().Name}" + (name is { Length: > 0 } ? $"#{name})" : "");
 }
 
+if (args.Contains("--debug") is true)
+{
+    while (System.Diagnostics.Debugger.IsAttached is false)
+        Thread.Sleep(33);
+}
+
 try
 {
     var root = GalleryApp.BuildRoot(app);

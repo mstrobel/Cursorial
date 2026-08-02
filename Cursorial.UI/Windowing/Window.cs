@@ -94,6 +94,10 @@ public partial class Window : ContentControl
     /// frame) — read-only; the fit-to-viewport affordance keys off it (§8.7).</summary>
     public static readonly StyledProperty<bool> IsClippedByViewportProperty = IsClippedByViewportPropertyKey.Property;
 
+    /// <summary>An optional icon to display at the left side of a window's title bar.</summary>
+    public static readonly StyledProperty<object?> IconProperty =
+        UIProperty.Register<Window, object?>(nameof(Icon));
+
     /// <summary>A code-behind seam fired when a blocked window is poked (the theme flash rides §8.6's pulse, W2).</summary>
     public static readonly RoutedEvent<RoutedEventArgs> ModalAttentionEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(ModalAttention), RoutingStrategy.Bubble, typeof(Window));
@@ -122,6 +126,11 @@ public partial class Window : ContentControl
         AffectsRender<Window>(TitleProperty);
         AffectsComposite<Window>(LeftProperty, TopProperty);
         AddGlobalEffects(PropertyEffects.AffectsRender, ShadowProperty);
+        
+        // :has-icon marks a Window carrying an Icon
+        PseudoClassMapping.Register<UIElement, object?>(
+            IconProperty, 
+            static icon => icon is not null ? ":has-icon" : null, ":has-icon");
     }
 
     /// <summary>Creates a window.</summary>
@@ -216,6 +225,13 @@ public partial class Window : ContentControl
     {
         get => GetValue(CanCloseProperty);
         set => SetValue(CanCloseProperty, value);
+    }
+
+    /// <inheritdoc cref="IconProperty"/>
+    public object? Icon
+    {
+        get => GetValue(IconProperty);
+        set => SetValue(IconProperty, value);
     }
 
     /// <inheritdoc cref="IsActiveProperty"/>

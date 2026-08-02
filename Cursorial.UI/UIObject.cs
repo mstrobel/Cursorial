@@ -471,6 +471,19 @@ public abstract class UIObject : IInheritanceNode
     }
 
     /// <summary>
+    /// Replaces the effective value in place without changing its source (design doc §2.2, verbatim
+    /// P3 graft); with no entry it behaves as a Local write (M118). Observer args carry the
+    /// <em>replaced</em> lane's priority (A11). It is a mouth, not a producer: a
+    /// <c>Validate</c>-rejecting value throws like <c>SetValue</c> (PD17), and coercion applies
+    /// identically (M133/M243).
+    /// </summary>
+    public void SetCurrentValue<T>(UIPropertyKey<T> key, T value)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        SetValueCore(key.Property, value, isCurrentValue: true);
+    }
+
+    /// <summary>
     /// Removes the local value and evicts local-priority binding entries (A9: <c>ClearValue</c> is
     /// the binding kill; <c>SetValue</c> never kills). Promotion reports the new winning lane
     /// (PD10) — StyleTrigger, then Template, then Style, then Inherited, then Default. Also strips

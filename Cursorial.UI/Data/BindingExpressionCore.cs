@@ -45,6 +45,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private int _dirtyBitmask; // cross-thread coalescing (Interlocked.Or)
     private bool _drainQueued;
     private bool _readOnlyLeafWarned;
+    private bool _sourceTreeSubscribed;
     private protected bool _sourceDirtyDuringWrite;
 
     private protected static readonly object NoPushSentinel = new();
@@ -194,6 +195,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         UnsubscribeTreeEvents();
 
         _anchorElement = resolved;
+
         WireAnchorObserver();
         ResolveRootAndWire();
     }
@@ -274,10 +276,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return;
 
         if (_anchorKind == AnchorKind.FindAncestor)
-        {
-            _anchorElement.AttachedToTree += OnAnchorTreeChanged;
-            _anchorElement.DetachedFromTree += OnAnchorTreeChanged;
-        }
+            SubscribeVisualTreeEvents();
 
         _anchorElement.AttachedToLogicalTree += OnAnchorLogicalTreeChanged;
         _anchorElement.DetachedFromLogicalTree += OnAnchorLogicalTreeChanged;
@@ -288,16 +287,34 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_anchorElement is null)
             return;
 
-        // Removing a handler that was never added (a non-FindAncestor anchor never subscribed the visual
-        // events) is a harmless no-op, so both pairs come off unconditionally.
-        _anchorElement.AttachedToTree -= OnAnchorTreeChanged;
-        _anchorElement.DetachedFromTree -= OnAnchorTreeChanged;
+        UnsubscribeVisualTreeEvents();
+
         _anchorElement.AttachedToLogicalTree -= OnAnchorLogicalTreeChanged;
         _anchorElement.DetachedFromLogicalTree -= OnAnchorLogicalTreeChanged;
         _anchorElement.TemplatedParentChanged -= OnAnchorTemplatedParentChanged;
     }
 
-    private void OnAnchorTemplatedParentChanged(object? sender, EventArgs e)
+    private void SubscribeVisualTreeEvents()
+    {
+        if (_anchorElement is null || _sourceTreeSubscribed)
+            return;
+
+        _anchorElement.AttachedToTree += OnAnchorTreeChanged;
+        _anchorElement.DetachedFromTree += OnAnchorTreeChanged;
+        _sourceTreeSubscribed = true;
+    }
+
+    private void UnsubscribeVisualTreeEvents()
+    {
+        if (_anchorElement is null || !_sourceTreeSubscribed)
+            return;
+
+        _anchorElement.AttachedToTree -= OnAnchorTreeChanged;
+        _anchorElement.DetachedFromTree -= OnAnchorTreeChanged;
+        _sourceTreeSubscribed = false;
+    }
+
+    private void OnAnchorTemplatedParentChanged(object? sender, TemplatedParentChangedEventArgs e)
     {
         if (!IsDisposed)
             ResolveRootAndWire();
@@ -331,6 +348,13 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             _anchorObserverToken = null;
         }
 
+        // Apart from the case above, where the anchor element isn't attached to a visual tree, the
+        // only time we maintain a visual tree subscription is for 'FindAncestor' bindings. If we made
+        // it this far, the anchor element is attached, so unsubscribe from visual tree events EXCEPT
+        // for the 'FindAncestor' case.
+        if (_anchorKind is not AnchorKind.FindAncestor)
+            UnsubscribeVisualTreeEvents();
+
         var resolved = ResolveRoot(out var newRoot, out var failure);
 
         // Re-install the parent-DataContext observer on the (possibly new) logical parent — on FAILURE
@@ -341,20 +365,21 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         // DataContext="{Binding …}" re-scope permanently (BD2).
         if (_anchorKind == AnchorKind.ParentDataContext && _anchorElement?.LogicalParent is {} anchorParent)
         {
-            _anchorObserverToken = anchorParent.AddObserver(
-                DataContextSupport.DataContextProperty, new AnchorObserver(this));
+            _anchorObserverToken = anchorParent.AddObserver(DataContextSupport.DataContextProperty,
+                                                            new AnchorObserver(this));
         }
 
         if (!resolved)
         {
             DisposeLaneSpecific();
+
             _root = null;
             Status = failure == BindingFailureKind.NameNotFound ? BindingStatus.PathError : BindingStatus.SourceMissing;
 
             // SourceMissing parks silently — it recovers on attach (a UIElement) or when the inheritance
             // parent arrives (a non-UIElement gesture target re-anchors on its owner element, BD13). Other
             // failures, and any unresolved watch-only binding, trace a warning.
-            if (failure != BindingFailureKind.SourceMissing || _watchCallback is not null)
+            if (failure is not (BindingFailureKind.SourceMissing or BindingFailureKind.None) || _watchCallback is {})
                 MaybeTrace(failure, BindingTraceLevel.Warning, FailureMessage(failure));
 
             ProduceUnsetOrFallback();
@@ -616,7 +641,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         var culture = _binding.EffectiveCulture;
         var targetType = _targetProperty.PropertyType;
 
-        if (Converter is {} converter)
+        if (Converter is {} converter && !ReferenceEquals(value, Binding.DoNothing))
         {
             try
             {
@@ -637,6 +662,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (value is null && _binding.HasTargetNullValue)
             value = _binding.TargetNullValue;
 
+        if (ReferenceEquals(value, Binding.DoNothing))
+            return HandleDoNothing(out isUnset, targetType);
+
         if (_binding.StringFormat is {} format)
         {
             if (targetType == typeof(string) || targetType == typeof(object))
@@ -646,7 +674,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             else
             {
                 MaybeTrace(BindingFailureKind.None, BindingTraceLevel.Warning,
-                           $"StringFormat '{format}' ignored: target type '{targetType.Name}' is not string or object.");
+                           $"StringFormat '{format}' ignored: target type '{targetType.Name}' " +
+                           $"is not string or object.");
             }
         }
 
@@ -656,6 +685,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
     private object? CoerceToTargetType(object? value, out bool isUnset)
     {
         isUnset = false;
+
         var targetType = _targetProperty.PropertyType;
         var converted = ValueConversion.Convert(value, targetType, _binding.EffectiveCulture);
 
@@ -667,14 +697,31 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             return FallbackOrUnset(out isUnset);
         }
 
+        if (ReferenceEquals(converted, Binding.DoNothing))
+            return HandleDoNothing(out isUnset, targetType);
+
         return converted;
     }
 
-    private object? FallbackOrUnset(out bool isUnset)
+    private object? HandleDoNothing(out bool isUnset, Type targetType)
     {
-        if (_binding.HasFallbackValue)
+        if (BindingDiagnostics.ShouldConstruct(BindingTraceLevel.Verbose, _binding.Trace))
         {
-            var converted = ValueConversion.Convert(_binding.FallbackValue, _targetProperty.PropertyType, _binding.EffectiveCulture);
+            MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Verbose,
+                       $"converter returned '{Binding.DoNothing}' during attempted conversion to target type " +
+                       $"'{targetType.Name}'; no value will be produced.");
+        }
+
+        return FallbackOrUnset(out isUnset, allowFallback: false);
+    }
+
+    private object? FallbackOrUnset(out bool isUnset, bool allowFallback = true)
+    {
+        if (allowFallback && _binding.HasFallbackValue)
+        {
+            object? converted = ValueConversion.Convert(_binding.FallbackValue,
+                                                        _targetProperty.PropertyType,
+                                                        _binding.EffectiveCulture);
 
             if (!ReferenceEquals(converted, ValueConversion.Failed))
             {
@@ -683,7 +730,8 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             }
 
             MaybeTrace(BindingFailureKind.TypeMismatch, BindingTraceLevel.Warning,
-                       $"the fallback value '{_binding.FallbackValue}' could not be converted to target type '{_targetProperty.PropertyType.Name}'.");
+                       $"the fallback value '{_binding.FallbackValue}' could not be converted to " +
+                       $"target type '{_targetProperty.PropertyType.Name}'.");
         }
 
         isUnset = true;
@@ -1050,16 +1098,16 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                                       level, kind, DescribePath(), description, message, Environment.TickCount64));
     }
 
-    private string FailureMessage(BindingFailureKind kind) => kind switch
-                                                              {
-                                                                  BindingFailureKind.SourceMissing =>
-                                                                      "the binding source (anchor) is unresolved; parked until attach.",
-                                                                  BindingFailureKind.NameNotFound =>
-                                                                      $"the element name '{_binding.ElementName}' was not found in scope.",
-                                                                  BindingFailureKind.AncestorNotFound =>
-                                                                      $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",
-                                                                  _ => "the binding source could not be resolved."
-                                                              };
+    private string FailureMessage(BindingFailureKind kind) =>
+        // @formatter:off
+        kind switch
+        {
+            BindingFailureKind.SourceMissing    => "the binding source (anchor) is unresolved; parked until attach.",
+            BindingFailureKind.NameNotFound     => $"the element name '{_binding.ElementName}' was not found in scope.",
+            BindingFailureKind.AncestorNotFound => $"no ancestor of type '{_binding.RelativeSource?.AncestorType?.Name}' was found.",
+            _                                   => "the binding source could not be resolved."
+        };
+        // @formatter:on
 
     internal override BindingExpressionExplanation Explain()
     {

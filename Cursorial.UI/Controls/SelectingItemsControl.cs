@@ -103,7 +103,7 @@ public abstract class SelectingItemsControl : ItemsControl
 
         if (SelectionMode == SelectionMode.Multiple && shift)
             _selection.SelectRangeFromAnchor(index);
-        else if (SelectionMode == SelectionMode.Multiple && ctrl)
+        else if (ctrl)
             _selection.Toggle(index);
         else
             _selection.Select(index);
@@ -131,7 +131,8 @@ public abstract class SelectingItemsControl : ItemsControl
             return;
 
         SelectByGesture(index, modifiers);
-        if (clickCount >= 2)
+
+        if (clickCount % 2 == 0)
             RaiseItemActivated(index);
     }
 

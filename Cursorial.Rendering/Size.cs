@@ -14,6 +14,9 @@ public readonly record struct Size(int Columns, int Rows)
     /// <summary>True when both dimensions are zero.</summary>
     public bool IsEmpty => Columns == 0 && Rows == 0;
 
+    /// <summary>True when either dimension is zero.</summary>
+    public bool IsEffectivelyEmpty => Columns == 0 || Rows == 0;
+
     /// <summary>
     /// Deconstructs the current Size instance into its individual components: columns and rows.
     /// </summary>

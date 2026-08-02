@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Controls;
@@ -81,9 +82,13 @@ public sealed class ContextMenu : ItemsControl
 
     /// <summary>
     /// Opens the menu. When <paramref name="position"/> is <see langword="null"/> it lands at the pointer
-    /// (the right-click case); otherwise it drops below <paramref name="target"/> offset by the (column, row)
-    /// of <paramref name="position"/> (the keyboard / programmatic case). Re-opening relocates an open menu.
+    /// (the right-click case); otherwise it opens at the screen-space coordinates indicated by
+    /// <paramref name="position"/> (the keyboard / programmatic case). Re-opening relocates an open menu.
     /// </summary>
+    /// <remarks>
+    /// Screen-space coordinates may be obtained by translating element-local coordinates using
+    /// <see cref="UIElement.TranslateToScreen(int, int)"/>.
+    /// </remarks>
     public void Open(UIElement target, CellPosition? position = null)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -107,15 +112,13 @@ public sealed class ContextMenu : ItemsControl
 
         if (position is {} p)
         {
-            _popup.Placement = PlacementMode.Bottom; // keyboard / explicit: drop below the element
-            _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, p.Column);
-            _popup.SetCurrentValue(Popup.VerticalOffsetProperty, p.Row);
+            _popup.Placement = PlacementMode.Pointer; // keyboard / explicit: drop below the element
+            _popup.PointerPlacementOrigin = (p.Column, p.Row);
         }
         else
         {
             _popup.Placement = PlacementMode.Pointer; // right-click: land at the cursor cell
-            _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, 0);
-            _popup.SetCurrentValue(Popup.VerticalOffsetProperty, 0);
+            _popup.PointerPlacementOrigin = null;
         }
 
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
@@ -167,6 +170,8 @@ public sealed class ContextMenu : ItemsControl
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant
         popup.SetValue(MenuItem.IsWithinMenuPropertyKey, true);
+        popup.SetBinding(MaxWidthProperty, new Binding(MaxWidthProperty) { Source = this });
+        popup.SetBinding(MaxHeightProperty, new Binding(MaxHeightProperty) { Source = this });
         popup.Closed += OnPopupClosed;
         return popup;
     }

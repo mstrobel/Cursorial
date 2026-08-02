@@ -83,46 +83,33 @@ public sealed class SizedTextFragment : IBufferFragment
         // is invalid; treat as 1. Width=0 ("auto") falls back to the cluster's natural width
         // (1 for narrow, 2 for wide). For multi-line text, the bounding rectangle is the
         // widest line by the number of lines, each scale-rows tall.
-        var scale = ExtractScale(out var numerator, out var denominator);
+
+        var width = Sizing.Width;
+        Size glyphSize = Sizing.GetGlyphSize();
 
         int maxLineColumns = 0;
 
         foreach (var line in _lines)
         {
             int lineColumns;
-            if (Sizing.Width == 0)
+
+            if (width is 0)
             {
                 // Auto width — sum natural cluster widths.
-                lineColumns = GraphemeWidth.StringWidth(line) * scale;
+                lineColumns = GraphemeWidth.StringWidth(line) * glyphSize.Columns;
             }
             else
             {
-                // Fixed width per cluster — count clusters via StringInfo.
+                // Fixed width.
                 int clusters = GraphemeWidth.ClusterCount(line);
-                lineColumns = clusters * Sizing.Width * scale * numerator / denominator;
+                lineColumns = clusters * glyphSize.Columns * width;
             }
 
             if (lineColumns > maxLineColumns)
                 maxLineColumns = lineColumns;
         }
 
-        return new Size(maxLineColumns, _lines.Length * scale * numerator / denominator);
-    }
-
-    private int ExtractScale(out int numerator, out int denominator)
-    {
-        int scale = Sizing.Scale == 0 ? 1 : Sizing.Scale;
-
-        numerator = 1;
-        denominator = 1;
-
-        if (Sizing is { Numerator: var n and > 0, Denominator: var d and > 0 })
-        {
-            numerator = n;
-            denominator = d;
-        }
-
-        return scale;
+        return new Size(maxLineColumns, _lines.Length * glyphSize.Rows);
     }
 
     /// <inheritdoc/>
@@ -134,14 +121,14 @@ public sealed class SizedTextFragment : IBufferFragment
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(capabilities);
 
+        Size glyphSize = Sizing.GetGlyphSize();
+
         // Style is emitted as an absolute SGR (rather than a delta from whatever was active)
         // because the renderer's bracketing emits SGR-reset after our DECRC; there's no
         // continuity to preserve. One emission covers all lines — SGR is terminal-global and
         // persists across the cursor moves between lines.
         // if (Style != Style.Default)
         //     SgrEncoder.WriteAbsolute(output, Style);
-
-        var scale = ExtractScale(out var numerator, out var denominator);
 
         for (int i = 0; i < _lines.Length; i++)
         {
@@ -151,7 +138,7 @@ public sealed class SizedTextFragment : IBufferFragment
             // line breaks within a single OSC 66 payload, so we emit one OSC 66 per line and
             // CUP explicitly between them.
             if (i > 0)
-                CursorWriter.WriteMoveTo(output, column, row + i * scale * numerator / denominator);
+                CursorWriter.WriteMoveTo(output, column, row + i * glyphSize.Rows);
 
             TextSizingWriter.WriteSplit(output, Sizing, _lines[i]);
         }

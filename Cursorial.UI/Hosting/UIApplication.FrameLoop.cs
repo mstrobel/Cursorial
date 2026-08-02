@@ -224,7 +224,12 @@ public sealed partial class UIApplication
 
         if (_options.TranslateNumpadKeys)
             device = device.WithNumpadKeyTranslation();
-        
+
+        // Always assembled, even when the option is off: the chain is single-shot, so the live
+        // ScrollDeadZoneEnabled toggle must find the filter in place (disabled = pass-through).
+        _wheelAxisLock = new WheelAxisLock { Enabled = ScrollDeadZoneEnabled };
+        device = device.Transform(_wheelAxisLock);
+
         device = device.WithClickSynthesis(_options.ClickOptions);
         _device = device;
 

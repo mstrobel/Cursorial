@@ -20,5 +20,8 @@ public enum TaskDialogSeverity
     Warning,
 
     /// <summary>An error.</summary>
-    Error
+    Error,
+
+    /// <summary>A success indicator.</summary>
+    Success
 }

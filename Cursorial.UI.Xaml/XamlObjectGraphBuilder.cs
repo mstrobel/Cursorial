@@ -668,10 +668,16 @@ internal sealed class XamlObjectGraphBuilder
         {
             ref readonly var childRecord = ref _doc.Objects[childIndex];
 
-            // A keyed dictionary item.
+            // A keyed dictionary item. The key resolves at the CHILD's position, not the containing member's:
+            // an unresolvable {x:Static}/{x:Type} key otherwise blamed the collection, so EVERY broken entry
+            // in a dictionary reported the same spot near its closing tag — and identical diagnostics
+            // collapse, so sixteen broken keys surfaced as ONE problem pointing at a line that was fine.
+            // The editor's Problems pane shows these verbatim, so the position is the whole diagnosis.
             if (addDictionaryItem is not null && TryGetKey(in childRecord, out string key))
             {
-                var keyValue = ConvertDictionaryKey(collection, type, key, line, column);
+                var keyValue = ConvertDictionaryKey(collection, type, key,
+                                                    LineInfo.Line(childRecord.PackedLineInfo),
+                                                    LineInfo.Column(childRecord.PackedLineInfo));
                 var item = InstantiateObject(childIndex);
                 addDictionaryItem(collection, keyValue, item);
             }
@@ -1341,7 +1347,12 @@ internal sealed class XamlObjectGraphBuilder
         {
             // Resolve an {x:Type T} / {x:Static M} key to its value (the deferred-entry path; mirrors the
             // immediate-add ConvertDictionaryKey) — what makes `<Style x:Key="{x:Type Button}">` a Type key.
-            key = ResolveDictionaryKey(explicitKey, line, column);
+            // At the CHILD's position, for the reason spelled out on that immediate-add path: the caller's
+            // line/column is the dictionary's, so a broken key there blames the container, and every broken
+            // key in one dictionary lands on the same spot and collapses into a single misleading problem.
+            key = ResolveDictionaryKey(explicitKey,
+                                       LineInfo.Line(child.PackedLineInfo),
+                                       LineInfo.Column(child.PackedLineInfo));
         }
         else if (TryGetImplicitKey(childIndex, in child, out var implicitKey))
         {
@@ -1543,6 +1554,11 @@ internal sealed class XamlObjectGraphBuilder
                             value = new ResourceReference(_extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column));
                         else if (ext.Kind == ExtensionKind.StaticResource)
                             value = _extensionHandler.ResolveStaticResource(this, _extensionHandler.ResolveResourceKey(this, in ext, _doc, line, column), line, column);
+                        // A binding-valued setter (B15) stores the DESCRIPTOR. There is deliberately no
+                        // install here: one authored binding serves every element the rule matches, so the
+                        // styling engine installs it per element from StyleRuleFrame.OnInstalled.
+                        else if (ext.Kind == ExtensionKind.Binding)
+                            value = _extensionHandler.BuildBindingDescriptor(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
                         break;
                     }
                 }

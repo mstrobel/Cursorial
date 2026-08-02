@@ -32,6 +32,23 @@ public static class LayoutMath
     /// <summary>Whether <paramref name="value"/> is the <see cref="Unbounded"/> encoding.</summary>
     public static bool IsUnbounded(int value) => value == Unbounded;
 
+    /// <summary>Whether <paramref name="value"/> is the <see cref="Unbounded"/> encoding.</summary>
+    public static bool IsUnbounded(Size value) => value is { Rows: Unbounded, Columns: Unbounded };
+
+    /// <summary>Whether <paramref name="value"/> is the <see cref="Unbounded"/> encoding.</summary>
+    public static bool IsUnbounded(Rect value) => IsUnbounded(value.Size);
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is both bounded and non-empty, e.g., neither zero nor infinitely sized. 
+    /// </summary>
+    public static bool IsBoundedNonEmpty(Size? value) =>
+        value is { Rows: > 0 and < Unbounded, Columns: > 0 and < Unbounded };
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is both bounded and non-empty, e.g., neither zero nor infinitely sized. 
+    /// </summary>
+    public static bool IsBoundedNonEmpty(Rect? value) => IsBoundedNonEmpty(value?.Size);
+
     /// <summary>
     /// Saturating add: <see cref="Unbounded"/> absorbs; a finite overflow becomes
     /// <see cref="Unbounded"/>; results floor at 0 (matrix LD18). <paramref name="b"/> may be

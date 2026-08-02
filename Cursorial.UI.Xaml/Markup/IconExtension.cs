@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 
@@ -28,6 +29,9 @@ public sealed class IconExtension : MarkupExtension
     /// <summary>The Unicode floor — see <see cref="Icon.Text"/>.</summary>
     public string? Text { get; set; }
 
+    /// <summary>The foreground brush with which to render the glyph/emoji/text tiers.</summary>
+    public IBrush? IconBrush { get; init; }
+
     /// <inheritdoc/>
     public override object ProvideValue(IServiceProvider serviceProvider)
     {
@@ -46,7 +50,8 @@ public sealed class IconExtension : MarkupExtension
                                GlyphWidth = GlyphWidth,
                                ImageUri = ImageUri,
                                Emoji = Emoji,
-                               Text = Text
+                               Text = Text,
+                               IconBrush = IconBrush
                            };
                 }
             }
@@ -59,7 +64,7 @@ public sealed class IconExtension : MarkupExtension
                            _                                                          => typeof(object)
                        };
 
-            if (type.IsAssignableFrom(typeof(Icon)) is false && 
+            if (type.IsAssignableFrom(typeof(Icon)) is false &&
                 type.IsAssignableFrom(typeof(IconCarrier)) is true)
             {
                 return new IconCarrier
@@ -68,18 +73,24 @@ public sealed class IconExtension : MarkupExtension
                            GlyphWidth = GlyphWidth,
                            ImageUri = ImageUri,
                            Emoji = Emoji,
-                           Text = Text
+                           Text = Text,
+                           IconBrush = IconBrush
                        };
             }
         }
 
-        return new Icon
-               {
-                   Glyph = Glyph,
-                   GlyphWidth = GlyphWidth,
-                   ImageUri = ImageUri,
-                   Emoji = Emoji,
-                   Text = Text
-               };
+        var icon = new Icon
+                   {
+                       Glyph = Glyph,
+                       GlyphWidth = GlyphWidth,
+                       ImageUri = ImageUri,
+                       Emoji = Emoji,
+                       Text = Text
+                   };
+
+        if (IconBrush is {} iconBrush)
+            Icon.SetIconBrush(icon, iconBrush);
+
+        return icon;
     }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
@@ -50,10 +51,18 @@ internal static class ContentRealization
     internal static UIElement? Realize(ContentPresenter host, object? content, DataTemplate? template,
                                        bool recognizesAccessKey, bool recognizesMarkup, string? stringFormat = null)
     {
+        var realized = RealizeCore(host, content, template, recognizesAccessKey, recognizesMarkup, stringFormat);
+        realized?.SetInheritanceParent(host);
+        return realized;
+    }
+
+    internal static UIElement? RealizeCore(ContentPresenter host, object? content, DataTemplate? template,
+                                           bool recognizesAccessKey, bool recognizesMarkup, string? stringFormat = null)
+    {
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
-            return ForwardTextAttributeAxes(host, template.Build(content));
+            return ForwardTextAttributeAxes(host, template.Build(content/*, host.TemplatedParent*/));
 
         switch (content)
         {
@@ -63,16 +72,23 @@ internal static class ContentRealization
                 return null;
             }
 
+            case DeferredContent dc:
+            {
+                var realized = dc.Realize();
+                AdoptElementContent(host, ForwardTextAttributeAxes(host, realized));
+                return realized;
+            }
+
             // ③ a UIElement passes through: it is a logical child of the templated parent (so it
             // inherits the host's DataContext) and a visual child of the presenter. When the presenter
             // is a template part, the templated parent owns the logical adoption (the ContentControl);
-            // a free-standing presenter adopts it itself.
+            // a freestanding presenter adopts it itself.
             case UIElement element:
             {
                 AdoptElementContent(host, ForwardTextAttributeAxes(host, element));
                 // Icon-as-content gets the Inverse cue (§2.1), but the forward is a framework binding on
-                // BORROWED content — the presenter must own its lifecycle (it is torn down on unhost, else
-                // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the install is
+                // BORROWED content — the presenter must own its lifecycle (it is torn down on un-host, else
+                // the source-anchored observer leaks the Icon; audit fix 2026-07-13). So the installation is
                 // driven by ContentPresenter.RebuildChild, not here.
                 return element;
             }
@@ -97,7 +113,22 @@ internal static class ContentRealization
             // ⑤ RichText content renders as RichTextPresenter.
             case RichText rt:
             {
+                var (hAlign, _) = host.EffectiveContentAlignment();
+
+                TextAlignment? textAlignment = hAlign switch
+                                               {
+                                                   HorizontalAlignment.Stretch => null,
+                                                   HorizontalAlignment.Left => TextAlignment.Left,
+                                                   HorizontalAlignment.Center => TextAlignment.Center,
+                                                   HorizontalAlignment.Right => TextAlignment.Right,
+                                                   _ => throw new ArgumentOutOfRangeException()
+                                               };
+
                 var rtp = new RichTextPresenter { Source = rt };
+                
+                if (textAlignment is not null)
+                    rtp.TextAlignment = textAlignment.Value;
+
                 return ForwardTextAttributeAxes(host, rtp);
             }
 
@@ -129,7 +160,7 @@ internal static class ContentRealization
     private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
     {
         // The forward source is the control the theme rules land on (the templated parent); a
-        // free-standing presenter forwards its own values (it IS the element the app styles).
+        // freestanding presenter forwards its own values (it IS the element the app styles).
         var source = host.ForwardsFromTemplatedParent ? host.TemplatedParent ?? (UIObject)host : host;
 
         // Install at the Template lane (audit fix 2026-07-13): opening the template-instantiation
@@ -144,9 +175,12 @@ internal static class ContentRealization
                 if (host.ForwardTextInverse || axis != TextElement.InverseProperty)
                     leaf.SetBinding(axis, new Binding(axis) { Source = source });
             }
-            
-            leaf.SetBinding(TextBlock.TextWrappingProperty, 
-                            new Binding(TextBlock.TextWrappingProperty) { Source = source });
+
+            if (leaf is TextBlock)
+            {
+                foreach (var property in TextElement.AllFormattingProperties)
+                    leaf.SetBinding(property, new Binding(property) { Source = source });
+            }
         }
 
         return leaf;
@@ -186,7 +220,7 @@ internal static class ContentRealization
     private static void AdoptElementContent(ContentPresenter host, UIElement element)
     {
         // If the element already has a logical parent (the ContentControl adopted it on Content change),
-        // leave it. Otherwise the presenter adopts it logically so DataContext inheritance flows.
+        // leave it. Otherwise, the presenter adopts it logically so DataContext inheritance flows.
         if (element.LogicalParent is not null)
             return;
 
@@ -195,7 +229,7 @@ internal static class ContentRealization
         if (host.TemplatedParent is ContentControl)
             return;
 
-        // A free-standing presenter (no ContentControl host): adopt logically so inheritance works.
+        // A freestanding presenter (no ContentControl host): adopt logically so inheritance works.
         host.AdoptElementContentLogically(element);
     }
 }

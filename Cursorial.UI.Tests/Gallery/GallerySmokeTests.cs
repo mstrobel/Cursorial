@@ -543,4 +543,214 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
         Assert.Contains("KeyDown", log);
         Assert.Contains("TextBox \"Input\"", log);
     }
+
+    // ═══════════════════════ the three file-dialog control pages ═══════════════════════
+
+    [Fact] // The Completion page: the fixed catalog, the fuzzy ranking, and the page's own commit hook, end to end.
+    public void CompletionPage_FuzzyRanks_AndTheCommitHookDrillsIn()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(120, 40) });
+        var root = GalleryApp.BuildRoot(host.Application);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        var page = shell.Pages.OfType<CompletionViewModel>().Single();
+        shell.SelectedPage = page;
+        host.RunUntilIdle();
+
+        var field = AllDescendants<TextBox>(root).Single(t => t.Name == "TermBox");
+        var popup = FindDescendant<CompletionPopup>(root)!; // the 0x0 overlay sharing the field's Grid cell
+
+        field.Focus();
+        host.RunUntilIdle();
+        host.SendText("inpc");
+        host.RunUntilIdle();
+
+        // The design's canonical acronym: camel humps plus the acronym tail rank INotifyPropertyChanged ahead of
+        // the INotifyCollectionChanged it shares a three-character prefix with.
+        Assert.True(popup.IsOpen);
+        Assert.Equal("INotifyPropertyChanged", popup.Entries[0].Item.Display);
+        Assert.Contains("[b]", popup.Entries[0].DisplayMarkup); // the matched cells really are bolded
+        Assert.StartsWith("interface", popup.Entries[0].KindLabel);
+
+        // Enter on a LEAF: the hook splices the bare display text over the token and closes.
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.False(popup.IsOpen);
+        Assert.Equal("INotifyPropertyChanged", field.Text);
+        Assert.Equal("INotifyPropertyChanged", page.Text); // …and the two-way binding round-tripped it
+        Assert.Contains("INotifyPropertyChanged", Screen(host, 40));
+        // The accept report survives the close that follows it (a commit-closed session is not a dismissal).
+        Assert.Contains("Enter accepted", page.Status);
+        Assert.Contains("session closed", page.Status);
+
+        // The second canonical acronym — this one lands on the '_' separator boundary, and its kind label comes
+        // straight out of the FileTypeIcons table.
+        page.Text = "";
+        host.RunUntilIdle();
+        host.SendText("hban");
+        host.RunUntilIdle();
+        Assert.Equal("hero_banner.png", popup.Entries[0].Item.Display);
+        Assert.StartsWith("PNG image", popup.Entries[0].KindLabel);
+
+        // A GROUP row is where the commit hook diverges from CompletionCommit.Splice: Enter appends the separator
+        // and KEEPS the session open, so the popup re-queries and offers that group's members.
+        page.Text = "";
+        host.RunUntilIdle();
+        host.SendText("assets");
+        host.RunUntilIdle();
+        Assert.Equal("assets", popup.Entries[0].Item.Display);
+
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.Equal("assets/", field.Text);
+        Assert.True(popup.IsOpen);
+        Assert.Equal(6, popup.MatchCount); // the group's members, not the 61-row root set
+        Assert.Contains(popup.Entries, e => e.Item.Display == "sprite_atlas.png");
+        Assert.Contains("KEPT the session open", page.Status);
+        output.WriteLine(Screen(host, 40)); // the popup surface composites into the same buffer — rows and all
+
+        // Escape dismisses the session without reverting the field (and is claimed, so it never reaches the
+        // shell's Esc-quits binding).
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(popup.IsOpen);
+        Assert.Equal("assets/", field.Text);
+    }
+
+    [Fact] // The List View page: four view modes off one property, a header-click sort with its indicator, and a
+           // live multi-selection count (SelectedItems is a snapshot, so the readout rides SelectionChanged).
+    public void ListViewPage_SwitchesViews_SortsColumns_AndMultiSelects()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(120, 40) });
+        var root = GalleryApp.BuildRoot(host.Application);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        var page = shell.Pages.OfType<ListViewPageViewModel>().Single();
+        shell.SelectedPage = page;
+        host.RunUntilIdle();
+
+        var list = FindDescendant<ListView>(root)!;
+        Assert.Equal(40, page.Rows.Count);
+        Assert.Equal(ListViewViewMode.Details, list.View);
+
+        var screen = Screen(host, 40);
+        output.WriteLine(screen);
+        Assert.Contains("Modified", screen); // the pinned header strip (outside the scroll band)
+        Assert.Contains("README.md", screen);
+        Assert.Contains("Folder", screen);   // a FileTypeIcons Type-column label in a real row
+
+        // A header CLICK is the sort funnel: ascending first, then descending, with the ▲/▼ indicator following.
+        var sizeHeader = AllDescendants<ListViewColumnHeader>(root).Single(h => Equals(h.Column?.Header, "Size"));
+        var headerCell = sizeHeader.TranslateToScreen(1, 0);
+        Click(host, headerCell.Column, headerCell.Row);
+        host.RunUntilIdle();
+
+        Assert.Equal("Size", list.SortColumn?.Header);
+        Assert.Equal(ListViewSortDirection.Ascending, list.SortDirection);
+        Assert.Equal(-1, page.Rows[0].SizeBytes);   // the built-in sort really permuted the collection
+        Assert.Contains("▲", Screen(host, 40));
+        Assert.Contains("Size ▲", page.Status);     // …and the page's Sorting handler reported it
+
+        Click(host, headerCell.Column, headerCell.Row);
+        host.RunUntilIdle();
+        Assert.Equal(ListViewSortDirection.Descending, list.SortDirection);
+        Assert.Equal(-1, page.Rows[^1].SizeBytes);
+        Assert.Contains("▼", Screen(host, 40));
+
+        // Multi-select the documented way: Space toggles the current row, Ctrl+arrow moves focus WITHOUT touching
+        // the selection, Space toggles the second one.
+        Assert.Equal(SelectionMode.Multiple, list.SelectionMode);
+        list.ItemContainerGenerator.ContainerFromIndex(0)!.Focus();
+        host.RunUntilIdle();
+        host.SendText(" ");
+        host.RunUntilIdle();
+        Assert.Contains("1 of 40 selected", page.Status);
+
+        host.SendKey(Key.DownArrow, KeyModifiers.Control);
+        host.RunUntilIdle();
+        host.SendText(" ");
+        host.RunUntilIdle();
+        Assert.Equal(2, list.SelectedItems.Count);
+        Assert.Contains("2 of 40 selected", page.Status);
+
+        // One property write swaps the items panel, the scroll axis and every row's cell composition — and takes
+        // the Details header strip with it.
+        page.ViewMode = ListViewViewMode.Tiles;
+        host.RunUntilIdle();
+        Assert.Equal(ListViewViewMode.Tiles, list.View);
+        Assert.DoesNotContain("Modified", Screen(host, 40));
+    }
+
+    [Fact] // The Breadcrumb page: the LEADING fold, chip activation as a host-answered request, and the edit-mode
+           // round trip including the KeepEditing rejection.
+    public void BreadcrumbPage_FoldsAncestors_ActivatesChips_AndRoundTripsEditMode()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(120, 40) });
+        var root = GalleryApp.BuildRoot(host.Application);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var shell = (ShellViewModel)root.DataContext!;
+        var page = shell.Pages.OfType<BreadcrumbViewModel>().Single();
+        shell.SelectedPage = page;
+        host.RunUntilIdle();
+
+        var bar = FindDescendant<BreadcrumbBar>(root)!;
+        Assert.Equal(5, page.Trail.Count);
+        Assert.Contains("Solar System", Screen(host, 40)); // the current (deepest) chip
+
+        // Deepen past what the 34-cell bar can hold: the ANCESTORS fold behind a leading "…" chip — never the
+        // current segment, which is the one the trail is about.
+        while (page.DeeperCommand.CanExecute(null))
+            page.DeeperCommand.Execute(null);
+        host.RunUntilIdle();
+
+        Assert.Equal(9, page.Trail.Count);
+        Assert.True(bar.HasOverflow);
+        Assert.True(bar.OverflowCount > 0);
+        Assert.Contains("…", Screen(host, 40));
+        Assert.Contains("Delft", Screen(host, 40));
+
+        // Activation is a REQUEST: the bar mutates nothing, the page truncates its own trail at that depth.
+        bar.ActivateItem(2);
+        host.RunUntilIdle();
+        Assert.Equal(3, page.Trail.Count);
+        Assert.Contains("Milky Way", page.CurrentNode);
+        Assert.Contains("truncated", page.Status);
+
+        // F2 → the PAGE supplies the text (the bar has no rendering of its own); Esc reverts and the committed
+        // trail is untouched.
+        Assert.True(bar.BeginEdit());
+        Assert.True(bar.IsEditing);
+        Assert.Equal("Universe / Laniakea / Milky Way", bar.EditText);
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+        Assert.False(bar.IsEditing);
+        Assert.Equal(3, page.Trail.Count);
+        Assert.Contains("canceled", page.Status);
+
+        var editBox = AllDescendants<TextBox>(bar).Single(); // PART_EditBox
+
+        // An empty commit is rejected: KeepEditing holds the box open with the text intact.
+        Assert.True(bar.BeginEdit());
+        editBox.Text = "   ";
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.True(bar.IsEditing);
+        Assert.Contains("rejected", page.Status);
+
+        // A real commit re-seeds the trail from the page's own parse.
+        editBox.Text = "Universe / Laniakea";
+        host.SendKey(Key.Enter);
+        host.RunUntilIdle();
+        Assert.False(bar.IsEditing);
+        Assert.Equal(new[] { "Universe", "Laniakea" }, page.Trail.Select(node => node.Label).ToArray());
+        Assert.False(bar.HasOverflow); // a two-chip trail fits again
+        Assert.Contains("Laniakea", Screen(host, 40));
+        output.WriteLine(Screen(host, 40));
+    }
 }

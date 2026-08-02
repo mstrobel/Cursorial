@@ -17,7 +17,10 @@ public interface IValueConverter
     /// <param name="targetType">The type to which the value is being converted.</param>
     /// <param name="parameter">An optional parameter to be used during the conversion.</param>
     /// <param name="culture">The culture to be used during the conversion.</param>
-    /// <returns>The converted value, or null if conversion is not possible.</returns>
+    /// <returns>
+    /// The converted value, or a specific representation of an <see cref="UIProperty.UnsetValue">unset value</see>
+    /// if conversion is not possible.
+    /// </returns>
     object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture);
 
     /// <summary>

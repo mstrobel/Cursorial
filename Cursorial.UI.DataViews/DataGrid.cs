@@ -2349,8 +2349,9 @@ public class DataGrid : Control
 
         int col = Math.Clamp(Math.Max(0, FocusColumnIndex), 0, presenter.ColumnLayout.Entries.Count - 1);
         int x = presenter.DrawXOf(col);
-        int y = presenter.ContentYOf(Math.Max(0, FocusViewIndex)) + 1; // the menu drops BELOW the cell
-        OpenGridContextMenu(FocusColumnIndex, new CellPosition(x, y - presenter.Bounds.Rows));
+        int y = presenter.ContentYOf(Math.Max(0, FocusViewIndex)); // the menu drops BELOW the cell
+        var p = presenter.TranslateToScreen(x, y);
+        OpenGridContextMenu(FocusColumnIndex, new CellPosition(p.Column, p.Row));
     }
 
     /// <summary>Sets the focus cell programmatically (view-space row + visible-column index).</summary>

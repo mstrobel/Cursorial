@@ -306,6 +306,15 @@ public class TextBox : Control
     /// <summary>Selects the whole text (caret at the end).</summary>
     public void SelectAll() => SetCaretAndSelection(anchor: 0, caret: Text.Length);
 
+    /// <summary>Clears the current selection (caret at the end).</summary>
+    public void ClearSelection(bool caretToEnd = false)
+    {
+        if (caretToEnd)
+            SetCaretAndSelection(anchor: Text.Length, caret: Text.Length);
+        else
+            SetCaretAndSelection(anchor: CaretIndex, caret: CaretIndex);
+    }
+
     /// <summary>Clears the text (an undoable edit, WPF parity). No-op while read-only.</summary>
     public void Clear()
     {

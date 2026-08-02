@@ -19,9 +19,9 @@ namespace Cursorial.Tests.UI.Integration;
 /// <see cref="UIHeadlessHost"/> — every scenario crosses the full spine (binding install → source
 /// notification → the property store → styling/layout/render → composited cells), not an engine
 /// harness. Covers: (a) an MVVM TwoWay round trip against an INPC viewmodel (VM change → cell, target
-/// write → VM through <see cref="UIObject.SetCurrentValue{T}"/> with the binding preserved), (b) the
-/// same round trip against a POCO using the convention-matched <c>[PropertyName]Changed</c> ladder rung
-/// (no INPC), (c) DataContext inheritance + rebind re-targeting a child binding, (d) <c>ElementName</c>
+/// write → VM through <see cref="UIObject.SetCurrentValue{T}(StyledProperty{T}, T)"/> with the binding
+/// preserved), (b) the same round trip against a POCO using the convention-matched <c>[PropertyName]Changed</c>
+/// ladder rung (no INPC), (c) DataContext inheritance + rebind re-targeting a child binding, (d) <c>ElementName</c>
 /// and <see cref="RelativeSource"/> <c>FindAncestor</c> resolution, (e) When-driven styling — a
 /// viewmodel bool flips a <see cref="Style"/> rule's activation, asserted via the styled property's
 /// effective value and the rendered cell (the P3+P4 seam closed), (f) the teardown-sweep no-leak proof
@@ -178,9 +178,9 @@ public sealed class Phase4EndToEndTests
     /// <summary>
     /// The MVVM round trip end-to-end: a TwoWay binding on an INPC viewmodel. The forward leg — a VM
     /// property change reaches the bound styled property and re-rasters into the composited cells. The
-    /// reverse leg — a target write through <see cref="UIObject.SetCurrentValue{T}"/> flows back to the
-    /// VM with the binding PRESERVED (the §13 SetCurrentValue contract), and a subsequent VM change
-    /// still drives the target (proving the binding survived the local write).
+    /// reverse leg — a target write through <see cref="UIObject.SetCurrentValue{T}(StyledProperty{T}, T)"/>
+    /// flows back to the VM with the binding PRESERVED (the §13 SetCurrentValue contract), and a subsequent
+    /// VM change still drives the target (proving the binding survived the local write).
     /// </summary>
     [Fact]
     public void MvvmTwoWayRoundTrip_Inpc_VmChangeRendersToCells_TargetWriteFlowsBack_BindingPreserved()

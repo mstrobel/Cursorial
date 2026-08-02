@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace Cursorial.UI.Dialogs;
 
@@ -31,17 +32,26 @@ public enum MessageBoxButton
     Save = 1 << 4,
 
     /// <summary>The negative "Don't Save" button (the save-triad discard).</summary>
+    [Display(Name = "Don't Save")]
     DontSave = 1 << 5,
 
-    /// <summary>OK + Cancel.</summary>
+    /// <summary>OK/Cancel.</summary>
+    [Display(Name = "Ok/Cancel")]
     OkCancel = Ok | Cancel,
 
-    /// <summary>Yes + No.</summary>
+    /// <summary>Yes/No.</summary>
+    [Display(Name = "Yes/No")]
     YesNo = Yes | No,
 
-    /// <summary>Yes + No + Cancel.</summary>
+    /// <summary>Yes/No/Cancel.</summary>
+    [Display(Name = "Yes/No/Cancel")]
     YesNoCancel = Yes | No | Cancel,
 
+    /// <summary>Save / Don't Save.</summary>
+    [Display(Name = "Save/Don't Save")]
+    SaveDontSave = Save | DontSave,
+
     /// <summary>The FB-12 unsaved-changes triad: Save / Don't Save / Cancel.</summary>
+    [Display(Name = "Save/Don't Save/Cancel")]
     SaveDontSaveCancel = Save | DontSave | Cancel
 }

@@ -1878,6 +1878,19 @@ internal sealed class XamlParser
                 return new MemberRecord(valueMemberId, XamlValueKind.Extension, extIndex, 0, LineInfo.Pack(line, column));
             }
 
+            case ExtensionKind.Binding:
+            {
+                // A binding-valued setter (ledger B15). The structured node rides through verbatim — the
+                // loader turns it into a Binding DESCRIPTOR rather than a live install, exactly as it does
+                // for a Binding-typed member such as DataCondition.Binding, and the styling engine installs
+                // it per styled element. No bindability check here: the target is the Setter's Property,
+                // already resolved to a UIProperty, and whether it can host a binding is settled at seal.
+                int bindingExt = _builder.AddExtension(
+                    new ExtensionRecord(kind, _builder.AddParsedExtension(node), LineInfo.Pack(node.Line, node.Column)));
+
+                return new MemberRecord(valueMemberId, XamlValueKind.Extension, bindingExt, 0, LineInfo.Pack(line, column));
+            }
+
             case ExtensionKind.Null:
             {
                 int c = _builder.AddConstant(null);

@@ -15,7 +15,6 @@ namespace Cursorial.Gallery.ViewModels;
 /// </summary>
 public sealed class RibbonViewModel : PageViewModel
 {
-    private string _status = "Ready — invoke a command, switch tabs, or press Alt for access keys.";
     private bool _tableSelected;
     private bool _fullScreenBackstage;
 
@@ -61,7 +60,11 @@ public sealed class RibbonViewModel : PageViewModel
     public override string Summary => "A tabbed-group Ribbon over the same bar controls — Large glyph-over-label + small buttons, one command per surface.";
 
     /// <summary>Echoes the last command invocation (bound by the page body).</summary>
-    public string Status { get => _status; private set => Set(ref _status, value); }
+    public override string? Status
+    {
+        get;
+        protected set => Set(ref field, value);
+    } = "Ready — invoke a command, switch tabs, or press Alt for access keys.";
 
     public RibbonLayoutMode LayoutMode { get; private set => Set(ref field, value); } = RibbonLayoutMode.Classic;
     public IReadOnlyList<RibbonLayoutMode> LayoutModes { get; } = [RibbonLayoutMode.Classic, RibbonLayoutMode.Simplified, RibbonLayoutMode.Compact];

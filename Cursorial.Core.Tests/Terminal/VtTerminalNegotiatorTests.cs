@@ -32,6 +32,23 @@ public class VtTerminalNegotiatorTests
                                                            ProbeTimeout = TimeSpan.FromMilliseconds(100),
                                                        };
 
+    // Opt-ins ALLOWED (so the passive probe rounds — colors, multiple-cursors — still run) but
+    // no individual enable requested: the DECRQM verification phase has nothing to verify and
+    // writes no sentinel, keeping the pre-enqueued-response accounting to two DA1s.
+    private static NegotiationOptions NoEnables() => new()
+                                                     {
+                                                         ProbeTimeout = TimeSpan.FromMilliseconds(100),
+                                                         EnableMouseButtons = false,
+                                                         EnableMouseButtonTracking = false,
+                                                         EnableMouseTracking = false,
+                                                         EnableExtendedMouseTracking = false,
+                                                         EnableFocusEvents = false,
+                                                         EnableBracketedPaste = false,
+                                                         EnableKittyKeyboard = false,
+                                                         EnableWin32InputMode = false,
+                                                         EnableSynchronizedOutput = false,
+                                                     };
+
     private static NegotiationOptions ImmediateTimeout() => new()
                                                             {
                                                                 ProbeTimeout = TimeSpan.FromMilliseconds(50),
@@ -527,6 +544,90 @@ public class VtTerminalNegotiatorTests
 
         Assert.False(caps.Output.TextSizing.Width);
         Assert.False(caps.Output.TextSizing.Scale);
+    }
+
+    // ---- Kitty multiple-cursors probe ----
+
+    [Fact]
+    public async Task KittyFamily_MultipleCursorsReplyWithBeam_WritesQueryAndRealizesCapability()
+    {
+        // The support query (CSI > SP q) rides the color round; the reply (CSI > <shapes> SP q)
+        // lists the supported extra-cursor shapes. Shape 2 (beam) is the one the glyph-height
+        // caret band emits, so listing it realizes the capability. Two DA1 sentinels: one for
+        // the identification phase, one for the color round the query rides.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[>1;2;3;29 q");
+        _source.Enqueue("\x1b[?64c");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(NoEnables());
+
+        Assert.True(caps.Output.Cursor.MultipleCursors);
+        Assert.Contains("\x1b[> q", await AllWrittenAsync()); // the support query itself
+    }
+
+    [Fact]
+    public async Task KittyFamily_NoMultipleCursorsReply_LeavesCapabilityUnsupported()
+    {
+        // The query is written (Kitty family), but the terminal never answers — silence by the
+        // sentinel means the protocol is unsupported (older Kitty builds).
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(NoEnables());
+
+        Assert.False(caps.Output.Cursor.MultipleCursors);
+        Assert.Contains("\x1b[> q", await AllWrittenAsync());
+    }
+
+    [Fact]
+    public async Task KittyFamily_MultipleCursorsReplyWithoutBeam_LeavesCapabilityUnsupported()
+    {
+        // Shape 29 (follow the main cursor) must not substring-match the beam shape (2) — the
+        // scanner tokenizes by ';' and compares values exactly, like the DA1 Sixel parameter.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[>1;29 q");
+        _source.Enqueue("\x1b[?64c");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(NoEnables());
+
+        Assert.False(caps.Output.Cursor.MultipleCursors);
+    }
+
+    [Fact]
+    public async Task NonKittyFamily_DoesNotWriteMultipleCursorsQuery()
+    {
+        // Non-Kitty terminals mis-parse the `> … SP q` form (Apple Terminal prints the literal
+        // 'q'), so the query must never reach them — same family gate as the restore-time clear.
+        _source.Enqueue("\x1bP>|iTerm2 3.4.5\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(NoEnables());
+
+        Assert.False(caps.Output.Cursor.MultipleCursors);
+        Assert.DoesNotContain("\x1b[> q", await AllWrittenAsync());
+    }
+
+    [Fact]
+    public async Task OptInsIgnored_DoesNotWriteMultipleCursorsQuery()
+    {
+        // The query rides the color round, which is skipped with opt-ins off (the same
+        // connection-quality assumption) — an introspection-only pass stays probe-silent.
+        _source.Enqueue("\x1bP>|kitty(0.46.2)\x1b\\");
+        _source.Enqueue("\x1b[?64c");
+
+        await using var negotiator = BuildNegotiator();
+        var caps = await negotiator.NegotiateAsync(DisableAllOptIns());
+
+        Assert.False(caps.Output.Cursor.MultipleCursors);
+        Assert.DoesNotContain("\x1b[> q", await AllWrittenAsync());
     }
 
     // ---- Lifecycle ----

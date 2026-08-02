@@ -567,6 +567,12 @@ public sealed partial class UIApplication
                     if (_guard.ConsumeHandledFlag())
                         changed = true; // handled draw exception ⇒ conservative emit (design doc §10.8)
 
+                    // The Kitty glyph-height caret band tracks the caret the render system just
+                    // assembled (proposal-glyph-runs §4) — queued through the out-of-band channel
+                    // so its bytes land AFTER this frame's delta (which positions the hardware
+                    // cursor on the band's bottom row).
+                    UpdateCaretBand(renderSystem.LastCaret);
+
                     // Hover re-evaluation once per rendered frame, after layout AND composite
                     // parameters are final (doc §10.5 / matrix ND21): hover stays correct under
                     // layout moves, composite slides, and scrolls without pointer motion, and
@@ -635,6 +641,62 @@ public sealed partial class UIApplication
 
     /// <summary>The frame-loop result feeding Phase 7's pacing decision.</summary>
     internal readonly record struct FrameResult(bool Rendered, bool LayoutRan, bool Resized);
+
+    // ───────────────────────────── the glyph-height caret band (proposal-glyph-runs §4) ─────────────────────────────
+
+    // The band standing on the terminal as Kitty extra beam cursors — its column and inclusive
+    // 0-based row range — or null when none is out. Extra cursors are screen-fixed (IND/RI never
+    // move them), so every band change must clear the previous extras before emitting new ones.
+    private (int Column, int Top, int Bottom)? _emittedCaretBand;
+
+    /// <summary>
+    /// Emits the glyph-height caret band: on terminals with the negotiated Kitty multiple-cursors
+    /// capability, a visible caret spanning <c>Rows &gt; 1</c> grows to glyph height — the
+    /// hardware cursor renders the band's BOTTOM row (the publication anchor; IME and assistive
+    /// technology track it), and one rectangle-form escape puts a beam extra cursor on each
+    /// remaining row of the caret column. A moved / shrunk / hidden band first clears the
+    /// standing extras (<c>CSI &gt; 0;4 SP q</c>); an unchanged band re-emits nothing. A 1-row
+    /// caret or a non-supporting terminal emits nothing at all — today's bytes, untouched.
+    /// Queued through <see cref="QueueControlSequence"/> so the bytes land after this frame's
+    /// delta in the same flush.
+    /// </summary>
+    private void UpdateCaretBand(in TerminalCaretState caret)
+    {
+        var band = default((int Column, int Top, int Bottom)?);
+
+        if (caret is { Visible: true, Rows: > 1 } && _capabilities.Output.Cursor.MultipleCursors)
+        {
+            // The extras cover [Row - Rows + 1 .. Row - 1] — the hardware cursor owns the bottom
+            // row, so it is never doubled. A band poking above the screen top clamps to row 0; a
+            // caret ON the top row leaves no row above the anchor and emits nothing.
+            int top = Math.Max(0, caret.Row - (caret.Rows - 1));
+            int bottom = caret.Row - 1;
+
+            if (bottom >= top)
+                band = (caret.Column, top, bottom);
+        }
+
+        if (band == _emittedCaretBand)
+            return;
+
+        var previous = _emittedCaretBand;
+        _emittedCaretBand = band;
+
+        if (band is { } next)
+        {
+            QueueControlSequence(writer =>
+            {
+                if (previous is not null)
+                    CursorWriter.WriteClearExtraCursors(writer);
+
+                CursorWriter.WriteExtraCursorsBeam(writer, next.Column, next.Top, next.Bottom);
+            });
+        }
+        else
+        {
+            QueueControlSequence(static writer => CursorWriter.WriteClearExtraCursors(writer));
+        }
+    }
 
     // ───────────────────────────── resize (design doc §10.6) ─────────────────────────────
 
@@ -719,6 +781,16 @@ public sealed partial class UIApplication
                     MouseCursorWriter.WriteSet(
                         _scratch,
                         MouseCursorShape.Default); // not WriteReset — Ghostty ignores empty-payload reset (§7.6)
+                }
+
+                // A standing caret band predates the renegotiation — clear it while the OLD
+                // terminal state is still current (it was only ever emitted under the old gate)
+                // and forget it, so the next rendered frame re-emits under the NEW gate when the
+                // capability survives.
+                if (_emittedCaretBand is not null)
+                {
+                    CursorWriter.WriteClearExtraCursors(_scratch);
+                    _emittedCaretBand = null;
                 }
 
                 if (_scratch.WrittenCount > 0)
@@ -843,6 +915,9 @@ public sealed partial class UIApplication
 
                 if (_cursorColorEmitted)
                     PaletteWriter.WriteResetCursor(_scratch); // restore the default cursor color only if we set OSC 12 (review #9)
+
+                if (_emittedCaretBand is not null)
+                    CursorWriter.WriteClearExtraCursors(_scratch); // the band's extras are screen-fixed — never leave them behind
 
                 if (_capabilities.Output.Protocol.MouseCursorShape)
                     MouseCursorWriter.WriteSet(

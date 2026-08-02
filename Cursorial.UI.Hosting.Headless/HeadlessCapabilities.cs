@@ -68,7 +68,8 @@ public static class HeadlessCapabilities
                 ShapeControl: true,
                 VisibilityControl: true,
                 BlinkControl: true,
-                ColorControl: true),
+                ColorControl: true,
+                MultipleCursors: true),
             Window = WindowCapabilities.None with
             {
                 TitleSet = true,
@@ -166,6 +167,19 @@ public static class HeadlessCapabilities
         Output = KittyTruecolor.Output with
         {
             Protocol = KittyTruecolor.Output.Protocol with { MouseCursorShape = false },
+        },
+    };
+
+    /// <summary>
+    /// The Kitty preset minus the multiple-cursors protocol (the glyph-height caret-band emission
+    /// gate; proposal-glyph-runs §4): a <c>Rows &gt; 1</c> caret must render the single bottom-row
+    /// hardware caret only, with zero extra-cursor bytes.
+    /// </summary>
+    public static TerminalCapabilities NoMultipleCursors { get; } = KittyTruecolor with
+    {
+        Output = KittyTruecolor.Output with
+        {
+            Cursor = KittyTruecolor.Output.Cursor with { MultipleCursors = false },
         },
     };
 

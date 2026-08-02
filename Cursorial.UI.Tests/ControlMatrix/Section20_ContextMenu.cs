@@ -444,4 +444,52 @@ public sealed class Section20_ContextMenu
         Assert.Equal(0, Popups(host));
         Assert.Same(trigger, host.Application.FocusManager.FocusedElement);
     }
+
+    [Fact] // C7.20 (regression): a re-open during a LOCKED topology (mid-layout) keeps the explicit position —
+           // the deferred close replays AFTER the re-open and must not clear the origin the re-open just assigned
+           // (or the menu would fall back to the last pointer cell)
+    public void C7_20_ReopenDuringLayout_KeepsExplicitPosition()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem { Header = "Cut" });
+
+        var host = Host();
+        using var _ = host;
+        var owner = new Border { Width = 30, Height = 10 };
+        var trigger = new ReopenOnMeasure();
+        owner.Child = trigger;
+        ContextMenu.SetMenu(owner, menu);
+        host.ShowRoot(owner);
+        host.RunUntilIdle();
+
+        menu.Open(owner, new CellPosition(2, 2));
+        host.RunUntilIdle();
+
+        // Re-open from inside the next layout pass: the WindowManager's topology is locked there, so the
+        // close and the open are both deferred and replay in order after the pass.
+        trigger.OnMeasured = () => menu.Open(owner, new CellPosition(12, 7));
+        trigger.InvalidateMeasure();
+        host.RunUntilIdle();
+
+        Assert.True(menu.IsOpen);
+        Assert.Equal(1, Popups(host));
+        var placementBounds = menu.TranslateToScreen(menu.Bounds);
+        Assert.Equal(12, placementBounds.Column);
+        Assert.Equal(7, placementBounds.Row);
+    }
+
+    // A leaf whose next measure runs a one-shot callback — the hook to mutate popup topology mid-layout
+    // (while the WindowManager is locked).
+    private sealed class ReopenOnMeasure : UIElement
+    {
+        public Action? OnMeasured;
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var action = OnMeasured;
+            OnMeasured = null;
+            action?.Invoke();
+            return Size.Empty;
+        }
+    }
 }

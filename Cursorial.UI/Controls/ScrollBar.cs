@@ -16,7 +16,9 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 /// <remarks>
 /// The required part is <c>PART_Track</c> (a <see cref="Controls.Track"/>); the arrow line-buttons are
-/// optional and the bar degrades to track-only scrolling when a template omits them (CD19/C236).
+/// optional and the bar degrades to track-only scrolling when a template omits them (CD19/C236). The
+/// built-in template is track-only (bare-track rendering, <see cref="TrackDisplayMode.Fill"/>) — the
+/// line-button parts exist only when a custom template registers them.
 /// </remarks>
 [TemplatePart(PartTrack, typeof(Track), IsRequired = true)]
 [TemplatePart(PartLineUp, typeof(RepeatButton))]

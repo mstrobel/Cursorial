@@ -1203,7 +1203,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         popup.PopupSurface?.Detach();
         popup.PopupSurface = null;
-        popup.PointerPlacementOrigin = null; // a re-open re-captures the live pointer
+
+        // A re-open re-captures the live pointer — but a deferred close replaying AFTER a re-open
+        // (close + open both queued under a locked topology) must not clobber the origin the
+        // re-open just assigned, or an explicit keyboard/programmatic position falls back to the
+        // last pointer cell. (The content-swap close/open pair keeps the origin the same way — a
+        // swapped popup re-places at its open-time cell, not the live pointer.)
+        if (!popup.IsOpenRequested)
+            popup.PointerPlacementOrigin = null;
 
         RebuildSurfaceStack();
         ResetCompositor();

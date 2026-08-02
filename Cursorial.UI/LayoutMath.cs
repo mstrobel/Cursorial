@@ -111,9 +111,10 @@ public static class LayoutMath
 public static class LayoutLimits
 {
     /// <summary>
-    /// The scroll-extent cap per axis: <c>ScrollContentPresenter</c> measures its content with this
-    /// (not <see cref="LayoutMath.Unbounded"/>) on scrollable axes and clamps the published extent
-    /// to it (doc §5.7 / §12; matrix L202/L215).
+    /// The scroll-extent cap per axis: <c>ScrollContentPresenter</c> clamps its published extent to
+    /// this, and greedy content — whose desire under the <see cref="LayoutMath.Unbounded"/> sentinel
+    /// probe exceeds it — is re-measured against it on the overflowing axis (doc §5.7 / §12;
+    /// matrix L202/L215).
     /// </summary>
     public const int MaxScrollExtent = 32_000;
 }

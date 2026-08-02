@@ -305,11 +305,15 @@ public class GestureSweepTests
         host.RunUntilIdle();
         Assert.NotNull(grid.ActiveGridMenu);
 
-        // The first item must render NEAR the focus row (the old bottom-edge placement pinned the
+        // The menu opens exactly ONE ROW BELOW the focus cell (screen row 2 ⇒ menu top row 3) — it
+        // must never cover the row its commands act on (the old bottom-edge placement pinned the
         // menu ~n rows away at the screen bottom regardless of the cell).
+        var menu = grid.ActiveGridMenu!;
+        Assert.Equal(3, menu.TranslateToScreen(menu.Bounds).Row);
+
         var hit = FindText(host, "Sort \"Id\" ascending", rows: 24);
         Assert.NotNull(hit);
-        Assert.InRange(hit!.Value.Y, 2, 5);
+        Assert.InRange(hit!.Value.Y, 3, 5);
         grid.ActiveGridMenu!.Close();
         host.RunUntilIdle();
     }

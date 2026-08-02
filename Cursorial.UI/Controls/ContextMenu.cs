@@ -112,7 +112,7 @@ public sealed class ContextMenu : ItemsControl
 
         if (position is {} p)
         {
-            _popup.Placement = PlacementMode.Pointer; // keyboard / explicit: drop below the element
+            _popup.Placement = PlacementMode.Pointer; // keyboard / explicit: open at the given screen cell
             _popup.PointerPlacementOrigin = (p.Column, p.Row);
         }
         else
@@ -140,7 +140,13 @@ public sealed class ContextMenu : ItemsControl
         // visual tree), so this fires when that surface tears down — Close() is then idempotent. The owner-detach
         // leak (the host element leaving the tree while the menu is open) is handled by the target watch below,
         // since the owner's detach does NOT reach this surface-rooted element.
-        Close();
+        //
+        // EXCEPT when the popup is already open-requested again: a re-open under a locked topology queues
+        // close + open, and the deferred close's surface detach replays AFTER the re-open — that detach
+        // precedes the re-host on a fresh surface, so closing here would kill the re-open it belongs to.
+        // (Every genuine teardown reaches this walk with the popup's core state already closed.)
+        if (_popup is not { IsOpenRequested: true })
+            Close();
         base.OnDetachedFromTree(in e);
     }
 

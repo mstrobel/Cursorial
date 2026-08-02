@@ -14,7 +14,7 @@ public enum ControlDiagnosticKind
     /// <summary>A <see cref="ContentPresenter"/> recursion guard fired — a self-referential content/template (doc §12.3, C147).</summary>
     ContentRecursion,
 
-    /// <summary>A <see cref="ScrollViewer"/> requested horizontal <c>Auto</c>, which v1 treats as <c>Disabled</c> (the horizontal axis is unbanded — doc §5.7/CD28).</summary>
+    /// <summary>Reserved — no longer emitted: <see cref="ScrollViewer"/> now honors horizontal <c>Auto</c> (scrolls and shows the bar on overflow). Kept for public-API compatibility.</summary>
     HorizontalAutoUnsupported,
 
     /// <summary>A <see cref="ContentControl.ContentStringFormat"/> was a malformed composite format — the content rendered unformatted instead (never a thrown <see cref="FormatException"/>).</summary>
@@ -51,12 +51,6 @@ public static class ControlDiagnostics
     internal static void ContentRecursion(UIElement element)
         => Emit(ControlDiagnosticKind.ContentRecursion, element,
                 $"ContentPresenter '{element.GetType().Name}' recursion guard fired — self-referential content (doc §12.3).");
-
-    [Conditional("DEBUG")]
-    internal static void HorizontalAutoUnsupported(UIElement element)
-        => Emit(ControlDiagnosticKind.HorizontalAutoUnsupported, element,
-                $"ScrollViewer '{element.GetType().Name}': HorizontalScrollBarVisibility.Auto acts as Disabled in v1 — "
-                + "the horizontal axis is unbanded (doc §5.7). Use Hidden to allow wheel/key scrolling, or Visible.");
 
     [Conditional("DEBUG")]
     internal static void BadStringFormat(UIElement element, string format)

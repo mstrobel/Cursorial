@@ -2336,9 +2336,10 @@ public class DataGrid : Control
         RowsPresenter?.InvalidateBand();
     }
 
-    /// <summary>The Menu-key twin of the rows right-click (sweep [6]): anchors the menu AT the
-    /// focus cell — Bottom placement offsets from the target's bottom edge, so the cell's
-    /// content position translates into that space (scroll-correct via the window translation).</summary>
+    /// <summary>The Menu-key twin of the rows right-click (sweep [6]): opens the menu at the focus
+    /// cell's screen position (Pointer placement at an explicit screen cell), one row below the
+    /// cell so the menu never covers the row the commands act on — scroll-correct, since the
+    /// cell's content-y and viewport-x translate through the window translation.</summary>
     internal void OpenGridContextMenuAtFocus()
     {
         if (RowsPresenter is not { } presenter || presenter.ColumnLayout.Entries.Count == 0)
@@ -2349,7 +2350,7 @@ public class DataGrid : Control
 
         int col = Math.Clamp(Math.Max(0, FocusColumnIndex), 0, presenter.ColumnLayout.Entries.Count - 1);
         int x = presenter.DrawXOf(col);
-        int y = presenter.ContentYOf(Math.Max(0, FocusViewIndex)); // the menu drops BELOW the cell
+        int y = presenter.ContentYOf(Math.Max(0, FocusViewIndex)) + 1; // the menu drops BELOW the cell
         var p = presenter.TranslateToScreen(x, y);
         OpenGridContextMenu(FocusColumnIndex, new CellPosition(p.Column, p.Row));
     }

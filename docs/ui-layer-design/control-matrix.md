@@ -612,10 +612,10 @@ Over S1's banded `ScrollContentPresenter` (landed P1); the SCP banded-scene rows
 
 | # | Setup | Operation | Expected | Oracle |
 |---|---|---|---|---|
-| C231 | `ScrollBar : Control` template parts | inspect | optional `PART_LineUpButton`/`PART_LineDownButton` (`RepeatButton`s with `▲▼` glyph resources, ASCII `^v`), **required** `PART_Track`; 1 cell wide; `Orientation` (S1-owned); `:horizontal`/`:vertical` select glyph/orientation styling | PIN (doc §12.7, CD19) |
-| C232 | `ScrollBar` render | render | `│` rail (Pen) + proportional `█` thumb (min 1 cell) | PIN (doc §12.7) |
+| C231 | `ScrollBar : Control` template parts | inspect | optional `PART_LineUpButton`/`PART_LineDownButton` (`RepeatButton`s — **custom-template-only** since the 2026-07 bare-track redesign; the built-in template registers no arrows), **required** `PART_Track`; 1 cell wide; `Orientation` (S1-owned); `:horizontal`/`:vertical` select glyph/orientation styling | PIN (doc §12.7, CD19; amended 2026-08) |
+| C232 | `ScrollBar` render | render | proportional `█` thumb run (min 1 cell; 2 when horizontal, capped at the track length); the built-in template uses `TrackDisplayMode.Fill` — the whole rail renders dimmed thumb glyphs (`TrackFillBrush`, or the thumb brush at alpha 63 when unset) instead of a `│` rail stroke | PIN (doc §12.7; amended 2026-08) |
 | C233 | mouse on the track above/below the thumb | click | pages (±viewport); thumb drag = capture + cell-quantized proportional value | PIN (doc §12.7) |
-| C234 | arrow `RepeatButton`s | press-hold | ±SmallChange repeating (RepeatButton via UITimer, §11) | PIN (CD29) |
+| C234 | arrow `RepeatButton`s (via a custom template registering the optional parts) | press-hold | ±SmallChange repeating (RepeatButton via UITimer, §11); the `OnApplyTemplate` wiring stays live even though the built-in template omits the parts | PIN (CD29; amended 2026-08) |
 | C235 | ScrollViewer wires the bars in `OnApplyTemplate`, unhooks in `OnTemplateDetaching` | re-template | the bar wiring is code-behind (not two-way TemplateBinding — TemplateBinding is one-way); unhooked on detaching (ScrollViewer is the unhook-before-rewire reference impl) | PIN (CD17, doc §12.7) |
 | C236 | a ScrollBar missing the optional arrow parts (template omits them) | apply + use | degrades gracefully (track-only scrolling); no throw (optional-part rule, CD19) | PIN (CD19) |
 

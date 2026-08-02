@@ -145,7 +145,7 @@ public sealed class FileTypeIconsTests
     [InlineData("folder", "\ue5ff")]          // nf-custom-folder U+E5FF
     [InlineData("png", "\ue60d")]             // nf-seti-image U+E60D
     [InlineData("jpeg", "\ue60d")]            // nf-seti-image U+E60D
-    [InlineData("svg", "\ue698")]         // page: nf-mdi-svg U+FC1F (v2, vacated) → nf-md-svg U+F0721
+    [InlineData("svg", "\ue698")]             // page: nf-mdi-svg U+FC1F (v2, vacated) → U+E698 (Nf.MdSvg)
     [InlineData("pdf", "\uf1c1")]             // nf-fa-file_pdf U+F1C1
     [InlineData("json", "\ue60b")]            // nf-seti-json U+E60B
     [InlineData("lua", "\ue620")]             // nf-seti-lua U+E620

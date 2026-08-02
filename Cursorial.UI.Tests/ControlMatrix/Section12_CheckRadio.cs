@@ -225,6 +225,29 @@ public sealed class Section12_CheckRadio
         Assert.Equal(BindingPriority.LocalValue, r1.GetValueSource(ToggleButton.IsCheckedProperty).Priority);
     }
 
+    [Fact] // C212/C216 regression — mutual exclusion keys on the EFFECTIVE IsChecked, not the local-value
+           // slot: a peer checked via SetCurrentValue (the non-clobbering graft, INVISIBLE to
+           // ReadLocalValue per M264c) must still uncheck when another radio in the group is checked.
+    public void C216b_GroupUncheckAppliesToSetCurrentValueCheckedPeer()
+    {
+        var panel = new StackPanel();
+        var r1 = new RadioButton();
+        var r2 = new RadioButton();
+        panel.Children.Add(r1);
+        panel.Children.Add(r2);
+        using var host = Show(panel);
+
+        r1.SetCurrentValue(ToggleButton.IsCheckedProperty, true); // a current-value graft, no local write
+        host.RunFrame();
+        Assert.Equal(true, r1.IsChecked);
+
+        r2.IsChecked = true; // checking r2 unchecks r1 even though r1 has no real local value
+        host.RunFrame();
+
+        Assert.Equal(false, r1.IsChecked);
+        Assert.Equal(true, r2.IsChecked);
+    }
+
     [Fact] // C217 — styling IsChecked is unsupported; selectors react to :checked, never set it
     public void C217_SetCurrentValueStanceForIsChecked()
     {

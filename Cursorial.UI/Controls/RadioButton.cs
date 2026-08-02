@@ -72,10 +72,14 @@ public class RadioButton : ToggleButton
         {
             if (!ReferenceEquals(peer, this) && peer.IsChecked == true)
             {
-                if (peer.ReadLocalValue(IsCheckedProperty) is true)
-                    peer.SetCurrentValue(IsCheckedProperty, false); // SetCurrentValue preserves the peer's binding (C216)
-                else
+                // A command-owned peer (the CoerceIsChecked guard: a Command whose CommandParameter is an
+                // ICheckableCommandParameter) answers to its parameter, so re-query the command state instead
+                // of writing over it. Every other peer — clicked, bound, styled, or SetCurrentValue-grafted —
+                // unchecks unconditionally; SetCurrentValue preserves the peer's binding (C216).
+                if (peer is { Command: not null, CommandParameter: ICheckableCommandParameter })
                     peer.OnCommandStateChanged();
+                else
+                    peer.SetCurrentValue(IsCheckedProperty, false);
             }
         }
     }

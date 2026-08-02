@@ -1,3 +1,4 @@
+using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;
@@ -24,6 +25,31 @@ public sealed class PrefixedBindingPathTests
         Assert.Equal(typeof(Grid), resolver.Resolve("ui:Grid"));   // prefixed → xmlns lookup
         Assert.Equal(typeof(Grid), resolver.Resolve("Grid"));      // bare → DefaultPathTypeResolver (registry owner)
         Assert.Null(resolver.Resolve("nope:Grid"));                // unbound prefix → miss
+    }
+
+    [Fact] // Unprefixed resolution ORDER (regression): a registered owner's short name wins over the
+           // UI-xmlns fallback — a user-registered owner must not be shadowed by a same-named framework
+           // type; the xmlns fallback still resolves framework types with no registered owner.
+    public void Resolver_BareToken_RegisteredOwnerWinsOverUiXmlns()
+    {
+        _ = Orientation.PathProbeProperty; // force the colliding owner's registration
+
+        var resolver = Resolver();
+
+        // "Orientation" names BOTH the registered owner below and Cursorial.UI.Controls.Orientation
+        // (reachable through the UI-xmlns fallback): the registry owner wins.
+        Assert.Equal(typeof(Orientation), resolver.Resolve("Orientation"));
+
+        // A framework type with NO registered owner still resolves through the UI-xmlns fallback.
+        Assert.Equal(typeof(Dock), resolver.Resolve("Dock"));
+    }
+
+    // The collision fixture: a registered attached-property owner whose SIMPLE NAME matches a
+    // Cursorial UI type (Cursorial.UI.Controls.Orientation) reachable through the xmlns fallback.
+    private sealed class Orientation
+    {
+        public static readonly AttachedProperty<int> PathProbeProperty =
+            UIProperty.RegisterAttached<Orientation, UIObject, int>("PathProbe");
     }
 
     [Fact] // The parser now ACCEPTS the prefixed attached segment and resolves its owner (was a hard throw).

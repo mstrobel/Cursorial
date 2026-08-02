@@ -224,7 +224,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Accent}" Selector=".accent">
+    <Style x:Key="ThemeClasses.Accent" Selector=".accent">
       <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.OnAccentBrush}}"/>
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.AccentBrush}}"/>
       <Style.Children>
@@ -237,7 +237,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Info}" Selector=".info">
+    <Style x:Key="ThemeClasses.Info" Selector=".info">
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.InfoBrush}}"/>
       <Style.Children>
         <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
@@ -249,7 +249,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Cool}" Selector=".cool">
+    <Style x:Key="ThemeClasses.Cool" Selector=".cool">
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.CoolBrush}}"/>
       <Style.Children>
         <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
@@ -261,7 +261,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Warning}" Selector=".warning">
+    <Style x:Key="ThemeClasses.Warning" Selector=".warning">
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.WarningBrush}}"/>
       <Style.Children>
         <Style Selector="^:is(Button):pointerover, ^:is(Button):focus">
@@ -273,7 +273,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Danger}" Selector=".danger">
+    <Style x:Key="ThemeClasses.Danger" Selector=".danger">
       <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.DangerBrush}}"/>
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
       <Style.Children>
@@ -288,7 +288,7 @@
       </Style.Children>
     </Style>
 
-    <Style x:Key="{x:Static ThemeClasses.Success}" Selector=".success">
+    <Style x:Key="ThemeClasses.Success" Selector=".success">
       <Setter Property="TextElement.Foreground" Value="{DynamicResource {x:Static ThemeKeys.SuccessBrush}}"/>
       <Setter Property="Panel.Background" Value="{DynamicResource {x:Static ThemeKeys.ElevationRaised}}"/>
       <Style.Children>

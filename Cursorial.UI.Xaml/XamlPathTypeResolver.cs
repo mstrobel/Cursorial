@@ -8,8 +8,10 @@ namespace Cursorial.UI.Xaml;
 /// Mirrors <see cref="XamlSelectorTypeResolver"/>: a <c>prefix:Local</c> token resolves <c>Local</c> in the namespace
 /// the document's ROOT bound to <c>prefix</c> — the document-level xmlns table (the top-level-only policy, CUR2004,
 /// makes it unambiguous) — via the loader's <see cref="IXamlTypeMetadataProvider"/>, the same resolution element
-/// types use. A bare, UNprefixed token falls back to the code-first <see cref="DefaultPathTypeResolver"/> (registered
-/// <c>UIProperty</c> owner short names), so existing unprefixed attached paths (<c>(Grid.Row)</c>) are unchanged.
+/// types use. A bare, UNprefixed token resolves in two steps: first the code-first
+/// <see cref="DefaultPathTypeResolver"/> (registered <c>UIProperty</c> owner short names — so existing unprefixed
+/// attached paths (<c>(Grid.Row)</c>) and user-registered owners are unchanged), then, when the registry has no
+/// owner for that short name, the Cursorial UI xmlns so unregistered framework types still resolve.
 /// </summary>
 internal sealed class XamlPathTypeResolver(IReadOnlyDictionary<string, string> namespaces, IXamlTypeMetadataProvider metadata)
     : IPathTypeResolver
@@ -19,11 +21,16 @@ internal sealed class XamlPathTypeResolver(IReadOnlyDictionary<string, string> n
         var colon = typeToken.IndexOf(':');
         if (colon < 0)
         {
+            // Unprefixed: registry short-name owners first (the code-first contract — a user-registered owner
+            // must not be shadowed by a same-named framework type), then the Cursorial UI xmlns as a fallback.
+            if (DefaultPathTypeResolver.Instance.Resolve(typeToken) is { } registered)
+                return registered;
+
             var metadataResult = metadata.TryGetType(XmlnsNamespaces.CursorialUi, typeToken);
 
             return metadataResult is { IsResolved: true } r
                        ? r.Type!.ClrType.UnderlyingSystemType
-                       : DefaultPathTypeResolver.Instance.Resolve(typeToken); // unprefixed: registry short-name owners
+                       : null;
         }
 
         var prefix = typeToken[..colon];

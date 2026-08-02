@@ -100,7 +100,7 @@ public class GlyphRunTests
 
     // ---- Vertical alignment within the band ----
 
-    private static string PaintRow(FormattedParagraph p, int columns, int row, VerticalTextAlignment _ = default)
+    private static string PaintRow(FormattedParagraph p, int columns, int row)
     {
         var buffer = new CellBuffer(columns, p.Size.Rows);
         ((IContent)new FormattedText([p], p.Size, columns)).Paint(
@@ -192,5 +192,144 @@ public class GlyphRunTests
         Assert.Single(p.Lines);
         Assert.Equal(1, p.Size.Rows);
         Assert.True(ft.HasTrimmedLines);
+    }
+
+    // ---- Review-round pins (wf_5257daa8) ----
+
+    [Fact]
+    public void CenterAlignment_RoundsTowardTheBottom()
+    {
+        var p = FormatAligned(VerticalTextAlignment.Center);
+
+        // Band Rows=2, identity run slack=1: Center rounds toward the BOTTOM per the enum's
+        // contract — the identity text sits on row 1, exactly like Bottom for a 1-cell slack.
+        Assert.StartsWith("lo ", PaintRow(p, 20, row: 1));
+    }
+
+    [Fact]
+    public void WordEllipsisTruncation_KeepsTheBandHeight()
+    {
+        // TruncateAt used to rebuild the draft with raw Runs.Add, leaving Rows=1 while keeping a
+        // 2-row scaled run — the sized piece then painted one row ABOVE its band (or vanished at
+        // row -1 under the default Bottom alignment at the top of a buffer).
+        var tf = new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.WordEllipsis };
+        var rt = new RichTextBuilder().Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.WordEllipsis)
+                                      .Run("HI ", Big2).Run("ab cdefghijk").Build();
+        var ft = tf.Format(rt, 14, capabilities: CapsWithScale());
+
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        var line = Assert.Single(p.Lines);
+        Assert.True(line.Trimmed);
+        Assert.Equal(2, line.Rows);      // the kept scaled run still owns the band
+        Assert.Equal(2, p.Size.Rows);
+    }
+
+    [Fact]
+    public void GlyphSourceEquality_IgnoresTheMetricsCache()
+    {
+        var a = new GlyphSource(null, new TextSizing(Scale: 2));
+        var b = new GlyphSource(null, new TextSizing(Scale: 2));
+
+        int hashBefore = a.GetHashCode();
+        _ = a.Metrics; // resolve the cache on one side only
+
+        Assert.Equal(a, b);                          // synthesized field equality would say false
+        Assert.Equal(hashBefore, a.GetHashCode());   // ...and the hash must not mutate when the cache fills
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void TabInsideAScaledRun_BudgetsAtTheSourcesWidth()
+    {
+        // A tab expands to TabWidth spaces IN THE RUN'S GLYPHS: at scale 2 with TabWidth 4 the
+        // atom must budget 8 cells — matching what the emitted run will actually paint.
+        var tf = new TextFormatter { Wrap = WrapMode.NoWrap, TabWidth = 4 };
+        var rt = new RichTextBuilder().Paragraph(wrap: WrapMode.NoWrap).Run("A\tB", Big2).Build();
+        var ft = tf.Format(rt, 40, capabilities: CapsWithScale());
+
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        Assert.Equal(2 + 8 + 2, Assert.Single(p.Lines).Columns);
+    }
+
+    [Fact]
+    public void Justify_StretchesOnlyIdentityGaps()
+    {
+        // A SCALED gap run must not receive plain ' ' chars — each would paint 2 cells while
+        // justification's accounting assumes 1, blowing past the very budget it fills. With no
+        // identity gap available, the line stays unjustified rather than lying about its width.
+        // The line must WRAP naturally (a hard-break line is never justified, the last-line rule).
+        var rt = new RichTextBuilder()
+                .Paragraph(alignment: TextAlignment.Justify)
+                .Run("aa").Run(" ", Big2).Run("bb cccccccc")
+                .Build();
+
+        var ft = new TextFormatter().Format(rt, 12, capabilities: CapsWithScale());
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+
+        Assert.True(p.Lines.Length >= 2); // "cccccccc" wrapped away; line 0 is justified-eligible
+        var scaledGap = p.Lines[0].Runs.OfType<FormattedTextRun>().Single(r => ReferenceEquals(r.Source, Big2));
+        Assert.Equal(" ", scaledGap.Text);       // untouched — no injected identity spaces
+        Assert.True(p.Lines[0].Columns <= 12);
+    }
+
+    [Fact]
+    public void RowCap_FirstBandTallerThanBudget_KeepsNothingButFlagsTheTrim()
+    {
+        // Reporting more rows than maxRows breaks the cap's contract, and the painter clips a
+        // too-tall band whole — an honest empty paragraph beats a blank block claiming space.
+        var rt = new RichTextBuilder().Paragraph().Run("BIG", Big2).Build();
+        var ft = new TextFormatter().Format(rt, 20, maxRows: 1, capabilities: CapsWithScale());
+
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        Assert.Empty(p.Lines);
+        Assert.Equal(0, p.Size.Rows);
+        Assert.True(ft.HasTrimmedLines);
+    }
+
+    [Fact]
+    public void EllipsisReclip_NeverOverflowsTheBudget()
+    {
+        // Budget is estimated with the line-END run's ellipsis width (identity, 1 cell); the
+        // clip lands on the SCALED run, whose ellipsis is 2 cells — without the re-clip the line
+        // came out 6 cells in a 5-column budget.
+        var tf = new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.CharacterEllipsis };
+        var rt = new RichTextBuilder().Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.CharacterEllipsis)
+                                      .Run("AB", Big2).Run("xyz").Build();
+        var ft = tf.Format(rt, 5, capabilities: CapsWithScale());
+
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        var line = Assert.Single(p.Lines);
+        Assert.True(line.Trimmed);
+        Assert.True(line.Columns <= 5, $"line is {line.Columns} cells in a 5-column budget");
+    }
+
+    [Fact]
+    public void ResolveFor_PrefersTheExplicitFallbackFace()
+    {
+        var face = FigletFonts.Mini;
+        var source = new GlyphSource(face, new TextSizing(Scale: 2));
+
+        var resolved = source.ResolveFor(OutputCapabilities.None);
+
+        Assert.Same(face, resolved.Font);
+        Assert.True(resolved.Sizing.IsNormal);
+    }
+
+    [Fact]
+    public void HeterogeneousWord_SplitsAtEachPiecesOwnAdvances()
+    {
+        // One word spanning identity and scaled sources: the char-split walks each piece at its
+        // OWN cluster widths. "ab" (2 cells) + "CDE" at scale 2 (6 cells) = 8 > 5 on an empty
+        // line: head keeps "ab" + "C" (2+2=4 <= 5, "D" would be 6), tail carries "DE".
+        var rt = new RichTextBuilder().Paragraph(wrap: WrapMode.CharacterWrap)
+                                      .Run("ab").Run("CDE", Big2).Build();
+        var ft = new TextFormatter().Format(rt, 5, capabilities: CapsWithScale());
+
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        Assert.Equal(2, p.Lines.Length);
+        Assert.Equal(4, p.Lines[0].Columns);
+        Assert.Equal(4, p.Lines[1].Columns);
+        Assert.Equal(2, p.Lines[0].Rows); // the scaled piece keeps the band on BOTH lines
+        Assert.Equal(2, p.Lines[1].Rows);
     }
 }

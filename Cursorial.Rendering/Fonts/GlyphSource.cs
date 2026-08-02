@@ -44,11 +44,25 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing = default)
 
     private GlyphMetrics Resolve()
     {
-        if (Sizing.GetGlyphSize() is not (1, 1))
+        // Keyed on IsNormal, not the footprint: a footprint-identity FRACTIONAL sizing
+        // (s=1:n=1:d=2) still paints through OSC 66, so its metrics must be the scaled identity
+        // — using an explicit fallback Font's metrics here would measure a face the terminal
+        // never paints.
+        if (!Sizing.IsNormal)
             return MonospaceFont.Default.GetScaledMetrics(Sizing);
 
         return Font?.GetMetrics() ?? GlyphMetrics.Monospace;
     }
+
+    /// <summary>Value equality over <see cref="Font"/> + <see cref="Sizing"/> ONLY — the lazily
+    /// resolved metrics cache must not participate: the compiler-synthesized record equality
+    /// compares every field, so a resolved and an unresolved copy of the same source would
+    /// compare unequal and the hash would MUTATE when the cache filled.</summary>
+    public bool Equals(GlyphSource? other)
+        => other is not null && Equals(Font, other.Font) && Sizing.Equals(other.Sizing);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(Font, Sizing);
 
     /// <summary>
     /// The source layout should ACTUALLY use on a terminal with <paramref name="capabilities"/> —

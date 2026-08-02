@@ -181,7 +181,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 int runRow = bandRow + (paragraph.VerticalAlignment switch
                                         {
                                             VerticalTextAlignment.Top    => 0,
-                                            VerticalTextAlignment.Center => slack / 2,
+                                            VerticalTextAlignment.Center => slack - slack / 2, // rounds toward the bottom, per the enum's contract
                                             _                            => slack
                                         });
 

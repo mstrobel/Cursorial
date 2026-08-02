@@ -413,12 +413,17 @@ public sealed class TextFormatter
                     if (isSoftHyphen)
                     {
                         EmitFragment();
+                        // The hyphen visually joins the text BEFORE the break — when a word
+                        // spans sources and the soft hyphen leads the second run, the preceding
+                        // fragment's source measures (and paints) the "-".
                         _softBreaks.Add(new SoftBreakPoint(
                             FragmentIndex: _wordRuns.Count,
                             WidthBefore: _wordWidth,
                             Style: run.Style,
                             Hyperlink: run.Hyperlink,
-                            Source: runSource));
+                            Source: _wordRuns.Count > 0 && _wordRuns[^1] is FormattedTextRun prev
+                                        ? prev.Source
+                                        : runSource));
                     }
 
                     chunkStart = idx + 1;
@@ -442,11 +447,15 @@ public sealed class TextFormatter
                     {
                         EmitFragment();
                         FlushWord();
+                        // TabWidth is in the run's own glyphs — the expanded spaces measure (and
+                        // paint) through the source, so the atom's budget matches CellWidth.
+                        var tabSpaces = new string(' ', outer.TabWidth);
+                        int tabWidth = metrics.StringWidth(tabSpaces);
                         _atoms.Add(new SpaceAtom(
-                            new FormattedTextRun(new string(' ', outer.TabWidth), run.Style, run.Hyperlink)
+                            new FormattedTextRun(tabSpaces, run.Style, run.Hyperlink)
                                 { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
-                            outer.TabWidth));
-                        runOffset += outer.TabWidth;
+                            tabWidth));
+                        runOffset += tabWidth;
                         continue;
                     }
 
@@ -870,6 +879,18 @@ public sealed class TextFormatter
         var clippedJoins = LastTextRun(clipped.Runs);
         var clippedSource = clippedJoins?.Source ?? source;
         int clippedEllipsisWidth = clippedSource.Metrics.StringWidth(Ellipsis);
+
+        // The budget was estimated with the LINE-END run's ellipsis width; if clipping landed on
+        // a wider-sourced run, the join ellipsis can overflow the column budget — re-clip
+        // against the actual width until it fits (bounded: widths only shrink).
+        for (int guard = 0; clipped.Width + clippedEllipsisWidth > maxWidth && clipped.Width > 0 && guard < 4; guard++)
+        {
+            clipped = ClipDraft(clipped, Math.Max(0, maxWidth - clippedEllipsisWidth));
+            clippedJoins = LastTextRun(clipped.Runs);
+            clippedSource = clippedJoins?.Source ?? source;
+            clippedEllipsisWidth = clippedSource.Metrics.StringWidth(Ellipsis);
+        }
+
         clipped.Append(new FormattedTextRun(Ellipsis, clippedJoins?.Style ?? default, null) { Source = clippedSource },
                        clippedEllipsisWidth);
         return clipped;
@@ -968,8 +989,10 @@ public sealed class TextFormatter
         for (int r = 0; r < cutRunIndex; r++)
         {
             var run = line.Runs[r];
-            draft.Runs.Add(run);
-            draft.Width += run.CellWidth;
+            // Append (not raw Runs.Add) — it maintains the band's Rows alongside Width. A kept
+            // scaled run in a draft whose Rows stayed 1 painted one row ABOVE its band (or
+            // vanished at row -1) under the default Bottom alignment.
+            draft.Append(run, run.CellWidth);
         }
 
         // Word-boundary cuts always land on a space inside a text run; if we ever wire content
@@ -978,10 +1001,7 @@ public sealed class TextFormatter
         {
             var partial = text.Text[..cutCharIndex].TrimEnd(' ');
             if (partial.Length > 0)
-            {
-                draft.Runs.Add(text with { Text = partial });
-                draft.Width += text.Source.Metrics.StringWidth(partial);
-            }
+                draft.Append(text with { Text = partial }, text.Source.Metrics.StringWidth(partial));
         }
 
         return draft;
@@ -992,16 +1012,27 @@ public sealed class TextFormatter
         if (paragraph.Size.Rows <= budget) return paragraph;
 
         // Keep whole line BANDS while they fit the row budget (a mixed-source line is Rows tall
-        // and is kept or dropped whole — no partial bands), always keeping at least one.
+        // and is kept or dropped whole — no partial bands). A FIRST band taller than the entire
+        // budget keeps nothing: reporting more rows than the cap breaks the maxRows contract,
+        // and the painter would clip the too-tall band whole anyway — an honest empty paragraph
+        // (still flagged trimmed) beats a blank block that claims the space.
         int keptCount = 0;
         int keptRows = 0;
 
         foreach (var line in paragraph.Lines)
         {
-            if (keptCount > 0 && keptRows + line.Rows > budget) break;
+            if (keptRows + line.Rows > budget) break;
             keptRows += line.Rows;
             keptCount++;
-            if (keptRows >= budget) break;
+        }
+
+        if (keptCount == 0)
+        {
+            return new FormattedParagraph(ImmutableArray<FormattedLine>.Empty, new Size(columns, 0),
+                                          paragraph.Alignment, true)
+                   {
+                       VerticalAlignment = paragraph.VerticalAlignment
+                   };
         }
 
         var kept = paragraph.Lines.Take(keptCount).ToImmutableArray();
@@ -1009,7 +1040,12 @@ public sealed class TextFormatter
         var trimmed = TrimLine(last, columns, Trim, forceEllipsis: true);
         kept = kept.SetItem(keptCount - 1, trimmed.ToFormattedLine());
 
-        return new FormattedParagraph(kept, new Size(columns, keptRows), paragraph.Alignment, true)
+        // The forced trim can change the last band's height (a cut tall run) — recompute from
+        // the final lines rather than trusting the pre-trim walk.
+        int finalRows = 0;
+        foreach (var line in kept) finalRows += line.Rows;
+
+        return new FormattedParagraph(kept, new Size(columns, finalRows), paragraph.Alignment, true)
                {
                    VerticalAlignment = paragraph.VerticalAlignment
                };
@@ -1051,9 +1087,13 @@ public sealed class TextFormatter
     
         // Inter-word gaps are space-only text runs sitting between non-space runs. Content runs
         // can't be gaps; their fixed width is treated as part of an adjacent "word."
+        // Only IDENTITY-sourced gaps stretch: appending plain ' ' chars to a scaled/FIGlet gap
+        // run adds source-width cells per char while the accounting assumes one — overflowing
+        // the very budget justification is meant to fill exactly.
         var gapIndices = new List<int>();
         for (int i = 1; i < line.Runs.Count - 1; i++)
-            if (line.Runs[i] is FormattedTextRun text && IsAllSpaces(text.Text)) gapIndices.Add(i);
+            if (line.Runs[i] is FormattedTextRun { Source.PaintsAsCells: true } text && IsAllSpaces(text.Text))
+                gapIndices.Add(i);
     
         if (gapIndices.Count == 0) return line.ToFormattedLine();
     
@@ -1150,13 +1190,23 @@ public sealed class TextFormatter
 
         public void TrimTrailingSpaces()
         {
-            while (Runs.Count > 0 && 
+            bool removed = false;
+
+            while (Runs.Count > 0 &&
                    Runs[^1] is FormattedTextRun { Hyperlink: null } text &&
                    IsAllSpaces(text.Text))
             {
                 Width -= text.CellWidth;
                 Runs.RemoveAt(Runs.Count - 1);
+                removed = true;
             }
+
+            if (!removed) return;
+
+            // The removed trailing space may have been the band's tallest run (a scaled space at
+            // a source boundary) — Rows only ever grows on append, so recompute it here.
+            Rows = 1;
+            foreach (var run in Runs) Rows = Math.Max(Rows, run.LineRows);
         }
 
         public WordAtom AsWord() => new([..Runs], Width, ImmutableArray<SoftBreakPoint>.Empty);

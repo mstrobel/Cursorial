@@ -50,9 +50,13 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing)
   paragraph's `Size.Rows` becomes the sum of line rows; `ApplyDocumentRowCap` and the painter's
   per-line advance use `line.Rows` instead of `1`. This is mechanical — the row budget code is
   already row-count-based.
-- Vertical placement inside a taller line: identity runs sit on the line's **bottom** row
-  (terminal text is baseline-bottom), which matches OSC 66's default vertical alignment and
-  looks right next to scaled neighbors. `TextSizing.Vertical` can override per run later.
+- Vertical placement inside a taller line is governed by a **paragraph-level vertical text
+  alignment** (maintainer decision, 2026-08-02): `TextParagraph` gains a
+  `VerticalTextAlignment` (Top/Center/Bottom, default Bottom — terminal text is
+  baseline-bottom, matching OSC 66's default), carried onto `FormattedParagraph` and applied by
+  the painter when placing each run within its line band. Block-level, not per-run — one rule
+  per paragraph keeps mixed lines coherent; `TextSizing.Vertical` remains the escape hatch for
+  a scaled run that must deviate.
 - Justify/alignment padding stays identity-width spaces (cells are cells).
 
 ### 3. Painting
@@ -83,7 +87,11 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing)
   bottom row of the line band. Kitty renders the hardware cursor fine over OSC 66 cells.
 - **Editing**: insertion/deletion operate on the source text; runs re-tokenize per edit as they
   do now. A `TextBox` line containing a scaled run becomes `LineRows` tall — the editing
-  surface re-measures like any wrap change.
+  surface re-measures like any wrap change. Scaled and FIGlet glyphs are **atomic caret
+  units** exactly as monospace grapheme clusters are (maintainer decision, 2026-08-02): the
+  caret lands only on glyph boundaries, selection extends whole glyphs, and deletion removes a
+  whole glyph — there is no "inside" a glyph, whatever its cell footprint. This is the wide-
+  cluster rule scaled up, so `TextEditing` needs no new concepts, only per-run metrics.
 
 ### 5. What stays block-level
 
@@ -102,12 +110,11 @@ path, one trimmed-flag path — is the real payoff beyond the new capability.
 3. **Adoption** — `TextBox`/`RichTextPresenter` surface the authoring API; theme/styling hooks
    (a `Sizing` setter on `TextElement`, so `<Setter Property="Sizing" …>` works via B15).
 
-## Open questions for the maintainer
+## Resolved (maintainer, 2026-08-02)
 
-- Is bottom-row alignment the right default for identity runs beside scaled ones, or should the
-  line's tallest run dictate a configurable line alignment?
-- Should FIGlet runs be allowed inside `TextBox` editing, or measure-only there (selection yes,
-  caret snapping to run boundaries)? Editing inside a 6-row glyph is odd UX either way.
-- Fragment count: a selection dragged across a long scaled paragraph re-emits O(pieces)
-  fragments per frame. Almost certainly fine (they're one escape each), but worth a budget test
-  before Phase 2.
+- **Vertical placement**: paragraph-level vertical text alignment (folded into §2 above), not
+  per-run and not tallest-run-dictated.
+- **FIGlet in `TextBox`**: fully editable — glyphs are atomic caret/selection/deletion units
+  exactly like monospace clusters (folded into §4 above). No measure-only mode needed.
+- **Fragment-count budget test**: agreed as a Phase 2 entry gate — measure re-emit cost with a
+  selection dragged across a long scaled paragraph before building selection splitting on it.

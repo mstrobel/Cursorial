@@ -17,20 +17,20 @@ namespace Cursorial.Rendering.Fonts;
 /// </remarks>
 public static class FigletFonts
 {
-    private static readonly Lazy<FigletFont> s_standard = new(() => LoadEmbedded("Fonts/Embedded/standard.flf"));
-    private static readonly Lazy<FigletFont> s_slant = new(() => LoadEmbedded("Fonts/Embedded/slant.flf"));
-    private static readonly Lazy<FigletFont> s_small = new(() => LoadEmbedded("Fonts/Embedded/small.flf"));
-    private static readonly Lazy<FigletFont> s_big = new(() => LoadEmbedded("Fonts/Embedded/big.flf"));
-    private static readonly Lazy<FigletFont> s_mini = new(() => LoadEmbedded("Fonts/Embedded/mini.flf"));
+    private static readonly Lazy<FigletFont> s_standard = new(() => LoadEmbedded("Fonts/Embedded/standard.flf", "Standard"));
+    private static readonly Lazy<FigletFont> s_slant = new(() => LoadEmbedded("Fonts/Embedded/slant.flf", "Slant"));
+    private static readonly Lazy<FigletFont> s_small = new(() => LoadEmbedded("Fonts/Embedded/small.flf", "Small"));
+    private static readonly Lazy<FigletFont> s_big = new(() => LoadEmbedded("Fonts/Embedded/big.flf", "Big"));
+    private static readonly Lazy<FigletFont> s_mini = new(() => LoadEmbedded("Fonts/Embedded/mini.flf", "Mini"));
 
-    private static readonly Lazy<FigletFont> s_ansiShadow = new(() => LoadEmbedded("Fonts/Embedded/ansi-shadow.flf"));
-    private static readonly Lazy<FigletFont> s_hp2640LargeType = new(() => LoadEmbedded("Fonts/Embedded/hp2640-largetype.flf"));
-    private static readonly Lazy<FigletFont> s_miniWi = new(() => LoadEmbedded("Fonts/Embedded/miniwi.flf"));
-    private static readonly Lazy<FigletFont> s_cga = new(() => LoadEmbedded("Fonts/Embedded/phm-cga.flf"));
-    private static readonly Lazy<FigletFont> s_lcdMatrix = new(() => LoadEmbedded("Fonts/Embedded/phm-lcdmatrix.flf"));
-    private static readonly Lazy<FigletFont> s_led = new(() => LoadEmbedded("Fonts/Embedded/phm-leds.flf"));
-    private static readonly Lazy<FigletFont> s_roman = new(() => LoadEmbedded("Fonts/Embedded/roman.flf"));
-    private static readonly Lazy<FigletFont> s_smallSlant = new(() => LoadEmbedded("Fonts/Embedded/small-slant.flf"));
+    private static readonly Lazy<FigletFont> s_ansiShadow = new(() => LoadEmbedded("Fonts/Embedded/ansi-shadow.flf", "ANSI Shadow"));
+    private static readonly Lazy<FigletFont> s_hp2640LargeType = new(() => LoadEmbedded("Fonts/Embedded/hp2640-largetype.flf", "HP2640 Large Type"));
+    private static readonly Lazy<FigletFont> s_miniWi = new(() => LoadEmbedded("Fonts/Embedded/miniwi.flf", "Mini Wi"));
+    private static readonly Lazy<FigletFont> s_cga = new(() => LoadEmbedded("Fonts/Embedded/phm-cga.flf", "CGA"));
+    private static readonly Lazy<FigletFont> s_lcdMatrix = new(() => LoadEmbedded("Fonts/Embedded/phm-lcdmatrix.flf", "LCD Matrix"));
+    private static readonly Lazy<FigletFont> s_led = new(() => LoadEmbedded("Fonts/Embedded/phm-leds.flf", "LEDs"));
+    private static readonly Lazy<FigletFont> s_roman = new(() => LoadEmbedded("Fonts/Embedded/roman.flf", "Roman"));
+    private static readonly Lazy<FigletFont> s_smallSlant = new(() => LoadEmbedded("Fonts/Embedded/small-slant.flf", "Small Slant"));
 
     /// <summary>
     /// The canonical "Standard" FIGlet font (Glenn Chappell &amp; Ian Chai, 1993). 6 rows tall;

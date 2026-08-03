@@ -217,19 +217,19 @@
 
             <Label Grid.Column="0" Grid.Row="0"
                    Content="_Name" Target="{x:Reference NameEditor}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <TextBox Grid.Column="2" Grid.Row="0"
+            <TextBox Grid.Column="2" Grid.Row="0" TabIndex="0"
                      x:Name="NameEditor" Text="{Binding Name, Mode=TwoWay}" Placeholder="full name" />
 
             <Label Grid.Column="0" Grid.Row="1" Margin="0,1,0,0"
                    Target="{x:Reference PasswordEditor}" Content="_Password" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0"
+            <PasswordBox Grid.Column="2" Grid.Row="1" Margin="0,1,0,0" TabIndex="1"
                          x:Name="PasswordEditor" Text="{Binding Password, Mode=TwoWay}"
                          RevealPassword="{Binding ShowPassword}" Placeholder="password"/>
 
             <Label Grid.Column="4" Grid.Row="0"
                    Target="{x:Reference ColorSelector}" Content="_Color"
                    Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-            <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left"
+            <ComboBox Grid.Column="6" Grid.Row="0" HorizontalAlignment="Left" TabIndex="2"
                       x:Name="ColorSelector" Width="22" IsEditable="False" ItemsSource="{Binding Colors}"
                       SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
               <ComboBox.ItemTemplate>
@@ -246,11 +246,11 @@
                        Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
                        Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.Name, StringFormat='Selected: {0}'}"/>
 
-            <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left"
+            <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left" TabIndex="3"
                       Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
-            <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left"
+            <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left" TabIndex="4"
                       Content="Subscribe to _updates" IsChecked="{Binding Subscribed, Mode=TwoWay}" />
-            <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left"
+            <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left" TabIndex="5"
                       Content="M_ystery third option" IsThreeState="True" />
 
             <Label Grid.Column="0" Grid.Row="6"
@@ -260,7 +260,8 @@
                          Margin="1,0,0,0" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat='{0:N0}\%'}"
                          Width="4"
                          TextAlignment="Left" Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
-              <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" />
+              <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100"
+                      Value="{Binding Volume, Mode=TwoWay}" TabIndex="6" />
             </DockPanel>
             
             <!-- Journal: the multi-line editing + undo/redo canary. The editor passes itself as the command
@@ -269,9 +270,9 @@
               <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,1">
                 <Label Content="_Journal" Target="{x:Reference JournalEditor}"
                        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo"
+                <Button Margin="2,0,0,0" MinWidth="8" Content="Undo" TabIndex="7"
                         Command="{Binding UndoCommand}" CommandParameter="{x:Reference JournalEditor}" />
-                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo"
+                <Button Margin="1,0,0,0" MinWidth="8" Content="Redo" TabIndex="8"
                         Command="{Binding RedoCommand}" CommandParameter="{x:Reference JournalEditor}" />
                 <TextBlock Margin="2,0,0,0" VerticalAlignment="Center" Text="Ctrl+Z / Ctrl+Y"
                            Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" /><!--multi-line · -->
@@ -290,7 +291,7 @@
                   </StackPanel.Style>
                   <Label Content="Text Si_ze" Target="{x:Reference SizingSelector}"
                          Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-                  <ComboBox x:Name="SizingSelector" MinWidth="20" ItemsSource="{Binding TextSizes}"
+                  <ComboBox x:Name="SizingSelector" MinWidth="20" ItemsSource="{Binding TextSizes}" TabIndex="10"
                             SelectedItem="{Binding SelectedTextSize, Mode=TwoWay}">
                     <ComboBox.ItemTemplate>
                       <DataTemplate x:DataType="{x:Type co:TextSizing}">
@@ -303,7 +304,7 @@
                 <Label Content="_Font" Target="{x:Reference FontSelector}" Margin="0,0,1,0"
                        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
                 <ComboBox x:Name="FontSelector" MinWidth="20" ItemsSource="{Binding Fonts}"
-                          SelectedItem="{Binding SelectedFont, Mode=TwoWay}">
+                          SelectedItem="{Binding SelectedFont, Mode=TwoWay}" TabIndex="11">
                   <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="{x:Type ff:IGlyphFont}">
                       <TextBlock Text="{Binding DisplayName}" />
@@ -311,8 +312,8 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
-              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" MinLines="3"
-                       Text="{Binding Journal, Mode=TwoWay}"
+              <TextBox x:Name="JournalEditor" AcceptsReturn="True" TextWrapping="WordWrap" TabIndex="9"
+                       MinLines="3" Text="{Binding Journal, Mode=TwoWay}"
                        Font="{Binding SelectedFont}" TextElement.Sizing="{Binding SelectedTextSize}" />
             </DockPanel>
           </Grid>

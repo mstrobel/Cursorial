@@ -271,6 +271,107 @@ public sealed class Section50_SizedTextBox
         Assert.True(found, "no cell carries the selection background");
     }
 
+    // ---- Rigid word gaps + tint selection (maintainer reports, SmallSlant) ----
+
+    private static (UIHeadlessHost Host, TextBox Box) ShownFace(string text, int width = 70)
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(80, 8),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+            CaptureFrameBytes = true
+        });
+
+        var box = new TextBox
+        {
+            Text = text,
+            Width = width,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        TextElement.SetGlyphFont(box, Cursorial.Rendering.Fonts.FigletFonts.SmallSlant);
+
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+        box.Focus();
+        Assert.True(host.RunUntilIdle());
+        return (host, box);
+    }
+
+    [Fact]
+    public void WordGap_IsRigid_AtTheSpaceGlyphsWidth()
+    {
+        // Maintainer acceptance: a space in this face gaps at about a normal glyph's width.
+        // SmallSlant kerns 2-3 columns into each side of its (hardblank-carrying) space under a
+        // single-call paint — whitespace-rigid advances hold the FULL space width instead, and
+        // no neighbor's ink may enter the gap's column span.
+        var face = Cursorial.Rendering.Fonts.FigletFonts.SmallSlant;
+        var metrics = face.GetMetrics();
+        int spaceWidth = face.Measure(" ").Columns;
+
+        var layout = Cursorial.Rendering.Text.GraphemeLayout.Build("quick brown", metrics);
+        Assert.Equal(face.Measure("quick").Columns + spaceWidth + face.Measure("brown").Columns,
+                     layout.TotalColumns);
+
+        var (host, box) = ShownFace("quick brown");
+        using var _1 = host;
+
+        // Screen-anchor via the caret at index 0 — the presenter sits inside the TextBox chrome.
+        box.CaretIndex = 0;
+        Assert.True(host.RunUntilIdle());
+        var origin = host.Application.CaretService.GetCaretState();
+        int left = origin.Column;
+        int top = origin.Row - (face.Height - 1); // caret anchors the band's BOTTOM row
+
+        int gapStart = left + layout.ColumnOf(5);
+        int gapEnd = left + layout.ColumnOf(6);
+        Assert.Equal(spaceWidth, gapEnd - gapStart);
+
+        for (int row = top; row < top + face.Height; row++)
+        {
+            var line = host.GetRowText(row);
+            var span = line.Length > gapStart
+                           ? line.Substring(gapStart, Math.Min(gapEnd, line.Length) - gapStart)
+                           : "";
+            Assert.True(span.TrimEnd().Length == 0, $"ink in the word gap on row {row}: '{span}'");
+        }
+    }
+
+    [Fact]
+    public void FaceSelection_TintsWithoutMovingGlyphs()
+    {
+        // Non-rectangular faces highlighted quirkily when the selection SPLIT the paint (kerning
+        // broke at the boundary and glyphs shifted). Selection is now a cell TINT: the rendered
+        // graphemes are IDENTICAL with and without a selection; only styles change, and the
+        // selected span carries the backdrop.
+        var (host, box) = ShownFace("quick");
+        using var _ = host;
+
+        var face = Cursorial.Rendering.Fonts.FigletFonts.SmallSlant;
+        var before = new string[face.Height];
+        for (int r = 0; r < face.Height; r++) before[r] = host.GetRowText(r);
+
+        var highlight = Color.FromRgb(40, 160, 220);
+        box.SelectionBrush = new Cursorial.Drawing.Media.SolidColorBrush(highlight);
+        box.SelectionStart = 1;
+        box.SelectionLength = 3;
+        Assert.True(host.RunUntilIdle());
+
+        for (int r = 0; r < face.Height; r++)
+            Assert.Equal(before[r], host.GetRowText(r)); // geometry pinned — glyphs never move
+
+        var metrics = face.GetMetrics();
+        var layout = Cursorial.Rendering.Text.GraphemeLayout.Build("quick", metrics);
+        var buffer = host.Application.FrameBufferInternal!;
+        bool tinted = false;
+
+        for (int r = 0; r < face.Height && !tinted; r++)
+        for (int c = layout.ColumnOf(1); c < layout.ColumnOf(4) && !tinted; c++)
+            tinted = buffer[c, r].Style.Background == highlight;
+
+        Assert.True(tinted, "no cell in the selected span carries the tint");
+    }
+
     [Fact]
     public void PlainEditor_IsByteIdenticalToBefore()
     {

@@ -126,14 +126,15 @@ public static class TaskDialog
         // Up/Down/Left/Right cycle the buttons (Tab order falls out of the window root's Cycle trap).
         KeyboardNavigation.SetDirectionalNavigation(root, DirectionalNavigationMode.Cycle);
 
-        var mainInstruction = new TextBlock
+        var mainInstruction = new ContentPresenter
                               {
-                                  Text = request.MainInstruction,
-                                  TextWrapping = WrapMode.WordWrap,
+                                  Content = request.MainInstruction,
+                                  ShowTrimmedContentInToolTip = true,
                                   Margin = new Margins(2, 1, 2, 1)
                               };
         
-        mainInstruction.SetValue(TextElement.TextWeightProperty, Cursorial.UI.Controls.TextWeight.Bold);
+        mainInstruction.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
+        mainInstruction.SetValue(TextElement.TextWrappingProperty, WrapMode.WordWrap);
         mainInstruction.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         
         Grid.SetRow(mainInstruction, mainInstructionRow);
@@ -141,7 +142,13 @@ public static class TaskDialog
         
         if (request.Content is {} message)
         {
-            var content = new ContentPresenter { Content = message, Margin = new Margins(2, 0, 2, 1)};
+            var content = new ContentPresenter
+                          {
+                              Content = message,
+                              Margin = new Margins(2, 0, 2, 1),
+                              ShowTrimmedContentInToolTip = true
+                          };
+            content.SetValue(TextElement.TextWrappingProperty, WrapMode.WordWrap);
             Grid.SetRow(content, messageRow);
             root.RowDefinitions[messageRow].Height = GridLength.Star();
             children.Add(content);
@@ -218,7 +225,10 @@ public static class TaskDialog
                              IsDefault = definition.IsDefault,
                              IsCancel = definition.IsCancel
                          };
-                
+
+                if (definition.Class is {} buttonClass)
+                    button.Classes.Add(buttonClass);
+
                 standardButtons ??= new List<Button>();
                 standardButtons.Add(button);
             }
@@ -292,14 +302,19 @@ public static class TaskDialog
                 footerPanel.Children.Add(toggle);
             }
 
+            var footerPresenter = new ContentPresenter
+                                  {
+                                      Content = expandedContent,
+                                      RecognizesMarkup = request.ExpandedInformationContainsMarkup,
+                                      ShowTrimmedContentInToolTip = true
+                                  };
+
+            footerPresenter.SetValue(TextElement.TextWrappingProperty, WrapMode.WordWrap);
+
             var expandedContentHost = new Border
                                       {
-                                          Child = new ContentPresenter
-                                                  {
-                                                      Content = expandedContent,
-                                                      RecognizesMarkup = request.ExpandedInformationContainsMarkup
-                                                  },
-                                          Padding = new Margins(2, 1),
+                                          Child = footerPresenter,
+                                          Padding = new Margins(2, 0, 2, 1),
                                           Visibility = toggle.IsChecked is true 
                                                            ? Visibility.Visible 
                                                            : Visibility.Collapsed

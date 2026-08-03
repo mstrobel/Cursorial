@@ -56,4 +56,7 @@ public enum StyleCapabilities
     /// glyph-capability source exists — the SD14 recorded deferral); requiring it documents intent and
     /// starts gating for real the moment the deferral is lifted.</summary>
     Unicode = 1 << 11,
+
+    /// <summary>OSC 66 text sizing support (kitty text sizing protocol).</summary>
+    TextSizing = 1 << 12
 }

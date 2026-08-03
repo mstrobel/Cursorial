@@ -34,6 +34,11 @@ public delegate Style GlyphStyleProvider(int column, int row);
 public interface IGlyphFont
 {
     /// <summary>
+    /// The display name to use when describing this font to the user.
+    /// </summary>
+    string DisplayName { get; }
+
+    /// <summary>
     /// Ensures the specified <paramref name="style"/> is compatible with this font. May adjust
     /// properties such as colors or attributes in the style to adhere to font-specific constraints
     /// or limitations.

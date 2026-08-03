@@ -23,6 +23,9 @@ public sealed class MonospaceFont : IGlyphFont
     public static MonospaceFont Default { get; } = new();
 
     /// <inheritdoc/>
+    public string DisplayName => "Monospace";
+
+    /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style) => style;
 
     /// <inheritdoc/>

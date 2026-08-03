@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 
@@ -123,6 +124,12 @@ public abstract class TextElement
 
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWrappingProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsMeasure, TextWrappingProperty);
+        
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, SizingProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsMeasure, SizingProperty);
+        
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, FontProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsMeasure, FontProperty);
     }
 
     /// <summary>Reads the inherited foreground brush attached to <paramref name="element"/>.</summary>
@@ -159,10 +166,7 @@ public abstract class TextElement
     /// the consumer's: text controls re-measure on change via the changed callback.
     /// </summary>
     public static readonly StyledProperty<TextSizing> SizingProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, TextSizing>("Sizing",
-                                                                        changed: static (o, _, _) =>
-                                                                            (o as UIElement)?.InvalidateMeasure(),
-                                                                        inherits: true);
+        UIProperty.RegisterAttached<TextElement, UIElement, TextSizing>("Sizing", inherits: false);
 
     /// <summary>
     /// The glyph font for the element's text (proposal-glyph-runs Phase 3): a FIGlet (or other
@@ -171,27 +175,21 @@ public abstract class TextElement
     /// <see cref="SizingProperty"/>: a sizing that the terminal supports wins, with the font as
     /// its fallback face.
     /// </summary>
-    public static readonly StyledProperty<Cursorial.Rendering.Fonts.IGlyphFont?> GlyphFontProperty =
-        UIProperty.RegisterAttached<TextElement, UIElement, Cursorial.Rendering.Fonts.IGlyphFont?>(
-            "GlyphFont",
-            new PropertyMetadata<Cursorial.Rendering.Fonts.IGlyphFont?>(null)
-            {
-                Changed = static (o, _, _) => (o as UIElement)?.InvalidateMeasure()
-            },
-            inherits: true);
+    public static readonly StyledProperty<IGlyphFont?> FontProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, IGlyphFont?>("Font", inherits: false);
 
     /// <summary>Reads the glyph font attached to <paramref name="element"/>.</summary>
-    public static Cursorial.Rendering.Fonts.IGlyphFont? GetGlyphFont(UIElement element)
+    public static IGlyphFont? GetFont(UIElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
-        return element.GetValue(GlyphFontProperty);
+        return element.GetValue(FontProperty);
     }
 
     /// <summary>Sets the glyph font on <paramref name="element"/> (inherits to its descendants).</summary>
-    public static void SetGlyphFont(UIElement element, Cursorial.Rendering.Fonts.IGlyphFont? value)
+    public static void SetFont(UIElement element, IGlyphFont? value)
     {
         ArgumentNullException.ThrowIfNull(element);
-        element.SetValue(GlyphFontProperty, value);
+        element.SetValue(FontProperty, value);
     }
 
     /// <summary>Reads the text sizing attached to <paramref name="element"/>.</summary>
@@ -451,6 +449,16 @@ public abstract class TextElement
     ];
 
     /// <summary>
+    /// The two typography properties: sizing and font. The presenter forward (<c>ContentRealization</c>)
+    /// binds both onto a text leaf from the PRESENTER--not its templated parent. These require more explicit
+    /// intent than the <see cref="AllAxisProperties"> axis properties</see>, by design.
+    /// </summary>
+    internal static readonly UIProperty[] AllTypographyProperties =
+    [
+        FontProperty, SizingProperty
+    ];
+
+    /// <summary>
     /// Forwards every per-axis attribute from a template's templated parent onto a text-rendering
     /// <paramref name="part"/> (a caret/glyph/icon leaf), via <c>TemplateBinding</c> — so a
     /// control-level cue reaches the part at the Template lane (pierceable by conditional rules,
@@ -461,6 +469,32 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(part);
         foreach (var axis in AllAxisProperties)
+            part.SetBinding(axis, new TemplateBinding(axis));
+    }
+
+    /// <summary>
+    /// Forwards every formatting property (trimming, wrapping) from a template's templated parent onto a
+    /// text-rendering <paramref name="part"/> (a caret/glyph/icon leaf), via <c>TemplateBinding</c> — so
+    /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
+    /// Call INSIDE the control-template build.
+    /// </summary>
+    public static void ForwardFormatting(UIElement part)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        foreach (var axis in AllFormattingProperties)
+            part.SetBinding(axis, new TemplateBinding(axis));
+    }
+
+    /// <summary>
+    /// Forwards every typography property (sizing, font) from a template's templated parent onto a
+    /// text-rendering <paramref name="part"/> (a caret/glyph/icon leaf), via <c>TemplateBinding</c> — so
+    /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
+    /// Call INSIDE the control-template build.
+    /// </summary>
+    public static void ForwardTypography(UIElement part)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        foreach (var axis in AllTypographyProperties)
             part.SetBinding(axis, new TemplateBinding(axis));
     }
 

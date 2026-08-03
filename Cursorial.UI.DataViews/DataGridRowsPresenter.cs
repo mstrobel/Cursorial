@@ -950,7 +950,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             IBrush? background = row.IsGroup
                                      ? GroupRowBackground
                                      : selection is not null && selection.IsSelected(row.RowId)
-                                         ? owner.IsKeyboardFocusWithin 
+                                         ? owner is { IsKeyboardFocusWithin: true, FocusBand: DataGridFocusBand.Rows } 
                                                ? SelectionBackground
                                                : SelectionInactiveBackground
                                          : HoverViewIndex == view

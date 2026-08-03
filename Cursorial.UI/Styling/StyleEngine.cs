@@ -1611,6 +1611,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         (StyleCapabilities.NerdFont, CapabilityClasses.NerdFont),
         (StyleCapabilities.Emoji, CapabilityClasses.Emoji),
         (StyleCapabilities.Unicode, CapabilityClasses.Unicode),
+        (StyleCapabilities.TextSizing, CapabilityClasses.TextSizing),
     ];
 
     /// <summary>
@@ -1637,6 +1638,9 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
 
         if (capabilities.Input.Protocol.KittyKeyboardProtocol)
             mask |= StyleCapabilities.KittyKeyboard;
+
+        if (capabilities.Output.TextSizing.Scale)
+            mask |= StyleCapabilities.TextSizing;
 
         // Graphics axes (CD-P2J-1): Images for ANY inline-image protocol; ImageOcclusion only for Kitty
         // graphics (z-orderable placements the framework can clip/occlude — Sixel paints inline into the

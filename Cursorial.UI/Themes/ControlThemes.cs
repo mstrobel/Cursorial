@@ -1654,6 +1654,7 @@ internal static class ControlThemes
         border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
         TextElement.ForwardInverse(border);
         TextElement.ForwardInverse(presenter);
+        TextElement.ForwardTypography(presenter);
         return border;
     });
 

@@ -52,7 +52,7 @@ public sealed class TextPresenter : UIElement
         get
         {
             var sizing = TextElement.GetSizing(this);
-            var font = TextElement.GetGlyphFont(this);
+            var font = TextElement.GetFont(this);
 
             if (sizing.IsNormal && font is null)
                 return GlyphSource.Default;

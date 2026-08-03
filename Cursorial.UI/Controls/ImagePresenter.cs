@@ -9,7 +9,7 @@ namespace Cursorial.UI.Controls;
 /// <summary>
 /// A primitive (design doc §12 / CD-P2K-1) that hosts a graphics-protocol image, drawn through the
 /// <see cref="Cursorial.Rendering.Content.Image"/> content (the Kitty/iTerm2/Sixel <c>IBufferFragment</c> path — NOT
-/// the cell-sampling <c>ImageBrush</c>) via <see cref="RenderContext.DrawContent"/>, which auto-crops the fragment to
+/// the cell-sampling <c>ImageBrush</c>) via <see cref="RenderContext.DrawContent(in Rect, IContent)"/>, which auto-crops the fragment to
 /// the active clip. The image source is either explicit bytes (<see cref="Source"/>) or a <see cref="SourceUri"/>
 /// loaded through the resource loader (the XAML-friendly path — <c>embedded://</c>/<c>file://</c>/relative). The image
 /// renders only when there is an effective source <b>and</b> the negotiated graphics protocols can carry its format;
@@ -142,7 +142,7 @@ public class ImagePresenter : DrawnContentPresenter
     private ImageContent? BuildContent() => EffectiveSource is { } src ? new ImageContent(src) : null;
 
     // A visible image must never measure to a 0 extent on either axis (Rect.IsEmpty is "any axis 0" — Render would skip
-    // it and it would silently vanish). The content's null/single-axis sizing can round an axis to 0 (tiny image, or a
+    // it, and it would silently vanish). The content's null/single-axis sizing can round an axis to 0 (tiny image, or a
     // terminal that didn't report a cell-pixel size); floor any zero axis to the available extent (≥ 1, unbounded ⇒ 1).
     private static Size FloorVisibleImageSize(Size measured, Size available)
     {

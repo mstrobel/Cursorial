@@ -35,21 +35,21 @@ public class DecoratedFont : IGlyphFont
     /// This decoration enhances the visual appearance by adding an
     /// underline styled with the specified decoration glyph.
     /// </summary>
-    public static readonly DecoratedFont HalfBlockUnderline = new(MonospaceFont.Default,  new('\u2580'), position: DecorationPosition.Below);
+    public static readonly DecoratedFont HalfBlockUnderline = new("Half-Block Underline", MonospaceFont.Default,  new('\u2580'), position: DecorationPosition.Below);
 
     /// <summary>
     /// A pre-defined instance of the <see cref="DecoratedFont"/> class that renders
     /// a decorative underline using a "quarter block" character (🮂). The decorative glyph
     /// is positioned below the default glyph rendering area.
     /// </summary>
-    public static readonly DecoratedFont QuarterBlockUnderline = new(MonospaceFont.Default, new(0x1FB82), position: DecorationPosition.Below);
+    public static readonly DecoratedFont QuarterBlockUnderline = new("Quarter-Block Underline", MonospaceFont.Default, new(0x1FB82), position: DecorationPosition.Below);
 
     /// <summary>
     /// Represents a pre-configured instance of the <see cref="DecoratedFont"/> class,
     /// defining an underline decoration style using an "eighth block" character (▔).
     /// The decoration is positioned below the text by default.
     /// </summary>
-    public static readonly DecoratedFont EighthBlockUnderline = new(MonospaceFont.Default, new('\u2594'), position: DecorationPosition.Below);
+    public static readonly DecoratedFont EighthBlockUnderline = new("Eighth-Block Underline", MonospaceFont.Default, new('\u2594'), position: DecorationPosition.Below);
 
     /// <summary>
     /// A private field that stores a cached string representation of the decoration glyph used in the decorated font.
@@ -70,10 +70,12 @@ public class DecoratedFont : IGlyphFont
     /// It is built on top of an inner font and renders both the text and the specified decoration.
     /// The decorative glyph is applied in the position specified by the `DecorationPosition`,
     /// either above or below the rendered text.
-    public DecoratedFont(IGlyphFont inner, Rune decorationGlyph, DecorationPosition position = DecorationPosition.Below)
+    public DecoratedFont(string displayName, IGlyphFont inner, Rune decorationGlyph, DecorationPosition position = DecorationPosition.Below)
     {
+        ArgumentNullException.ThrowIfNull(displayName);
         ArgumentNullException.ThrowIfNull(inner);
 
+        DisplayName = displayName;
         Inner = inner;
         DecorationGlyph = decorationGlyph != default ? decorationGlyph : DefaultDecorationGlyph;
         Position = position;
@@ -116,6 +118,9 @@ public class DecoratedFont : IGlyphFont
     /// the text. This value is set during object initialization and cannot be changed thereafter.
     /// </remarks>
     public DecorationPosition Position { get; }
+
+    /// <inheritdoc/>
+    public string DisplayName { get; }
 
     /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style)

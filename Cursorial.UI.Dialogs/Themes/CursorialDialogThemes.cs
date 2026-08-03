@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Themes;
@@ -117,8 +118,21 @@ public static class CursorialDialogThemes
         TextElement.ForwardAllAxes(icon); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
         TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
-        var label = new ContentPresenter { RecognizesAccessKey = true };
-        var explanation = new ContentPresenter { RecognizesAccessKey = false, ForwardsFromTemplatedParent = false };
+        var label = new ContentPresenter
+                    {
+                        RecognizesAccessKey = true,
+                        ShowTrimmedContentInToolTip = true
+                    };
+
+        var explanation = new ContentPresenter
+                          {
+                              RecognizesAccessKey = false,
+                              ShowTrimmedContentInToolTip = true,
+                              ForwardsFromTemplatedParent = false
+                          };
+
+        label.SetValue(TextElement.TextWrappingProperty, WrapMode.WordWrap);
+        explanation.SetValue(TextElement.TextWrappingProperty, WrapMode.WordWrap);
 
         TextElement.ForwardInverse(explanation);
 

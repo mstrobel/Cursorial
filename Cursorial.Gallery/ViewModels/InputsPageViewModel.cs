@@ -1,5 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Gallery.Infrastructure;
+using Cursorial.Output;
+using Cursorial.Rendering.Fonts;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.Gallery.ViewModels;
@@ -30,6 +32,30 @@ public sealed class InputsPageViewModel : PageViewModel
         UndoCommand = new RelayCommand<TextBox>(editor => editor.Undo());
         RedoCommand = new RelayCommand<TextBox>(editor => editor.Redo());
         SelectedColor = Colors[5];
+
+        Fonts =
+        [
+            MonospaceFont.Default,
+            ShadowedFont.Default,
+            DecoratedFont.QuarterBlockUnderline,
+            FigletFonts.CGA,
+            FigletFonts.Mini,
+            FigletFonts.MiniWi,
+            FigletFonts.Small,
+            FigletFonts.SmallSlant,
+            FigletFonts.LCDMatrix
+        ];
+
+        TextSizes =
+        [
+            new TextSizing(Scale: 1),
+            new TextSizing(Scale: 2),
+            new TextSizing(Scale: 3),
+            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2)
+        ];
+
+        SelectedFont = Fonts[0];
+        SelectedTextSize = TextSizes[0];
     }
 
     public override string Title => "Inputs";
@@ -71,6 +97,22 @@ public sealed class InputsPageViewModel : PageViewModel
     {
         get => _journal;
         set { if (Set(ref _journal, value ?? "")) Raise(nameof(Status)); }
+    }
+
+    public IGlyphFont SelectedFont { get; set => Set(ref field, value); }
+
+    public TextSizing SelectedTextSize { get; set => Set(ref field, value); }
+
+    public IReadOnlyList<IGlyphFont> Fonts
+    {
+        get;
+        init => Set(ref field, value);
+    }
+
+    public IReadOnlyList<TextSizing> TextSizes
+    {
+        get;
+        init => Set(ref field, value);
     }
 
     public IList<ColorInfo> Colors { get; } =

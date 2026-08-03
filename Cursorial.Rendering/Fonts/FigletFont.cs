@@ -111,6 +111,9 @@ public sealed class FigletFont : IGlyphFont
         => _glyphs.GetValueOrDefault(codepoint, _spaceGlyph);
 
     /// <inheritdoc/>
+    public string DisplayName => Name;
+
+    /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style)
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
 

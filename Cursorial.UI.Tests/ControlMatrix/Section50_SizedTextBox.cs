@@ -289,7 +289,7 @@ public sealed class Section50_SizedTextBox
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top
         };
-        TextElement.SetGlyphFont(box, Cursorial.Rendering.Fonts.FigletFonts.SmallSlant);
+        TextElement.SetFont(box, Cursorial.Rendering.Fonts.FigletFonts.SmallSlant);
 
         host.ShowRoot(box);
         host.RunUntilIdle();

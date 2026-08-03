@@ -69,10 +69,10 @@ public sealed class DrawingContext
     /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>,
-    /// <see cref="DrawContent"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
+    /// <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
     /// <em>record</em> time (the draw call), not at flush, so junctions still form in final scene coordinates.
-    /// See <see cref="DrawContent"/> for the one residual limitation around protocol <em>fragments</em>.
+    /// See <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/> for the one residual limitation around protocol <em>fragments</em>.
     /// </remarks>
     public DrawingStateScope PushClip(in Rect clip)
     {
@@ -952,6 +952,37 @@ public sealed class DrawingContext
     }
 
     /// <summary>
+    /// Restyles the cells in <paramref name="bounds"/> IN PLACE — graphemes are preserved, the
+    /// style's background replaces each cell's (when non-default) and its attributes OR in. The
+    /// selection-highlight primitive for glyph-rendered text (FIGlet editors): painting is left
+    /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
+    /// cell-space rectangle over whatever ink is there.
+    /// </summary> 
+    public void TintCells(in Rect bounds, in Style style)
+    {
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        var clip = _stateStack.Count == 0 ? new Rect(0, 0, surface.Columns, surface.Rows) : CurrentState.Clip;
+        var rect = bounds.Intersection(clip);
+
+        for (int row = rect.Row; row < rect.RowEnd; row++)
+        {
+            for (int column = rect.Column; column < rect.ColumnEnd; column++)
+            {
+                if (row < 0 || column < 0 || row >= surface.Rows || column >= surface.Columns)
+                    continue;
+
+                var cell = surface[column, row];
+                var tinted = cell.Style with { Attributes = cell.Style.Attributes | style.Attributes };
+
+                if (!style.Background.IsDefault)
+                    tinted = tinted with { Background = style.Background };
+
+                surface[column, row] = cell with { Style = tinted };
+            }
+        }
+    }
+
+    /// <summary>
     /// Paint <paramref name="content"/> (an image, icon, sized text, or any <see cref="IContent"/>) into the
     /// scene at <paramref name="bounds"/>. Content that renders via a graphics protocol registers an
     /// out-of-band fragment on the scene buffer; <see cref="SceneCompositor"/> carries that fragment onto the
@@ -978,37 +1009,6 @@ public sealed class DrawingContext
     /// <c>CompositeParameters.Clip</c>, which re-crops every frame.
     /// </para>
     /// </remarks>
-    /// <summary>
-    /// Restyles the cells in <paramref name="bounds"/> IN PLACE — graphemes are preserved, the
-    /// style's background replaces each cell's (when non-default) and its attributes OR in. The
-    /// selection-highlight primitive for glyph-rendered text (FIGlet editors): painting is left
-    /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
-    /// cell-space rectangle over whatever ink is there.
-    /// </summary>
-    public void TintCells(in Rect bounds, in Style style)
-    {
-        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        var clip = _stateStack.Count == 0 ? new Rect(0, 0, surface.Columns, surface.Rows) : CurrentState.Clip;
-        var rect = bounds.Intersection(clip);
-
-        for (int row = rect.Row; row < rect.RowEnd; row++)
-        {
-            for (int column = rect.Column; column < rect.ColumnEnd; column++)
-            {
-                if (row < 0 || column < 0 || row >= surface.Rows || column >= surface.Columns)
-                    continue;
-
-                var cell = surface[column, row];
-                var tinted = cell.Style with { Attributes = cell.Style.Attributes | style.Attributes };
-
-                if (!style.Background.IsDefault)
-                    tinted = tinted with { Background = style.Background };
-
-                surface[column, row] = cell with { Style = tinted };
-            }
-        }
-    }
-
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
         => DrawContent(bounds, content, capabilities, style: default);
 

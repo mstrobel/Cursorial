@@ -2,6 +2,7 @@ using System.Text;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Output;
+using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Input;
 
@@ -71,6 +72,10 @@ public class TextBox : Control
     /// <see cref="AcceptsReturn"/> is set. AffectsMeasure.</summary>
     public static readonly StyledProperty<WrapMode> TextWrappingProperty =
         UIProperty.Register<TextBox, WrapMode>(nameof(TextWrapping), defaultValue: WrapMode.NoWrap);
+
+    /// <inheritdoc cref="TextElement.FontProperty"/>
+    public static readonly StyledProperty<IGlyphFont?> FontProperty =
+        TextElement.FontProperty.AddOwner<TextBox>();
 
     /// <summary>When <see langword="true"/>, <c>Enter</c> inserts a newline (multi-line editing). When
     /// <see langword="false"/> (the default), <c>Enter</c> commits and bubbles for IsDefault / form submit (§13).</summary>
@@ -196,6 +201,9 @@ public class TextBox : Control
 
     /// <inheritdoc cref="TextWrappingProperty"/>
     public WrapMode TextWrapping { get => GetValue(TextWrappingProperty); set => SetValue(TextWrappingProperty, value); }
+
+    /// <inheritdoc cref="FontProperty"/>
+    public IGlyphFont? Font { get => GetValue(FontProperty); set => SetValue(FontProperty, value); }
 
     /// <inheritdoc cref="AcceptsReturnProperty"/>
     public bool AcceptsReturn { get => GetValue(AcceptsReturnProperty); set => SetValue(AcceptsReturnProperty, value); }

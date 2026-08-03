@@ -78,7 +78,22 @@ public readonly record struct TextSizing(
                             Denominator is 0 &&
                             Vertical is TextSizingVerticalAlignment.Top &&
                             Horizontal is TextSizingHorizontalAlignment.Left;
-    
+
+    public string DisplayName => GetDisplayName();
+
+    private string GetDisplayName()
+    {
+        if (IsNormal) return "Normal";
+
+        if (Numerator is > 0 && Denominator is > 0)
+        {
+            if (Scale is > 1) return $"Scaled {Scale} x {Numerator}/{Denominator}";
+            return $"Scaled {Numerator}/{Denominator}x";
+        }
+
+        return $"Scaled {Scale}x";
+    }
+
     public bool IsSupported(OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);

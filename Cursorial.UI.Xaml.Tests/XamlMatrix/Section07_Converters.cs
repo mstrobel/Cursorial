@@ -41,7 +41,7 @@ public sealed class Section07_Converters : LoaderTestBase
         Assert.Equal(InteractionState.Focused | InteractionState.PointerOver,
                      Convert(typeof(InteractionState), "Focused, PointerOver")); // a second [Flags] enum
 
-        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "4096"));  // uncovered bit
+        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "8192"));  // uncovered bit
         Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "Bogus")); // unknown member
         // Non-flags boundary (pre-existing Enum.TryParse behavior, unchanged): a comma list ORs — one that
         // collapses to a DEFINED member is accepted; one that ORs to an undefined value rejects.

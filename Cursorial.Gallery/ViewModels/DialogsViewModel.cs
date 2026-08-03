@@ -7,6 +7,7 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Dialogs;
 using Cursorial.UI.Dialogs.Themes;
+using Cursorial.UI.Themes;
 
 using MessageBox = Cursorial.UI.Dialogs.MessageBox;
 using MessageBoxButton = Cursorial.UI.Dialogs.MessageBoxButton;
@@ -186,7 +187,7 @@ public class DialogsViewModel : PageViewModel
             {
                 buttons.AddRange(
                     [
-                        new TaskDialogButton("Wat", "_Wat"),
+                        new TaskDialogButton("Wat", "_Wat") { Class = ClassFromSeverity(TaskDialogSeverity) },
                         new TaskDialogButton("Nah", "Yeah, _Nah") { IsCancel = true }
                     ]);
             }
@@ -248,7 +249,16 @@ public class DialogsViewModel : PageViewModel
             _isDialogShowing = false;
         }
     }
-    
+
+    private static ThemeClass? ClassFromSeverity(TaskDialogSeverity severity)
+        => severity switch
+           {
+               TaskDialogSeverity.Warning     => ThemeClass.Warning,
+               TaskDialogSeverity.Error       => ThemeClass.Danger,
+               TaskDialogSeverity.Success     => ThemeClass.Success,
+               _                              => null
+           };
+
     private async void ShowFileOpenDialog()
     {
         try

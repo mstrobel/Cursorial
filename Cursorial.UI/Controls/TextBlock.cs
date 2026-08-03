@@ -96,6 +96,8 @@ public class TextBlock : UIElement
         // independently of size, so they carry both lanes.
         AffectsMeasure<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
         AffectsRender<TextBlock>(TextProperty, MarkupProperty, TextAlignmentProperty);
+
+        TextWrappingProperty.OverrideDefaultValue<TextBlock>(WrapMode.WordWrap);
     }
 
     /// <summary>Creates an empty text block.</summary>
@@ -186,7 +188,7 @@ public class TextBlock : UIElement
         // The effective text attributes (Bold/Italic/Inverse/Faint/…) merge onto every painted cell at
         // paint time — NOT baked into the cached FormattedText (the attribute properties are
         // AffectsRender, so a flip re-paints the cached layout without re-formatting it). The fold is
-        // the single composition point (proposal-textattributes-decomposition §3.1).
+        // the single composition point (proposal-TextAttributes-decomposition §3.1).
         var resolved = TextElement.ComposeAttributes(this);
         if (Foreground is {} brush)
             context.DrawFormattedText(formatted, context.Bounds, brush, resolved.Flags, resolved.UnderlineShape);
@@ -330,5 +332,5 @@ public class TextBlock : UIElement
         TextTrimming Trim,
         int ResourceVersion,
         ThemeVariant? Variant,
-        Output.Capabilities.OutputCapabilities? Capabilities);
+        OutputCapabilities? Capabilities);
 }

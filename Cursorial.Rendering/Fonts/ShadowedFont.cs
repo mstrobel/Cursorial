@@ -37,10 +37,12 @@ public sealed class ShadowedFont : IGlyphFont
     /// <param name="offset">Shadow displacement in cells. Default is (1, 1) — one cell right, one cell down.</param>
     /// <param name="shadowStyle">Style applied to the shadow pass. Caller-supplied; typical values use the same foreground as the glyph but with low alpha, or a darker tone.</param>
     /// <param name="shadowBlendingMode">The blending mode to use when applying the shadow. Defaults to <see cref="BlendingModes.Default"/>.</param>
-    public ShadowedFont(IGlyphFont inner, (int Columns, int Rows) offset = default, in Style shadowStyle = default, IBlendingMode? shadowBlendingMode = null)
+    /// <param name="displayName">The display name to use when describing this font to a user.</param>
+    public ShadowedFont(IGlyphFont inner, (int Columns, int Rows) offset = default, in Style shadowStyle = default, IBlendingMode? shadowBlendingMode = null, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
 
+        DisplayName = displayName ?? $"{inner.DisplayName} (Shadowed)";
         Inner = inner;
         Offset = offset == default ? (1, 1) : offset;
         ShadowStyle = EnsureCompatibleShadowStyle(shadowStyle.IsDefault ? Style.DefaultShadow : shadowStyle);
@@ -64,6 +66,8 @@ public sealed class ShadowedFont : IGlyphFont
 
     /// <summary>The blending mode to use when applying the shadow. Defaults to <see cref="BlendingModes.Default"/>.</summary>
     public IBlendingMode ShadowBlendingMode => _shadowBlendingMode ?? BlendingModes.Default;
+
+    public string DisplayName { get; }
 
     /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style) 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 
 using Cursorial.Rendering.Text;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Dialogs;
 
@@ -39,6 +40,9 @@ public sealed record TaskDialogButton(string Id, string Label)
 
     /// <summary>Whether Esc activates this button (first marked button wins).</summary>
     public bool IsCancel { get; init; }
+
+    /// <summary>The theme class with which to style the button; <c>null</c> by default.</summary>
+    public ThemeClass? Class { get; init; } = null;
 
     /// <summary>The well-known OK button.</summary>
     public static TaskDialogButton Ok { get; } = new("ok", "_OK");

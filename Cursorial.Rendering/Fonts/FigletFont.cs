@@ -285,6 +285,14 @@ public sealed class FigletFont : IGlyphFont
 
         if (!kern && !smush) return 0;
 
+        // An entirely ink-free glyph is a deliberate word gap (FIGlet fonts that want interior
+        // blanks to survive smushing protect them with HARDBLANKS, which classify as ink; a
+        // plain-blank space glyph has no such protection). Without this guard both neighbors
+        // slide through the blank glyph's full width (no ink to touch: leftEnd < 0 makes
+        // spaceAfter the whole line) and word gaps vanish whenever a run paints as one piece —
+        // words visually joined until a caret split happened to break the smush chain.
+        if (left.IsBlank || right.IsBlank) return 0;
+
         int minMove = int.MaxValue;
         int lines = Math.Max(left.Height, right.Height);
 

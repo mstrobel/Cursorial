@@ -48,10 +48,22 @@ public sealed class FigletGlyph
 
             _starts[i] = FindFirstNonSpace(line);
             _ends[i] = FindLastNonSpace(line);
+
+            if (_ends[i] >= 0)
+                _hasInk = true;
         }
 
         _width = maxWidth;
     }
+
+    private readonly bool _hasInk;
+
+    /// <summary>
+    /// Whether the glyph is entirely ink-free — plain blanks on every line (hardblanks count as
+    /// ink, so a hardblank-protected space glyph is NOT blank). A blank glyph is a deliberate
+    /// word gap: kerning/smushing never carries across it.
+    /// </summary>
+    public bool IsBlank => !_hasInk;
 
     private static int FindFirstNonSpace(string line)
     {

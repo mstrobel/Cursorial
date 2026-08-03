@@ -34,12 +34,15 @@ public class FigletFontTests
     }
 
     [Fact]
-    public void Measure_KernedBoundary_WhenBothSidesHaveSlack()
+    public void Measure_KernedBoundary_BlankGlyphIsAWordGap()
     {
         var font = BuildBehaviorFont(FigletLayoutMode.Kern);
-        // "A " — 'A' is 3 wide; space glyph is "   " (all blanks: end=-1, all slack). Kerning
-        // can collapse 3 cells of contiguous slack between them, so result = 3 + 3 - 3 = 3.
-        Assert.Equal(new Size(3, 3), font.Measure("A "));
+        // "A " — the space glyph is entirely ink-free, which makes it a deliberate WORD GAP:
+        // kerning never carries across it (maintainer decision 2026-08-02 — the old contract
+        // collapsed the full blank width, visually joining words whenever a run painted as one
+        // piece). Fonts that want smush-resistant interior blanks use HARDBLANKS, which count
+        // as ink; a plain-blank space glyph keeps its full width. Result = 3 + 3 = 6.
+        Assert.Equal(new Size(6, 3), font.Measure("A "));
     }
 
     [Fact]

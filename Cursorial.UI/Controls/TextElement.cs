@@ -151,6 +151,33 @@ public abstract class TextElement
         UIProperty.RegisterAttached<TextElement, UIElement, TextTrimming>(nameof(TextTrimming),
                                                                           defaultValue: TextTrimming.CharacterEllipsis);
 
+    /// <summary>
+    /// The OSC 66 sizing for the element's text (proposal-glyph-runs Phase 3): a non-normal
+    /// sizing renders the text scaled on supporting terminals and through the bundled fallback
+    /// face elsewhere (resolution happens at layout — <c>GlyphSource.ResolveFor</c>). Styleable
+    /// like any setter value, including via bindings (B15). <c>AffectsMeasure</c> semantics are
+    /// the consumer's: text controls re-measure on change via the changed callback.
+    /// </summary>
+    public static readonly StyledProperty<TextSizing> SizingProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, TextSizing>("Sizing",
+                                                                        changed: static (o, _, _) =>
+                                                                            (o as UIElement)?.InvalidateMeasure(),
+                                                                        inherits: true);
+
+    /// <summary>Reads the text sizing attached to <paramref name="element"/>.</summary>
+    public static TextSizing GetSizing(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(SizingProperty);
+    }
+
+    /// <summary>Sets the text sizing on <paramref name="element"/>.</summary>
+    public static void SetSizing(UIElement element, TextSizing value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(SizingProperty, value);
+    }
+
     /// <summary>Reads the text wrapping mode attached to <paramref name="element"/>.</summary>
     public static WrapMode GetTextWrapping(UIElement element)
     {

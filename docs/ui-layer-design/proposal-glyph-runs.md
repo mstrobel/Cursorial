@@ -5,7 +5,12 @@ capability-resolved at layout (`ResolveFor`: unsupported sizing → fallback fac
 band geometry with paragraph-level `VerticalTextAlignment`, per-piece painting (direct face /
 OSC 66 fragment per piece), and the block sugar collapse (`FormattedFigletBlock` /
 `FormattedSizedTextBlock` and their painters deleted; block forms are one-run paragraphs).
-Phases 2–3 remain design.*
+Phase 2 (interaction) and Phase 3's editor adoption landed 2026-08-02: metrics-aware
+`TextLayout`/`GraphemeLayout`, the `TextElement.Sizing` inherited attached property, sized
+`TextBox` editing end-to-end (band measure/scroll, bottom-row caret anchor, atomic glyph caret
+units, scaled hit-testing, selection as split OSC 66 fragments with SGR backdrops), and the
+budget gate pinned as a test (an untouched editor's fragment never re-emits on another's
+selection move). The kitty multiple-cursors glyph-height caret band lands alongside.*
 
 ## The ask
 

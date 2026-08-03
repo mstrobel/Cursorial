@@ -979,19 +979,28 @@ public sealed class DrawingContext
     /// </para>
     /// </remarks>
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
+        => DrawContent(bounds, content, capabilities, style: default);
+
+    /// <summary>
+    /// <inheritdoc cref="DrawContent(in Rect, IContent, OutputCapabilities)"/> The
+    /// <paramref name="style"/> flows to <see cref="IContent.Paint"/> — for protocol-backed
+    /// content (sized text) it is the SGR backdrop, which is how a selection background rides an
+    /// OSC 66 emission (proposal-glyph-runs Phase 2).
+    /// </summary>
+    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities, in Style style)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(capabilities);
 
         if (_stateStack.Count == 0)
         {
-            content.Paint(_surface, bounds, style: default, capabilities);
+            content.Paint(_surface, bounds, style, capabilities);
             return;
         }
 
         var clip = CurrentState.Clip;
         var fragmentsBefore = SnapshotFragments();
-        content.Paint(MappedSurface(), bounds, style: default, capabilities);
+        content.Paint(MappedSurface(), bounds, style, capabilities);
         CropNewFragmentsToClip(clip, fragmentsBefore);
     }
 

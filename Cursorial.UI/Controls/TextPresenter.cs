@@ -6,6 +6,8 @@ using Cursorial.Text;
 using Cursorial.UI.Themes;
 
 using CellStyle = Cursorial.Output.Style;
+using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fonts;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
 
@@ -39,6 +41,38 @@ public sealed class TextPresenter : UIElement
         ClipToBounds = true;
     }
 
+    /// <summary>
+    /// The editing glyph source (proposal-glyph-runs Phase 2/3): resolved from the attached
+    /// <see cref="TextElement.SizingProperty"/> against the terminal at use — so wrap widths,
+    /// caret columns, hit-testing, and paint all agree on the tier (scaled on OSC 66 terminals,
+    /// the bundled fallback face elsewhere). Identity for a normal (unsized) editor.
+    /// </summary>
+    internal GlyphSource EditingSource
+    {
+        get
+        {
+            var sizing = TextElement.GetSizing(this);
+            if (sizing.IsNormal)
+                return GlyphSource.Default;
+
+            var source = new GlyphSource(null, sizing);
+            return UIApplication.Current is { } app ? source.ResolveFor(app.EffectiveCapabilities.Output) : source;
+        }
+    }
+
+    /// <summary>Null for the identity source (the zero-cost fast path every plain editor takes).</summary>
+    internal GlyphMetrics? EditingMetrics
+    {
+        get
+        {
+            var source = EditingSource;
+            return ReferenceEquals(source, GlyphSource.Default) ? null : source.Metrics;
+        }
+    }
+
+    /// <summary>Rows one visual line's band occupies (1 for plain editors).</summary>
+    private int LineRows => EditingMetrics?.LineRows ?? 1;
+
     /// <summary>The current horizontal scroll offset, in display columns (test observability).</summary>
     public int ScrollOffset => _scrollColumn;
 
@@ -59,17 +93,23 @@ public sealed class TextPresenter : UIElement
         if (owner is null)
             return new Size(1, 1);
 
+        var metrics = EditingMetrics;
+        var lineRows = metrics?.LineRows ?? 1;
+
         // Single line: desire the displayed text's width plus one column for the end caret; the field stretches
-        // when given more and scrolls when given less.
+        // when given more and scrolls when given less. A sized editor's line is a LineRows-tall band.
         if (!owner.IsMultiLine)
-            return new Size(GraphemeWidth.StringWidth(owner.DisplayText) + caretAffordance, 1);
+        {
+            var textWidth = metrics?.StringWidth(owner.DisplayText) ?? GraphemeWidth.StringWidth(owner.DisplayText);
+            return new Size(textWidth + caretAffordance, lineRows);
+        }
 
         // Multi-line: lay out against the available width (an Unbounded width naturally disables wrapping, since
-        // no line exceeds it), then reserve clamp(lineCount, MinLines, MaxLines) rows.
+        // no line exceeds it), then reserve clamp(lineCount, MinLines, MaxLines) bands of LineRows rows.
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, availableSize.Columns) : 0;
-        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping);
-        var rows = ClampRows(layout.LineCount, owner.MinLines, owner.MaxLines);
+        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping, metrics);
+        var rows = ClampRows(layout.LineCount, owner.MinLines, owner.MaxLines) * lineRows;
         var width = wrap && !LayoutMath.IsUnbounded(availableSize.Columns)
             ? Math.Max(1, availableSize.Columns) // wrap fills the width
             : layout.MaxWidth + caretAffordance; // NoWrap (or unknown width) desires the widest line + the end caret
@@ -117,7 +157,7 @@ public sealed class TextPresenter : UIElement
 
     private void RefreshSingleLine(TextBox owner)
     {
-        var layout = GraphemeLayout.Build(owner.DisplayText);
+        var layout = GraphemeLayout.Build(owner.DisplayText, EditingMetrics);
         var caretColumn = layout.ColumnOf(owner.ToDisplayIndex(owner.CaretIndex));
         var viewport = _viewportColumns;
 
@@ -145,18 +185,20 @@ public sealed class TextPresenter : UIElement
     {
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, _viewportColumns) : 0;
-        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping);
+        var layout = TextLayout.Build(owner.DisplayText, wrapWidth, owner.TextWrapping, EditingMetrics);
         var (caretRow, caretColumn) = layout.Locate(owner.ToDisplayIndex(owner.CaretIndex), owner.CaretLineEndAffinity);
 
-        // Vertical scroll: keep the caret's visual line in view.
+        // Vertical scroll: keep the caret's visual line in view. Scroll math runs in LINES; the
+        // viewport holds viewportRows / LineRows whole bands.
+        var visibleLines = Math.Max(1, _viewportRows / LineRows);
         if (_viewportRows > 0)
         {
             if (caretRow < _scrollRow)
                 _scrollRow = caretRow;
-            else if (caretRow >= _scrollRow + _viewportRows)
-                _scrollRow = caretRow - _viewportRows + 1;
+            else if (caretRow >= _scrollRow + visibleLines)
+                _scrollRow = caretRow - visibleLines + 1;
 
-            var maxRow = Math.Max(0, layout.LineCount - _viewportRows);
+            var maxRow = Math.Max(0, layout.LineCount - visibleLines);
             _scrollRow = Math.Clamp(_scrollRow, 0, maxRow);
         }
         else
@@ -193,7 +235,8 @@ public sealed class TextPresenter : UIElement
     private TextLayout CurrentLayout(TextBox owner)
     {
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
-        return TextLayout.Build(owner.DisplayText, wrap ? Math.Max(1, _viewportColumns) : 0, owner.TextWrapping);
+        return TextLayout.Build(owner.DisplayText, wrap ? Math.Max(1, _viewportColumns) : 0, owner.TextWrapping,
+                                EditingMetrics);
     }
 
     /// <summary>
@@ -254,23 +297,29 @@ public sealed class TextPresenter : UIElement
 
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var layout = CurrentLayout(owner);
-        var line = Math.Clamp(localRow + _scrollRow, 0, layout.LineCount - 1);
+        // A pointer row anywhere within a band selects that band's line (glyphs are atomic).
+        var line = Math.Clamp(localRow / LineRows + _scrollRow, 0, layout.LineCount - 1);
         var column = Math.Max(0, localColumn) + (wrap ? 0 : _scrollColumn);
         return owner.ToModelIndex(layout.OffsetAt(line, column));
     }
 
-    private void PublishCaret(int localColumn, int localRow)
+    private void PublishCaret(int localColumn, int localLine)
     {
         if (UIApplication.Current?.CaretService is not { } service)
             return;
 
-        // Publish only while the owning TextBox holds physical focus and the caret's row is within the viewport
-        // (a scrolled-out caret row is hidden, mirroring the column clip). The caret service also clip-gates the
-        // publication and drops it on detach.
+        // The caret anchors at the BOTTOM row of its line's band (identity: the line itself) —
+        // the hardware cursor is one cell, and the bottom row keeps IME/accessibility tracking
+        // sane for sized editors (proposal-glyph-runs §4). Publish only while the owning TextBox
+        // holds physical focus and the band is within the viewport (a scrolled-out caret is
+        // hidden, mirroring the column clip). The caret service also clip-gates the publication
+        // and drops it on detach.
+        int lineRows = LineRows;
+        int localRow = localLine * lineRows + (lineRows - 1);
         var visible = IsAttachedToTree && Owner is { IsFocused: true }
-            && localRow >= 0 && localRow < Math.Max(1, _viewportRows);
+            && localLine >= 0 && localRow < Math.Max(1, _viewportRows);
         if (visible)
-            service.Publish(this, localColumn, localRow, CursorShape.BlinkingBar);
+            service.Publish(this, localColumn, localRow, CursorShape.BlinkingBar, rows: lineRows);
         else
             service.Clear(this);
     }
@@ -337,12 +386,14 @@ public sealed class TextPresenter : UIElement
 
         var wrap = owner.TextWrapping != WrapMode.NoWrap;
         var wrapWidth = wrap ? Math.Max(1, viewportColumns) : 0;
-        var layout = TextLayout.Build(text, wrapWidth, owner.TextWrapping);
+        var layout = TextLayout.Build(text, wrapWidth, owner.TextWrapping, EditingMetrics);
 
-        var lastRow = Math.Min(layout.LineCount, _scrollRow + viewportRows);
+        // Bands: each visual line paints LineRows tall; only whole bands that fit the viewport.
+        int lineRows = LineRows;
+        var lastRow = Math.Min(layout.LineCount, _scrollRow + Math.Max(1, viewportRows / lineRows));
         for (var row = _scrollRow; row < lastRow; row++)
         {
-            var localRow = row - _scrollRow;
+            var localRow = (row - _scrollRow) * lineRows;
             var lineStart = layout.LineContentStart(row);
             var lineEnd = layout.LineContentEnd(row);
             var glyphs = layout.LineGlyphs(row);
@@ -364,7 +415,7 @@ public sealed class TextPresenter : UIElement
     private void RenderSingleLine(RenderContext context, string text, int viewport, IBrush? foreground, bool noColor,
                                   IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
     {
-        var layout = GraphemeLayout.Build(text);
+        var layout = GraphemeLayout.Build(text, EditingMetrics);
         // The visible char window covers the viewport — boundary at/before the left edge through the boundary
         // at/after the right edge; the boundary clip absorbs the straddle on each side.
         var firstChar = layout.CharIndexAtOrBeforeColumn(_scrollColumn);
@@ -388,6 +439,34 @@ public sealed class TextPresenter : UIElement
             return;
 
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
+
+        if (EditingSource is { PaintsAsCells: false } source)
+        {
+            // A sized editor's run paints through ScaledText at the band's rect — the OSC 66
+            // fragment (or the fallback face) per selection segment, which is exactly the
+            // "fragment splits at selection boundaries" model: [pre][selected][post] emit as
+            // separate pieces, and the selected piece's SGR backdrop carries the highlight.
+            var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
+            var rect = new Rect(localColumn, localRow, runWidth, source.Metrics.LineRows);
+            var backdrop = CellStyle.Default;
+
+            if (selected)
+            {
+                backdrop = noColor || selectionBrush is null
+                               ? backdrop.WithAttributes(TextAttributes.Inverse)
+                               : backdrop.WithBackground(selectionBrush.ColorAt(
+                                     localColumn + runWidth / 2, localRow, rect));
+            }
+            else if (inverse)
+            {
+                backdrop = backdrop.WithAttributes(TextAttributes.Inverse);
+            }
+
+            var runText = text[from..to];
+            context.DrawContent(rect, new ScaledText(runText, source.Sizing, source.Font), backdrop);
+            return;
+        }
+
         var span = text.AsSpan(from, to - from);
 
         var style = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;

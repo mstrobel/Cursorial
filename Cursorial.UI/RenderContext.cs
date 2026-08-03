@@ -229,6 +229,24 @@ public sealed class RenderContext
         Inner.TintCells(bounds, style);
     }
 
+    /// <summary>Paints text through a glyph font at an element-local anchor (which may be negative —
+    /// a scrolled editor); the font clips like a cell write. Optional brush colors per cell.</summary>
+    public void DrawGlyphText(Cursorial.Rendering.Fonts.IGlyphFont face, int column, int row, string text,
+                              IBrush? foreground, in Cursorial.Output.Style style, in Rect brushBounds)
+    {
+        if (foreground is null)
+        {
+            Inner.DrawGlyphText(face, column, row, text, style);
+            return;
+        }
+
+        var captured = style;
+        var brush = foreground;
+        var bounds = brushBounds;
+        Inner.DrawGlyphText(face, column, row, text,
+                            (c, r) => captured.WithForeground(brush.ColorAt(c, r, bounds)));
+    }
+
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>
     public void DrawChart(IChart chart, in Rect area)
     {

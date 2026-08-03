@@ -373,6 +373,75 @@ public sealed class Section50_SizedTextBox
     }
 
     [Fact]
+    public void LeftwardSelectionFromTheEnd_TintsExactlyTheSelectedSpan_WhileScrolled()
+    {
+        // Maintainer repro: selecting leftward from the end of a long NoWrap line. The end-caret
+        // horizontally scrolls the viewport, which used to CRASH the face lane (Rect refused the
+        // negative column of the first off-screen word) — words and the tint now clip like cell
+        // writes, and the tint lands exactly on the selected span's kerned columns, one band.
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(90, 30),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+        });
+        using var _ = host;
+
+        var face = Cursorial.Rendering.Fonts.FigletFonts.SmallSlant;
+        var box = new TextBox
+        {
+            Text = "The quick brown fox\njumps over the lazy dog.",
+            Width = 80,
+            AcceptsReturn = true,
+            Font = face,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+        box.Focus();
+        host.RunUntilIdle();
+
+        var unique = Color.FromRgb(199, 21, 133);
+        box.SelectionBrush = new Cursorial.Drawing.Media.SolidColorBrush(unique);
+
+        // Screen-anchor the expectation FIRST — the CaretIndex setter collapses any selection.
+        int end = box.Text.Length;
+        box.CaretIndex = end; // scroll to the end, as a leftward drag from the end would
+        Assert.True(host.RunUntilIdle());
+        box.CaretIndex = end - 4; // the 'd' of "dog." — the selection's left edge
+        Assert.True(host.RunUntilIdle());
+        var anchor = host.Application.CaretService.GetCaretState();
+        int bandTop = anchor.Row - (face.Height - 1);
+
+        // Select "dog" WITHOUT the final period: the tint's right edge then sits several columns
+        // short of the viewport's, so any smear toward the edge (the Intersection width/end mixup
+        // rendered the tint clear to the viewport's right edge) breaks the width pin loudly.
+        box.SelectionStart = end - 4;
+        box.SelectionLength = 3;
+        Assert.True(host.RunUntilIdle());
+
+        var line2 = "jumps over the lazy dog.";
+        var layout = Cursorial.Rendering.Text.GraphemeLayout.Build(line2, face.GetMetrics());
+        int expectedWidth = layout.ColumnOf(line2.Length - 1) - layout.ColumnOf(line2.Length - 4);
+
+        var buffer = host.Application.FrameBufferInternal!;
+        int minC = int.MaxValue, maxC = -1, minR = int.MaxValue, maxR = -1;
+        for (int r = 0; r < 30; r++)
+        for (int c = 0; c < 90; c++)
+        {
+            if (buffer[c, r].Style.Background != unique) continue;
+            minC = Math.Min(minC, c); maxC = Math.Max(maxC, c);
+            minR = Math.Min(minR, r); maxR = Math.Max(maxR, r);
+        }
+
+        Assert.Equal(anchor.Column, minC);                  // tint starts at the caret's cell
+        Assert.Equal(expectedWidth, maxC - minC + 1);       // spans exactly the kerned "dog" columns
+        Assert.Equal(bandTop, minR);                        // one band —
+        Assert.Equal(anchor.Row, maxR);                     // — line 2's, and nothing else
+    }
+
+    [Fact]
     public void PlainEditor_IsByteIdenticalToBefore()
     {
         // The zero-cost fast path: an unsized editor resolves the identity source and must render

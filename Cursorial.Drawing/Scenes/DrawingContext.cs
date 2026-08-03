@@ -6,6 +6,7 @@ using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
+using Cursorial.Rendering.Fonts;
 
 // ReSharper disable CheckNamespace
 
@@ -957,27 +958,26 @@ public sealed class DrawingContext
     /// selection-highlight primitive for glyph-rendered text (FIGlet editors): painting is left
     /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
     /// cell-space rectangle over whatever ink is there.
-    /// </summary> 
+    /// </summary>
     public void TintCells(in Rect bounds, in Style style)
     {
-        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        var clip = _stateStack.Count == 0 ? new Rect(0, 0, surface.Columns, surface.Rows) : CurrentState.Clip;
-        var rect = bounds.Intersection(clip);
-
-        for (int row = rect.Row; row < rect.RowEnd; row++)
+        // Per-cell translate + clip via TryMap, like the scalar write path — bounds is in
+        // current-local coordinates while the active clip is in scene coordinates, so a
+        // rectangle-level intersection here would mix spaces whenever a translate is active.
+        for (int row = bounds.Row; row < bounds.RowEnd; row++)
         {
-            for (int column = rect.Column; column < rect.ColumnEnd; column++)
+            for (int column = bounds.Column; column < bounds.ColumnEnd; column++)
             {
-                if (row < 0 || column < 0 || row >= surface.Rows || column >= surface.Columns)
+                if (!TryMap(column, row, out int sceneColumn, out int sceneRow))
                     continue;
 
-                var cell = surface[column, row];
+                var cell = _surface[sceneColumn, sceneRow];
                 var tinted = cell.Style with { Attributes = cell.Style.Attributes | style.Attributes };
 
                 if (!style.Background.IsDefault)
                     tinted = tinted with { Background = style.Background };
 
-                surface[column, row] = cell with { Style = tinted };
+                _surface[sceneColumn, sceneRow] = cell with { Style = tinted };
             }
         }
     }
@@ -1009,6 +1009,32 @@ public sealed class DrawingContext
     /// <c>CompositeParameters.Clip</c>, which re-crops every frame.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Paints <paramref name="text"/> through <paramref name="face"/> anchored at the element-local
+    /// (<paramref name="column"/>, <paramref name="row"/>) — which may be NEGATIVE (a horizontally
+    /// scrolled editor): the font clips to the surface, exactly like a cell write. The direct
+    /// glyph-text primitive FIGlet-rendered editors paint words with.
+    /// </summary>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in Style style)
+    {
+        ArgumentNullException.ThrowIfNull(face);
+        ArgumentNullException.ThrowIfNull(text);
+
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        face.Paint(surface, column, row, text, style);
+    }
+
+    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in Style)"/>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, GlyphStyleProvider styleProvider)
+    {
+        ArgumentNullException.ThrowIfNull(face);
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(styleProvider);
+
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        face.Paint(surface, column, row, text, styleProvider);
+    }
+
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
         => DrawContent(bounds, content, capabilities, style: default);
 

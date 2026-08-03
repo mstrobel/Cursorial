@@ -464,8 +464,13 @@ public sealed class TextPresenter : UIElement
         int lineRows = source.Metrics.LineRows;
         var baseStyle = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;
 
+        int viewport = Math.Max(1, _viewportColumns);
+
         // Word tokens paint at their layout columns (whitespace-rigid advances make those
-        // additive across gaps, so paint and caret math agree exactly).
+        // additive across gaps, so paint and caret math agree exactly). A horizontally
+        // scrolled editor legally produces NEGATIVE anchors — the glyph-text primitive clips
+        // like a cell write, so partially visible words paint their visible tail (the old
+        // rect-based detour THREW on the first off-screen word).
         int i = from;
         while (i < to)
         {
@@ -476,32 +481,33 @@ public sealed class TextPresenter : UIElement
 
             int wordColumn = glyphs.ColumnOf(wordStart - lineStart) - _scrollColumn;
             int wordWidth = glyphs.ColumnOf(i - lineStart) - glyphs.ColumnOf(wordStart - lineStart);
-            var wordRect = new Rect(wordColumn, localRow, wordWidth, lineRows);
 
-            var pieceRun = new FormattedTextRun(text[wordStart..i], baseStyle, null) { Source = source };
-            var pieceLine = new FormattedLine([pieceRun], wordWidth, false, lineRows);
-            var piecePara = new FormattedParagraph([pieceLine], new Size(wordWidth, lineRows), TextAlignment.Left, false);
-            var piece = new FormattedText([piecePara], piecePara.Size, wordWidth);
+            if (wordColumn + wordWidth <= 0) continue; // fully scrolled off to the left
+            if (wordColumn >= viewport) break;         // this and everything after: off to the right
 
-            if (foreground is { } pieceBrush)
-                context.DrawFormattedText(piece, wordRect, pieceBrush);
-            else
-                context.DrawFormattedText(piece, wordRect);
+            var brushBounds = new Rect(Math.Max(0, wordColumn), localRow, Math.Max(1, wordWidth), lineRows);
+            context.DrawGlyphText(source.Font!, wordColumn, localRow, text[wordStart..i],
+                                  foreground, baseStyle, brushBounds);
         }
 
-        // Selection: tint the selected span in place — graphemes untouched.
+        // Selection: tint the selected span in place — graphemes untouched. Clamped to the
+        // viewport (a scrolled selection can start left of it or run past its right edge).
         if (selTo > selFrom && (!noColor || Owner?.IsFocused is true))
         {
-            int selColumn = glyphs.ColumnOf(selFrom - lineStart) - _scrollColumn;
-            int selWidth = glyphs.ColumnOf(selTo - lineStart) - glyphs.ColumnOf(selFrom - lineStart);
-            var selRect = new Rect(selColumn, localRow, selWidth, lineRows);
+            int selStart = Math.Max(0, glyphs.ColumnOf(selFrom - lineStart) - _scrollColumn);
+            int selEnd = Math.Min(viewport, glyphs.ColumnOf(selTo - lineStart) - _scrollColumn);
 
-            var tint = noColor || selectionBrush is null
-                           ? CellStyle.Default.WithAttributes(TextAttributes.Inverse)
-                           : CellStyle.Default.WithBackground(selectionBrush.ColorAt(
-                                 selColumn + selWidth / 2, localRow, selRect));
+            if (selEnd > selStart)
+            {
+                var selRect = new Rect(selStart, localRow, selEnd - selStart, lineRows);
 
-            context.TintCells(selRect, tint);
+                var tint = noColor || selectionBrush is null
+                               ? CellStyle.Default.WithAttributes(TextAttributes.Inverse)
+                               : CellStyle.Default.WithBackground(selectionBrush.ColorAt(
+                                     selStart + (selEnd - selStart) / 2, localRow, selRect));
+
+                context.TintCells(selRect, tint);
+            }
         }
     }
 

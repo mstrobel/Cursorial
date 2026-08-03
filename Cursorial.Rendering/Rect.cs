@@ -144,9 +144,18 @@ public readonly record struct Rect
     public bool Contains(Rect other)
         => Contains(other.Column, other.Row) && Contains(other.ColumnEnd - 1, other.RowEnd - 1);
 
-    /// <summary>Returns the intersection of this rectangle with <paramref name="other"/>.</summary>
+    /// <summary>Returns the intersection of this rectangle with <paramref name="other"/> —
+    /// <see cref="Empty"/> when they do not overlap.</summary>
     public Rect Intersection(Rect other)
-        => new(Math.Max(Column, other.Column), Math.Max(Row, other.Row), Math.Min(ColumnEnd, other.ColumnEnd), Math.Min(RowEnd, other.RowEnd));
+    {
+        int column = Math.Max(Column, other.Column);
+        int row = Math.Max(Row, other.Row);
+        int columnEnd = Math.Min(ColumnEnd, other.ColumnEnd);
+        int rowEnd = Math.Min(RowEnd, other.RowEnd);
+        return columnEnd > column && rowEnd > row
+            ? new Rect(column, row, columnEnd - column, rowEnd - row)
+            : Empty;
+    }
 
 
     /// <summary>

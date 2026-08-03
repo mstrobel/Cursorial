@@ -184,6 +184,93 @@ public sealed class Section50_SizedTextBox
         Assert.Contains("\x1b[>2;4:", bytes); // beam, rectangle form — the glyph-height band
     }
 
+    // ---- FIGlet-lane pins (maintainer report: caret splits collapsed whitespace; no selection highlight) ----
+
+    private static (UIHeadlessHost Host, TextBox Box) ShownFiglet(string text, int width = 60)
+    {
+        // KittyTruecolor WITHOUT TextSizing: the scaled source resolves to its bundled FIGlet
+        // fallback at layout — the editor runs the direct-face lane end to end.
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(80, 14),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+            CaptureFrameBytes = true
+        });
+
+        var box = new TextBox
+        {
+            Text = text,
+            Width = width,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        TextElement.SetSizing(box, new TextSizing(Scale: 2));
+
+        host.ShowRoot(box);
+        host.RunUntilIdle();
+        box.Focus();
+        Assert.True(host.RunUntilIdle());
+        return (host, box);
+    }
+
+    private static string[] BandRows(UIHeadlessHost host, int rows)
+    {
+        var lines = new string[rows];
+        for (int r = 0; r < rows; r++)
+            lines[r] = host.GetRowText(r);
+        return lines;
+    }
+
+    [Fact]
+    public void CaretSplit_DoesNotCollapseWhitespace()
+    {
+        // "quick| brown" used to render as "quick|brown": the piece right of the caret split
+        // went through ScaledText's placeholder, whose default-WordWrap re-format DROPPED the
+        // leading space and left-shifted every following glyph. The render must be IDENTICAL
+        // whatever the caret position — pieces repartition, glyphs never move.
+        var (host, box) = ShownFiglet("quick brown");
+        using var _ = host;
+
+        box.CaretIndex = 0;
+        Assert.True(host.RunUntilIdle());
+        var atStart = BandRows(host, 12);
+
+        box.CaretIndex = 5; // "quick| brown" — the reported repro
+        Assert.True(host.RunUntilIdle());
+        var atSplit = BandRows(host, 12);
+
+        Assert.Equal(atStart, atSplit);
+
+        box.CaretIndex = 7; // "quick |b|rown"-adjacent variants from the report
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(atStart, BandRows(host, 12));
+    }
+
+    [Fact]
+    public void FigletSelection_PaintsTheBackdrop()
+    {
+        // Selection highlighting "didn't work at all with figlet fonts": the placeholder cache
+        // swallowed the style. The selected span must now carry the selection background across
+        // its band — filled first (glyph ink is sparse), glyphs painted over it.
+        var (host, box) = ShownFiglet("quick");
+        using var _ = host;
+
+        var highlight = Color.FromRgb(200, 40, 40);
+        box.SelectionBrush = new Cursorial.Drawing.Media.SolidColorBrush(highlight);
+        box.SelectionStart = 1;
+        box.SelectionLength = 2;
+        Assert.True(host.RunUntilIdle());
+
+        var buffer = host.Application.FrameBufferInternal!;
+        bool found = false;
+
+        for (int r = 0; r < 12 && !found; r++)
+        for (int c = 0; c < 60 && !found; c++)
+            found = buffer[c, r].Style.Background == highlight;
+
+        Assert.True(found, "no cell carries the selection background");
+    }
+
     [Fact]
     public void PlainEditor_IsByteIdenticalToBefore()
     {

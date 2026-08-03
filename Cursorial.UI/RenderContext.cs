@@ -222,6 +222,13 @@ public sealed class RenderContext
         Inner.DrawContent(bounds, content, _capabilities, style);
     }
 
+    /// <summary>Restyles cells in place — graphemes preserved, background/attributes applied. The
+    /// selection-highlight primitive for glyph-rendered (FIGlet) text: geometry never shifts.</summary>
+    public void TintCells(in Rect bounds, in Cursorial.Output.Style style)
+    {
+        Inner.TintCells(bounds, style);
+    }
+
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>
     public void DrawChart(IChart chart, in Rect area)
     {

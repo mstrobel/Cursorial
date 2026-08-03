@@ -135,6 +135,16 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
         if (previous.IsEmpty)
             return ClusterWidth(cluster);
 
+        // WHITESPACE IS RIGID: a word gap advances its full width and breaks the kerning chain
+        // on both sides (maintainer decision 2026-08-02). Faces like SmallSlant interlock
+        // diagonally and kern 2-3 columns into each side of even a hardblank-carrying space —
+        // font-legal, but a single-call paint then joins words while the piece-per-atom
+        // formatter keeps them apart, and the mono truth says gaps hold. Words still kern
+        // internally at the face's own rules; layout, caret math, and paint all share this
+        // contract, so text renders identically however it is split into pieces.
+        if (IsRigidGap(previous) || IsRigidGap(cluster))
+            return ClusterWidth(cluster);
+
         return _advances.GetOrAdd((previous.ToString(), cluster.ToString()), static (key, font) =>
         {
             // The pair's kerned width minus the lead glyph alone = what the trailing cluster adds.
@@ -143,6 +153,9 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
             return Math.Max(0, pair - lead);
         }, _font);
     }
+
+    private static bool IsRigidGap(ReadOnlySpan<char> cluster)
+        => cluster.Length == 1 && char.IsWhiteSpace(cluster[0]);
 
     public override int LineRows => _lineRows;
 

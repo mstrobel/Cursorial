@@ -164,6 +164,36 @@ public abstract class TextElement
                                                                             (o as UIElement)?.InvalidateMeasure(),
                                                                         inherits: true);
 
+    /// <summary>
+    /// The glyph font for the element's text (proposal-glyph-runs Phase 3): a FIGlet (or other
+    /// <see cref="Cursorial.Rendering.Fonts.IGlyphFont"/>) face the text renders through — words
+    /// kern at the face's rules, word gaps stay rigid, editing is glyph-atomic. Combines with
+    /// <see cref="SizingProperty"/>: a sizing that the terminal supports wins, with the font as
+    /// its fallback face.
+    /// </summary>
+    public static readonly StyledProperty<Cursorial.Rendering.Fonts.IGlyphFont?> GlyphFontProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, Cursorial.Rendering.Fonts.IGlyphFont?>(
+            "GlyphFont",
+            new PropertyMetadata<Cursorial.Rendering.Fonts.IGlyphFont?>(null)
+            {
+                Changed = static (o, _, _) => (o as UIElement)?.InvalidateMeasure()
+            },
+            inherits: true);
+
+    /// <summary>Reads the glyph font attached to <paramref name="element"/>.</summary>
+    public static Cursorial.Rendering.Fonts.IGlyphFont? GetGlyphFont(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(GlyphFontProperty);
+    }
+
+    /// <summary>Sets the glyph font on <paramref name="element"/> (inherits to its descendants).</summary>
+    public static void SetGlyphFont(UIElement element, Cursorial.Rendering.Fonts.IGlyphFont? value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(GlyphFontProperty, value);
+    }
+
     /// <summary>Reads the text sizing attached to <paramref name="element"/>.</summary>
     public static TextSizing GetSizing(UIElement element)
     {

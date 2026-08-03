@@ -52,10 +52,12 @@ public sealed class TextPresenter : UIElement
         get
         {
             var sizing = TextElement.GetSizing(this);
-            if (sizing.IsNormal)
+            var font = TextElement.GetGlyphFont(this);
+
+            if (sizing.IsNormal && font is null)
                 return GlyphSource.Default;
 
-            var source = new GlyphSource(null, sizing);
+            var source = new GlyphSource(font, sizing);
             return UIApplication.Current is { } app ? source.ResolveFor(app.EffectiveCapabilities.Output) : source;
         }
     }
@@ -406,9 +408,17 @@ public sealed class TextPresenter : UIElement
             var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);
             var selTo = Math.Clamp(selectionEnd, firstChar, lastChar);
 
-            DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
-            DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush, inverse);
-            DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+            if (EditingSource is { Font: not null, Sizing.IsNormal: true } faceSource)
+            {
+                DrawFaceLine(context, glyphs, lineStart, text, firstChar, lastChar, selFrom, selTo, localRow,
+                             foreground, noColor, selectionBrush, inverse, faceSource);
+            }
+            else
+            {
+                DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+            }
         }
     }
 
@@ -425,9 +435,74 @@ public sealed class TextPresenter : UIElement
         var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);
         var selTo = Math.Clamp(selectionEnd, firstChar, lastChar);
 
+        if (EditingSource is { Font: not null, Sizing.IsNormal: true } faceSource)
+        {
+            DrawFaceLine(context, layout, 0, text, firstChar, lastChar, selFrom, selTo, 0,
+                         foreground, noColor, selectionBrush, inverse, faceSource);
+            return;
+        }
+
         DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, foreground, selected: false, noColor, selectionBrush, inverse);
         DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, foreground, selected: true, noColor, selectionBrush, inverse);
         DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, foreground, selected: false, noColor, selectionBrush, inverse);
+    }
+
+    /// <summary>
+    /// Renders a FIGlet-sourced visual line: words paint WHOLE (their internal kerning intact —
+    /// glyph geometry never depends on the caret or selection), word gaps stay rigid blanks, and
+    /// the selection is a cell TINT over the selected span rather than a paint split — so a
+    /// non-rectangular face's diagonal ink highlights as a clean rectangle without shifting.
+    /// </summary>
+    private void DrawFaceLine(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text,
+                              int from, int to, int selFrom, int selTo, int localRow,
+                              IBrush? foreground, bool noColor, IBrush? selectionBrush, bool inverse,
+                              GlyphSource source)
+    {
+        if (to <= from)
+            return;
+
+        int lineRows = source.Metrics.LineRows;
+        var baseStyle = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;
+
+        // Word tokens paint at their layout columns (whitespace-rigid advances make those
+        // additive across gaps, so paint and caret math agree exactly).
+        int i = from;
+        while (i < to)
+        {
+            if (char.IsWhiteSpace(text[i])) { i++; continue; }
+
+            int wordStart = i;
+            while (i < to && !char.IsWhiteSpace(text[i])) i++;
+
+            int wordColumn = glyphs.ColumnOf(wordStart - lineStart) - _scrollColumn;
+            int wordWidth = glyphs.ColumnOf(i - lineStart) - glyphs.ColumnOf(wordStart - lineStart);
+            var wordRect = new Rect(wordColumn, localRow, wordWidth, lineRows);
+
+            var pieceRun = new FormattedTextRun(text[wordStart..i], baseStyle, null) { Source = source };
+            var pieceLine = new FormattedLine([pieceRun], wordWidth, false, lineRows);
+            var piecePara = new FormattedParagraph([pieceLine], new Size(wordWidth, lineRows), TextAlignment.Left, false);
+            var piece = new FormattedText([piecePara], piecePara.Size, wordWidth);
+
+            if (foreground is { } pieceBrush)
+                context.DrawFormattedText(piece, wordRect, pieceBrush);
+            else
+                context.DrawFormattedText(piece, wordRect);
+        }
+
+        // Selection: tint the selected span in place — graphemes untouched.
+        if (selTo > selFrom && (!noColor || Owner?.IsFocused is true))
+        {
+            int selColumn = glyphs.ColumnOf(selFrom - lineStart) - _scrollColumn;
+            int selWidth = glyphs.ColumnOf(selTo - lineStart) - glyphs.ColumnOf(selFrom - lineStart);
+            var selRect = new Rect(selColumn, localRow, selWidth, lineRows);
+
+            var tint = noColor || selectionBrush is null
+                           ? CellStyle.Default.WithAttributes(TextAttributes.Inverse)
+                           : CellStyle.Default.WithBackground(selectionBrush.ColorAt(
+                                 selColumn + selWidth / 2, localRow, selRect));
+
+            context.TintCells(selRect, tint);
+        }
     }
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the

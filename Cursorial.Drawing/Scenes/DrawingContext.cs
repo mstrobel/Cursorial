@@ -978,6 +978,37 @@ public sealed class DrawingContext
     /// <c>CompositeParameters.Clip</c>, which re-crops every frame.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Restyles the cells in <paramref name="bounds"/> IN PLACE — graphemes are preserved, the
+    /// style's background replaces each cell's (when non-default) and its attributes OR in. The
+    /// selection-highlight primitive for glyph-rendered text (FIGlet editors): painting is left
+    /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
+    /// cell-space rectangle over whatever ink is there.
+    /// </summary>
+    public void TintCells(in Rect bounds, in Style style)
+    {
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        var clip = _stateStack.Count == 0 ? new Rect(0, 0, surface.Columns, surface.Rows) : CurrentState.Clip;
+        var rect = bounds.Intersection(clip);
+
+        for (int row = rect.Row; row < rect.RowEnd; row++)
+        {
+            for (int column = rect.Column; column < rect.ColumnEnd; column++)
+            {
+                if (row < 0 || column < 0 || row >= surface.Rows || column >= surface.Columns)
+                    continue;
+
+                var cell = surface[column, row];
+                var tinted = cell.Style with { Attributes = cell.Style.Attributes | style.Attributes };
+
+                if (!style.Background.IsDefault)
+                    tinted = tinted with { Background = style.Background };
+
+                surface[column, row] = cell with { Style = tinted };
+            }
+        }
+    }
+
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
         => DrawContent(bounds, content, capabilities, style: default);
 

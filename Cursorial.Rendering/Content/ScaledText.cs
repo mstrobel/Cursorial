@@ -109,7 +109,7 @@ public sealed class ScaledText : FragmentContent
 
     protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
     {
-        var rtb = new RichTextBuilder(/*style*/);
+        var rtb = new RichTextBuilder();
 
         var alignment = Sizing.Horizontal switch
                         {
@@ -118,29 +118,51 @@ public sealed class ScaledText : FragmentContent
                             _                                    => TextAlignment.Left
                         };
 
-        var rt = rtb.Figlet(Text, FallbackFont).Build();
-        var tf = new TextFormatter { Alignment = alignment, Trim = TextTrimming.None };
+        // NoWrap, deliberately: the caller (a formatter piece, an editor segment) has already
+        // wrapped — and the default WordWrap's packer DROPS LEADING WHITESPACE, which collapsed
+        // the spaces to the right of an editor's caret split and shifted every following glyph
+        // left of where the caret math placed it. The STYLE rides the figlet block, so a
+        // selection backdrop reaches the glyph cells (it used to be dropped entirely).
+        var rt = rtb.Figlet(Text, FallbackFont, style).Build();
+        var tf = new TextFormatter { Alignment = alignment, Trim = TextTrimming.None, Wrap = WrapMode.NoWrap };
         var ft = tf.Format(rt, size.Columns, maxRows: null, capabilities);
 
         return ft;
     }
+
+    private Style _placeholderStyle;
 
     protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
-        
+
         var placeholderSize = DesiredSize ?? bounds.Size;
 
-        RealizedPlaceholder ??= BuildPlaceholder(placeholderSize, capabilities, style);
-        
+        // The realization bakes the style into its glyph runs — a style change (the selection
+        // backdrop appearing or moving) must REBUILD, not reuse (the old ??= cached the first
+        // style forever, which is why figlet selection highlighting never showed).
+        if (RealizedPlaceholder is null || _placeholderStyle != style)
+        {
+            RealizedPlaceholder = BuildPlaceholder(placeholderSize, capabilities, style);
+            _placeholderStyle = style;
+        }
+
+        var rect = new Rect(bounds.Position, placeholderSize);
+
+        // A selection-style backdrop covers the WHOLE piece rect — glyph ink is sparse, and a
+        // highlight that only tints ink cells is unreadable. Background-or-attribute styles fill
+        // first; the glyphs paint over the fill carrying the same style.
+        if (style != Style.Default)
+            buffer.ClearCells(rect, style);
+
         if (RealizedPlaceholder is FormattedText ft)
-            return ft.Paint(buffer, new Rect(bounds.Position, placeholderSize), capabilities, BrushResolver);
+            return ft.Paint(buffer, rect, capabilities, BrushResolver);
 
         if (RealizedPlaceholder is {} p)
-            return p.Paint(buffer, new Rect(bounds.Position, placeholderSize), style, capabilities);
-        
+            return p.Paint(buffer, rect, style, capabilities);
+
         return bounds;
     }
 

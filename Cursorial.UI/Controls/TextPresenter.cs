@@ -442,10 +442,9 @@ public sealed class TextPresenter : UIElement
 
         if (EditingSource is { PaintsAsCells: false } source)
         {
-            // A sized editor's run paints through ScaledText at the band's rect — the OSC 66
-            // fragment (or the fallback face) per selection segment, which is exactly the
-            // "fragment splits at selection boundaries" model: [pre][selected][post] emit as
-            // separate pieces, and the selected piece's SGR backdrop carries the highlight.
+            // A non-cell editor run paints per selection segment — the "fragment splits at
+            // selection boundaries" model: [pre][selected][post] as separate pieces, the
+            // selected piece's backdrop carrying the highlight.
             var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
             var rect = new Rect(localColumn, localRow, runWidth, source.Metrics.LineRows);
             var backdrop = CellStyle.Default;
@@ -463,7 +462,31 @@ public sealed class TextPresenter : UIElement
             }
 
             var runText = text[from..to];
-            context.DrawContent(rect, new ScaledText(runText, source.Sizing, source.Font), backdrop);
+
+            // The piece paints through the SAME run pipeline the paragraph painter uses — a
+            // one-run FormattedText whose Source dispatches it: a pure FIGlet source paints the
+            // face DIRECTLY (never ScaledText's placeholder detour, whose re-formatting dropped
+            // leading whitespace and whose realization cache swallowed the selection style); a
+            // sized source rides the OSC 66 fragment. Glyph ink is sparse, so a selection
+            // backdrop fills the rect first; the glyphs then paint over it in the same style.
+            if (backdrop != CellStyle.Default)
+            {
+                if (backdrop.Background is { IsDefault: false } bg)
+                    context.FillOpaque(rect, bg, backdrop.Attributes);
+                else
+                    context.FillOpaque(rect, Color.Default, backdrop.Attributes);
+            }
+
+            var pieceRun = new FormattedTextRun(runText, backdrop, null) { Source = source };
+            var pieceLine = new FormattedLine([pieceRun], runWidth, false, rect.Rows);
+            var piecePara = new FormattedParagraph([pieceLine], new Size(runWidth, rect.Rows), TextAlignment.Left, false);
+            var piece = new FormattedText([piecePara], piecePara.Size, runWidth);
+
+            if (foreground is { } pieceBrush)
+                context.DrawFormattedText(piece, rect, pieceBrush);
+            else
+                context.DrawFormattedText(piece, rect);
+
             return;
         }
 

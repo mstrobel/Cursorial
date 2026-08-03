@@ -668,6 +668,167 @@ public class FragmentPassthroughTests
     }
 
     // A minimal out-of-band fragment for tests — never actually emits.
+    [Fact]
+    public void SceneReRaster_ReRegistersTheSameFragmentInstance()
+    {
+        // The re-raster wipe empties the fragment registry, so content re-registers per raster —
+        // but a still-fresh fragment must be the SAME instance, not a re-creation: the frame
+        // renderer diffs by reference, so a fresh instance re-transmits an unchanged payload
+        // (and an image re-creation re-encodes it — Sixel re-quantizes the full raster).
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
+                   };
+        var content = new Image(new ImageData(MinimalPng(16, 8), ImageFormat.Png, new Size(2, 1)));
+
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 1), content, caps));
+
+        Assert.True(scene.Buffer.AsView().TryGetFragmentAnchor(FirstFragment(scene).Key, out _));
+        var first = FirstFragment(scene);
+
+        scene.Invalidate();
+        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 1), content, caps));
+
+        Assert.Same(first, FirstFragment(scene));
+    }
+
+    [Fact]
+    public void SceneReRaster_UnchangedImage_IsNotReTransmitted()
+    {
+        // End to end on the SIXEL tier — the exposed one: SixelFragment's diff key is reference
+        // identity and its construction re-quantizes the raster, so without instance reuse every
+        // co-scene cell change re-encoded AND re-transmitted the whole payload. (Kitty dodges the
+        // re-transmission via its content-derived key; reuse spares it only the re-encode.)
+        var caps = OutputCapabilities.None with
+                   {
+                       Graphics = new GraphicsCapabilities(Sixel: true, KittyGraphics: false, ITerm2InlineImages: false),
+                       Window = OutputCapabilities.None.Window with { CellPixelWidth = 8, CellPixelHeight = 16 },
+                   };
+        var content = new Image(new ImageData(SolidPng(16, 16), ImageFormat.Png, new Size(2, 1)));
+        using var scene = Scene.Create(10, 4);
+        var target = new CellBuffer(10, 4);
+        var compositor = new SceneCompositor(Style.Default);
+        var renderer = new FrameRenderer(caps);
+
+        void Raster(string label)
+        {
+            scene.Invalidate();
+            scene.Draw(ctx =>
+            {
+                ctx.DrawContent(new Rect(0, 0, 2, 1), content, caps);
+                for (int i = 0; i < label.Length; i++) ctx.Set(i, 2, label[i].ToString(), Style.Default);
+            });
+        }
+
+        Raster("one");
+        compositor.Composite([Layer(scene)], target.AsView());
+        var w1 = new ArrayBufferWriter<byte>();
+        renderer.Render(target, w1);
+        Assert.Contains("\x1bP", Encoding.UTF8.GetString(w1.WrittenSpan)); // Sixel DCS payload out
+
+        Raster("two");
+        compositor.Composite([Layer(scene)], target.AsView());
+        var w2 = new ArrayBufferWriter<byte>();
+        renderer.Render(target, w2);
+        var second = Encoding.UTF8.GetString(w2.WrittenSpan);
+
+        Assert.Contains("two", second);                 // the cell change went out —
+        Assert.DoesNotContain("\x1bP", second);         // — the unchanged image did not
+    }
+
+    [Fact]
+    public void ScaledTextStyleChange_RebuildsTheFragment()
+    {
+        // The guard on reuse: ScaledText bakes the style into the emission (the OSC 66 SGR
+        // backdrop), so a style change at an unchanged size must produce a NEW fragment.
+        var caps = OutputCapabilities.None with
+                   {
+                       TextSizing = new TextSizingCapabilities(Width: true, Scale: true),
+                   };
+        var content = new ScaledText("AB", new TextSizing(Scale: 2), Cursorial.Rendering.Fonts.FigletFonts.Standard);
+
+        using var scene = Scene.Create(10, 4);
+        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), content, caps));
+        var first = FirstFragment(scene);
+
+        scene.Invalidate();
+        var highlighted = Style.Default.WithBackground(Color.FromRgb(10, 20, 30));
+        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), content, caps, highlighted));
+
+        var second = FirstFragment(scene);
+        Assert.NotSame(first, second);
+        Assert.Equal(highlighted, Assert.IsType<SizedTextFragment>(second).Style);
+    }
+
+    private static IBufferFragment FirstFragment(Scene scene)
+    {
+        foreach (var (_, entry) in scene.Buffer.Fragments)
+            return entry.Fragment;
+        Assert.Fail("no fragment registered on the scene");
+        return null!;
+    }
+
+    // A real, decodable PNG (solid-color truecolor, filter 0) — the Sixel path decodes pixels,
+    // so the header-only MinimalPng is not enough for it.
+    private static byte[] SolidPng(int width, int height)
+    {
+        int stride = width * 3;
+        var filtered = new byte[height * (stride + 1)];
+        for (int y = 0; y < height; y++)
+        {
+            var row = filtered.AsSpan(y * (stride + 1));
+            row[0] = 0; // filter: None
+            for (int x = 0; x < width; x++)
+            {
+                row[1 + x * 3] = 200; row[2 + x * 3] = 40; row[3 + x * 3] = 90;
+            }
+        }
+
+        byte[] compressed;
+        using (var ms = new MemoryStream())
+        {
+            using (var zlib = new System.IO.Compression.ZLibStream(ms, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+                zlib.Write(filtered, 0, filtered.Length);
+            compressed = ms.ToArray();
+        }
+
+        using var png = new MemoryStream();
+        png.Write([137, 80, 78, 71, 13, 10, 26, 10]);
+        var ihdr = new byte[13];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0, 4), width);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4, 4), height);
+        ihdr[8] = 8; ihdr[9] = 2; // 8-bit truecolor
+        WriteChunk(png, 0x49484452u, ihdr);
+        WriteChunk(png, 0x49444154u, compressed);
+        WriteChunk(png, 0x49454E44u, []);
+        return png.ToArray();
+
+        static void WriteChunk(Stream stream, uint type, byte[] data)
+        {
+            Span<byte> header = stackalloc byte[8];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(header[..4], data.Length);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(header.Slice(4, 4), type);
+            stream.Write(header);
+            stream.Write(data);
+            stream.Write([0, 0, 0, 0]); // decoder skips CRC
+        }
+    }
+
+    private static byte[] MinimalPng(int width, int height)
+    {
+        var bytes = new byte[33];
+        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        signature.CopyTo(bytes);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(8, 4), 13);
+        "IHDR"u8.CopyTo(bytes.AsSpan(12, 4));
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(16, 4), width);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(20, 4), height);
+        bytes[24] = 8;
+        bytes[25] = 2;
+        return bytes;
+    }
+
     private sealed class FakeFragment(int width, int height) : IBufferFragment
     {
         public Size GetSize() => new(width, height);

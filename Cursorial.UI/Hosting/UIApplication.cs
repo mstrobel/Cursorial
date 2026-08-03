@@ -424,9 +424,10 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// <summary>
     /// The sanctioned out-of-band byte channel (design doc §10.2): the payload is appended to the
     /// frame's scratch buffer in Phase 6 <b>after</b> the renderer's delta (forcing a flush even on
-    /// an empty delta). OSC-class sequences only (title, clipboard, pointer shape, palette) —
-    /// SGR / CUP / ED / scroll are FORBIDDEN: <see cref="FrameRenderer"/> is the sole owner of that
-    /// terminal state and they desync the next delta. Thread-safe; wakes the loop.
+    /// an empty delta). Stateless-to-the-renderer sequences only (title, clipboard, pointer shape,
+    /// palette, the Kitty extra-cursor band) — SGR / CUP / ED / scroll are FORBIDDEN:
+    /// <see cref="FrameRenderer"/> is the sole owner of that terminal state and they desync the
+    /// next delta. Thread-safe; wakes the loop.
     /// </summary>
     public void QueueControlSequence(Action<IBufferWriter<byte>> writePayload)
     {

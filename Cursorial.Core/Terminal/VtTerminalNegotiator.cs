@@ -147,9 +147,21 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             // terminal is alive and willing to respond) underlies both phases.
             if (options.OptIns == OptInPolicy.Allowed)
             {
+                // The Kitty multiple-cursors support query (CSI > SP q) rides the color round:
+                // it is an independent query answered before the same DA1 sentinel, so
+                // piggybacking costs no extra round-trip. Family-gated like the restore-time
+                // clear (see _emitKittyExtraCursorClear) — non-Kitty terminals mis-parse the
+                // `> … SP q` form (Apple Terminal prints the literal 'q'), and only
+                // Kitty-family terminals can answer. Silence by the sentinel ⇒ unsupported.
+                if (_emitKittyExtraCursorClear)
+                    await WriteAsync(MultipleCursorsQuery, cancellationToken).ConfigureAwait(false);
+
                 await ProbeColorsAsync(options, cancellationToken).ConfigureAwait(false);
+
+                if (_emitKittyExtraCursorClear)
+                    ResolveMultipleCursorsReply();
             }
-            
+
             // _negotiated is now durably 1 even if anything above threw — restore still runs.
             var inputCapabilities = ResolveInputCapabilities(identification, _applied);
             var outputCapabilities = ResolveOutputCapabilities(identification, _applied);
@@ -938,6 +950,27 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         _defaultForeground = FindFirstColor(collector, DeviceResponseKind.ForegroundColor);
         _defaultBackground = FindFirstColor(collector, DeviceResponseKind.BackgroundColor);
         _defaultCursorColor = FindFirstColor(collector, DeviceResponseKind.CursorColor);
+    }
+
+    // ---- Kitty multiple-cursors probe --------------------------------------------------
+
+    // Whether the terminal answered the multiple-cursors support query with beam (shape 2)
+    // support — set by ResolveMultipleCursorsReply, read by ResolveCursor after probes complete.
+    private bool _multipleCursorsVerified;
+
+    /// <summary>
+    /// Scan the collector for the Kitty multiple-cursors support reply
+    /// (<c>CSI &gt; &lt;shapes&gt; SP q</c>) queued into the color round by
+    /// <see cref="NegotiateAsync"/>. The payload is a semicolon-separated shape list
+    /// ("1;2;3;29") — the same wire shape as a DA1 parameter list, so the exact-match scanner
+    /// is reused. The realized capability requires shape 2 (beam): that is the shape the
+    /// glyph-height caret band emits, and a terminal not listing it cannot render the band.
+    /// No reply by the sentinel leaves the capability unsupported.
+    /// </summary>
+    private void ResolveMultipleCursorsReply()
+    {
+        if (_probeCollector?.FindFirst(DeviceResponseKind.MultipleCursors) is { } reply)
+            _multipleCursorsVerified = Da1Advertises(reply.Payload.Span, parameter: 2);
     }
 
     private static Color? FindFirstColor(ResponseCollector collector, DeviceResponseKind kind)
@@ -1761,7 +1794,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
     }
     // @formatter:on
 
-    private static CursorCapabilities ResolveCursor(TerminalIdentification identification)
+    private CursorCapabilities ResolveCursor(TerminalIdentification identification)
     {
         // DECSCUSR (CSI Ps SP q) cursor-shape / blink control. Apple Terminal does NOT implement it
         // (it mis-parses the space-intermediate form) — the original code excluded it in the comment
@@ -1775,7 +1808,9 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             VisibilityControl: family != TerminalFamily.Unknown, // DECTCEM (mode 25) — Apple Terminal supports this.
             BlinkControl: shapeAndBlink,
             // OSC 12 cursor color — Apple Terminal (via shapeAndBlink) and Termux both lack it.
-            ColorControl: shapeAndBlink && family is not TerminalFamily.Termux);
+            ColorControl: shapeAndBlink && family is not TerminalFamily.Termux,
+            // Kitty multiple-cursors — reply-verified, never assumed from family alone.
+            MultipleCursors: _multipleCursorsVerified);
     }
 
     private WindowCapabilities ResolveWindow(TerminalIdentification identification)
@@ -1825,6 +1860,10 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
 
     /// <summary><c>CSI c</c> — Primary Device Attributes (DA1) request, used as the sentinel.</summary>
     private static ReadOnlyMemory<byte> Da1Request { get; } = new byte[] { 0x1B, (byte) '[', (byte) 'c' };
+
+    /// <summary><c>CSI &gt; SP q</c> — Kitty multiple-cursors support query. A supporting terminal
+    /// replies <c>CSI &gt; &lt;shapes&gt; SP q</c> listing its supported extra-cursor shapes.</summary>
+    private static ReadOnlyMemory<byte> MultipleCursorsQuery { get; } = new byte[] { 0x1B, (byte) '[', (byte) '>', (byte) ' ', (byte) 'q' };
 
     // ---- Internal collaborators ----
 

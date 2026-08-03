@@ -107,5 +107,14 @@ public enum DeviceResponseKind
     /// mode-number and status code (0 = not recognized, 1 = set, 2 = reset, 3 = permanently set,
     /// 4 = permanently reset).
     /// </summary>
-    DecRqmPrivate
+    DecRqmPrivate,
+
+    /// <summary>
+    /// Response to the Kitty multiple-cursors support query (<c>CSI &gt; SP q</c>) — the wire
+    /// form is <c>CSI &gt; &lt;shapes&gt; SP q</c>, a semicolon-separated list of the extra-cursor
+    /// shapes the terminal supports (1 = block, 2 = beam, 3 = underline, 29 = follow the main
+    /// cursor's shape). The <see cref="DeviceResponseEvent.Payload"/> carries the raw shape list
+    /// as ASCII bytes. See <see href="https://sw.kovidgoyal.net/kitty/multiple-cursors-protocol/"/>.
+    /// </summary>
+    MultipleCursors
 }

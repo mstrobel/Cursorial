@@ -16,9 +16,13 @@ public interface ITerminalCaretService
     /// <summary>
     /// Publishes (or updates) <paramref name="owner"/>'s caret at element-local
     /// (<paramref name="column"/>, <paramref name="row"/>) with the given <paramref name="shape"/>.
-    /// The most recent publication wins frame assembly.
+    /// The most recent publication wins frame assembly. <paramref name="rows"/> is the caret-band
+    /// height for glyph-height carets (proposal-glyph-runs §4): <paramref name="row"/> stays the
+    /// band's BOTTOM row — the cell the hardware cursor occupies, so IME and assistive technology
+    /// keep tracking the anchor — and the rows above it render as Kitty extra beam cursors on
+    /// supporting terminals. The default (1) is today's single-cell caret.
     /// </summary>
-    void Publish(UIElement owner, int column, int row, CursorShape shape);
+    void Publish(UIElement owner, int column, int row, CursorShape shape, int rows = 1);
 
     /// <summary>Withdraws <paramref name="owner"/>'s publication (no-op when none exists).</summary>
     void Clear(UIElement owner);
@@ -33,7 +37,11 @@ public interface ITerminalCaretService
 /// <param name="Column">The window-coordinate column (meaningful while a publication exists, even when hidden).</param>
 /// <param name="Row">The window-coordinate row.</param>
 /// <param name="Shape">The DECSCUSR cursor shape.</param>
-public readonly record struct TerminalCaretState(bool Visible, int Column, int Row, CursorShape Shape)
+/// <param name="Rows">The caret-band height (default 1 — the single-cell caret). <see cref="Row"/>
+/// stays the band's BOTTOM row, where the hardware cursor sits; a value above 1 asks the frame
+/// loop to grow the caret to glyph height via Kitty extra beam cursors on the rows above
+/// (proposal-glyph-runs §4) — non-supporting terminals keep the bottom-row caret alone.</param>
+public readonly record struct TerminalCaretState(bool Visible, int Column, int Row, CursorShape Shape, int Rows = 1)
 {
     /// <summary>The hidden caret (no publication, or the active publication is clipped out).</summary>
     public static TerminalCaretState Hidden => default;
@@ -69,12 +77,13 @@ public readonly record struct TerminalCaretState(bool Visible, int Column, int R
 /// </remarks>
 public sealed class TerminalCaretService : ITerminalCaretService
 {
-    private readonly struct Publication(UIElement owner, int column, int row, CursorShape shape)
+    private readonly struct Publication(UIElement owner, int column, int row, CursorShape shape, int rows)
     {
         public readonly UIElement Owner = owner;
         public readonly int Column = column;
         public readonly int Row = row;
         public readonly CursorShape Shape = shape;
+        public readonly int Rows = rows;
     }
 
     private readonly List<Publication> _publications = [];
@@ -88,9 +97,10 @@ public sealed class TerminalCaretService : ITerminalCaretService
     internal Action? StateChanged;
 
     /// <inheritdoc/>
-    public void Publish(UIElement owner, int column, int row, CursorShape shape)
+    public void Publish(UIElement owner, int column, int row, CursorShape shape, int rows = 1)
     {
         ArgumentNullException.ThrowIfNull(owner);
+        ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
         owner.VerifyAccess();
 
         // Equality gate: identical re-publication by the current winner changes nothing.
@@ -98,14 +108,15 @@ public sealed class TerminalCaretService : ITerminalCaretService
         {
             var winner = _publications[^1];
             if (ReferenceEquals(winner.Owner, owner)
-                && winner.Column == column && winner.Row == row && winner.Shape == shape)
+                && winner.Column == column && winner.Row == row && winner.Shape == shape
+                && winner.Rows == rows)
             {
                 return;
             }
         }
 
         RemoveOwner(owner);
-        _publications.Add(new Publication(owner, column, row, shape)); // most recent wins
+        _publications.Add(new Publication(owner, column, row, shape, rows)); // most recent wins
         StateChanged?.Invoke();
     }
 
@@ -172,7 +183,7 @@ public sealed class TerminalCaretService : ITerminalCaretService
             var (column, row) = owner.TranslateToWindow(publication.Column, publication.Row);
             var visible = owner.IsEffectivelyVisible && IsInsideZoneClip(owner, column, row);
             var (offsetColumn, offsetRow) = surfaceOffsetResolver?.Invoke(owner) ?? (baseOffsetColumn, baseOffsetRow);  // the constant-offset / origin path (P1 / tests)
-            return new TerminalCaretState(visible, column + offsetColumn, row + offsetRow, publication.Shape);
+            return new TerminalCaretState(visible, column + offsetColumn, row + offsetRow, publication.Shape, publication.Rows);
         }
 
         return TerminalCaretState.Hidden;

@@ -228,6 +228,31 @@ public class ScrollCaretIntegrationTests
     }
 
     [Fact]
+    public void Caret_RowsFlowsThroughAssemblyUntouched_RowStaysTheBottomAnchor()
+    {
+        var (_, tree, _, presenter, probes) = CreateScrolledTree(contentRows: 100);
+        presenter.ScrollOffsetRow = 5;
+        tree.Render();
+
+        var service = new TerminalCaretService();
+        service.Publish(probes[7], column: 3, row: 0, CursorShape.BlinkingBar, rows: 3);
+
+        // The band height rides the assembled state untouched, and Row remains the BOTTOM-row
+        // anchor (the transformed publication row) — the frame loop derives the band rows above
+        // it (proposal-glyph-runs §4).
+        Assert.Equal(new TerminalCaretState(true, 3, 2, CursorShape.BlinkingBar, Rows: 3), service.GetCaretState());
+
+        // Rows participates in the re-publication equality gate: shrinking the band is a real
+        // state change, and the shrunk publication assembles with the default single row.
+        service.Publish(probes[7], column: 3, row: 0, CursorShape.BlinkingBar);
+        Assert.Equal(1, service.GetCaretState().Rows);
+
+        // A band shorter than one row is nonsense — rejected at the publication boundary.
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => service.Publish(probes[7], column: 3, row: 0, CursorShape.BlinkingBar, rows: 0));
+    }
+
+    [Fact]
     public void Caret_ScrolledOutOfViewport_AssemblesHidden()
     {
         var (_, tree, _, presenter, probes) = CreateScrolledTree(contentRows: 100);

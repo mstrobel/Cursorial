@@ -194,6 +194,44 @@ public class GlyphRunTests
         Assert.True(ft.HasTrimmedLines);
     }
 
+    // ---- Kerning pins (maintainer report 2026-08-02: figlets sized one glyph too large) ----
+
+    [Fact]
+    public void FigletWord_MeasuresExactly_NotOneJunctionPerGlyphTooWide()
+    {
+        // MeasuredGlyphMetrics used to sum ISOLATED glyph widths, but FigletFont.Measure smushes
+        // every junction — the excess grew with each added glyph. Advance(prev, cluster) is the
+        // kerning-pair decomposition, and it must reproduce Measure exactly.
+        var face = FigletFonts.Standard;
+        var word = "HELLO";
+        var kerned = face.Measure(word).Columns;
+        int isolated = 0;
+        foreach (var ch in word) isolated += face.Measure(ch.ToString()).Columns;
+        Assert.True(kerned < isolated, "the face must kern for this pin to bite");
+
+        var rt = new RichTextBuilder().Figlet(word, face).Build();
+        var ft = new TextFormatter().Format(rt, 200, capabilities: OutputCapabilities.None);
+        var p = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+
+        Assert.Equal(kerned, Assert.Single(p.Lines).Columns);
+        Assert.Equal(kerned, ((FormattedTextRun)p.Lines[0].Runs[0]).CellWidth); // StringWidth agrees
+    }
+
+    [Fact]
+    public void GraphemeLayout_CaretColumns_FollowTheKernedAdvances()
+    {
+        // The editor-side twin (the TextBox caret drifted ahead of the glyphs): cumulative caret
+        // columns must land on the kerned prefix widths, and the total must equal Measure.
+        var face = FigletFonts.Standard;
+        var metrics = face.GetMetrics();
+        var text = "HELLO";
+
+        var layout = Cursorial.Rendering.Text.GraphemeLayout.Build(text, metrics);
+
+        Assert.Equal(face.Measure(text).Columns, layout.TotalColumns);
+        Assert.Equal(face.Measure("HE").Columns, layout.ColumnOf(2)); // prefix, kerned
+    }
+
     // ---- Review-round pins (wf_5257daa8) ----
 
     [Fact]

@@ -240,12 +240,14 @@ public readonly struct TextLayout
         var segCols = 0;
         var lastBreak = -1; // char offset (cluster boundary) of the most recent word-break opportunity in this segment
         var pos = 0;
+        string prev = ""; // kerning context — reset when a wrap starts a new painted segment
         var enumerator = slice.GetGraphemeEnumerator();
 
         while (enumerator.MoveNext())
         {
             var cluster = enumerator.Current;
-            var width = metrics?.ClusterWidth(cluster) ?? GraphemeWidth.ClusterWidth(cluster);
+            var width = metrics?.Advance(prev, cluster) ?? GraphemeWidth.ClusterWidth(cluster);
+            if (metrics is not null) prev = cluster.ToString();
 
             if (segCols + width > wrapWidth && segCols > 0)
             {
@@ -264,8 +266,18 @@ public readonly struct TextLayout
                 {
                     segments.Add((segStart, breakAt - segStart));
                     segStart = breakAt;
-                    segCols = ColumnsBetween(slice, segStart, pos);
+                    segCols = ColumnsBetween(slice, segStart, pos, metrics);
                     lastBreak = -1;
+
+                    if (metrics is not null)
+                    {
+                        // The wrap starts a fresh painted segment: when the current cluster LEADS
+                        // it there is no junction to smush — re-measure context-free; otherwise
+                        // its kerning context (the preceding cluster) moved into the new segment
+                        // with it and the computed advance still holds.
+                        if (segStart == pos)
+                            width = metrics.ClusterWidth(cluster);
+                    }
                 }
             }
 
@@ -281,13 +293,19 @@ public readonly struct TextLayout
         return segments;
     }
 
-    private static int ColumnsBetween(string slice, int from, int to)
+    private static int ColumnsBetween(string slice, int from, int to, Fonts.GlyphMetrics? metrics = null)
     {
         var cols = 0;
+        string prev = ""; // fresh piece — kerning accumulates from its own start
         var span = slice.AsSpan(from, to - from);
         var enumerator = span.GetGraphemeEnumerator();
         while (enumerator.MoveNext())
-            cols += GraphemeWidth.ClusterWidth(enumerator.Current);
+        {
+            var cluster = enumerator.Current;
+            cols += metrics?.Advance(prev, cluster) ?? GraphemeWidth.ClusterWidth(cluster);
+            if (metrics is not null) prev = cluster.ToString();
+        }
+
         return cols;
     }
 }

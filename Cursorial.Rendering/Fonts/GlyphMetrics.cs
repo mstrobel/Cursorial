@@ -25,8 +25,18 @@ public abstract class GlyphMetrics
     /// <summary>The identity metrics: one cell per narrow cluster, two for wide, one row per line.</summary>
     public static GlyphMetrics Monospace { get; } = new MonospaceGlyphMetrics();
 
-    /// <summary>Cells this cluster advances along its line.</summary>
+    /// <summary>Cells this cluster advances along its line, measured in isolation.</summary>
     public abstract int ClusterWidth(ReadOnlySpan<char> cluster);
+
+    /// <summary>
+    /// Cells this cluster ADDS when it follows <paramref name="previous"/> within one painted
+    /// piece — the kerning-aware advance. Context-free sources (the identity, scaled text)
+    /// return <see cref="ClusterWidth"/>; a FIGlet face returns the post-smush increment, so
+    /// accumulated widths equal <c>Measure(text)</c> exactly instead of overestimating by one
+    /// junction per glyph. An empty <paramref name="previous"/> means the piece's first cluster.
+    /// </summary>
+    public virtual int Advance(ReadOnlySpan<char> previous, ReadOnlySpan<char> cluster)
+        => ClusterWidth(cluster);
 
     /// <summary>Rows one formatted line occupies.</summary>
     public abstract int LineRows { get; }
@@ -107,6 +117,11 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
     private readonly IGlyphFont _font;
     private readonly int _lineRows;
 
+    // Pair-advance cache: FIGlet junction kerning depends only on the adjacent pair (Measure
+    // accumulates max(0, width - overlap(prev, glyph)) per junction), so (prev, cluster) → cells
+    // is exact and tiny. Concurrent — one metrics instance serves every formatter thread.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Previous, string Cluster), int> _advances = new();
+
     public MeasuredGlyphMetrics(IGlyphFont font)
     {
         _font = font ?? throw new ArgumentNullException(nameof(font));
@@ -114,6 +129,20 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
     }
 
     public override int ClusterWidth(ReadOnlySpan<char> cluster) => _font.Measure(cluster).Columns;
+
+    public override int Advance(ReadOnlySpan<char> previous, ReadOnlySpan<char> cluster)
+    {
+        if (previous.IsEmpty)
+            return ClusterWidth(cluster);
+
+        return _advances.GetOrAdd((previous.ToString(), cluster.ToString()), static (key, font) =>
+        {
+            // The pair's kerned width minus the lead glyph alone = what the trailing cluster adds.
+            int pair = font.Measure(key.Previous + key.Cluster).Columns;
+            int lead = font.Measure(key.Previous).Columns;
+            return Math.Max(0, pair - lead);
+        }, _font);
+    }
 
     public override int LineRows => _lineRows;
 

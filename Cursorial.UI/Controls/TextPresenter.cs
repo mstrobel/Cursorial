@@ -58,7 +58,7 @@ public sealed class TextPresenter : UIElement
                 return GlyphSource.Default;
 
             var source = new GlyphSource(font, sizing);
-            return UIApplication.Current is { } app ? source.ResolveFor(app.EffectiveCapabilities.Output) : source;
+            return UIApplication.Current is {} app ? source.ResolveFor(app.EffectiveCapabilities.Output) : source;
         }
     }
 
@@ -307,7 +307,7 @@ public sealed class TextPresenter : UIElement
 
     private void PublishCaret(int localColumn, int localLine)
     {
-        if (UIApplication.Current?.CaretService is not { } service)
+        if (UIApplication.Current?.CaretService is not {} service)
             return;
 
         // The caret anchors at the BOTTOM row of its line's band (identity: the line itself) —
@@ -408,7 +408,7 @@ public sealed class TextPresenter : UIElement
             var selFrom = Math.Clamp(selectionStart, firstChar, lastChar);
             var selTo = Math.Clamp(selectionEnd, firstChar, lastChar);
 
-            if (EditingSource is { Font: not null, Sizing.IsNormal: true } faceSource)
+            if (EditingSource is { Font: {} font, Sizing.IsNormal: true } faceSource && font != MonospaceFont.Default)
             {
                 DrawFaceLine(context, glyphs, lineStart, text, firstChar, lastChar, selFrom, selTo, localRow,
                              foreground, noColor, selectionBrush, inverse, faceSource);
@@ -462,7 +462,8 @@ public sealed class TextPresenter : UIElement
             return;
 
         int lineRows = source.Metrics.LineRows;
-        var baseStyle = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;
+
+        var baseStyle = ResolveLineBaseStyle(noColor);
 
         int viewport = Math.Max(1, _viewportColumns);
 
@@ -490,6 +491,24 @@ public sealed class TextPresenter : UIElement
                                   foreground, baseStyle, brushBounds);
         }
 
+        // Special case for .caps-nocolor: if the text presentation area is inverted by default, then rather than
+        // letting the glyphs carry the 'inverse' attribute, we paint the entire content-covered area with the inverse
+        // attribute, then 'un-invert' only the selection rectangle. This is necessary for figlet fonts that only
+        // write sparsely; otherwise the inversion would be partial (non-rectangular).
+        //
+        // Note that in the next 'if' block down, the selection block flips the presenter's native the 'Inverse'
+        // flag, ensuring the highlighting contrasts the content regardless of whether the presenter is light-on-dark
+        // or dark-on-light.
+        if (inverse)
+        {
+            var tint = CellStyle.Default.WithAttributes(TextAttributes.Inverse);
+            var startColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
+            var endColumn = glyphs.ColumnOf(to - lineStart) - _scrollColumn;
+
+            context.FillOpaque(new Rect(startColumn, localRow, endColumn - startColumn, lineRows),
+                               Color.Transparent, tint.Attributes);
+        }
+
         // Selection: tint the selected span in place — graphemes untouched. Clamped to the
         // viewport (a scrolled selection can start left of it or run past its right edge).
         if (selTo > selFrom && (!noColor || Owner?.IsFocused is true))
@@ -502,13 +521,28 @@ public sealed class TextPresenter : UIElement
                 var selRect = new Rect(selStart, localRow, selEnd - selStart, lineRows);
 
                 var tint = noColor || selectionBrush is null
-                               ? CellStyle.Default.WithAttributes(TextAttributes.Inverse)
-                               : CellStyle.Default.WithBackground(selectionBrush.ColorAt(
-                                     selStart + (selEnd - selStart) / 2, localRow, selRect));
+                               ? CellStyle.Default.WithAttributes(inverse ? TextAttributes.None : TextAttributes.Inverse)
+                               : CellStyle.Transparent.WithBackground(selectionBrush.ColorAt(
+                                                                      selStart + (selEnd - selStart) / 2, localRow,
+                                                                      selRect));
 
                 context.TintCells(selRect, tint);
             }
         }
+    }
+
+    private CellStyle ResolveLineBaseStyle(bool noColor)
+    {
+        var attr = TextElement.ComposeAttributes(this);
+
+        var baseStyle = CellStyle.Default
+                                 .WithBackground(noColor ? Color.Default : Color.Transparent)
+                                 .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse);
+
+        if (attr.Flags.HasFlag(TextAttributes.Underline))
+            baseStyle = baseStyle.WithUnderlineStyle(attr.UnderlineShape);
+
+        return baseStyle;
     }
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the
@@ -520,7 +554,8 @@ public sealed class TextPresenter : UIElement
             return;
 
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
-
+        var baseStyle = ResolveLineBaseStyle(noColor);
+    
         if (EditingSource is { PaintsAsCells: false } source)
         {
             // A non-cell editor run paints per selection segment — the "fragment splits at
@@ -528,14 +563,16 @@ public sealed class TextPresenter : UIElement
             // selected piece's backdrop carrying the highlight.
             var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
             var rect = new Rect(localColumn, localRow, runWidth, source.Metrics.LineRows);
-            var backdrop = CellStyle.Default;
+            var backdrop = baseStyle;
 
-            if (selected)
+            if (selected && (!noColor || Owner?.IsFocused is true))
             {
                 backdrop = noColor || selectionBrush is null
-                               ? backdrop.WithAttributes(TextAttributes.Inverse)
-                               : backdrop.WithBackground(selectionBrush.ColorAt(
-                                     localColumn + runWidth / 2, localRow, rect));
+                               ? backdrop.WithAttributes(noColor
+                                                             ? baseStyle.Attributes ^ TextAttributes.Inverse
+                                                             : baseStyle.Attributes)
+                               : backdrop.WithBackground(
+                                   selectionBrush.ColorAt(localColumn + runWidth / 2, localRow, rect));
             }
             else if (inverse)
             {
@@ -550,7 +587,7 @@ public sealed class TextPresenter : UIElement
             // leading whitespace and whose realization cache swallowed the selection style); a
             // sized source rides the OSC 66 fragment. Glyph ink is sparse, so a selection
             // backdrop fills the rect first; the glyphs then paint over it in the same style.
-            if (backdrop != CellStyle.Default)
+            if (backdrop != baseStyle)
             {
                 if (backdrop.Background is { IsDefault: false } bg)
                     context.FillOpaque(rect, bg, backdrop.Attributes);
@@ -563,7 +600,7 @@ public sealed class TextPresenter : UIElement
             var piecePara = new FormattedParagraph([pieceLine], new Size(runWidth, rect.Rows), TextAlignment.Left, false);
             var piece = new FormattedText([piecePara], piecePara.Size, runWidth);
 
-            if (foreground is { } pieceBrush)
+            if (foreground is {} pieceBrush)
                 context.DrawFormattedText(piece, rect, pieceBrush);
             else
                 context.DrawFormattedText(piece, rect);
@@ -573,9 +610,9 @@ public sealed class TextPresenter : UIElement
 
         var span = text.AsSpan(from, to - from);
 
-        var style = inverse ? CellStyle.Default.WithAttributes(TextAttributes.Inverse) : CellStyle.Default;
-        var selectionStyle = inverse || !noColor ? CellStyle.Default : CellStyle.Default.WithAttributes(TextAttributes.Inverse);
- 
+        var style = inverse && !selected ? baseStyle.WithAttributes(TextAttributes.Inverse) : baseStyle;
+        var selectionStyle = baseStyle.WithAttributes(style.Attributes ^ TextAttributes.Inverse);
+
         if (selected && (!noColor || Owner?.IsFocused is true))
         {
             if (noColor)
@@ -592,7 +629,7 @@ public sealed class TextPresenter : UIElement
     private static void DrawText(RenderContext context, int column, int row, ReadOnlySpan<char> text,
                                  IBrush? foreground, IBrush? background, in CellStyle style)
     {
-        if (foreground is { } brush)
+        if (foreground is {} brush)
             context.DrawText(column, row, text, brush, background, style);
         else
             context.DrawText(column, row, text, Color.Default, null, style);

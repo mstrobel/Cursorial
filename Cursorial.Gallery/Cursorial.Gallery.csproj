@@ -26,6 +26,7 @@
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Dialogs\Cursorial.UI.Dialogs.csproj" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
         <ProjectReference Include="..\Cursorial.UI.DataViews\Cursorial.UI.DataViews.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />

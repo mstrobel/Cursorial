@@ -2,6 +2,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.UI.Controls;
@@ -281,7 +282,27 @@ public class TextBlock : UIElement
                                     WrapMode? wrappingOverride = null)
     {
         var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
-                                          defaultWrap: wrappingOverride ?? TextWrapping);
+                                          defaultWrap: wrappingOverride ?? TextWrapping,
+                                          defaultStyle: Output.Style.Transparent);
+
+        return BuildPlainText(this, text, builder);
+    }
+
+    internal static RichText BuildPlainText(UIElement host, string text, RichTextBuilder builder)
+    {
+        GlyphSource? glyphSource = null;
+
+        var font = TextElement.GetFont(host);
+
+        if (TextElement.GetSizing(host) is { IsNormal: false } sizing &&
+            UIApplication.Current?.EffectiveCapabilities.Output.TextSizing is { Scale: true })
+        {
+            glyphSource = new GlyphSource(font, sizing);
+        }
+        else if (font is not null && font != MonospaceFont.Default)
+        {
+            glyphSource = new GlyphSource(font);
+        }
 
         var start = 0;
 
@@ -293,7 +314,12 @@ public class TextBlock : UIElement
                 continue;
 
             if (i > start)
-                builder.Run(text[start..i]);
+            {
+                if (glyphSource != null)
+                    builder.Run(text[start..i], glyphSource);
+                else
+                    builder.Run(text[start..i]);
+            }
 
             builder.LineBreak();
 
@@ -305,7 +331,12 @@ public class TextBlock : UIElement
         }
 
         if (start < text.Length)
-            builder.Run(text[start..]);
+        {
+            if (glyphSource != null)
+                builder.Run(text[start..], glyphSource);
+            else
+                builder.Run(text[start..]);
+        }
 
         return builder.Build();
     }

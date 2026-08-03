@@ -71,6 +71,8 @@ public readonly record struct TextSizing(
     /// <summary>Spec defaults — no scaling, auto width, top-left alignment.</summary>
     public static TextSizing Normal => default;
 
+    public static TextSizing Double => new(Scale: 2);
+
     /// <summary>True when every parameter is at its spec-default and the metadata block would be empty.</summary>
     public bool IsNormal => Scale is 0 or 1 &&
                             Width is 0 &&
@@ -85,13 +87,15 @@ public readonly record struct TextSizing(
     {
         if (IsNormal) return "Normal";
 
-        if (Numerator is > 0 && Denominator is > 0)
+        if (Numerator > 0 && Denominator > 0)
         {
-            if (Scale is > 1) return $"Scaled {Scale} x {Numerator}/{Denominator}";
-            return $"Scaled {Numerator}/{Denominator}x";
+            if (Scale > 1) return $"Scaled {(Scale - 1) + (decimal)Numerator / Denominator:P0}";
+            if (Vertical is TextSizingVerticalAlignment.Top) return $"{(decimal)Numerator/Denominator:P0} Superscript";
+            if (Vertical is TextSizingVerticalAlignment.Bottom) return $"{(decimal)Numerator/Denominator:P0} Subscript";
+            return $"Scaled {(decimal)Numerator/Denominator:P0}";
         }
 
-        return $"Scaled {Scale}x";
+        return $"Scaled {Scale:P0}";
     }
 
     public bool IsSupported(OutputCapabilities capabilities)

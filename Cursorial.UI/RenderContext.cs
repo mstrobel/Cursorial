@@ -222,8 +222,14 @@ public sealed class RenderContext
         Inner.DrawContent(bounds, content, _capabilities, style);
     }
 
-    /// <summary>Restyles cells in place — graphemes preserved, background/attributes applied. The
-    /// selection-highlight primitive for glyph-rendered (FIGlet) text: geometry never shifts.</summary>
+    /// <summary>
+    /// Restyles cells in place — graphemes preserved, background/attributes applied. Incoming style
+    /// attributes are overlaid existing attributes, except for <see cref="TextAttributes.Inverse"/>:
+    /// the inverse value is always taken from the incoming style.
+    /// </summary>
+    /// <remarks>
+    /// This method provides selection-highlight primitive for glyph-rendered (FIGlet) text: geometry never shifts.
+    /// </remarks>
     public void TintCells(in Rect bounds, in Cursorial.Output.Style style)
     {
         Inner.TintCells(bounds, style);

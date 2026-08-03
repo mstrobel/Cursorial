@@ -972,7 +972,7 @@ public sealed class DrawingContext
                     continue;
 
                 var cell = _surface[sceneColumn, sceneRow];
-                var tinted = cell.Style with { Attributes = cell.Style.Attributes | style.Attributes };
+                var tinted = cell.Style with { Attributes = (cell.Style.Attributes & ~TextAttributes.Inverse) | style.Attributes };
 
                 if (!style.Background.IsDefault)
                     tinted = tinted with { Background = style.Background };

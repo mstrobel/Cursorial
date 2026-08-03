@@ -56,6 +56,11 @@
         <CursorialXaml Include="Themes\IndigoDusk\*.xaml" />
     </ItemGroup>
 
+    <ItemGroup>
+      <EmbeddedResource Include="Images\*.png"
+                        LogicalName="$([System.String]::new('%(RelativeDir)').Replace('\','/'))%(Filename)%(Extension)" />
+    </ItemGroup>
+
     <!-- Generator consumer targets: maps <CursorialXaml> → AdditionalFiles (generator input) + EmbeddedResource
          (runtime load). Imported after the items above so @(CursorialXaml) is populated. -->
     <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />

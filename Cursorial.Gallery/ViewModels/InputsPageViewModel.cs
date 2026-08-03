@@ -33,6 +33,17 @@ public sealed class InputsPageViewModel : PageViewModel
         RedoCommand = new RelayCommand<TextBox>(editor => editor.Redo());
         SelectedColor = Colors[5];
 
+        TextSizes =
+        [
+            new TextSizing(Scale: 1),
+            new TextSizing(Scale: 2, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center),
+            new TextSizing(Scale: 2),
+            new TextSizing(Scale: 3),
+            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center),
+            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Top),
+            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Bottom)
+        ];
+
         Fonts =
         [
             MonospaceFont.Default,
@@ -44,14 +55,6 @@ public sealed class InputsPageViewModel : PageViewModel
             FigletFonts.Small,
             FigletFonts.SmallSlant,
             FigletFonts.LCDMatrix
-        ];
-
-        TextSizes =
-        [
-            new TextSizing(Scale: 1),
-            new TextSizing(Scale: 2),
-            new TextSizing(Scale: 3),
-            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2)
         ];
 
         SelectedFont = Fonts[0];

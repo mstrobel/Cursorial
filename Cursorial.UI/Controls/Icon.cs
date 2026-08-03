@@ -269,7 +269,9 @@ public class Icon : Control
                                 Source = Image,
                                 SourceUri = ImageUri,
                                 PlaceholderContent = Text,
-                                HorizontalAlignment = HorizontalAlignment.Center
+                                HorizontalAlignment = HorizontalAlignment.Center,
+                                Width = 2,
+                                Height = 1
                             };
 
             presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(nameof(Image)) { Source = this });

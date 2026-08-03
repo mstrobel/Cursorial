@@ -39,7 +39,6 @@ public sealed class FigletFont : IGlyphFont
 {
     private const TextAttributes ForbiddenAttributes = TextAttributes.Italic |
                                                        TextAttributes.Underline |
-                                                       TextAttributes.Inverse |
                                                        TextAttributes.Overline |
                                                        TextAttributes.Strikethrough;
 

@@ -66,11 +66,13 @@ public readonly struct GraphemeLayout
         var column = new List<int>(text.Length + 1) { 0 };
         var enumerator = text.GetGraphemeEnumerator();
         int ci = 0, col = 0;
+        string prev = ""; // kerning context: an editor line paints as one piece, so junctions smush
         while (enumerator.MoveNext())
         {
             var cluster = enumerator.Current;
             ci += cluster.Length;
-            col += metrics?.ClusterWidth(cluster) ?? GraphemeWidth.ClusterWidth(cluster);
+            col += metrics?.Advance(prev, cluster) ?? GraphemeWidth.ClusterWidth(cluster);
+            if (metrics is not null) prev = cluster.ToString();
             charIndex.Add(ci);
             column.Add(col);
         }

@@ -374,6 +374,7 @@ public sealed class TextFormatter
 
             var fragmentBuilder = new StringBuilder();
             int fragmentWidth = 0;
+            string previousCluster = ""; // kerning context — resets wherever a painted piece boundary falls
             // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
             // source run, sharing a carrier whose total width is back-filled below (W isn't known until the
             // run is fully emitted). Only when the run carries a brush tag — untagged runs skip the accounting.
@@ -382,6 +383,7 @@ public sealed class TextFormatter
 
             void EmitFragment()
             {
+                previousCluster = ""; // a new piece paints independently — no junction to smush
                 if (fragmentBuilder.Length == 0) return;
                 _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
                                   { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource });
@@ -473,7 +475,8 @@ public sealed class TextFormatter
                     }
 
                     fragmentBuilder.Append(g);
-                    fragmentWidth += metrics.ClusterWidth(g);
+                    fragmentWidth += metrics.Advance(previousCluster, g);
+                    previousCluster = g.ToString();
                 }
             }
         }
@@ -746,6 +749,7 @@ public sealed class TextFormatter
         var headRuns = ImmutableArray.CreateBuilder<FormattedRun>();
         var tailRuns = ImmutableArray.CreateBuilder<FormattedRun>();
         int headWidth = 0;
+        int tailWidth = 0;
         bool splittingInProgress = true;
 
         foreach (var run in word.Runs)
@@ -753,6 +757,7 @@ public sealed class TextFormatter
             if (!splittingInProgress)
             {
                 tailRuns.Add(run);
+                tailWidth += run.CellWidth;
                 continue;
             }
 
@@ -769,6 +774,7 @@ public sealed class TextFormatter
                 {
                     splittingInProgress = false;
                     tailRuns.Add(run);
+                    tailWidth += run.CellWidth;
                 }
                 continue;
             }
@@ -778,22 +784,31 @@ public sealed class TextFormatter
             var headFragment = new StringBuilder();
             var tailFragment = new StringBuilder();
             int headFragmentWidth = 0;
+            int tailFragmentWidth = 0;
+            string headPrev = "", tailPrev = ""; // kerning contexts — the cut starts a fresh piece
 
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = runMetrics.ClusterWidth(g);
 
-                if (splittingInProgress && headWidth + headFragmentWidth + gw <= maxWidth)
+                if (splittingInProgress)
                 {
-                    headFragment.Append(g);
-                    headFragmentWidth += gw;
-                }
-                else
-                {
+                    int gw = runMetrics.Advance(headPrev, g);
+
+                    if (headWidth + headFragmentWidth + gw <= maxWidth)
+                    {
+                        headFragment.Append(g);
+                        headFragmentWidth += gw;
+                        headPrev = g.ToString();
+                        continue;
+                    }
+
                     splittingInProgress = false;
-                    tailFragment.Append(g);
                 }
+
+                tailFragment.Append(g);
+                tailFragmentWidth += runMetrics.Advance(tailPrev, g);
+                tailPrev = g.ToString();
             }
 
             if (headFragment.Length > 0)
@@ -819,11 +834,15 @@ public sealed class TextFormatter
                                  Scope = text.Scope,
                                  Source = text.Source
                              });
+                tailWidth += tailFragmentWidth;
             }
         }
 
+        // The tail's width is ACCUMULATED at its own kerning contexts, never derived by
+        // subtraction — the junction the cut removed belongs to neither piece once they paint
+        // independently, so word.Width - headWidth would overcount kerned faces by one smush.
         var head = new WordAtom(headRuns.ToImmutable(), headWidth, ImmutableArray<SoftBreakPoint>.Empty);
-        var tail = new WordAtom(tailRuns.ToImmutable(), word.Width - headWidth, word.SoftBreaks);
+        var tail = new WordAtom(tailRuns.ToImmutable(), tailWidth, word.SoftBreaks);
         return (head, tail);
 
         static WordAtom Empty() => new(ImmutableArray<FormattedRun>.Empty, 0, ImmutableArray<SoftBreakPoint>.Empty);
@@ -927,11 +946,12 @@ public sealed class TextFormatter
             var runMetrics = textRun.Source.Metrics;
             var enumerator = textRun.Text.GetGraphemeEnumerator();
             int charIndex = 0;
+            string prev = ""; // kerning context — each run is its own painted piece
 
             while (enumerator.MoveNext())
             {
                 ReadOnlySpan<char> g = enumerator.Current;
-                int gw = runMetrics.ClusterWidth(g);
+                int gw = runMetrics.Advance(prev, g);
 
                 if (cumulative + gw > budget)
                 {
@@ -950,6 +970,7 @@ public sealed class TextFormatter
 
                 cumulative += gw;
                 charIndex += g.Length;
+                prev = g.ToString();
 
                 if (g.Length == 1 && g[0] == ' ')
                 {

@@ -319,7 +319,7 @@ public sealed class TextPresenter : UIElement
         var visible = IsAttachedToTree && Owner is { IsFocused: true }
             && localLine >= 0 && localRow < Math.Max(1, _viewportRows);
         if (visible)
-            service.Publish(this, localColumn, localRow, CursorShape.BlinkingBar);
+            service.Publish(this, localColumn, localRow, CursorShape.BlinkingBar, rows: lineRows);
         else
             service.Clear(this);
     }

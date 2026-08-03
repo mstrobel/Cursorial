@@ -171,6 +171,20 @@ public sealed class Section50_SizedTextBox
     }
 
     [Fact]
+    public void SizedCaret_GrowsToGlyphHeight_ViaMultipleCursors()
+    {
+        // End to end: a focused scale-2 editor on a multiple-cursors terminal emits the
+        // rectangle-form extra-cursor band — a beam on the band's upper row(s) at the caret
+        // column, the hardware cursor keeping the bottom row (proposal-glyph-runs §4).
+        var (host, box) = Shown("AB", scale: 2);
+        using var _1 = host;
+
+        box.CaretIndex = 1; // move the caret — the band clears and re-emits in this frame's flush
+        var bytes = Frame(host);
+        Assert.Contains("\x1b[>2;4:", bytes); // beam, rectangle form — the glyph-height band
+    }
+
+    [Fact]
     public void PlainEditor_IsByteIdenticalToBefore()
     {
         // The zero-cost fast path: an unsized editor resolves the identity source and must render

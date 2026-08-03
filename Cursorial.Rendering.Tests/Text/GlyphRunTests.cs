@@ -232,6 +232,28 @@ public class GlyphRunTests
         Assert.Equal(face.Measure("HE").Columns, layout.ColumnOf(2)); // prefix, kerned
     }
 
+    [Fact]
+    public void WordGaps_SurviveKerning_AtEveryLayer()
+    {
+        // Maintainer report: spaces vanished unless a caret split happened to break the smush
+        // chain. Two protections now hold: a PLAIN-BLANK space glyph is a word gap kerning never
+        // crosses (pinned against a hand-built font in FigletFontTests — Standard's own space is
+        // HARDBLANK-protected, the format's native mechanism, so its gap survives with normal
+        // kerning tucked around the hardblank), and the formatted layer is piece-additive: word
+        // atoms and space atoms paint independently, so the line width is exactly their sum.
+        var face = FigletFonts.Standard;
+        int a = face.Measure("A").Columns, sp = face.Measure(" ").Columns, b = face.Measure("B").Columns;
+        Assert.True(sp > 0, "the space glyph must have width for this pin to bite");
+
+        // The gap survives the face's own kerning: spaced words are wider than kerned letters.
+        Assert.True(face.Measure("A B").Columns > face.Measure("AB").Columns);
+
+        var rt = new RichTextBuilder().Figlet("A B", face).Build();
+        var ft = new TextFormatter().Format(rt, 200, capabilities: OutputCapabilities.None);
+        var p2 = Assert.IsType<FormattedParagraph>(Assert.Single(ft.Blocks));
+        Assert.Equal(a + sp + b, Assert.Single(p2.Lines).Columns);
+    }
+
     // ---- Review-round pins (wf_5257daa8) ----
 
     [Fact]

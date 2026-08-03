@@ -62,10 +62,12 @@ public sealed class ScaledText : FragmentContent
     /// </summary>
     public BrushedTextResolver? BrushResolver { get; set; }
 
-    protected internal override bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, in Style style,
-                                                      OutputCapabilities? capabilities = null)
+    protected internal override bool IsCachedFragmentStale(Size availableSpace, in Style style,
+                                                           OutputCapabilities? capabilities = null)
     {
-        return base.IsFragmentNeeded(in buffer, availableSpace, style, capabilities) ||
+        // The style is baked into the emission (the OSC 66 SGR backdrop), so a style change —
+        // a selection highlight arriving or leaving — must rebuild even at an unchanged size.
+        return base.IsCachedFragmentStale(availableSpace, style, capabilities) ||
                ExistingFragment is not SizedTextFragment { Style: var existingStyle } ||
                existingStyle != style;
     }

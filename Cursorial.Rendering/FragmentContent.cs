@@ -82,8 +82,21 @@ public abstract class FragmentContent : IContent
         return ExistingFragment is not {} existing ||
                buffer.TryGetFragmentAnchor(existing.Key, out var p) is false ||
                buffer.Fragments.TryGetValue(p, out _) is false ||
-               _fragmentAvailableSpace != availableSpace;
+               IsCachedFragmentStale(availableSpace, style, capabilities);
     }
+
+    /// <summary>
+    /// Whether the cached <see cref="ExistingFragment"/> no longer reflects the content — the
+    /// content-freshness half of <see cref="IsFragmentNeeded"/>, separated from the registration
+    /// check so <see cref="Paint"/> can RE-REGISTER a still-fresh instance after a scene
+    /// re-raster wipe instead of re-creating it (re-creation re-encodes image payloads — a Sixel
+    /// fragment re-quantizes the full raster — and a fresh instance defeats the renderer's
+    /// reference-keyed diff, re-transmitting an unchanged payload). The base test is the
+    /// available-space match; subclasses add whatever else they bake into the fragment
+    /// (<see cref="Content.ScaledText"/> adds the style, which becomes the OSC 66 SGR backdrop).
+    /// </summary>
+    protected internal virtual bool IsCachedFragmentStale(Size availableSpace, in Style style, OutputCapabilities? capabilities = null)
+        => _fragmentAvailableSpace != availableSpace;
 
     /// <summary>Determines the required size to render the content within the specified constraints.</summary>
     /// <param name="availableSpace">The amount of space available for rendering, expressed as a <see cref="Size"/> object.</param>
@@ -142,11 +155,31 @@ public abstract class FragmentContent : IContent
 
         if (ExistingFragment is {} existingFragment)
         {
-            ExistingFragment = null;
-            _fragmentAvailableSpace = null;
-
             if (buffer.TryGetFragmentAnchor(existingFragment.Key, out var anchor))
+            {
+                ExistingFragment = null;
+                _fragmentAvailableSpace = null;
                 buffer.RemoveFragment(anchor);
+            }
+            else if (IsCachedFragmentStale(bounds.Size, style, capabilities) is false)
+            {
+                // Deregistered but still fresh — the scene re-raster wiped the fragment registry
+                // (every raster re-registers what it draws). Re-add the SAME instance at the
+                // current bounds: the renderer's reference-keyed diff then skips re-transmission,
+                // and image content skips a re-encode. This also re-anchors content that moved
+                // within its scene at an unchanged size.
+                buffer.AddFragment(bounds.Column, bounds.Row, existingFragment, style);
+
+                var reusedSize = existingFragment.GetSize();
+                return new Rect(bounds.Column, bounds.Row,
+                                Math.Min(reusedSize.Columns, bounds.Columns),
+                                Math.Min(reusedSize.Rows, bounds.Rows));
+            }
+            else
+            {
+                ExistingFragment = null;
+                _fragmentAvailableSpace = null;
+            }
         }
 
         Rect actualBounds;

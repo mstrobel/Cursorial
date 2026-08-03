@@ -983,6 +983,32 @@ public sealed class DrawingContext
     }
 
     /// <summary>
+    /// Paints <paramref name="text"/> through <paramref name="face"/> anchored at the element-local
+    /// (<paramref name="column"/>, <paramref name="row"/>) — which may be NEGATIVE (a horizontally
+    /// scrolled editor): the font clips to the surface, exactly like a cell write. The direct
+    /// glyph-text primitive FIGlet-rendered editors paint words with.
+    /// </summary>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in Style style)
+    {
+        ArgumentNullException.ThrowIfNull(face);
+        ArgumentNullException.ThrowIfNull(text);
+
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        face.Paint(surface, column, row, text, style);
+    }
+
+    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in Style)"/>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, GlyphStyleProvider styleProvider)
+    {
+        ArgumentNullException.ThrowIfNull(face);
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(styleProvider);
+
+        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
+        face.Paint(surface, column, row, text, styleProvider);
+    }
+
+    /// <summary>
     /// Paint <paramref name="content"/> (an image, icon, sized text, or any <see cref="IContent"/>) into the
     /// scene at <paramref name="bounds"/>. Content that renders via a graphics protocol registers an
     /// out-of-band fragment on the scene buffer; <see cref="SceneCompositor"/> carries that fragment onto the
@@ -1009,32 +1035,6 @@ public sealed class DrawingContext
     /// <c>CompositeParameters.Clip</c>, which re-crops every frame.
     /// </para>
     /// </remarks>
-    /// <summary>
-    /// Paints <paramref name="text"/> through <paramref name="face"/> anchored at the element-local
-    /// (<paramref name="column"/>, <paramref name="row"/>) — which may be NEGATIVE (a horizontally
-    /// scrolled editor): the font clips to the surface, exactly like a cell write. The direct
-    /// glyph-text primitive FIGlet-rendered editors paint words with.
-    /// </summary>
-    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in Style style)
-    {
-        ArgumentNullException.ThrowIfNull(face);
-        ArgumentNullException.ThrowIfNull(text);
-
-        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        face.Paint(surface, column, row, text, style);
-    }
-
-    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in Style)"/>
-    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, GlyphStyleProvider styleProvider)
-    {
-        ArgumentNullException.ThrowIfNull(face);
-        ArgumentNullException.ThrowIfNull(text);
-        ArgumentNullException.ThrowIfNull(styleProvider);
-
-        var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        face.Paint(surface, column, row, text, styleProvider);
-    }
-
     public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities)
         => DrawContent(bounds, content, capabilities, style: default);
 

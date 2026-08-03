@@ -71,6 +71,14 @@ public sealed class SizedTextFragment : IBufferFragment
     /// <summary>The text content split into individual lines, one OSC 66 emission per line.</summary>
     public ReadOnlySpan<string> Lines => _lines;
 
+    /// <summary>
+    /// Content-derived diff key. The fragment is reconstructed on every scene re-raster (the
+    /// wipe empties the fragment registry), so reference identity would read every re-raster as
+    /// remove + add and re-emit unchanged sized text; equal content at the same anchor must
+    /// diff-skip instead, exactly like <see cref="KittyImageFragment"/>'s content key.
+    /// </summary>
+    public object Key => (Text, Sizing, Style);
+
     /// <inheritdoc/>
     public Style? StyleOverride => Style;
 

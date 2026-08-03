@@ -442,6 +442,56 @@ public sealed class Section50_SizedTextBox
     }
 
     [Fact]
+    public void DeletingAllSizedText_ErasesEveryEmission()
+    {
+        // Maintainer repro: Ctrl+A + Delete in a sized editor left the ENTIRE text standing on the
+        // terminal (partially selection-styled). The scene wipe cleared cells but not the FRAGMENT
+        // registry, so the deleted emission stayed registered end to end: the compositor carried it
+        // to the target every frame and the renderer — seeing it live — re-emitted it whenever its
+        // cells were damaged. The wipe now empties the registry, the target drops the fragment, and
+        // the renderer's vanished-fragment guard rewrites the footprint over the stale glyphs.
+        var (host, box) = Shown("AB", scale: 2);
+        using var _ = host;
+
+        box.SelectAll();
+        Frame(host);
+
+        host.SendKey(Cursorial.Input.Key.Delete);
+        var del = Frame(host);
+
+        Assert.Equal("", box.Text);
+        Assert.DoesNotContain("\x1b]66", del);                 // nothing re-emits deleted text —
+        Assert.Equal(0, host.Application.FrameBufferInternal!.Fragments.Count); // — and nothing stays registered
+        Assert.Contains("\x1b[1;2H", del);                     // the vacated band is REWRITTEN (erased)
+    }
+
+    [Fact]
+    public void BackspacingTheLastGlyph_ErasesItsEmission()
+    {
+        // The char-by-char variant: every intermediate backspace has a successor fragment at the
+        // same anchor (which replaces the registry entry and repaints), but the LAST one vanishes
+        // with no successor — pre-fix that frame emitted nothing at all, stranding the first
+        // glyph of every line on the terminal.
+        var (host, box) = Shown("AB", scale: 2);
+        using var _ = host;
+
+        box.CaretIndex = 2;
+        host.RunUntilIdle();
+
+        host.SendKey(Cursorial.Input.Key.Backspace);
+        var afterFirst = Frame(host);
+        Assert.Contains(";A\x1b\\", afterFirst);              // successor emission still out
+
+        host.SendKey(Cursorial.Input.Key.Backspace);
+        var afterLast = Frame(host);
+
+        Assert.Equal("", box.Text);
+        Assert.DoesNotContain("\x1b]66", afterLast);
+        Assert.Equal(0, host.Application.FrameBufferInternal!.Fragments.Count);
+        Assert.Contains("\x1b[1;2H", afterLast);               // the final footprint is rewritten
+    }
+
+    [Fact]
     public void PlainEditor_IsByteIdenticalToBefore()
     {
         // The zero-cost fast path: an unsized editor resolves the identity source and must render

@@ -99,11 +99,20 @@ public sealed class Scene : IDisposable
         _rasterVersion++;
     }
 
-    internal void ClearToTransparent() =>
+    internal void ClearToTransparent()
+    {
         // CellBuffer.Clear() fills its default style (opaque); we need transparent so unpainted
         // cells composite to the backdrop. Default blend mode + an opaque-free fill hits the
         // Array.Fill fast path. Grapheme stays null = "no glyph contribution" for the compositor.
         _buffer.Fill(new Cell(null, CellKind.Single, Style.Transparent));
+
+        // A wipe empties the FRAGMENT registry too: a raster fully re-registers what it draws, so
+        // anything not re-added is gone. Leaving stale entries here kept a deleted sized-text
+        // emission alive end to end — the compositor faithfully carried it to the target every
+        // frame, so the renderer never saw it vanish and the glyphs lingered on the terminal
+        // (deleting ALL text in a sized TextBox left every line's last emission standing).
+        _buffer.ClearFragments();
+    }
 
     /// <summary>
     /// Return a pooled scene's buffer to its pool (no-op for a standalone scene). Idempotent — a

@@ -262,6 +262,53 @@ public sealed class Section46_BreadcrumbBar
         Assert.Equal(Visibility.Visible, bar.OverflowChipPart!.Visibility);
     }
 
+    [Fact] // BC5c: an ItemsSource reset while folded re-applies the elision to the regenerated containers
+    public void BC5c_ItemsResetWhileFolded_ReappliesTheElision()
+    {
+        // Gallery repro (Breadcrumb page, Deeper/Narrower/Reset): the anti-thrash latch's width/count/hash
+        // inputs all coincidentally match when a reset re-adds equal items, so the fold — and with it
+        // ApplyElision — was skipped, leaving the REGENERATED ancestor chips Visible with the stale bounds
+        // of their initial un-elided arrange. Their item-template content then painted straight over the
+        // surviving chips ("Orion Arm" stamped on top of its neighbors, stray cells bleeding through).
+        string[] chain = ["Universe", "Laniakea", "Milky Way", "Orion Arm", "Solar System"];
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(80, 6),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+        });
+        using var _ = host;
+
+        var trail = new ObservableCollection<string>(chain);
+        var bar = new BreadcrumbBar
+        {
+            ItemsSource = trail,
+            Width = 34,
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        host.ShowRoot(bar);
+        host.RunUntilIdle();
+
+        var folded = host.GetRowText(0).TrimEnd();
+        Assert.True(bar.HasOverflow); // the precondition: the trail folds at this width
+
+        trail.Clear();
+        foreach (var label in chain)
+            trail.Add(label);
+        host.RunUntilIdle();
+
+        // The reset bar must be indistinguishable from the never-reset one: same row, same fold, and the
+        // regenerated ancestor containers actually COLLAPSED (not just arranged empty — a Visible chip with
+        // stale bounds paints its template content wherever those bounds point).
+        Assert.Equal(folded, host.GetRowText(0).TrimEnd());
+        for (var i = 0; i < trail.Count; i++)
+        {
+            var chip = Chip(bar, i);
+            Assert.Equal(i < bar.OverflowCount ? Visibility.Collapsed : Visibility.Visible, chip.Visibility);
+        }
+    }
+
     [Fact] // BC5b: widening un-folds — the elided chips come back and the ellipsis chip stands down
     public void BC5b_WideningUnfolds()
     {

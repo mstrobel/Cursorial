@@ -29,6 +29,7 @@ what you intend to use.
 | **`Cursorial.UI`** | ✅ On NuGet | A WPF/Avalonia-style UI framework: dependency-property system, element tree, layout, render zones, routed input & focus, styling with CSS-like selectors, data binding, resources & theming, windowing, storyboards & transitions, and a full control catalog. |
 | **`Cursorial.UI.Xaml`** | ✅ On NuGet | A runtime XAML loader **and** a Roslyn source generator — declarative markup, `{Binding}`/`{StaticResource}`/`ControlTemplate`, typed code-behind, compiled bindings, and an AOT-clean metadata provider. |
 | **`Cursorial.UI.Bars`** | ✅ On NuGet | Command surfaces over one shared `BarCommand` set: a `Toolbar` with discrete overflow, a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips (Alt-overlay accelerators), and SuperTips. |
+| **`Cursorial.UI.DataViews`** | ✅ On NuGet | A DevExpress-style `DataGrid` — multi-level sorting/grouping with summaries, criteria-tree filtering, conditional formatting, in-cell editing, master-detail, frozen columns & virtualization — over a UI-free data-shaping engine (expression-tree-compiled typed pipelines). |
 
 ```bash
 dotnet add package Cursorial.Core
@@ -233,6 +234,11 @@ return await app.RunAsync(() =>
   a density-collapse tier, contextual tabs, Backstage, a Quick Access Toolbar, and a minimizable band), plus KeyTips
   (Alt-overlay accelerator badges) and SuperTips — all bound to one shared `BarCommand` set (define once, surface
   anywhere).
+- **Data views** (`Cursorial.UI.DataViews`) — a `DataGrid` with multi-level sorting/grouping (with banner or
+  in-column summaries), criteria-tree filtering (a Filter Builder + expression editor), conditional formatting (data
+  bars, color scales, icon sets, thresholds), in-cell editing, cell-range selection, master-detail rows, frozen
+  columns, and row/column virtualization — direct-drawn over a UI-free shaping engine, with columns auto-generated
+  from `System.ComponentModel.DataAnnotations`.
 
 `Cursorial.UI.Hosting.Headless` provides a headless `UIHeadlessHost` (a synthetic terminal on a fake clock) so
 the whole framework — layout, input, rendering — runs without a TTY: unit tests, snapshot harnesses, and design
@@ -282,7 +288,9 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Xaml` | The net10.0 runtime XAML loader (markup extensions, resources, templates). |
 | `Cursorial.UI.Xaml.Generator` | The Roslyn source generator (compiled bindings, code-behind, AOT-clean provider). |
 | `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
+| `Cursorial.UI.DataViews` | A `DataGrid` (sorting/grouping/summaries, filtering, conditional formatting, editing, master-detail, frozen columns, virtualization) over a UI-free data-shaping engine. |
 | `Cursorial.UI.Dialogs` | `MessageBox`, `TaskDialog` (command links, verification, progress), and the dialog service seam. |
+| `Cursorial.UI.Themes` | The data-shipped XAML theme overlay (`Default`/`IndigoDusk`) layered over the code-first built-in theme. |
 | `Cursorial.UI.Hosting.Headless` | Headless `UIHeadlessHost` + synthetic terminal: run the framework without a TTY (tests, snapshots, design tooling). |
 | `Cursorial.Templates` | `dotnet new` templates: `cursorial-app`, `cursorial-view`, `cursorial-usercontrol`. |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |

@@ -234,9 +234,10 @@
                       SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:ColorInfo">
-                  <DockPanel>
+                  <DockPanel x:Name="TemplateRoot">
                     <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="0,0,1,0" />
-                    <TextBlock Text="{Binding Name}" />
+                    <TextBlock Text="{Binding Name}"
+                               TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"/>
                   </DockPanel>
                 </DataTemplate>
               </ComboBox.ItemTemplate>
@@ -278,36 +279,19 @@
                            Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" /><!--multi-line · -->
               </StackPanel>
               <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,1,0,0">
-                <StackPanel Spacing="1" Orientation="Horizontal">
-                  <StackPanel.Style>
-                    <Style>
-                      <Setter Property="UIElement.Visibility" Value="Collapsed" />
-                      <Style.Children>
-                        <Style Selector="^" RequiresCapabilities="TextSizing">
-                          <Setter Property="UIElement.Visibility" Value="Visible" />
-                        </Style>
-                      </Style.Children>
-                    </Style>
-                  </StackPanel.Style>
-                  <Label Content="Text Si_ze" Target="{x:Reference SizingSelector}"
-                         Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-                  <ComboBox x:Name="SizingSelector" MinWidth="20" ItemsSource="{Binding TextSizes}" TabIndex="10"
-                            SelectedItem="{Binding SelectedTextSize, Mode=TwoWay}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="{x:Type co:TextSizing}">
-                        <TextBlock Text="{Binding DisplayName}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <Separator Orientation="Vertical" Width="1" Margin="1,0,2,0" />
-                </StackPanel>
                 <Label Content="_Font" Target="{x:Reference FontSelector}" Margin="0,0,1,0"
                        Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
-                <ComboBox x:Name="FontSelector" MinWidth="20" ItemsSource="{Binding Fonts}"
-                          SelectedItem="{Binding SelectedFont, Mode=TwoWay}" TabIndex="11">
+                <ComboBox x:Name="FontSelector" MinWidth="28" ItemsSource="{Binding GlyphSources}"
+                          SelectedItem="{Binding SelectedGlyphSource, Mode=TwoWay}" TabIndex="11">
                   <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="{x:Type ff:IGlyphFont}">
-                      <TextBlock Text="{Binding DisplayName}" />
+                    <DataTemplate x:DataType="{x:Type ff:GlyphSource}">
+                      <DockPanel x:Name="TemplateRoot" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Right" Text="figlet" TextStyle="Italic" TextWeight="Faint"
+                                   TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"
+                                   Visibility="{Binding IsFiglet, Converter={BooleanConverter TrueValue=Visible, FalseValue=Collapsed}}"/>
+                        <TextBlock Text="{Binding DisplayName}"
+                                   TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"/>
+                      </DockPanel>
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>

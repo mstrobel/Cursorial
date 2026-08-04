@@ -1,7 +1,10 @@
+using System.Collections.Immutable;
+
 using Cursorial.Drawing.Media;
 using Cursorial.Gallery.Infrastructure;
 using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
+using Cursorial.UI;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.Gallery.ViewModels;
@@ -19,10 +22,10 @@ public sealed class InputsPageViewModel : PageViewModel
 {
     private string _name = "";
     private string _password = "";
-    private bool _showPassword;
     private bool _subscribed = true;
     private double _volume = 40;
     private string _journal = "The quick brown fox\njumps over the lazy dog.";
+    private bool _capSubscribed;
 
     public InputsPageViewModel()
     {
@@ -32,33 +35,60 @@ public sealed class InputsPageViewModel : PageViewModel
         UndoCommand = new RelayCommand<TextBox>(editor => editor.Undo());
         RedoCommand = new RelayCommand<TextBox>(editor => editor.Redo());
         SelectedColor = Colors[5];
+    }
 
-        TextSizes =
+    private IReadOnlyList<GlyphSource> RebuildGlyphSources()
+    {
+        IReadOnlyList<GlyphSource> sized = ImmutableList<GlyphSource>.Empty;
+
+        var app = UIApplication.Current;
+
+        if (app is not null && _capSubscribed is false)
+        {
+            _capSubscribed = true;
+            app.EffectiveCapabilitiesChanged += OnEffectiveCapabilitiesChanged;
+            app.BeginShutdown += OnAppBeginShutdown;
+        }
+
+        if (app?.EffectiveCapabilities.Output.TextSizing is { Scale: true })
+        {
+            sized =
+            [
+                new(null, new TextSizing(Scale: 2, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center)),
+                new(null, new TextSizing(Scale: 2)),
+                new(null, new TextSizing(Scale: 3)),
+                new(null, new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center)),
+                new(null, new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Top)),
+                new(null, new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Bottom))
+            ];
+        }
+
+        IReadOnlyList<GlyphSource> fonts =
         [
-            new TextSizing(Scale: 1),
-            new TextSizing(Scale: 2, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center),
-            new TextSizing(Scale: 2),
-            new TextSizing(Scale: 3),
-            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Center),
-            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Top),
-            new TextSizing(Scale: 1, Numerator: 1, Denominator: 2, Vertical: TextSizingVerticalAlignment.Bottom)
+            new(DecoratedFont.QuarterBlockUnderline),
+            new(FigletFonts.CGA),
+            new(FigletFonts.Mini),
+            new(FigletFonts.MiniWi),
+            new(FigletFonts.Small),
+            new(FigletFonts.SmallSlant),
+            new(FigletFonts.LCDMatrix)
         ];
 
-        Fonts =
-        [
-            MonospaceFont.Default,
-            ShadowedFont.Default,
-            DecoratedFont.QuarterBlockUnderline,
-            FigletFonts.CGA,
-            FigletFonts.Mini,
-            FigletFonts.MiniWi,
-            FigletFonts.Small,
-            FigletFonts.SmallSlant,
-            FigletFonts.LCDMatrix
-        ];
+        return [new(MonospaceFont.Default), ..sized, ..fonts];
+    }
 
-        SelectedFont = Fonts[0];
-        SelectedTextSize = TextSizes[0];
+    private void OnAppBeginShutdown(object? sender, EventArgs e)
+    {
+        if (sender is not UIApplication app) return;
+        app.EffectiveCapabilitiesChanged -= OnEffectiveCapabilitiesChanged;
+        app.BeginShutdown -= OnAppBeginShutdown;
+        _capSubscribed = false;
+
+    }
+
+    private void OnEffectiveCapabilitiesChanged(object? sender, EventArgs e)
+    {
+        GlyphSources = RebuildGlyphSources();
     }
 
     public override string Title => "Inputs";
@@ -79,8 +109,8 @@ public sealed class InputsPageViewModel : PageViewModel
     /// <summary>Drives the <c>PasswordBox.RevealPassword</c> (two-way with the "Reveal" check box).</summary>
     public bool ShowPassword
     {
-        get => _showPassword;
-        set => Set(ref _showPassword, value);
+        get;
+        set => Set(ref field, value);
     }
 
     public bool Subscribed
@@ -102,20 +132,41 @@ public sealed class InputsPageViewModel : PageViewModel
         set { if (Set(ref _journal, value ?? "")) Raise(nameof(Status)); }
     }
 
-    public IGlyphFont SelectedFont { get; set => Set(ref field, value); }
+    public IGlyphFont? SelectedFont { get; private set => Set(ref field, value); }
 
-    public TextSizing SelectedTextSize { get; set => Set(ref field, value); }
+    public TextSizing? SelectedTextSize { get; private set => Set(ref field, value); }
 
-    public IReadOnlyList<IGlyphFont> Fonts
+    public GlyphSource? SelectedGlyphSource
     {
         get;
-        init => Set(ref field, value);
+        set
+        {
+            if (!Set(ref field, value)) return;
+            SelectedFont = value?.Font;
+            SelectedTextSize = value?.Sizing;
+        }
     }
 
-    public IReadOnlyList<TextSizing> TextSizes
+    public IReadOnlyList<GlyphSource> GlyphSources
     {
-        get;
-        init => Set(ref field, value);
+        get
+        {
+            if (field is null)
+                GlyphSources = RebuildGlyphSources();
+
+            return field!;
+        }
+        private set
+        {
+            var selectedSource = SelectedGlyphSource;
+
+            Set(ref field, value);
+
+            if (value.Contains(selectedSource))
+                SelectedGlyphSource = selectedSource;
+            else
+                SelectedGlyphSource = value.FirstOrDefault();
+        }
     }
 
     public IList<ColorInfo> Colors { get; } =
@@ -156,6 +207,7 @@ public sealed class InputsPageViewModel : PageViewModel
         $"Name=\"{_name}\"   Password.Length={_password.Length}   Subscribed={_subscribed}   Volume={_volume:0}   Journal.Lines={JournalLineCount}";
 
     private int JournalLineCount => _journal.Length == 0 ? 0 : _journal.AsSpan().Count('\n') + 1;
+    
 }
 
 public class ColorInfo

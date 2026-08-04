@@ -22,7 +22,11 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing = default)
     /// <summary>The monospace identity — what every run without an explicit source uses.</summary>
     public static GlyphSource Default { get; } = new((IGlyphFont?)null);
 
-    private GlyphMetrics? _metrics;
+    public string DisplayName => Sizing is { IsNormal: false } sz 
+                                     ? sz.DisplayName
+                                     : Font?.DisplayName ?? MonospaceFont.Default.DisplayName;
+
+    public bool IsFiglet => Sizing is { IsNormal: true } && Font is FigletFont;
 
     /// <summary>
     /// Whether this source's runs paint through the ordinary cell walk. Distinct from having
@@ -40,7 +44,7 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing = default)
     /// within the same reserved cells, degrading to its monospace face when the fallback font
     /// cannot fit the band).
     /// </summary>
-    public GlyphMetrics Metrics => _metrics ??= Resolve();
+    public GlyphMetrics Metrics => field ??= Resolve();
 
     private GlyphMetrics Resolve()
     {

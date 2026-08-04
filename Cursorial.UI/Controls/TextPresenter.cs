@@ -6,7 +6,6 @@ using Cursorial.Text;
 using Cursorial.UI.Themes;
 
 using CellStyle = Cursorial.Output.Style;
-using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
@@ -467,6 +466,8 @@ public sealed class TextPresenter : UIElement
 
         int viewport = Math.Max(1, _viewportColumns);
 
+        var figlet = source.Font is FigletFont;
+
         // Word tokens paint at their layout columns (whitespace-rigid advances make those
         // additive across gaps, so paint and caret math agree exactly). A horizontally
         // scrolled editor legally produces NEGATIVE anchors — the glyph-text primitive clips
@@ -475,10 +476,10 @@ public sealed class TextPresenter : UIElement
         int i = from;
         while (i < to)
         {
-            if (char.IsWhiteSpace(text[i])) { i++; continue; }
+            if (figlet && char.IsWhiteSpace(text[i])) { i++; continue; }
 
             int wordStart = i;
-            while (i < to && !char.IsWhiteSpace(text[i])) i++;
+            while (i < to && (!figlet || !char.IsWhiteSpace(text[i]))) i++;
 
             int wordColumn = glyphs.ColumnOf(wordStart - lineStart) - _scrollColumn;
             int wordWidth = glyphs.ColumnOf(i - lineStart) - glyphs.ColumnOf(wordStart - lineStart);

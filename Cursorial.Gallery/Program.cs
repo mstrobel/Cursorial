@@ -56,21 +56,32 @@ try
     AnimationDiagnostics.TrackError += OnAnimationDiagnosticsTrackError;
     UIDiagnostics.RejectedValue += OnUIDiagnosticsRejectedValue;
 
-    app.BeginShutdown += (_, _) =>
-                         {
-                             StyleDebugDiagnostics.DiagnosticEmitted -= OnStyleDebugDiagnosticsDiagnosticEmitted;
-                             ControlDiagnostics.DiagnosticRaised -= OnControlDiagnosticsDiagnosticRaised;
-                             BindingDiagnostics.TraceEmitted -= OnBindingDiagnosticsTraceEmitted;
-                             LayoutDiagnostics.DiagnosticRaised -= OnLayoutDiagnosticsDiagnosticRaised;
-                             AnimationDiagnostics.TrackError -= OnAnimationDiagnosticsTrackError;
-                             UIDiagnostics.RejectedValue -= OnUIDiagnosticsRejectedValue;
-                         };
+    void OnBeginShutdown(object? o, EventArgs eventArgs)
+    {
+        if (o is UIApplication a)
+        {
+            a.Started -= OnStarted;
+            a.BeginShutdown -= OnBeginShutdown;
+        }
 
-    app.Started += (_, _) =>
-                   {
-                       vm?.RefreshTheme();
-                       UITimer.Start(TimeSpan.FromSeconds(0.1), () => app.FocusManager.MoveFocus(FocusNavigationDirection.Next));
-                   };
+        StyleDebugDiagnostics.DiagnosticEmitted -= OnStyleDebugDiagnosticsDiagnosticEmitted;
+        ControlDiagnostics.DiagnosticRaised -= OnControlDiagnosticsDiagnosticRaised;
+        BindingDiagnostics.TraceEmitted -= OnBindingDiagnosticsTraceEmitted;
+        LayoutDiagnostics.DiagnosticRaised -= OnLayoutDiagnosticsDiagnosticRaised;
+        AnimationDiagnostics.TrackError -= OnAnimationDiagnosticsTrackError;
+        UIDiagnostics.RejectedValue -= OnUIDiagnosticsRejectedValue;
+    }
+
+    app.BeginShutdown += OnBeginShutdown;
+
+    void OnStarted(object? o, EventArgs eventArgs)
+    {
+        if (o is UIApplication a) a.Started -= OnStarted;
+        vm?.RefreshTheme();
+        UITimer.Start(TimeSpan.FromSeconds(0.1), () => app.FocusManager.MoveFocus(FocusNavigationDirection.Next));
+    }
+
+    app.Started += OnStarted;
 
     await app.RunAsync(() => root);
 }

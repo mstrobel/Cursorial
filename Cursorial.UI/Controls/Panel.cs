@@ -71,7 +71,7 @@ public abstract class Panel : UIElement
     {
         var bounds = context.Bounds;
 
-        if (bounds.IsEmpty || Background is not {} background)
+        if (bounds.IsEffectivelyEmpty || Background is not {} background)
             return;
 
         var occludes = Occludes;

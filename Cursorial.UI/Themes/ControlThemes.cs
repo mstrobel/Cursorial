@@ -2673,7 +2673,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (context.Bounds.IsEmpty)
+        if (context.Bounds.IsEffectivelyEmpty)
             return;
 
         var glyph = Glyphs.ForChecked(CheckedState);

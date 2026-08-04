@@ -84,7 +84,7 @@ public abstract class DrawnContentPresenter : UIElement
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (IsPrimaryContentVisible && !context.Bounds.IsEmpty)
+        if (IsPrimaryContentVisible && !context.Bounds.IsEffectivelyEmpty)
             RenderPrimaryContent(context);
     }
 

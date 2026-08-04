@@ -137,7 +137,7 @@ public class Border : Decorator
     {
         var bounds = context.Bounds;
 
-        if (bounds.IsEmpty)
+        if (bounds.IsEffectivelyEmpty)
             return;
 
         var occludes = Occludes;

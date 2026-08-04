@@ -152,9 +152,9 @@ public sealed class AccessTextPresenter : UIElement
     protected override void Render(RenderContext context)
     {
         var label = Text;
-        var labelText = _cachedLabel ?? label.Text;
+        var labelText = _cachedLabel/* ?? label.Text*/;
 
-        if (string.IsNullOrEmpty(labelText) || context.Bounds.IsEmpty)
+        if (string.IsNullOrEmpty(labelText) || context.Bounds.IsEffectivelyEmpty)
             return;
 
         // The effective TextElement attributes ride the content text, so a NoColor reverse-video state

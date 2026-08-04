@@ -111,7 +111,7 @@ public sealed class GlyphPresenter : UIElement
         if (Glyph is not { Length: > 0 } text) return;
 
         var bounds = context.Bounds;
-        if (bounds.IsEmpty) return;
+        if (bounds.IsEffectivelyEmpty) return;
         
         var fg = Foreground ?? Brushes.Default;
         var bg = Background;

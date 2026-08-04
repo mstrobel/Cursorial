@@ -176,7 +176,7 @@ public class TextBlock : UIElement
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (context.Bounds.IsEmpty)
+        if (context.Bounds.IsEffectivelyEmpty)
             return;
 
         // Paint the same height-capped layout Arrange computed IsTrimmed from — the row-trim

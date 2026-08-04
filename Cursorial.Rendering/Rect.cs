@@ -80,6 +80,9 @@ public readonly record struct Rect
     /// <summary>True when either dimension is zero.</summary>
     public bool IsEmpty => Columns == 0 || Rows == 0;
 
+    /// <summary>True when either dimension is zero.</summary>
+    public bool IsEffectivelyEmpty => Columns == 0 || Rows == 0;
+    
     /// <summary>The rectangle's anchor position.</summary>
     public CellPosition Position => new(Column, Row);
 

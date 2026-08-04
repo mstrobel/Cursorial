@@ -209,7 +209,7 @@ public sealed class Track : UIElement
     protected override void Render(RenderContext context)
     {
         var bounds = context.Bounds;
-        if (bounds.IsEmpty)
+        if (bounds.IsEffectivelyEmpty)
             return;
 
         var pen = Owner.BorderPen ?? Pens.Light;

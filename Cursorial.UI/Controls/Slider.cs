@@ -127,7 +127,7 @@ public class Slider : RangeBase
     /// <inheritdoc/>
     protected override void Render(RenderContext context)
     {
-        if (context.Bounds.IsEmpty)
+        if (context.Bounds.IsEffectivelyEmpty)
             return;
 
         // Two heavy ━ segments split at the thumb (design guide): the FILLED (value) side in FilledPen, the empty

@@ -118,10 +118,17 @@ public class BreadcrumbBarPanel : Panel
         for (var i = 0; i < children.Count; i++)
             widthHash = widthHash * 31 + NaturalWidthOf(children[i]);
 
+        // The latch's width/count/hash inputs are PROXIES; the invariant they stand for is "every child's
+        // Visibility reflects the fold". Regenerated containers (an ItemsSource reset re-adding equal items)
+        // arrive Visible with the same count and the same value-based width hash, so the proxies can all
+        // coincidentally match — skipping ApplyElision and leaving the new ancestor chips Visible with the
+        // stale bounds of their initial un-elided arrange, painted straight over the surviving chips.
+        // Verify the invariant itself before trusting the latch.
         if (!(_hasFolded
               && finalSize.Columns == _lastFinalWidth
               && children.Count == _lastChildCount
-              && widthHash == _lastWidthHash))
+              && widthHash == _lastWidthHash
+              && ElisionHolds(children)))
         {
             _firstVisible = ComputeFirstVisible(children, finalSize.Columns);
             ApplyElision(children);
@@ -183,6 +190,20 @@ public class BreadcrumbBarPanel : Panel
         }
 
         return first;
+    }
+
+    // True when every child's Visibility already agrees with the current fold — the converged state the
+    // anti-thrash latch is allowed to preserve.
+    private bool ElisionHolds(UIElementCollection children)
+    {
+        for (var i = 0; i < children.Count; i++)
+        {
+            var wanted = i < _firstVisible ? Visibility.Collapsed : Visibility.Visible;
+            if (children[i].Visibility != wanted)
+                return false;
+        }
+
+        return true;
     }
 
     // Writes ONLY where the state differs: a same-value Visibility set is a no-op in the store, but going through

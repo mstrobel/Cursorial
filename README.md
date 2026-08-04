@@ -291,12 +291,10 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
 | `Cursorial.UI.DataViews` | A `DataGrid` (sorting/grouping/summaries, filtering, conditional formatting, editing, master-detail, frozen columns, virtualization) over a UI-free data-shaping engine. |
 | `Cursorial.UI.Dialogs` | `MessageBox`, `TaskDialog` (command links, verification, progress), and the dialog service seam. |
-| `Cursorial.UI.Themes` | The data-shipped XAML theme overlay (`Default`/`IndigoDusk`) layered over the code-first built-in theme. |
 | `Cursorial.UI.Hosting.Headless` | Headless `UIHeadlessHost` + synthetic terminal: run the framework without a TTY (tests, snapshots, design tooling). |
 | `Cursorial.Templates` | `dotnet new` templates: `cursorial-app`, `cursorial-view`, `cursorial-usercontrol`. |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |
 | `Cursorial.Demo` | Interactive REPL that drives every layer end-to-end (see below). |
-| `Cursorial.Demo.XamlAot` / `.XamlAotStrict` | NativeAOT publish demos — the reflection loader, and the reflection-free build on the generated metadata provider (the AOT-clean exit gate). |
 | `Cursorial.Gallery` | A standalone XAML-first MVVM control gallery — a full app, not a demo command. |
 | `*.Tests` | xUnit suites per project. |
 

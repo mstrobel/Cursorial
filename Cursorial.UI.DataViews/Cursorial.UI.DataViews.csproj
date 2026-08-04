@@ -21,7 +21,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI.DataViews</PackageId>
-        <Version>0.4.0</Version>
+        <Version>0.5.0</Version>
         <Description>Data views for Cursorial.UI — a high-performance DataGrid (sorting, multi-level grouping with summaries, filtering, conditional formatting, in-place editing) over a reusable data-shaping controller: expression-tree-compiled typed pipelines, adaptive sorting with incremental live-update repair, and large-dataset row virtualization.</Description>
         <PackageTags>terminal;tui;ui;datagrid;grid;data;sorting;grouping;filtering;crossplatform</PackageTags>
     </PropertyGroup>

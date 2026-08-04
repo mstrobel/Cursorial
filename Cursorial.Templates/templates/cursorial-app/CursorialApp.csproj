@@ -9,11 +9,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Cursorial.UI.Xaml" Version="0.4.0" />
+        <PackageReference Include="Cursorial.UI.Xaml" Version="0.5.0" />
         <!-- The XAML source generator: InitializeComponent + typed x:Name fields for x:Class
              views. Its build assets also make every .xaml a <CursorialXaml> item automatically,
              so new views need no csproj edits. -->
-        <PackageReference Include="Cursorial.UI.Xaml.Generator" Version="0.4.0" PrivateAssets="all" />
+        <PackageReference Include="Cursorial.UI.Xaml.Generator" Version="0.5.0" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>

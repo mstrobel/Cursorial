@@ -10,7 +10,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.Drawing</PackageId>
-        <Version>0.4.0</Version>
+        <Version>0.5.0</Version>
         <Description>Standard dialog windows for Cursorial.UI — the familiar MessageBox and Windows-style TaskDialog.</Description>
         <PackageTags>terminal;tui;ui;framework;wpf;avalonia;mvvm;controls;databinding;crossplatform;dialogs</PackageTags>
     </PropertyGroup>

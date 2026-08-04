@@ -11,7 +11,7 @@
     <PropertyGroup>
         <PackageType>Template</PackageType>
         <PackageId>Cursorial.Templates</PackageId>
-        <Version>0.4.0</Version>
+        <Version>0.5.0</Version>
         <Title>Cursorial project templates</Title>
         <Description>dotnet new templates for Cursorial terminal UI apps and XAML views.</Description>
         <PackageTags>cursorial;tui;terminal;templates;dotnet-new</PackageTags>

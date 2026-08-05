@@ -8,6 +8,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Terminal;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -75,6 +76,35 @@ public class RenderGroupCompositingTests
         var composited = CompositeOver(tree, Green, 4, 2);
 
         Assert.Equal(Color.FromRgb(63, 63, 128), composited[0, 0].Style.Background);
+    }
+
+    /// <summary>
+    /// The same repro at the <b>Ansi256</b> tier, which is where the gate used to cut: the theme spine there
+    /// is RGB, so <see cref="Color.Composite"/> blends exactly as it does at truecolor and the group's
+    /// single blend-down is a visible value, not a discarded one.
+    /// </summary>
+    /// <remarks>
+    /// <b>The sampled layer is the composited <see cref="CellBuffer"/></b> — <see cref="SceneCompositor"/>'s
+    /// output, the same surface the frame loop composites windows into. Quantization to the 256-color cube
+    /// happens strictly later, at the <c>FrameRenderer</c>'s <c>StyleQuantizer</c>, on the way to the wire;
+    /// asserting there would measure the cube's nearest-entry search, not the compositor's arithmetic.
+    /// </remarks>
+    [Fact]
+    public void AtAnsi256_OpaqueChildInsideATranslucentAncestor_BlendsTheAncestorOnceNotTwice()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
+        host.Application.RequestedColorTier = ColorDepth.Ansi256;
+
+        var (_, tree, x, _) = CreateAncestorOverChild();
+        tree.Render();
+
+        Assert.True(tree.IsGroupRoot(x));
+
+        var composited = CompositeOver(tree, Green, 4, 2);
+
+        // The same number the truecolor case lands on — compositing is depth-agnostic. Before the gate was
+        // widened this tier took the flat path and produced rgb(63, 63, 128), the double-blend.
+        Assert.Equal(Color.FromRgb(0, 127, 128), composited[0, 0].Style.Background);
     }
 
     // ───────────────────────────── the identity group ─────────────────────────────
@@ -436,7 +466,144 @@ public class RenderGroupCompositingTests
         Assert.Equal(Color.FromRgb(199, 0, 0), host.GetCell(ScrollerSample.Column, ScrollerSample.Row).Style.Background);
     }
 
+    /// <summary>
+    /// The reported bug again on a <b>negotiated Ansi256 terminal</b> — no <c>RequestedColorTier</c>
+    /// override, the capability snapshot itself reports the tier — because that is the population the gate
+    /// used to exclude. The default theme's own Ansi256 dictionary ships translucent
+    /// <c>ElevationDialog</c>/<c>ElevationPopup</c> brushes, so translucent dialogs are not hypothetical
+    /// at this tier — this fixture just paints its own colours so the arithmetic is legible.
+    /// </summary>
+    /// <remarks>
+    /// <b>Sampled layer:</b> <see cref="UIHeadlessHost.FrameBuffer"/> — the composited cell buffer the frame
+    /// loop hands to the renderer, <em>before</em> <c>StyleQuantizer</c> maps it onto the 256-color cube at
+    /// emit. That is the layer the group changes; the cube mapping downstream is the same function applied
+    /// to whichever colour arrives.
+    /// </remarks>
+    [Fact]
+    public void AtAnsi256_ATranslucentDialogsScrollerRegion_BlendsWithTheBackdropIdenticallyToTheChromeBesideIt()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+                                               {
+                                                   InitialSize = new Size(80, 24),
+                                                   Capabilities = Ansi256Terminal,
+                                               });
+
+        Assert.Equal(ColorDepth.Ansi256, host.Application.ActualThemeVariant.Tier); // negotiated, not requested
+
+        var (root, dialog) = BuildTranslucentDialogOverABackdrop();
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.WindowManager!.Tree!.IsGroupRoot(dialog));
+
+        var chrome = host.GetCell(ChromeSample.Column, ChromeSample.Row).Style.Background;
+        var scroller = host.GetCell(ScrollerSample.Column, ScrollerSample.Row).Style.Background;
+
+        // Before the widening this tier produced the reported split: chrome rgb(189, 0, 10), scroller
+        // rgb(199, 0, 0) — redder, with the desktop's blue squeezed out by the second blend.
+        Assert.Equal(DialogOverBackdrop, chrome);
+        Assert.Equal(chrome, scroller);
+    }
+
+    /// <summary>
+    /// <b>The premise the tier gate rests on, measured on the far side of quantization.</b> Every other
+    /// assertion here samples the composited <see cref="CellBuffer"/>, and
+    /// <see cref="SceneCompositor"/> takes no color depth at all — so those numbers change with
+    /// the gate by construction and cannot, on their own, show that a 256-color terminal <em>sees</em> the
+    /// difference. The claim that admits Ansi256 is specifically that its theme spine is RGB and the blend
+    /// survives; a blend that <see cref="StyleQuantizer"/> mapped back onto the un-blended cube entry would
+    /// be arithmetic no user could observe. So run the real quantizer, at the real tier, over the exact
+    /// before/after pairs the acceptance tests pin.
+    /// </summary>
+    [Fact]
+    public void AtAnsi256_TheGroupsBlendSurvivesQuantizationToThe256ColorCube()
+    {
+        var quantizer = new StyleQuantizer(Ansi256Terminal.Output);
+
+        Color Quantize(Color color) => quantizer.Quantize(Style.Default.WithBackground(color)).Background;
+
+        // The acceptance pair: dialog chrome (grouped, one blend) vs the scroller's old double blend.
+        var chrome = Quantize(DialogOverBackdrop);              // rgb(189, 0, 10)
+        var doubleBlendedScroller = Quantize(Color.FromRgb(199, 0, 0));
+
+        // The repro pair: one blend vs two, over green.
+        var groupedRepro = Quantize(Color.FromRgb(0, 127, 128));
+        var doubleBlendedRepro = Quantize(Color.FromRgb(63, 63, 128));
+
+        // Both land on the 256-color cube (RGB does not survive this tier verbatim — that is the point of
+        // quantizing here rather than trusting the compositor's number).
+        Assert.Equal(ColorKind.Palette, chrome.Kind);
+        Assert.Equal(ColorKind.Palette, groupedRepro.Kind);
+
+        // ...and land on DIFFERENT entries, so the group's single blend-down is visible on the wire at
+        // Ansi256, not an arithmetic distinction the cube collapses. This is what makes the tier eligible.
+        Assert.NotEqual(chrome, doubleBlendedScroller);
+        Assert.NotEqual(groupedRepro, doubleBlendedRepro);
+    }
+
+    // ───────────────────────────── the tier flip as a live change ─────────────────────────────
+
+    /// <summary>
+    /// Crossing the gate at runtime is a <b>structural</b> composition change — a group materialises or
+    /// releases, so the emitted layer count moves. <see cref="UIApplication.TranslucencyEnabled"/>, the
+    /// predicate's other half, calls <c>WindowManager.InvalidateComposition</c> from its setter for
+    /// exactly that reason; the tier half has no such call, so this pins that it does not need one.
+    /// </summary>
+    /// <remarks>
+    /// It does not need one because a tier flip cannot leave the app idle: <c>UpdateActualThemeVariant</c>
+    /// re-stamps the effective-tier capability classes on every root and pulses the application resource
+    /// catch-all, both of which register styling work, so the frame loop always has a frame to run — and
+    /// <c>RunRenderPass</c> re-reads <c>GroupCompositingEnabled</c> and recomputes the emitted layer count
+    /// unconditionally on every pass, which is the compositor's own full-recomposite signal. This fixture
+    /// paints literal colours through <c>FillOpaque</c> and reads no theme brush for the sampled cells, so
+    /// none of that repair can be coming from a re-resolved resource. Both crossings are exercised: a
+    /// one-way test would pass on a gate stuck in the state it happened to end in.
+    /// </remarks>
+    [Fact]
+    public void ATierFlipAcrossTheGate_RecompositesWithoutWaitingForSomethingElseToDirty()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
+
+        var (root, dialog) = BuildTranslucentDialogOverABackdrop();
+        host.ShowRoot(root);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.WindowManager!.Tree!.IsGroupRoot(dialog));
+        Assert.Equal(DialogOverBackdrop, host.GetCell(ScrollerSample.Column, ScrollerSample.Row).Style.Background);
+
+        host.Application.RequestedColorTier = ColorDepth.Ansi16;
+        Assert.True(host.RunUntilIdle());
+
+        // Below the gate the group releases and the flat path double-blends the scroller again.
+        Assert.False(host.Application.WindowManager!.Tree!.IsGroupRoot(dialog));
+        Assert.Equal(Color.FromRgb(199, 0, 0), host.GetCell(ScrollerSample.Column, ScrollerSample.Row).Style.Background);
+
+        // ...and back: the return crossing is structural in the same way.
+        host.Application.RequestedColorTier = ColorDepth.Ansi256;
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.WindowManager!.Tree!.IsGroupRoot(dialog));
+        Assert.Equal(DialogOverBackdrop, host.GetCell(ScrollerSample.Column, ScrollerSample.Row).Style.Background);
+    }
+
     // ───────────────────────────── fixtures ─────────────────────────────
+
+    /// <summary>
+    /// A terminal that negotiated 256 colors: the Kitty preset with its color depth stepped down, so the
+    /// application derives an Ansi256 <c>ActualThemeVariant</c> on its own (<c>HeadlessCapabilities</c>'
+    /// presets are truecolor / Ansi16 / NoColor — there is no 256-color one).
+    /// </summary>
+    private static readonly TerminalCapabilities Ansi256Terminal = HeadlessCapabilities.KittyTruecolor with
+    {
+        Output = HeadlessCapabilities.KittyTruecolor.Output with
+        {
+            Color = HeadlessCapabilities.KittyTruecolor.Output.Color with
+            {
+                Depth = ColorDepth.Ansi256,
+                TruecolorVerified = false,
+            },
+        },
+    };
 
     private static readonly Color Backdrop = Color.FromRgb(0, 0, 200);
     private static readonly Color DialogBg = Color.FromRgb(200, 0, 0);

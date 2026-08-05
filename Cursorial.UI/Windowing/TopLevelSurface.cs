@@ -173,9 +173,11 @@ public sealed class TopLevelSurface
     }
 
     // Shadows read as a soft tint only through RGB-on-RGB alpha compositing — a non-RGB backdrop short-circuits
-    // to the source (the translucent shadow would paint SOLID). So they emit only when the EFFECTIVE color tier
-    // is truecolor — the same gate RenderTree applies to surface opacity. (A non-RGB shadow Color is its own
-    // no-op inside DrawDropShadow, so a palette accent never leaks through.)
+    // to the source (the translucent shadow would paint SOLID). So they emit only on the RGB tiers — Ansi256 and
+    // up, since only Ansi16/NoColor collapse a theme to palette indices. That is the same tier boundary
+    // RenderTree's two translucency gates apply (GroupCompositingEnabled and the CollectLayers window fold);
+    // all three are one policy and must stay in step. (A non-RGB shadow Color is its own no-op inside
+    // DrawDropShadow, so a palette accent never leaks through.)
     private static bool ShadowsEnabled => UIApplication.Current?.ActualThemeVariant is not { Tier: < ColorDepth.Ansi256 };
 
     /// <summary>

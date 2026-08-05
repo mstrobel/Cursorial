@@ -136,16 +136,23 @@ public sealed class RenderTree
     /// </summary>
     /// <remarks>
     /// Both gates deliberately govern <b>eligibility</b>, not just the published opacity value.
-    /// (a) The truecolor tier: <see cref="Output.Color.Composite"/> ignores alpha unless both operands are
-    /// RGB, so below truecolor a group would spend a surface and a second composite pass on a blend
-    /// the output tier discards — <see cref="CollectLayers"/>'s existing gate neutralises only the
-    /// <em>window</em> opacity, never a zone's, so gating the value alone would leave the cost in
-    /// place. (b) The user's translucency-effects switch. With no application at all (raster-only
-    /// hosts, unit tests) this reads as truecolor, matching <see cref="CollectLayers"/>.
+    /// (a) The <b>RGB tiers</b> — <see cref="ColorDepth.Ansi256"/> and up.
+    /// <see cref="Output.Color.Composite"/> ignores alpha unless both operands are RGB, and only
+    /// <see cref="ColorDepth.Ansi16"/>/<see cref="ColorDepth.NoColor"/> collapse a theme to palette
+    /// indices; the Ansi256 spine is RGB (its own dialog/popup brushes ship translucent), so a blend
+    /// survives there and quantization to the 256-color cube is the <c>FrameRenderer</c>'s
+    /// <c>StyleQuantizer</c>'s business, not this predicate's. Below that a group would spend a
+    /// surface and a second composite pass on a blend the tier discards —
+    /// <see cref="CollectLayers"/>'s matching gate neutralises only the <em>window</em> opacity,
+    /// never a zone's, so gating the value alone would leave the cost in place. (b) The user's
+    /// translucency-effects switch. With no application at all (raster-only hosts, unit tests) this
+    /// reads as an RGB tier, matching <see cref="CollectLayers"/>. The two tier gates must stay in
+    /// step: a tier that materialises groups but forces window opacity to 1 (or the reverse) applies
+    /// one half of the translucency model and not the other.
     /// </remarks>
     private static bool GroupCompositingEnabled
         => UIApplication.Current is not {} application ||
-           application is { TranslucencyEnabled: true, ActualThemeVariant.Tier: ColorDepth.Truecolor };
+           application is { TranslucencyEnabled: true, ActualThemeVariant.Tier: >= ColorDepth.Ansi256 };
 
     /// <summary>
     /// The funnel for app draw code (design doc §10.8): when set, every zone raster — which runs
@@ -269,9 +276,13 @@ public sealed class RenderTree
         _root.VerifyAccess();
         ThrowIfDetached();
 
-        // Honor the opacity capability when switching theme variants at runtime.
-        // Opacity is available in the truecolor tier only.
-        if (UIApplication.Current?.ActualThemeVariant is { Tier: not ColorDepth.Truecolor })
+        // Honor the opacity capability when switching theme variants at runtime. Opacity needs RGB on
+        // both sides of Color.Composite, which is every tier from Ansi256 up; Ansi16/NoColor collapse
+        // to palette indices, where the blend is discarded and the fade would only cost. This is the
+        // window leg of the TIER half of GroupCompositingEnabled's policy — the two must agree tier for
+        // tier. It deliberately does NOT read the translucency switch: that switch picks between group
+        // and flat compositing, and opacity itself survives either way (see TranslucencyEnabled).
+        if (UIApplication.Current?.ActualThemeVariant is { Tier: < ColorDepth.Ansi256 })
             windowOpacity = 1;
 
         // ReSharper disable once CompareOfFloatsByEqualityOperator
@@ -851,9 +862,12 @@ public sealed class RenderTree
             // has a descendant boundary, so it satisfies the group-root predicate and contributes 1.0
             // here. Only where groups are gated off does anything survive it — and there nothing else
             // carries an ancestor's opacity down, so the pre-group multiplied-down approximation has
-            // to stand in rather than the ancestor's translucency vanishing outright. (It is NOT dead
-            // on the palette tiers: only Ansi16/NoColor collapse to palette colors, and the Ansi256
-            // theme spine is RGB, so Color.Composite blends there and the value is visible.)
+            // to stand in rather than the ancestor's translucency vanishing outright. Now that the tier
+            // gate reads ">= Ansi256", the reachable-AND-visible path is the TRANSLUCENCY SWITCH: it
+            // gates groups off on the RGB tiers, where the multiplied-down product still blends through
+            // Color.Composite and is plainly on screen. The palette tiers reach it too, but there a
+            // themed app's colors are palette indices that Composite returns verbatim, so only whatever
+            // RGB the app painted itself still shows the fade.
             var ownOpacity = Math.Clamp(boundary.Opacity, 0.0, 1.0);
             var opacity = parentZone is { IsGroupRoot: false } flatParent
                               ? ownOpacity * flatParent.EffectiveOpacity

@@ -8,8 +8,9 @@ namespace Cursorial.UI;
 /// <summary>
 /// A window/popup drop shadow (design doc §8.2/§8.7): the soft-shadow <see cref="ShadowGeometry"/> plus its
 /// color. The surface grows by <see cref="GetMargins"/> beyond its content rect so the shadow has cells to
-/// paint into (drawn before content, as the lowest layer). RGB-only — a no-op on palette themes (W5 gates
-/// emission on <c>caps-truecolor</c>). A <c>readonly record struct</c> matching the value-type idiom.
+/// paint into (drawn before content, as the lowest layer). RGB-only — a no-op on palette themes: emission is
+/// gated in code (<c>TopLevelSurface.ShadowsEnabled</c>) on the RGB tiers, <see cref="ColorDepth.Ansi256"/>
+/// and up, not by a theme capability class. A <c>readonly record struct</c> matching the value-type idiom.
 /// </summary>
 public readonly record struct WindowShadow(ShadowGeometry Geometry, Color Color)
 {

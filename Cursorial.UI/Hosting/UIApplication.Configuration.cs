@@ -55,8 +55,9 @@ public sealed partial class UIApplication
     /// boundary subtree through a private surface so the subtree fades once, as a unit. Turning it off
     /// releases those surfaces and returns every boundary to flat compositing, where a translucent
     /// ancestor is re-blended wherever a descendant boundary overlaps it. Default
-    /// <see langword="true"/>; opacity itself is unaffected either way, and below the truecolor tier
-    /// groups never materialise regardless (the terminal discards the blend).
+    /// <see langword="true"/>; opacity itself is unaffected either way, and below
+    /// <see cref="Cursorial.Output.ColorDepth.Ansi256"/> groups never materialise regardless (those
+    /// tiers collapse to palette indices, where the blend is discarded).
     /// </summary>
     /// <remarks>
     /// This is the framework-side seam only: nothing applies

@@ -1,3 +1,4 @@
+using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
@@ -236,8 +237,16 @@ public class RenderGroupPredicateTests
 
     // ───────────────────────────── the group-eligibility gate ─────────────────────────────
 
+    /// <summary>
+    /// The gate's UPPER half: Ansi256 keeps groups. That tier's theme spine is RGB (Palette.xaml's
+    /// "Dark · Ansi256 (RGB, Tokyo Night)" dictionary, whose ElevationPopup/ElevationDialog brushes
+    /// already ship <c>Opacity="0.95"</c>), so <see cref="Color.Composite"/> genuinely blends here —
+    /// the surface a group buys is paid back in a visible single blend-down, exactly as at truecolor.
+    /// Quantization to the 256-color cube happens later, at the <c>FrameRenderer</c>'s
+    /// <c>StyleQuantizer</c>, and is not this predicate's business.
+    /// </summary>
     [Fact]
-    public void BelowTruecolor_NoGroupMaterialises()
+    public void AtAnsi256_GroupsStillMaterialise()
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
         host.Application.RequestedColorTier = ColorDepth.Ansi256;
@@ -245,10 +254,59 @@ public class RenderGroupPredicateTests
         var (_, tree, x) = CreateGroupTree();
         tree.Render();
 
-        // The tier discards the blend anyway; materialising would buy a surface and a second
-        // composite pass for nothing. The gate is on ELIGIBILITY, not just on the published value.
+        Assert.True(tree.IsGroupRoot(x));
+        Assert.Equal((byte)128, tree.Parameters(x).Opacity);
+    }
+
+    /// <summary>
+    /// The gate's LOWER half, and the reason there is a gate at all: Ansi16 and NoColor collapse to
+    /// palette indices, where <see cref="Color.Composite"/> returns the source verbatim. Materialising
+    /// there would buy a surface and a second composite pass for a blend the tier discards, so the
+    /// gate is on ELIGIBILITY, not just on the published value.
+    /// </summary>
+    [Theory]
+    [InlineData(ColorDepth.Ansi16)]
+    [InlineData(ColorDepth.NoColor)]
+    public void BelowAnsi256_NoGroupMaterialises(ColorDepth tier)
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
+        host.Application.RequestedColorTier = tier;
+
+        var (_, tree, x) = CreateGroupTree();
+        tree.Render();
+
         Assert.False(tree.IsGroupRoot(x));
         Assert.Equal((byte)128, tree.Parameters(x).Opacity); // the zone's own opacity is untouched by the tier
+    }
+
+    /// <summary>
+    /// The two tier gates are one policy and must agree tier for tier: <c>GroupCompositingEnabled</c>
+    /// decides whether a group root materialises, and <c>CollectLayers</c> decides whether a window's
+    /// opacity survives the fold. A tier where they disagree is a tier where groups materialise but the
+    /// window that owns them is forced opaque (or the reverse) — so both legs are read here, at every
+    /// tier, from one tree.
+    /// </summary>
+    [Theory]
+    [InlineData(ColorDepth.Truecolor, true)]
+    [InlineData(ColorDepth.Ansi256, true)]
+    [InlineData(ColorDepth.Ansi16, false)]
+    [InlineData(ColorDepth.NoColor, false)]
+    public void BothTierGates_AgreeAtEveryTier(ColorDepth tier, bool translucencySurvives)
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 6) });
+        host.Application.RequestedColorTier = tier;
+
+        var (_, tree, x) = CreateGroupTree();
+        tree.Render();
+
+        Assert.Equal(translucencySurvives, tree.IsGroupRoot(x));
+
+        // The window leg, read where it lands: layers[0] is the ROOT zone (Opacity == 1, and by the
+        // zone-base rule the lowest layer), so its published opacity is the window fold and nothing else.
+        var layers = new List<SceneLayer>();
+        tree.CollectLayers(layers, windowOpacity: 0.5);
+
+        Assert.Equal(translucencySurvives ? (byte) 128 : (byte) 255, layers[0].Parameters.Opacity);
     }
 
     [Fact]
@@ -280,8 +338,9 @@ public class RenderGroupPredicateTests
         tree.Render();
 
         // No group can carry outer's translucency onto inner here, so the pre-group multiplied-down
-        // approximation stands in rather than outer's fade vanishing from inner outright. (Ansi256's
-        // theme spine is RGB, so this is a visible value, not a discarded one.)
+        // approximation stands in rather than outer's fade vanishing from inner outright. This is the
+        // fallback's live path now that the tier gate reads ">= Ansi256": the translucency SWITCH gates
+        // groups off on an RGB tier, where the multiplied-down value blends and is plainly visible.
         Assert.False(tree.IsGroupRoot(outer));
         Assert.Equal((byte)128, tree.Parameters(outer).Opacity);
         Assert.Equal((byte)64, tree.Parameters(inner).Opacity); // round(255·0.25)

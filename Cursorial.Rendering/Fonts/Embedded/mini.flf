@@ -1,4 +1,4 @@
-flf2a$ 4 3 10 0 10 0 1920 96
+flf2a$ 4 3 10 0 10 0 1920 97
 Mini by Glenn Chappell 4/93
 Includes ISO Latin-1
 figlet release 2.1 -- 12 Aug 1994
@@ -897,3 +897,8 @@ $$@@
     @
  \/$@
  /$ @@
+0x2026  HORIZONTAL ELLIPSIS
+      @
+      @
+o o o$@
+      @@

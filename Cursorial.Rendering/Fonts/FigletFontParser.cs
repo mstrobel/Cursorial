@@ -112,7 +112,20 @@ public static partial class FigletFontParser
 
         int height = int.Parse(headerFields[0]);
         // baseline (1), maxLength (2), oldLayout (3), commentLines (4), printDirection (5),
-        // fullLayout (6), codetagCount (7). We use height, oldLayout, commentLines, fullLayout.
+        // fullLayout (6), codetagCount (7). We use height, baseline, oldLayout, commentLines,
+        // fullLayout.
+        //
+        // Baseline is a COUNT of rows from the top of the glyph box THROUGH the baseline row (the
+        // spec: "the number of lines of sub-characters from the baseline of a FIGcharacter to the
+        // top of the tallest FIGcharacter"), so standard.flf's `6 5` means five body rows and one
+        // descender row. TryParse rather than Parse, and absent → height: a font that omits or
+        // mangles a purely COSMETIC metric still has perfectly paintable glyph bodies, and
+        // `baseline == height` is the no-descender reading — i.e. exactly the behavior this
+        // parser had before it read the field at all. FigletFont clamps the value into the
+        // spec's [1, height] range; see the note on its constructor for why clamp beats throw.
+        int baseline = headerFields.Length > 1 && int.TryParse(headerFields[1], out int parsedBaseline)
+                           ? parsedBaseline
+                           : height;
         int oldLayoutValue = headerFields.Length > 3 ? int.Parse(headerFields[3]) : 0;
         int commentLines = headerFields.Length > 4 ? int.Parse(headerFields[4]) : 0;
         int fullLayoutValue = headerFields.Length > 6 ? int.Parse(headerFields[6]) : -1;
@@ -178,7 +191,7 @@ public static partial class FigletFontParser
             glyphs[extCp] = extGlyph;
         }
 
-        return new FigletFont(nameOverride ?? name, hardblank, height, layout, glyphs, uriSource);
+        return new FigletFont(nameOverride ?? name, hardblank, height, layout, glyphs, uriSource, baseline);
     }
 
     private static FigletGlyph ParseGlyphBody(uint codepoint, string[] lines, ref int cursor, int height,

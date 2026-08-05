@@ -9,11 +9,24 @@ namespace Cursorial.Rendering.Fonts;
 /// load via <see cref="Load"/> or <see cref="LoadFromFile"/>.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The bundled fonts are loaded lazily on first access and cached for the life of the
 /// process. They are intentionally a small curated set — covering the canonical look
 /// (<see cref="Standard"/>), a slanted variant (<see cref="Slant"/>), a compact small face
 /// (<see cref="Small"/>), a large block face (<see cref="Big"/>), and a minimal two-cell
 /// face (<see cref="Mini"/>). Anything beyond these load from disk via <see cref="LoadFromFile"/>.
+/// </para>
+/// <para>
+/// <b>Ellipsis art.</b> Several of these <c>.flf</c> files carry a locally authored U+2026 glyph
+/// (a <c>0x2026</c> codetag appended to the shipped file) so a trimmed headline gets a compact
+/// three-dot mark in the face's own idiom. That is purely an optimization: text layout derives
+/// "..." for any face without one (see <see cref="Text.TextFormatter.DerivedEllipsis"/>), which is
+/// what <see cref="Slant"/>, <see cref="SmallSlant"/>, <see cref="Roman"/>, <see cref="MiniWi"/>
+/// and <see cref="LED"/> use — the first three because their own '.' already smushes into the
+/// mark authored art would draw, the last two because those files ship truncated (95 of the 102
+/// required codepoints) and the FLF required block is positional, so an appended codetag would be
+/// parsed as the missing Latin-1 glyph bodies.
+/// </para>
 /// </remarks>
 public static class FigletFonts
 {

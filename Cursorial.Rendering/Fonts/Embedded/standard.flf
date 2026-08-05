@@ -1,4 +1,4 @@
-flf2a$ 6 5 16 15 13 0 24463 229
+flf2a$ 6 5 16 15 13 0 24463 230
 Standard by Glenn Chappell & Ian Chai 3/93 -- based on Frank's .sig
 Includes ISO Latin-1
 figlet release 2.1 -- 12 Aug 1994
@@ -2235,3 +2235,10 @@ Font modified May 20, 2012 by patorjk to add the 0xCA0 character
  $\___/$ @
          @@
          
+0x2026  HORIZONTAL ELLIPSIS
+       @
+       @
+       @
+ _ _ _ @
+(_)_)_)@
+       @@

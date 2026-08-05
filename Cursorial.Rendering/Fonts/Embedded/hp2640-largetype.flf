@@ -1,4 +1,4 @@
-flf2a$ 3 3 20 -1 24 0 0 1
+flf2a$ 3 3 20 -1 24 0 0 2
 
 HP 2640 Series terminals Large Character Set for FIGlet
 by Philippe Majerus (www.phm.lu)
@@ -333,3 +333,7 @@ Date: January 15, 2024
 𜸛𜸟𜸧@
 𜸩?𜸩@
 𜸽𜸟𜹄@@
+0x2026  HORIZONTAL ELLIPSIS
+    @
+    @
+ ▘▘▘@@

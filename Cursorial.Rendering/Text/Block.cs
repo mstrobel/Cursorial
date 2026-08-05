@@ -56,9 +56,11 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
     /// <summary>
     /// Where shorter runs sit within a taller line band (proposal-glyph-runs): when a line mixes
     /// glyph sources of different heights, each run aligns within the band by this rule. Default
-    /// <see cref="VerticalTextAlignment.Bottom"/> — terminal text is baseline-bottom, matching
-    /// OSC 66's default. Block-level by design (maintainer decision, 2026-08-02): one rule per
-    /// paragraph keeps mixed lines coherent.
+    /// <see cref="VerticalTextAlignment.Bottom"/> — bottom-of-cell is what OSC 66 defaults to, and
+    /// the terminal has no notion of a baseline to do better. Block-level by design (maintainer
+    /// decision, 2026-08-02): one rule per paragraph keeps mixed lines coherent. Faces that DO
+    /// declare vertical metrics (a FIGlet header's baseline field) can line their runs up properly
+    /// with <see cref="VerticalTextAlignment.Baseline"/>.
     /// </summary>
     public VerticalTextAlignment VerticalAlignment { get; init; }
 }
@@ -70,7 +72,15 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
 /// </summary>
 public enum VerticalTextAlignment
 {
-    /// <summary>Runs sit on the band's bottom row (baseline-bottom — the terminal default).</summary>
+    /// <summary>
+    /// Runs sit on the band's bottom row — the LAST row of the tallest run's box, whatever is
+    /// drawn there. This is <b>not</b> baseline alignment: against a face with descenders
+    /// (<c>standard.flf</c> is 6 rows with its bodies resting on row 4 and one descender row
+    /// beneath), a one-row run bottom-aligns INTO that descender row, below the glyph bodies it
+    /// is supposed to sit beside. Use <see cref="Baseline"/> when the runs' faces declare
+    /// vertical metrics; <see cref="Bottom"/> remains the honest default for OSC 66 sized text,
+    /// whose cell blocks have no baseline to align to.
+    /// </summary>
     Bottom,
 
     /// <summary>Runs sit on the band's top row.</summary>
@@ -78,6 +88,16 @@ public enum VerticalTextAlignment
 
     /// <summary>Runs center within the band (rounding up toward the bottom).</summary>
     Center,
+
+    /// <summary>
+    /// Runs align so their BASELINES coincide: each run drops by the difference between the
+    /// band's baseline (the deepest baseline among its runs, counted from the top) and its own,
+    /// clamped so no run is pushed out of the band. Identical to <see cref="Bottom"/> for a band
+    /// whose runs all have zero descent, and the only rule that places a one-cell run correctly
+    /// beside a multi-row face that HAS descent. Declared last: <c>default</c> must stay
+    /// <see cref="Bottom"/>.
+    /// </summary>
+    Baseline,
 }
 
 /// <summary>

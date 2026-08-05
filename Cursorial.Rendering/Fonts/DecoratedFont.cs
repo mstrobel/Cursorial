@@ -123,6 +123,54 @@ public class DecoratedFont : IGlyphFont
     public string DisplayName { get; }
 
     /// <inheritdoc/>
+    /// <remarks>A decorator's repertoire IS its inner face's — this wrapper adds a decoration
+    /// row, never a glyph. Inheriting the interface's optimistic default would have a decorated
+    /// FIGlet font claim every codepoint while drawing a blank gap for most of them.</remarks>
+    public bool HasGlyph(uint codepoint) => Inner.HasGlyph(codepoint);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>NOT a pure forward — the answer depends on <see cref="Position"/>.</b> Read
+    /// <see cref="Paint"/>: the inner face is painted at <c>above ? row + 1 : row</c>. With
+    /// <see cref="DecorationPosition.Above"/> the decoration takes the anchor row and the GLYPH
+    /// slides down one, so every ink row — the baseline row included — is one lower than the
+    /// inner face's: <c>Inner.Baseline + 1</c>. With <see cref="DecorationPosition.Below"/> the
+    /// glyph stays at the anchor and the extra row is appended underneath, so the baseline is
+    /// <c>Inner.Baseline</c>, unchanged, and the growth shows up in <see cref="Descender"/>
+    /// instead.
+    /// </para>
+    /// <para>
+    /// Forwarding <c>Inner.Baseline</c> blindly would place a baseline-aligned neighbour one row
+    /// too high against an <c>Above</c>-decorated face — sitting on the decoration instead of
+    /// beside the glyph — and the error is invisible on the single-row inner faces the bundled
+    /// instances use (<see cref="HalfBlockUnderline"/> and friends all wrap
+    /// <see cref="MonospaceFont"/>), which is exactly how it would ship.
+    /// </para>
+    /// </remarks>
+    public int Baseline => Inner.Baseline + (Position == DecorationPosition.Above ? 1 : 0);
+
+    /// <inheritdoc cref="Baseline"/>
+    public int Ascender => Baseline;
+
+    /// <summary>
+    /// <see cref="Inner"/>'s descent, plus the decoration row when it sits
+    /// <see cref="DecorationPosition.Below"/> the glyph. Keeps
+    /// <c>Ascender + Descender</c> equal to the height <see cref="Measure"/> reports
+    /// (<c>Inner.Rows + 1</c>) for both positions.
+    /// </summary>
+    /// <remarks>
+    /// Note that <see cref="Paint"/> draws a <c>Below</c> decoration at a HARD-CODED
+    /// <c>row + 1</c> rather than under the last glyph row, so with a multi-row inner face the
+    /// decoration currently lands inside the glyph and the extra row <see cref="Measure"/>
+    /// reserves at the bottom is left blank. These metrics deliberately describe the box
+    /// <see cref="Measure"/> promises — layout reserves against Measure — rather than encoding
+    /// that painting bug; fixing the paint anchor is a separate change and does not move the
+    /// metrics.
+    /// </remarks>
+    public int Descender => Inner.Descender + (Position == DecorationPosition.Above ? 0 : 1);
+
+    /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style)
     {
         var attributes = style.Attributes & ~ForbiddenAttributes;

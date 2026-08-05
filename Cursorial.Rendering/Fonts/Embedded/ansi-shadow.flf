@@ -1,4 +1,4 @@
-flf2a$ 7 7 13 0 7 0 64 0
+flf2a$ 7 7 13 0 7 0 64 1
 Font Author: ?
 
 More Info:
@@ -720,3 +720,11 @@ $  $@@
 @
 @
 @@
+0x2026  HORIZONTAL ELLIPSIS
+      @
+      @
+      @
+      @
+█╗█╗█╗@
+╚╝╚╝╚╝@
+      @@

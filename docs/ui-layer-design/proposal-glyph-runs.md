@@ -61,11 +61,32 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing)
   already row-count-based.
 - Vertical placement inside a taller line is governed by a **paragraph-level vertical text
   alignment** (maintainer decision, 2026-08-02): `TextParagraph` gains a
-  `VerticalTextAlignment` (Top/Center/Bottom, default Bottom — terminal text is
-  baseline-bottom, matching OSC 66's default), carried onto `FormattedParagraph` and applied by
-  the painter when placing each run within its line band. Block-level, not per-run — one rule
-  per paragraph keeps mixed lines coherent; `TextSizing.Vertical` remains the escape hatch for
-  a scaled run that must deviate.
+  `VerticalTextAlignment` (Top/Center/Bottom/**Baseline**, default Bottom — OSC 66's default,
+  and the only honest rule for a band mixing a face with sized text, whose cell blocks the
+  terminal fills and which therefore expose no baseline), carried onto `FormattedParagraph` and
+  applied by the painter when placing each run within its line band. Block-level for authors —
+  one rule per paragraph keeps mixed lines coherent; `TextSizing.Vertical` remains the escape
+  hatch for a scaled run that must deviate.
+
+  **Amended 2026-08-05 (vertical metrics).** Two corrections to the sketch above, both landed:
+
+  1. *Bottom is not baseline alignment.* The original wording — "default Bottom, terminal text
+     is baseline-bottom" — conflated the band's bottom ROW with the face's BASELINE row. They
+     coincide only for a zero-descent face. Against `standard.flf` (6 rows, baseline 5, one
+     descender row) bottom-aligning a one-cell run drops it UNDER the glyph bodies rather than
+     beside them. Faces now declare vertical metrics (`IGlyphFont.Baseline` — a row COUNT, not a
+     0-based index — parsed from the FLF header's baseline field), `GlyphMetrics`/`FormattedRun`
+     mirror them, and `VerticalTextAlignment.Baseline` (declared last, so `default` stays
+     `Bottom`) lines the runs' baselines up. `Bottom` keeps its literal meaning and its default
+     slot.
+  2. *One per-run escape hatch exists, and it is the formatter's, not the author's.*
+     `FormattedRun.VerticalAlignment` is a nullable override the painter prefers over the
+     paragraph rule. Author content never carries one — the authoring surface is still
+     block-level, as decided. The formatter sets it only on runs IT synthesizes whose glyph
+     source differs from the run they visually join: today exactly one, the last-resort trim
+     indicator painted by the terminal's own font beside a face that can draw no indicator of
+     its own. Having substituted a foreign face against what the author asked for, the formatter
+     owns where that face's single cell lands, under every paragraph rule.
 - Justify/alignment padding stays identity-width spaces (cells are cells).
 
 ### 3. Painting
@@ -140,7 +161,8 @@ path, one trimmed-flag path — is the real payoff beyond the new capability.
 ## Resolved (maintainer, 2026-08-02)
 
 - **Vertical placement**: paragraph-level vertical text alignment (folded into §2 above), not
-  per-run and not tallest-run-dictated.
+  per-run and not tallest-run-dictated. *(Still the authoring rule after the 2026-08-05
+  amendment: the one per-run override is internal to the formatter, for runs it synthesizes.)*
 - **FIGlet in `TextBox`**: fully editable — glyphs are atomic caret/selection/deletion units
   exactly like monospace clusters (folded into §4 above). No measure-only mode needed.
 - **Fragment-count budget test**: agreed as a Phase 2 entry gate — measure re-emit cost with a

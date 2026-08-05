@@ -132,6 +132,10 @@ public sealed class RenderContext
     public void Set(int column, int row, string? grapheme, in CellStyle style)
         => Inner.Set(column, row, grapheme, in style);
 
+    /// <summary>Blits the contents of <paramref name="view"/> into the back buffer at <paramref name="region"/>.</summary>
+    public void Blit(CellBufferView view, in Rect region)
+        => Inner.Blit(view, region);
+
     /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
     public void FillRectangle(in Rect region, IBrush brush)
         => Inner.FillRectangle(region, brush);

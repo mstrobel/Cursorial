@@ -381,6 +381,9 @@ public readonly record struct Color : ISpanFormattable
         if (source.IsTransparent)
             return backdrop;
 
+        if (backdrop.IsTransparent)
+            return source;
+
         var blended = mode.Blend(source, backdrop);
 
         // Alpha compositing only engages for RGB-on-RGB. Otherwise, the source's alpha is

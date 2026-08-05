@@ -312,4 +312,92 @@ public sealed class Section21_ToolTip
         Show(host, a);
         Assert.Equal(1, Popups(host)); // exactly one popup — a duplicate controller would show two
     }
+
+    [Fact] // C8.20: a press-dismissed tooltip stays dismissed until the pointer leaves and returns
+    public void C8_20_DismissedTooltip_DoesNotResurrectOnATipChange()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var element = new Border { Width = 20, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        ToolTipService.SetTip(element, "one");
+        host.ShowRoot(element);
+        host.RunUntilIdle();
+
+        Show(host, element);
+        Assert.Equal(1, Popups(host));
+
+        var inside = element.TranslateToWindow(1, 1);
+        host.SendMouseDown(inside.Column, inside.Row);   // §12.7: a press dismisses
+        host.RunFrame();
+        Assert.Equal(0, Popups(host));
+
+        // An owner that republishes its tip as the pointer moves (a chart tracking a series) must
+        // NOT bring the dismissed tooltip back — the pointer never left.
+        ToolTipService.SetTip(element, "two");
+        host.RunFrame();
+        host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
+        host.RunFrame();
+        Assert.Equal(0, Popups(host));
+
+        // Leaving and returning is the re-arming edge, and it works again.
+        MoveAway(host);
+        Show(host, element);
+        Assert.Equal(1, Popups(host));
+    }
+
+    // ── C8.18/C8.19: a tip ARMED WHILE ALREADY HOVERING (no hover-enter edge to arm on — the
+    // ChartPresenter case, whose tip only appears once the pointer reaches plotted ink) ──
+
+    [Fact] // C8.18: the tip appearing under a stationary pointer arms its OWN owner
+    public void C8_18_TipSetWhileHovering_ArmsItsOwner()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var element = new Border { Width = 20, Height = 4, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        host.ShowRoot(element);
+        host.RunUntilIdle();
+
+        Hover(host, element);                       // hover FIRST, while it has no tip
+        Assert.Equal(0, Popups(host));
+
+        ToolTipService.SetTip(element, "armed");    // the tip appears with the pointer already inside
+        host.RunFrame();
+        host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
+        host.RunFrame();
+
+        Assert.Equal(1, Popups(host));
+    }
+
+    [Fact] // C8.19: another element's tip change must NOT arm whatever sits under the pointer
+    public void C8_19_UnrelatedTipChange_DoesNotArmTheHoveredElement()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 16) });
+        using var _ = host;
+        var hovered = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(40, 40, 40)) };
+        var elsewhere = new Border { Width = 16, Height = 3, Background = new SolidColorBrush(Color.FromRgb(50, 50, 50)) };
+        ToolTipService.SetTip(hovered, "hovered");  // it HAS a tip — but the pointer never entered it
+        var panel = new StackPanel();
+        panel.Children.Add(hovered);
+        panel.Children.Add(elsewhere);
+        host.ShowRoot(panel);
+        host.RunUntilIdle();
+
+        // Park the pointer INSIDE `hovered` with the controller's target cleared: hover-enter arms
+        // it, then a press at that same cell dismisses (DismissTransients → Reset) without moving
+        // the pointer. `hovered` is still what the pointer is over, and it still has a tip.
+        var inside = hovered.TranslateToWindow(1, 1);
+        Hover(host, hovered);
+        host.SendMouseDown(inside.Column, inside.Row);   // dismiss; pointer stays on `hovered`
+        host.RunFrame();
+        Assert.Equal(0, Popups(host));
+
+        // A DIFFERENT element's tip changes. Nothing is under the pointer but `hovered`, whose tip
+        // did not change — so no tooltip may arm.
+        ToolTipService.SetTip(elsewhere, "elsewhere");
+        host.RunFrame();
+        host.AdvanceTime(Delay + TimeSpan.FromMilliseconds(50));
+        host.RunFrame();
+
+        Assert.Equal(0, Popups(host));
+    }
 }

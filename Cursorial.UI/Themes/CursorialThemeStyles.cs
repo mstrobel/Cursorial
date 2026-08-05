@@ -157,6 +157,7 @@ internal static class CursorialThemeStyles
     internal static Style CapsNoColorSelectionInverse()
     {
         var style = new Style(":is(ListBoxItem):focus, " +
+                              ":is(ListBoxItem):selected, " +
                               ":is(ComboBoxItem):selected, " +
                               ":is(ComboBox):focus /template/ #PART_DropDown, " +
                               ":is(ComboBox):open /template/ #PART_DropDown, " +

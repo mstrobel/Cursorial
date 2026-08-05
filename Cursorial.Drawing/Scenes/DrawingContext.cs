@@ -1600,4 +1600,45 @@ public sealed class DrawingContext
 
         _braille!.Plot(sceneSubX, sceneSubY, recordId);
     }
+
+    /// <summary>
+    /// Copies <paramref name="view"/>'s cells into the scene with <paramref name="region"/>'s top-left
+    /// (in current-local coordinates) as the anchor — the bulk-copy counterpart to <see cref="Set"/>,
+    /// used to land a separately composited surface (a layered chart) in one step.
+    /// </summary>
+    /// <remarks>
+    /// Honors the ambient translate and clip like every other draw path: the destination is mapped
+    /// through the active translate and trimmed to the active clip, with the source trimmed in step
+    /// so the copy stays aligned. Without that, a caller which is not a render-boundary element (the
+    /// only ones that paint at a zero translate) silently blitted onto the zone's origin.
+    /// </remarks>
+    public void Blit(CellBufferView view, in Rect region)
+    {
+        if (view.IsEmpty || region.IsEffectivelyEmpty)
+            return;
+
+        var state = CurrentState;
+
+        int columns = Math.Min(region.Columns, view.Columns);
+        int rows = Math.Min(region.Rows, view.Rows);
+
+        // The destination in scene coordinates, clipped to the active clip.
+        int sceneColumn = region.Column + state.Dx;
+        int sceneRow = region.Row + state.Dy;
+
+        var clip = _stateStack.Count == 0 ? Bounds : state.Clip;
+
+        int column0 = Math.Max(sceneColumn, clip.Column);
+        int row0 = Math.Max(sceneRow, clip.Row);
+        int column1 = Math.Min(sceneColumn + columns, clip.ColumnEnd);
+        int row1 = Math.Min(sceneRow + rows, clip.RowEnd);
+
+        if (column1 <= column0 || row1 <= row0)
+            return;
+
+        // Trim the SOURCE by whatever the clip took off the leading edges, so the two stay aligned.
+        var trimmed = view.View(column0 - sceneColumn, row0 - sceneRow, column1 - column0, row1 - row0);
+
+        _surface.Blit(trimmed, new Rect(column0, row0, column1 - column0, row1 - row0));
+    }
 }

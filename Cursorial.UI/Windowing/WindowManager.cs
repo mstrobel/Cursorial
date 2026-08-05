@@ -1227,8 +1227,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>Measures the popup child at the screen, then positions its surface per <see cref="Popup.Placement"/>
     /// + offsets relative to the effective target's screen rect, clamped into the viewport (§8.4).</summary>
-    private void PlacePopup(Popup popup, TopLevelSurface surface)
+    internal void PlacePopup(Popup popup, TopLevelSurface? surface = null)
     {
+        // A popup whose surface is gone (never opened, or force-closed by a stack change while a
+        // caller still held it) has nothing to place — returning beats dereferencing into an NRE
+        // inside the frame loop.
+        surface ??= popup.PopupSurface;
+        if (surface is null)
+            return;
+
         // Provisional measure at the screen constraint to read the child's content-driven desired size.
         surface.Size = _viewport;
         surface.RunLayoutPass();
@@ -1243,7 +1250,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
         var anchor = AnchorRect(popup);
 
-        (surface.Left, surface.Top) = Place(popup, popup.Placement, anchor, size);
+        (surface.Left, surface.Top) = Place(popup, popup.Placement, anchor, surface.Size);
 
         surface.Opacity = popup.Opacity;
     }

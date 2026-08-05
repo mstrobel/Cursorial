@@ -367,8 +367,14 @@ internal sealed class FileDialogView
                         pattern.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogFilter.Pattern)));
                         TextElement.SetTextWeight(pattern, TextWeight.Faint);
                         DockPanel.SetDock(pattern, Dock.Right);
+
+                        TextElement.ForwardInverse(pattern, panel);
+                        TextElement.ForwardInverse(label, panel);
+
+
                         panel.Children.Add(pattern);
                         panel.Children.Add(label);
+
                         return panel;
                     })
             };
@@ -566,12 +572,14 @@ internal sealed class FileDialogView
                              var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
 
                              icon.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Icon)));
+                             TextElement.ForwardInverse(icon, row);
                              DockPanel.SetDock(icon, Dock.Left);
 
                              // Trimming is inert while TextBlock drops the paragraph's trim setting, but it costs
                              // nothing and the cut becomes an ellipsis the moment that plumbing lands.
                              var host = new ContentPresenter { ForwardsFromTemplatedParent = false };
                              
+                             TextElement.ForwardInverse(host, row);
                              host.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
                              host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
                              host.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Name)));
@@ -609,6 +617,9 @@ internal sealed class FileDialogView
                        var tile = new DockPanel();
                        var secondaryCell = new ContentPresenter { ForwardsFromTemplatedParent = false };
 
+                       TextElement.ForwardInverse(head, tile);
+                       TextElement.ForwardInverse(secondaryCell, tile);
+                       
                        secondaryCell.SetBinding(
                            UIElement.VisibilityProperty,
                            new Binding(ContentPresenter.ContentProperty)
@@ -659,12 +670,14 @@ internal sealed class FileDialogView
         icon.SetBinding(ContentPresenter.ContentProperty,
                         new Binding(nameof(FileDialogEntry.Icon)));
 
+        TextElement.ForwardInverse(icon, head);
         DockPanel.SetDock(icon, Dock.Left);
 
         // Trimming is inert while TextBlock drops the paragraph's trim setting, but it costs
         // nothing and the cut becomes an ellipsis the moment that plumbing lands.
         var host = new ContentPresenter { ForwardsFromTemplatedParent = false };
 
+        TextElement.ForwardInverse(host, head);
         host.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
         host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
 
@@ -787,8 +800,10 @@ internal sealed class FileDialogView
                 icon.Margin = new Margins(0, 0, 1, 0);
                 DockPanel.SetDock(icon, Dock.Left);
 
+                var contentPresenter = new ContentPresenter{ Content = place.Name, ShowTrimmedContentInToolTip = true};
+
                 row.Children.Add(icon);
-                row.Children.Add(new ContentPresenter{ Content = place.Name, ShowTrimmedContentInToolTip = true});
+                row.Children.Add(contentPresenter);
 
                 var button = new Button
                              {
@@ -798,6 +813,9 @@ internal sealed class FileDialogView
                                  HorizontalAlignment = HorizontalAlignment.Stretch,
                                  HorizontalContentAlignment = HorizontalAlignment.Left
                              };
+
+                TextElement.ForwardInverse(icon, button);
+                TextElement.ForwardInverse(contentPresenter, button);
 
                 button.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
 

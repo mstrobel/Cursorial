@@ -1,0 +1,34 @@
+<UserControl xmlns="https://cursorial.dev/ui"
+             xmlns:x="https://cursorial.dev/xaml"
+             xmlns:d="https://cursorial.dev/xaml/design"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
+             mc:Ignorable="d"
+             x:Class="Cursorial.Gallery.Pages.ChartsView"
+             d:DataContext="vm:ChartsPageViewModel">
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Border Grid.Column="0" Grid.Row="0" Title="Line Chart" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+        <ChartPresenter Source="{Binding LineChart}" Margin="2,1" />
+      </Border>
+      <Border Grid.Column="1" Grid.Row="0" Title="Bar Chart" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+        <ChartPresenter Source="{Binding BarChart}" Margin="2,1" />
+      </Border>
+      <Border Grid.Column="0" Grid.Row="1" Title="Scatter Chart" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+        <ChartPresenter Source="{Binding ScatterChart}" Margin="2,1"/>
+      </Border>
+      <Border Grid.Column="1" Grid.Row="1" Title="Multi-Line Chart" BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
+        <ChartPresenter Source="{Binding MultiLineChart}" Margin="2,1" />
+      </Border>
+    </Grid>
+
+</UserControl>

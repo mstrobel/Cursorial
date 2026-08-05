@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
-using Cursorial.Gallery.Pages;
 using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Dialogs;
@@ -27,6 +26,7 @@ public sealed class ShellViewModel : ViewModelBase
             new BreadcrumbViewModel(),
             new ButtonsViewModel(),
             new CompletionViewModel(),
+            new ChartsPageViewModel(),
             new DataGridViewModel(),
             new DateControlsViewModel(),
             new DialogsViewModel(app),

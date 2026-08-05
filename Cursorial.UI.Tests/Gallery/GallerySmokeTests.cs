@@ -317,7 +317,7 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     }
 
     [Fact] // The chessboard primitive (#107, a future page): content-assisted LEADING-EDGE snapping via IScrollContentHost.
-           // The viewport height (24) is a whole number of 4-row tiles, so the vertical offsets are exact (4, then 0).
+           // The viewport height (24) is a whole number of 6-row tiles, so the vertical offsets are exact (6, then 0).
     public void Chessboard_SnapsScrollToWholeTiles()
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(80, 24) });
@@ -336,11 +336,11 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
 
         host.SendKey(Key.DownArrow);
         host.RunUntilIdle();
-        Assert.Equal(4, sv.VerticalOffset);   // bottom edge snapped onto a 4-row tile boundary (24 → 28 → offset 4)
+        Assert.Equal(6, sv.VerticalOffset);   // bottom edge snapped onto a 6-row tile boundary (24 → 30 → offset 6)
 
         host.SendKey(Key.RightArrow);
         host.RunUntilIdle();
-        Assert.InRange(sv.HorizontalOffset, 1, 8); // leading-edge: scroll right advances 1..8 cells to align the right edge
+        Assert.InRange(sv.HorizontalOffset, 1, 12); // leading-edge: scroll right advances 1..12 cells to align the right edge
 
         host.SendKey(Key.UpArrow);
         host.RunUntilIdle();
@@ -356,12 +356,12 @@ public sealed class GallerySmokeTests(ITestOutputHelper output)
     {
         var board = new Chessboard();
         IScrollContentHost host = board;
-        host.SetViewport(new Size(77, 24)); // 77 is NOT a multiple of the 8-wide tile → a tile would be cut
+        host.SetViewport(new Size(77, 24)); // 77 is NOT a multiple of the 12-wide tile → a tile would be cut
 
-        Assert.Equal(3, host.LineStep(0, +1, vertical: false));
-        Assert.Equal(8, host.LineStep(3, +1, vertical: false));
-        Assert.Equal(3, host.LineStep(11, -1, vertical: false));
-        Assert.Equal(8, host.LineStep(8, -1, vertical: false));
+        Assert.Equal(7, host.LineStep(0, +1, vertical: false));    // 77 % 12 = 5 ⇒ 7 cells align the right edge
+        Assert.Equal(12, host.LineStep(7, +1, vertical: false));   // already aligned ⇒ a whole tile
+        Assert.Equal(7, host.LineStep(19, -1, vertical: false));   // and symmetrically on the way back
+        Assert.Equal(12, host.LineStep(12, -1, vertical: false));
     }
 
     private static void Click(UIHeadlessHost host, int column, int row, MouseButton button = MouseButton.Left)

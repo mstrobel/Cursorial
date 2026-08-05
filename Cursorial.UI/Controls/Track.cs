@@ -92,7 +92,8 @@ public sealed class Track : UIElement
         AffectsRender<Track>(TrackDisplayModeProperty,
                              ThumbNormalBrushProperty,
                              ThumbHoverBrushProperty,
-                             ThumbDragBrushProperty);
+                             ThumbDragBrushProperty,
+                             TrackFillBrushProperty);
     }
 
     /// <summary>The code-first constructor with an explicit owner (used by the code-first ScrollBar template).</summary>

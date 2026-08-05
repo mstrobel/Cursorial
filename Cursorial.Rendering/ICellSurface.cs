@@ -115,4 +115,7 @@ internal interface ICellSurface
 
     /// <summary>Create a windowed sub-view over <paramref name="region"/>, in this surface's coordinate space.</summary>
     CellBufferView View(in Rect region);
+
+    /// <summary>Blits the contents of <paramref name="view"/> into the back buffer.</summary>
+    void Blit(CellBufferView view, in Rect region);
 }

@@ -465,11 +465,17 @@ public abstract class TextElement
     /// PD26). Call INSIDE the control-template build. Faces honor only <see cref="InverseProperty"/>
     /// (the fill's one flag), so a face forwards Inverse alone via <see cref="ForwardInverse"/>.
     /// </summary>
-    public static void ForwardAllAxes(UIElement part)
+    public static void ForwardAllAxes(UIElement part, UIElement? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
+
         foreach (var axis in AllAxisProperties)
-            part.SetBinding(axis, new TemplateBinding(axis));
+        {
+            part.SetBinding(axis,
+                            source is null
+                                ? new TemplateBinding(axis)
+                                : new Binding(axis) { Source = source });
+        }
     }
 
     /// <summary>
@@ -478,11 +484,17 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardFormatting(UIElement part)
+    public static void ForwardFormatting(UIElement part, UIElement? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
+
         foreach (var axis in AllFormattingProperties)
-            part.SetBinding(axis, new TemplateBinding(axis));
+        {
+            part.SetBinding(axis,
+                            source is null
+                                ? new TemplateBinding(axis)
+                                : new Binding(axis) { Source = source });
+        }
     }
 
     /// <summary>
@@ -491,17 +503,27 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardTypography(UIElement part)
+    public static void ForwardTypography(UIElement part, UIElement? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
+
         foreach (var axis in AllTypographyProperties)
-            part.SetBinding(axis, new TemplateBinding(axis));
+        {
+            part.SetBinding(axis,
+                            source is null
+                                ? new TemplateBinding(axis)
+                                : new Binding(axis) { Source = source });
+        }
     }
 
     /// <summary>Forwards <see cref="InverseProperty"/> alone from the templated parent onto a face part (the fill's one flag).</summary>
-    public static void ForwardInverse(UIElement facePart)
+    public static void ForwardInverse(UIElement part, UIElement? source = null)
     {
-        ArgumentNullException.ThrowIfNull(facePart);
-        facePart.SetBinding(InverseProperty, new TemplateBinding(InverseProperty));
+        ArgumentNullException.ThrowIfNull(part);
+
+        part.SetBinding(InverseProperty,
+                        source is null
+                            ? new TemplateBinding(InverseProperty)
+                            : new Binding(InverseProperty) { Source = source });
     }
 }

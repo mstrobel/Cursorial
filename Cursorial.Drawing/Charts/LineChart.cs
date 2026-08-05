@@ -1,6 +1,8 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 
 namespace Cursorial.Drawing.Charts;
 
@@ -15,12 +17,31 @@ namespace Cursorial.Drawing.Charts;
 /// zero baseline.</remarks>
 public sealed class LineChart : IChart
 {
-    private readonly PointD[] _points;
+    // What the last Render put where, for HitTest: the cells the curve passed through (each remembering
+    // the sample that entered it — sub-cell-accurate data, not the cell-quantized readback), with actual
+    // DATA points overriding samples in their cells (the tooltip shows the datum, not an interpolation).
+    private readonly Dictionary<CellPosition, PointD> _renderedCells = new();
+
+    // The braille stroke is a quarter-cell tall, so demanding the exact cell makes the curve fiddly to
+    // point at. Each painted cell therefore also claims the NEIGHBOUR on the side its ink leans toward
+    // — dots in the cell's upper half claim the cell above, lower half the cell below — giving every
+    // point on the curve a two-cell-tall target roughly centred on the ink. Kept apart from the exact
+    // record so real ink always answers first: a spilled claim can never shadow the curve's own cell.
+    private readonly Dictionary<CellPosition, PointD> _adjacentCells = new();
+    private (AxisRange x, AxisRange y) _renderedRange;
+    private Rect _renderedArea;
 
     /// <summary>Create a line chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
     public LineChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
-        _points = points.ToArray();
+        Points = points.ToArray();
+        Brush = brush ?? Brushes.Default;
+    }
+
+    /// <summary>Create a line chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
+    public LineChart(IReadOnlyList<PointD> points, IBrush? brush = null)
+    {
+        Points = points.ToArray();
         Brush = brush ?? Brushes.Default;
     }
 
@@ -41,10 +62,10 @@ public sealed class LineChart : IChart
         FromValues(values, new SolidColorBrush(color));
 
     /// <summary>The data points (defensively copied).</summary>
-    public IReadOnlyList<PointD> Points => _points;
+    public IReadOnlyList<PointD> Points { get; }
 
     /// <summary>The line brush (never null).</summary>
-    public IBrush Brush { get; init; }
+    public IBrush Brush { get; }
 
     /// <summary>How points are connected (default <see cref="CurveInterpolation.Linear"/>).</summary>
     public CurveInterpolation Interpolation { get; init; } = CurveInterpolation.Linear;
@@ -79,13 +100,22 @@ public sealed class LineChart : IChart
     public void Render(DrawingContext context, in Rect area)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        _renderedCells.Clear();
+        _adjacentCells.Clear();
+
         if (area.Columns <= 0 || area.Rows <= 0) return;
 
-        var finite = _points.Where(ChartMath.Finite).ToList();
+        var points = Points;
+
+        var finite = points.Where(ChartMath.Finite).ToList();
         if (finite.Count == 0) return;
 
-        var (xRange, yRange) = ChartMath.AutoRange(_points, XRange, YRange);
+        var (xRange, yRange) = ChartMath.AutoRange(points, XRange, YRange);
         var projector = new PlotProjector(area, xRange, yRange, 2, 4);
+
+        _renderedRange = (xRange, yRange);
+        _renderedArea = area;
 
         // Area-fill accumulators: the curve's height (continuous, sub-cell) vs the zero baseline, per column.
         // Allocated only when filling; both the fill and the line read the SAME single sampling pass below.
@@ -104,38 +134,109 @@ public sealed class LineChart : IChart
         int recordId = finite.Count >= 2 ? context.AddBrailleRecord(new Pen(Brush), area, overwrite: false) : -1;
 
         // ONE pass over the maximal finite runs (a non-finite point — NaN / ±∞, "missing data" — ends a run, so
-        // the curve breaks into a gap instead of jumping across it). Each run's curve is sampled ONCE and the
-        // samples feed BOTH the area fill and the line, then are discarded — no re-sampling, no retained list.
-        foreach (var run in FiniteRuns(_points))
+        // the curve breaks into a gap instead of jumping across it). Each run's curve is sampled ONCE, and one
+        // walk over the samples AND the segments between them feeds every consumer — the braille line, the
+        // area-fill accumulator, and the hit-test record. Samples alone are not enough for the latter two: for
+        // Linear the sampler returns the data points themselves and the braille plotter rasterizes the
+        // connecting cells, so any per-sample consumer would skip every column without a data point in it
+        // (the area fill visibly gapped between sparse points).
+        var areaRect = area;   // a local function cannot capture the 'in' parameter
+
+        // One visited sub-cell dot feeds both non-paint consumers: the hit record (cell-keyed) and the
+        // area-fill accumulator. The cell comes from the WALKED sub position — never a reprojection,
+        // which could round to a neighboring cell and desynchronize the record from the painted raster.
+        void Visit(int subColumn, int subRow, in PointD p)
+        {
+            int column = subColumn >> 1, row = subRow >> 2;
+            _renderedCells.TryAdd(new CellPosition(column, row), p);
+
+            // Widen the target by one cell on the side the ink leans toward (braille rows 0-1 are the
+            // cell's upper half, 2-3 the lower), clamped to the plot so the curve never claims a cell
+            // outside the chart.
+            int neighbour = (subRow & 3) < 2 ? row - 1 : row + 1;
+            if (neighbour >= areaRect.Row && neighbour < areaRect.RowEnd)
+                _adjacentCells.TryAdd(new CellPosition(column, neighbour), p);
+
+            if (curveFrac is null)
+                return;
+
+            int idx = column - areaRect.Column;
+            if ((uint) idx >= (uint) areaRect.Columns) return;
+
+            double f = RowFraction(p.Y, yRange, areaRect.Rows);
+            // Keep the row furthest from the baseline — the curve's peak in this column.
+            if (!hasCurve![idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
+                curveFrac[idx] = f;
+            hasCurve[idx] = true;
+        }
+
+        foreach (var run in FiniteRuns(points))
         {
             if (run.Count == 0) continue;
             int per = Math.Max(2, area.Columns * 2 / Math.Max(1, run.Count - 1));
             IReadOnlyList<PointD> samples = run.Count >= 2 ? Curves.Sample(Interpolation, run, per) : run;
 
-            if (curveFrac is not null)
-                foreach (var s in samples)
+            if (samples.Count == 1)
+            {
+                // A lone finite point (isolated between gaps) paints only when a marker will stamp it —
+                // record it only then, so tooltips never fire on blank cells.
+                if (ShowMarkers || finite.Count == 1)
                 {
-                    int idx = projector.ToCell(s.X, s.Y).Column - area.Column;
-                    if ((uint) idx >= (uint) area.Columns) continue;
-                    double f = RowFraction(s.Y, yRange, area.Rows);
-                    // Keep the row furthest from the baseline — the curve's peak in this column.
-                    if (!hasCurve![idx] || Math.Abs(f - baseFrac) > Math.Abs(curveFrac[idx] - baseFrac))
-                        curveFrac[idx] = f;
-                    hasCurve[idx] = true;
+                    var (mx, my) = projector.ToSub(samples[0].X, samples[0].Y);
+                    Visit(mx, my, samples[0]);
                 }
+                continue;
+            }
 
-            if (recordId >= 0)
-                for (int i = 0; i + 1 < samples.Count; i++)
+            for (int i = 0; i + 1 < samples.Count; i++)
+            {
+                var a = samples[i];
+                var b = samples[i + 1];
+                var (ax, ay) = projector.ToSub(a.X, a.Y);
+                var (bx, by) = projector.ToSub(b.X, b.Y);
+
+                if (recordId >= 0)
+                    context.PlotBrailleSegment(ax, ay, bx, by, recordId);
+
+                // Walk the segment with the SAME Bresenham the braille plotter rasterizes with, so the
+                // record's cell set matches the painted cells exactly (a rounded parametric walk visibly
+                // diverged on steep segments). Each dot reports the segment's value at its position,
+                // parametrized along the dominant axis.
+                int wx = ax, wy = ay;
+                int dxw = Math.Abs(bx - ax), dyw = -Math.Abs(by - ay);
+                int sxw = ax < bx ? 1 : -1, syw = ay < by ? 1 : -1;
+                int errW = dxw + dyw;
+                double dominant = Math.Max(dxw, -dyw);
+
+                while (true)
                 {
-                    var (sx0, sy0) = projector.ToSub(samples[i].X, samples[i].Y);
-                    var (sx1, sy1) = projector.ToSub(samples[i + 1].X, samples[i + 1].Y);
-                    context.PlotBrailleSegment(sx0, sy0, sx1, sy1, recordId);
+                    double t = dominant == 0 ? 0.0
+                             : dxw >= -dyw ? Math.Abs(wx - ax) / dominant
+                             : Math.Abs(wy - ay) / dominant;
+                    Visit(wx, wy, new PointD(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t));
+
+                    if (wx == bx && wy == by) break;
+                    int e2 = 2 * errW;
+                    if (e2 >= dyw) { errW += dyw; wx += sxw; }
+                    if (e2 <= dxw) { errW += dxw; wy += syw; }
                 }
+            }
         }
 
         // Paint the accumulated fill (cell backgrounds); the deferred braille line flushes over it at scene end.
         if (curveFrac is not null)
             PaintAreaFill(context, area, baseFrac, curveFrac, hasCurve!, AreaBrush ?? Brush);
+
+        // The data points override interpolated samples in their cells — hovering a datum's cell must
+        // report the datum itself. Replace-only: a datum whose cell was never painted (a lone run
+        // without markers) must not become hit-testable here.
+        foreach (var p in finite)
+        {
+            var (column, row) = projector.ToCell(p.X, p.Y);
+            var cell = new CellPosition(column, row);
+            if (_renderedCells.ContainsKey(cell))
+                _renderedCells[cell] = p;
+        }
 
         if (ShowMarkers || finite.Count == 1)
         {
@@ -209,4 +310,42 @@ public sealed class LineChart : IChart
         }
         if (run.Count > 0) yield return run;
     }
+
+    /// <inheritdoc/>
+    public bool HitTest(CellPosition position, out object? hitObject)
+    {
+        hitObject = null;
+
+        if (HitCoordinates(position) is not {} coordinates)
+            return false;
+
+        // RichText, matching MultiLineChart's shape: the marker glyph in the line's brush color
+        // (sampled at the hit cell) as the indicator, then the coordinates.
+        var rtb = new RichTextBuilder();
+        rtb.Run(EffectiveMarkerGlyph, Style.Default.WithForeground(Brush.ColorAt(position.Column, position.Row, _renderedArea)));
+        rtb.Run(" " + coordinates);
+        hitObject = rtb.Build();
+        return true;
+    }
+
+    // The coordinate half of a hit — MultiLineChart composes its own multi-series RichText from
+    // these, one per intersecting line.
+    internal string? HitCoordinates(CellPosition position)
+    {
+        // Exact ink first, then the leaned-toward neighbour — a spilled claim never shadows a cell
+        // the curve actually painted.
+        if (_renderedCells.TryGetValue(position, out var p) is false &&
+            _adjacentCells.TryGetValue(position, out p) is false)
+        {
+            return null;
+        }
+
+        var (xRange, yRange) = _renderedRange;
+        if (xRange.IsDegenerate || yRange.IsDegenerate) return null;
+
+        return ChartMath.FormatPoint(p, xRange, yRange);
+    }
+
+    /// <summary>The marker glyph this line stamps (custom override, else the <see cref="Marker"/> style's).</summary>
+    internal string EffectiveMarkerGlyph => string.IsNullOrEmpty(MarkerGlyph) ? ChartMath.MarkerGlyph(Marker) : MarkerGlyph;
 }

@@ -275,14 +275,22 @@ public sealed class Section13_Scrolling
         host.RunFrame();
         Assert.Equal(0, sv.VerticalOffset);
 
+        // Home/End are the UNMODIFIED vertical extremes; Ctrl/Shift pair them with the horizontal
+        // axis (a deliberate departure from the Ctrl+Home/End convention — see doc §12.7).
         var max = sv.Extent.Rows - sv.Viewport.Rows;
-        host.SendKey(Key.End, KeyModifiers.Control);
+        host.SendKey(Key.End);
         host.RunFrame();
-        Assert.Equal(max, sv.VerticalOffset); // Ctrl+End → bottom
+        Assert.Equal(max, sv.VerticalOffset); // End → bottom
 
-        host.SendKey(Key.Home, KeyModifiers.Control);
+        host.SendKey(Key.Home);
         host.RunFrame();
-        Assert.Equal(0, sv.VerticalOffset); // Ctrl+Home → top
+        Assert.Equal(0, sv.VerticalOffset); // Home → top
+
+        // A modifier the scroller does not claim (Alt) must leave the event alone rather than
+        // scrolling and marking it handled, which would swallow host bindings like Alt+End.
+        host.SendKey(Key.End, KeyModifiers.Alt);
+        host.RunFrame();
+        Assert.Equal(0, sv.VerticalOffset);
     }
 
     [Fact] // C226
@@ -507,7 +515,6 @@ public sealed class Section13_Scrolling
 
         // Exercise the WithAlpha(63) fallback: with no TrackFillBrush the fill dims the thumb brush itself.
         track.SetValue(Track.TrackFillBrushProperty, null);
-        track.UpdateBrush();
         host.RunFrame();
 
         var (start, length) = track.ThumbGeometry();

@@ -461,7 +461,9 @@ public sealed class Section50_SizedTextBox
 
         Assert.Equal("", box.Text);
         Assert.DoesNotContain("\x1b]66", del);                 // nothing re-emits deleted text —
+#pragma warning disable xUnit2013
         Assert.Equal(0, host.Application.FrameBufferInternal!.Fragments.Count); // — and nothing stays registered
+#pragma warning restore xUnit2013
         Assert.Contains("\x1b[1;2H", del);                     // the vacated band is REWRITTEN (erased)
     }
 
@@ -487,7 +489,9 @@ public sealed class Section50_SizedTextBox
 
         Assert.Equal("", box.Text);
         Assert.DoesNotContain("\x1b]66", afterLast);
+#pragma warning disable xUnit2013
         Assert.Equal(0, host.Application.FrameBufferInternal!.Fragments.Count);
+#pragma warning restore xUnit2013
         Assert.Contains("\x1b[1;2H", afterLast);               // the final footprint is rewritten
     }
 

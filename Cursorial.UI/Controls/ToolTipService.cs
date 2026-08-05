@@ -54,10 +54,12 @@ public sealed class ToolTipService
 
     private static void OnTipChanged(UIObject sender, object? oldValue, object? newValue)
     {
+        ToolTipController? controller = null;
+
         // Arming a tip ensures the controller for the running application exists + is subscribed (the hover
         // stream it observes is app-wide, so one controller serves every tip-bearing element).
         if (newValue is not null && UIApplication.Current is {} app)
-            ToolTipController.Ensure(app);
+            controller = ToolTipController.Ensure(app);
 
         // Sever exactly the link the new-tip branch below installs — and ONLY that link. A tip
         // whose inheritance parent is someone else was parented by its owner, not by us; touching
@@ -75,6 +77,11 @@ public sealed class ToolTipService
         {
             newTip.SetInheritanceParent(sender);
         }
+
+        if (controller is null && UIApplication.Current is {} currentApp)
+            controller ??= ToolTipController.Ensure(currentApp);
+
+        controller?.OnTipChanged(sender, newValue);
     }
 
     public const int MaxToolTipWidth = 42;
@@ -97,6 +104,7 @@ internal sealed class ToolTipController
     private UIElement? _target;   // the tip element we are pending-or-showing for
     private bool _shown;          // whether the popup is currently open
     private bool _recentlyClosed; // a tooltip closed < QuickShowWindow ago ⇒ the next shows immediately
+    private UIElement? _dismissed;// press-dismissed here; no re-arm until the pointer leaves and returns
     private UITimer? _openTimer;
     private UITimer? _quickShowTimer;
 
@@ -106,15 +114,17 @@ internal sealed class ToolTipController
 
         var dispatcher = app.InputDispatcher;
         dispatcher.HoverChanged += OnHoverChanged;
-        dispatcher.DismissTransients += Reset; // any button/non-modifier-key press dismisses
+        dispatcher.DismissTransients += Dismiss; // any button/non-modifier-key press dismisses
         dispatcher.TerminalFocusChanged += OnTerminalFocusChanged;
     }
 
     /// <summary>Ensures the controller for <paramref name="app"/> exists and is subscribed (idempotent).</summary>
-    internal static void Ensure(UIApplication app)
+    internal static ToolTipController Ensure(UIApplication app)
     {
-        if (!Controllers.TryGetValue(app, out _))
-            Controllers.Add(app, new ToolTipController(app));
+        if (!Controllers.TryGetValue(app, out var controller))
+            Controllers.Add(app, controller = new ToolTipController(app));
+
+        return controller;
     }
 
     private void OnHoverChanged(HoverChainSnapshot removed, HoverChainSnapshot added)
@@ -123,10 +133,47 @@ internal sealed class ToolTipController
         if (_target is not null && Contains(removed, _target))
             Reset();
 
+        // Leaving the element a press dismissed on releases the latch: a fresh hover-enter is exactly
+        // the edge doc §12.7 says may re-arm it.
+        if (_dismissed is not null && Contains(removed, _dismissed))
+            _dismissed = null;
+
         // Entered a (different) tip-bearing element ⇒ arm. Intra-element moves don't change the chain, so the
         // open timer is never reset by them (doc §12.7).
         if (InnermostTipOwner(added) is {} owner && !ReferenceEquals(owner, _target))
             Arm(owner);
+    }
+
+    internal void OnTipChanged(UIObject sender, object? newTip)
+    {
+        // A tip that first appears while the pointer is ALREADY inside its owner has no hover-enter
+        // edge to arm on (ChartPresenter publishes a tip only once the pointer reaches plotted ink),
+        // so arm here instead. The owner under the pointer must BE the sender: without that check
+        // ANY element's tip change — a bound label, a timer — armed whatever happened to sit under
+        // the pointer, showing a tooltip its owner never asked to change. Requiring a live
+        // IsPointerOver additionally keeps this honest on terminals without motion reporting (where
+        // LastPointerPosition is retained though no hover chain exists) and while the terminal is
+        // unfocused. Once armed, subsequent changes from the same owner take the fast path below —
+        // the content updates with no fresh delay, so dragging along a series retimes nothing.
+        if (newTip is not null &&
+            _target is null &&
+            sender is UIElement { IsPointerOver: true } element &&
+            !ReferenceEquals(element, _dismissed) &&
+            UIApplication.Current is { InputDispatcher: { LastPointerPosition: {} p } d} &&
+            InnermostTipOwner(d.HitTest(p)) is {} owner &&
+            ReferenceEquals(owner, element))
+        {
+            Arm(owner);
+            return;
+        }
+
+        if (ReferenceEquals(sender, _target))
+        {
+            if (newTip is not null)
+                UpdateTipContent(newTip);
+            else
+                Reset();
+        }
     }
 
     private void OnTerminalFocusChanged(bool focused)
@@ -153,6 +200,14 @@ internal sealed class ToolTipController
         if (ToolTipService.GetTip(owner) is not {} tip)
             return; // the tip was cleared while the timer was pending — nothing to show
 
+        UpdateTipContent(tip);
+    }
+
+    private void UpdateTipContent(object tip)
+    {
+        if (_openTimer?.IsRunning is true)
+            return;
+
         if (tip is ToolTip toolTip)
         {
             _popup.Child = toolTip;
@@ -162,13 +217,37 @@ internal sealed class ToolTipController
             _toolTip.Content = tip;
             _popup.Child = _toolTip;
         }
+        
+        if (_shown)
+        {
+            if (UIApplication.Current is { WindowManager: {} wm, InputDispatcher: {} id })
+            {
+                if (id.LastPointerPosition is {} p)
+                    _popup.PointerPlacementOrigin = (p.Column, p.Row);
 
-        _popup.PlacementTarget = owner;
+                wm.PlacePopup(_popup);
+            }
+            (_popup.Child as ToolTip)?.Zone?.MarkRasterDirty();
+            return;
+        }
+
+        _popup.PlacementTarget = _target;
         _popup.Placement = PlacementMode.Pointer; // below-right of the pointer cell
         _popup.SetCurrentValue(Popup.HorizontalOffsetProperty, 1);
         _popup.SetCurrentValue(Popup.VerticalOffsetProperty, 1);
         _popup.SetCurrentValue(Popup.IsOpenProperty, true);
         _shown = true;
+    }
+
+    /// <summary>Dismissal by press or key (S3's <c>DismissTransients</c>): closes like
+    /// <see cref="Reset"/>, and latches the element so a tip change from that same owner cannot
+    /// immediately re-arm it — doc §12.7 makes a fresh hover-enter the only re-arming edge. Without
+    /// the latch, an owner that republishes its tip as the pointer moves (a chart tracking its
+    /// series) resurrected the tooltip on the very next drag event.</summary>
+    private void Dismiss()
+    {
+        _dismissed = _target ?? _dismissed;
+        Reset();
     }
 
     // Cancels a pending open and closes a shown tooltip; clears the tracked element.
@@ -205,6 +284,17 @@ internal sealed class ToolTipController
     }
 
     // The innermost (deepest) tip-bearing element in a root-first chain snapshot, or null.
+    private static UIElement? InnermostTipOwner(UIElement? leaf)
+    {
+        for (UIElement? current = leaf; current != null; current = current.VisualParent)
+        {
+            if (ToolTipService.GetTip(current) is not null)
+                return current;
+        }
+
+        return null;
+    }
+
     private static UIElement? InnermostTipOwner(HoverChainSnapshot chain)
     {
         UIElement? owner = null;

@@ -157,11 +157,21 @@ internal static class ContentRealization
     // onto DataTemplate/opaque-element content (app content is app-styleable, proposal §2.1/§7.3).
     // The axes are non-inheriting ("flows like Background"), so a control-level cue — the theme's
     // `.caps-nocolor Button:focus → Inverse` — reaches the label through these live forwards.
+    /// <summary>
+    /// The anchor every forward installed by <see cref="ForwardTextAttributeAxes"/> uses: the control
+    /// the theme rules land on (the templated parent), or the presenter itself when freestanding (it
+    /// IS the element the app styles). Shared with the retract path so the two cannot drift.
+    /// </summary>
+    internal static UIObject ForwardSource(ContentPresenter host)
+        => host.ForwardsFromTemplatedParent ? host.TemplatedParent ?? (UIObject) host : host;
+
     private static UIElement ForwardTextAttributeAxes(ContentPresenter host, UIElement leaf)
     {
-        // The forward source is the control the theme rules land on (the templated parent); a
-        // freestanding presenter forwards its own values (it IS the element the app styles).
-        var source = host.ForwardsFromTemplatedParent ? host.TemplatedParent ?? (UIObject)host : host;
+        var source = ForwardSource(host);
+
+        // Remember it: the retract path must dispose the bindings anchored to THIS object, and the
+        // inputs to ForwardSource can change before the child is discarded.
+        host.ForwardAnchor = source;
 
         // Install at the Template lane (audit fix 2026-07-13): opening the template-instantiation
         // scope around the binding installs makes the forwarded value the leaf's RESTING truth —

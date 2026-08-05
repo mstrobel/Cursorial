@@ -719,6 +719,59 @@ public sealed class CellBuffer : ICellSurface
         => new(this, region.Column, region.Row, region.Columns, region.Rows);
 
     /// <summary>
+    /// Copy <paramref name="view"/>'s contents into this buffer with <paramref name="region"/>'s
+    /// top-left as the destination anchor. At most <paramref name="region"/>'s extent is copied, and
+    /// at most what the view holds; anything falling outside this buffer is clipped away rather than
+    /// wrapped or clamped. A raw cell copy — the styles arrive verbatim, without the active blending
+    /// mode (compositing is <c>SceneCompositor</c>'s job, not a blit's).
+    /// </summary>
+    /// <remarks>
+    /// Reads through the view's own coordinate mapping, so a windowed or re-based view contributes
+    /// the cells it addresses, not its backing buffer's corner. Wide-glyph pairs the copy would split
+    /// (a leading half whose continuation lands outside the copied rectangle, or a continuation whose
+    /// leading half was cut) degrade to blank singles, mirroring <see cref="CellBufferView.Set"/> —
+    /// a blit can never strand half a pair in the destination.
+    /// </remarks>
+    public void Blit(CellBufferView view, in Rect region)
+    {
+        if (view.IsEmpty || region.IsEffectivelyEmpty)
+            return;
+
+        // Copy no more than the destination rect asks for AND no more than the view holds.
+        int columns = Math.Min(region.Columns, view.Columns);
+        int rows = Math.Min(region.Rows, view.Rows);
+
+        // Clip the destination to this buffer, trimming the source by the same amount so the two
+        // stay in step (a negative anchor skips the leading source cells rather than shifting them).
+        int firstColumn = Math.Max(0, -region.Column);
+        int firstRow = Math.Max(0, -region.Row);
+        columns = Math.Min(columns, _columns - region.Column);
+        rows = Math.Min(rows, _rows - region.Row);
+
+        if (columns <= firstColumn || rows <= firstRow)
+            return;
+
+        for (int row = firstRow; row < rows; row++)
+        for (int column = firstColumn; column < columns; column++)
+        {
+            var cell = view.Read(column, row);
+
+            // A leading half whose continuation lies outside the COPIED RECTANGLE degrades: the
+            // indexer's own degrade covers only the buffer's edge, so without this a pair-write
+            // would land one column past the rectangle the caller asked for. (The mirror case — a
+            // continuation whose leading half was cut — needs nothing here: the indexer already
+            // stores a blank single for a continuation with no WideLeft to its left.)
+            if (cell.Kind == CellKind.WideLeft && column + 1 >= columns)
+                cell = new Cell(null, CellKind.Single, cell.Style);
+
+            // Through the indexer, not _cells: it is what keeps wide pairs consistent on overwrite.
+            this[region.Column + column, region.Row + row] = cell;
+        }
+
+        MarkDirty(region.Column + firstColumn, region.Row + firstRow, columns - firstColumn, rows - firstRow);
+    }
+
+    /// <summary>
     /// Resize the buffer to <paramref name="columns"/> × <paramref name="rows"/>. Contents are
     /// discarded; the new buffer is initialized to blank cells. The cursor state is preserved.
     /// </summary>

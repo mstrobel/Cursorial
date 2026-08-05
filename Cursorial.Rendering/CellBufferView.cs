@@ -187,6 +187,16 @@ public readonly struct CellBufferView : ICellSurface
     public bool Contains(int column, int row)
         => row >= LocalRowStart && row < LocalRowEnd && column >= LocalColumnStart && column < LocalColumnEnd;
 
+    /// <summary>
+    /// Reads the cell at the view-local (<paramref name="column"/>, <paramref name="row"/>) through
+    /// this view's origin mapping, yielding a blank for anything outside the window instead of
+    /// throwing — the non-validating read a bulk copy needs (see <see cref="CellBuffer.Blit"/>).
+    /// </summary>
+    internal Cell Read(int column, int row)
+        => _buffer is not null && Contains(column, row)
+               ? _buffer[column + OffsetColumn, row + OffsetRow]
+               : default;
+
     // ---- Cursor pass-through ------------------------------------------------------------
 
     /// <summary>
@@ -251,9 +261,13 @@ public readonly struct CellBufferView : ICellSurface
 
     /// <summary>
     /// Direct cell access in view-local coordinates. Validates the coordinates and throws on
-    /// out-of-bounds — for clipping semantics, use <see cref="Set"/> instead. The setter
-    /// bypasses wide-cell consistency handling and the active blending mode (matching
-    /// <see cref="CellBuffer"/>'s indexer behavior).
+    /// out-of-bounds — for clipping semantics, use <see cref="Set"/> instead. The setter bypasses
+    /// the active blending mode (matching <see cref="CellBuffer"/>'s indexer), but it does NOT
+    /// bypass wide-cell consistency: the backing indexer keeps pairs consistent, and a leading half
+    /// at the view's own right edge degrades to a blank single here — the view is a clip, so a
+    /// pair-write must never land in the column past its window (the backing buffer applies the
+    /// same rule at its edge; this is the view's version, anchored on the view's, exactly as
+    /// <see cref="Set"/> does).
     /// </summary>
     public Cell this[int column, int row]
     {
@@ -265,6 +279,10 @@ public readonly struct CellBufferView : ICellSurface
         set
         {
             ValidateCoordinates(column, row);
+
+            if (value.Kind == CellKind.WideLeft && column + 1 >= LocalColumnEnd)
+                value = new Cell(null, CellKind.Single, value.Style);
+
             _buffer[column + OffsetColumn, row + OffsetRow] = value;
         }
     }
@@ -584,6 +602,32 @@ public readonly struct CellBufferView : ICellSurface
     /// </summary>
     public CellBufferView View(in Rect region)
         => View(region.Column, region.Row, region.Columns, region.Rows);
+
+    /// <inheritdoc cref="CellBuffer.Blit"/>
+    /// <remarks><paramref name="region"/> is view-local: it maps through this view's origin and is
+    /// clipped to its window, so a blit can never write outside the view it was handed.</remarks>
+    public void Blit(CellBufferView view, in Rect region)
+    {
+        if (_buffer is null || view.IsEmpty || region.IsEffectivelyEmpty)
+            return;
+
+        int columns = Math.Min(region.Columns, view.Columns);
+        int rows = Math.Min(region.Rows, view.Rows);
+
+        // Clip the destination to the addressable window, trimming the source in step.
+        int column0 = Math.Max(region.Column, LocalColumnStart);
+        int row0 = Math.Max(region.Row, LocalRowStart);
+        int column1 = Math.Min(region.Column + columns, LocalColumnEnd);
+        int row1 = Math.Min(region.Row + rows, LocalRowEnd);
+
+        if (column1 <= column0 || row1 <= row0)
+            return;
+
+        var trimmed = view.View(column0 - region.Column, row0 - region.Row, column1 - column0, row1 - row0);
+
+        // Window-relative coordinates are >= the window start, so the mapped anchor is never negative.
+        _buffer.Blit(trimmed, new Rect(column0 + OffsetColumn, row0 + OffsetRow, column1 - column0, row1 - row0));
+    }
 
     private void ValidateCoordinates(int column, int row)
     {

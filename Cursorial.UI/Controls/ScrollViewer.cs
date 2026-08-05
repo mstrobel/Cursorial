@@ -540,6 +540,13 @@ public class ScrollViewer : ContentControl
             return;
 
         var maxRow = Math.Max(0, _extent.Rows - _viewport.Rows);
+        var maxColumn = Math.Max(0, _extent.Columns - _viewport.Columns);
+
+        // Vertical scrolling is the UNMODIFIED gesture and horizontal is Ctrl/Shift's, so the vertical
+        // arms test for exactly None rather than masking: a mask that only looks at Ctrl+Shift treats
+        // Alt / Super / Meta as "no modifier", which would scroll AND mark the event handled — quietly
+        // swallowing host bindings like Alt+Home. Keys carrying only those modifiers now match neither
+        // arm and bubble on, matching the arrow cases just below.
 
         switch (e.Key)
         {
@@ -555,11 +562,18 @@ public class ScrollViewer : ContentControl
                 if (TryScrollVertically(PageDelta(-1, vertical: true))) e.Handled = true;
                 break;
 
+            case Key.PageUp when (e.Modifiers & (KeyModifiers.Control | KeyModifiers.Shift)) != 0:
+                if (TryScrollHorizontally(PageDelta(-1, vertical: false))) e.Handled = true;
+                break;
+
             case Key.PageDown when e.Modifiers == KeyModifiers.None:
                 if (TryScrollVertically(PageDelta(+1, vertical: true))) e.Handled = true;
                 break;
+            case Key.PageDown when (e.Modifiers & (KeyModifiers.Control | KeyModifiers.Shift)) != 0:
+                if (TryScrollHorizontally(PageDelta(+1, vertical: false))) e.Handled = true;
+                break;
 
-            case Key.Home when (e.Modifiers & KeyModifiers.Control) != 0:
+            case Key.Home when e.Modifiers == KeyModifiers.None:
                 if (_verticalOffset != 0)
                 {
                     SetVerticalOffset(0);
@@ -568,10 +582,28 @@ public class ScrollViewer : ContentControl
 
                 break;
 
-            case Key.End when (e.Modifiers & KeyModifiers.Control) != 0:
+            case Key.Home when (e.Modifiers & (KeyModifiers.Control | KeyModifiers.Shift)) != 0:
+                if (_horizontalOffset != 0)
+                {
+                    SetHorizontalOffset(0);
+                    e.Handled = true;
+                }
+
+                break;
+
+            case Key.End when e.Modifiers == KeyModifiers.None:
                 if (_verticalOffset != maxRow)
                 {
                     SetVerticalOffset(maxRow);
+                    e.Handled = true;
+                }
+
+                break;
+
+            case Key.End when (e.Modifiers & (KeyModifiers.Control | KeyModifiers.Shift)) != 0:
+                if (_horizontalOffset != maxColumn)
+                {
+                    SetHorizontalOffset(maxColumn);
                     e.Handled = true;
                 }
 

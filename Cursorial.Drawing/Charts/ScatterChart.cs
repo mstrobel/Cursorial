@@ -1,4 +1,5 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 
@@ -12,12 +13,20 @@ namespace Cursorial.Drawing.Charts;
 /// </summary>
 public sealed class ScatterChart : IChart
 {
-    private readonly PointD[] _points;
+    private readonly Dictionary<CellPosition, PointD> _renderedPoints = new();
+    private (AxisRange x, AxisRange y) _renderedRange;
 
     /// <summary>Create a scatter chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
     public ScatterChart(ReadOnlySpan<PointD> points, IBrush? brush = null)
     {
-        _points = points.ToArray();
+        Points = points.ToArray();
+        Brush = brush ?? Brushes.Default;
+    }
+
+    /// <summary>Create a scatter chart over <paramref name="points"/> painted with <paramref name="brush"/>.</summary>
+    public ScatterChart(IReadOnlyList<PointD> points, IBrush? brush = null)
+    {
+        Points = points.ToArray();
         Brush = brush ?? Brushes.Default;
     }
 
@@ -25,10 +34,10 @@ public sealed class ScatterChart : IChart
     public ScatterChart(ReadOnlySpan<PointD> points, Color color) : this(points, new SolidColorBrush(color)) { }
 
     /// <summary>The plotted points (defensively copied).</summary>
-    public IReadOnlyList<PointD> Points => _points;
+    public IReadOnlyList<PointD> Points { get; }
 
     /// <summary>The marker brush (never null).</summary>
-    public IBrush Brush { get; init; }
+    public IBrush Brush { get; }
 
     /// <summary>The marker glyph (default <see cref="MarkerStyle.Dot"/>).</summary>
     public MarkerStyle Marker { get; init; } = MarkerStyle.Dot;
@@ -49,20 +58,29 @@ public sealed class ScatterChart : IChart
     public void Render(DrawingContext context, in Rect area)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (_points.Length == 0 || area.Columns <= 0 || area.Rows <= 0) return;
 
-        var (xRange, yRange) = ChartMath.AutoRange(_points, XRange, YRange);
+        _renderedPoints.Clear();
+
+        var points = Points;
+        if (points.Count == 0 || area.Columns <= 0 || area.Rows <= 0) return;
+
+        var (xRange, yRange) = ChartMath.AutoRange(points, XRange, YRange);
+
+        _renderedRange = (xRange, yRange);
+
         string? custom = string.IsNullOrEmpty(MarkerGlyph) ? null : MarkerGlyph;
 
         if (custom is null && Marker == MarkerStyle.Braille)
         {
             var projector = new PlotProjector(area, xRange, yRange, 2, 4);
             int recordId = context.AddBrailleRecord(new Pen(Brush), area, overwrite: false);
-            foreach (var p in _points)
+            foreach (var p in points)
             {
                 if (!ChartMath.Finite(p)) continue;
                 var (subColumn, subRow) = projector.ToSub(p.X, p.Y);
                 context.PlotBrailleDot(subColumn, subRow, recordId);
+                // The pointer asks in CELLS, so the record is cell-keyed even though the dot is sub-cell.
+                _renderedPoints[new CellPosition(subColumn / 2, subRow / 4)] = p;
             }
             return;
         }
@@ -71,7 +89,7 @@ public sealed class ScatterChart : IChart
         // lands in the same cell a braille dot for that point would — keeping markers aligned to curves.
         var cells = new PlotProjector(area, xRange, yRange, 2, 4);
         string glyph = custom ?? ChartMath.MarkerGlyph(Marker);
-        foreach (var p in _points)
+        foreach (var p in points)
         {
             if (!ChartMath.Finite(p)) continue;
             var (column, row) = cells.ToCell(p.X, p.Y);
@@ -79,6 +97,22 @@ public sealed class ScatterChart : IChart
 
             var color = Brush.ColorAt(column, row, area);
             context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
+            _renderedPoints[new CellPosition(column, row)] = p;
         }
+    }
+
+    /// <inheritdoc/>
+    public bool HitTest(CellPosition position, out object? hitObject)
+    {
+        hitObject = null;
+
+        if (_renderedPoints.TryGetValue(position, out var p) is false)
+            return false;
+
+        var (xRange, yRange) = _renderedRange;
+        if (xRange.IsDegenerate || yRange.IsDegenerate) return false;
+
+        hitObject = ChartMath.FormatPoint(p, xRange, yRange);
+        return true;
     }
 }

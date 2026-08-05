@@ -303,7 +303,17 @@ public partial class Window : ContentControl
     public bool IsShown => Manager is not null;
 
     /// <summary>Whether the window is shown modally (set by <see cref="ShowDialogAsync(CancellationToken)"/>).</summary>
-    public bool IsModal { get; private set; }
+    public bool IsModal
+    {
+        get;
+        private set
+        {
+            field = value;
+
+            if (value) Classes.Add("modal");
+            else Classes.Remove("modal");
+        }
+    }
 
     /// <summary>The realized content size (excludes shadow); valid while shown.</summary>
     public Size ActualSize { get; internal set; }

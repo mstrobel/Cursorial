@@ -119,6 +119,12 @@ public sealed class InputsPageViewModel : PageViewModel
         set { if (Set(ref _subscribed, value)) Raise(nameof(Status)); }
     }
 
+    public bool? Mystery
+    {
+        get;
+        set { if (Set(ref field, value)) Raise(nameof(Status)); }
+    }
+
     public double Volume
     {
         get => _volume;
@@ -204,7 +210,7 @@ public sealed class InputsPageViewModel : PageViewModel
 
     /// <summary>The live readout of every bound value — the password as a length, never the plaintext.</summary>
     public override string Status =>
-        $"Name=\"{_name}\"   Password.Length={_password.Length}   Subscribed={_subscribed}   Volume={_volume:0}   Journal.Lines={JournalLineCount}";
+        $"Name=\"{_name}\"  Password.Length={_password.Length}  Subscribed={_subscribed}  Mystery={Mystery?.ToString() ?? "<unset>"}  Volume={_volume:0}  Journal.Lines={JournalLineCount}";
 
     private int JournalLineCount => _journal.Length == 0 ? 0 : _journal.AsSpan().Count('\n') + 1;
     

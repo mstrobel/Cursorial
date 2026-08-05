@@ -108,7 +108,17 @@ public sealed class ListViewHeaderPresenter : Panel
                 header.Click -= OnHeaderClick;
         }
 
+        // The headers are built here and never reused, so run the permanent-discard sweep: it
+        // recurses into the header's TEMPLATE INSTANCE, whose parts carry the bindings template
+        // expansion installed (the template bindings, and the sort indicator's resource reference
+        // onto the long-lived theme). Removal alone detaches without severing them — and the sweep
+        // must follow the detach, since sweeping a still-parented element collides with the style
+        // engine retracting its frames.
+        var discarded = Children.ToArray();
         Children.Clear();
+
+        foreach (var child in discarded)
+            child.TearDown();
     }
 
     private void OnHeaderClick(object? sender, ClickEventArgs e)

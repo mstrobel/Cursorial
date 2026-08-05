@@ -208,10 +208,15 @@ public sealed class ContentPresenter : UIElement
         // release that parentage on detach, so the same item can be re-hosted by another presenter — e.g. a RECYCLED
         // virtualization container — without an "already has a visual parent" crash. A DeferredContent is the same
         // shape one indirection away: Realize() caches, so its element is SHARED across whoever realizes the wrapper
-        // next — release it too. Built children (a TextBlock from string content) are presenter-owned and not
-        // shared, so they stay; either way the next measure re-realizes.
-        if (_child is not null &&
-            (ReferenceEquals(_child, _realizedContent) || _realizedContent is DeferredContent))
+        // next — release it too.
+        //
+        // A presenter-BUILT child goes too, for its BINDINGS rather than its parentage: realization anchors links
+        // onto it that point back at this presenter (the forwarded text-attribute axes, the inverse forward), and
+        // removing a visual child deliberately does not sever bindings. Keeping the built child across a detach
+        // therefore kept every discarded subtree observed and alive — a host that rebuilds its children (a ListView
+        // re-laying its cells on a column change) leaked one such set per rebuild. Discarding here runs the same
+        // teardown the content-change path runs, and the next measure re-realizes either way.
+        if (_child is not null)
             RebuildChild(null, null, null);
 
         // Lifetime = template instance: the auto-alias observers tear down with the presenter's
@@ -424,6 +429,16 @@ public sealed class ContentPresenter : UIElement
     // UIElement.
     private BindingExpressionBase? _adoptedContentForward;
 
+    /// <summary>
+    /// The anchor <see cref="ContentRealization"/> actually used for the forwards on the CURRENT
+    /// child. Captured at install rather than recomputed at discard: the anchor depends on
+    /// <see cref="ForwardsFromTemplatedParent"/> (settable by hosts) and on
+    /// <see cref="UIElement.TemplatedParent"/>, so a recomputed value could name a different object
+    /// than the one the live bindings are anchored to — and retracting the wrong anchor silently
+    /// leaves the real forwards installed.
+    /// </summary>
+    internal UIObject? ForwardAnchor { get; set; }
+
     private void RebuildChild(object? content, DataTemplate? template, string? stringFormat)
     {
         if (_child is {} old)
@@ -451,7 +466,27 @@ public sealed class ContentPresenter : UIElement
             // leak its observer onto us on every content rebuild (each discarded child pinned alive). Borrowed content
             // (old == _realizedContent) is left untouched — its bindings belong to the author, not us.
             if (!ReferenceEquals(old, _realizedContent) && _realizedContent is not DeferredContent)
+            {
                 BindingOperations.TearDown(old);
+            }
+            else
+            {
+                // Content this presenter does NOT own: borrowed element content (the child IS the
+                // content), or a DeferredContent realization — cached by the wrapper, so the next
+                // presenter to realize it gets the SAME element. A blanket teardown would take the
+                // author's bindings with it, so retract only what realization anchored onto it here.
+                // Leaving those installed is not an option either: they point back at this host and
+                // would pin the content to it after un-hosting.
+                //
+                // BOTH anchors: the text-attribute axes follow the control the theme rules land on
+                // (the templated parent, when this presenter is a template part), while other
+                // forwards deliberately anchor to the presenter itself — retracting one source would
+                // strand the other.
+                BindingOperations.TearDownAnchoredTo(old, this);
+
+                if (ForwardAnchor is { } anchor && !ReferenceEquals(anchor, this))
+                    BindingOperations.TearDownAnchoredTo(old, anchor);
+            }
 
             if (_childLogicallyOwned && ReferenceEquals(old.LogicalParent, this))
                 RemoveLogicalChild(old);
@@ -460,6 +495,7 @@ public sealed class ContentPresenter : UIElement
 
             _child = null;
             _childLogicallyOwned = false;
+            ForwardAnchor = null;
         }
 
         var built = ContentRealization.Realize(this,

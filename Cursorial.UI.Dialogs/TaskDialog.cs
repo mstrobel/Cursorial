@@ -320,6 +320,8 @@ public static class TaskDialog
                                                            : Visibility.Collapsed
                                       };
             
+            expandedContentHost.SetResourceReference(Panel.BackgroundProperty, ThemeKeys.ElevationWell);
+            
             void OnToggleIsCheckedChanged(object? o, RoutedEventArgs routedEventArgs)
             {
                 expandedContentHost.Visibility = toggle.IsChecked is true

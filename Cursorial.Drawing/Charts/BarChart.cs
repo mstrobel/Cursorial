@@ -1,6 +1,7 @@
 using System.Text;
 
 using Cursorial.Drawing.Media;
+using Cursorial.Input;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
@@ -28,12 +29,22 @@ public enum BarOrientation
 /// </summary>
 public sealed class BarChart : IChart
 {
-    private readonly double[] _values;
+    // Each rendered bar's cell extent (partial edge cells included) and what it stands for, recorded by
+    // Render for HitTest — the tooltip reports the bar under the pointer, category-prefixed when labeled.
+    private readonly Dictionary<Rect, (double Value, string Category)> _renderedBars = new();
+    private AxisRange _renderedRange;
 
     /// <summary>Create a bar chart over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
     public BarChart(ReadOnlySpan<double> values, IBrush? brush = null)
     {
-        _values = values.ToArray();
+        Values = values.ToArray();
+        Brush = brush ?? Brushes.Default;
+    }
+
+    /// <summary>Create a bar chart over <paramref name="values"/> painted with <paramref name="brush"/>.</summary>
+    public BarChart(IReadOnlyList<double> values, IBrush? brush = null)
+    {
+        Values = values.ToArray();
         Brush = brush ?? Brushes.Default;
     }
 
@@ -41,10 +52,10 @@ public sealed class BarChart : IChart
     public BarChart(ReadOnlySpan<double> values, Color color) : this(values, new SolidColorBrush(color)) { }
 
     /// <summary>The bar values (defensively copied).</summary>
-    public IReadOnlyList<double> Values => _values;
+    public IReadOnlyList<double> Values { get; }
 
     /// <summary>The bar fill brush (never null; null was replaced by <see cref="Brushes.Default"/>).</summary>
-    public IBrush Brush { get; init; }
+    public IBrush Brush { get; }
 
     /// <summary>Bar growth direction (default <see cref="BarOrientation.Vertical"/>).</summary>
     public BarOrientation Orientation { get; init; } = BarOrientation.Vertical;
@@ -68,7 +79,11 @@ public sealed class BarChart : IChart
     public void Render(DrawingContext context, in Rect area)
     {
         ArgumentNullException.ThrowIfNull(context);
-        int n = _values.Length;
+
+        _renderedBars.Clear();
+
+        var values = Values;
+        int n = values.Count;
         if (n == 0 || area.Columns <= 0 || area.Rows <= 0) return;
 
         // Signed range spanning zero, so the baseline sits inside the chart and negatives draw on its far
@@ -83,11 +98,13 @@ public sealed class BarChart : IChart
         {
             lo = 0.0;
             hi = 0.0;
-            foreach (double v in _values)
+            foreach (double v in values)
                 if (double.IsFinite(v)) { lo = Math.Min(lo, v); hi = Math.Max(hi, v); }
         }
         double span = hi - lo;
         if (span <= 0.0) span = 1.0;   // all-zero → flat baseline, no divide-by-zero
+
+        _renderedRange = new AxisRange(lo, lo + span);
 
         int gap = Math.Max(0, Gap);
         bool vertical = Orientation == BarOrientation.Vertical;
@@ -107,7 +124,7 @@ public sealed class BarChart : IChart
             int laneStart = b * (barThickness + gap);
             if (laneStart >= lane) break;   // ran out of room
 
-            double v = _values[b];
+            double v = values[b];
             if (!double.IsFinite(v)) continue;
 
             // The bar fills the eighth-range between the baseline and the value — above it for positives,
@@ -116,6 +133,24 @@ public sealed class BarChart : IChart
             int loEighth = Math.Min(baselineEighths, valueEighths);
             int hiEighth = Math.Max(baselineEighths, valueEighths);
             if (hiEighth <= loEighth) continue;   // value sits on the baseline → nothing to draw
+
+            // The bar's whole-cell extent (partial edge cells count — a half-filled cell is still the
+            // bar's), recorded for HitTest. Clamped to the plot's eighth-range first: with an explicit
+            // Range, an out-of-range value projects outside the plot, and the unclamped extent recorded
+            // phantom bars over cells the paint below never touches (it intersects per cell).
+            int recordLo = Math.Max(0, loEighth);
+            int recordHi = Math.Min(depth * 8, hiEighth);
+            int cellLo = recordLo / 8;
+            int cellHi = Math.Min(depth, (recordHi + 7) / 8);
+            int thickness = Math.Min(barThickness, lane - laneStart);
+            if (recordHi > recordLo && cellHi > cellLo && thickness > 0)
+            {
+                var barRect = vertical
+                    ? new Rect(plot.Column + laneStart, plot.Row + plot.Rows - cellHi, thickness, cellHi - cellLo)
+                    : new Rect(plot.Column + cellLo, plot.Row + laneStart, cellHi - cellLo, thickness);
+                string category = Categories is {} c && b < c.Count ? c[b] ?? "" : "";
+                _renderedBars[barRect] = (v, category);
+            }
 
             for (int t = 0; t < barThickness && laneStart + t < lane; t++)
             for (int d = 0; d < depth; d++)
@@ -187,6 +222,24 @@ public sealed class BarChart : IChart
             width += w;
         }
         return builder.ToString();
+    }
+
+    /// <inheritdoc/>
+    public bool HitTest(CellPosition position, out object? hitObject)
+    {
+        hitObject = null;
+
+        foreach (var (rect, bar) in _renderedBars)
+        {
+            if (!rect.Contains(position.Column, position.Row))
+                continue;
+
+            var value = ChartMath.Format(bar.Value, Math.Abs(_renderedRange.Span));
+            hitObject = bar.Category.Length > 0 ? $"{bar.Category}: {value}" : value;
+            return true;
+        }
+
+        return false;
     }
 
     // Write one block cell (foreground = sampled brush, transparent background) if it would be visible

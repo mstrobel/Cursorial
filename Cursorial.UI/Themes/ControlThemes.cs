@@ -827,21 +827,25 @@ internal static class ControlThemes
     private static ControlTemplate CompletionListItemTemplate() => new(ctx =>
     {
         var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0), Visibility = Visibility.Collapsed };
+        TextElement.ForwardInverse(icon);
         ctx.RegisterName("PART_Icon", icon);
         DockPanel.SetDock(icon, Dock.Left);
 
         var kind = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
         kind.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
+        TextElement.ForwardInverse(kind);
         ctx.RegisterName("PART_KindLabel", kind);
         DockPanel.SetDock(kind, Dock.Right);
 
         var description = new TextBlock { Margin = new Margins(1, 0, 0, 0), Visibility = Visibility.Collapsed };
         description.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.FaintBrush);
+        TextElement.ForwardInverse(description);
         ctx.RegisterName("PART_Description", description);
         DockPanel.SetDock(description, Dock.Right);
 
         var display = new TextBlock(); // inherits the row Foreground so the selection bar's flip reaches it
         ctx.RegisterName("PART_Display", display);
+        TextElement.ForwardInverse(display);
 
         var row = new DockPanel();
         row.Children.Add(icon);
@@ -851,7 +855,7 @@ internal static class ControlThemes
 
         var border = new Border { Padding = new Margins(1, 0), Child = row };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
+        TextElement.ForwardInverse(border);
         return border;
     });
 
@@ -1269,7 +1273,7 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        var border = new Border { Occludes = true, Padding = new Margins(1, 0), Child = presenter };
+        var border = new Border { /*Occludes = true, */Padding = new Margins(1, 0), Child = presenter };
         border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
         border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
         return border;
@@ -1278,7 +1282,7 @@ internal static class ControlThemes
     private static Style ToolTipTheme()
         => new Style { Key = "Theme.ToolTip" }
             .SetResource(Control.ForegroundProperty, ThemeKeys.TextBrush)
-            .SetResource(Control.BackgroundProperty, ThemeKeys.PanelBackgroundBrush)
+            .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationPopup)
             .SetResource(Control.BorderPenProperty, ThemeKeys.ToolTipBorderPen)
             .Set(UIElement.MaxWidthProperty, ToolTipService.MaxToolTipWidth) // spec §12.7: max 40 cells, content wraps
             .Set(Control.TemplateProperty, ToolTipTemplate());
@@ -2507,7 +2511,7 @@ internal static class ControlThemes
                Key = "Theme.Window",
                Children =
                {
-                   new Style(Selectors.Nesting().OfType<Window>().Class("modal"))
+                   new Style(Selectors.Nesting().Is<Window>().Class("modal"))
                       .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationDialog),
                    new Style(Selectors.Nesting().OfType<Window>())
                        {

@@ -3,6 +3,7 @@
            xmlns:d="https://cursorial.dev/xaml/design"
            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
            xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
+           xmlns:v="clr-namespace:Cursorial.Gallery.Views;assembly=Cursorial.Gallery"
            xmlns:i="clr-namespace:Cursorial.Gallery.Infrastructure;assembly=Cursorial.Gallery"
            xmlns:bars="clr-namespace:Cursorial.UI.Bars;assembly=Cursorial.UI.Bars"
            xmlns:dv="clr-namespace:Cursorial.UI.DataViews;assembly=Cursorial.UI.DataViews"
@@ -153,16 +154,18 @@
         </DataTemplate>
 
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
-            <DockPanel>
-                <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-                    <StackPanel Orientation="Vertical">
-                        <WrapPanel>
-                            <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
-                            <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
-                            <Button Margin="1,0" Content="Toggle heigh_t" Command="{Binding ToggleHeightCommand}"/>
-                            <Button Margin="1,0" Content="Toggle _width" Command="{Binding ToggleWidthCommand}"/>
-                        </WrapPanel>
-                    </StackPanel>
+          <TabControl Margin="0,1,0,0">
+            <TabItem Header="_Normal Scrolling">
+              <DockPanel>
+                <Border  DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
+                  <StackPanel Orientation="Vertical">
+                    <WrapPanel>
+                      <Button Margin="1,0" Content="Cycle _V-bar" Command="{Binding CycleVerticalCommand}"/>
+                      <Button Margin="1,0" Content="Cycle _H-bar" Command="{Binding CycleHorizontalCommand}"/>
+                      <Button Margin="1,0" Content="Toggle heigh_t" Command="{Binding ToggleHeightCommand}"/>
+                      <Button Margin="1,0" Content="Toggle _width" Command="{Binding ToggleWidthCommand}"/>
+                    </WrapPanel>
+                  </StackPanel>
                 </Border>
 
                 <!--
@@ -174,15 +177,28 @@
                 <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
                               HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}"
                               Focusable="True">
-                    <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                  <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
                 </ScrollViewer>
-            </DockPanel>
+              </DockPanel>
+            </TabItem>
+            <TabItem Header="Content-_Assisted Scrolling">
+              <DockPanel>
+                <Border DockPanel.Dock="Top" Margin="0,0,0,1">
+                  <TextBlock Markup="When [brush=Theme.TextDimBrush]ScrollViewer[/brush] content implements the [brush=Theme.TextDimBrush]IScrollContentHost[/brush] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
+                </Border>
+                <ScrollViewer HorizontalScrollBarVisibility="Visible"
+                              VerticalScrollBarVisibility="Visible">
+                  <pages:Chessboard Focusable="True" IsTabStop="True"/>
+                </ScrollViewer>
+              </DockPanel>
+            </TabItem>
+          </TabControl>
         </DataTemplate>
 
       <DataTemplate DataType="vm:EventRoutingViewModel">
@@ -252,7 +268,7 @@
             <CheckBox Grid.Column="2" Grid.Row="4" HorizontalAlignment="Left" TabIndex="4"
                       Content="Subscribe to _updates" IsChecked="{Binding Subscribed, Mode=TwoWay}" />
             <CheckBox Grid.Column="2" Grid.Row="5" HorizontalAlignment="Left" TabIndex="5"
-                      Content="M_ystery third option" IsThreeState="True" />
+                      Content="M_ystery third option" IsThreeState="True" IsChecked="{Binding Mystery, Mode=TwoWay}" />
 
             <Label Grid.Column="0" Grid.Row="6"
                    Target="{x:Reference VolumeSlider}" Margin="0,1,0,0" Content="_Volume" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}" />
@@ -350,7 +366,7 @@
                     <DockPanel>
                       <Icon DockPanel.Dock="Left" VerticalAlignment="Top" Margin="0,0,1,0"
                             Glyph="&#xf05a;" GlyphWidth="2" Emoji="ℹ️" Text="ℹ"/>
-                      <TextBlock Text="Tips provide helpful context."/>
+                      <TextBlock Text="Tips provide useful context."/>
                     </DockPanel>
                   </ToolTip>
                 </ToolTipService.Tip>
@@ -981,6 +997,10 @@
                        Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
           </StackPanel>
         </DockPanel>
+      </DataTemplate>
+
+      <DataTemplate DataType="vm:ChartsPageViewModel">
+        <pages:ChartsView />
       </DataTemplate>
     </DockPanel.Resources>
   

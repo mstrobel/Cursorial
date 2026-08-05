@@ -79,6 +79,29 @@ internal sealed class BindingRegistry
         target.BindingHostState = null;
     }
 
+    /// <summary>
+    /// The SELECTIVE teardown: disposes only the expressions on <paramref name="target"/> whose
+    /// binding is anchored to <paramref name="source"/>, leaving every other binding in place. This
+    /// is what a host uses to retract its own forwards from content it does not own — borrowed
+    /// element content, or a <c>DeferredContent</c> realization that is CACHED and therefore shared
+    /// with whoever realizes it next. A blanket <see cref="TearDown"/> there would take the author's
+    /// bindings with it; leaving the forwards installed would pin the content to this host.
+    /// </summary>
+    public static void TearDownAnchoredTo(UIObject target, object source)
+    {
+        if (target.BindingHostState is not BindingRegistry registry)
+            return;
+
+        // Snapshot — Dispose mutates the list (B120). The registry is NOT cleared: the survivors are
+        // the author's and stay live.
+        var snapshot = registry._expressions.ToArray();
+        foreach (var expression in snapshot)
+        {
+            if (expression.ParentBinding is Binding { Source: { } anchored } && ReferenceEquals(anchored, source))
+                expression.Dispose();
+        }
+    }
+
     /// <summary>Builds the <see cref="BindingExplanation"/> for a <c>(target, property)</c> pair (design doc §6.10).</summary>
     public static BindingExplanation Explain(UIObject target, UIProperty property)
     {

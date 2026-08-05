@@ -160,6 +160,20 @@ public static class BindingOperations
         BindingRegistry.TearDown(target);
     }
 
+    /// <summary>
+    /// Retracts only the bindings on <paramref name="target"/> anchored to <paramref name="source"/>.
+    /// The teardown for content a host does NOT own — borrowed elements, or a shared
+    /// <c>DeferredContent</c> realization — where a blanket <see cref="TearDown"/> would destroy the
+    /// author's bindings but leaving the host's forwards installed would pin the content to the host.
+    /// </summary>
+    public static void TearDownAnchoredTo(UIObject target, object source)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(source);
+        target.VerifyAccess();
+        BindingRegistry.TearDownAnchoredTo(target, source);
+    }
+
     private sealed class BindingWatch : IBindingWatch
     {
         private object? _value = UIProperty.UnsetValue;

@@ -1,5 +1,7 @@
 using Cursorial.Rendering;
 
+using Cursorial.UI.Data;
+
 namespace Cursorial.UI.Controls;
 
 /// <summary>
@@ -41,8 +43,31 @@ public sealed class ListViewCellsPresenter : Panel
     {
         _owner?.UnregisterCellsPresenter(this);
         _owner = null;
-        Children.Clear();
+        DiscardCells();
         base.OnDetachedFromTree(in e);
+    }
+
+    /// <summary>
+    /// Drops the built cells, tearing their bindings down first. The cells are presenter-BUILT (by
+    /// <see cref="ListView.BuildDetailsCell"/> / <c>BuildComposedCell</c>), and removing a visual
+    /// child deliberately does NOT run a teardown — so each discarded cell's Source-anchored
+    /// <c>Inverse</c> link back to THIS presenter, and its content binding, would keep the dead cell
+    /// observed and alive. <see cref="Rebuild"/> runs on every column-structure or view change, so
+    /// that is an unbounded leak, not a one-off (the same rule
+    /// <see cref="ContentPresenter"/> follows for its realized child).
+    /// </summary>
+    private void DiscardCells()
+    {
+        // TearDown is the permanent-discard sweep (it recurses the subtree, template parts included,
+        // and is deliberately NOT folded into Children.Remove — elements are legally reusable). These
+        // cells are ours and are never coming back, so running it is the caller's job: ours. It must
+        // run AFTER the detach, though — sweeping a still-parented element collides with the style
+        // engine retracting its frames.
+        var discarded = Children.ToArray();
+        Children.Clear();
+
+        foreach (var cell in discarded)
+            cell.TearDown();
     }
 
     // The container's template gives us TemplatedParent = the ListViewItem, whose LogicalParent is the
@@ -62,7 +87,7 @@ public sealed class ListViewCellsPresenter : Panel
     /// <summary>Rebuilds the cell elements for the owner's current view / columns (idempotent).</summary>
     internal void Rebuild()
     {
-        Children.Clear();
+        DiscardCells();
 
         if (_owner is not {} owner || IsAttachedToTree is false)
         {
@@ -76,11 +101,17 @@ public sealed class ListViewCellsPresenter : Panel
         if (owner is { View: ListViewViewMode.Details, Columns.Count: > 0 })
         {
             foreach (var column in owner.Columns)
-                Children.Add(ListView.BuildDetailsCell(column));
+            {
+                var cell = ListView.BuildDetailsCell(column);
+                TextElement.ForwardInverse(cell, this);
+                Children.Add(cell);
+            }
         }
         else
         {
-            Children.Add(owner.BuildComposedCell());
+            var cell = owner.BuildComposedCell();
+            TextElement.ForwardInverse(cell, this);
+            Children.Add(cell);
         }
 
         InvalidateMeasure();

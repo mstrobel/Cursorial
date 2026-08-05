@@ -1,4 +1,7 @@
+using Cursorial.Input;
+using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Text;
 
 namespace Cursorial.Drawing.Charts;
 
@@ -10,16 +13,23 @@ namespace Cursorial.Drawing.Charts;
 /// All series share one range (the union of their data, or explicit <see cref="XRange"/>/<see cref="YRange"/>),
 /// so they align; that same range is what you'd hand an <see cref="Axes"/> frame.
 /// </summary>
-public sealed class MultiLineChart : IChart
+public sealed class MultiLineChart : ILayeredChart
 {
-    private readonly ChartSeries[] _series;
+    // The per-series LineCharts the last Render/ToLayers drew with, kept for HitTest: each line owns
+    // the record of the cells it painted, so the multi-chart's hit test is just the union of theirs.
+    // The area is kept alongside to sample each series' brush at the hit cell for the tooltip's
+    // colored series indicator.
+    private readonly List<LineChart> _renderedLines = [];
+    private Rect _renderedArea;
 
     /// <summary>Create a multi-series line chart over <paramref name="series"/>.</summary>
     public MultiLineChart(IEnumerable<ChartSeries> series)
     {
         ArgumentNullException.ThrowIfNull(series);
-        _series = [.. series];
+        Series = [.. series];
     }
+
+    public IReadOnlyList<ChartSeries> Series { get; }
 
     /// <summary>How every series connects its points (default <see cref="CurveInterpolation.Linear"/>).</summary>
     public CurveInterpolation Interpolation { get; init; } = CurveInterpolation.Linear;
@@ -38,7 +48,7 @@ public sealed class MultiLineChart : IChart
     {
         AxisRange x = new(0, 1), y = new(0, 1);
         bool any = false;
-        foreach (var s in _series)
+        foreach (var s in Series)
         {
             var (sx, sy) = ChartMath.AutoRange(s.Points, null, null);
             (x, y) = any ? (x.Union(sx), y.Union(sy)) : (sx, sy);
@@ -51,11 +61,20 @@ public sealed class MultiLineChart : IChart
     public void Render(DrawingContext context, in Rect area)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (_series.Length == 0) return;
+
+        _renderedLines.Clear();   // before ANY early return — no stale hit records from a prior frame
+
+        var series = Series;
+        if (series.Count == 0) return;
 
         var (x, y) = ResolveRange();
-        foreach (var s in _series)
-            LineFor(s, x, y).Render(context, area);
+        _renderedArea = area;
+        foreach (var s in series)
+        {
+            var line = LineFor(s, x, y);
+            _renderedLines.Add(line);
+            line.Render(context, area);
+        }
     }
 
     /// <summary>
@@ -68,18 +87,59 @@ public sealed class MultiLineChart : IChart
     /// </summary>
     public IReadOnlyList<Scene> ToLayers(in Rect area)
     {
+        _renderedLines.Clear();   // before ANY early return — no stale hit records from a prior frame
+
         if (area.Columns <= 0 || area.Rows <= 0) return [];   // degenerate area → nothing to lay out (matches Render)
         var (x, y) = ResolveRange();
-        var layers = new List<Scene>(_series.Length);
+        var series = Series;
+        var layers = new List<Scene>(series.Count);
         var local = new Rect(0, 0, Math.Max(1, area.Columns), Math.Max(1, area.Rows));
-        foreach (var s in _series)
+        _renderedArea = local;   // the layers composite at this local frame — the same frame hits arrive in
+        foreach (var s in series)
         {
             var scene = Scene.Create(local.Columns, local.Rows);
             var line = LineFor(s, x, y);
+            _renderedLines.Add(line);
             scene.Draw(ctx => line.Render(ctx, local));
             layers.Add(scene);
         }
         return layers;
+    }
+
+    /// <inheritdoc/>
+    public bool HitTest(CellPosition position, out object? hitObject)
+    {
+        hitObject = null;
+
+        // Series can intersect: where several lines pass through the queried cell, report one hit per
+        // line, together (drawing order), so a crossing's tooltip carries each series' value there.
+        List<(LineChart Line, string Coordinates)>? hits = null;
+        foreach (var line in _renderedLines)
+        {
+            if (line.HitCoordinates(position) is {} coordinates)
+                (hits ??= []).Add((line, coordinates));
+        }
+
+        if (hits is null)
+            return false;
+
+        // RichText, one line per hit series: the series' marker glyph in its brush color (sampled at
+        // the hit cell, so gradients read true) as the indicator, then the coordinates. The tooltip's
+        // content presenter renders RichText natively.
+        var rtb = new RichTextBuilder();
+        bool first = true;
+        foreach (var (line, coordinates) in hits)
+        {
+            if (!first) rtb.LineBreak();
+            first = false;
+
+            var color = line.Brush.ColorAt(position.Column, position.Row, _renderedArea);
+            rtb.Run(line.EffectiveMarkerGlyph, Style.Default.WithForeground(color));
+            rtb.Run(" " + coordinates);
+        }
+
+        hitObject = rtb.Build();
+        return true;
     }
 
     private LineChart LineFor(ChartSeries series, AxisRange x, AxisRange y) =>

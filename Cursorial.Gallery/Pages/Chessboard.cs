@@ -1,8 +1,14 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
+using Cursorial.UI.Input;
+
+using Style = Cursorial.UI.Style;
 
 namespace Cursorial.Gallery.Pages;
 
@@ -14,29 +20,64 @@ namespace Cursorial.Gallery.Pages;
 /// </summary>
 internal sealed class Chessboard : Panel, IScrollContentHost
 {
-    private const int Tiles = 16;
-    private const int TileWidth = 8;
-    private const int TileHeight = 4;
+    private const int Tiles = 26;
+    private const int TileWidth = 12;
+    private const int TileHeight = 6;
 
     private Size _viewport;
 
+    [SuppressMessage("ReSharper", "ConditionIsAlwaysTrueOrFalse")]
     public Chessboard()
     {
-        // NOT focusable: the hosting ScrollViewer is the focusable scroll surface (a focusable board would make
-        // focusing it EnsureVisible its whole extent and jump the offset). Arrow/page keys reach the SV directly.
+        var boxStyle = new Style
+                       {
+                           RequiresCapabilities = StyleCapabilities.NoColor,
+                           Children =
+                           {
+                               new Style("^.alternate")
+                               {
+                                   Setters = { new Setter(TextElement.InverseProperty, true) }
+                               }
+                           }
+                       };
+            
+        // Focusability is the HOST's call and this board is declared Focusable in markup (Shell.xaml): a
+        // ScrollViewer is not focusable by default, so without a focusable content element the keyboard
+        // scroll gestures would have nothing to route from. Keys land here and bubble to the ScrollViewer.
         for (var r = 0; r < Tiles; r++)
         for (var c = 0; c < Tiles; c++)
         {
             var light = ((r + c) & 1) == 0;
-            Children.Add(new Border
-            {
-                Background = new SolidColorBrush(light ? Color.FromRgb(206, 198, 170) : Color.FromRgb(92, 84, 64)),
-                Child = new TextBlock
+
+            var textBlock = new TextBlock
+                            {
+                                Text = $"{(c < 26 ? $"{(char) ('a' + c)}" : $"{(char) ('a' + (c / 26 - 1))}{(char) ('a' + c % 26)}")}{r + 1}",
+                                Foreground = new SolidColorBrush(light ? Color.FromRgb(60, 56, 44) : Color.FromRgb(214, 208, 190)),
+                                Style = boxStyle
+                            };
+
+            textBlock.SetBinding(
+                TextElement.TextWeightProperty,
+                new Binding
                 {
-                    Text = $"{(char) ('a' + c)}{r + 1}",
-                    Foreground = new SolidColorBrush(light ? Color.FromRgb(60, 56, 44) : Color.FromRgb(214, 208, 190)),
-                },
-            });
+                    Source = this, Path = new PropertyPath(IsKeyboardFocusWithinProperty),
+                    Converter = new BooleanConverter { TrueValue = TextWeight.Normal, FalseValue = TextWeight.Faint }
+                });
+
+            var box = new Border
+                            {
+                                Background = new SolidColorBrush(light ? Color.FromRgb(206, 198, 170) : Color.FromRgb(92, 84, 64)),
+                                Child = textBlock,
+                                Style = boxStyle
+                            };
+
+            if (light is false)
+            {
+                textBlock.Classes.Add("alternate");
+                box.Classes.Add("alternate");
+            }
+
+            Children.Add(box);
         }
     }
 
@@ -100,5 +141,13 @@ internal sealed class Chessboard : Panel, IScrollContentHost
         var viewport = Math.Max(1, vertical ? _viewport.Rows : _viewport.Columns);
         var tilesPerPage = Math.Max(1, viewport / tileSize);
         return tilesPerPage * tileSize;
+    }
+
+    protected override void OnMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+
+        if (e.Handled is false)
+            e.Handled = Focus(FocusNavigationMethod.Pointer);
     }
 }

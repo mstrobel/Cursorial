@@ -24,7 +24,7 @@ public static class CursorialTheme
     /// <remarks>Declared BEFORE <see cref="BuiltInDictionary"/>: static fields initialize in textual order, and
     /// <see cref="CreateSealed"/> reads this array during <see cref="Populate"/>'s NoColor pass.</remarks>
     private static readonly string[] RoleTokenKeys =
-    {
+    [
         ThemeKeys.WindowBackground, ThemeKeys.WindowTitleBarBackground, ThemeKeys.WindowTitleBarActiveBackground,
         ThemeKeys.WindowTitleBarActiveForeground, ThemeKeys.WindowTitleBarForeground, ThemeKeys.SurfaceBrush,
         ThemeKeys.PanelBrush, ThemeKeys.WellBrush, ThemeKeys.ToolBarBrush, ThemeKeys.RibbonBrush,
@@ -69,7 +69,7 @@ public static class CursorialTheme
         ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground,
         ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
         ThemeKeys.ScrollBarThumbDragBrush
-    };
+    ];
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
 
@@ -138,8 +138,8 @@ public static class CursorialTheme
         // AccessTextPresenter underneath, flipping its ShowUnderline (AffectsRender). It works in both
         // cue modes with zero per-control wiring — permanent underscores in AlwaysVisible (the
         // non-capable terminal fallback) and Alt-toggled on a capable terminal.
-        dict.Styles = new Styles
-        {
+        dict.Styles =
+        [
             CursorialThemeStyles.AccessKeyCue(),
             CursorialThemeStyles.AccessKeyCueIndicatorStyle(),
             CursorialThemeStyles.ActiveSelectionStyles(),
@@ -165,7 +165,7 @@ public static class CursorialTheme
             CursorialThemeStyles.CapsAnsi16BorderPenStyle(),
             CursorialThemeStyles.CapsAnsi16ObscuredOverlayStyle(),
             CursorialThemeStyles.CapsAnsi16ThemeClassWindowBorders(),
-            
+
             CursorialThemeStyles.MenuSeparatorStyle(),
 
             CursorialThemeStyles.AccentStyle(),
@@ -174,7 +174,7 @@ public static class CursorialTheme
             CursorialThemeStyles.WarningStyle(),
             CursorialThemeStyles.DangerStyle(),
             CursorialThemeStyles.SuccessStyle()
-        };
+        ];
 
         // (·,NoColor): every fill/foreground role token resolves to Colors.Default — no stranded RGB. State
         // distinction on monochrome rides a caps-nocolor TextAttributes layer (Inverse for focus/pressed/
@@ -221,7 +221,7 @@ public static class CursorialTheme
         // at the NoColor floor; the false/Normal counterpart at the Ansi16 wildcard floor (below) keeps it from
         // bleeding up. The pair splits along the per-axis properties (proposal §2.3).
         noColor[ThemeKeys.InteractiveCueInverse] = true;
-        noColor[ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Normal;
+        noColor[ThemeKeys.InteractiveCueWeight] = TextWeight.Normal;
         noColor[ThemeKeys.InteractiveCueUnderline] = null;
 
         dict.ThemeDictionaries[new ThemeVariantKey(null, ColorDepth.NoColor)] = noColor;
@@ -233,7 +233,7 @@ public static class CursorialTheme
         var ansi16Floor = new ResourceDictionary
         {
             [ThemeKeys.InteractiveCueInverse] = false,
-            [ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Bold,
+            [ThemeKeys.InteractiveCueWeight] = TextWeight.Bold,
             [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
             [ThemeKeys.ListItemSelectionGlyph] = "▍",
             [ThemeKeys.ObscuredOverlayBrush] = Brushes.Transparent
@@ -403,6 +403,7 @@ public static class CursorialTheme
     {
         var dark = @base == ThemeBase.Dark;
 
+        // ReSharper disable once UseObjectOrCollectionInitializer
         var tc = new ResourceDictionary();
 
         tc[ThemeKeys.TextBrush] = new SolidColorBrush(dark ? Color.FromHex("#c0caf5") : Color.FromHex("#343b58"));
@@ -428,16 +429,18 @@ public static class CursorialTheme
 
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Truecolor)] = tc;
 
+        // ReSharper disable once UseObjectOrCollectionInitializer
+
         // (B,Ansi256): RGB role tokens — Tokyo-Night, verbatim from the default-theme gallery; served at
         // Truecolor too (descent never ascends; CD8). The cell-faithful spine (design doc §11.8a) — fill +
         // foreground tokens; the two pens are opt-in chrome, not spine members.
         var rgb = new ResourceDictionary
-        {
-            [ThemeKeys.InteractiveCueInverse] = false,
-            [ThemeKeys.InteractiveCueWeight] = TextWeight.Normal,
-            [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
-            [ThemeKeys.ListItemSelectionGlyph] = "▍"
-        };
+                  {
+                      [ThemeKeys.InteractiveCueInverse] = false,
+                      [ThemeKeys.InteractiveCueWeight] = TextWeight.Normal,
+                      [ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single,
+                      [ThemeKeys.ListItemSelectionGlyph] = "▍"
+                  };
         
         rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
@@ -500,7 +503,7 @@ public static class CursorialTheme
         rgb[ThemeKeys.StatusBarAltForeground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e9e9ed"));
 
         rgb[ThemeKeys.ScrollBarThumbNormalBrush] = new SolidColorBrush(/*dark ? Color.FromHex("#8d9fed3f") : Color.FromHex("#4a547d3f")*/dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d"));
-        rgb[ThemeKeys.ScrollBarTrackBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed3f") : Color.FromHex("#4a547d4f")) { Opacity = 1.0d };
+        rgb[ThemeKeys.ScrollBarTrackBrush] = new SolidColorBrush(dark ? Color.FromHex("#8d9fed") : Color.FromHex("#4a547d")) { Opacity = 0.25d };
 
         // Opt-in chrome (no shipped control reads these by default): border = faint ink, focus ring = accent heavy.
         rgb[ThemeKeys.BorderPen] = new Pen(dark ? Color.FromHex("#414868") : Color.FromHex("#818392"));
@@ -562,6 +565,8 @@ public static class CursorialTheme
 
         dict.ThemeDictionaries[new ThemeVariantKey(@base, ColorDepth.Ansi256)] = rgb;
 
+        // ReSharper disable once UseObjectOrCollectionInitializer
+        
         // (B,Ansi16): hand-picked palette indices — beat the quantizer (spec §1). Pinned for role
         // distinguishability under reverse-video: --text/--bg at the extremes (15/0), --accent/--on-accent on
         // real blue, resting fills→0 vs interactive fills→8 (dark), status hues kept true.
@@ -593,9 +598,9 @@ public static class CursorialTheme
         ansi16[ThemeKeys.AccentBrush] = Palette(dark ? Ansi.LightBlue : Ansi.Blue);
         ansi16[ThemeKeys.AccentDarkBrush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
         ansi16[ThemeKeys.Accent2Brush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
-        ansi16[ThemeKeys.StatusBarBackground] = Palette(dark ? Ansi.White : Ansi.White);
-        ansi16[ThemeKeys.StatusBarAltBackground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
-        ansi16[ThemeKeys.StatusBarAltForeground] = Palette(dark ? Ansi.LightWhite : Ansi.LightWhite);
+        ansi16[ThemeKeys.StatusBarBackground] = Palette(Ansi.White);
+        ansi16[ThemeKeys.StatusBarAltBackground] = Palette(Ansi.LightBlack);
+        ansi16[ThemeKeys.StatusBarAltForeground] = Palette(Ansi.LightWhite);
         ansi16[ThemeKeys.ButtonForegroundFocus] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
         ansi16[ThemeKeys.ButtonBackgroundFocus] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
         ansi16[ThemeKeys.ButtonForegroundNormal] = Palette(dark ? Ansi.White : Ansi.LightBlack);
@@ -607,14 +612,14 @@ public static class CursorialTheme
         ansi16[ThemeKeys.InputBackgroundHover] = Palette(dark ? Ansi.LightBlack : Ansi.White);
         ansi16[ThemeKeys.InputForegroundHover] = Palette(dark ? Ansi.LightWhite : Ansi.Black);
         ansi16[ThemeKeys.MenuBarBackground] = Palette(dark ? Ansi.LightBlack : Ansi.White);
-        ansi16[ThemeKeys.MenuAcceleratorHoverForeground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
-        ansi16[ThemeKeys.MenuIconUncheckedHoverForeground] = Palette(dark ? Ansi.LightBlack : Ansi.LightBlack);
+        ansi16[ThemeKeys.MenuAcceleratorHoverForeground] = Palette(Ansi.LightBlack);
+        ansi16[ThemeKeys.MenuIconUncheckedHoverForeground] = Palette(Ansi.LightBlack);
         ansi16[ThemeKeys.ListItemForegroundFocus] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
-        ansi16[ThemeKeys.ListItemForegroundSelectedInactive] = Palette(dark ? Ansi.LightWhite : Ansi.LightWhite);
+        ansi16[ThemeKeys.ListItemForegroundSelectedInactive] = Palette(Ansi.LightWhite);
 
         // on-accent dark = Ansi.LightWhite (white): black-on-bright-blue is unreadable on pure-blue palettes (spec §Ansi.Red†).
         ansi16[ThemeKeys.OnAccentBrush] = Palette(dark ? Ansi.Black : Ansi.LightWhite);
-        ansi16[ThemeKeys.OnAccentInverseBrush] = Palette(dark ? Ansi.Black : Ansi.Black);
+        ansi16[ThemeKeys.OnAccentInverseBrush] = Palette(Ansi.Black);
         ansi16[ThemeKeys.AccentInverseBrush] = Palette(dark ? Ansi.Blue : Ansi.LightBlue);
         ansi16[ThemeKeys.InfoBrush] = Palette(dark ? Ansi.LightCyan : Ansi.Cyan);
         ansi16[ThemeKeys.Info2Brush] = Palette(dark ? Ansi.Cyan : Ansi.LightCyan);
@@ -646,7 +651,7 @@ public static class CursorialTheme
         ansi16[ThemeKeys.ObscuredOverlayBrush] = Brushes.Transparent;                                                               //Palette(Ansi.LightBlack);
         // ansi16[ThemeKeys.AccessKeyIndicatorBrush] = Palette(dark ? 15 : 0);
         // Ribbon: the descent never ascends to Ansi256, so the strip recess and dropped active-tab fill need explicit
-        // Ansi16 indices or they collapse to the NoColor floor (no fill) on 16-color terminals.
+        // Ansi16 indices, or they collapse to the NoColor floor (no fill) on 16-color terminals.
         ansi16[ThemeKeys.RibbonTabStripBrush] = Palette(dark ? 0 : 7);                                                       // recess, tracks Surface/Panel
         ansi16[ThemeKeys.RibbonTabActiveBrush] = Palette(dark ? 0 : 15);                                                     // dropped active fill, tracks the band
         ansi16[ThemeKeys.KeyTipBrush] = Palette(3);                                                                          // amber → yellow
@@ -659,7 +664,7 @@ public static class CursorialTheme
         // The (Dark|Light, Ansi16) focus cue is BOLD (preserved verbatim from the whole-flags era —
         // now legible in the pair table for designers to revisit): weight speaks, inverse stays off.
         ansi16[ThemeKeys.InteractiveCueInverse] = false;
-        ansi16[ThemeKeys.InteractiveCueWeight] = Controls.TextWeight.Bold;
+        ansi16[ThemeKeys.InteractiveCueWeight] = TextWeight.Bold;
         ansi16[ThemeKeys.InteractiveCueUnderline] = UnderlineStyle.Single;
 
         ansi16[ThemeKeys.AnsiBlack] = Palette(Ansi.Black);

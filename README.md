@@ -30,6 +30,7 @@ what you intend to use.
 | **`Cursorial.UI.Xaml`** | ✅ On NuGet | A runtime XAML loader **and** a Roslyn source generator — declarative markup, `{Binding}`/`{StaticResource}`/`ControlTemplate`, typed code-behind, compiled bindings, and an AOT-clean metadata provider. |
 | **`Cursorial.UI.Bars`** | ✅ On NuGet | Command surfaces over one shared `BarCommand` set: a `Toolbar` with discrete overflow, a `Ribbon` (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), KeyTips (Alt-overlay accelerators), and SuperTips. |
 | **`Cursorial.UI.DataViews`** | ✅ On NuGet | A DevExpress-style `DataGrid` — multi-level sorting/grouping with summaries, criteria-tree filtering, conditional formatting, in-cell editing, master-detail, frozen columns & virtualization — over a UI-free data-shaping engine (expression-tree-compiled typed pipelines). |
+| **`Cursorial.UI.Dialogs`** | ✅ On NuGet | A task-dialog suite: a modal `MessageBox`, a richer `TaskDialog` (command links, a verification checkbox, expandable details, progress), and `FileOpenDialog`/`FileSaveDialog` file pickers — themed modal windows you `await`. |
 
 ```bash
 dotnet add package Cursorial.Core
@@ -290,12 +291,10 @@ root.DataContext = viewModel;
 | `Cursorial.UI.Bars` | Command surfaces: `Toolbar` with overflow, `Ribbon` (density collapse, contextual tabs, Backstage, QAT, minimize), KeyTips, SuperTips. |
 | `Cursorial.UI.DataViews` | A `DataGrid` (sorting/grouping/summaries, filtering, conditional formatting, editing, master-detail, frozen columns, virtualization) over a UI-free data-shaping engine. |
 | `Cursorial.UI.Dialogs` | `MessageBox`, `TaskDialog` (command links, verification, progress), and the dialog service seam. |
-| `Cursorial.UI.Themes` | The data-shipped XAML theme overlay (`Default`/`IndigoDusk`) layered over the code-first built-in theme. |
 | `Cursorial.UI.Hosting.Headless` | Headless `UIHeadlessHost` + synthetic terminal: run the framework without a TTY (tests, snapshots, design tooling). |
 | `Cursorial.Templates` | `dotnet new` templates: `cursorial-app`, `cursorial-view`, `cursorial-usercontrol`. |
 | `Cursorial.Shared` | Markup attributes shared by the loader and generator. |
 | `Cursorial.Demo` | Interactive REPL that drives every layer end-to-end (see below). |
-| `Cursorial.Demo.XamlAot` / `.XamlAotStrict` | NativeAOT publish demos — the reflection loader, and the reflection-free build on the generated metadata provider (the AOT-clean exit gate). |
 | `Cursorial.Gallery` | A standalone XAML-first MVVM control gallery — a full app, not a demo command. |
 | `*.Tests` | xUnit suites per project. |
 

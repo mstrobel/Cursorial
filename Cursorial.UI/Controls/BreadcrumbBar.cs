@@ -736,7 +736,10 @@ public class BreadcrumbBar : ItemsControl
             // gesture — without it the child list is reachable only by pointer, which strands the keyboard user
             // on the ancestors the trail happens to already contain.
             case Key.DownArrow:
-                RequestDropDownAt(ActiveIndex);
+                if (ActiveIndex is var index and >= 0)
+                    RequestDropDownAt(index);
+                else if (_overflowChip?.IsKeyboardFocusWithin is true)
+                    ShowOverflowDropDown();
                 break;
 
             case Key.F2 when IsEditable:

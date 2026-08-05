@@ -41,6 +41,21 @@ public abstract class GlyphMetrics
     /// <summary>Rows one formatted line occupies.</summary>
     public abstract int LineRows { get; }
 
+    /// <summary>
+    /// Rows from the top of one formatted line down to and INCLUDING its baseline row — a COUNT
+    /// in <c>[1, LineRows]</c>, never a 0-based index (see <see cref="IGlyphFont.Baseline"/>).
+    /// The formatter uses it to line up runs of DIFFERENT metrics inside one band
+    /// (<see cref="Text.VerticalTextAlignment.Baseline"/>).
+    /// </summary>
+    /// <remarks>
+    /// The default — the line's bottom row — is right for every source whose glyphs have no
+    /// descent below their box: the identity cell face (1 row, baseline 1) and OSC 66 scaled text
+    /// (an <c>s×s</c> block of cells the TERMINAL fills; the protocol exposes no baseline, and the
+    /// block's own bottom row is where neighbouring normal-size text meets it). Only a face with
+    /// real vertical metrics — a FIGlet face, via <see cref="MeasuredGlyphMetrics"/> — overrides.
+    /// </remarks>
+    public virtual int Baseline => LineRows;
+
     /// <summary>Sum of cluster advances over <paramref name="text"/> (which contains no line breaks).</summary>
     public virtual int StringWidth(ReadOnlySpan<char> text)
     {
@@ -116,6 +131,7 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
 {
     private readonly IGlyphFont _font;
     private readonly int _lineRows;
+    private readonly int _baseline;
 
     // Pair-advance cache: FIGlet junction kerning depends only on the adjacent pair (Measure
     // accumulates max(0, width - overlap(prev, glyph)) per junction), so (prev, cluster) → cells
@@ -126,6 +142,11 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
     {
         _font = font ?? throw new ArgumentNullException(nameof(font));
         _lineRows = Math.Max(1, font.Measure("M").Rows);
+
+        // The face's baseline is a COUNT of rows from the top; clamped into the line box we
+        // actually measured, since a decorator can report a height its inner face's baseline
+        // knows nothing about (and a hand-built face could disagree outright).
+        _baseline = Math.Clamp(font.Baseline, 1, _lineRows);
     }
 
     public override int ClusterWidth(ReadOnlySpan<char> cluster) => _font.Measure(cluster).Columns;
@@ -158,6 +179,9 @@ public sealed class MeasuredGlyphMetrics : GlyphMetrics
         => cluster.Length == 1 && char.IsWhiteSpace(cluster[0]);
 
     public override int LineRows => _lineRows;
+
+    /// <inheritdoc/>
+    public override int Baseline => _baseline;
 
     public override int StringWidth(ReadOnlySpan<char> text) => _font.Measure(text).Columns;
 }

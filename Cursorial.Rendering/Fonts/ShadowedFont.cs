@@ -70,7 +70,59 @@ public sealed class ShadowedFont : IGlyphFont
     public string DisplayName { get; }
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style) 
+    /// <remarks>A decorator's repertoire IS its inner face's — this wrapper adds a shadow pass,
+    /// never a glyph. Inheriting the interface's optimistic default would have a shadowed FIGlet
+    /// font claim every codepoint while drawing a blank gap for most of them.</remarks>
+    public bool HasGlyph(uint codepoint) => Inner.HasGlyph(codepoint);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>NOT a pure forward — but the baseline half of it is.</b> <see cref="PaintCore"/> paints
+    /// the FOREGROUND glyph at the caller's anchor (<c>Inner.Paint(buffer, column, row, …)</c>)
+    /// and the shadow one pass earlier at <c>row + Offset.Rows</c>. The glyph therefore does not
+    /// move relative to the anchor, so the baseline row does not move either: this is
+    /// <c>Inner.Baseline</c> unchanged. The extra row <see cref="Measure"/> reports lands BELOW
+    /// the glyph, which is <see cref="Descender"/>'s business, not the baseline's.
+    /// </para>
+    /// <para>
+    /// The mirror-image decorator — one that offsets the glyph DOWN and draws above it, as
+    /// <see cref="DecoratedFont"/> does with <see cref="DecorationPosition.Above"/> — shifts the
+    /// baseline by exactly that offset. Which is why neither decorator can simply inherit or
+    /// blanket-forward these: the answer depends on which side of the glyph the extra rows go.
+    /// </para>
+    /// </remarks>
+    public int Baseline => Inner.Baseline;
+
+    /// <inheritdoc cref="Baseline"/>
+    public int Ascender => Baseline;
+
+    /// <summary>
+    /// <see cref="Inner"/>'s descent plus the shadow's row offset — the shadow rows hang below
+    /// the glyph, and <see cref="Measure"/> already counts them in the reported height.
+    /// </summary>
+    /// <remarks>
+    /// A naive <c>Inner.Descender</c> forward would under-report by <c>|Offset.Rows|</c> and
+    /// break the invariant that makes the descent mean anything:
+    /// <c>Ascender + Descender == Measure(…).Rows</c>. Nothing in the framework reads this
+    /// property directly today — a band's height comes from <see cref="Measure"/> and
+    /// baseline-aligned placement from <see cref="Baseline"/> — so the invariant IS the whole
+    /// contract here: it is what lets a caller reason about the rows below the baseline (how
+    /// deep a band must be to clear this face's ink, say) without re-deriving the shadow's
+    /// geometry from <see cref="Offset"/>.
+    /// <para>
+    /// A NEGATIVE row offset puts the shadow above the anchor instead, outside the box
+    /// <see cref="Measure"/> describes (a pre-existing quirk of this decorator's anchoring, left
+    /// alone here). <see cref="Math.Abs(int)"/> keeps the descent matched to the reported height
+    /// in that case too — over-reserving a row below rather than under-reserving one, which is
+    /// the safe direction to be wrong in: extra slack merely goes unused, whereas a short band
+    /// clips ink.
+    /// </para>
+    /// </remarks>
+    public int Descender => Inner.Descender + Math.Abs(Offset.Rows);
+
+    /// <inheritdoc/>
+    public Style EnsureCompatibleStyle(in Style style)
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
 
     private Style EnsureCompatibleShadowStyle(in Style style) 

@@ -26,6 +26,26 @@ public sealed class MonospaceFont : IGlyphFont
     public string DisplayName => "Monospace";
 
     /// <inheritdoc/>
+    /// <remarks>Always true: this face owns no glyph table — it hands the cluster to the terminal
+    /// and the terminal's own font draws it. Stated explicitly (rather than inherited from the
+    /// interface) so callers holding the concrete type can ask.</remarks>
+    public bool HasGlyph(uint codepoint) => true;
+
+    /// <inheritdoc/>
+    /// <remarks>A cell face's line box is one row tall and that row IS the baseline row — there is
+    /// nowhere below it to hang a descender. Stated explicitly (rather than inherited from the
+    /// interface's default) for the same reason as <see cref="HasGlyph"/>: a default interface
+    /// member is not callable through the concrete type, and this face is very often held as
+    /// <see cref="MonospaceFont"/>.</remarks>
+    public int Baseline => 1;
+
+    /// <inheritdoc cref="Baseline"/>
+    public int Ascender => 1;
+
+    /// <inheritdoc cref="Baseline"/>
+    public int Descender => 0;
+
+    /// <inheritdoc/>
     public Style EnsureCompatibleStyle(in Style style) => style;
 
     /// <inheritdoc/>

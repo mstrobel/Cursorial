@@ -51,13 +51,25 @@ public sealed class FigletFont : IGlyphFont
     private readonly FigletGlyph _spaceGlyph;
 
     /// <summary>Construct a font from already-parsed glyphs. See <see cref="FigletFontParser"/>.</summary>
+    /// <param name="name">Display name of the font (typically the source file's stem).</param>
+    /// <param name="hardBlank">The hardblank character — a non-space inside a glyph that displays as a space.</param>
+    /// <param name="height">Glyph row count; every glyph in the font has this many lines.</param>
+    /// <param name="layoutMode">Horizontal layout (kerning / smushing) rules applied to adjacent glyphs.</param>
+    /// <param name="glyphs">The parsed glyph table, keyed by codepoint.</param>
+    /// <param name="sourceUri">The URI the font was loaded from, when it came from one.</param>
+    /// <param name="baseline">
+    /// The FLF header's baseline field: rows from the top of the glyph box THROUGH the baseline
+    /// row — a COUNT, not a 0-based index (see <see cref="Baseline"/>). Omit (or pass
+    /// <see langword="null"/>) for a face whose glyphs rest on their bottom row.
+    /// </param>
     public FigletFont(
         string name,
         char hardBlank,
         int height,
         FigletLayoutMode layoutMode,
         IReadOnlyDictionary<uint, FigletGlyph> glyphs,
-        Uri? sourceUri = null)
+        Uri? sourceUri = null,
+        int? baseline = null)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(glyphs);
@@ -68,6 +80,22 @@ public sealed class FigletFont : IGlyphFont
         Height = height;
         LayoutMode = layoutMode;
         SourceUri = sourceUri;
+
+        // MALFORMED BASELINE: CLAMP, don't throw. The spec bounds the field at 1 ≤ baseline ≤
+        // height; a file outside that range is still a perfectly renderable font, because the
+        // baseline affects nothing but where a foreign-metric run (a fallback trim indicator)
+        // sits BESIDE the glyphs. Refusing to load the whole face over a cosmetic metric would
+        // trade a one-row misplacement for a hard failure — the same judgement the constructor
+        // already makes two statements below, where a font missing its mandatory space glyph gets
+        // a fabricated one instead of an exception.
+        //
+        // These are bundled resources, so "never throw on parse" is not the automatic answer it
+        // is for user input — but the argument runs the same way, and stronger: our own faces are
+        // pinned by tests that assert the parsed values (VerticalMetricsTests), so a clamp
+        // cannot silently hide a regression in what we ship, while a throw WOULD punish a
+        // third-party .flf the user is perfectly happy with.
+        Baseline = Math.Clamp(baseline ?? height, 1, height);
+
         _glyphs = new Dictionary<uint, FigletGlyph>(glyphs);
 
         // Space (U+0020) must exist per the FIGlet spec; if a malformed font omits it, fabricate
@@ -93,6 +121,29 @@ public sealed class FigletFont : IGlyphFont
     /// <summary>Glyph row count. Every glyph in the font has this many lines.</summary>
     public int Height { get; }
 
+    /// <summary>
+    /// The FLF header's baseline: rows from the top of the glyph box down to and INCLUDING the
+    /// row the glyph bodies rest on — a <b>COUNT, not a 0-based row index</b>. <c>standard.flf</c>
+    /// declares <c>6 5</c>, so <see cref="Height"/> is 6, this is 5, and the baseline's 0-based
+    /// row index is <c>Baseline - 1</c> = 4, with one descender row (index 5) underneath.
+    /// Always within <c>[1, Height]</c> — a header outside the spec's range is clamped, not
+    /// rejected (see the constructor).
+    /// </summary>
+    /// <remarks>
+    /// Reading this as an index is an off-by-one that renders CORRECTLY on the one bundled face
+    /// where <c>Height == Baseline</c> (ansi-shadow, 7/7) and wrong on every other one — hence
+    /// the emphasis.
+    /// </remarks>
+    public int Baseline { get; }
+
+    /// <summary>Rows above the baseline, counting the baseline row — identical to
+    /// <see cref="Baseline"/> by definition. See <see cref="IGlyphFont.Ascender"/>.</summary>
+    public int Ascender => Baseline;
+
+    /// <summary>Rows below the baseline row: <c><see cref="Height"/> - <see cref="Baseline"/></c>.
+    /// 1 for standard/small/slant/mini, 2 for big, 0 for ansi-shadow.</summary>
+    public int Descender => Height - Baseline;
+
     /// <summary>Horizontal layout rules applied to adjacent glyphs.</summary>
     public FigletLayoutMode LayoutMode { get; }
 
@@ -102,7 +153,9 @@ public sealed class FigletFont : IGlyphFont
     /// <summary>The source URI from which this font was loaded, if available.</summary>
     public Uri? SourceUri { get; private init; }
 
-    /// <summary>True when a glyph is defined for <paramref name="codepoint"/>.</summary>
+    /// <summary>True when a glyph is defined for <paramref name="codepoint"/>. Undefined
+    /// codepoints paint as a blank gap, so callers that can choose their characters check
+    /// first — see <see cref="IGlyphFont.HasGlyph"/>.</summary>
     public bool HasGlyph(uint codepoint) => _glyphs.ContainsKey(codepoint);
 
     /// <summary>Resolve a codepoint to its glyph, falling back to the space glyph when undefined.</summary>

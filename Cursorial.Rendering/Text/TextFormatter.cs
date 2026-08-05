@@ -26,6 +26,14 @@ namespace Cursorial.Rendering.Text;
 public sealed class TextFormatter
 {
     public const string DefaultEllipsis = "…";
+
+    /// <summary>
+    /// The trim indicator used when the painting face cannot draw <see cref="Ellipsis"/>. Three
+    /// periods: '.' is inside the ASCII 32–126 range every FIGlet font is required to define, so
+    /// this is renderable by construction wherever U+2026 is not.
+    /// </summary>
+    public const string DerivedEllipsis = "...";
+
     public const char SoftHyphen = '­';
     public const WrapMode DefaultWrap = WrapMode.WordWrap;
     public const TextTrimming DefaultTrim = TextTrimming.None;
@@ -39,7 +47,11 @@ public sealed class TextFormatter
     /// <summary>Default horizontal alignment when a paragraph doesn't specify its own.</summary>
     public TextAlignment Alignment { get; init; } = TextAlignment.Left;
 
-    /// <summary>Ellipsis appended by <see cref="TextTrimming.CharacterEllipsis"/> and <see cref="TextTrimming.WordEllipsis"/>.</summary>
+    /// <summary>
+    /// Ellipsis appended by <see cref="TextTrimming.CharacterEllipsis"/> and
+    /// <see cref="TextTrimming.WordEllipsis"/>. A face that cannot draw this string falls back to
+    /// <see cref="DerivedEllipsis"/> — see <see cref="ChooseEllipsis"/>.
+    /// </summary>
     public string Ellipsis { get; init; } = DefaultEllipsis;
 
     /// <summary>Cells per tab character. Tabs expand to spaces of the supplied style at format time.</summary>
@@ -879,39 +891,136 @@ public sealed class TextFormatter
         return LineDraft.FromWord(head, trimmed: true);
     }
 
+    /// <summary>
+    /// The trim indicator <paramref name="source"/> can actually PAINT, paired with the source
+    /// that will paint it. A face draws nothing at all for a codepoint it lacks
+    /// (<see cref="FigletFont"/>'s "missing glyph = blank gap" rule), so appending
+    /// <see cref="Ellipsis"/> unconditionally made a trimmed FIGlet line indistinguishable from a
+    /// complete one — the truncation signal rendered as empty cells. Candidates, in order: the
+    /// configured <see cref="Ellipsis"/> (author-settable, so a custom value gets the same
+    /// treatment as the default "…"), then <see cref="DerivedEllipsis"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Last resort.</b> A decorative face with neither the configured ellipsis nor '.' paints
+    /// the configured ellipsis through the MONOSPACE identity instead — the terminal's own font
+    /// draws it, one cell per cluster, beside the face's glyphs. That indicator does not match
+    /// the face, but a mismatched indicator is a defect in taste while an invisible one is a
+    /// defect in correctness: trimming exists to signal truncation, so "render nothing" is never
+    /// an outcome. An author who sets <see cref="Ellipsis"/> to the empty string is asking for no
+    /// indicator and gets exactly that.
+    /// </remarks>
+    private EllipsisChoice ChooseEllipsis(GlyphSource source)
+    {
+        // Only a face-painted run consults the face. An OSC 66 run's cells are drawn by the
+        // TERMINAL's font (a non-normal sizing survives tokenization only when the protocol is
+        // supported), and the identity source is a pass-through — both render anything.
+        if (Ellipsis.Length == 0 || source.Font is not {} face || !source.Sizing.IsNormal)
+            return new EllipsisChoice(Ellipsis, source);
+
+        if (CanRender(face, Ellipsis)) return new EllipsisChoice(Ellipsis, source);
+        if (CanRender(face, DerivedEllipsis)) return new EllipsisChoice(DerivedEllipsis, source);
+
+        // The last resort is the only construct in the system that puts runs of DIFFERENT metrics
+        // in one band, so it is the only one that has to say where its run sits — see
+        // EllipsisChoice.ToRun.
+        return new EllipsisChoice(Ellipsis, GlyphSource.Default, MixedSource: true);
+    }
+
+    /// <summary>Whether <paramref name="face"/> has ink for every codepoint of <paramref name="text"/>.</summary>
+    private static bool CanRender(IGlyphFont face, string text)
+    {
+        for (int i = 0; i < text.Length;)
+        {
+            // Codepoints, not chars — HasGlyph is keyed the way glyph tables are, and an
+            // unpaired surrogate (TryGetRuneAt false) is not something any face can draw.
+            if (!Rune.TryGetRuneAt(text, i, out var rune)) return false;
+            if (!face.HasGlyph((uint) rune.Value)) return false;
+            i += rune.Utf16SequenceLength;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The chosen trim indicator and the glyph source that measures AND paints it.
+    /// <paramref name="MixedSource"/> marks the last resort — the one case where the indicator's
+    /// source is NOT the source of the run it joins.
+    /// </summary>
+    private readonly record struct EllipsisChoice(string Text, GlyphSource Source, bool MixedSource = false)
+    {
+        /// <summary>Cells the indicator occupies. Measured from the string actually chosen — the
+        /// derived "..." is wider than "…" once the face's kerning applies, and a budget computed
+        /// from the un-chosen candidate overflows the line by the difference.</summary>
+        public int Width => Source.Metrics.StringWidth(Text);
+
+        /// <summary>
+        /// The indicator as a run. A MIXED-SOURCE indicator additionally pins its own vertical
+        /// placement to <see cref="VerticalTextAlignment.Baseline"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why per-run, and not by changing the paragraph default.</b> Bottom-of-band placement
+        /// drops this one-cell indicator into the FACE's descender row — under the glyph bodies
+        /// rather than beside them (<c>standard.flf</c>: 6 rows tall, bodies resting on row index
+        /// 4, one descender row beneath). But the paragraph's
+        /// <see cref="TextParagraph.VerticalAlignment"/> is the AUTHOR's rule for the author's own
+        /// content, and it is genuinely right as it stands: bands that mix a face with OSC 66
+        /// sized text have no shared baseline to align to — the terminal fills those cell blocks
+        /// itself — so Bottom must stay the default there.
+        /// </para>
+        /// <para>
+        /// This run is different in kind: the formatter SYNTHESIZED it, and did so against what
+        /// the author asked for (a face-painted indicator the face turned out to be unable to
+        /// draw). Having substituted a foreign face, the formatter owns where that face's one cell
+        /// lands, under every paragraph rule — Top or Center would float it mid-glyph just as
+        /// wrongly as Bottom buries it. And the override costs nothing where nothing was broken:
+        /// against a zero-descent face (ansi-shadow, 7/7) the baseline row IS the bottom row.
+        /// </para>
+        /// </remarks>
+        public FormattedTextRun ToRun(in Style style) => new(Text, style, null)
+                                                         {
+                                                             Source = Source,
+                                                             VerticalAlignment = MixedSource
+                                                                                     ? VerticalTextAlignment.Baseline
+                                                                                     : null
+                                                         };
+    }
+
     private LineDraft AppendEllipsisCharacter(LineDraft line, int maxWidth)
     {
         // The ellipsis measures (and paints) through the SOURCE of the run it visually joins —
-        // at scaled or FIGlet metrics it is not one cell wide.
+        // at scaled or FIGlet metrics it is not one cell wide — and its TEXT is whatever that
+        // source can actually draw.
         var joins = LastTextRun(line.Runs);
         var source = joins?.Source ?? GlyphSource.Default;
-        int ellipsisWidth = source.Metrics.StringWidth(Ellipsis);
+        var choice = ChooseEllipsis(source);
+        int ellipsisWidth = choice.Width;
 
         if (line.Width + ellipsisWidth <= maxWidth)
         {
-            line.Append(new FormattedTextRun(Ellipsis, joins?.Style ?? default, null) { Source = source }, ellipsisWidth);
+            line.Append(choice.ToRun(joins?.Style ?? default), ellipsisWidth);
             return line;
         }
 
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
         var clipped = ClipDraft(line, budget);
         var clippedJoins = LastTextRun(clipped.Runs);
-        var clippedSource = clippedJoins?.Source ?? source;
-        int clippedEllipsisWidth = clippedSource.Metrics.StringWidth(Ellipsis);
+        var clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source);
+        int clippedEllipsisWidth = clippedChoice.Width;
 
         // The budget was estimated with the LINE-END run's ellipsis width; if clipping landed on
-        // a wider-sourced run, the join ellipsis can overflow the column budget — re-clip
-        // against the actual width until it fits (bounded: widths only shrink).
+        // a wider-sourced run (or on a face that derives a wider indicator), the join ellipsis can
+        // overflow the column budget — re-clip against the actual width until it fits (bounded:
+        // widths only shrink).
         for (int guard = 0; clipped.Width + clippedEllipsisWidth > maxWidth && clipped.Width > 0 && guard < 4; guard++)
         {
             clipped = ClipDraft(clipped, Math.Max(0, maxWidth - clippedEllipsisWidth));
             clippedJoins = LastTextRun(clipped.Runs);
-            clippedSource = clippedJoins?.Source ?? source;
-            clippedEllipsisWidth = clippedSource.Metrics.StringWidth(Ellipsis);
+            clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source);
+            clippedEllipsisWidth = clippedChoice.Width;
         }
 
-        clipped.Append(new FormattedTextRun(Ellipsis, clippedJoins?.Style ?? default, null) { Source = clippedSource },
-                       clippedEllipsisWidth);
+        clipped.Append(clippedChoice.ToRun(clippedJoins?.Style ?? default), clippedEllipsisWidth);
         return clipped;
     }
 
@@ -920,7 +1029,8 @@ public sealed class TextFormatter
         // Budget with the ellipsis measured at the LINE-END run's source (the widest the tail
         // ellipsis can be); the appended ellipsis re-measures at the actual cut run's source.
         var lineEnd = LastTextRun(line.Runs);
-        int ellipsisWidth = (lineEnd?.Source ?? GlyphSource.Default).Metrics.StringWidth(Ellipsis);
+        var lineEndChoice = ChooseEllipsis(lineEnd?.Source ?? GlyphSource.Default);
+        int ellipsisWidth = lineEndChoice.Width;
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
 
         // Walk forward through the line accumulating cell width; remember the latest "space"
@@ -959,9 +1069,16 @@ public sealed class TextFormatter
                     {
                         var draft = TruncateAt(line, cutRunIndex, cutCharIndex);
                         var joins = LastTextRun(draft.Runs);
-                        var joinSource = joins?.Source ?? GlyphSource.Default;
-                        draft.Append(new FormattedTextRun(Ellipsis, joins?.Style ?? default, null) { Source = joinSource },
-                                     joinSource.Metrics.StringWidth(Ellipsis));
+                        var joinChoice = ChooseEllipsis(joins?.Source ?? GlyphSource.Default);
+                        int joinWidth = joinChoice.Width;
+
+                        // The budget above assumed the LINE-END run's indicator; the cut can land
+                        // on a run whose face derives a wider one. Hand those to the character
+                        // path, which re-clips against the width it is actually going to append.
+                        if (draft.Width + joinWidth > maxWidth)
+                            return AppendEllipsisCharacter(line, maxWidth);
+
+                        draft.Append(joinChoice.ToRun(joins?.Style ?? default), joinWidth);
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
@@ -981,9 +1098,7 @@ public sealed class TextFormatter
         }
 
         // Whole line fits already — append ellipsis directly.
-        line.Append(new FormattedTextRun(Ellipsis, lineEnd?.Style ?? default, null)
-                        { Source = lineEnd?.Source ?? GlyphSource.Default },
-                    ellipsisWidth);
+        line.Append(lineEndChoice.ToRun(lineEnd?.Style ?? default), ellipsisWidth);
         return line;
     }
 

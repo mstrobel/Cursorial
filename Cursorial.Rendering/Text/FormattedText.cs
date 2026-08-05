@@ -172,16 +172,33 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
             int cursor = ComputeAnchorColumn(bounds, line.Columns, paragraph.Alignment);
 
+            // The band's baseline: the deepest baseline among its runs, counted from the band's
+            // TOP row (a COUNT, like every Baseline in this stack — the row INDEX is one less).
+            // One pass of integer maxima over runs the loop below walks anyway, so it is computed
+            // unconditionally rather than lazily per alignment mode.
+            int bandBaseline = 0;
+            foreach (var run in line.Runs)
+                bandBaseline = Math.Max(bandBaseline, run.LineBaseline);
+
             foreach (var run in line.Runs)
             {
                 // Each run sits within its band per the paragraph's vertical text alignment
                 // (proposal-glyph-runs; maintainer decision 2026-08-02 — block-level, default
-                // Bottom to match both terminal baselines and OSC 66's default).
+                // Bottom to match OSC 66's default), unless the run carries its own override —
+                // which only runs the FORMATTER synthesized ever do.
                 int slack = line.Rows - run.LineRows;
-                int runRow = bandRow + (paragraph.VerticalAlignment switch
+                int runRow = bandRow + ((run.VerticalAlignment ?? paragraph.VerticalAlignment) switch
                                         {
                                             VerticalTextAlignment.Top    => 0,
                                             VerticalTextAlignment.Center => slack - slack / 2, // rounds toward the bottom, per the enum's contract
+                                            // Baselines coincide: drop the run by however much
+                                            // shallower its baseline is than the band's. Clamped
+                                            // into [0, slack] — when the band cannot hold every
+                                            // run's descent (two faces of equal height but
+                                            // different descents), imperfect alignment beats ink
+                                            // bleeding into the neighbouring band.
+                                            VerticalTextAlignment.Baseline
+                                                => Math.Max(0, Math.Min(bandBaseline - run.LineBaseline, slack)),
                                             _                            => slack
                                         });
 
@@ -459,6 +476,23 @@ public abstract record FormattedRun
     /// <summary>Rows this run's glyphs stand tall — its line's band is at least this many rows.
     /// 1 for everything except sized/FIGlet-sourced text runs.</summary>
     public virtual int LineRows => 1;
+
+    /// <summary>
+    /// Rows from the top of this run's box down to and INCLUDING its baseline row — a COUNT in
+    /// <c>[1, LineRows]</c>, not a 0-based index (see <see cref="Fonts.GlyphMetrics.Baseline"/>).
+    /// The default is the box's bottom row: no descent, which is exactly right for a one-row run.
+    /// </summary>
+    public virtual int LineBaseline => LineRows;
+
+    /// <summary>
+    /// Per-run override of the paragraph's <see cref="TextParagraph.VerticalAlignment"/>, or
+    /// <see langword="null"/> (the norm) to follow it. The formatter sets this only on runs IT
+    /// synthesizes whose glyph source differs from the run they visually join — today, the
+    /// last-resort trim indicator painted by the terminal's own font beside a face that can draw
+    /// no indicator of its own. Author content never carries one: the paragraph rule is the
+    /// author's rule for the author's runs.
+    /// </summary>
+    public VerticalTextAlignment? VerticalAlignment { get; init; }
 }
 
 /// <summary>
@@ -501,6 +535,9 @@ public sealed record FormattedTextRun : FormattedRun
 
     /// <inheritdoc/>
     public override int LineRows => Source.Metrics.LineRows;
+
+    /// <inheritdoc/>
+    public override int LineBaseline => Source.Metrics.Baseline;
 
     /// <summary>
     /// Opaque metadata carried over from the source <see cref="TextRun.Tag"/> (preserved across wrap-splits).

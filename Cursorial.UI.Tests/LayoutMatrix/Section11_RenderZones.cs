@@ -238,7 +238,7 @@ public class Section11_RenderZones
     }
 
     [Fact]
-    public void L183_NestedBoundaryOpacities_MultiplyDown()
+    public void L183_NestedBoundaryOpacities_DoNotMultiplyDown()
     {
         var root = new Host();
         var x = new Host { Opacity = 0.5 };
@@ -250,7 +250,13 @@ public class Section11_RenderZones
         var (_, tree) = LayoutFixture.CreateRenderRoot(root);
         tree.Render();
 
-        Assert.Equal((byte)64, tree.Parameters(y).Opacity); // round(255·0.25) — the opacity-group approximation
+        // Re-pinned from the old 64 (round(255·0.25), the flat model's multiplied-down product): a
+        // boundary publishes its OWN opacity. x's translucency reaches y by fading the group surface
+        // they both composite into, once — multiplying it in here as well would apply it twice.
+        Assert.Equal((byte)128, tree.Parameters(y).Opacity);
+        Assert.Equal((byte)128, tree.Parameters(x).Opacity);
+        Assert.True(tree.IsGroupRoot(x));  // translucent, and it has a descendant boundary
+        Assert.False(tree.IsGroupRoot(y)); // translucent, but nothing below it to group
     }
 
     [Fact]

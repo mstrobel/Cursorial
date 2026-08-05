@@ -83,8 +83,7 @@ public class CellBufferFragmentTests
         // Earlier behavior reset wide-cell halves at the fragment boundary to avoid orphan
         // continuation cells. With the pure-overlay model, the buffer doesn't touch any cells
         // — callers are responsible for not straddling wide cells across fragment boundaries
-        // if they want clean visuals. Renderer's wide-glyph defense still keeps the
-        // continuation-style consistent on emit.
+        // if they want clean visuals.
         var buffer = new CellBuffer(10, 1);
         buffer.Set(0, 0, "中", Style.Default); // wide-left at (0,0), continuation at (0,1)
 

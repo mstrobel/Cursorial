@@ -23,8 +23,20 @@ namespace Cursorial.Rendering;
 /// <see cref="CellKind.WideLeft"/> when its width is 2, and writes the right-half marker
 /// (<see cref="Cell.WideContinuation"/>) into <c>(row, col + 1)</c>. Overwrites also clean up:
 /// if the previous occupant of <c>(row, col)</c> was a wide-left, its dangling continuation is
-/// reset to blank; if the previous occupant was a continuation, the wide-left to its left is
-/// reset. The buffer therefore never exposes orphan continuations or partial wide cells.
+/// stripped to a blank single; if the previous occupant was a continuation, the wide-left to its
+/// left is. Either way the blank left behind carries the <see cref="Style"/> of the <b>pair</b> —
+/// only the glyph and the kind are cleared. The buffer therefore never exposes orphan continuations
+/// or partial wide cells.
+/// </para>
+/// <para>
+/// <b>A continuation carries no style.</b> Only the wide-left half of a pair holds one, because it
+/// is the half the <see cref="FrameRenderer"/> emits and terminals paint both columns from that one
+/// SGR state. Storing the style twice made it a duplicate that every write had to keep in sync, and
+/// every wide-glyph bug in this buffer's history has been a failure to do so. Consequences for
+/// callers: a continuation read out of this buffer answers <c>default(Style)</c>, so anything that
+/// needs the colors painting a continuation's column must read them off the wide-left one column
+/// left (see <see cref="Cell.WideContinuation"/>); and when the buffer blanks an orphaned
+/// continuation, it sources the style from that wide-left <em>before</em> the write that clobbers it.
 /// </para>
 /// <para>
 /// <b>Cursor state.</b> <see cref="CursorRow"/>, <see cref="CursorColumn"/>,
@@ -86,8 +98,31 @@ public sealed class CellBuffer : ICellSurface
     // emits nothing and the image persists. The compositor marks the vacated footprint here.
     private readonly List<Rect> _forceRepaintRegions = [];
 
-    /// <summary>Construct a buffer of the given dimensions, initialized to blank cells.</summary>
-    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null)
+    /// <summary>
+    /// Construct a buffer of the given dimensions, initialized to blank cells.
+    /// </summary>
+    /// <param name="columns">Width of the buffer in cells.</param>
+    /// <param name="rows">Height of the buffer in rows.</param>
+    /// <param name="capabilities">
+    /// The terminal the buffer will be emitted to, when known. Its reported default colors derive
+    /// the buffer's blank style — see <see cref="DefaultStyle"/>.
+    /// </param>
+    /// <param name="defaultStyle">
+    /// The style a blank cell carries on this buffer, overriding whatever
+    /// <paramref name="capabilities"/> would have derived. <see langword="null"/> (the default) keeps
+    /// the derivation. Supply it for a surface whose blank is not the terminal's default —
+    /// <see cref="Style.Transparent"/> for an intermediate compositing surface, whose unpainted cells
+    /// must contribute nothing when it is blended onwards.
+    /// </param>
+    /// <remarks>
+    /// The blank style is a <em>constructor argument</em> and <see cref="DefaultStyle"/> is get-only on
+    /// purpose. An <c>init</c> setter runs after the constructor body, so
+    /// <c>new CellBuffer(w, h) { DefaultStyle = Style.Transparent }</c> would fill the grid with the
+    /// capabilities-derived blank and only then declare the blank transparent — contents and
+    /// declaration disagreeing from birth, which is exactly the lie <see cref="DefaultStyle"/> exists
+    /// to prevent. Taking it here makes that state unrepresentable.
+    /// </remarks>
+    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null, Style? defaultStyle = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
@@ -96,19 +131,28 @@ public sealed class CellBuffer : ICellSurface
         _cells = new Cell[checked(columns * rows)];
 
         Capabilities = capabilities;
+        _defaultStyle = defaultStyle ?? DeriveDefaultStyle(capabilities);
 
+        // Strictly after the blank style is settled — the grid must already hold what DefaultStyle
+        // claims about it by the time any caller can observe either.
+        FillWithDefaultStyle();
+    }
+
+    private static Style DeriveDefaultStyle(TerminalCapabilities? capabilities)
+    {
+        // If the default foreground or background color is known, use the actual color in RGB
+        // form so we can take advantage of alpha blending.
         if (capabilities is { Output.Color: { DefaultForeground: var fg, DefaultBackground: var bg } } &&
             (fg is { Kind: ColorKind.Rgb } || bg is { Kind: ColorKind.Rgb }))
         {
-            // If the default foreground or background color is known, use the actual color in RGB
-            // form so we can take advantage of alpha blending.
-            _defaultStyle = Style.Default with
-                            {
-                                Foreground = fg ?? Color.Default,
-                                Background = bg ?? Color.Default
-                            };
-            Clear();
+            return Style.Default with
+                   {
+                       Foreground = fg ?? Color.Default,
+                       Background = bg ?? Color.Default
+                   };
         }
+
+        return Style.Default;
     }
 
     /// <summary>Width of the buffer in cells.</summary>
@@ -117,8 +161,29 @@ public sealed class CellBuffer : ICellSurface
     /// <summary>Height of the buffer in rows.</summary>
     public int Rows => _rows;
 
-    /// <summary>The buffer's dimensions, in cells.</summary>   
+    /// <summary>The buffer's dimensions, in cells.</summary>
     public (int Columns, int Rows) Dimensions => (_columns, _rows);
+
+    /// <summary>
+    /// The style a blank cell carries on this buffer — what <see cref="Clear()"/> and
+    /// <see cref="ClearCells(in Rect)"/> write, and what code that blanks cells of its own accord
+    /// should use instead of <see cref="Cell.Blank"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Whatever the constructor's <c>defaultStyle</c> argument said; failing that,
+    /// <see cref="Style.Default"/> unless the terminal reported its own default foreground /
+    /// background, in which case those colors (in RGB form, so alpha blending has something real to
+    /// blend against) are the buffer's notion of blank.
+    /// </para>
+    /// <para>
+    /// Fixed for the buffer's lifetime, and true of the grid from construction onwards: the initial
+    /// fill happens after it is settled, and <see cref="Resize"/> re-applies it. It is still only a
+    /// statement about <em>blank</em> — a caller remains free to <see cref="Fill(in Cell)"/> the grid
+    /// with something else, which says nothing about what a subsequent <see cref="Clear()"/> writes.
+    /// </para>
+    /// </remarks>
+    public Style DefaultStyle => _defaultStyle;
 
     /// <summary>Cursor row position (0-based). Used by the renderer at frame emission.</summary>
     public int CursorRow { get; set; }
@@ -177,9 +242,10 @@ public sealed class CellBuffer : ICellSurface
     /// <summary>
     /// Direct access to a cell. Setting via the indexer bypasses the active blending mode — use
     /// <see cref="Set(int, int, string, in Style)"/> for normal text content — but it does
-    /// maintain the wide-pair invariant: overwriting either half of an existing pair blanks the
-    /// orphaned partner (unless the write replaces that half in kind, which keeps the pair
-    /// whole — the cell-by-cell pair-copy pattern region blits use), storing a
+    /// maintain the wide-pair invariant: overwriting either half of an existing pair strips the
+    /// orphaned partner to a blank single that keeps its own style (unless the write replaces that
+    /// half in kind, which keeps the pair whole — the cell-by-cell pair-copy pattern region blits
+    /// use), storing a
     /// <see cref="CellKind.WideLeft"/> writes its continuation (degrading to a blank single at
     /// the right edge, as <see cref="Set(int, int, string, in Style)"/> does), and storing a
     /// continuation with no <see cref="CellKind.WideLeft"/> to pair with stores a blank single
@@ -207,13 +273,15 @@ public sealed class CellBuffer : ICellSurface
             if (previous.Kind == CellKind.WideContinuation && value.Kind != CellKind.WideContinuation &&
                 column > 0 && _cells[index - 1].Kind == CellKind.WideLeft)
             {
-                _cells[index - 1] = Cell.Blank;
+                OrphanLeftHalfToBlankSingle(index - 1);
             }
 
             if (previous.Kind == CellKind.WideLeft && value.Kind != CellKind.WideLeft &&
                 column + 1 < _columns && _cells[index + 1].Kind == CellKind.WideContinuation)
             {
-                _cells[index + 1] = Cell.Blank;
+                // `previous` IS the wide-left, read before this write clobbers it — the only place
+                // the orphan's style still exists.
+                OrphanContinuationToBlankSingle(index + 1, previous.Style);
             }
 
             if (value.Kind == CellKind.WideLeft)
@@ -233,7 +301,9 @@ public sealed class CellBuffer : ICellSurface
                 (column == 0 || _cells[index - 1].Kind != CellKind.WideLeft))
             {
                 // A bare continuation with nothing to pair with (a region copy whose left edge
-                // split a pair) — store a blank single so no half-glyph ever exists.
+                // split a pair) — store a blank single so no half-glyph ever exists. The blank keeps
+                // the caller's style: a continuation this buffer produced has none, so a copy that
+                // cuts a pair has to hand us the leading half's (CellBuffer.Blit does).
                 _cells[index] = new Cell(null, CellKind.Single, value.Style);
                 return;
             }
@@ -245,23 +315,55 @@ public sealed class CellBuffer : ICellSurface
     /// <summary>
     /// Store a <see cref="CellKind.WideLeft"/> + continuation pair at <c>(column, column + 1)</c>
     /// (caller guarantees the right half is in-row). If the continuation column currently holds the
-    /// <b>next</b> pair's <see cref="CellKind.WideLeft"/>, that pair's own continuation is blanked
-    /// first — overwriting a WideLeft with a continuation would otherwise orphan the cell two
-    /// columns over.
+    /// <b>next</b> pair's <see cref="CellKind.WideLeft"/>, that pair's own continuation is stripped
+    /// to a blank single first (keeping that pair's style) — overwriting a WideLeft with a
+    /// continuation would otherwise orphan the cell two columns over.
     /// </summary>
     private void WriteWidePair(int index, int column, string? grapheme, in Style style)
     {
         if (_cells[index + 1].Kind == CellKind.WideLeft && column + 2 < _columns &&
             _cells[index + 2].Kind == CellKind.WideContinuation)
         {
-            _cells[index + 2] = Cell.Blank;
+            // The orphan's style lives on the wide-left at index + 1, which the pair write below is
+            // about to overwrite — read it now.
+            OrphanContinuationToBlankSingle(index + 2, _cells[index + 1].Style);
         }
 
         _cells[index] = new Cell(grapheme, CellKind.WideLeft, style);
-        // The right-half continuation carries the style too so background paints continuously
-        // across the wide glyph.
-        _cells[index + 1] = Cell.WideContinuation with { Style = style };
+        // Kind alone. The continuation is a placeholder the renderer never emits — the wide-left's
+        // SGR paints both columns — so a style here would be a duplicate to keep in sync, never read.
+        _cells[index + 1] = Cell.WideContinuation;
     }
+
+    /// <summary>
+    /// Strip an orphaned <see cref="CellKind.WideLeft"/> down to a blank single, <b>keeping its
+    /// <see cref="Style"/></b> — only the glyph and the kind are cleared.
+    /// </summary>
+    /// <remarks>
+    /// Resetting it to <see cref="Cell.Blank"/> would be wrong twice: it discards the style the cell
+    /// legitimately carried (a selection tint, a panel fill, a themed run), punching a
+    /// differently-styled hole mid-region; and <see cref="Style.Default"/> may not even be this
+    /// buffer's notion of blank — <see cref="Clear()"/> / <see cref="ClearCells"/> write
+    /// <c>_defaultStyle</c>, and a surface based on <see cref="Style.Transparent"/> (an intermediate
+    /// group buffer) would get an <em>opaque</em> orphan that occludes what the surface must let
+    /// through. Preserving the style also matches the degrade sites, which already do.
+    /// </remarks>
+    private void OrphanLeftHalfToBlankSingle(int index)
+        => _cells[index] = _cells[index] with { Grapheme = null, Kind = CellKind.Single };
+
+    /// <summary>
+    /// Strip an orphaned <see cref="CellKind.WideContinuation"/> down to a blank single carrying
+    /// <paramref name="style"/> — the style of the <see cref="CellKind.WideLeft"/> it was paired with.
+    /// </summary>
+    /// <remarks>
+    /// Same obligation as <see cref="OrphanLeftHalfToBlankSingle"/> (the blank must keep the pair's
+    /// colors, not become a default-styled — and on a transparent surface, opaque — hole), but the
+    /// continuation has no style of its own to keep: this buffer stores <see cref="Cell.Kind"/> alone
+    /// there. So the caller must pass the leading half's style, read <b>before</b> the write that
+    /// clobbers it — every call site here is a write that is about to do exactly that.
+    /// </remarks>
+    private void OrphanContinuationToBlankSingle(int index, in Style style)
+        => _cells[index] = new Cell(null, CellKind.Single, style);
 
     /// <summary>
     /// Place <paramref name="grapheme"/> at <c>(column, row)</c> with the given <paramref name="style"/>,
@@ -299,13 +401,26 @@ public sealed class CellBuffer : ICellSurface
             blended = blended with { Foreground = foregroundUnderneath };
         }
 
-        // Cleanup: were we overwriting a wide-left's right half?
-        if (previous.Kind == CellKind.WideContinuation && column > 0)
-            _cells[index - 1] = Cell.Blank;
+        // Pair hygiene on overwrite — the same rule the indexer setter applies, and for the same
+        // reason: the kind guards make this safe even on a buffer that is ALREADY inconsistent
+        // (Fill / ClearCells write raw cells and can leave a bare continuation or a lone WideLeft
+        // behind) — never blank an innocent neighbor. Where the indexer tests the incoming
+        // value.Kind, this path reads it off `width`: 2 stores a WideLeft, 1 a Single, and Set never
+        // stores a bare continuation — so the indexer's "value.Kind != WideContinuation" is
+        // unconditionally true here and only the WideLeft half of the rule survives as `width != 2`.
+        if (previous.Kind == CellKind.WideContinuation &&
+            column > 0 && _cells[index - 1].Kind == CellKind.WideLeft)
+        {
+            OrphanLeftHalfToBlankSingle(index - 1);
+        }
 
-        // Cleanup: was the previous occupant of (row, col) a wide-left whose continuation we now orphan?
-        if (previous.Kind == CellKind.WideLeft && column + 1 < _columns)
-            _cells[index + 1] = Cell.Blank;
+        if (previous.Kind == CellKind.WideLeft && width != 2 &&
+            column + 1 < _columns && _cells[index + 1].Kind == CellKind.WideContinuation)
+        {
+            // `previous` IS the wide-left, read before this write clobbers it — the only place the
+            // orphaned continuation's style still exists.
+            OrphanContinuationToBlankSingle(index + 1, previous.Style);
+        }
 
         if (width == 2)
         {
@@ -372,7 +487,7 @@ public sealed class CellBuffer : ICellSurface
         _dirtyRegions.Clear();
         _forceRepaintRegions.Clear();
 
-        FillWithDefaultStyleIfKnown();
+        FillWithDefaultStyle();
     }
 
     // ---- Fragment sidecar -----------------------------------------------------------------
@@ -758,11 +873,17 @@ public sealed class CellBuffer : ICellSurface
 
             // A leading half whose continuation lies outside the COPIED RECTANGLE degrades: the
             // indexer's own degrade covers only the buffer's edge, so without this a pair-write
-            // would land one column past the rectangle the caller asked for. (The mirror case — a
-            // continuation whose leading half was cut — needs nothing here: the indexer already
-            // stores a blank single for a continuation with no WideLeft to its left.)
+            // would land one column past the rectangle the caller asked for.
             if (cell.Kind == CellKind.WideLeft && column + 1 >= columns)
                 cell = new Cell(null, CellKind.Single, cell.Style);
+
+            // The mirror case — a continuation whose leading half the copy cut away. The indexer
+            // already turns it into a blank single, but a continuation carries no style of its own
+            // (this buffer stores Kind alone there), so that blank would be a default-styled hole
+            // where the pair's background used to run. Hand it the leading half's style, which the
+            // cut left outside the copied rectangle; the indexer still decides the kind.
+            else if (cell.Kind == CellKind.WideContinuation && column == firstColumn)
+                cell = cell with { Style = view.StyleOfLeadingHalf(column, row) };
 
             // Through the indexer, not _cells: it is what keeps wide pairs consistent on overwrite.
             this[region.Column + column, region.Row + row] = cell;
@@ -794,7 +915,7 @@ public sealed class CellBuffer : ICellSurface
         _dirtyRegions.Clear();
         _forceRepaintRegions.Clear();
 
-        FillWithDefaultStyleIfKnown();
+        FillWithDefaultStyle();
     }
 
     /// <summary>
@@ -820,7 +941,10 @@ public sealed class CellBuffer : ICellSurface
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, _columns);
     }
     
-    private void FillWithDefaultStyleIfKnown()
+    // Every caller reaches here with a freshly zeroed array (a new allocation, or Array.Clear), which
+    // already IS the blank when the blank is Style.Default — so the guard skips a redundant pass, not
+    // a required one.
+    private void FillWithDefaultStyle()
     {
         if (_defaultStyle != default)
             _cells.AsSpan().Fill(Cell.Blank with { Style = _defaultStyle });

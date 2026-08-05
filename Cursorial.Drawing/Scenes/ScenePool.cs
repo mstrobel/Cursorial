@@ -92,7 +92,7 @@ public sealed class ScenePool
             return new Scene(buffer, this);   // ctor re-clears to transparent
         }
 
-        return new Scene(new CellBuffer(columns, rows), this);
+        return new Scene(Scene.CreateBuffer(columns, rows), this);
     }
 
     internal void Return(Scene scene)

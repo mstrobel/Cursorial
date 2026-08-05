@@ -57,6 +57,10 @@ public class ChartPresenter : DrawnContentPresenter
     /// held. Nothing outside tests should depend on the cache's existence.</summary>
     internal Size? CompositingScratchSize => _buffer is { } b ? new Size(b.Columns, b.Rows) : null;
 
+    /// <summary>Test seam: the scratch's blank style, which must be transparent — see
+    /// <see cref="RentCompositingScratch"/>.</summary>
+    internal Output.Style? CompositingScratchBlank => _buffer?.DefaultStyle;
+
     /// <summary>
     /// Drops the layered-compositing scratch. Nothing outside a render observes it, so releasing is
     /// always safe — the next layered render rebuilds it.
@@ -99,9 +103,13 @@ public class ChartPresenter : DrawnContentPresenter
             return cached;
         }
 
+        // An intermediate surface: what it does NOT paint is blitted onwards and must contribute
+        // nothing, so its blank is transparent rather than the terminal's default. Declaring that at
+        // construction (instead of filling over an opaque blank afterwards) is what makes
+        // DefaultStyle true here — the answer everything that blanks a cell of its own accord reads.
         var buffer = new CellBuffer(size.Columns, size.Rows,
-                                    TerminalCapabilities.None with { Output = context.Capabilities });
-        buffer.Clear(Output.Style.Transparent);
+                                    TerminalCapabilities.None with { Output = context.Capabilities },
+                                    defaultStyle: Output.Style.Transparent);
 
         _buffer = buffer;
         _bufferCapabilities = context.Capabilities;

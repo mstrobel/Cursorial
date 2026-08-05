@@ -71,11 +71,9 @@ public static class UserOptionKeys
 
     /// <summary>
     /// Fancy translucent menus and popups: <c>"true"</c>/<c>"false"</c>.
-    /// <b>
-    /// Key reserved — not yet
-    /// consumed by the framework
-    /// </b>
-    /// (no translucency toggle seam exists in v1).
+    /// <b>Key reserved — not yet applied at startup.</b> The framework-side seam it is destined for
+    /// is <see cref="UIApplication.TranslucencyEnabled"/> (the opacity-group switch); nothing reads
+    /// this key into it yet.
     /// </summary>
     public const string Translucency = "appearance.translucency";
 

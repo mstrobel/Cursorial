@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
@@ -19,7 +21,8 @@ namespace Cursorial.Drawing;
 /// Each call: re-rasters happen via <see cref="Scene.Draw"/> beforehand (owner-driven); the
 /// compositor computes the <b>dirty-region union</b> from any scene that re-rastered (a bumped
 /// <see cref="Scene.RasterVersion"/>) or any layer whose <see cref="CompositeParameters"/> changed
-/// (unioning the vacated and new footprints), <b>resets just that union to base</b>, composites
+/// (unioning the vacated and new footprints) — narrowed to <see cref="SceneLayer.Damage"/> where a
+/// layer declares one and nothing else about it moved — <b>resets just that union to base</b>, composites
 /// every layer that intersects the union (bottom-up), and <see cref="CellBufferView.MarkDirty(in Rect)"/>s
 /// the union so a <c>RestrictToDirtyRegions</c> renderer gets a correct bounded repaint. When
 /// nothing changed it does no work and returns <see langword="false"/> — leaving the target
@@ -33,12 +36,54 @@ namespace Cursorial.Drawing;
 /// </remarks>
 public sealed class SceneCompositor
 {
-    private const TextAttributes PassthroughAttributes = TextAttributes.Faint | 
-                                                         TextAttributes.Hidden | 
+    private const TextAttributes PassthroughAttributes = TextAttributes.Faint |
+                                                         TextAttributes.Hidden |
                                                          TextAttributes.Inverse;
+
+    // A blank that REPLACES the destination instead of merging into it — the one thing the cell model cannot
+    // otherwise say, and the whole of the cell-level divergence between an identity group and the flat path.
+    // CompositeCell classifies a source cell by whether it carries a grapheme: glyph-bearing replaces (glyph,
+    // kind, foreground, attributes, underline, hyperlink), glyphless merges (background composited, the
+    // destination's glyph and everything else kept). Several writes legitimately produce a BLANK that must
+    // still replace — the emoji stomp, the WideLeft edge degrade, and the blank the buffer's pair hygiene
+    // leaves next door — and on the final target that is fine, because the write IS the answer. On an
+    // intermediate surface it is not: a surface can only hand its result onwards as a cell, so the pass that
+    // blends it down re-reads that blank as an ordinary background-only contribution and merges it, and the
+    // foreground, attributes and underline of the group's backdrop win over the source's.
+    //
+    // Intermediate mode therefore stores this marker where it would otherwise store a null grapheme, and the
+    // final pass translates it back (EmittedGrapheme) so the target holds exactly the cell the flat path
+    // wrote. Compared by VALUE (IsReplacingBlank), because the value is a Unicode NONCHARACTER: U+FFFF is
+    // permanently reserved and guaranteed never to occur in valid interchanged text, so no scene, no font, no
+    // clipboard paste and no user string can produce a cell that collides with it. That is what a value
+    // comparison needs and what the previous value could not give — NBSP was chosen so a leak read as a
+    // space, but NBSP is also CellBuffer.DurableEmptyGrapheme, real content every opaque brush fill produces,
+    // so the marker had to be told apart from it by reference. Reference identity was the wrong thing to rest
+    // on: the marker rides through nested groups as ordinary cell content (a string field copied from surface
+    // to surface), and "a string instance is never silently replaced by an equal one" is an unwritten runtime
+    // guarantee whose loss would be SILENT — the marker would degrade into content and the cell-level
+    // divergence would quietly return. U+FFFF rather than U+FFFE, the other BMP noncharacter, because U+FFFE
+    // is the byte-swapped BOM: a buffer that ever reached a byte stream would read as an encoding fault
+    // rather than as this marker.
+    //
+    // The trade the value change makes: a leak no longer degrades gracefully into a space, it degrades into a
+    // codepoint no font draws. That is deliberate — a silently wrong cell is worse than a loudly wrong one
+    // — and VerifyMarkerDidNotReachTheTarget reports it in DEBUG at the pass that would leak it.
+    private const string ReplacingBlankGrapheme = "\uFFFF";
+
+    /// <summary>
+    /// Whether <paramref name="grapheme"/> is the replacing-blank marker. Ordinal VALUE comparison: the
+    /// marker is a noncharacter, so equality of value is equality of meaning.
+    /// </summary>
+    private static bool IsReplacingBlank(string? grapheme) =>
+        string.Equals(grapheme, ReplacingBlankGrapheme, StringComparison.Ordinal);
 
     private readonly Style _baseStyle;
     private readonly CellBuffer? _baseLayer;
+
+    // Whether the target is an INTERMEDIATE surface (a group buffer that will itself be composited
+    // later) rather than the terminal's final target. See ForIntermediate for what that changes.
+    private readonly bool _intermediate;
 
     private Scene?[] _lastScenes = [];
     private long[] _lastVersions = [];
@@ -77,6 +122,51 @@ public sealed class SceneCompositor
     /// <summary>Composite over a stored backdrop buffer (copied per-region on reset-to-base).</summary>
     public SceneCompositor(CellBuffer baseLayer) => _baseLayer = baseLayer ?? throw new ArgumentNullException(nameof(baseLayer));
 
+    private SceneCompositor(Style baseStyle, bool intermediate)
+    {
+        _baseStyle = baseStyle;
+        _intermediate = intermediate;
+    }
+
+    /// <summary>
+    /// A compositor that composites into an <b>intermediate</b> surface — a group buffer that will itself be
+    /// composited onto the final target later, once, at the group's opacity. That is what makes a translucent
+    /// subtree a true opacity group: its members blend against each other at full strength here, and the
+    /// ancestor's translucency is applied exactly once when the surface is blended down, instead of once per
+    /// member (which is what a flat sibling stack does where members overlap).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The base is <see cref="Style.Transparent"/>, not <see cref="Style.Default"/>: reset-to-base runs over
+    /// the whole rewritten union before any layer composites, so an opaque base would paint every cell the
+    /// group's members do not cover and the surface would blend down as a solid rectangle.
+    /// </para>
+    /// <para>
+    /// Cell blending uses <see cref="Color.CompositeOver"/> instead of <see cref="Color.Composite"/> so a
+    /// translucent member stays translucent on the surface (<see cref="Color.Composite"/> reports every
+    /// non-degenerate result as opaque, which is right for the terminal's fundamentally opaque final target
+    /// and wrong for a surface with another composite still ahead of it), and a glyph-bearing source keeps its
+    /// foreground <b>verbatim</b> rather than folding it over the merged background — the fold belongs to the
+    /// final pass, where the group's real backdrop is known. Folding twice applies the backdrop twice.
+    /// </para>
+    /// <para>
+    /// A blank cell that <b>replaces</b> its destination — what the emoji stomp, the WideLeft edge degrade and
+    /// the buffer's wide-pair hygiene write — is stored with a private marker grapheme instead of a null one,
+    /// because a surface can only hand its result onwards as a cell and a glyphless cell is read as a
+    /// background-only contribution to merge. The pass that writes the final target translates the marker back
+    /// to a null grapheme, so the terminal's buffer holds exactly what a flat composite would have written.
+    /// Anything else that reads a surface cell — an inspector, a diagnostic dump — must go through
+    /// <see cref="ResolveSurfaceCell"/> for the same reason.
+    /// </para>
+    /// <para>
+    /// Screen-level bookkeeping is skipped: no dirty marking (see <see cref="Scene.CompositeInto"/>, which owns
+    /// the surface's dirty lifecycle), and no ghost / force-repaint reconciliation, which is only meaningful
+    /// against a buffer a <c>FrameRenderer</c> will emit. Fragments are still relocated onto the surface — the
+    /// outer pass reads them from there and carries them the rest of the way.
+    /// </para>
+    /// </remarks>
+    public static SceneCompositor ForIntermediate() => new(Style.Transparent, intermediate: true);
+
     /// <summary>
     /// Carry the <b>ghost-footprint set</b> — Cells-layer images (iTerm2/Sixel) committed to the terminal with no
     /// protocol erase — from a retiring compositor into this fresh one. A host that replaces its compositor on a
@@ -96,8 +186,19 @@ public sealed class SceneCompositor
     /// Composite the ordered z-stack onto <paramref name="target"/>. Returns <see langword="true"/>
     /// when any region was rewritten, <see langword="false"/> when nothing changed (no work done).
     /// </summary>
-    public bool Composite(ReadOnlySpan<SceneLayer> layers, in CellBufferView target)
+    public bool Composite(ReadOnlySpan<SceneLayer> layers, in CellBufferView target) =>
+        CompositeCore(layers, target, out _);
+
+    /// <summary>
+    /// <see cref="Composite"/>, additionally reporting through <paramref name="rewritten"/> the region actually
+    /// reset and recomposited (<see cref="Rect.Empty"/> when nothing changed) — the damage an intermediate
+    /// surface must pass to whatever composites it in turn, which cannot read it back from the target's dirty
+    /// regions because intermediate mode does not mark them.
+    /// </summary>
+    internal bool CompositeCore(ReadOnlySpan<SceneLayer> layers, in CellBufferView target, out Rect rewritten)
     {
+        rewritten = Rect.Empty;
+
         int n = layers.Length;
         bool layerSetChanged = _lastVersions.Length != n;
 
@@ -125,10 +226,34 @@ public sealed class SceneCompositor
                 // Identity check first: a different Scene swapped into this slot (e.g. a fresh pooled
                 // scene that happens to share RasterVersion) must recomposite, or we'd silently keep
                 // the previous scene's pixels.
-                bool changed = !ReferenceEquals(layers[i].Scene, _lastScenes[i]) ||
-                               layers[i].Scene.RasterVersion != _lastVersions[i] ||
-                               layers[i].Parameters != _lastParams[i];
-                if (!changed) continue;
+                bool sameScene = ReferenceEquals(layers[i].Scene, _lastScenes[i]);
+                bool sameParams = layers[i].Parameters == _lastParams[i];
+                long version = layers[i].Scene.RasterVersion;
+
+                if (sameScene && sameParams && version == _lastVersions[i]) continue;
+
+                // The layer is otherwise untouched and reported exactly which of its own cells the ONE
+                // version bump we missed rewrote — so only those target cells can differ. Everything about
+                // the layer that could invalidate that claim is excluded above: a swapped scene, changed
+                // parameters (a move/fade/reclip rewrites the whole footprint AND vacates the old one), and
+                // a version that moved by more than one (an intermediate surface composited twice while we
+                // looked away, so the reported region only describes the last of them). Any of those falls
+                // through to the full-footprint path below, which is also the only path a layer with no
+                // damage to declare — every ordinary Scene.Draw, which re-rasters wholesale — ever takes.
+                if (sameScene && sameParams && version == _lastVersions[i] + 1 && layers[i].Damage is { } damage)
+                {
+                    if (TryFootprint(layers[i].Scene.Columns, layers[i].Scene.Rows, layers[i].Parameters, target.Columns, target.Rows, out var df))
+                    {
+                        var p = layers[i].Parameters;
+                        int dcS = Math.Max(df.Column, damage.Column + p.OffsetColumn);
+                        int drS = Math.Max(df.Row, damage.Row + p.OffsetRow);
+                        int dcE = Math.Min(df.ColumnEnd, damage.ColumnEnd + p.OffsetColumn);
+                        int drE = Math.Min(df.RowEnd, damage.RowEnd + p.OffsetRow);
+                        if (dcS < dcE && drS < drE) Union(new Rect(dcS, drS, dcE - dcS, drE - drS));
+                    }
+
+                    continue;
+                }
 
                 if (TryFootprint(layers[i].Scene.Columns, layers[i].Scene.Rows, layers[i].Parameters, target.Columns, target.Rows, out var nf)) Union(nf);
                 // Vacated footprint at the PRIOR scene size + prior params — covers a shrink (the new size
@@ -181,12 +306,20 @@ public sealed class SceneCompositor
 
             for (int tr = frS; tr < frE; tr++)
             for (int tc = fcS; tc < fcE; tc++)
-                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, wideColumnEnd);
+                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, wideColumnEnd, _intermediate);
         }
 
         PassThroughFragments(layers, target, layerSetChanged);
 
-        target.MarkDirty(new Rect(colStart, rowStart, colEnd - colStart, rowEnd - rowStart));
+        rewritten = new Rect(colStart, rowStart, colEnd - colStart, rowEnd - rowStart);
+
+        VerifyMarkerDidNotReachTheTarget(target, rewritten);
+
+        // An intermediate surface is never emitted, so its dirty regions have no consumer and no renderer to
+        // clear them; the union travels out through `rewritten` instead.
+        if (!_intermediate)
+            target.MarkDirty(rewritten);
+
         StashState(layers);
         return true;
     }
@@ -224,27 +357,33 @@ public sealed class SceneCompositor
         // Collect the (uncropped) target footprint of every Cells-layer fragment a scene wants to draw this
         // work-frame — the "still alive" set for the genuine-removal test below. An occluded image keeps its
         // entry here (its scene still has the fragment); only an unloaded scene drops out.
-        _liveCellsFootprints.Clear();
-        for (int li = 0; li < layers.Length; li++)
+        // Intermediate mode does none of this: a ghost is a pixel the TERMINAL is still showing, so the live
+        // set is only meaningful in final-target coordinates. The outer pass collects it from the group
+        // surface's forwarded fragments — which is the same set, already in those coordinates.
+        if (!_intermediate)
         {
-            var lp = layers[li].Parameters;
-            var sb = layers[li].Scene.Buffer;
-            if (sb.Fragments.Count == 0) continue;
-            foreach (var (anchor, entry) in sb.Fragments)
+            _liveCellsFootprints.Clear();
+            for (int li = 0; li < layers.Length; li++)
             {
-                if (entry.Fragment.Layer != FragmentLayer.Cells) continue;
-                var s = entry.Fragment.GetSize();
-                // Clamp the origin to >= 0 and shrink the extent accordingly (Rect can't carry a negative
-                // origin): a negative composite offset (scrolled content / a window dragged off the top-left)
-                // makes anchor+offset < 0. The off-screen prefix never had pixels on the terminal anyway, and
-                // the surviving on-screen portion still overlaps any ghost the full footprint would. Mirrors
-                // TryFootprint's clamp; a footprint wholly off the top-left collapses to empty and is skipped.
-                int colStart = anchor.Column + lp.OffsetColumn;
-                int rowStart = anchor.Row + lp.OffsetRow;
-                int width = Math.Max(1, s.Columns) + Math.Min(0, colStart);
-                int height = Math.Max(1, s.Rows) + Math.Min(0, rowStart);
-                if (width <= 0 || height <= 0) continue;
-                _liveCellsFootprints.Add(new Rect(Math.Max(0, colStart), Math.Max(0, rowStart), width, height));
+                var lp = layers[li].Parameters;
+                var sb = layers[li].Scene.Buffer;
+                if (sb.Fragments.Count == 0) continue;
+                foreach (var (anchor, entry) in sb.Fragments)
+                {
+                    if (entry.Fragment.Layer != FragmentLayer.Cells) continue;
+                    var s = entry.Fragment.GetSize();
+                    // Clamp the origin to >= 0 and shrink the extent accordingly (Rect can't carry a negative
+                    // origin): a negative composite offset (scrolled content / a window dragged off the top-left)
+                    // makes anchor+offset < 0. The off-screen prefix never had pixels on the terminal anyway, and
+                    // the surviving on-screen portion still overlaps any ghost the full footprint would. Mirrors
+                    // TryFootprint's clamp; a footprint wholly off the top-left collapses to empty and is skipped.
+                    int colStart = anchor.Column + lp.OffsetColumn;
+                    int rowStart = anchor.Row + lp.OffsetRow;
+                    int width = Math.Max(1, s.Columns) + Math.Min(0, colStart);
+                    int height = Math.Max(1, s.Rows) + Math.Min(0, rowStart);
+                    if (width <= 0 || height <= 0) continue;
+                    _liveCellsFootprints.Add(new Rect(Math.Max(0, colStart), Math.Max(0, rowStart), width, height));
+                }
             }
         }
 
@@ -312,6 +451,8 @@ public sealed class SceneCompositor
         // stable live fragment is not re-transmitted). Matching by geometry, not fragment Key, is deliberate: an
         // occlusion crop re-encodes the fragment into a fresh-identity instance (Sixel), so a Key check would
         // mis-read a merely-occluded image as removed.
+        if (_intermediate) return;   // no live set was collected, and ForceRepaint on a surface nobody emits is noise
+
         foreach (var ghost in _ghostFootprints)
         {
             _ghostRemainder.Clear();
@@ -391,18 +532,32 @@ public sealed class SceneCompositor
                                   : new Cell(null, CellKind.Single, _baseStyle);
 
     private static void CompositeCell(in CellBufferView target, int column, int row,
-                                      in Cell source, byte opacity, IBlendingMode mode, int wideColumnEnd)
+                                      in Cell source, byte opacity, IBlendingMode mode, int wideColumnEnd,
+                                      bool intermediate)
     {
         if (source.Kind == CellKind.WideContinuation) return;   // the WideLeft paints both columns
 
         var dst = target[column, row];
         var sourceStyle = opacity == 255 ? source.Style : ScaleSourceAlpha(source.Style, opacity);
         var targetStyle = dst.Style;
-        var mergedBackground = Color.Composite(sourceStyle.Background, targetStyle.Background, mode);
+        var mergedBackground = CompositeColor(sourceStyle.Background, targetStyle.Background, mode, intermediate);
+
+        // The glyph the blanking branches below store. On the final target that is a plain blank — the write
+        // is the answer and nothing reads it back. On a surface it has to carry replace semantics onwards,
+        // which is what the marker says. See ReplacingBlankGrapheme.
+        var replacingBlank = intermediate ? ReplacingBlankGrapheme : null;
 
         if (string.IsNullOrEmpty(source.Grapheme))
         {
-            var blendedForeground = Color.Composite(sourceStyle.Background, targetStyle.Foreground, mode);
+            // The tint dims what the cell will actually SHOW. On an intermediate surface the stored foreground
+            // is verbatim (see the glyph-bearing path below), so it may still be translucent and sitting over
+            // its own background — resolve it first, or the tint lands on an unresolved color and the final
+            // pass folds the background in a second time. This is what makes an opacity-1 group bit-exact.
+            var destinationForeground = intermediate
+                                            ? Color.CompositeOver(targetStyle.Foreground, targetStyle.Background, mode)
+                                            : targetStyle.Foreground;
+
+            var blendedForeground = CompositeColor(sourceStyle.Background, destinationForeground, mode, intermediate);
 
             var tinted = dst.Style with
                          {
@@ -428,19 +583,14 @@ public sealed class SceneCompositor
             {
                 if (dst.Grapheme is { Length: > 0 } glyph && GraphemeWidth.IsEmojiPresentation(glyph))
                 {
-                    // Stomp, then repair the pair partner EXPLICITLY: the maintaining indexer's
-                    // hygiene blanks it with default(Style), which would punch a terminal-default
-                    // hole where a cover edge lands mid-pair (the partner may lie OUTSIDE this
-                    // layer's footprint and never be recomposited this pass).
-                    var partnerStyle = dst.Kind == CellKind.WideLeft && column + 1 < target.Columns
-                                           ? target[column + 1, row].Style
-                                           : default;
-
-                    target[column, row] = new Cell(null, CellKind.Single, tinted);
-
-                    if (dst.Kind == CellKind.WideLeft && column + 1 < target.Columns)
-                        target[column + 1, row] = new Cell(null, CellKind.Single, partnerStyle);
-
+                    // The stomp ERASES a glyph, so it replaces the destination rather than merging into it.
+                    // The pair partner (the emoji's other half, which may lie OUTSIDE this layer's footprint
+                    // and never be recomposited this pass) is the buffer's job: its hygiene strips the orphan
+                    // to a blank single that KEEPS its own style — a blank in the emoji's colors, not a
+                    // terminal-default hole at the cover's edge — and ReplaceCell carries the replace
+                    // semantics of that blank onto a surface.
+                    ReplaceCell(target, column, row, new Cell(replacingBlank, CellKind.Single, tinted), in dst,
+                                intermediate);
                     return;
                 }
 
@@ -451,11 +601,8 @@ public sealed class SceneCompositor
                     target[column - 1, row] is { Kind: CellKind.WideLeft, Grapheme: { Length: > 0 } leftGlyph } &&
                     GraphemeWidth.IsEmojiPresentation(leftGlyph))
                 {
-                    var leftStyle = target[column - 1, row].Style;
-                    target[column, row] = new Cell(null, CellKind.Single, tinted);
-                    // The uncovered left half keeps its own composited style — a blank in the
-                    // emoji's colors, not a default-styled hole at the cover's edge.
-                    target[column - 1, row] = new Cell(null, CellKind.Single, leftStyle);
+                    ReplaceCell(target, column, row, new Cell(replacingBlank, CellKind.Single, tinted), in dst,
+                                intermediate);
                     return;
                 }
             }
@@ -467,7 +614,14 @@ public sealed class SceneCompositor
         }
 
         // Glyph-bearing: the scene owns the glyph (and its hyperlink); composite fg over merged bg.
-        var mergedForeground = Color.Composite(sourceStyle.Foreground, mergedBackground, mode);
+        // On an intermediate surface the fold is DEFERRED and the foreground stored verbatim: the merged
+        // background here is only the group's own, and the final pass folds fg over the background the group
+        // actually lands on. Folding at both levels applies the group's backdrop twice — for a glyph
+        // {fg=red@50%, bg=opaque blue} in a group at 0.5 over green that is (64,63,127) instead of (64,95,95).
+        var mergedForeground = intermediate
+                                   ? sourceStyle.Foreground
+                                   : Color.Composite(sourceStyle.Foreground, mergedBackground, mode);
+
         var style = sourceStyle with { Foreground = mergedForeground, Background = mergedBackground };
 
         if (source.Kind == CellKind.WideLeft)
@@ -478,17 +632,139 @@ public sealed class SceneCompositor
             // clip edge would bleed the continuation outside the clip onto a neighbor's cells. Degrade to
             // a blank single cell at either edge — the same trick CellBuffer.Set uses at the buffer edge.
             // (The maintaining indexer blanks a previously-paired continuation next door, so the degrade
-            // never strands the old right half.)
+            // never strands the old right half.) The degrade erases the glyph, so like the stomp it must
+            // still REPLACE the destination — hence the marker on a surface.
             if (column + 1 >= wideColumnEnd)
-                target[column, row] = new Cell(null, CellKind.Single, style);
+                ReplaceCell(target, column, row, new Cell(replacingBlank, CellKind.Single, style), in dst, intermediate);
             else
-                target.Set(column, row, source.Grapheme, in style);   // Set cleans up the orphaned neighbor
+                ReplaceWidePair(target, column, row, source.Grapheme, in style, in dst, intermediate);
         }
         else
         {
-            target[column, row] = new Cell(source.Grapheme, source.Kind, style);
+            ReplaceCell(target, column, row,
+                        new Cell(EmittedGrapheme(source.Grapheme, intermediate), source.Kind, style), in dst,
+                        intermediate);
         }
     }
+
+    /// <summary>
+    /// Write a cell that <b>replaces</b> the destination, keeping replace semantics intact for the blank the
+    /// buffer's pair hygiene leaves next door.
+    /// </summary>
+    /// <remarks>
+    /// Overwriting one half of a wide pair strips the surviving half to a blank single that keeps its own
+    /// style (<see cref="CellBuffer"/>'s maintaining indexer). On the final target that blank is the answer —
+    /// it replaced whatever the base held there. On a surface it has to say so, or the pass that blends the
+    /// surface down reads a glyphless cell and merges it, leaving the destination's glyph standing where the
+    /// flat path erased it. The orphan test mirrors the indexer's own three-part rule — previous kind /
+    /// stored kind / the neighbour really is the pairing half — evaluated <i>before</i> the write, so it
+    /// never marks a cell the hygiene did not touch.
+    /// </remarks>
+    private static void ReplaceCell(in CellBufferView target, int column, int row, in Cell cell, in Cell previous,
+                                    bool intermediate)
+    {
+        if (!intermediate)
+        {
+            target[column, row] = cell;
+            return;
+        }
+
+        bool orphansLeft = previous.Kind == CellKind.WideContinuation && cell.Kind != CellKind.WideContinuation &&
+                           column > 0 && target[column - 1, row].Kind == CellKind.WideLeft;
+
+        bool orphansRight = previous.Kind == CellKind.WideLeft && cell.Kind != CellKind.WideLeft &&
+                            column + 1 < target.Columns && target[column + 1, row].Kind == CellKind.WideContinuation;
+
+        target[column, row] = cell;
+
+        if (orphansLeft) MarkReplacing(target, column - 1, row);
+        if (orphansRight) MarkReplacing(target, column + 1, row);
+    }
+
+    // The wide-pair write's own hygiene, same rule as ReplaceCell's: Set strips the WideLeft to the left of an
+    // overwritten continuation, and WriteWidePair strips the NEXT pair's continuation two columns over when
+    // this pair lands one column short of it. Both blanks replace, so on a surface both carry the marker.
+    private static void ReplaceWidePair(in CellBufferView target, int column, int row, string? grapheme,
+                                        in Style style, in Cell previous, bool intermediate)
+    {
+        if (!intermediate)
+        {
+            target.Set(column, row, grapheme, in style);   // Set cleans up the orphaned neighbor
+            return;
+        }
+
+        bool orphansLeft = previous.Kind == CellKind.WideContinuation &&
+                           column > 0 && target[column - 1, row].Kind == CellKind.WideLeft;
+
+        bool orphansNextPair = column + 2 < target.Columns &&
+                               target[column + 1, row].Kind == CellKind.WideLeft &&
+                               target[column + 2, row].Kind == CellKind.WideContinuation;
+
+        target.Set(column, row, grapheme, in style);
+
+        if (orphansLeft) MarkReplacing(target, column - 1, row);
+        if (orphansNextPair) MarkReplacing(target, column + 2, row);
+    }
+
+    // Stamp the marker on a blank the pair hygiene just wrote, keeping the style it preserved.
+    private static void MarkReplacing(in CellBufferView target, int column, int row) =>
+        target[column, row] = target[column, row] with { Grapheme = ReplacingBlankGrapheme };
+
+    // The marker is a compositor-internal signal, not content: only another compositing pass may see it, so
+    // the pass that writes the final target translates it back to the plain blank the flat path writes there.
+    // Intermediate passes carry it through untouched, so a marker crossing N nested groups is translated
+    // exactly once — at the Nth+1 pass, the one that writes a buffer a FrameRenderer will emit.
+    private static string? EmittedGrapheme(string? grapheme, bool intermediate) =>
+        !intermediate && IsReplacingBlank(grapheme) ? null : grapheme;
+
+    /// <summary>
+    /// Translate a cell read straight off an <b>intermediate</b> surface (<see cref="ForIntermediate"/>) into
+    /// the cell it will contribute to the final target. Inspectors and diagnostics that sample a scene which
+    /// may be a group surface must go through this, or they report a compositor-internal grapheme where the
+    /// screen shows a blank.
+    /// </summary>
+    /// <remarks>
+    /// Safe to apply to any cell, group surface or not: the marker is a noncharacter, so a cell that is not
+    /// the marker cannot compare equal to it and is returned untouched. (That is a property the previous
+    /// NBSP-valued marker did not have — this helper could not have existed, because it would have stripped
+    /// the durable empty out of every ordinary opaque fill.)
+    /// </remarks>
+    public static Cell ResolveSurfaceCell(in Cell cell) =>
+        IsReplacingBlank(cell.Grapheme) ? cell with { Grapheme = null } : cell;
+
+    // The marker is compositor-INTERNAL: the only buffers allowed to hold it are intermediate surfaces. Sweep
+    // the region this pass just rewrote on a final target and report a cell still carrying it — a write path
+    // that forgot to translate, or a base layer that is itself a group surface. It cannot fire on the
+    // legitimate translate path: EmittedGrapheme runs at the write, so by the time this reads the cell back
+    // the marker is already gone. Compiles away entirely in release builds (the extra read pass with it).
+    [Conditional("DEBUG")]
+    private void VerifyMarkerDidNotReachTheTarget(in CellBufferView target, in Rect rewritten)
+    {
+        if (_intermediate) return;
+
+        for (int row = rewritten.Row; row < rewritten.RowEnd; row++)
+        for (int column = rewritten.Column; column < rewritten.ColumnEnd; column++)
+        {
+            if (!IsReplacingBlank(target[column, row].Grapheme)) continue;
+
+            // One report per pass: the cause is a single bad write path, not a per-cell accident, and a
+            // full-screen composite would otherwise emit thousands of identical events.
+            DrawingDiagnostics.Emit(DrawingDiagnosticKind.ReplacingBlankReachedFinalTarget,
+                                    $"The compositor's replacing-blank marker reached a final target at " +
+                                    $"({column}, {row}). It is an intermediate-surface signal and must be " +
+                                    $"translated by the pass that writes a buffer a FrameRenderer emits; " +
+                                    $"reaching one means a write path skipped EmittedGrapheme, or a base " +
+                                    $"layer handed to this compositor is itself a group surface.");
+            return;
+        }
+    }
+
+    // Compositing into an intermediate surface must PRESERVE alpha: Color.Composite resolves every
+    // non-degenerate result to opaque, which is right for the terminal's final target (output is
+    // fundamentally opaque) and wrong for a surface with another composite still ahead of it — two
+    // translucent members would stack up opaque and the group's own translucency would be lost.
+    private static Color CompositeColor(Color source, Color backdrop, IBlendingMode mode, bool intermediate) =>
+        intermediate ? Color.CompositeOver(source, backdrop, mode) : Color.Composite(source, backdrop, mode);
 
     private static Style ScaleSourceAlpha(Style style, byte opacity) =>
         style with

@@ -50,6 +50,35 @@ public sealed partial class UIApplication
     public event EventHandler? EmojiAvailableChanged;
 
     /// <summary>
+    /// Whether translucency effects are honored (<see cref="Configuration.UserOptionKeys.Translucency"/>) —
+    /// the switch behind <b>opacity groups</b>: a translucent render boundary composites its whole
+    /// boundary subtree through a private surface so the subtree fades once, as a unit. Turning it off
+    /// releases those surfaces and returns every boundary to flat compositing, where a translucent
+    /// ancestor is re-blended wherever a descendant boundary overlaps it. Default
+    /// <see langword="true"/>; opacity itself is unaffected either way, and below the truecolor tier
+    /// groups never materialise regardless (the terminal discards the blend).
+    /// </summary>
+    /// <remarks>
+    /// This is the framework-side seam only: nothing applies
+    /// <see cref="Configuration.UserOptionKeys.Translucency"/> to it at startup yet, and no options-UI
+    /// row surfaces it. Flipping it is a <em>structural</em> composition change (the emitted layer
+    /// count moves), so the setter re-composites every surface from scratch rather than letting the
+    /// flip land on whichever frame happens to be dirty next.
+    /// </remarks>
+    public bool TranslucencyEnabled
+    {
+        get;
+        set
+        {
+            Dispatcher.VerifyAccess();
+            if (field == value)
+                return;
+            field = value;
+            _windowManager?.InvalidateComposition();
+        }
+    } = true;
+
+    /// <summary>
     /// Whether the scroll dead zone is active (<see cref="Configuration.UserOptionKeys.ScrollDeadZone"/>):
     /// wheel gestures rail onto their dominant axis, suppressing the stray cross-axis ticks a
     /// trackpad sheds during fast one-axis scrolling (the gesture model is

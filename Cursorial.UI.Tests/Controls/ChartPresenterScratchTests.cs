@@ -53,6 +53,29 @@ public sealed class ChartPresenterScratchTests
         Assert.Null(presenter.CompositingScratchSize);   // a detached page must not hold a full buffer
     }
 
+    [Fact] // the scratch is an intermediate surface: its BLANK must be transparent, not merely its contents
+    public void Scratch_BlankIsTransparent()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Size(40, 16),
+            Capabilities = HeadlessCapabilities.KittyTruecolor,
+        });
+
+        var presenter = new ChartPresenter
+        {
+            Source = Chart(), Width = 20, Height = 8,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        host.ShowRoot(presenter);
+        host.RunUntilIdle();
+
+        // Cells the chart doesn't paint are blitted onwards and must contribute nothing. Filling the
+        // buffer transparent after construction gets the CONTENTS right but leaves DefaultStyle
+        // answering the opaque Style.Default — the answer every blank-a-cell path in the buffer reads.
+        Assert.Equal(Output.Style.Transparent, presenter.CompositingScratchBlank);
+    }
+
     [Fact] // a source that cannot use the scratch releases it
     public void NonLayeredSource_ReleasesTheScratch()
     {

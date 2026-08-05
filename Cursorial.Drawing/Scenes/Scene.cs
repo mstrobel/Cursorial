@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Cursorial.Output;
 using Cursorial.Rendering;
 
@@ -29,6 +31,12 @@ public sealed class Scene : IDisposable
 
     internal Scene(CellBuffer buffer, ScenePool? pool)
     {
+        // The wipe below is the buffer's own Clear, so a buffer whose blank is not transparent would
+        // make a silently opaque scene — every unpainted cell occluding what it composites over.
+        // CreateBuffer is the only sanctioned source; this catches a future one that forgets.
+        Debug.Assert(buffer.DefaultStyle == Style.Transparent,
+                     "a scene's backing buffer must be constructed with a transparent blank (Scene.CreateBuffer)");
+
         _buffer = buffer;
         _pool = pool;
         ClearToTransparent();
@@ -44,8 +52,20 @@ public sealed class Scene : IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, ushort.MaxValue);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rows, ushort.MaxValue);
-        return new(new CellBuffer(columns, rows), null);
+        return new(CreateBuffer(columns, rows), null);
     }
+
+    /// <summary>
+    /// The backing buffer every scene must have: one whose <b>blank is</b>
+    /// <see cref="Style.Transparent"/>, not merely one that was filled with it once. Unpainted cells
+    /// have to contribute nothing when the scene composites, and everything that blanks a cell of its
+    /// own accord — the buffer's wide-pair hygiene, a view clear, the clear extensions — asks
+    /// <see cref="CellBuffer.DefaultStyle"/> what blank means here. A buffer merely filled transparent
+    /// answers <see cref="Style.Default"/> to that question and punches opaque holes into the surface.
+    /// Shared with <see cref="ScenePool"/> so the invariant is stated once.
+    /// </summary>
+    internal static CellBuffer CreateBuffer(int columns, int rows)
+        => new(columns, rows, defaultStyle: Style.Transparent);
 
     /// <summary>Width of the scene in cells.</summary>
     public int Columns => _buffer.Columns;
@@ -99,20 +119,56 @@ public sealed class Scene : IDisposable
         _rasterVersion++;
     }
 
-    internal void ClearToTransparent()
+    /// <summary>
+    /// Composite <paramref name="layers"/> into this scene's own buffer, making it an <b>intermediate
+    /// surface</b> — a group whose members blend against each other here at full strength and which is then
+    /// composited onwards, once, at the group's opacity. Pair it with
+    /// <see cref="SceneCompositor.ForIntermediate"/>; a screen-target compositor would resolve the surface
+    /// opaque. Returns the region rewritten this pass, or <see langword="null"/> when nothing changed.
+    /// </summary>
+    /// <remarks>
+    /// This is the compositing counterpart of <see cref="Draw"/> and keeps the same contract towards whatever
+    /// composites this scene next: <see cref="RasterVersion"/> is bumped exactly when the contents moved, which
+    /// is the only signal an outer <see cref="SceneCompositor"/> has that a surface it never re-rasters is
+    /// stale. A scene is either drawn or composited into — mixing the two on one scene would have the raster
+    /// wipe the composited members on the next <see cref="Draw"/>.
+    /// </remarks>
+    public Rect? CompositeInto(SceneCompositor compositor, ReadOnlySpan<SceneLayer> layers)
     {
-        // CellBuffer.Clear() fills its default style (opaque); we need transparent so unpainted
-        // cells composite to the backdrop. Default blend mode + an opaque-free fill hits the
-        // Array.Fill fast path. Grapheme stays null = "no glyph contribution" for the compositor.
-        _buffer.Fill(new Cell(null, CellKind.Single, Style.Transparent));
+        ArgumentNullException.ThrowIfNull(compositor);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        // A wipe empties the FRAGMENT registry too: a raster fully re-registers what it draws, so
-        // anything not re-added is gone. Leaving stale entries here kept a deleted sized-text
-        // emission alive end to end — the compositor faithfully carried it to the target every
-        // frame, so the renderer never saw it vanish and the glyphs lingered on the terminal
-        // (deleting ALL text in a sized TextBox left every line's last emission standing).
-        _buffer.ClearFragments();
+        var changed = compositor.CompositeCore(layers, new CellBufferView(_buffer), out var rewritten);
+
+        // Only a FrameRenderer clears these, and an intermediate surface never reaches one — so they would
+        // accumulate forever. Fragment churn marks the buffer dirty even on a pass that rewrote no cells
+        // (CellBuffer.RemoveFragment / ClearFragments both do), hence the unconditional clear.
+        _buffer.ClearDirty();
+        _buffer.ClearForceRepaint();
+
+        if (!changed) return null;
+
+        _rasterVersion++;
+        return rewritten;
     }
+
+    /// <summary>
+    /// Wipe the raster. A scene buffer's blank <em>is</em> <see cref="Style.Transparent"/>
+    /// (<see cref="CreateBuffer"/>), so the plain clear writes exactly the transparent, glyphless cells
+    /// this used to fill by hand — "clear" and "clear to this surface's blank" are now the same
+    /// operation, and the hand-rolled fill was only ever compensating for a buffer that disagreed.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CellBuffer.Clear()"/> also empties the FRAGMENT registry, which a wipe must: a raster
+    /// fully re-registers what it draws, so anything not re-added is gone. Leaving stale entries here
+    /// kept a deleted sized-text emission alive end to end — the compositor faithfully carried it to the
+    /// target every frame, so the renderer never saw it vanish and the glyphs lingered on the terminal
+    /// (deleting ALL text in a sized TextBox left every line's last emission standing). It additionally
+    /// drops the dirty / force-repaint marks, which is right here and was not happening before: only a
+    /// <c>FrameRenderer</c> consumes those and a scene buffer never reaches one, so the footprints
+    /// <c>ClearFragments</c> marked on every re-raster accumulated in a list nobody read or emptied.
+    /// </remarks>
+    internal void ClearToTransparent() => _buffer.Clear();
 
     /// <summary>
     /// Return a pooled scene's buffer to its pool (no-op for a standalone scene). Idempotent — a

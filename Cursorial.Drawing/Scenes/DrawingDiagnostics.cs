@@ -19,6 +19,15 @@ public enum DrawingDiagnosticKind
     /// <summary>Multi-line text reached a single-line slot (e.g. a <see cref="PanelTitle"/>); only
     /// the first line was used.</summary>
     MultiLineTextInSingleLineSlot,
+
+    /// <summary>
+    /// <see cref="SceneCompositor"/>'s replacing-blank marker — an intermediate-surface signal that must be
+    /// translated by the pass writing the final target — was still on a <b>final</b> target after that pass.
+    /// A compositor bug, not a caller error: some write path skipped the translation, or the base layer handed
+    /// to the compositor is itself a group surface. Unlike the other kinds here the annotated behavior is
+    /// <i>not</i> benign — the cell holds a Unicode noncharacter no font draws.
+    /// </summary>
+    ReplacingBlankReachedFinalTarget,
 }
 
 /// <summary>One emitted drawing diagnostic: the kind and a human-readable message.</summary>

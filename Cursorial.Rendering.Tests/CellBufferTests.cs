@@ -153,8 +153,12 @@ public class CellBufferTests
         buf[0, 0] = new Cell("中", CellKind.WideLeft, style);
 
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
+        Assert.Equal(style, buf[0, 0].Style);
+
+        // Kind alone on the continuation: the wide-left's SGR is what paints both columns, so a
+        // style here would be a duplicate nothing reads and every write would have to keep in sync.
         Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
-        Assert.Equal(style, buf[1, 0].Style); // style carried across the pair, as Set does
+        Assert.Equal(default, buf[1, 0].Style);
     }
 
     [Fact]

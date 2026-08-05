@@ -571,11 +571,19 @@ public sealed class FrameRenderer
         if (_coveredCells is null) return backCell;
         if (!_coveredCells[row * back.Columns + column]) return backCell;
 
+        // Cover splits a wide glyph into two independent bg-only spaces, so the right half needs a
+        // background of its own — and a continuation carries no style (CellBuffer stores Kind alone
+        // there; the wide-left's SGR is what paints both columns). Read it off the wide-left, or the
+        // covered pair emits one styled space beside one default-styled hole.
+        var background = backCell.Kind == CellKind.WideContinuation && column > 0
+                             ? back[column - 1, row].Style.Background
+                             : backCell.Style.Background;
+
         // Drop the foreground. Keep just the background — that's what carries through.
         return new Cell(
             Grapheme: " ",
             Kind: CellKind.Single,
-            Style: Style.Default.WithBackground(backCell.Style.Background));
+            Style: Style.Default.WithBackground(background));
     }
 
     /// <summary>

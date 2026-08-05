@@ -88,7 +88,12 @@ A fully static frame: no scene re-rasters, the compositor finds an empty dirty u
 `SceneCompositor.Composite(ReadOnlySpan<SceneLayer>, in CellBufferView target) → bool`:
 1. Compute the **dirty-region union** of layers whose `RasterVersion` changed or whose
    `CompositeParameters` changed (unioning the **old and new** footprints, so a moved layer's vacated
-   region resets). First frame / layer-count change ⇒ full target.
+   region resets). First frame / layer-count change ⇒ full target. A layer that declares
+   `SceneLayer.Damage` — the scene-local region its single `RasterVersion` bump rewrote, which only
+   `Scene.CompositeInto` can honestly report — contributes just that region instead of its footprint,
+   and only when the layer is otherwise identical (same `Scene`, same `CompositeParameters`, version
+   exactly one ahead). Absent damage the footprint rule is unchanged, which is every ordinary scene:
+   `Scene.Draw` re-rasters wholesale and has nothing narrower to say.
 2. Empty union ⇒ return `false` (no work; target untouched).
 3. **Pass 1:** reset the whole union to base (before any compositing, so a wide glyph written in
    pass 2 isn't clobbered when its continuation column is reset).

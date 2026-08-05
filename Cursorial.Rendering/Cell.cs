@@ -52,11 +52,14 @@ public readonly record struct Cell(string? Grapheme, CellKind Kind, Style Style)
     /// for most terminals.
     /// </summary>
     /// <remarks>
-    /// <see cref="CellBuffer.Set"/> mirrors the wide-left's <see cref="Style"/> onto the
-    /// continuation cell for diff-comparison hygiene; modifying the continuation's style
-    /// independently via the buffer's indexer is allowed but visually meaningless — the
-    /// rendered background follows the wide-left, since terminals don't render different
-    /// backgrounds on the two halves of a wide glyph.
+    /// <b>No style.</b> A continuation stored by <see cref="CellBuffer"/> carries <see cref="Kind"/>
+    /// and nothing else — terminals don't render different backgrounds on the two halves of a wide
+    /// glyph, so a style here could only ever duplicate the wide-left's, and keeping that duplicate
+    /// in sync is what every wide-glyph regression in this buffer has failed at. Code that needs the
+    /// colors painting a continuation's column reads them off the wide-left one column left; the
+    /// buffer does the same when pair hygiene has to blank an orphaned continuation. Writing a styled
+    /// continuation through the buffer's indexer is still allowed (a cell-by-cell region copy hands
+    /// back what it read), but the style is not read back by anything that paints.
     /// </remarks>
     public static Cell WideContinuation { get; } = new(null, CellKind.WideContinuation, default);
 

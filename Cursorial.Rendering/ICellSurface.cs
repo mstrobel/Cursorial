@@ -48,6 +48,20 @@ internal interface ICellSurface
     /// <summary>The cursor shape the renderer should emit.</summary>
     CursorShape CursorShape { get; set; }
 
+    /// <summary>
+    /// The style a blank cell carries on <b>this</b> surface — what <see cref="Clear"/> writes, and
+    /// what code that blanks or clips cells on its own must use.
+    /// </summary>
+    /// <remarks>
+    /// Explicitly <em>not</em> necessarily <see cref="Style.Default"/>: a buffer constructed against a
+    /// terminal that reported its own default colors carries those instead. Reaching for
+    /// <see cref="Cell.Blank"/> (i.e. <see cref="Style.Default"/>) rather than asking the surface
+    /// punches a differently-styled hole into whatever region the blanked cells sat in — and because
+    /// <see cref="Style.Default"/> is <em>opaque</em>, on a surface whose blank is translucent it also
+    /// occludes content the surface was supposed to let through.
+    /// </remarks>
+    Style DefaultStyle { get; }
+
     /// <summary>Raw cell read / write at <c>(column, row)</c> — bypasses wide-cell handling and blending.</summary>
     Cell this[int column, int row] { get; set; }
 

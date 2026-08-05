@@ -174,6 +174,14 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>True when the view has zero area — no cells are addressable.</summary>
     public bool IsEmpty => Columns == 0 || Rows == 0;
 
+    /// <summary>
+    /// The blank style of the backing buffer — see <see cref="CellBuffer.DefaultStyle"/>. The view is
+    /// a coordinate / clip filter, not a separate state container, so it has no blank style of its
+    /// own. <see cref="Style.Default"/> on a default-constructed view, where there is no buffer to
+    /// ask (every operation on such a view is a safe no-op).
+    /// </summary>
+    public Style DefaultStyle => _buffer?.DefaultStyle ?? Style.Default;
+
     /// <summary>The view's rectangle in view-local coordinates: anchored at <c>(0, 0)</c>.</summary>
     public Rect Bounds => new(0, 0, Columns, Rows);
 
@@ -196,6 +204,31 @@ public readonly struct CellBufferView : ICellSurface
         => _buffer is not null && Contains(column, row)
                ? _buffer[column + OffsetColumn, row + OffsetRow]
                : default;
+
+    /// <summary>
+    /// The <see cref="Style"/> of the <see cref="CellKind.WideLeft"/> immediately left of the
+    /// view-local (<paramref name="column"/>, <paramref name="row"/>), or <see cref="Style.Default"/>
+    /// when there is no such cell.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately reads the BACKING buffer rather than the window: a continuation carries no style
+    /// of its own, so a copy that cuts a pair has to source the blank it leaves behind from the
+    /// leading half — and the cut is exactly what puts that half one column outside the view. The
+    /// result is a color, never a cell, so it can't smuggle content past the clip.
+    /// </remarks>
+    internal Style StyleOfLeadingHalf(int column, int row)
+    {
+        if (_buffer is null) return Style.Default;
+
+        int bufferColumn = column + OffsetColumn - 1;
+        int bufferRow = row + OffsetRow;
+
+        if (bufferColumn < 0 || bufferColumn >= _buffer.Columns || bufferRow < 0 || bufferRow >= _buffer.Rows)
+            return Style.Default;
+
+        var left = _buffer[bufferColumn, bufferRow];
+        return left.Kind == CellKind.WideLeft ? left.Style : Style.Default;
+    }
 
     // ---- Cursor pass-through ------------------------------------------------------------
 

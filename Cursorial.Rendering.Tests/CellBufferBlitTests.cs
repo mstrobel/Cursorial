@@ -114,6 +114,26 @@ public class CellBufferBlitTests
     }
 
     [Fact]
+    public void Blit_ContinuationWhoseLeadingHalfWasCut_KeepsThePairsBackground()
+    {
+        // The mirror of the case above: the copy's LEFT edge lands inside a wide pair, so the
+        // destination gets a continuation with no leading half and the indexer blanks it. A
+        // continuation carries no style of its own, so that blank would be a terminal-default hole
+        // in the middle of the pair's background unless the blit sources the leading half's style —
+        // which the cut has left one column outside the copied view.
+        var background = Color.FromRgb(90, 30, 30);
+        var source = new CellBuffer(6, 1);
+        source.Set(1, 0, "中", Style.Default.WithBackground(background));   // pair at columns 1-2
+
+        var destination = new CellBuffer(4, 1);
+        destination.Blit(source.View(new Rect(2, 0, 2, 1)), new Rect(0, 0, 2, 1)); // starts on the continuation
+
+        Assert.Equal(CellKind.Single, destination[0, 0].Kind);
+        Assert.True(string.IsNullOrEmpty(destination[0, 0].Grapheme));
+        Assert.Equal(background, destination[0, 0].Style.Background);
+    }
+
+    [Fact]
     public void Blit_WidePairAtTheRectEdge_DoesNotSpillPastTheRect()
     {
         // The indexer's own degrade fires only at the BUFFER edge. When the copied rectangle ends

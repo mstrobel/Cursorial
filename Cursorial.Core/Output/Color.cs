@@ -401,6 +401,64 @@ public readonly record struct Color : ISpanFormattable
     }
 
     /// <summary>
+    /// Compose <paramref name="source"/> over <paramref name="backdrop"/> the way <see cref="Composite"/>
+    /// does, but <b>preserving the resulting alpha</b> instead of flattening it to 255 — Porter-Duff
+    /// "over" in premultiplied sRGB, matching <see cref="Lerp"/>'s premultiplied convention.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Use this when compositing into an <i>intermediate</i> surface that will itself be composited
+    /// later. <see cref="Composite"/> is correct for the terminal's final target, where output is
+    /// fundamentally opaque, but it reports every non-degenerate result as alpha 255; running two
+    /// translucent colors through it turns them opaque, so a translucent element stacked inside an
+    /// intermediate surface would lose its transparency before the surface is blended down.
+    /// </para>
+    /// <para>
+    /// <b>Reduction identity:</b> when <paramref name="backdrop"/> is fully opaque this is bit-identical
+    /// to <see cref="Composite"/>. The backdrop's contribution weight <c>ib</c> collapses to exactly
+    /// <c>255 - source.Alpha</c>, the output alpha to exactly 255, and the channel expression to
+    /// <see cref="Composite"/>'s. That makes adopting this at an already-opaque destination a provable
+    /// no-op, so it is safe to route existing opaque paths through it.
+    /// </para>
+    /// <para>
+    /// Non-RGB operands and the transparent short-circuits behave exactly as in <see cref="Composite"/>,
+    /// for the same reasons.
+    /// </para>
+    /// </remarks>
+    public static Color CompositeOver(Color source, Color backdrop, IBlendingMode mode)
+    {
+        if (source.IsTransparent)
+            return backdrop;
+
+        if (backdrop.IsTransparent)
+            return source;
+
+        // Every one of these lands on a fully opaque result, which is precisely what Composite
+        // computes — so there is no alpha to preserve and no reason to pay for the general path.
+        // (The opaque-backdrop case agrees with the general path exactly; see the reduction identity.)
+        if (source.Kind != ColorKind.Rgb || backdrop.Kind != ColorKind.Rgb || source.Alpha == 255 || backdrop.Alpha == 255)
+            return Composite(source, backdrop, mode);
+
+        var blended = mode.Blend(source, backdrop);
+
+        int a = source.Alpha;
+
+        // The backdrop's share of the output, `backdrop.Alpha * (1 - a)`, in 0-255 units. Rounding
+        // it once and reusing the same value in both the numerator and `ao` keeps the un-premultiply
+        // consistent: the channel numerator is then bounded by 255 * ao, so no channel can exceed 255
+        // and no clamp is needed. Computing `ao` from a truncated share but the channels from an
+        // untruncated one would overflow a byte at low alphas (255/255 over 1/1 would land at 509).
+        int ib = (backdrop.Alpha * (255 - a) + 127) / 255;
+        int ao = a + ib;
+
+        return FromRgba(
+            (byte) ((blended.Red * a + backdrop.Red * ib) / ao),
+            (byte) ((blended.Green * a + backdrop.Green * ib) / ao),
+            (byte) ((blended.Blue * a + backdrop.Blue * ib) / ao),
+            (byte) ao);
+    }
+
+    /// <summary>
     /// Interpolate from <paramref name="from"/> to <paramref name="to"/> at <paramref name="t"/> in
     /// <b>premultiplied sRGB</b> — the project-wide gradient/animation convention. RGB channels are
     /// premultiplied by alpha before blending and un-premultiplied afterward, so a fade toward a

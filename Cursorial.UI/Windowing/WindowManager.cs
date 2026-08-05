@@ -88,7 +88,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     /// null <see cref="LayerCellSample.Cell"/> when the coordinate falls outside that layer's footprint. Useful
     /// for diagnosing overlay compositing — e.g. a wide glyph on a lower layer whose continuation a higher layer
     /// covers, the mechanism behind an overlay bleed. Reflects the surfaces' last-rendered scenes (it re-collects
-    /// their layers) and does not run a fresh render pass, so call it after a settled frame.
+    /// their layers) and does not run a fresh render pass, so call it after a settled frame. Sampled cells are
+    /// passed through <see cref="SceneCompositor.ResolveSurfaceCell"/>, so a layer backed by an opacity-group
+    /// surface reports the cell it contributes to the screen rather than the surface's internal encoding of it.
     /// </summary>
     public IReadOnlyList<LayerCellSample> SampleCell(int column, int row)
     {
@@ -121,7 +123,14 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
                 samples.Add(
                     new LayerCellSample(j,
                                         layer.Parameters,
-                                        layer.Scene.GetCell(localColumn, localRow),
+                                        // A layer's scene may be an opacity-group SURFACE, which stores the
+                                        // compositor's replacing-blank marker where the flat path stores a
+                                        // plain blank. Reporting the raw cell would show a grapheme on a cell
+                                        // the screen shows empty — the one place a compositor-internal signal
+                                        // escapes into a public API. Resolving is unconditional and safe: the
+                                        // marker is a noncharacter, so a scene that is not a surface cannot
+                                        // contain a cell equal to it.
+                                        SceneCompositor.ResolveSurfaceCell(layer.Scene.GetCell(localColumn, localRow)),
                                         descriptions[j])
                 );
             }
@@ -1602,6 +1611,20 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             surface.RenderTree.Capabilities = capabilities;
             surface.InvalidateAll();
         }
+
+        ResetCompositor();
+    }
+
+    /// <summary>
+    /// Re-composites every surface from scratch after a change to the <b>composition model</b> itself
+    /// rather than to any surface's content — today, <see cref="UIApplication.TranslucencyEnabled"/>
+    /// materialising or releasing opacity groups, which moves the emitted layer count the compositor
+    /// reads as its full-recomposite signal.
+    /// </summary>
+    internal void InvalidateComposition()
+    {
+        foreach (var surface in _surfaces)
+            surface.InvalidateAll();
 
         ResetCompositor();
     }

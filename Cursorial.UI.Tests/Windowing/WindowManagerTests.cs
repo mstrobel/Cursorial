@@ -1,6 +1,8 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
+using Cursorial.Drawing;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
@@ -68,5 +70,52 @@ public sealed class WindowManagerTests
 
         Assert.Empty(host.Application.WindowManager!.Surfaces);
         Assert.Null(host.Application.WindowManager!.RootSurface);
+    }
+
+    /// <summary>
+    /// <see cref="WindowManager.SampleCell"/> reports what is on the screen, not the compositor's internal
+    /// encoding of it. A layer whose scene is an opacity-group <b>surface</b> stores a replacing blank — a
+    /// blank that must REPLACE rather than merge when the surface is blended down — as a private marker
+    /// grapheme; raw, the inspector would show a glyph on a cell the terminal draws empty.
+    /// </summary>
+    [Fact]
+    public void SampleCell_ResolvesAGroupSurfacesReplacingBlank()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 12) });
+        host.ShowRoot(new UIControls.StackPanel());
+        Assert.True(host.RunUntilIdle());
+
+        var wm = host.Application.WindowManager!;
+        var surface = Assert.Single(wm.Surfaces);
+
+        var layers = new List<SceneLayer>();
+        surface.CollectLayers(layers);
+        var zone = layers[0];
+
+        // Make that zone's scene a group surface carrying the marker: a wide glyph cut in half by its
+        // member's clip degrades to a blank that still has to replace, which intermediate mode marks.
+        var glyphStyle = Cursorial.Output.Style.Default
+                                  .WithForeground(Color.FromRgb(0, 0, 255))
+                                  .WithBackground(Color.FromRgb(255, 0, 0));
+
+        using var member = Scene.Create(zone.Scene.Columns, zone.Scene.Rows);
+        member.Draw(ctx => ctx.Set(0, 0, "漢", glyphStyle));
+        zone.Scene.CompositeInto(SceneCompositor.ForIntermediate(),
+                                 [new SceneLayer(member, new CompositeParameters(clip: new Rect(0, 0, 1, 1)))]);
+
+        Assert.Equal("\uFFFF", zone.Scene.GetCell(0, 0).Grapheme);   // the scene really does hold the marker
+
+        var samples = wm.SampleCell(zone.Parameters.OffsetColumn, zone.Parameters.OffsetRow);
+
+        Assert.All(samples, sample => Assert.NotEqual("\uFFFF", sample.Cell?.Grapheme));
+
+        // Blank, but with the cut glyph's own colors — the sample is the cell the flat path would have
+        // written, which is exactly what the composition inspector is for.
+        Assert.NotNull(samples[0].Cell);
+        var cell = samples[0].Cell!.Value;
+        Assert.Null(cell.Grapheme);
+        Assert.Equal(CellKind.Single, cell.Kind);
+        Assert.Equal(Color.FromRgb(255, 0, 0), cell.Style.Background);
+        Assert.Equal(Color.FromRgb(0, 0, 255), cell.Style.Foreground);
     }
 }

@@ -255,13 +255,32 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         while (enumerator.MoveNext())
                         {
                             var grapheme = enumerator.Current;
+
+                            // The cursor advances by the grapheme's own LAYOUT width, never by what the
+                            // surface accepted. Set returns 0 for a cell outside the view, and a
+                            // re-based view (WithOrigin, i.e. any negative push translate — a scrolled
+                            // document, a negatively-margined element painting inline in its parent's
+                            // zone) puts the run's leading cells outside it. Advancing by the return
+                            // there stalls the cursor on the first clipped cell and every remaining
+                            // grapheme retries that same cell, swallowing the entire run instead of
+                            // painting its visible tail. It also decorrelates the brush resolver's
+                            // logical offset below from the actual column.
+                            int width = GraphemeWidth.ClusterWidth(grapheme);
+                            if (width < 1) width = 1;
+
                             // Resolver (when present) recolors per cell. Width is grapheme-driven, so a
                             // substituted style is layout-safe.
                             var style = resolver?.Invoke(
                                             new BrushedTextContext(text.Style, cursor, runRow, blockRect,
                                                                    text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag))
                                         ?? text.Style;
-                            int width = buffer.Set(cursor, runRow, grapheme.ToString(), style);
+
+                            // The one case where the surface knows better: a wide glyph at the window's
+                            // right edge degrades to a blank single, and the next grapheme belongs in the
+                            // column it did not occupy.
+                            int written = buffer.Set(cursor, runRow, grapheme.ToString(), style);
+                            if (written > 0) width = written;
+
                             cursor += width;
                         }
                         break;

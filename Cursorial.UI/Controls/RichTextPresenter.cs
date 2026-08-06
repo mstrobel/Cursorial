@@ -323,7 +323,15 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         return text;
     }
 
-    private Rect ResolveBounds(int? availableColumns)
+    /// <summary>
+    /// The column / row budget to format against. A <see cref="Size"/>, not a <see cref="Rect"/>: every
+    /// caller reads only the extents, and narrowing <see cref="UIElement.Bounds"/> through
+    /// <c>LayoutRect.ToRect()</c> to carry an origin nobody looks at made a negative left/top margin
+    /// throw. <c>Bounds</c> is a <c>LayoutRect</c> exactly so it can hold a negative origin (LD19);
+    /// <c>ToRect</c> is the narrowing affordance for a caller that has PROVEN a non-negative one, and
+    /// this is not such a caller.
+    /// </summary>
+    private Size ResolveBounds(int? availableColumns)
     {
         Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
 
@@ -344,11 +352,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         var bounds = Bounds;
         var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
 
-        return (bounds with
-                {
-                    Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                    Rows = rows
-                }).ToRect();
+        return new Size(Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent), rows);
     }
 
     private RichText ParseRichText(string s)

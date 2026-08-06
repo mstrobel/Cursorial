@@ -96,35 +96,48 @@ public sealed class MonospaceFont : IGlyphFont
 
         // Out-of-bounds anchor: nothing to paint. Don't throw; consumers should be free to ask
         // a font to "paint at a position that's now off-screen after a resize."
-        if (row < 0 || row >= buffer.Rows || column >= buffer.Columns) return Size.Empty;
+        //
+        // The edges are the view's LOCAL addressable window, not [0, Columns) × [0, Rows): a view
+        // re-based by WithOrigin (any negative push translate — a scrolled editor, a negatively
+        // margined element painting inline in its parent's zone) moves that window in local space,
+        // and the anchor this face is asked to paint at is documented as negative-capable.
+        if (row < buffer.LocalRowStart || row >= buffer.LocalRowEnd || column >= buffer.LocalColumnEnd)
+            return Size.Empty;
 
         int col = column;
         var remaining = text;
 
         while (!remaining.IsEmpty)
         {
-            if (col >= buffer.Columns) break;
+            if (col >= buffer.LocalColumnEnd) break;
 
             int len = StringInfo.GetNextTextElementLength(remaining);
             if (len <= 0) break;
             var cluster = remaining[..len];
             remaining = remaining[len..];
 
-            if (col < 0)
+            int width = GraphemeWidth.ClusterWidth(cluster);
+            if (width < 1) width = 1;
+
+            // Left of the window: consume the cluster and advance by its LAYOUT width to keep the
+            // painted-vs-asked accounting honest — and, more importantly, to keep the run moving.
+            // Advancing by Set's return instead would stall on the first rejected cell (Set returns
+            // 0 there) and every remaining cluster would retry that cell, dropping the whole run
+            // rather than painting its visible tail.
+            if (col >= buffer.LocalColumnStart)
             {
-                // Could happen if caller passed a negative anchor — advance until we're in
-                // bounds. We still consume clusters to keep the painted-vs-asked accounting
-                // honest.
-                col += GraphemeWidth.ClusterWidth(cluster);
-                continue;
+                // CellBuffer.Set takes a string; materialize the cluster once per call.
+                // For most graphemes this is 1–4 chars — short enough that an alternative
+                // span-based Set is a future micro-optimization.
+                var clusterStyle = styleProvider?.Invoke(col, row) ?? style;
+                int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
+
+                // The one case where the surface knows better than the layout: a wide glyph at the
+                // window's right edge degrades to a blank single, freeing the column it did not take.
+                if (written > 0) width = written;
             }
 
-            // CellBuffer.Set takes a string; materialize the cluster once per call.
-            // For most graphemes this is 1–4 chars — short enough that an alternative
-            // span-based Set is a future micro-optimization.
-            var clusterStyle = styleProvider?.Invoke(col, row) ?? style;
-            int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
-            col += written;
+            col += width;
         }
 
         return new Size(Math.Max(0, col - column), 1);

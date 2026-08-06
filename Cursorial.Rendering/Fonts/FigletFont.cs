@@ -222,7 +222,13 @@ public sealed class FigletFont : IGlyphFont
     private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider provider)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
-        if (row < 0 || row >= buffer.Rows || column >= buffer.Columns) return Size.Empty;
+
+        // The block's own rows run [row, row + Height); it is off-surface only when its FIRST row
+        // already sits past the window's bottom (a block whose top rows are above the window still
+        // has visible rows below). The edges are the view's LOCAL addressable window rather than
+        // [0, Columns) × [0, Rows) — WithOrigin moves that window in local space, and this face's
+        // anchor is documented as negative-capable.
+        if (row >= buffer.LocalRowEnd || column >= buffer.LocalColumnEnd) return Size.Empty;
 
         int caret = column;
         FigletGlyph? prev = null;
@@ -238,7 +244,7 @@ public sealed class FigletFont : IGlyphFont
         }
 
         int painted = Math.Max(0, caret - column);
-        int height = Math.Min(Height, Math.Max(0, buffer.Rows - row));
+        int height = Math.Min(Height, Math.Max(0, buffer.LocalRowEnd - row));
 
         return new Size(painted, height);
     }
@@ -250,8 +256,13 @@ public sealed class FigletFont : IGlyphFont
         for (int r = 0; r < lines.Length; r++)
         {
             int targetRow = row + r;
-            if (targetRow < 0) continue;
-            if (targetRow >= buffer.Rows) break;
+
+            // Rows above the window are skipped, rows below end the glyph. Both edges are the view's
+            // LOCAL addressable window: WithOrigin re-bases the origin away from the window, so the
+            // unpaintable rows are at local coordinates outside [LocalRowStart, LocalRowEnd), which
+            // on a re-based view is NOT [0, Rows).
+            if (targetRow < buffer.LocalRowStart) continue;
+            if (targetRow >= buffer.LocalRowEnd) break;
 
             var line = lines[r];
             var targetCol = column;
@@ -262,9 +273,17 @@ public sealed class FigletFont : IGlyphFont
             {
                 var grapheme = e.GetCurrentGrapheme();
                 var width = GraphemeWidth.StringWidth(grapheme);
-                
-                if (targetCol < 0) continue;
-                if (targetCol >= buffer.Columns) break;
+
+                if (targetCol >= buffer.LocalColumnEnd) break;
+
+                // Left of the window: skip the cell but ADVANCE the caret. Skipping without advancing
+                // pins the caret on the first clipped column, so every later grapheme in the line is
+                // skipped too and the whole line is lost instead of its visible tail being painted.
+                if (targetCol < buffer.LocalColumnStart)
+                {
+                    targetCol += width;
+                    continue;
+                }
 
                 char ch = grapheme[0];
 
@@ -292,7 +311,14 @@ public sealed class FigletFont : IGlyphFont
                 // a correct overlap computation).
                 if (cluster != " " && cluster.Length == 1)
                 {
-                    var existing = buffer[targetCol, targetRow];
+                    // Read, not the indexer: the indexer VALIDATES and throws, and its contract is
+                    // "the caller has proven this is in range". The guards above prove the cell is
+                    // inside the window, but they used to be written against [0, Columns) — which is
+                    // the wrong interval on a re-based view, so a negative push translate turned this
+                    // look-back into an ArgumentOutOfRangeException thrown out of the render pass.
+                    // Read is the non-throwing form and yields a blank outside the window, which is
+                    // exactly the "nothing to smush with" answer.
+                    var existing = buffer.Read(targetCol, targetRow);
                     if (existing.Grapheme is { Length: > 0 and 1 } prev &&
                         prev[0] is var prevCh &&
                         prevCh != ' ' &&

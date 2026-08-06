@@ -145,11 +145,33 @@ public readonly struct CellBufferView : ICellSurface
     // The addressable local range is [LocalColumnStart, LocalColumnEnd) × [LocalRowStart, LocalRowEnd).
     // For all non-re-based views these are 0 / Columns / 0 / Rows, so every check below reduces to the
     // historical form. On a re-based view they may start anywhere (including negative).
+    //
+    // PUBLIC because a painter that does its own bounds arithmetic — a glyph font walking a run, a
+    // formatted document walking a paragraph — cannot express "am I past the right edge?" in terms of
+    // Columns/Rows on a re-based view: WithOrigin moves the window in local space, so [0, Columns) is
+    // simply the wrong interval. Bounds is documented as not meaningful on a re-based view; this is
+    // what to use instead. (Set/Write/the fills already clip themselves — these are for the painter's
+    // own loop bounds, not for clipping.)
 
-    private int LocalColumnStart => _windowColumn - OffsetColumn;
-    private int LocalRowStart => _windowRow - OffsetRow;
-    private int LocalColumnEnd => _windowColumn - OffsetColumn + Columns;
-    private int LocalRowEnd => _windowRow - OffsetRow + Rows;
+    /// <summary>
+    /// First addressable local column: the window's left edge in this view's coordinates. <c>0</c> on
+    /// every view except one re-based by <see cref="WithOrigin"/>, where it may be any value —
+    /// including negative (content whose origin sits right of the window's left edge).
+    /// </summary>
+    public int LocalColumnStart => _windowColumn - OffsetColumn;
+
+    /// <inheritdoc cref="LocalColumnStart"/>
+    public int LocalRowStart => _windowRow - OffsetRow;
+
+    /// <summary>
+    /// One past the last addressable local column. <see cref="Columns"/> on every view except one
+    /// re-based by <see cref="WithOrigin"/>, where it is <see cref="LocalColumnStart"/> +
+    /// <see cref="Columns"/>.
+    /// </summary>
+    public int LocalColumnEnd => _windowColumn - OffsetColumn + Columns;
+
+    /// <inheritdoc cref="LocalColumnEnd"/>
+    public int LocalRowEnd => _windowRow - OffsetRow + Rows;
 
     /// <summary>
     /// The underlying buffer. Internal so external paint code can't escape the view's clip

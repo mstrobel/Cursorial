@@ -226,7 +226,14 @@ public sealed class FigletPresenter : DrawnContentPresenter
         return cs.RealizedText;
     }
 
-    private Rect ResolveBounds(int? availableColumns)
+    /// <summary>
+    /// The column / row budget to format against. A <see cref="Size"/>, not a <see cref="Rect"/>: the
+    /// only caller reads <c>Columns</c>, so clamping the origin to zero just to be able to narrow
+    /// <see cref="UIElement.Bounds"/> through <c>LayoutRect.ToRect()</c> carried a coordinate nobody
+    /// looks at. (<c>Bounds</c> is a <c>LayoutRect</c> precisely so it can hold the negative origin a
+    /// negative left/top margin produces — LD19.)
+    /// </summary>
+    private Size ResolveBounds(int? availableColumns)
     {
         if (availableColumns is null)
         {
@@ -245,15 +252,8 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
         var bounds = Bounds;
 
-        bounds = bounds with
-                 {
-                     Column = Math.Max(0, bounds.Column),
-                     Row = Math.Max(0, bounds.Row),
-                     Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                     Rows = Math.Min(bounds.Rows, LayoutMath.MaxExtent)
-                 };
-
-        return bounds.ToRect();
+        return new Size(Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
+                        Math.Min(bounds.Rows, LayoutMath.MaxExtent));
     }
 
     private CellStyle ResolveStyle()

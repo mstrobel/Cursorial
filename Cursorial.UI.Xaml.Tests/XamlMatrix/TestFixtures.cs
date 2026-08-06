@@ -7,6 +7,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Markup;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Data;
 using Cursorial.UI.Xaml;

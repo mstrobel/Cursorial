@@ -2,6 +2,7 @@ using Cursorial.Animation;
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.UI.Controls;
 

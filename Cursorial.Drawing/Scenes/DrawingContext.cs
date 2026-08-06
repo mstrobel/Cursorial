@@ -7,6 +7,7 @@ using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
 

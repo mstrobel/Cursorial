@@ -3,6 +3,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.UI.Controls;

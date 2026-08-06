@@ -5,6 +5,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 using CellStyle = Cursorial.Output.Style;

@@ -1,6 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Markup;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;
 

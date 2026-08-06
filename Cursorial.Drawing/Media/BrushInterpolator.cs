@@ -1,5 +1,6 @@
 using Cursorial.Animation;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Drawing.Media;
 

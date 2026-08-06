@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.UI.DataViews;
@@ -15,24 +16,24 @@ namespace Cursorial.UI.DataViews;
 /// </summary>
 public sealed class DataGridEditBar : UIElement
 {
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> BackgroundProperty =
-        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(Background));
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        UIProperty.Register<DataGridEditBar, IBrush?>(nameof(Background));
 
     /// <summary>The muted body ink ("editing …", "commit", the · separators).</summary>
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> TextBrushProperty =
-        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(TextBrush));
+    public static readonly StyledProperty<IBrush?> TextBrushProperty =
+        UIProperty.Register<DataGridEditBar, IBrush?>(nameof(TextBrush));
 
     /// <summary>The accented key-name ink (Enter / Esc / Tab — the mockup's <c>.k</c>).</summary>
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> KeyBrushProperty =
-        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(KeyBrush));
+    public static readonly StyledProperty<IBrush?> KeyBrushProperty =
+        UIProperty.Register<DataGridEditBar, IBrush?>(nameof(KeyBrush));
 
     /// <summary>The ✎ pending-edit indicator ink (the mockup's amber <c>ind-edit</c>).</summary>
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> IndicatorBrushProperty =
-        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(IndicatorBrush));
+    public static readonly StyledProperty<IBrush?> IndicatorBrushProperty =
+        UIProperty.Register<DataGridEditBar, IBrush?>(nameof(IndicatorBrush));
 
     /// <summary>The ✕ validation-error ink (§10.2 — the danger tint the commit veto message wears).</summary>
-    public static readonly StyledProperty<Cursorial.Drawing.Media.IBrush?> ErrorBrushProperty =
-        UIProperty.Register<DataGridEditBar, Cursorial.Drawing.Media.IBrush?>(nameof(ErrorBrush));
+    public static readonly StyledProperty<IBrush?> ErrorBrushProperty =
+        UIProperty.Register<DataGridEditBar, IBrush?>(nameof(ErrorBrush));
 
     static DataGridEditBar()
     {
@@ -40,11 +41,11 @@ public sealed class DataGridEditBar : UIElement
                                        IndicatorBrushProperty, ErrorBrushProperty);
     }
 
-    public Cursorial.Drawing.Media.IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? KeyBrush { get => GetValue(KeyBrushProperty); set => SetValue(KeyBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? IndicatorBrush { get => GetValue(IndicatorBrushProperty); set => SetValue(IndicatorBrushProperty, value); }
-    public Cursorial.Drawing.Media.IBrush? ErrorBrush { get => GetValue(ErrorBrushProperty); set => SetValue(ErrorBrushProperty, value); }
+    public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
+    public IBrush? TextBrush { get => GetValue(TextBrushProperty); set => SetValue(TextBrushProperty, value); }
+    public IBrush? KeyBrush { get => GetValue(KeyBrushProperty); set => SetValue(KeyBrushProperty, value); }
+    public IBrush? IndicatorBrush { get => GetValue(IndicatorBrushProperty); set => SetValue(IndicatorBrushProperty, value); }
+    public IBrush? ErrorBrush { get => GetValue(ErrorBrushProperty); set => SetValue(ErrorBrushProperty, value); }
 
     private DataGrid? _owner;
 
@@ -107,7 +108,7 @@ public sealed class DataGridEditBar : UIElement
     }
 
     /// <summary>Draws one segment and returns the advanced x (clipped by the band's own boundary).</summary>
-    private static int Draw(RenderContext context, int x, string text, Cursorial.Drawing.Media.IBrush? brush)
+    private static int Draw(RenderContext context, int x, string text, IBrush? brush)
     {
         if (brush is not null)
             context.DrawText(x, 0, text, brush);

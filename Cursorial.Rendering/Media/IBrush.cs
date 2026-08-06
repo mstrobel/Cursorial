@@ -1,7 +1,6 @@
 using Cursorial.Output;
-using Cursorial.Rendering;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A color <em>source</em> the drawing layer samples per cell. Implementations resolve a solid color,
@@ -13,7 +12,7 @@ namespace Cursorial.Drawing.Media;
 /// Brushes are immutable definitions; <see cref="ColorAt"/> is pure and allocation-free, safe to call
 /// once per cell from a fill loop and safe for repeated, potentially concurrent invocation. There is no
 /// implicit <see cref="Color"/> → <see cref="IBrush"/> conversion (interfaces can't be conversion
-/// targets); use <see cref="SolidColorBrush"/> (which has an implicit conversion from
+/// targets); use <c>SolidColorBrush</c> (which has an implicit conversion from
 /// <see cref="Color"/>) or the <see cref="Color"/> overloads on the drawing methods.
 /// </remarks>
 public interface IBrush

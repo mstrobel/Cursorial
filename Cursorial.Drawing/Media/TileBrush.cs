@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Drawing.Media;
 

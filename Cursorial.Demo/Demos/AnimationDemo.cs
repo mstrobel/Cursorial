@@ -6,6 +6,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
 

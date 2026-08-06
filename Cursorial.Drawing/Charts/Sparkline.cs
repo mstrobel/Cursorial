@@ -1,6 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Drawing.Charts;
 

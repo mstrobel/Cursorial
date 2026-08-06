@@ -1,4 +1,5 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.UI.Themes;
 
@@ -8,7 +9,7 @@ namespace Cursorial.UI.Themes;
 /// <para>
 /// <b>Cell-faithful role-token spine (design doc §11.8a; <c>default-theme-adoption-spec.md</c>):</b> the
 /// default theme is <i>fill-bounded</i>, not line-bounded. Control identity is carried by these whole-cell
-/// fill/foreground role tokens — never by stroked borders. Each is a <see cref="Cursorial.Drawing.Media.IBrush"/>
+/// fill/foreground role tokens — never by stroked borders. Each is a <see cref="IBrush"/>
 /// authored per <c>(ThemeBase, ColorDepth)</c> variant in <see cref="CursorialTheme"/>; control themes
 /// <see cref="ResourceReference"/> into them via <see cref="Style.SetResource{T}"/>, so overriding one token at a
 /// nearer chain scope — or a <c>RequestedThemeBase</c>/<c>RequestedColorTier</c> flip — re-skins every

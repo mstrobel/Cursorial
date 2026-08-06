@@ -7,6 +7,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

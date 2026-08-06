@@ -7,6 +7,7 @@ using Cursorial.UI.Themes;
 
 using CellStyle = Cursorial.Output.Style;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
 

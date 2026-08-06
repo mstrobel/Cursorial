@@ -23,13 +23,17 @@ public sealed class XmlnsDefinitionDiscoveryTests
         Assert.Contains("Cursorial.UI.Themes", namespaces);
         Assert.Contains("Cursorial.Drawing.Media", namespaces);
         Assert.Contains("Cursorial.Rendering.Media", namespaces);
+        Assert.Contains("Cursorial.Text", namespaces);
+        Assert.Contains("Cursorial.Media", namespaces);
     }
 
     [Theory] // Types in each discovered namespace resolve under the default URI (incl. the cross-assembly Drawing decl).
-    [InlineData("Button", "Cursorial.UI.Controls.Button")]              // Cursorial.UI declaration
-    [InlineData("IBrush", "Cursorial.Rendering.Media.IBrush")] // Cursorial.Drawing declaration
+    [InlineData("Button", "Cursorial.UI.Controls.Button")]                     // Cursorial.UI declaration
+    [InlineData("Color", "Cursorial.Media.Color")]                             // Cursorial.Core declaration
+    [InlineData("TextWeight", "Cursorial.Text.TextWeight")]                    // Cursorial.Core declaration
+    [InlineData("IBrush", "Cursorial.Rendering.Media.IBrush")]                 // Cursorial.Rendering declaration
     [InlineData("SolidColorBrush", "Cursorial.Drawing.Media.SolidColorBrush")] // Cursorial.Drawing declaration
-    [InlineData("ThemeKeys", "Cursorial.UI.Themes.ThemeKeys")]          // Cursorial.UI.Themes declaration
+    [InlineData("ThemeKeys", "Cursorial.UI.Themes.ThemeKeys")]                 // Cursorial.UI.Themes declaration
     public void DiscoveredNamespace_ResolvesTypes(string localName, string expectedFullName)
     {
         var context = new XamlSchemaContext();

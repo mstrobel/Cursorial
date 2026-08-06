@@ -1,3 +1,6 @@
+using Cursorial.Media;
+using Cursorial.Text;
+
 namespace Cursorial.Output;
 
 /// <summary>

@@ -1,6 +1,7 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.Output;
-using Cursorial.UI.Controls;
+using Cursorial.Text;
 
 namespace Cursorial.UI.Themes;
 

@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.Animation;
 

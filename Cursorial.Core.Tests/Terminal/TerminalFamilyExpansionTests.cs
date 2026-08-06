@@ -1,4 +1,3 @@
-using Cursorial.Output;
 using Cursorial.Terminal;
 
 // ReSharper disable MethodHasAsyncOverload

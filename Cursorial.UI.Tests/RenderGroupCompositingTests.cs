@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Buffers;
 
 using Cursorial.Drawing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;

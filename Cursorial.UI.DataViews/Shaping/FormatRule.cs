@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.UI.DataViews.Shaping;
 
@@ -8,7 +8,7 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// The style verdict one formatting rule produces for a cell (or, for a row rule, a whole row) —
 /// design doc §2.7. A small value struct so band-fill evaluation allocates nothing; the painter
 /// folds it over the theme's resting brushes at draw time (an unset lane falls through to the
-/// theme). Colors are <see cref="Cursorial.Output.Color"/> — the Core value primitive, not a UI
+/// theme). Colors are <see cref="Color"/> — the Core value primitive, not a UI
 /// brush — so the rule model stays presentation-free and headless-testable (invariant 1's spirit:
 /// no UI machinery; Color is pure data). <see cref="Icon"/> is an optional glyph the painter
 /// prefixes at the cell's left edge wearing the verdict's foreground (the editor's ▲●▼ icon sets).

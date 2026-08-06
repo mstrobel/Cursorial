@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI.DataViews.Shaping;
 
 // ReSharper disable InconsistentNaming

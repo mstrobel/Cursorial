@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering;
 

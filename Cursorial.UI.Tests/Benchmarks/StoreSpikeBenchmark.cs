@@ -1,6 +1,8 @@
 using System.Diagnostics;
-using Cursorial.Output;
+
+using Cursorial.Media;
 using Cursorial.Tests.UI.PrecedenceMatrix;
+using Cursorial.Text;
 using Cursorial.UI;
 using Xunit.Abstractions;
 
@@ -245,7 +247,7 @@ public class StoreSpikeBenchmark(ITestOutputHelper output)
         for (var i = 0; i < count; i += 3)
         {
             Cursorial.UI.Controls.TextElement.SetInverse(blocks[i], true);
-            Cursorial.UI.Controls.TextElement.SetTextWeight(blocks[i], Cursorial.UI.Controls.TextWeight.Bold);
+            Cursorial.UI.Controls.TextElement.SetTextWeight(blocks[i], TextWeight.Bold);
         }
 
         long warmSink = 0;

@@ -1666,7 +1666,7 @@ public class AnimationTrack<T> : AnimationTrack
     public IList<Keyframe<T>>? Keyframes { get; set; }
     public IAnimation<T>? Source { get; set; }         // code-built escape hatch; Repeat/AutoReverse wrap it uniformly
 }
-// Sealed XAML-friendly tracks: DoubleTrack, Int32Track, ColorTrack (Cursorial.Output.Color),
+// Sealed XAML-friendly tracks: DoubleTrack, Int32Track, ColorTrack (Cursorial.Media.Color),
 // BrushTrack (allocates per sample), RectTrack, SizeTrack, MarginsTrack.
 
 public sealed class Storyboard

@@ -1,7 +1,7 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

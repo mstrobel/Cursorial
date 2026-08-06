@@ -4,9 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Dialogs.Themes;

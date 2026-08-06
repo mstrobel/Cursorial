@@ -1,5 +1,4 @@
 using Cursorial.UI.Data;
-using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Configuration;
 

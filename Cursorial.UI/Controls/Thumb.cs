@@ -1,6 +1,6 @@
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Text;
 using Cursorial.UI.Input;
 
 using CellStyle = Cursorial.Output.Style;

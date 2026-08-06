@@ -1,5 +1,3 @@
-using System.IO;
-
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.Text;

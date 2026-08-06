@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.UI.Controls;
 
 using Microsoft.CodeAnalysis.CSharp;
@@ -326,7 +327,7 @@ namespace GenApp { public partial class AppAmbView : StackPanel { public AppAmbV
             new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(20, 5) });
         try
         {
-            var appResource = new Cursorial.Drawing.Media.SolidColorBrush { Color = Cursorial.Output.Colors.Red };
+            var appResource = new Cursorial.Drawing.Media.SolidColorBrush { Color = Colors.Red };
             host.Application.Resources["AppKey"] = appResource;
 
             var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.AppAmbView")!)!;

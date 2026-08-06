@@ -1,5 +1,5 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI.Controls;
 
 using Microsoft.CodeAnalysis.CSharp;

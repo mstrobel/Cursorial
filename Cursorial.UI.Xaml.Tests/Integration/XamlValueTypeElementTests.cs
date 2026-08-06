@@ -1,7 +1,5 @@
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
-
+using Cursorial.Media;
 using Cursorial.UI.Xaml;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;

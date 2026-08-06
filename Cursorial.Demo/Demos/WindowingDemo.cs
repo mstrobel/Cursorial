@@ -1,6 +1,4 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

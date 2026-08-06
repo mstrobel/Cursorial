@@ -1,4 +1,3 @@
-using Cursorial.Gallery.ViewModels;
 using Cursorial.UI.Themes;
 
 namespace Cursorial.Gallery.Infrastructure;

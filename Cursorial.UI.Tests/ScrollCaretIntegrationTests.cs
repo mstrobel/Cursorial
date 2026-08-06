@@ -1,4 +1,6 @@
 using System.Buffers;
+
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;

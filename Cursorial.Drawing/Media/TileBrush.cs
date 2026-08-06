@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
 using Cursorial.Rendering.Media;

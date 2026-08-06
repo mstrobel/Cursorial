@@ -1,15 +1,9 @@
-using System;
-using System.IO;
-using System.Linq;
-
 using Cursorial.Drawing.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 using Cursorial.UI.Xaml;
-
-using Xunit;
 
 namespace Cursorial.Tests.UI.Xaml.Integration;
 

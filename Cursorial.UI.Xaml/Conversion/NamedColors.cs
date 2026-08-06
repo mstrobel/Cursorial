@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
@@ -11,13 +11,13 @@ using Cursorial.Rendering.Media;
 namespace Cursorial.UI.Xaml;
 
 /// <summary>
-/// The named-color lookup (matrix XD13): a name resolves to the matching <c>Cursorial.Output.Colors</c>
+/// The named-color lookup (matrix XD13): a name resolves to the matching <c>Cursorial.Media.Colors</c>
 /// entry — the <b>ANSI palette</b> color, not a web RGB value. Built once by reflecting the public
 /// static <c>Color</c> fields/properties of <c>Colors</c>; case-insensitive.
 /// </summary>
 internal static class NamedColors
 {
-    [RequiresUnreferencedCode("Reflects the public static Color members of Cursorial.Output.Colors.")]
+    [RequiresUnreferencedCode("Reflects the public static Color members of Cursorial.Media.Colors.")]
     private static Dictionary<string, Color> Build()
     {
         var table = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);

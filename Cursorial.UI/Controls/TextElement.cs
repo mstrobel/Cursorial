@@ -1,50 +1,13 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Data;
 
 using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.Controls;
-
-/// <summary>
-/// The text weight axis (proposal-TextAttributes-decomposition §1). One axis, three values — Bold
-/// and Faint share the terminal's SGR 22 reset, so they are alternatives on a single dial, not
-/// independent flags: mutual exclusion by construction, and a weight conflict ("disabled says
-/// Faint, heading says Bold") arbitrates deterministically through the lattice like any
-/// single-valued property. The axis of WPF's <c>FontWeight</c> / CSS <c>font-weight</c> — not the
-/// type (no font-object model, no 100–900 numeric weights; the deviated name signals the deviated
-/// domain, the design doc's "no font types" pin refined).
-/// </summary>
-public enum TextWeight : byte
-{
-    /// <summary>No weight attribute (neither SGR 1 nor 2; the shared reset 22 state).</summary>
-    Normal = 0,
-
-    /// <summary>SGR 2 — faint / dim.</summary>
-    Faint,
-
-    /// <summary>SGR 1 — bold / increased intensity.</summary>
-    Bold,
-}
-
-/// <summary>
-/// The text posture axis (proposal-TextAttributes-decomposition §1, amended 2026-07-13): the enum
-/// shape (rather than a bare bool) keeps the <c>Text*</c> property family discoverable as a set
-/// (<see cref="TextWeight"/>/<see cref="TextStyle"/>) and leaves headroom for future terminal
-/// posture standards (SGR 20 fraktur is the historical precedent) — while still refusing WPF's
-/// <c>Oblique</c>, which has no terminal encoding.
-/// </summary>
-public enum TextStyle : byte
-{
-    /// <summary>Upright text (SGR 23 — the reset state).</summary>
-    Normal = 0,
-
-    /// <summary>SGR 3 — italic.</summary>
-    Italic,
-}
 
 /// <summary>
 /// The paint-time resolution of the <see cref="TextElement"/> attribute properties into the Drawing

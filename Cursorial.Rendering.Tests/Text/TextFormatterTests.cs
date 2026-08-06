@@ -1,6 +1,7 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 using FT =  Cursorial.Rendering.Text.FormattedText;
 

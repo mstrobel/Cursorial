@@ -1,5 +1,5 @@
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
 

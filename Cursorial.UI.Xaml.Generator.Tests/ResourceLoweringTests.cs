@@ -1,5 +1,5 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 
@@ -943,7 +943,7 @@ namespace GenApp { public partial class BrushView : StackPanel { public BrushVie
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.DoesNotContain("TODO X5", lowered); // no longer fenced on the non-UIElement target
-        Assert.Contains("Color = (global::Cursorial.Output.Color)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AccentColor\"", lowered);
+        Assert.Contains("Color = (global::Cursorial.Media.Color)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"AccentColor\"", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         using var host = UIHeadlessHost.Create();
@@ -1036,7 +1036,7 @@ namespace GenApp { public partial class MismatchView : StackPanel { public Misma
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("Color = (global::Cursorial.Output.Color)((object?)", lowered); // object? cast, not (Color)stringVar
+        Assert.Contains("Color = (global::Cursorial.Media.Color)((object?)", lowered); // object? cast, not (Color)stringVar
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // COMPILES (no CS0030)
     }
 

@@ -1,5 +1,6 @@
 using System.Collections;
 using Cursorial.Input;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Text;

@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Cursorial.Rendering;
 using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Dialogs;

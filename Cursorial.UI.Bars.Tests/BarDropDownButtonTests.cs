@@ -6,7 +6,6 @@ using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Hosting.Headless;
-using Cursorial.UI.Input;
 
 namespace Cursorial.Tests.UI.Bars;
 

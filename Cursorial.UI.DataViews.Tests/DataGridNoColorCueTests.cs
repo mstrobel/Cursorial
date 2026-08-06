@@ -1,10 +1,9 @@
 using System.Collections.ObjectModel;
 
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
-using Cursorial.UI;
+using Cursorial.Text;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;

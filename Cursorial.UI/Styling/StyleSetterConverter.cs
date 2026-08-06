@@ -1,7 +1,7 @@
 using System.Globalization;
 
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
@@ -15,7 +15,7 @@ namespace Cursorial.UI;
 /// (<c>ResourceReference</c> B10, <c>BindingBase</c> B15) pass through unconverted for the frame to
 /// resolve per element; <see langword="null"/> for
 /// reference/nullable property types; exact/assignable values pass through; enum targets accept
-/// member names (ordinal) and integral values; <c>Cursorial.Output.Color</c> targets accept
+/// member names (ordinal) and integral values; <c>Cursorial.Media.Color</c> targets accept
 /// <c>#RGB</c>/<c>#RRGGBB</c> hex strings; <c>IBrush</c> targets accept <c>Color</c> values and hex
 /// strings (wrapped in <c>SolidColorBrush</c>); <see cref="IConvertible"/> primitives convert via
 /// invariant-culture <see cref="Convert.ChangeType(object?, Type, IFormatProvider?)"/>. Anything

@@ -1,5 +1,7 @@
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering.Text;
 

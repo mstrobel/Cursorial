@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.Animation;
 
@@ -14,6 +14,6 @@ public static class Interpolators
     /// <summary>Rounded linear <see cref="int"/> interpolation.</summary>
     public static IInterpolator<int> Int32 => Int32Interpolator.Instance;
 
-    /// <summary>Premultiplied-sRGB <see cref="Output.Color"/> interpolation.</summary>
+    /// <summary>Premultiplied-sRGB <see cref="Media.Color"/> interpolation.</summary>
     public static IInterpolator<Color> Color => ColorInterpolator.Instance;
 }

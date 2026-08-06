@@ -1,4 +1,5 @@
 using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Xaml;
@@ -184,7 +185,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         var button = (UIControls.Button)border.Child!;
         button.DataContext = vm;
         Assert.IsType<SolidColorBrush>(button.Foreground);
-        Assert.Equal(Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
+        Assert.Equal(Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
     }
 
     [Fact] // X121a — a Binding Converter provided by a CUSTOM markup extension (nested-extension parity with X121)
@@ -196,7 +197,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         var button = Load<UIControls.Button>("<Button Foreground=\"{Binding Status, Converter={StatusConverter}}\"/>");
         button.DataContext = vm;
         Assert.IsType<SolidColorBrush>(button.Foreground);
-        Assert.Equal(Output.Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
+        Assert.Equal(Color.FromRgb(0, 255, 0), ((SolidColorBrush)button.Foreground!).Color);
     }
 
     [Fact] // a non-IValueConverter result in the Converter slot is a clear, position-carrying diagnostic
@@ -271,7 +272,7 @@ public sealed class Section10_MarkupExtensionsLive : LoaderTestBase
         // templated parent's Background (one-way).
         var template = Load<UIControls.ControlTemplate>(
             "<ControlTemplate><Border Background=\"{TemplateBinding Background}\"/></ControlTemplate>");
-        var owner = new UIControls.Button { Background = new SolidColorBrush(Output.Color.FromRgb(1, 2, 3)) };
+        var owner = new UIControls.Button { Background = new SolidColorBrush(Color.FromRgb(1, 2, 3)) };
         template.TargetType = typeof(UIControls.Button);
         var instance = template.Instantiate(owner);
         var part = (UIControls.Border)instance.Root;

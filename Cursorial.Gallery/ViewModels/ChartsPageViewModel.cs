@@ -1,7 +1,7 @@
 using Cursorial.Animation;
 using Cursorial.Drawing.Charts;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.Gallery.ViewModels;
 

@@ -1,8 +1,5 @@
-using System.Linq;
-
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
-using Cursorial.UI;
+using Cursorial.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Xaml;
 using Cursorial.UI.Xaml.Generator;

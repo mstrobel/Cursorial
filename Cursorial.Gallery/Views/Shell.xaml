@@ -10,7 +10,6 @@
            xmlns:gallery="clr-namespace:Cursorial.Gallery;assembly=Cursorial.Gallery"
            xmlns:pages="clr-namespace:Cursorial.Gallery.Pages;assembly=Cursorial.Gallery"
            xmlns:ff="clr-namespace:Cursorial.Rendering.Fonts;assembly=Cursorial.Rendering"
-           xmlns:co="clr-namespace:Cursorial.Output;assembly=Cursorial.Core"
            xmlns:s="clr-namespace:System;assembly=System.Private.CoreLib"
            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"

@@ -1,7 +1,6 @@
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
-using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
 using Style = Cursorial.UI.Style;

@@ -1,4 +1,3 @@
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;

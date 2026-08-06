@@ -1,5 +1,3 @@
-using System.Linq;
-
 using Cursorial.UI.Controls;
 
 using Microsoft.CodeAnalysis;

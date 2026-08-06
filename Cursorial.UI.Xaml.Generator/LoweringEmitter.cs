@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-using Cursorial.UI.Xaml; // frontend node graph (internals via InternalsVisibleTo)
+// frontend node graph (internals via InternalsVisibleTo)
 
 using Microsoft.CodeAnalysis;
 

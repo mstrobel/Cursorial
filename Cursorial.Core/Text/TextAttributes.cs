@@ -1,6 +1,6 @@
 using Cursorial.Output.Capabilities;
 
-namespace Cursorial.Output;
+namespace Cursorial.Text;
 
 /// <summary>
 /// Independently toggleable text attributes a terminal applies via SGR commands. Combine with

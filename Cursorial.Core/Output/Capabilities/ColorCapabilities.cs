@@ -1,3 +1,5 @@
+using Cursorial.Media;
+
 namespace Cursorial.Output.Capabilities;
 
 /// <summary>

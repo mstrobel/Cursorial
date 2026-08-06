@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Input.Events;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

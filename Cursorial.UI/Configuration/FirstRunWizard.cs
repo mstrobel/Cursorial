@@ -1,5 +1,6 @@
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Themes;
@@ -108,7 +109,7 @@ public sealed class FirstRunWizard : Window
         headerRow.Children.Add(progress);
 
         var pageTitle = new TextBlock();
-        pageTitle.SetValue(TextElement.TextWeightProperty, Controls.TextWeight.Bold);
+        pageTitle.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
         pageTitle.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         pageTitle.SetBinding(TextBlock.TextProperty, new Binding("CurrentPage.Title"));
         headerRow.Children.Add(pageTitle);

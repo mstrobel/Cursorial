@@ -295,7 +295,7 @@ partial class MainView
         var __res = this.Resources;
 #line 8 "Views/MainView.xaml"
         __res.Add("AccentBrush", new global::Cursorial.Drawing.SolidColorBrush(
-            global::Cursorial.Output.Color.FromRgb(0x66, 0xd9, 0xef)));
+            global::Cursorial.Media.Color.FromRgb(0x66, 0xd9, 0xef)));
 #line 9 "Views/MainView.xaml"
         var __style0 = new global::Cursorial.UI.Style(typeof(global::Cursorial.UI.Widgets.ListViewItem));
         __style0.Setters.Add(new global::Cursorial.UI.Setter(
@@ -305,7 +305,7 @@ partial class MainView
             global::Cursorial.UI.Widgets.ListViewItem.IsPointerOverProperty, true);
         __trigger0.Setters.Add(new global::Cursorial.UI.Setter(
             global::Cursorial.UI.Widgets.ListViewItem.ForegroundProperty,
-            global::Cursorial.Output.Color.FromPalette(0)));
+            global::Cursorial.Media.Color.FromPalette(0)));
         __style0.Triggers.Add(__trigger0);
         __res.Add("HotItem", __style0);
 

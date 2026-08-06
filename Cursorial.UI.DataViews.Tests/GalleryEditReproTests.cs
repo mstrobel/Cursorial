@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.Hosting.Headless;

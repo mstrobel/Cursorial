@@ -1,9 +1,10 @@
 using System.Text;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

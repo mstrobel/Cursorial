@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;

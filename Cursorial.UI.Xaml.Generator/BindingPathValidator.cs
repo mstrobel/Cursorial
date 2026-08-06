@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-using Cursorial.UI.Xaml; // frontend node graph (internals via InternalsVisibleTo)
+// frontend node graph (internals via InternalsVisibleTo)
 using Microsoft.CodeAnalysis;
 
 namespace Cursorial.UI.Xaml.Generator;

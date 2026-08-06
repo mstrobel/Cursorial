@@ -1,4 +1,4 @@
-using System;
+
 
 // ReSharper disable CheckNamespace
 
@@ -55,7 +55,7 @@ public interface IXamlTypeMetadataProvider
 /// </summary>
 /// <remarks>
 /// The single method is xmlns-QUALIFIED (P1C): the loader binds the document prefix itself
-/// (<c>{x:Static co:Colors.Red}</c> → the <c>co:</c> declaration's namespace) and passes the provider a
+/// (<c>{x:Static co:ColorDepth.Ansi16}</c> → the <c>co:</c> declaration's namespace) and passes the provider a
 /// prefix-FREE path, so providers never see raw prefixes and two documents binding the same prefix to
 /// different namespaces cannot collide. There is deliberately no unqualified (default-namespace-only)
 /// overload — such a method silently resolves prefixed paths in the wrong namespace, the exact bug class

@@ -1,5 +1,4 @@
 using Cursorial.Rendering;
-using Cursorial.UI;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

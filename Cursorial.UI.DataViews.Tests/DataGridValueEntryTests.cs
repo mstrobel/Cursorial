@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 
 using Cursorial.Rendering;
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;

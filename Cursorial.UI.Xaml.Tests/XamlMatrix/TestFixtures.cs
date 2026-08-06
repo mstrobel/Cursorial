@@ -1,11 +1,10 @@
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Markup;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.UI;

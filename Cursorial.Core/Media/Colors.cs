@@ -1,4 +1,4 @@
-namespace Cursorial.Output;
+namespace Cursorial.Media;
 
 /// <summary>
 /// Provides a collection of predefined colors for use in the application.

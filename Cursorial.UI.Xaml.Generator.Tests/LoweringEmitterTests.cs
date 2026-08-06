@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -132,15 +133,15 @@ namespace GenApp { public partial class CapsStaticView : StackPanel { public Cap
         Assert.Equal(StyleCapabilities.NoColor, loweredStyle.RequiresCapabilities);
     }
 
-    [Fact] // A PREFIXED {x:Static co:Colors.Red} member value bakes as a member-access reference: the type
+    [Fact] // A PREFIXED {x:Static Colors.Red} member value bakes as a member-access reference: the type
            // token binds through the document xmlns table (like x:DataType), not just the default UI uri —
            // the palette's tier dictionaries author every Ansi16 color this way.
     public void Lowered_PrefixedXStaticMemberValue_MatchesLoader()
     {
         var xaml =
-            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticColorView\">" +
+            $"<StackPanel {Ns} xmlns:cm=\"clr-namespace:Cursorial.Media;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticColorView\">" +
             "<StackPanel.Resources>" +
-              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static co:Colors.Red}\"/>" +
+              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static cm:Colors.Red}\"/>" +
             "</StackPanel.Resources>" +
             "<Button x:Name=\"Ok\"/>" +
             "</StackPanel>";
@@ -151,7 +152,7 @@ namespace GenApp { public partial class StaticColorView : StackPanel { public St
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
 
-        Assert.Contains("global::Cursorial.Output.Colors.Red", lowered);
+        Assert.Contains("global::Cursorial.Media.Colors.Red", lowered);
         var todoLine = lowered.Split('\n').FirstOrDefault(l => l.Contains("TODO X5"));
         Assert.True(todoLine is null, $"unexpected TODO: {todoLine}");
 
@@ -164,7 +165,7 @@ namespace GenApp { public partial class StaticColorView : StackPanel { public St
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml.Replace(" x:Class=\"GenApp.StaticColorView\"", ""));
         var runtimeBrush = Assert.IsType<SolidColorBrush>(runtime.Resources["Ink"]);
         Assert.Equal(runtimeBrush.Color, loweredBrush.Color);
-        Assert.Equal(Output.Colors.Red, loweredBrush.Color);
+        Assert.Equal(Colors.Red, loweredBrush.Color);
     }
 
     [Fact] // Same-dictionary BasedOn: the ONE working form — pinned for the first time (identity with the
@@ -584,15 +585,15 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
     public void Lowered_BindingSource_NestedXStatic_ResolvesEagerly()
     {
         var xaml =
-            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.SrcStaticView\">" +
-            "<TextBlock Text=\"{Binding Source={x:Static co:Colors.Red}, Path=R}\"/>" +
+            $"<StackPanel {Ns} xmlns:cm=\"clr-namespace:Cursorial.Media;assembly=Cursorial.Core\" x:Class=\"GenApp.SrcStaticView\">" +
+            "<TextBlock Text=\"{Binding Source={x:Static cm:Colors.Red}, Path=R}\"/>" +
             "</StackPanel>";
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("Source = global::Cursorial.Output.Colors.Red", lowered);
+        Assert.Contains("Source = global::Cursorial.Media.Colors.Red", lowered);
     }
 
     [Fact] // {TemplateBinding Property=Header} — the named form the loader accepts (WPF parity) alongside the
@@ -637,9 +638,9 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
     public void Lowered_XStaticUnknownMember_FailsClosed()
     {
         var xaml =
-            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticMissView\">" +
+            $"<StackPanel {Ns} xmlns:cm=\"clr-namespace:Cursorial.Media;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticMissView\">" +
             "<StackPanel.Resources>" +
-              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static co:Colors.NotAColor}\"/>" +
+              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static cm:Colors.NotAColor}\"/>" +
             "</StackPanel.Resources>" +
             "<Button x:Name=\"Ok\"/>" +
             "</StackPanel>";

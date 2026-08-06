@@ -4,9 +4,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;

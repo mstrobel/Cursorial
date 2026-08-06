@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 using Cursorial.Input;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
@@ -1771,7 +1772,7 @@ public class DataGrid : Control
 
         if (property.GetCustomAttribute<ColorScaleAttribute>() is { Stops.Length: >= 2 } scale)
         {
-            var stops = new List<Output.Color>();
+            var stops = new List<Color>();
             foreach (var hex in scale.Stops)
             {
                 if (DataGridDialogHelpers.TryParseColor(hex, out var color))

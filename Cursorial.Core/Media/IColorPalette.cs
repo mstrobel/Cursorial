@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace Cursorial.Output;
+namespace Cursorial.Media;
 
 public interface IColorPalette : IReadOnlyList<Color>
 {

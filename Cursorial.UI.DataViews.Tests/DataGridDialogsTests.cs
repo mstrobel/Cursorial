@@ -5,8 +5,9 @@ using System.Runtime.CompilerServices;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;
@@ -665,7 +666,7 @@ public class DataGridDialogsTests
         host.RunUntilIdle();
         Assert.True(managerTask.IsCompleted);
 
-        static List<(string Text, Color Color)> SwatchRuns(Border rowElement)
+        static List<(string Text, Media.Color Color)> SwatchRuns(Border rowElement)
         {
             var line = (StackPanel)rowElement.Child!;
             var preview = (Border)line.Children[2];

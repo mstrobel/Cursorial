@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering.Media;
 using Cursorial.UI.Controls;
 

@@ -1,6 +1,7 @@
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 
-namespace Cursorial.Output;
+namespace Cursorial.Text;
 
 /// <summary>
 /// Vertical alignment of glyphs within a multicell block under the Kitty text-sizing protocol.

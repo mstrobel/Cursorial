@@ -1,5 +1,5 @@
 using Cursorial.Input.Parsing;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Terminal;
 
 namespace Cursorial.Tests.Terminal;

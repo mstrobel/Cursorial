@@ -2,8 +2,6 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 
-using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
-
 // ReSharper disable InconsistentNaming
 
 namespace Cursorial.Tests.UI.StyleMatrix;

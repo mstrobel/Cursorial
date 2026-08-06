@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Cursorial.Output;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
 

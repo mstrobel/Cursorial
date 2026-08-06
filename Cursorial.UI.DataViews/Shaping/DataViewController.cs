@@ -3,6 +3,8 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 
+using Cursorial.Media;
+
 namespace Cursorial.UI.DataViews.Shaping;
 
 /// <summary>
@@ -777,7 +779,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
         return result;
     }
 
-    private static Output.Color InterpolateStops(IReadOnlyList<Output.Color> stops, double t)
+    private static Color InterpolateStops(IReadOnlyList<Color> stops, double t)
     {
         // 2 stops: one segment; 3 stops: split at 0.5 (min→mid→max, the heat-scale convention).
         int segments = stops.Count - 1;
@@ -786,7 +788,7 @@ public sealed class DataViewController<TRow> : DataViewController where TRow : n
         double local = scaled - index;
         var (a, b) = (stops[index], stops[index + 1]);
 
-        return Output.Color.FromRgb(
+        return Color.FromRgb(
             (byte) Math.Round(a.Red + (b.Red - a.Red) * local),
             (byte) Math.Round(a.Green + (b.Green - a.Green) * local),
             (byte) Math.Round(a.Blue + (b.Blue - a.Blue) * local));

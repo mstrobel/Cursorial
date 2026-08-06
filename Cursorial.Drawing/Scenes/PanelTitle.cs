@@ -1,6 +1,7 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Media;
+using Cursorial.Text;
 
 // ReSharper disable CheckNamespace
 

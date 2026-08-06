@@ -179,7 +179,7 @@ public class AnimationTrack<T> : AnimationTrack
 // Sealed non-generic conveniences (XAML-friendly; interpolator baked):
 public sealed class DoubleTrack : AnimationTrack<double> { }
 public sealed class Int32Track  : AnimationTrack<int> { }
-public sealed class ColorTrack  : AnimationTrack<Color> { }                 // Cursorial.Output.Color
+public sealed class ColorTrack  : AnimationTrack<Color> { }                 // Cursorial.Media.Color
 public sealed class BrushTrack  : AnimationTrack<IBrush> { }                // BrushInterpolator (allocates per sample; documented)
 public sealed class RectTrack   : AnimationTrack<Rect> { }
 public sealed class SizeTrack   : AnimationTrack<Size> { }

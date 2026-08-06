@@ -3,6 +3,7 @@ using System.Text;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering;
 

@@ -1,8 +1,9 @@
 using System.Windows.Input;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Themes;
 

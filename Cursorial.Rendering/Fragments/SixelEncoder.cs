@@ -1,5 +1,7 @@
 using System.Buffers;
 
+using Cursorial.Media;
+
 namespace Cursorial.Rendering.Fragments;
 
 /// <summary>
@@ -10,10 +12,10 @@ public readonly record struct SixelColor(byte R, byte G, byte B)
 {
     public static readonly SixelColor TransparentColorKey = new(0, 255, 255);
 
-    /// <summary>Construct from a <see cref="Cursorial.Output.Color"/>. Default and palette colors collapse to black.</summary>
-    public static SixelColor From(Output.Color color)
+    /// <summary>Construct from a <see cref="Color"/>. Default and palette colors collapse to black.</summary>
+    public static SixelColor From(Color color)
     {
-        if (color.Kind != Output.ColorKind.Rgb || color.IsTransparent)
+        if (color.Kind != ColorKind.Rgb || color.IsTransparent)
             return new SixelColor(0, 0, 0);
         return new SixelColor(color.Red, color.Green, color.Blue);
     }

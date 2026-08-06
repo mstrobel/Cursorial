@@ -1,8 +1,8 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -10,7 +10,6 @@ using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Themes.Default;
 
-using Xunit.Abstractions;
 using Xunit.Sdk;
 
 using UIControls = Cursorial.UI.Controls;

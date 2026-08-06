@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI;
 using static Cursorial.Tests.UI.PrecedenceMatrix.MatrixFixture;
 
@@ -13,7 +13,7 @@ namespace Cursorial.Tests.UI.PrecedenceMatrix;
 /// </summary>
 public class Section19_Allocation
 {
-    /// <summary>The M265 record-struct-valued property (<c>Cursorial.Output.Color</c> — the styling vocabulary shape).</summary>
+    /// <summary>The M265 record-struct-valued property (<c>Cursorial.Media.Color</c> — the styling vocabulary shape).</summary>
     private static readonly StyledProperty<Color> PColor = UIProperty.Register<Host, Color>(UniqueName("M265Color"));
 
     /// <summary>An observer that records nothing — pure delivery-path coverage with zero allocation.</summary>

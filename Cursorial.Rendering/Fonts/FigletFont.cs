@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Globalization;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Text;
 

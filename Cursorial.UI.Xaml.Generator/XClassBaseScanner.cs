@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-using Cursorial.UI.Xaml; // source-linked frontend: XmlnsNamespaces
+// source-linked frontend: XmlnsNamespaces
 
 namespace Cursorial.UI.Xaml.Generator;
 

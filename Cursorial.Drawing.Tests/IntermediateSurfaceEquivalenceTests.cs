@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;

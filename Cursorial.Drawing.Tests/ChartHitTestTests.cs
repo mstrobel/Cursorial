@@ -1,6 +1,6 @@
 using Cursorial.Drawing.Charts;
 using Cursorial.Input;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 
 namespace Cursorial.Tests.Drawing;

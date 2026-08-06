@@ -1,5 +1,3 @@
-using System;
-
 namespace Cursorial.UI.Xaml;
 
 /// <summary>

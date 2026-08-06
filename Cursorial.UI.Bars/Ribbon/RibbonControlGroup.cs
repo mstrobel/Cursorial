@@ -1,4 +1,3 @@
-using Cursorial.UI;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.UI.Bars;

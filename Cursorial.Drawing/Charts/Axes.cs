@@ -1,7 +1,7 @@
 using System.Globalization;
 
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 
 namespace Cursorial.Drawing.Charts;

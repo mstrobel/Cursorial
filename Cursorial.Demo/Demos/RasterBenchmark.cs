@@ -7,11 +7,13 @@ using System.Text;
 using Cursorial.Drawing;
 using Cursorial.Drawing.Charts;
 using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 // ReSharper disable CheckNamespace
 

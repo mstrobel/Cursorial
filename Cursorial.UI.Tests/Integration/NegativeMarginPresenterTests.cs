@@ -3,8 +3,6 @@
 // these tests block on purpose (the blocked work is thread-pool-side and cannot deadlock).
 #pragma warning disable xUnit1031
 
-using System.Text;
-
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;

@@ -1,10 +1,11 @@
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 using CellStyle = Cursorial.Output.Style;
 

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Data;

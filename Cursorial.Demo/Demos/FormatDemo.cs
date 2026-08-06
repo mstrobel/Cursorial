@@ -2,11 +2,13 @@ using System.Reflection;
 
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 // ReSharper disable CheckNamespace
 

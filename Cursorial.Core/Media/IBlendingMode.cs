@@ -1,4 +1,6 @@
-namespace Cursorial.Output;
+using Cursorial.Output;
+
+namespace Cursorial.Media;
 
 /// <summary>
 /// Combines a "source" color with a "backdrop" color to produce a result. Used by

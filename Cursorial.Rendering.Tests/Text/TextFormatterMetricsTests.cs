@@ -1,7 +1,7 @@
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering.Text;
 

@@ -2,7 +2,6 @@ using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Configuration;
 using Cursorial.UI.Hosting.Headless;
-using Cursorial.UI.Themes;
 
 using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 

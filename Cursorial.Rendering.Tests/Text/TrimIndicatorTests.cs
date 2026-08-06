@@ -6,6 +6,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering.Text;
 

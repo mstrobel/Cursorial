@@ -4,6 +4,7 @@ using System.Globalization;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;

@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 
+using Cursorial.Media;
 using Cursorial.Output.Capabilities;
+using Cursorial.Text;
 
 namespace Cursorial.Output;
 

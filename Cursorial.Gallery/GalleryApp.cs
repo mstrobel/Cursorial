@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Gallery.ViewModels;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;

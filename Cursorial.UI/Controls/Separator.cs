@@ -1,6 +1,3 @@
-using Cursorial.Drawing.Media;
-using Cursorial.Rendering;
-
 namespace Cursorial.UI.Controls;
 
 /// <summary>

@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Rendering;
-using Cursorial.UI;
 using Cursorial.UI.DataViews;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Hosting.Headless;

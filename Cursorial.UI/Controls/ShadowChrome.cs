@@ -1,5 +1,5 @@
 using Cursorial.Drawing;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 
 namespace Cursorial.UI.Controls;

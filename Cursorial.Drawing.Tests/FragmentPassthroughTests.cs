@@ -2,12 +2,14 @@ using System.Buffers;
 using System.Text;
 
 using Cursorial.Drawing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Drawing;
 

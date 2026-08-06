@@ -1,4 +1,4 @@
-namespace Cursorial.Output;
+namespace Cursorial.Media;
 
 /// <summary>
 /// A terminal color in one of three representations: the terminal's <see cref="ColorKind.Default"/>

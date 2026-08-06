@@ -1,6 +1,6 @@
 using System.Globalization;
 
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.Rendering.Text;
 

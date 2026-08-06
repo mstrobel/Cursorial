@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Imaging;
 
 // ReSharper disable InconsistentNaming

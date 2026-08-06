@@ -1,5 +1,6 @@
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;

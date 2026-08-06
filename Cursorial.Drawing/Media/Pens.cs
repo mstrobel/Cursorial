@@ -1,9 +1,11 @@
+using Cursorial.Media;
+
 namespace Cursorial.Drawing.Media;
 
 /// <summary>
 /// Predefined <see cref="Pen"/> presets at the terminal's default foreground — the stroke-attribute
 /// counterparts that compose with a color at the call site (<c>Pens.Heavy.WithColor(Colors.Red)</c>,
-/// or a draw method's <see cref="Output.Color"/> overload). Deliberately keyed on attribute presets,
+/// or a draw method's <see cref="Color"/> overload). Deliberately keyed on attribute presets,
 /// not color (color rides the per-call argument), so this is not a one-to-one mirror of
 /// <see cref="Brushes"/>.
 /// </summary>

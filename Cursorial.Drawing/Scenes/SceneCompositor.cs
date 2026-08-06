@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;

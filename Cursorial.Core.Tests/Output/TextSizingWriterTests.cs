@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 
 using Cursorial.Output;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Output;
 

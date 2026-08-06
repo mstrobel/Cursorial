@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
@@ -137,7 +138,7 @@ public sealed class RenderTree
     /// <remarks>
     /// Both gates deliberately govern <b>eligibility</b>, not just the published opacity value.
     /// (a) The <b>RGB tiers</b> — <see cref="ColorDepth.Ansi256"/> and up.
-    /// <see cref="Output.Color.Composite"/> ignores alpha unless both operands are RGB, and only
+    /// <see cref="Color.Composite"/> ignores alpha unless both operands are RGB, and only
     /// <see cref="ColorDepth.Ansi16"/>/<see cref="ColorDepth.NoColor"/> collapse a theme to palette
     /// indices; the Ansi256 spine is RGB (its own dialog/popup brushes ship translucent), so a blend
     /// survives there and quantization to the 256-color cube is the <c>FrameRenderer</c>'s

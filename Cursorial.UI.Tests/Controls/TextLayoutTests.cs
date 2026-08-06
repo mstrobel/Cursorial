@@ -1,5 +1,4 @@
 using Cursorial.Rendering.Text;
-using Cursorial.UI.Controls;
 
 namespace Cursorial.Tests.UI.Controls;
 

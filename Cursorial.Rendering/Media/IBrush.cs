@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.Output;
 
 namespace Cursorial.Rendering.Media;

@@ -2,8 +2,8 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

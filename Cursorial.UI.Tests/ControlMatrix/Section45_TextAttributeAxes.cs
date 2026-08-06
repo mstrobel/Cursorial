@@ -1,5 +1,5 @@
-using Cursorial.Input;
 using Cursorial.Output;
+using Cursorial.Text;
 using Cursorial.UI;
 
 using Style = Cursorial.UI.Style;

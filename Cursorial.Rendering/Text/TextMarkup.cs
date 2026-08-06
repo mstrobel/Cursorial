@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Content;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
 

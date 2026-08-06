@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;

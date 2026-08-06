@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using Cursorial.Input;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 

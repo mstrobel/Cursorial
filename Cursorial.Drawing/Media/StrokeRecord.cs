@@ -1,5 +1,5 @@
-using Cursorial.Output;
 using Cursorial.Rendering.Media;
+using Cursorial.Text;
 
 namespace Cursorial.Drawing.Media;
 

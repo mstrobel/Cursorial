@@ -1,7 +1,7 @@
 using System.Text;
 
 using Cursorial.Input.Events;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Terminal;
 

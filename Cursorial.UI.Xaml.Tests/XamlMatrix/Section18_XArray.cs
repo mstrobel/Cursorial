@@ -1,5 +1,3 @@
-using System;
-
 using Cursorial.UI;
 using Cursorial.UI.Xaml;
 

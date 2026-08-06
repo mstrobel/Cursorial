@@ -1,10 +1,10 @@
 using System.Globalization;
 
-using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Input;
 using Cursorial.UI.Xaml;

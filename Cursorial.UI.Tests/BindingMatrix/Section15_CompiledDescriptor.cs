@@ -1,6 +1,5 @@
 using System.Globalization;
 
-using Cursorial.UI;
 using Cursorial.UI.Data;
 
 // ReSharper disable InconsistentNaming

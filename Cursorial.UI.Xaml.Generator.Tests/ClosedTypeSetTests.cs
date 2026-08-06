@@ -1,5 +1,3 @@
-using System.Linq;
-
 using Cursorial.UI.Xaml.Generator;
 
 namespace Cursorial.Tests.UI.Xaml.Generator;

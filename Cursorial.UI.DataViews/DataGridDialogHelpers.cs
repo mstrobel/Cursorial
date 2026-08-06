@@ -1,6 +1,6 @@
 using System.Globalization;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;

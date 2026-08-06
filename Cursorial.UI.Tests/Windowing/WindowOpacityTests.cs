@@ -1,6 +1,6 @@
 #pragma warning disable xUnit1031
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;

@@ -1,5 +1,5 @@
 using Cursorial.Animation;
-using Cursorial.Output;
+using Cursorial.Media;
 
 namespace Cursorial.Tests.Animation;
 

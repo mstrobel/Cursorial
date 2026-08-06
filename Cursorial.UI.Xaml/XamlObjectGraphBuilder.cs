@@ -977,7 +977,7 @@ internal sealed class XamlObjectGraphBuilder
         // reflection provider here — one of the two AOT blocker sites closed).
         if (_options.MetadataProvider is IXamlStaticResolver resolver)
         {
-            // The xmlns-aware seam (P1C): bind the document prefix here — {x:Static co:Colors.Red}
+            // The xmlns-aware seam (P1C): bind the document prefix here — {x:Static Colors.Red}
             // resolves Colors.Red under the co: declaration's namespace, an unprefixed path under the
             // document default xmlns — and hand the provider a prefix-free path.
             string path;

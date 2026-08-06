@@ -1,7 +1,6 @@
 using Cursorial.Input;
 using Cursorial.Markup;
 using Cursorial.UI.Input;
-using Cursorial.UI.Themes;
 
 namespace Cursorial.UI.Controls;
 

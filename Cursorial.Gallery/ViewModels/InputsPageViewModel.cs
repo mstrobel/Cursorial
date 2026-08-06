@@ -2,8 +2,8 @@ using System.Collections.Immutable;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Gallery.Infrastructure;
-using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 

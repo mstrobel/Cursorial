@@ -2,9 +2,10 @@ using Cursorial.Animation;
 using Cursorial.Drawing;
 using Cursorial.Drawing.Charts;
 using Cursorial.Drawing.Media;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
+using Cursorial.Text;
 
 // ReSharper disable RedundantCast
 

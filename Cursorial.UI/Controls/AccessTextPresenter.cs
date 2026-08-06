@@ -216,8 +216,16 @@ public sealed class AccessTextPresenter : UIElement
         {
             if (hasUnderline)
             {
+                // Sample the brush against the TEXT's own box — origin at the first character of the
+                // first line — not against `Bounds`, which is parent-relative. `column` is
+                // element-local: it indexes the same space `DrawText(0, 0, labelText, …)` painted
+                // into. Pairing it with a parent-relative rect drove a gradient's parameter negative
+                // for any element not at its parent's origin, clamping every cue to the brush's
+                // head. Solid brushes ignore `bounds`, which is why it went unnoticed.
+                var textBounds = new Rect(0, 0, GraphemeWidth.StringWidth(labelText), 1);
+
                 style = style.WithUnderlineStyle(keyUnderlineStyle)
-                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds));
+                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, textBounds));
             }
 
             if (hasKeyUnderline is false)

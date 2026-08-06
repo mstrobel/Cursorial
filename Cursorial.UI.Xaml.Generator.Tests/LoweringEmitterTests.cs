@@ -2,6 +2,7 @@ using System.Reflection;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -139,9 +140,9 @@ namespace GenApp { public partial class CapsStaticView : StackPanel { public Cap
     public void Lowered_PrefixedXStaticMemberValue_MatchesLoader()
     {
         var xaml =
-            $"<StackPanel {Ns} xmlns:cm=\"clr-namespace:Cursorial.Media;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticColorView\">" +
+            $"<StackPanel {Ns} xmlns:co=\"clr-namespace:Cursorial.Output;assembly=Cursorial.Core\" x:Class=\"GenApp.StaticColorView\">" +
             "<StackPanel.Resources>" +
-              "<SolidColorBrush x:Key=\"Ink\" Color=\"{x:Static cm:Colors.Red}\"/>" +
+              "<SolidColorBrush x:Key=\"{x:Type co:CellStyle}\" Color=\"{x:Static Colors.Red}\"/>" +
             "</StackPanel.Resources>" +
             "<Button x:Name=\"Ok\"/>" +
             "</StackPanel>";
@@ -159,11 +160,11 @@ namespace GenApp { public partial class StaticColorView : StackPanel { public St
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
         var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.StaticColorView")!)!;
-        var loweredBrush = Assert.IsType<SolidColorBrush>(view.Resources["Ink"]);
+        var loweredBrush = Assert.IsType<SolidColorBrush>(view.Resources[typeof(CellStyle)]);
 
         var runtime = (StackPanel)new XamlLoader(
             new XamlLoaderOptions { MetadataProvider = ReflectionXamlMetadata.Instance }).Load(xaml.Replace(" x:Class=\"GenApp.StaticColorView\"", ""));
-        var runtimeBrush = Assert.IsType<SolidColorBrush>(runtime.Resources["Ink"]);
+        var runtimeBrush = Assert.IsType<SolidColorBrush>(runtime.Resources[typeof(CellStyle)]);
         Assert.Equal(runtimeBrush.Color, loweredBrush.Color);
         Assert.Equal(Colors.Red, loweredBrush.Color);
     }

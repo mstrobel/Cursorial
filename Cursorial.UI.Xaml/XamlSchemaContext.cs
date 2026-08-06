@@ -48,7 +48,7 @@ public sealed class XamlSchemaContext
         _defaultAssemblies =
         [
             typeof(UIElement).Assembly,                     // Cursorial.UI (UI / Controls / Data / Input / Themes)
-            typeof(Color).Assembly,                         // Cursorial.Core (Output)
+            typeof(Color).Assembly,                         // Cursorial.Media (Output), Cursorial.Text (Text)
             typeof(Rendering.Media.IBrush).Assembly,        // Cursorial.Rendering (Rendering.Media)
             typeof(Drawing.Media.SolidColorBrush).Assembly, // Cursorial.Drawing (Drawing.Media)
             typeof(MarkupExtension).Assembly                // Cursorial.UI.Xaml — only its Markup namespace ({Icon …})

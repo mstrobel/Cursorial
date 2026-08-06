@@ -86,6 +86,14 @@ public sealed class FigletPresenter : DrawnContentPresenter
             new PropertyMetadata<IBrush?>(ForegroundProperty.DefaultMetadata.DefaultValue,
                                           Changed: OnRenderAffectingPropertyChanged)
         );
+
+        // Unlike some other DrawnContentPresenters, we know figlets don't rely on fragments, so there's
+        // no need to ever forcibly coerce ClipToBounds to true.
+        ClipToBoundsProperty.OverrideMetadata<FigletPresenter>(
+            new PropertyMetadata<bool>(
+                DefaultValue: false,
+                Coerce: static (_, b) => b)
+        );
     }
 
     /// <inheritdoc cref="TextProperty"/>

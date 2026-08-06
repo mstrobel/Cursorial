@@ -162,8 +162,11 @@ public sealed class RichTextPresenter : DrawnContentPresenter
                 {
                     outputCaps ??= _subscribedApp?.EffectiveCapabilities.Output ?? OutputCapabilities.None;
 
-                    if (stb.Fallback is null && stb.Sizing.IsSupported(outputCaps) is false)
+                    if (stb is { Fallback: null, Sizing: { IsNormal: false } sz } &&
+                        sz.IsSupported(outputCaps) is false)
+                    {
                         return false;
+                    }
                 }
             }
 

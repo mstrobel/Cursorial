@@ -26,18 +26,21 @@ public abstract class DrawnContentPresenter : UIElement
     {
         AffectsMeasure<DrawnContentPresenter>(PlaceholderContentProperty, PlaceholderTemplateProperty);
 
+        // 
+        // ClipToBounds is forced to true _only if the primary content is shown; otherwise, let the placeholder
+        // content decide for itself if it needs to clip.
+        // 
         ClipToBoundsProperty.OverrideMetadata<DrawnContentPresenter>(
             new PropertyMetadata<bool>(
-                DefaultValue: true,
-                Coerce: static (_, _) => true)); // always true, no matter what
+                DefaultValue: false,
+                Coerce: static (s, b) => (s as DrawnContentPresenter)?.IsPrimaryContentVisible is true ? true : b));
 
     }
 
     /// <summary>Creates the presenter (clip-bounded so its drawn content never bleeds past its layout rect).</summary>
     protected DrawnContentPresenter()
     {
-        SetValue(ClipToBoundsProperty, true);
-        AdoptChild(_placeholder, index: -1);
+        SetCurrentValue(ClipToBoundsProperty, ClipToBoundsProperty.GetMetadata(GetType()).DefaultValue);
     }
 
     /// <inheritdoc cref="PlaceholderContentProperty"/>
@@ -96,6 +99,7 @@ public abstract class DrawnContentPresenter : UIElement
         var visible = IsPrimaryContentVisible;
         _placeholder.SetCurrentValue(VisibilityProperty, visible ? Visibility.Collapsed : Visibility.Visible);
         PseudoClasses.Set(":placeholder", !visible);
+        CoerceValue(ClipToBoundsProperty); // coerces based on IsPrimaryContentVisible
         return visible;
     }
 
@@ -109,5 +113,17 @@ public abstract class DrawnContentPresenter : UIElement
     {
         if (sender is DrawnContentPresenter p)
             p._placeholder.SetCurrentValue(ContentPresenter.ContentTemplateProperty, newValue);
+    }
+
+    protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToTree(in e);
+        AdoptChild(_placeholder, index: -1);
+    }
+
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromTree(in e);
+        DisownChild(_placeholder);
     }
 }

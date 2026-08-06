@@ -111,11 +111,28 @@ public sealed class Section35_Image
         Assert.Contains("BROKEN", host.GetRowText(0));
     }
 
-    [Fact] // C23.6: the presenter is ClipToBounds (the image is clipped to its layout rect)
-    public void C23_6_ClipToBounds()
+    [Fact] // C23.6a: the presenter is ClipToBounds when image is shown (the image is clipped to its layout rect)
+    public void C23_6a_ClipToBounds()
+    {
+        using var host = KittyHost();
+        var presenter = new ImagePresenter { Source = Img() };
+        host.ShowRoot(presenter);
+        host.RunUntilIdle();
+        Assert.True(presenter.ClipToBounds);
+    }
+
+    [Fact] // C23.6b: the presenter is NOT ClipToBounds when image is NOT shown (no image source)
+    public void C23_6b_ClipToBounds()
     {
         var presenter = new ImagePresenter();
-        Assert.True(presenter.ClipToBounds);
+        Assert.False(presenter.ClipToBounds);
+    }
+
+    [Fact] // C23.6c: the presenter is NOT ClipToBounds when image is NOT shown (no UIApplication capabilities)
+    public void C23_6c_ClipToBounds()
+    {
+        var presenter = new ImagePresenter { Source = Img() };
+        Assert.False(presenter.ClipToBounds);
     }
 
     [Fact] // C23.7: the :placeholder pseudo-class + placeholder visibility flip with the image-visible state
@@ -127,12 +144,14 @@ public sealed class Section35_Image
         host.RunUntilIdle();
         Assert.True(presenter.HasCustomPseudoClass(":placeholder"));
         Assert.Equal(Visibility.Visible, presenter.PlaceholderPresenter.Visibility);
+        Assert.False(presenter.ClipToBounds);
 
         presenter.Source = Img(); // now an image renders
         host.RunUntilIdle();
         Assert.False(presenter.HasCustomPseudoClass(":placeholder"));
         Assert.Equal(Visibility.Collapsed, presenter.PlaceholderPresenter.Visibility);
         Assert.True(presenter.IsImageVisible);
+        Assert.True(presenter.ClipToBounds);
     }
 
     [Fact] // C23.8: the Image control's template hosts a PART_ImagePresenter the Source flows to; the APC emits

@@ -108,7 +108,6 @@ public readonly record struct LayoutRect
     /// affordance for callers that have proven a non-negative origin (kept as API surface; the
     /// render/hit paths consume the signed form directly).
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The origin is negative (a signed-margin placement; see LD19).</exception>
     public Rect ToRect() => new(Column, Row, _columns, _rows);
 
     /// <summary>Widening conversion — every <see cref="Rect"/> is a valid <see cref="LayoutRect"/>.</summary>

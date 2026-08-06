@@ -19,7 +19,7 @@ public static class LayoutMath
     /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG
     /// diagnostic) so a misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
     /// <para>
-    /// <b>Decoupled from <see cref="Rect.MaxDimension"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>
+    /// <b>Decoupled from <see cref="Rect.MaxExtent"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>
     /// -backed and holds the full range, but the LAYOUT cap is deliberately <c>int.MaxValue / 2</c> — it must stay
     /// strictly below the <see cref="Unbounded"/> sentinel (<see cref="int.MaxValue"/>) so a real extent is never
     /// mistaken for "infinity", and it bounds positions/extents so a layout-produced <c>Rect</c>'s
@@ -117,4 +117,19 @@ public static class LayoutLimits
     /// matrix L202/L215).
     /// </summary>
     public const int MaxScrollExtent = 32_000;
+    
+    /// <summary>
+    /// The hard ceiling for any arrange extent. Arrange extents clamp to <c>[0, MaxExtent]</c> and positions to
+    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG
+    /// diagnostic) so a misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
+    /// <para>
+    /// <b>Decoupled from <see cref="Rect.MaxExtent"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>
+    /// -backed and holds the full range, but the LAYOUT cap is deliberately <c>int.MaxValue / 2</c> — it must stay
+    /// strictly below the <see cref="LayoutMath.Unbounded"/> sentinel (<see cref="int.MaxValue"/>) so a real extent
+    /// is never mistaken for "infinity", and it bounds positions/extents so a layout-produced <c>Rect</c>'s
+    /// <c>edge + extent</c> (e.g. <see cref="Rect.RowEnd"/>) can never overflow <see cref="int"/>. Half the range
+    /// (≈ 1.07 billion cells) satisfies both and is effectively unbounded for any terminal surface.
+    /// </para>
+    /// </summary>
+    public const int MaxExtent = LayoutMath.MaxExtent;
 }

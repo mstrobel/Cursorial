@@ -61,6 +61,11 @@
     <File Path="docs/ui-layer-design/tokyo-night-terminal-rich-editors.html" />
     <File Path="docs/ui-layer-design/tokyo-night-terminal-toolbar.html" />
     <File Path="docs/ui-layer-design/xaml-matrix.md" />
+    <File Path="docs\ui-layer-design\proposal-fragment-opacity.md" />
+    <File Path="docs\ui-layer-design\proposal-glyph-runs.md" />
+    <File Path="docs\ui-layer-design\proposal-partial-style.md" />
+    <File Path="docs\ui-layer-design\proposal-signed-rect.md" />
+    <File Path="docs\ui-layer-design\proposal-unified-text-path.md" />
   </Folder>
   <Folder Name="/GItHub Actions/">
     <File Path=".github/workflows/ci.yml" />

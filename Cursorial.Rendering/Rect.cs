@@ -14,28 +14,29 @@ public readonly record struct Rect
     /// <summary>
     /// The maximum value of any <see cref="Rect"/> dimension or coordinate (<see cref="Column"/>/<see cref="Row"/>/
     /// <see cref="Columns"/>/<see cref="Rows"/>). The <see cref="Rect"/> is <see cref="int"/>-backed, so this is the
-    /// full non-negative range. NOTE: <c>edge + extent</c> properties (<see cref="RowEnd"/>/<see cref="ColumnEnd"/>)
-    /// can overflow <see cref="int"/> for a hand-built <see cref="Rect"/> whose coordinate AND extent are both near
-    /// the cap — callers own that arithmetic. The LAYOUT clamp (<c>LayoutMath.MaxExtent</c>) is a separate, lower
-    /// ceiling that keeps every layout-produced <see cref="Rect"/> safely within range.
+    /// full range for coordinates and the full non-negative range for extents. NOTE: <c>edge + extent</c> properties
+    /// (<see cref="RowEnd"/>/<see cref="ColumnEnd"/>) can overflow <see cref="int"/> for a hand-built <see cref="Rect"/>
+    /// whose coordinate AND extent are both near the cap — callers own that arithmetic. The LAYOUT clamp
+    /// (<c>LayoutMath.MaxExtent</c>) is a separate, lower ceiling that keeps every layout-produced <see cref="Rect"/>
+    /// safely within range.
     /// </summary>
-    public const int MaxDimension = int.MaxValue;
+    public const int MaxExtent = int.MaxValue;
 
     /// <summary>
     /// Creates a rectangle from the cell coordinates of its top-left corner and its dimensions
     /// (width and height).
     /// </summary>
-    /// <param name="row">Top edge of the rectangle, 0-based. Inclusive.</param>
-    /// <param name="column">Left edge of the rectangle, 0-based. Inclusive.</param>
-    /// <param name="columns">Width in cells. Non-negative; 0 produces an empty rectangle.</param>
-    /// <param name="rows">Height in cells. Non-negative; 0 produces an empty rectangle.</param>
+    /// <param name="row">Top edge of the rectangle, 0-based. Inclusive. Can be negative.</param>
+    /// <param name="column">Left edge of the rectangle, 0-based. Inclusive. Can be negative.</param>
+    /// <param name="columns">Width in cells. Non-negative; 0 produces an empty rectangle. Strictly non-negative.</param>
+    /// <param name="rows">Height in cells. Non-negative; 0 produces an empty rectangle. Strictly non-negative.</param>
     public Rect(int column, int row, int columns, int rows)
     {
         if (columns < 0)
-            throw new ArgumentOutOfRangeException(nameof(columns), "Rectangle anchor coordinates cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(columns), "Rectangle dimensions cannot be negative.");
 
         if (rows < 0)
-            throw new ArgumentOutOfRangeException(nameof(rows), "Rectangle anchor coordinates cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(rows), "Rectangle dimensions cannot be negative.");
 
         Column = column;
         Row = row;
@@ -90,31 +91,23 @@ public readonly record struct Rect
     public Size Size => new(Columns, Rows);
 
     /// <summary>Left edge of the rectangle, 0-based. Inclusive.</summary>
-    public int Column
-    {
-        get;
-        init => field = ValidateDimension(in value);
-    }
+    public int Column { get; init; }
 
     /// <summary>Top edge of the rectangle, 0-based. Inclusive.</summary>
-    public int Row
-    {
-        get;
-        init => field = ValidateDimension(in value);
-    }
+    public int Row { get; init; }
 
     /// <summary>Width in cells. Non-negative; 0 produces an empty rectangle.</summary>
     public int Columns
     {
         get;
-        init => field = ValidateDimension(in value);
+        init => field = ValidateExtent(in value);
     }
 
     /// <summary>Height in cells. Non-negative; 0 produces an empty rectangle.</summary>
     public int Rows
     {
         get;
-        init => field = ValidateDimension(in value);
+        init => field = ValidateExtent(in value);
     }
 
     /// <summary>The cell position of the top-left corner of the rectangle.</summary>
@@ -258,14 +251,14 @@ public readonly record struct Rect
     public Rect Translate(int offsetColumn, int offsetRow)
         => new(Column + offsetColumn, Row + offsetRow, Columns, Rows);
     
-    internal static int ValidateDimension(in int value, [CallerMemberName] string? propertyName = "dimensions")
+    internal static int ValidateExtent(in int value, [CallerMemberName] string? propertyName = "dimensions")
     {
-        if (value is >= 0 and <= MaxDimension)
+        if (value >= 0)
             return value;
 
         throw new ArgumentOutOfRangeException(
             propertyName,
             value,
-            $"Rect {propertyName} must be between 0 and {MaxDimension:N0}.");
+            $"Rect {propertyName} must be between 0 and {MaxExtent:N0}.");
     }
 }

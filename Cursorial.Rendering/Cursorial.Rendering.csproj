@@ -45,4 +45,8 @@
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.Drawing" />
     </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="Fonts\Embedded\.phm-leds.flf.swp" />
+    </ItemGroup>
 </Project>

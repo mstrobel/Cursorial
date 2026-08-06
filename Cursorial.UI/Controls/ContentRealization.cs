@@ -190,6 +190,8 @@ internal static class ContentRealization
             {
                 foreach (var property in TextElement.AllFormattingProperties)
                     leaf.SetBinding(property, new Binding(property) { Source = source });
+                foreach (var property in TextElement.AllTypographyProperties)
+                    leaf.SetBinding(property, new Binding(property) { Source = source });
             }
         }
 

@@ -39,7 +39,7 @@ public class WelcomeViewModel : PageViewModel
         var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default), TextTrimming.CharacterEllipsis, WrapMode.NoWrap);
 
         foreach (var line in text.Split('\n'))
-            rtb.Run(line, new GlyphSource(font, sizing ?? TextSizing.Normal));
+            rtb.Run(line, new GlyphSource(font, /*sizing ?? */TextSizing.Normal));
         
         return rtb.Build();
     }

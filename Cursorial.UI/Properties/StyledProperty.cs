@@ -43,6 +43,9 @@ public class StyledProperty<T> : UIProperty
             UIPropertyRegistry.RegisterDefaultResourceKeyed(this);
     }
 
+    /// <summary>Returns the metadata from the original property's owner's registration.</summary>
+    public PropertyMetadata<T> DefaultMetadata => _registeredMetadata;
+
     /// <summary>
     /// The merged metadata for <paramref name="forType"/>, resolved through the type's inheritance
     /// chain (registration metadata as the root, overrides applied base-first — <c>Changed</c>

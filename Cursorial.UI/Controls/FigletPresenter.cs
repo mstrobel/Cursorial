@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
@@ -20,15 +21,17 @@ public sealed class FigletPresenter : DrawnContentPresenter
         UIProperty.Register<FigletPresenter, string?>(nameof(Text),
                                                       changed: OnLayoutAffectingPropertyChanged);
 
-    /// <summary>The <see cref="Rendering.Text.TextTrimming">text trimming</see> to apply to the rich text.</summary>
+    /// <summary>The <see cref="Rendering.Text.TextTrimming">text trimming</see> to apply to the figlet text.</summary>
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
-        UIProperty.Register<FigletPresenter, TextTrimming>(nameof(TextTrimming),
-                                                           changed: OnRenderAffectingPropertyChanged);
+        TextElement.TextTrimmingProperty.AddOwner<FigletPresenter>();
 
-    /// <summary>The <see cref="Rendering.Text.TextAlignment">text alignment</see> to apply to the rich text.</summary>
+    /// <summary>The <see cref="Rendering.Text.WrapMode">text wrapping</see> to apply to the figlet text.</summary>
+    public static readonly StyledProperty<WrapMode> TextWrappingProperty =
+        TextElement.TextWrappingProperty.AddOwner<FigletPresenter>();
+
+    /// <summary>The <see cref="Rendering.Text.TextAlignment">text alignment</see> to apply to the figlet text.</summary>
     public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
-        UIProperty.Register<FigletPresenter, TextAlignment>(nameof(TextAlignment),
-                                                            changed: OnRenderAffectingPropertyChanged);
+        UIProperty.Register<FigletPresenter, TextAlignment>(nameof(TextAlignment));
 
     /// <summary>
     /// The <see cref="FormattedText.FillEntireBounds" /> value to set when formatting the figlet text.
@@ -53,15 +56,34 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
     private static readonly char[] LineSeparators = ['\r','\n'];
 
-    private record CachedState(int AvailableColumns, string Text, FormattedText RealizedText);
+    private record CachedState(int AvailableColumns, string Text, FormattedText? RealizedText, int? MaxRows = null)
+    {
+        /// <summary>Whether the row budget this layout was formatted under actually truncated it —
+        /// only then does a taller slot invalidate the cache (the grow-back path).</summary>
+        public bool RowCapBit => MaxRows is {} cap && RealizedText is { Size.Rows: var rows } && rows >= cap;
+    }
 
     private CachedState? _cachedState;
     private UIApplication? _subscribedApp;
 
     static FigletPresenter()
     {
+        AffectsMeasure<FigletPresenter>(FontProperty, TextAlignmentProperty);
+        AffectsRender<FigletPresenter>(FontProperty);
+
+        TextTrimmingProperty.OverrideMetadata<FigletPresenter>(
+            new PropertyMetadata<TextTrimming>(TextTrimmingProperty.DefaultMetadata.DefaultValue,
+                                               Changed: OnLayoutAffectingPropertyChanged)
+        );
+
+        TextWrappingProperty.OverrideMetadata<FigletPresenter>(
+            new PropertyMetadata<WrapMode>(WrapMode.WordWrap,
+                                           Changed: OnLayoutAffectingPropertyChanged)
+        );
+
         ForegroundProperty.OverrideMetadata<FigletPresenter>(
-            new PropertyMetadata<IBrush?>(Changed: OnRenderAffectingPropertyChanged)
+            new PropertyMetadata<IBrush?>(ForegroundProperty.DefaultMetadata.DefaultValue,
+                                          Changed: OnRenderAffectingPropertyChanged)
         );
     }
 
@@ -73,15 +95,21 @@ public sealed class FigletPresenter : DrawnContentPresenter
     }
 
     /// <inheritdoc cref="TextTrimmingProperty"/>
-    public TextTrimming? TextTrimming
+    public TextTrimming TextTrimming
     {
         get => GetValue(TextTrimmingProperty);
         set => SetValue(TextTrimmingProperty, value);
     }
 
+    /// <inheritdoc cref="TextWrappingProperty"/>
+    public WrapMode TextWrapping
+    {
+        get => GetValue(TextWrappingProperty);
+        set => SetValue(TextWrappingProperty, value);
+    }
 
     /// <inheritdoc cref="TextAlignmentProperty"/>
-    public TextAlignment? TextAlignment
+    public TextAlignment TextAlignment
     {
         get => GetValue(TextAlignmentProperty);
         set => SetValue(TextAlignmentProperty, value);
@@ -166,8 +194,24 @@ public sealed class FigletPresenter : DrawnContentPresenter
     /// <inheritdoc/>
     protected override Size MeasurePrimaryContent(Size availableSize)
     {
+        var wasMarkedTrimmed = GetValueSource(TextBlock.IsTrimmedProperty) is
+                               {
+                                   Kind: ValueSourceKind.Default,
+                                   IsCurrentValue: true
+                               };
+
         if (EnsureText(availableSize.Columns) is {} ft)
+        {
+            if (ft.HasTrimmedLines)
+                SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
+            else if (wasMarkedTrimmed)
+                ClearValue(TextBlock.IsTrimmedPropertyKey);
+
             return ft.Size;
+        }
+
+        if (wasMarkedTrimmed)
+            ClearValue(TextBlock.IsTrimmedPropertyKey);
 
         return Size.Empty;
     }
@@ -190,22 +234,35 @@ public sealed class FigletPresenter : DrawnContentPresenter
             return null;
 
         var bounds = ResolveBounds(possibleColumns);
-        var availableColumns = bounds.Columns;
 
-        if (_cachedState is {} cs &&
+        var availableColumns = bounds.Columns;
+        if (availableColumns is 0)
+            return null;
+
+        if (_cachedState is { RealizedText.Blocks.Length: > 0 } cs &&
             Equals(cs.Text, Text) &&
             cs.AvailableColumns == availableColumns)
         {
             return cs.RealizedText;
         }
 
-        var tf = new TextFormatter
-                 {
-                     Trim = TextTrimming ?? Rendering.Text.TextTrimming.ClipFromEnd,
-                     Alignment = TextAlignment ?? Rendering.Text.TextAlignment.Left
-                 };
+        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } ? bounds.Rows : (int?) null;
 
+        var richText = BuildRichText(text);
+
+        var ft = Format(richText, availableColumns, null, TextTrimming, TextWrapping, maxRows: maxRows);
+
+        cs = new CachedState(availableColumns, text, ft, maxRows);
+
+        _cachedState = cs;
+
+        return cs.RealizedText;
+    }
+
+    private RichText BuildRichText(string text)
+    {
         var font = Font ?? FigletFonts.Small;
+
         var rtb = new RichTextBuilder();
         var style = ResolveStyle();
 
@@ -213,27 +270,90 @@ public sealed class FigletPresenter : DrawnContentPresenter
             rtb.Figlet(line, font, style, TextAlignment, Padding);
 
         var richText = rtb.Build();
-
-        var ft = tf.Format(richText,
-                           availableColumns,
-                           capabilities: _subscribedApp?.EffectiveCapabilities.Output,
-                           fillEntireBounds: FillEntireBounds);
-
-        cs = new CachedState(availableColumns, text, ft);
-
-        _cachedState = cs;
-
-        return cs.RealizedText;
+        return richText;
     }
 
-    private Rect ResolveBounds(int? availableColumns)
+    protected override Size ArrangeOverride(Size finalSize)
     {
+        var result = base.ArrangeOverride(finalSize);
+
+        // Reformat when the slot shrank below the layout — or GREW past a row cap that actually
+        // truncated it: reusing a capped layout for a taller slot is how text used to stay
+        // trimmed forever after the space it needed came back.
+        if (_cachedState is { RealizedText.Size.Rows: var rows } cs &&
+            (rows > finalSize.Rows || (cs.RowCapBit && finalSize.Rows > cs.MaxRows)))
+        {
+            _cachedState = null;
+            result = MeasurePrimaryContent(finalSize);
+        }
+
+        return result;
+    }
+
+    private FormattedText Format(RichText text,
+                                 int width,
+                                 OutputCapabilities? caps,
+                                 TextTrimming? trimmingOverride = null,
+                                 WrapMode? wrappingOverride = null,
+                                 int? maxRows = null)
+    {
+        var bounds = ResolveBounds(width);
+        if (bounds.Columns is 0)
+            return FormattedText.Empty;
+
+        var textTrimming = trimmingOverride ?? TextTrimming;
+
+        var tf = new TextFormatter
+                 {
+                     Alignment = TextAlignment,
+                     Trim = textTrimming,
+                     Wrap = wrappingOverride ?? TextFormatter.DefaultWrap
+                 };
+
+        if (text.IsEmpty)
+            return FormattedText.Empty;
+
+        var ft = tf.Format(text,
+                           width,
+                           capabilities: caps ?? _subscribedApp?.EffectiveCapabilities.Output,
+                           maxRows: maxRows);
+
+        return ft;
+    }
+
+    internal string? GetUntrimmedText(int maxWidth)
+    {
+        if (Text is not { Length: > 0 } text) return null;
+
+        var bounds = ResolveBounds(maxWidth);
+        if (bounds.Columns is 0)
+            return null;
+
+        if (BuildRichText(text) is not { IsEmpty: false } richText)
+            return null;
+
+        var tf = new TextFormatter
+                 {
+                     Alignment = TextAlignment.Left,
+                     Trim = TextTrimming.None,
+                     Wrap = WrapMode.CharacterWrap
+                 };
+
+        // Deliberately UNCAPPED rows: this is the trimmed-content tooltip's payload, and its whole
+        // job is to reveal what the presenter's own bounds hid — capping it at those bounds would
+        // re-hide exactly the lines the user hovered to see. Display limits belong to the tooltip.
+        return tf.FormatPlainText(richText, maxWidth, maxRows: null);
+    }
+
+    private LayoutRect ResolveBounds(int? availableColumns)
+    {
+        LayoutRect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
+
         if (availableColumns is null)
         {
             Size? desiredSize = HasMeasureConstraint ? LastMeasureConstraint : null;
-            Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
 
-            if (_cachedState is {} cs && ReferenceEquals(cs.Text, Text))
+            if (_cachedState is { RealizedText: not null } cs && cs.Text == Text)
                 availableColumns = cs.AvailableColumns;
 
             if (desiredSize is { Columns: var desiredColumns })
@@ -244,16 +364,13 @@ public sealed class FigletPresenter : DrawnContentPresenter
         }
 
         var bounds = Bounds;
+        var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
 
-        bounds = bounds with
-                 {
-                     Column = Math.Max(0, bounds.Column),
-                     Row = Math.Max(0, bounds.Row),
-                     Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                     Rows = Math.Min(bounds.Rows, LayoutMath.MaxExtent)
-                 };
-
-        return bounds.ToRect();
+        return bounds with
+               {
+                   Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
+                   Rows = rows
+               };
     }
 
     private CellStyle ResolveStyle()

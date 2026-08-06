@@ -644,9 +644,10 @@ public sealed class ContentPresenter : UIElement
     }
 
     private static bool AdvertisesTrimmedState([NotNullWhen(true)] UIElement? element)
-        => element is TextBlock or 
-                      AccessTextPresenter or 
-                      RichTextPresenter;
+        => element is TextBlock or
+                      AccessTextPresenter or
+                      RichTextPresenter or
+                      FigletPresenter;
 
     private string? GetUntrimmedText(UIElement? element, int maxToolTipWidth)
     {
@@ -671,6 +672,10 @@ public sealed class ContentPresenter : UIElement
         else if (element is RichTextPresenter rtp && rtp.GetValue(TextBlock.IsTrimmedProperty))
         {
             return rtp.GetUntrimmedText(maxToolTipWidth);
+        }
+        else if (element is FigletPresenter fp && fp.GetValue(TextBlock.IsTrimmedProperty))
+        {
+            return fp.GetUntrimmedText(maxToolTipWidth);
         }
 
         return null;

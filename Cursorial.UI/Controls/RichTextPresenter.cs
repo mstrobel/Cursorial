@@ -2,6 +2,7 @@ using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 
 using CellStyle = Cursorial.Output.Style;
@@ -22,9 +23,19 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
     /// <summary>The <see cref="Rendering.Text.TextTrimming">text trimming</see> to apply to the rich text.</summary>
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
-        UIProperty.Register<RichTextPresenter, TextTrimming>(nameof(TextTrimming),
-                                                             defaultValue: TextTrimming.CharacterEllipsis,
-                                                             changed: OnLayoutAffectingPropertyChanged);
+        TextElement.TextTrimmingProperty.AddOwner<RichTextPresenter>();
+
+    /// <summary>The <see cref="Rendering.Text.WrapMode">text wrapping</see> to apply to the rich text.</summary>
+    public static readonly StyledProperty<WrapMode> TextWrappingProperty =
+        TextElement.TextWrappingProperty.AddOwner<RichTextPresenter>();
+
+    /// <inheritdoc cref="TextElement.FontProperty"/>
+    public static readonly StyledProperty<IGlyphFont?> FontProperty =
+        TextElement.FontProperty.AddOwner<RichTextPresenter>();
+
+    /// <inheritdoc cref="TextElement.SizingProperty"/>
+    public static readonly StyledProperty<TextSizing> SizingProperty =
+        TextElement.SizingProperty.AddOwner<RichTextPresenter>();
 
     /// <summary>The <see cref="Rendering.Text.TextAlignment">text alignment</see> to apply to the rich text.</summary>
     public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
@@ -56,6 +67,26 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         ForegroundProperty.OverrideMetadata<RichTextPresenter>(
             new PropertyMetadata<IBrush?>(Changed: OnRenderAffectingPropertyChanged)
         );
+
+        TextTrimmingProperty.OverrideMetadata<RichTextPresenter>(
+            new PropertyMetadata<TextTrimming>(TextTrimmingProperty.DefaultMetadata.DefaultValue,
+                                               Changed: OnLayoutAffectingPropertyChanged)
+        );
+
+        TextWrappingProperty.OverrideMetadata<RichTextPresenter>(
+            new PropertyMetadata<WrapMode>(DefaultValue: WrapMode.WordWrap,
+                                           Changed: OnLayoutAffectingPropertyChanged)
+        );
+
+        FontProperty.OverrideMetadata<RichTextPresenter>(
+            new PropertyMetadata<IGlyphFont?>(FontProperty.DefaultMetadata.DefaultValue,
+                                              Changed: OnLayoutAffectingPropertyChanged)
+        );
+
+        SizingProperty.OverrideMetadata<RichTextPresenter>(
+            new PropertyMetadata<TextSizing>(SizingProperty.DefaultMetadata.DefaultValue,
+                                             Changed: OnLayoutAffectingPropertyChanged)
+        );
     }
 
     /// <inheritdoc cref="SourceProperty"/>
@@ -72,12 +103,32 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         set => SetValue(TextTrimmingProperty, value);
     }
 
+    /// <inheritdoc cref="TextWrappingProperty"/>
+    public WrapMode TextWrapping
+    {
+        get => GetValue(TextWrappingProperty);
+        set => SetValue(TextWrappingProperty, value);
+    }
 
     /// <inheritdoc cref="TextAlignmentProperty"/>
     public TextAlignment TextAlignment
     {
         get => GetValue(TextAlignmentProperty);
         set => SetValue(TextAlignmentProperty, value);
+    }
+
+    /// <inheritdoc cref="FontProperty"/>
+    public IGlyphFont? Font
+    {
+        get => GetValue(FontProperty);
+        set => SetValue(FontProperty, value);
+    }
+
+    /// <inheritdoc cref="SizingProperty"/>
+    public TextSizing Sizing
+    {
+        get => GetValue(SizingProperty);
+        set => SetValue(SizingProperty, value);
     }
 
     /// <inheritdoc cref="FillEntireBoundsProperty"/>
@@ -180,9 +231,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
             else if (wasMarkedTrimmed)
                 ClearValue(TextBlock.IsTrimmedPropertyKey);
 
-            return TextAlignment is TextAlignment.Left || LayoutMath.IsUnbounded(availableSize.Columns)
-                       ? ft.Size
-                       : ft.Size with { Columns = availableSize.Columns };
+            return ft.Size;
         }
 
         if (wasMarkedTrimmed)
@@ -220,11 +269,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter
             return cs.Text;
         }
 
-        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } && TextTrimming is not TextTrimming.None
-                          ? bounds.Rows
-                          : (int?)null;
+        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } ? bounds.Rows : (int?)null;
 
-        var ft = Format(text, availableColumns, null, TextTrimming, maxRows: maxRows);
+        var ft = Format(text, availableColumns, null, TextTrimming, TextWrapping, maxRows: maxRows);
 
         cs = new CachedState(availableColumns, text, ft, maxRows);
 
@@ -323,9 +370,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         return text;
     }
 
-    private Rect ResolveBounds(int? availableColumns)
+    private LayoutRect ResolveBounds(int? availableColumns)
     {
-        Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
+        LayoutRect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
 
         if (availableColumns is null)
         {
@@ -344,11 +391,11 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         var bounds = Bounds;
         var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
 
-        return (bounds with
-                {
-                    Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                    Rows = rows
-                }).ToRect();
+        return bounds with
+               {
+                   Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
+                   Rows = rows
+               };
     }
 
     private RichText ParseRichText(string s)
@@ -365,9 +412,11 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
             style = style.WithUnderlineColor(fgColor);
 
-        var rtb = new RichTextBuilder(style);
+        var glyphSource = new GlyphSource(Font, Sizing);
+        var rtb = new RichTextBuilder(style, defaultGlyphSource: glyphSource);
 
-        TextMarkup.Parse(s, rtb,
+        TextMarkup.Parse(s,
+                         rtb,
                          new TextMarkupOptions
                          {
                              BrushResolver = ResourceBrushResolver.Create(this),

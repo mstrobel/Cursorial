@@ -33,7 +33,9 @@ public class VerticalMetricsTests
         { "Big", 8, 6 },             // flf2a$ 8 6 59 15 10 0 24463 154
         { "Mini", 4, 3 },            // flf2a$ 4 3 10 0 10 0 1920 97
         { "AnsiShadow", 7, 7 },      // flf2a$ 7 7 13 0 7 0 64 1  — the ONLY zero-descent face
-        { "MiniWi", 4, 4 },          // flf2a$ 4 4 3 -1 5 0 1 0
+        { "MiniWi", 4, 3 },          // flf2a$ 4 3 3 -1 5 0 1 0  — header corrected: it shipped
+                                     // claiming 4 (no descent), but its glyph bodies bottom out on
+                                     // row index 2 with row 3 empty, i.e. a baseline COUNT of 3.
         { "CGA", 2, 2 },             // flf2a$ 2 2 7 -1 6 0 0 163
         { "LCDMatrix", 2, 2 },       // flf2a$ 2 2 7 -1 7 0 0 3
         { "Hp2640LargeType", 3, 3 }, // flf2a$ 3 3 20 -1 24 0 0 2

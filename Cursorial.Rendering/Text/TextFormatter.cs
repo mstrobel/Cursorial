@@ -268,7 +268,7 @@ public sealed class TextFormatter
                                                OutputCapabilities capabilities, bool plainTextOnly)
     {
         // 1. Decompose inlines into wrap atoms with applied glyph maps and soft-hyphen markers.
-        var atoms = new Tokenizer(this, availableColumns, capabilities).Run(paragraph.Inlines);
+        var atoms = new Tokenizer(this, availableColumns, capabilities, plainTextOnly).Run(paragraph.Inlines);
 
         // 2. Greedy line packing per WrapMode.
         var lines = PackLines(atoms, availableColumns, paragraph.Wrap);
@@ -341,7 +341,8 @@ public sealed class TextFormatter
     /// flat list of <see cref="Atom"/>s consumable by the line packer. Held as a class so the
     /// in-progress word buffer can be mutated without ref-parameter closure pain.
     /// </summary>
-    private sealed class Tokenizer(TextFormatter outer, int availableColumns, OutputCapabilities capabilities)
+    private sealed class Tokenizer(TextFormatter outer, int availableColumns, OutputCapabilities capabilities,
+                                   bool plainTextOnly = false)
     {
         private readonly List<Atom> _atoms = [];
         private readonly List<FormattedRun> _wordRuns = [];
@@ -381,7 +382,7 @@ public sealed class TextFormatter
             // per-run-sourced downstream.
             // Resolve against the terminal ONCE, at layout time — an unsupported sizing falls
             // back to its face here, so wrap points, trim math, and paint all agree on the tier.
-            var runSource = (run.Source ?? GlyphSource.Default).ResolveFor(capabilities);
+            var runSource = plainTextOnly ? GlyphSource.Default : (run.Source ?? GlyphSource.Default).ResolveFor(capabilities);
             var metrics = runSource.Metrics;
 
             var fragmentBuilder = new StringBuilder();
@@ -909,7 +910,7 @@ public sealed class TextFormatter
     /// an outcome. An author who sets <see cref="Ellipsis"/> to the empty string is asking for no
     /// indicator and gets exactly that.
     /// </remarks>
-    private EllipsisChoice ChooseEllipsis(GlyphSource source)
+    private EllipsisChoice ChooseEllipsis(GlyphSource source, int maxWidth)
     {
         // Only a face-painted run consults the face. An OSC 66 run's cells are drawn by the
         // TERMINAL's font (a non-normal sizing survives tokenization only when the protocol is
@@ -917,8 +918,13 @@ public sealed class TextFormatter
         if (Ellipsis.Length == 0 || source.Font is not {} face || !source.Sizing.IsNormal)
             return new EllipsisChoice(Ellipsis, source);
 
-        if (CanRender(face, Ellipsis)) return new EllipsisChoice(Ellipsis, source);
-        if (CanRender(face, DerivedEllipsis)) return new EllipsisChoice(DerivedEllipsis, source);
+        var metrics = face.GetMetrics();
+
+        if (CanRender(face, Ellipsis) && metrics.StringWidth(Ellipsis) <= maxWidth) 
+            return new EllipsisChoice(Ellipsis, source);
+
+        if (CanRender(face, DerivedEllipsis) && metrics.StringWidth(DerivedEllipsis) <= maxWidth)
+            return new EllipsisChoice(DerivedEllipsis, source);
 
         // The last resort is the only construct in the system that puts runs of DIFFERENT metrics
         // in one band, so it is the only one that has to say where its run sits — see
@@ -993,7 +999,7 @@ public sealed class TextFormatter
         // source can actually draw.
         var joins = LastTextRun(line.Runs);
         var source = joins?.Source ?? GlyphSource.Default;
-        var choice = ChooseEllipsis(source);
+        var choice = ChooseEllipsis(source, maxWidth);
         int ellipsisWidth = choice.Width;
 
         if (line.Width + ellipsisWidth <= maxWidth)
@@ -1005,7 +1011,7 @@ public sealed class TextFormatter
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
         var clipped = ClipDraft(line, budget);
         var clippedJoins = LastTextRun(clipped.Runs);
-        var clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source);
+        var clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source, maxWidth);
         int clippedEllipsisWidth = clippedChoice.Width;
 
         // The budget was estimated with the LINE-END run's ellipsis width; if clipping landed on
@@ -1016,7 +1022,7 @@ public sealed class TextFormatter
         {
             clipped = ClipDraft(clipped, Math.Max(0, maxWidth - clippedEllipsisWidth));
             clippedJoins = LastTextRun(clipped.Runs);
-            clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source);
+            clippedChoice = ChooseEllipsis(clippedJoins?.Source ?? source, maxWidth);
             clippedEllipsisWidth = clippedChoice.Width;
         }
 
@@ -1029,7 +1035,7 @@ public sealed class TextFormatter
         // Budget with the ellipsis measured at the LINE-END run's source (the widest the tail
         // ellipsis can be); the appended ellipsis re-measures at the actual cut run's source.
         var lineEnd = LastTextRun(line.Runs);
-        var lineEndChoice = ChooseEllipsis(lineEnd?.Source ?? GlyphSource.Default);
+        var lineEndChoice = ChooseEllipsis(lineEnd?.Source ?? GlyphSource.Default, maxWidth);
         int ellipsisWidth = lineEndChoice.Width;
         int budget = Math.Max(0, maxWidth - ellipsisWidth);
 
@@ -1069,7 +1075,7 @@ public sealed class TextFormatter
                     {
                         var draft = TruncateAt(line, cutRunIndex, cutCharIndex);
                         var joins = LastTextRun(draft.Runs);
-                        var joinChoice = ChooseEllipsis(joins?.Source ?? GlyphSource.Default);
+                        var joinChoice = ChooseEllipsis(joins?.Source ?? GlyphSource.Default, maxWidth);
                         int joinWidth = joinChoice.Width;
 
                         // The budget above assumed the LINE-END run's indicator; the cut can land
@@ -1348,18 +1354,6 @@ public sealed class TextFormatter
         public WordAtom AsWord() => new([..Runs], Width, ImmutableArray<SoftBreakPoint>.Empty);
 
         public FormattedLine ToFormattedLine() => new([..Runs], Width, Trimmed, Rows);
-
-        public void ToPlainText(StringBuilder sb)
-        {
-            if (Runs.Count == 0)
-                return;
-
-            foreach (var run in Runs)
-            {
-                if (run is FormattedTextRun ftr)
-                    sb.Append(ftr.Text);
-            }
-        }
 
         public static LineDraft FromWord(WordAtom word, bool trimmed = false)
         {

@@ -31,6 +31,7 @@ public sealed class RichTextBuilder
 {
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
     private readonly Style _defaultStyle;
+    private readonly GlyphSource? _defaultGlyphSource;
     private readonly TextTrimming _defaultTrimming;
     private readonly WrapMode _defaultWrap;
 
@@ -56,9 +57,11 @@ public sealed class RichTextBuilder
 
     public RichTextBuilder(Style defaultStyle = default,
                            TextTrimming? defaultTrimming = null,
-                           WrapMode? defaultWrap = null)
+                           WrapMode? defaultWrap = null,
+                           GlyphSource? defaultGlyphSource = null)
     {
         _defaultStyle = defaultStyle;
+        _defaultGlyphSource = defaultGlyphSource;
         _defaultTrimming = defaultTrimming ?? TextTrimming.None;
         _defaultWrap = defaultWrap ?? WrapMode.WordWrap;
         _openWrap = _defaultWrap;
@@ -138,19 +141,13 @@ public sealed class RichTextBuilder
     /// <summary>Append a text run inheriting the current style / map / hyperlink / tag stacks.</summary>
     public RichTextBuilder Run(string text)
     {
-        ArgumentNullException.ThrowIfNull(text);
-        if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, CurrentStyle, CurrentMap, CurrentHyperlink, CurrentTag));
-        return this;
+        return Run(text, source: null, CurrentStyle, CurrentTag);
     }
 
     /// <summary>Append a text run with an explicit style, ignoring the style stack (but inheriting the tag).</summary>
     public RichTextBuilder Run(string text, in Style style)
     {
-        ArgumentNullException.ThrowIfNull(text);
-        if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, CurrentTag));
-        return this;
+        return Run(text, source: null, style, CurrentTag);
     }
 
     /// <summary>
@@ -160,10 +157,7 @@ public sealed class RichTextBuilder
     /// </summary>
     public RichTextBuilder Run(string text, in Style style, object? tag)
     {
-        ArgumentNullException.ThrowIfNull(text);
-        if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag));
-        return this;
+        return Run(text, source: null, style, tag);
     }
 
     /// <summary>
@@ -172,14 +166,13 @@ public sealed class RichTextBuilder
     /// participant in the paragraph flow — it wraps, trims, and aligns like plain text, at the
     /// source's per-cluster cell advances.
     /// </summary>
-    public RichTextBuilder Run(string text, GlyphSource source, in Style style = default, object? tag = null)
+    public RichTextBuilder Run(string text, GlyphSource? source, in Style style = default, object? tag = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        ArgumentNullException.ThrowIfNull(source);
         if (text.Length == 0) return this;
         AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag ?? CurrentTag)
                      {
-                         Source = source
+                         Source = source ?? _defaultGlyphSource
                      });
         return this;
     }
@@ -248,6 +241,7 @@ public sealed class RichTextBuilder
         _openWrap = wrap ?? _defaultWrap;
         _openAlignment = alignment;
         _openTrim = trim ?? _defaultTrimming;
+        
         _openMaxLines = maxLines;
         _openMargin = margin ?? TextParagraph.DefaultMargins;
         return this;

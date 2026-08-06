@@ -26,7 +26,10 @@ public class BundledFigletEllipsisTests
     /// reasoning: their '.' already smushes into the exact three-dot mark authored art would
     /// draw. Roman's dots carry a hardblank pad that only a muddier, denser glyph could beat.
     /// MiniWi and LED ship truncated (95 of the 102 required codepoints), and the FLF required
-    /// block is POSITIONAL — an appended codetag would be swallowed as the missing Ä…ß bodies.
+    /// block is POSITIONAL — an appended codetag is swallowed as the missing Ä…ß bodies. Padding
+    /// the block with empty bodies does reach the codetag, but leaves those seven reporting
+    /// HasGlyph == true while painting nothing and advancing zero cells, which is the very bug
+    /// HasGlyph exists to prevent. Finishing the faces properly is the only real fix.
     /// </summary>
     public static TheoryData<string> Derived => ["Slant", "SmallSlant", "Roman", "MiniWi", "LED"];
 
@@ -56,13 +59,25 @@ public class BundledFigletEllipsisTests
     {
         // The whole point: the glyph must be VISIBLE. An empty codetag body would parse fine and
         // reintroduce the invisible-indicator bug in the faces we ship.
+        //
+        // Measured against the face's OWN reported size rather than a fixed cell count: the
+        // bundled art spans a 2x2 LED cell (2 cells of ink) to big.flf's 7x8 (10), so any constant
+        // floor is either unreachable for the compact faces or vacuous for the large ones. Painting
+        // into a buffer with slack turns this into an exact property instead — every inked cell
+        // must fall inside the box `Measure` promised, which also catches a glyph that under-reports
+        // its width and would then overrun whatever sits beside it in a trimmed line.
         var face = Face(name);
         var size = face.Measure("…");
-        var buffer = new CellBuffer(size.Columns, size.Rows);
+        var buffer = new CellBuffer(size.Columns + 2, size.Rows + 2);
 
         face.Paint(buffer, 0, 0, "…", Style.Default);
 
-        Assert.True(Ink(buffer) >= 3, $"{name}: the authored ellipsis painted {Ink(buffer)} cells of ink");
+        int total = Ink(buffer);
+        int inside = Ink(buffer, size.Columns, size.Rows);
+
+        Assert.True(total > 0, $"{name}: the authored ellipsis painted no ink");
+        Assert.True(inside == total,
+                    $"{name}: {total - inside} of {total} inked cells fell outside the reported {size.Columns}x{size.Rows} box");
     }
 
     [Theory]
@@ -129,12 +144,15 @@ public class BundledFigletEllipsisTests
         Assert.Equal(0, Ink(space));
     }
 
-    private static int Ink(CellBuffer buffer)
+    private static int Ink(CellBuffer buffer) => Ink(buffer, buffer.Columns, buffer.Rows);
+
+    /// <summary>Inked cells within the top-left <paramref name="columns"/>x<paramref name="rows"/> region.</summary>
+    private static int Ink(CellBuffer buffer, int columns, int rows)
     {
         int count = 0;
 
-        for (int r = 0; r < buffer.Rows; r++)
-        for (int c = 0; c < buffer.Columns; c++)
+        for (int r = 0; r < Math.Min(rows, buffer.Rows); r++)
+        for (int c = 0; c < Math.Min(columns, buffer.Columns); c++)
             if (buffer[c, r].Grapheme is { Length: > 0 } g && g.Trim().Length > 0)
                 count++;
 

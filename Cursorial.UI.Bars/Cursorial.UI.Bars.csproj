@@ -18,7 +18,7 @@
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PackageId>Cursorial.UI.Bars</PackageId>
-        <Version>0.4.0</Version>
+        <Version>0.5.0</Version>
         <Description>Command surfaces for Cursorial.UI — a Toolbar with discrete overflow and a Ribbon (tabs/groups, density collapse, contextual tabs, Backstage, Quick Access Toolbar, minimize), plus KeyTips (Alt-overlay accelerators) and SuperTips, all bound to one shared BarCommand set: define a command once, surface it on any bar.</Description>
         <PackageTags>terminal;tui;ui;toolbar;ribbon;keytips;commands;crossplatform</PackageTags>
     </PropertyGroup>

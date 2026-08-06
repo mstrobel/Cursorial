@@ -10,7 +10,7 @@ namespace Cursorial.Tests.UI.LayoutMatrix;
 /// §13 — Signed margins (P2.6 — LD19): rows L219–L224, companions to the amended L37 (measure
 /// math, in §2). Negative <c>Margin</c> components follow WPF semantics: the margin-deflate
 /// enlarges, <c>DesiredSize</c> clamps ≥ 0, and the arrange position fold is signed — carried by
-/// the signed <see cref="LayoutRect"/>. The LD3 alignment-offset clamp stays; margins are the only
+/// the signed <see cref="Rect"/>. The LD3 alignment-offset clamp stays; margins are the only
 /// layout-side source of negative placement.
 /// </summary>
 public class Section13_SignedMargins
@@ -29,7 +29,7 @@ public class Section13_SignedMargins
         Assert.Equal(new Size(4, 1), probe.DesiredSize); // 2 rows + (−1) margin
 
         probe.Arrange(new Rect(0, 3, 10, 6));
-        Assert.Equal(new LayoutRect(0, 2, 4, 2), probe.Bounds); // slot row 3 + margin.Top (−1)
+        Assert.Equal(new Rect(0, 2, 4, 2), probe.Bounds); // slot row 3 + margin.Top (−1)
     }
 
     [Fact]
@@ -46,9 +46,9 @@ public class Section13_SignedMargins
         var (_, tree) = LayoutFixture.CreateRenderRoot(panel, 10, 6);
 
         Assert.Equal(new Size(10, 0), b.DesiredSize); // the L37 clamp
-        Assert.Equal(new LayoutRect(0, 0, 10, 2), a.Bounds);
-        Assert.Equal(new LayoutRect(0, 1, 10, 1), b.Bounds); // overlaps A's last row
-        Assert.Equal(new LayoutRect(0, 2, 10, 1), c.Bounds); // the stack advance consumed B's 0-row desired
+        Assert.Equal(new Rect(0, 0, 10, 2), a.Bounds);
+        Assert.Equal(new Rect(0, 1, 10, 1), b.Bounds); // overlaps A's last row
+        Assert.Equal(new Rect(0, 2, 10, 1), c.Bounds); // the stack advance consumed B's 0-row desired
 
         tree.Render();
         var view = new CellBufferView(tree.Composite(10, 6));
@@ -70,7 +70,7 @@ public class Section13_SignedMargins
         probe.Arrange(new Rect(0, 0, 10, 6));
 
         Assert.Equal(new Size(12, 2), Assert.Single(probe.ArrangeSizes)); // size_a = the widened inner slot
-        Assert.Equal(new LayoutRect(-1, 0, 12, 2), probe.Bounds);
+        Assert.Equal(new Rect(-1, 0, 12, 2), probe.Bounds);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class Section13_SignedMargins
         panel.Children.Add(child);
 
         var (_, tree) = LayoutFixture.CreateRenderRoot(panel, 10, 4);
-        Assert.Equal(new LayoutRect(0, -1, 10, 2), child.Bounds); // negative origin at the zone's top edge
+        Assert.Equal(new Rect(0, -1, 10, 2), child.Bounds); // negative origin at the zone's top edge
 
         tree.Render(); // no throw — the per-cell push-stack clip absorbs the off-zone row
         var view = new CellBufferView(tree.Composite(10, 4));
@@ -116,7 +116,7 @@ public class Section13_SignedMargins
         panel.Children.Add(child);
 
         var (_, tree) = LayoutFixture.CreateRenderRoot(panel, 10, 4);
-        Assert.Equal(new LayoutRect(-1, 0, 12, 2), child.Bounds);
+        Assert.Equal(new Rect(-1, 0, 12, 2), child.Bounds);
         tree.Render();
 
         Assert.Same(child, tree.HitTest(0, 0));
@@ -150,7 +150,7 @@ public class Section13_SignedMargins
 
         // Inner slot 11 < used 12: the LD3 offset clamps to 0 (overflow pins left, WPF would center
         // negative); the −1 origin comes solely from the margin.Left term of the position fold.
-        Assert.Equal(new LayoutRect(-1, 0, 12, 2), probe.Bounds);
+        Assert.Equal(new Rect(-1, 0, 12, 2), probe.Bounds);
     }
 
     [Fact]
@@ -171,6 +171,6 @@ public class Section13_SignedMargins
 
         probe.Arrange(new Rect(0, 5, 10, 6));
         Assert.Equal(new Size(4, 1), Assert.Single(probe.ArrangeSizes)); // natural, not natural + 2
-        Assert.Equal(new LayoutRect(0, 2, 4, 1), probe.Bounds);          // no phantom rows painted
+        Assert.Equal(new Rect(0, 2, 4, 1), probe.Bounds);          // no phantom rows painted
     }
 }

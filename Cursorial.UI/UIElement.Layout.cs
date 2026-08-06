@@ -6,7 +6,7 @@ public abstract partial class UIElement
 {
     private Size _desiredSize;
     private Size _naturalSize; // post-MinMax, pre-margin (WPF's _unclippedDesiredSize) — arrange content sizing (L225)
-    private LayoutRect _bounds;
+    private Rect _bounds;
     private Size _lastMeasureConstraint;
     private Rect _lastArrangeRect;
     private bool _hasMeasured;
@@ -33,7 +33,7 @@ public abstract partial class UIElement
     /// <b>signed</b> (LD19): negative <see cref="Margin"/> components may place an element
     /// above/left of its parent's slot; cells outside the zone clip at composite time.
     /// </summary>
-    public LayoutRect Bounds => _bounds;
+    public Rect Bounds => _bounds;
 
     /// <summary>Whether the element's measure state is current.</summary>
     public bool IsMeasureValid { get; private set; }
@@ -244,7 +244,7 @@ public abstract partial class UIElement
             _lastArrangeRect = finalRect;
             _hasArranged = true;
             IsArrangeValid = true;
-            SetBoundsAndRoute(LayoutRect.Empty);
+            SetBoundsAndRoute(Rect.Empty);
             // A Collapsed arrange does NOT trigger transition go-live: it skips template expansion, so the
             // element's initial base values aren't realized yet — going live here would transition the genuine
             // initial application that arrives when it's later made Visible (§9.5).
@@ -328,7 +328,7 @@ public abstract partial class UIElement
             row = Math.Clamp(row, -LayoutMath.MaxExtent, LayoutMath.MaxExtent);
         }
 
-        SetBoundsAndRoute(new LayoutRect((int) column, (int) row, usedColumns, usedRows));
+        SetBoundsAndRoute(new Rect((int) column, (int) row, usedColumns, usedRows));
     }
 
     /// <summary>
@@ -355,7 +355,7 @@ public abstract partial class UIElement
     /// for non-boundaries — which is why position animations must use <c>RenderOffset*</c>, never
     /// <c>Margin</c>/<c>Canvas.Left</c> (invariant 3).
     /// </summary>
-    private void SetBoundsAndRoute(LayoutRect newBounds)
+    private void SetBoundsAndRoute(Rect newBounds)
     {
         var oldBounds = _bounds;
         if (!SetAndRaise(BoundsProperty, ref _bounds, newBounds))

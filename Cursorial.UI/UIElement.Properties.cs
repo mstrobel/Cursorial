@@ -121,8 +121,8 @@ public abstract partial class UIElement
         UIProperty.RegisterDirect<UIElement, Size>(nameof(DesiredSize), static e => e._desiredSize);
 
     /// <summary>The element's parent-relative arranged bounds (signed origin — LD19), produced by <see cref="Arrange"/>. Read-only direct property.</summary>
-    public static readonly DirectProperty<UIElement, LayoutRect> BoundsProperty =
-        UIProperty.RegisterDirect<UIElement, LayoutRect>(nameof(Bounds), static e => e._bounds);
+    public static readonly DirectProperty<UIElement, Rect> BoundsProperty =
+        UIProperty.RegisterDirect<UIElement, Rect>(nameof(Bounds), static e => e._bounds);
 
     static UIElement()
     {

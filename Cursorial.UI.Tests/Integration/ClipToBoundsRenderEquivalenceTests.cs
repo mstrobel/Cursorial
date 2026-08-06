@@ -150,7 +150,7 @@ public sealed class ClipToBoundsRenderEquivalenceTests
 
     /// <summary>
     /// The arranged geometry the equivalence rests on, asserted rather than assumed: a negative
-    /// margin moves the element's <see cref="LayoutRect"/> origin, and at slot 0 that origin —
+    /// margin moves the element's <see cref="Rect"/> origin, and at slot 0 that origin —
     /// and therefore the accumulated <em>window</em> offset — is genuinely negative.
     /// </summary>
     [Theory]

@@ -16,7 +16,7 @@ public static class LayoutMath
 
     /// <summary>
     /// The hard ceiling for any arrange extent. Arrange extents clamp to <c>[0, MaxExtent]</c> and positions to
-    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG
+    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>Rect</c> construction (with a DEBUG
     /// diagnostic) so a misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
     /// <para>
     /// <b>Decoupled from <see cref="Rect.MaxExtent"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>
@@ -120,7 +120,7 @@ public static class LayoutLimits
     
     /// <summary>
     /// The hard ceiling for any arrange extent. Arrange extents clamp to <c>[0, MaxExtent]</c> and positions to
-    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>LayoutRect</c> construction (with a DEBUG
+    /// <c>[−MaxExtent, MaxExtent]</c> (signed origins, LD19) before <c>Rect</c> construction (with a DEBUG
     /// diagnostic) so a misbehaving panel can never detonate a constructor or overflow downstream arithmetic.
     /// <para>
     /// <b>Decoupled from <see cref="Rect.MaxExtent"/>:</b> the <c>Rect</c> geometry type is <see cref="int"/>

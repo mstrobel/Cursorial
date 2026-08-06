@@ -43,9 +43,9 @@ public sealed class SignedMarginIntegrationTests
         // Layout: the pulled label's desired height clamps to 0 (L37), its bounds land on the
         // spacing row (slot row 2, minus the margin), and the rest of the stack moves up one row.
         Assert.Equal(new Size(12, 0), pulled.DesiredSize);
-        Assert.Equal(new LayoutRect(0, 0, 10, 1), first.Bounds);
-        Assert.Equal(new LayoutRect(0, 1, 12, 1), pulled.Bounds); // the gap row — adjacent to its predecessor
-        Assert.Equal(new LayoutRect(0, 3, 11, 1), next.Bounds);   // spacing still applies below
+        Assert.Equal(new Rect(0, 0, 10, 1), first.Bounds);
+        Assert.Equal(new Rect(0, 1, 12, 1), pulled.Bounds); // the gap row — adjacent to its predecessor
+        Assert.Equal(new Rect(0, 3, 11, 1), next.Bounds);   // spacing still applies below
 
         // Cells: the overlap renders — the pulled label paints on the row directly beneath the
         // first label, the next spacing gap stays blank, and the following label sits below it.

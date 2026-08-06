@@ -1264,10 +1264,10 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         surface.Opacity = popup.Opacity;
     }
 
-    private (int, int) Place(Popup popup, PlacementMode placement, in LayoutRect anchor, Size size,
+    private (int, int) Place(Popup popup, PlacementMode placement, in Rect anchor, Size size,
                              bool allowRetry = true)
     {
-        var screenBounds = new LayoutRect(ScreenSize);
+        var screenBounds = new Rect(ScreenSize);
         var (left, top) = PlaceCore(popup, placement, anchor, size, allowRetry);
 
         // Clamp so the whole surface stays on-screen (a content larger than the viewport pins to the origin).
@@ -1277,7 +1277,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         return (left, top);
     }
 
-    private (int, int) PlaceCore(Popup popup, PlacementMode placement, in LayoutRect anchor, Size size, bool allowRetry)
+    private (int, int) PlaceCore(Popup popup, PlacementMode placement, in Rect anchor, Size size, bool allowRetry)
     {
         var (left, top) =
             placement switch
@@ -1296,8 +1296,8 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         left += popup.HorizontalOffset;
         top += popup.VerticalOffset;
 
-        var screenBounds = new LayoutRect(ScreenSize);
-        var popupBounds = new LayoutRect(left, top, size);
+        var screenBounds = new Rect(ScreenSize);
+        var popupBounds = new Rect(left, top, size);
         var score = ScorePlacement(screenBounds, popupBounds);
 
         if (allowRetry && score < PerfectPlacementScore)
@@ -1314,7 +1314,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             if (newPlacement != placement)
             {
                 var (newLeft, newTop) = PlaceCore(popup, newPlacement, anchor, size, allowRetry: false);
-                var newScore = ScorePlacement(screenBounds, new LayoutRect(newLeft, newTop, size));
+                var newScore = ScorePlacement(screenBounds, new Rect(newLeft, newTop, size));
 
                 if (newScore > score)
                     (left, top) = (newLeft, newTop);
@@ -1324,7 +1324,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         return (left, top);
     }
 
-    private static int ScorePlacement(LayoutRect screenBounds, LayoutRect popupBounds)
+    private static int ScorePlacement(Rect screenBounds, Rect popupBounds)
     {
         return (screenBounds.Contains(popupBounds.TopLeft) ? 1 : 0) +
                (screenBounds.Contains(popupBounds.TopRight) ? 1 : 0) +
@@ -1371,15 +1371,15 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     /// <summary>The effective target's bounds in screen space (its surface offset + a live parent-chain walk), or
     /// a zero rect at the origin when the popup has no resolvable on-surface target.</summary>
-    private LayoutRect AnchorRect(Popup popup)
+    private Rect AnchorRect(Popup popup)
     {
         if (popup.EffectiveTarget is {} target && SurfaceForElement(target) is {} host)
         {
             var (wx, wy) = target.TranslateToWindow(0, 0);
-            return new LayoutRect(host.Left + wx, host.Top + wy, target.Bounds.Size);
+            return new Rect(host.Left + wx, host.Top + wy, target.Bounds.Size);
         }
 
-        return LayoutRect.Empty;
+        return Rect.Empty;
     }
 
     /// <summary>The surface whose render tree owns <paramref name="element"/>, or <see langword="null"/> when it is
@@ -1445,7 +1445,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             return false;
 
         var origin = anchor.TranslateToWindow(0, 0);
-        return new LayoutRect(origin.Column, origin.Row, anchor.Bounds.Size).Contains(pressColumn, pressRow);
+        return new Rect(origin.Column, origin.Row, anchor.Bounds.Size).Contains(pressColumn, pressRow);
     }
 
     // ── Fit-to-viewport badge (P7-W5b: the WM-owned affordance for clipped windows after a resize, §8.7) ──

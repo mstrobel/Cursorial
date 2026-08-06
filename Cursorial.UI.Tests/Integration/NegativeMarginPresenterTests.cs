@@ -15,9 +15,9 @@ namespace Cursorial.Tests.UI.Integration;
 /// The reported shape, with real controls: a text presenter carrying a <b>negative</b> margin
 /// (<c>Margin="-6,0,-6,0"</c>). Two independent hazards meet here.
 /// <para>
-/// First, <see cref="UIElement.Bounds"/> is a <c>LayoutRect</c> precisely so it can hold a negative
+/// First, <see cref="UIElement.Bounds"/> is a <c>Rect</c> precisely so it can hold a negative
 /// origin, and a negative left margin puts one there. The presenters' <c>ResolveBounds</c> narrowed
-/// it through <c>LayoutRect.ToRect()</c> — the explicit affordance for a caller that has
+/// it through <c>Rect.ToRect()</c> — the explicit affordance for a caller that has
 /// <em>proven</em> a non-negative origin — so measure threw once the first arrange had happened.
 /// Both callers only read <c>.Columns</c> / <c>.Rows</c>, so the narrowing bought nothing.
 /// </para>

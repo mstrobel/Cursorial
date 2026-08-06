@@ -217,7 +217,7 @@ public sealed class AccessTextPresenter : UIElement
             if (hasUnderline)
             {
                 style = style.WithUnderlineStyle(keyUnderlineStyle)
-                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds.ToRect()));
+                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, Bounds));
             }
 
             if (hasKeyUnderline is false)

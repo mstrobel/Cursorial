@@ -228,8 +228,8 @@ public class Section03_ArrangeAlignment
 
         probe.Arrange(new Rect(0, 0, 10, 6));
         Assert.Single(observer.Changes);
-        Assert.Equal(LayoutRect.Empty, observer.Changes[0].OldValue); // Bounds is the signed LayoutRect (LD19)
-        Assert.Equal(new LayoutRect(0, 0, 4, 2), observer.Changes[0].NewValue);
+        Assert.Equal(Rect.Empty, observer.Changes[0].OldValue); // Bounds is the signed Rect (LD19)
+        Assert.Equal(new Rect(0, 0, 4, 2), observer.Changes[0].NewValue);
 
         probe.InvalidateArrange();
         probe.Arrange(new Rect(0, 0, 10, 6)); // same resulting rect — silent

@@ -1,3 +1,5 @@
+using Cursorial.Rendering;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -814,42 +816,42 @@ public abstract partial class UIElement : UIObject
 
     /// <summary>
     /// Translates a rectangle from screen coordinates to element-local coordinates —
-    /// the inverse of <see cref="TranslateToScreen(LayoutRect)"/>.
+    /// the inverse of <see cref="TranslateToScreen(Rect)"/>.
     /// </summary>
-    public LayoutRect TranslateFromScreen(LayoutRect rect)
+    public Rect TranslateFromScreen(Rect rect)
     {
         var (column, row) = TranslateFromScreen(rect.Column, rect.Row);
-        return new LayoutRect(column, row, rect.Size);
+        return new Rect(column, row, rect.Size);
     }
 
     /// <summary>
     /// Translates a rectangle from element-local coordinates to screen coordinates —
-    /// the inverse of <see cref="TranslateFromScreen(LayoutRect)"/>.
+    /// the inverse of <see cref="TranslateFromScreen(Rect)"/>.
     /// </summary>
-    public LayoutRect TranslateToScreen(LayoutRect rect)
+    public Rect TranslateToScreen(Rect rect)
     {
         var (column, row) = TranslateToScreen(rect.Column, rect.Row);
-        return new LayoutRect(column, row, rect.Size);
+        return new Rect(column, row, rect.Size);
     }
 
     /// <summary>
     /// Translates a rectangle from window (visual-root) coordinates to element-local coordinates —
-    /// the inverse of <see cref="TranslateToWindow(LayoutRect)"/>.
+    /// the inverse of <see cref="TranslateToWindow(Rect)"/>.
     /// </summary>
-    public LayoutRect TranslateFromWindow(LayoutRect rect)
+    public Rect TranslateFromWindow(Rect rect)
     {
         var (column, row) = TranslateFromWindow(rect.Column, rect.Row);
-        return new LayoutRect(column, row, rect.Size);
+        return new Rect(column, row, rect.Size);
     }
 
     /// <summary>
     /// Translates a rectangle from element-local coordinates to window (visual-root) coordinates —
-    /// the inverse of <see cref="TranslateFromWindow(LayoutRect)"/>.
+    /// the inverse of <see cref="TranslateFromWindow(Rect)"/>.
     /// </summary>
-    public LayoutRect TranslateToWindow(LayoutRect rect)
+    public Rect TranslateToWindow(Rect rect)
     {
         var (column, row) = TranslateToWindow(rect.Column, rect.Row);
-        return new LayoutRect(column, row, rect.Size);
+        return new Rect(column, row, rect.Size);
     }
 
     /// <summary>The layout manager owning this element's visual root, or <see langword="null"/> when detached.</summary>

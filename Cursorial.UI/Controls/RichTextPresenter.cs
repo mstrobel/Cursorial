@@ -371,9 +371,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         return text;
     }
 
-    private LayoutRect ResolveBounds(int? availableColumns)
+    private Rect ResolveBounds(int? availableColumns)
     {
-        LayoutRect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
+        Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
 
         if (availableColumns is null)
         {

@@ -2512,6 +2512,7 @@ internal static class ControlThemes
                Children =
                {
                    new Style(Selectors.Nesting().Is<Window>().Class("modal"))
+                      .Set(UIElement.OpacityProperty, 0.95)
                       .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationDialog),
                    new Style(Selectors.Nesting().OfType<Window>())
                        {

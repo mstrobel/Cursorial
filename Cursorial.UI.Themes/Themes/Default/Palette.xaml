@@ -49,7 +49,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"               Color="#080910"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"                Color="#11111C"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationPopup}"                 Color="#11111C" Opacity="0.95"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDialog}"                Color="#11111C" Opacity="0.95"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDialog}"                Color="#11111C"/> <!--Opacity="0.95"-->
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationRaised}"                Color="#202335"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationHighest}"               Color="#24283b"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.WindowBackground}"               Color="#0d0f19"/>

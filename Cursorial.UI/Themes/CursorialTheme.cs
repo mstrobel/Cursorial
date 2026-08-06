@@ -446,7 +446,7 @@ public static class CursorialTheme
         rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
         rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
-        rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) { Opacity = 0.95 };
+        rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) /*{ Opacity = 0.95 }*/;
         rgb[ThemeKeys.ElevationRaised] = new SolidColorBrush(dark ? Color.FromHex("#1F2233") : Color.FromHex("#d8d8df"));
         rgb[ThemeKeys.ElevationHighest] = new SolidColorBrush(dark ? Color.FromHex("#24283b") : Color.FromHex("#cbccd1"));
         rgb[ThemeKeys.WindowBackground] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#e6e7ec"));

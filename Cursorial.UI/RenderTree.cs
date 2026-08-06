@@ -553,6 +553,21 @@ public sealed class RenderTree
 
     // ───────────────────────────── zone raster ─────────────────────────────
 
+    /// <summary>
+    /// Rents the zone's raster at the boundary's bounds (band-folded for a scroll host).
+    /// </summary>
+    /// <remarks>
+    /// <b>Known limit.</b> This size is also a hard ceiling on the zone's <em>inline</em> content: a
+    /// non-boundary descendant arranged outside the boundary's bounds — a negative margin, an
+    /// overflowing <c>Canvas</c> child — paints into this surface and its overflow is dropped at
+    /// raster time, before any clip exists to be relaxed. <see cref="ComputeClip"/>'s inherited-clip
+    /// rule frees the equivalent <em>boundary</em> descendant, whose own zone rasters it faithfully
+    /// and which composites straight to the window; the inline case would need a surface sized to the
+    /// zone's ink extent (a union over the subtree, with a negative-capable origin here and in
+    /// <c>OnDrawZone</c>'s translate, plus a bound on how far overflow may pull it) and is deliberately
+    /// left alone. So an element that overflows a boundary ancestor renders in full if it is itself a
+    /// boundary and is cut at the ancestor's bounds if it is not.
+    /// </remarks>
     private void EnsureScene(RenderZone zone)
     {
         var size = zone.Boundary.Bounds.Size;
@@ -687,11 +702,15 @@ public sealed class RenderTree
     /// </summary>
     /// <remarks>
     /// The surface is the group root's own scene geometry, size and origin both. Sufficient by
-    /// containment: <see cref="ComputeClip"/> intersects every boundary's clip with its parent
-    /// boundary's, so transitively the whole group composites inside the root's own footprint. Matching
-    /// the root's <em>scene</em> (band-folded for a scroll host) rather than its bounds additionally
-    /// makes the group's contents scroll-invariant, so a scroll stays a pure parameters change on the
-    /// emitted layer instead of forcing an inner recomposite per tick.
+    /// containment: a group root always contributes its own clip to
+    /// <see cref="RenderZone.InheritedClip"/>, and <see cref="ComputeClip"/> intersects every
+    /// descendant boundary's clip with that, so transitively the whole group composites inside the
+    /// root's own footprint. That is the <em>only</em> surviving reason a boundary clips a subtree
+    /// that did not ask to be clipped, and it is a statement about this surface having no cells to
+    /// spare rather than about what a boundary means. Matching the root's <em>scene</em> (band-folded
+    /// for a scroll host) rather than its bounds additionally makes the group's contents
+    /// scroll-invariant, so a scroll stays a pure parameters change on the emitted layer instead of
+    /// forcing an inner recomposite per tick.
     /// </remarks>
     private void EnsureGroupScene(RenderZone zone)
     {
@@ -873,7 +892,7 @@ public sealed class RenderTree
                               ? ownOpacity * flatParent.EffectiveOpacity
                               : ownOpacity;
 
-            var clip = ComputeClip(boundary, parentZone, offsetColumn, offsetRow, visible);
+            var clip = ComputeClip(boundary, parentZone?.InheritedClip, offsetColumn, offsetRow, visible);
 
             zone.OffsetColumn = offsetColumn;
             zone.OffsetRow = offsetRow;
@@ -881,6 +900,24 @@ public sealed class RenderTree
             zone.EffectiveOpacity = opacity;
             zone.EffectiveClip = clip;
             UpdateGroupRoot(zone, ownOpacity, groupsEnabled);
+
+            // What this boundary hands DOWN. Two disjoint reasons to contribute its own clip, and
+            // promotion is not one of them:
+            //
+            //   ① INTENT — ClipsDescendants: ClipToBounds, an explicit CompositeClip, or a scroll
+            //     viewport. The element said "cut my subtree", so it does.
+            //   ② ROOM — IsGroupRoot: the whole subtree composites into a private surface that
+            //     EnsureGroupScene rents at this boundary's own scene geometry, so a member reaching
+            //     past it has no cells to land in. Freeing the clip there would not paint the
+            //     overflow, only push VerifyGroupContainment's rebased rect off the surface (DEBUG
+            //     assert; CellBuffer.AddFragment throws in RELEASE). Containment is exactly this
+            //     line, and it is why the group surface can stay bounds-sized.
+            //
+            // Everything else — IsRenderBoundary, a render offset, a translucent leaf — is a
+            // compositing hint and passes the ancestor's constraint through untouched. Note this must
+            // read IsGroupRoot AFTER UpdateGroupRoot above, and that _layers being pre-order is what
+            // guarantees this zone's value is settled before any descendant reads it.
+            zone.InheritedClip = boundary.ClipsDescendants || zone.IsGroupRoot ? clip : parentZone?.InheritedClip;
 
             // The scene offset: where scene (0, 0) lands in window coordinates. For a scroll host
             // the scene holds content rows [BandStart, BandStart + bandLen) slid by −ScrollOffset —
@@ -949,15 +986,33 @@ public sealed class RenderTree
         return count;
     }
 
-    private static Rect ComputeClip(UIElement boundary, RenderZone? parentZone, int offsetColumn, int offsetRow, bool visible)
+    /// <summary>
+    /// The zone's window-coordinate clip: its own footprint ∩ its <see cref="UIElement.CompositeClip"/>
+    /// ∩ <paramref name="inheritedClip"/>, clamped to the scene.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The own-footprint term is not negotiable and is load-bearing well beyond tidiness: a zone's
+    /// raster can legitimately be <em>larger</em> than its bounds — a banded
+    /// <c>ScrollContentPresenter</c>'s scene holds the whole content width and 2K rows — and this term
+    /// is the only thing holding such a zone to its viewport.
+    /// </para>
+    /// <para>
+    /// <paramref name="inheritedClip"/> is emphatically <b>not</b> the parent boundary's own clip. It
+    /// is <see cref="RenderZone.InheritedClip"/>: the clip of the nearest ancestor that actually asked
+    /// to cut its subtree. Intersecting with the parent's own footprint unconditionally was the
+    /// negative-margin bug — a child arranged at a negative origin inside a parent that had merely
+    /// been <em>promoted</em> to a boundary lost exactly the columns the margin had pulled it out by,
+    /// even though its own zone had rastered them faithfully. WPF's rule is the one implemented here:
+    /// a parent does not clip its children unless it says so.
+    /// </para>
+    /// </remarks>
+    private static Rect ComputeClip(UIElement boundary, Rect? inheritedClip, int offsetColumn, int offsetRow, bool visible)
     {
         var size = boundary.Bounds.Size;
         if (!visible || IsZeroArea(size))
             return Rect.Empty; // the empty-clip trick: layer retained, content hidden
 
-        // Own footprint at the effective offset (zone content hard-clips at the scene extent, so
-        // every boundary's clip is bounds-derived) ∩ the element-local CompositeClip translated to
-        // window coordinates ∩ the parent boundary's effective clip.
         var columnStart = offsetColumn;
         var rowStart = offsetRow;
         var columnEnd = offsetColumn + size.Columns;
@@ -971,15 +1026,17 @@ public sealed class RenderTree
             rowEnd = Math.Min(rowEnd, offsetRow + composite.RowEnd);
         }
 
-        if (parentZone is not null)
+        if (inheritedClip is { } inherited)
         {
-            var parentClip = parentZone.EffectiveClip;
-            columnStart = Math.Max(columnStart, parentClip.Column);
-            rowStart = Math.Max(rowStart, parentClip.Row);
-            columnEnd = Math.Min(columnEnd, parentClip.ColumnEnd);
-            rowEnd = Math.Min(rowEnd, parentClip.RowEnd);
+            columnStart = Math.Max(columnStart, inherited.Column);
+            rowStart = Math.Max(rowStart, inherited.Row);
+            columnEnd = Math.Min(columnEnd, inherited.ColumnEnd);
+            rowEnd = Math.Min(rowEnd, inherited.RowEnd);
         }
 
+        // The scene-extent clamp, which is about the WINDOW having no negative cell and is unrelated to
+        // the question above: SceneCompositor.TryFootprint trims the same prefix and maps back with the
+        // unclamped offset, so a negative-origin zone paints its on-screen part and only that.
         columnStart = Math.Max(0, columnStart);
         rowStart = Math.Max(0, rowStart);
         columnEnd = Math.Min(columnEnd, LayoutMath.MaxExtent);

@@ -46,10 +46,24 @@ internal sealed class RenderZone(UIElement boundary)
 
     /// <summary>
     /// The cached effective clip in window coordinates: own footprint ∩ translated
-    /// <see cref="UIElement.CompositeClip"/> ∩ ancestor boundary clips; <see cref="Rect.Empty"/> for
-    /// hidden / zero-sized boundaries (the layer slot survives — the empty-clip trick).
+    /// <see cref="UIElement.CompositeClip"/> ∩ the <b>inherited</b> clip of the nearest ancestor that
+    /// asked to clip its subtree; <see cref="Rect.Empty"/> for hidden / zero-sized boundaries (the
+    /// layer slot survives — the empty-clip trick).
     /// </summary>
     internal Rect EffectiveClip;
+
+    /// <summary>
+    /// The clip this zone hands <b>down</b>, which is not the same thing as the clip it composites
+    /// itself with. A boundary contributes its own <see cref="EffectiveClip"/> here only when it asked
+    /// to clip its subtree (<see cref="UIElement.ClipsDescendants"/>) or when it roots an opacity
+    /// group, whose private surface physically cannot hold a member's overflow
+    /// (<see cref="IsGroupRoot"/>). Otherwise it passes its parent's value straight through, so a
+    /// boundary promoted for a purely <em>compositing</em> reason — <c>IsRenderBoundary</c>, a render
+    /// offset, a translucent leaf — changes nothing about what is visible.
+    /// <see langword="null"/> is "no ancestor constrains this subtree", and is deliberately distinct
+    /// from <see cref="Rect.Empty"/>, which is "clip everything".
+    /// </summary>
+    internal Rect? InheritedClip;
 
     // ───────────────────────────── boundary-subtree run (opacity groups) ─────────────────────────────
 

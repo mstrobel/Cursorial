@@ -53,6 +53,23 @@ public abstract partial class UIElement
     /// </summary>
     internal virtual bool IsAlwaysRenderBoundary => false;
 
+    /// <summary>
+    /// Whether this element imposes a clip on its <b>descendants</b> — the opt-in half of
+    /// <c>RenderTree.ComputeClip</c>. Deliberately narrower than
+    /// <see cref="IsRenderBoundaryCandidate"/>: becoming a render boundary is a <em>compositing</em>
+    /// decision (a cached raster, an opacity group, a render offset) and, exactly as in WPF, must not
+    /// change what is visible. Only the three predicates that mean "cut my subtree" qualify —
+    /// <see cref="ClipToBounds"/>, an explicit <see cref="CompositeClip"/>, and the scroll-viewport
+    /// seam <c>ScrollContentPresenter</c> overrides below.
+    /// </summary>
+    /// <remarks>
+    /// A boundary that answers <see langword="false"/> here still has an
+    /// <see cref="RenderZone.EffectiveClip"/> of its own — the compositor needs one — but passes its
+    /// <em>inherited</em> clip through to descendant boundaries untouched, so a child arranged outside
+    /// it (a negative margin, an overflowing <c>Canvas</c> child) composites in full.
+    /// </remarks>
+    internal virtual bool ClipsDescendants => ClipToBounds || CompositeClip is not null;
+
     // ───────────────────────────── the render virtual ─────────────────────────────
 
     /// <summary>

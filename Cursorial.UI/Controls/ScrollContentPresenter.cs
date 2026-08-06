@@ -210,6 +210,14 @@ public class ScrollContentPresenter : UIElement
     /// <summary>Always a render boundary — design doc §5.5 predicate ⑥ (a boundary from attach, never via mid-life promotion).</summary>
     internal override bool IsAlwaysRenderBoundary => true;
 
+    /// <summary>
+    /// The viewport is a clip — and the one clip nobody writes <see cref="UIElement.ClipToBounds"/>
+    /// for: a scroll host's whole job is to show a window onto content that is deliberately larger
+    /// than it, and larger still once the scene is banded. Everything outside the viewport, band rows
+    /// included, must stay off the screen, so this presenter opts its subtree in.
+    /// </summary>
+    internal override bool ClipsDescendants => true;
+
     /// <inheritdoc/>
     internal override int ChildScrollOffsetColumn => ScrollOffsetColumn;
 

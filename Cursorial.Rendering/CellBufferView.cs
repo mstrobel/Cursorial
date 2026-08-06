@@ -771,12 +771,18 @@ public readonly struct CellBufferView : ICellSurface
 
         private bool TryProject(Rect region, out Rect projected)
         {
-            // Intersect the backing-buffer region with the view's window rect, then translate the
-            // overlap into view-local coordinates. A re-based view (WithOrigin) can map part of the
-            // window to negative local coordinates, which Rect can't carry — clamp the intersection
-            // to the origin so only the locally-expressible portion projects.
-            int colStart = Math.Max(region.Column, Math.Max(windowColumn, offsetColumn));
-            int rowStart = Math.Max(region.Row, Math.Max(windowRow, offsetRow));
+            // Intersect the backing-buffer region with the view's WINDOW, then translate the overlap
+            // into view-local coordinates. A re-based view (WithOrigin) maps part of its window to
+            // NEGATIVE local coordinates, and the result carries them: `Rect` is signed, so the
+            // honest projection is expressible.
+            //
+            // This used to also clamp the start to `offsetColumn`/`offsetRow`, back when a negative
+            // origin would have thrown. That silently truncated a region straddling the local origin
+            // and DROPPED one lying wholly left of / above it — losing a repaint, not merely
+            // shrinking one. Only the origin clamp was wrong; the window clip below is the real
+            // bound and stays.
+            int colStart = Math.Max(region.Column, windowColumn);
+            int rowStart = Math.Max(region.Row, windowRow);
             int colEnd = Math.Min(region.ColumnEnd, windowColumn + columns);
             int rowEnd = Math.Min(region.RowEnd, windowRow + rows);
 

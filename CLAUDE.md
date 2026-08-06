@@ -7,6 +7,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Your context window will be automatically compacted by the CLI system as it approaches its limit. Do not stop tasks
 early or stall due to token budget concerns. Complete tasks fully and trust the system compaction.
 
+## Branches
+
+- **`main` and `develop` are both PERMANENT.** Never delete either, and never let either into a branch cleanup — not
+  even one scoped to "branches already merged". `develop` is merged into `main` by design, so a sweep over merged
+  branches will happily propose deleting it.
+- **`develop` is where work lands.** Feature and fix branches are cut from `develop` and merged back into it.
+- **`main` is the release branch.** `develop` merges into `main` periodically, once it is stable enough for a release.
+  So `main` normally trails `develop`, and `develop` being ahead is the expected steady state, not drift to reconcile.
+- Because releases flow that way, `main` can hold commits `develop` lacks (a version bump, say). `origin/HEAD` points at
+  `main`, so anything branching from the default base ref gets `main` — usually NOT what you want. Cut from `develop`
+  explicitly. An agent worktree created with the default base will pick `main` and quietly drag its extra commits into
+  your branch, which then show up in a PR that has nothing to do with them.
+- Before deleting any branch, print the list first and confirm `main`/`develop` are absent. Prefer naming branches
+  explicitly over a filtered sweep.
+
 ## Project intent
 
 Cursorial will be a **cross-platform .NET library for building high-quality, visually rich terminal applications with

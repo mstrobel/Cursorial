@@ -19,7 +19,7 @@ public class FrameRendererHyperlinkTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://example.com"));
+        buf.Set(0, 0, "a", CellStyle.Default.WithHyperlink("https://example.com"));
 
         var output = Render(r, buf);
 
@@ -31,7 +31,7 @@ public class FrameRendererHyperlinkTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://example.com", "anchor-1"));
+        buf.Set(0, 0, "a", CellStyle.Default.WithHyperlink("https://example.com", "anchor-1"));
 
         var output = Render(r, buf);
 
@@ -44,7 +44,7 @@ public class FrameRendererHyperlinkTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
-        var link = Style.Default.WithHyperlink("https://example.com");
+        var link = CellStyle.Default.WithHyperlink("https://example.com");
         buf.Set(0, 0, "a", link);
         buf.Set(1, 0, "b", link);
         buf.Set(2, 0, "c", link);
@@ -69,8 +69,8 @@ public class FrameRendererHyperlinkTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://a.example"));
-        buf.Set(1, 0, "b", Style.Default.WithHyperlink("https://b.example"));
+        buf.Set(0, 0, "a", CellStyle.Default.WithHyperlink("https://a.example"));
+        buf.Set(1, 0, "b", CellStyle.Default.WithHyperlink("https://b.example"));
 
         var output = Render(r, buf);
 
@@ -88,8 +88,8 @@ public class FrameRendererHyperlinkTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "a", Style.Default.WithHyperlink("https://example.com"));
-        buf.Set(1, 0, "b", Style.Default); // no hyperlink
+        buf.Set(0, 0, "a", CellStyle.Default.WithHyperlink("https://example.com"));
+        buf.Set(1, 0, "b", CellStyle.Default); // no hyperlink
 
         var output = Render(r, buf);
 
@@ -106,7 +106,7 @@ public class FrameRendererHyperlinkTests
         // any subsequent prompt or interleaved output would inherit it.
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithHyperlink("https://example.com"));
+        buf.Set(0, 0, "x", CellStyle.Default.WithHyperlink("https://example.com"));
 
         var output = Render(r, buf);
 

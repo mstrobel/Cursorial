@@ -32,7 +32,7 @@ namespace Cursorial.Drawing;
 /// <para>
 /// The target is treated as a <b>retained</b> buffer that the compositor maintains incrementally —
 /// do not clear it between frames. The base is region-reconstructable: either a uniform
-/// <see cref="Style"/> or a stored backdrop <see cref="CellBuffer"/> (target-buffer coordinates).
+/// <see cref="CellStyle"/> or a stored backdrop <see cref="CellBuffer"/> (target-buffer coordinates).
 /// </para>
 /// </remarks>
 public sealed class SceneCompositor
@@ -79,7 +79,7 @@ public sealed class SceneCompositor
     private static bool IsReplacingBlank(string? grapheme) =>
         string.Equals(grapheme, ReplacingBlankGrapheme, StringComparison.Ordinal);
 
-    private readonly Style _baseStyle;
+    private readonly CellStyle _baseStyle;
     private readonly CellBuffer? _baseLayer;
 
     // Whether the target is an INTERMEDIATE surface (a group buffer that will itself be composited
@@ -117,13 +117,13 @@ public sealed class SceneCompositor
     private List<Rect> _ghostRemainder = [];
     private List<Rect> _ghostRemainderNext = [];
 
-    /// <summary>Composite over a uniform base fill (default: <see cref="Style.Default"/>).</summary>
-    public SceneCompositor(Style baseStyle = default) => _baseStyle = baseStyle;
+    /// <summary>Composite over a uniform base fill (default: <see cref="CellStyle.Default"/>).</summary>
+    public SceneCompositor(CellStyle baseStyle = default) => _baseStyle = baseStyle;
 
     /// <summary>Composite over a stored backdrop buffer (copied per-region on reset-to-base).</summary>
     public SceneCompositor(CellBuffer baseLayer) => _baseLayer = baseLayer ?? throw new ArgumentNullException(nameof(baseLayer));
 
-    private SceneCompositor(Style baseStyle, bool intermediate)
+    private SceneCompositor(CellStyle baseStyle, bool intermediate)
     {
         _baseStyle = baseStyle;
         _intermediate = intermediate;
@@ -138,7 +138,7 @@ public sealed class SceneCompositor
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The base is <see cref="Style.Transparent"/>, not <see cref="Style.Default"/>: reset-to-base runs over
+    /// The base is <see cref="CellStyle.Transparent"/>, not <see cref="CellStyle.Default"/>: reset-to-base runs over
     /// the whole rewritten union before any layer composites, so an opaque base would paint every cell the
     /// group's members do not cover and the surface would blend down as a solid rectangle.
     /// </para>
@@ -166,7 +166,7 @@ public sealed class SceneCompositor
     /// outer pass reads them from there and carries them the rest of the way.
     /// </para>
     /// </remarks>
-    public static SceneCompositor ForIntermediate() => new(Style.Transparent, intermediate: true);
+    public static SceneCompositor ForIntermediate() => new(CellStyle.Transparent, intermediate: true);
 
     /// <summary>
     /// Carry the <b>ghost-footprint set</b> — Cells-layer images (iTerm2/Sixel) committed to the terminal with no
@@ -686,7 +686,7 @@ public sealed class SceneCompositor
     // overwritten continuation, and WriteWidePair strips the NEXT pair's continuation two columns over when
     // this pair lands one column short of it. Both blanks replace, so on a surface both carry the marker.
     private static void ReplaceWidePair(in CellBufferView target, int column, int row, string? grapheme,
-                                        in Style style, in Cell previous, bool intermediate)
+                                        in CellStyle style, in Cell previous, bool intermediate)
     {
         if (!intermediate)
         {
@@ -767,7 +767,7 @@ public sealed class SceneCompositor
     private static Color CompositeColor(Color source, Color backdrop, IBlendingMode mode, bool intermediate) =>
         intermediate ? Color.CompositeOver(source, backdrop, mode) : Color.Composite(source, backdrop, mode);
 
-    private static Style ScaleSourceAlpha(Style style, byte opacity) =>
+    private static CellStyle ScaleSourceAlpha(CellStyle style, byte opacity) =>
         style with
         {
             Foreground = ScaleAlpha(style.Foreground, opacity),

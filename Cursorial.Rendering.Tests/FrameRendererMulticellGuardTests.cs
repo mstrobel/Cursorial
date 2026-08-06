@@ -22,8 +22,8 @@ namespace Cursorial.Tests.Rendering;
 // offset moves, so the diff sees zero changed cells).
 public class FrameRendererMulticellGuardTests
 {
-    private static readonly Style Panel = Style.Default.WithBackground(Color.FromRgb(20, 30, 40));
-    private static readonly Style Accent = Style.Default.WithBackground(Color.FromRgb(50, 60, 70));
+    private static readonly CellStyle Panel = CellStyle.Default.WithBackground(Color.FromRgb(20, 30, 40));
+    private static readonly CellStyle Accent = CellStyle.Default.WithBackground(Color.FromRgb(50, 60, 70));
 
     private const string PanelSgr = "48;2;20;30;40";
     private const string AccentSgr = "48;2;50;60;70";
@@ -46,7 +46,7 @@ public class FrameRendererMulticellGuardTests
         return count;
     }
 
-    private static void FillPanel(CellBuffer buffer, in Style style)
+    private static void FillPanel(CellBuffer buffer, in CellStyle style)
     {
         for (int r = 0; r < buffer.Rows; r++)
             for (int c = 0; c < buffer.Columns; c++)
@@ -148,7 +148,7 @@ public class FrameRendererMulticellGuardTests
             buffer.Set(c, 1, " ", Accent);   // distinct bg on the rect's top-right, to observe its rewrite
         Render(renderer, buffer);
 
-        buffer.Set(3, 2, " ", Style.Default.WithBackground(Color.FromRgb(200, 100, 50)));
+        buffer.Set(3, 2, " ", CellStyle.Default.WithBackground(Color.FromRgb(200, 100, 50)));
         var output = Render(renderer, buffer);
 
         // The UNCHANGED top-row accent cells are rewritten (whole-footprint expansion) ...
@@ -183,7 +183,7 @@ public class FrameRendererMulticellGuardTests
         Assert.Equal(1, Count(frameA, "[SIZED]"));
 
         // Frame B — the shadow band tints row 2 (the fragment's lower row) across columns 0..9.
-        var shadow = Style.Default.WithBackground(Color.FromRgb(10, 15, 20));
+        var shadow = CellStyle.Default.WithBackground(Color.FromRgb(10, 15, 20));
         for (int c = 0; c <= 9; c++)
             buffer.Set(c, 2, " ", shadow);
         var frameB = Render(renderer, buffer);
@@ -212,7 +212,7 @@ public class FrameRendererMulticellGuardTests
         var (renderer, buffer, _) = CreateSlideScenario();
         Render(renderer, buffer);
 
-        buffer.Set(1, 1, "x", Style.Default);
+        buffer.Set(1, 1, "x", CellStyle.Default);
         var output = Render(renderer, buffer);
 
         Assert.Contains("x", output);
@@ -230,14 +230,14 @@ public class FrameRendererMulticellGuardTests
         // overlay-only gate would have emitted the scroll.)
         var renderer = new FrameRenderer();
         var buffer = new CellBuffer(8, 6);
-        FillPanel(buffer, Style.Default);
+        FillPanel(buffer, CellStyle.Default);
         for (int row = 0; row < 6; row++)
-            buffer.Set(0, row, ((char) ('A' + row)).ToString(), Style.Default);
+            buffer.Set(0, row, ((char) ('A' + row)).ToString(), CellStyle.Default);
         buffer.AddFragment(6, 0, new SentinelFragment(new Size(1, 1), "[F]"));
         Render(renderer, buffer);
 
         for (int row = 0; row < 6; row++)
-            buffer.Set(0, row, ((char) ('B' + row)).ToString(), Style.Default);   // everything shifts up one row
+            buffer.Set(0, row, ((char) ('B' + row)).ToString(), CellStyle.Default);   // everything shifts up one row
         var output = Render(renderer, buffer);
 
         Assert.DoesNotContain("\x1b[1S", output);   // no scroll command while the fragment is live
@@ -259,9 +259,9 @@ public class FrameRendererMulticellGuardTests
 
         var renderer = new FrameRenderer(caps);
         var buffer = new CellBuffer(20, 8);
-        FillPanel(buffer, Style.Default);
+        FillPanel(buffer, CellStyle.Default);
 
-        var fragment = new SizedTextFragment(new TextSizing(Scale: 2), "Title", Style.Default);
+        var fragment = new SizedTextFragment(new TextSizing(Scale: 2), "Title", CellStyle.Default);
         buffer.AddFragment(2, 1, fragment);   // rect (2, 1) – (11, 2): 5 clusters × scale 2, 2 rows
         Render(renderer, buffer);
 

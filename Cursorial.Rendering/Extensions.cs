@@ -10,9 +10,9 @@ public static class Extensions
     /// </summary>
     /// <remarks>
     /// The test is against <paramref name="surfaceBlank"/> — the surface's <c>DefaultStyle</c> — not
-    /// against <see cref="Style.Default"/>, which is only <em>accidentally</em> right on a buffer whose
+    /// against <see cref="CellStyle.Default"/>, which is only <em>accidentally</em> right on a buffer whose
     /// blank happens to be the default. It is wrong in both directions elsewhere: a scene surface's blank
-    /// is <see cref="Style.Transparent"/>, so a transparent clear was re-filling the whole grid for
+    /// is <see cref="CellStyle.Transparent"/>, so a transparent clear was re-filling the whole grid for
     /// nothing, while an opaque default clear was skipped and left the surface transparent.
     /// <para>
     /// The whole cell is compared, not just its style: <see cref="CellBuffer.Clear()"/> writes a
@@ -21,7 +21,7 @@ public static class Extensions
     /// its style — and skipping the fill silently dropped that grapheme.
     /// </para>
     /// </remarks>
-    private static bool ClearAlreadyWrote(in Cell blankCell, in Style surfaceBlank)
+    private static bool ClearAlreadyWrote(in Cell blankCell, in CellStyle surfaceBlank)
         => blankCell == Cell.Blank with { Style = surfaceBlank };
 
     extension(CellBuffer target)
@@ -36,7 +36,7 @@ public static class Extensions
             target.Fill(blankCell);
         }
 
-        public void Clear(in Style blankStyle)
+        public void Clear(in CellStyle blankStyle)
         {
             Clear(target, Cell.Blank with { Style = blankStyle });
         }
@@ -48,7 +48,7 @@ public static class Extensions
             target.Fill(rect, blankCell);
         }
 
-        public void ClearCells(in Rect rect, in Style blankStyle)
+        public void ClearCells(in Rect rect, in CellStyle blankStyle)
         {
             ClearCells(target, rect, Cell.Blank with { Style = blankStyle });
         }
@@ -65,7 +65,7 @@ public static class Extensions
             target.Fill(blankCell);
         }
 
-        public void Clear(in Style blankStyle)
+        public void Clear(in CellStyle blankStyle)
         {
             Clear(target, Cell.Blank with { Style = blankStyle });
         }
@@ -75,7 +75,7 @@ public static class Extensions
             target.View(rect).Clear(blankCell);
         }
 
-        public void ClearCells(in Rect rect, in Style blankStyle)
+        public void ClearCells(in Rect rect, in CellStyle blankStyle)
         {
             target.View(rect).Clear(blankStyle);
         }

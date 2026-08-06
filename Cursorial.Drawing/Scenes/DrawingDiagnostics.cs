@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using Cursorial.Output;
 using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
@@ -9,12 +10,12 @@ namespace Cursorial.Drawing;
 /// <summary>The kinds of diagnostics the drawing layer emits in DEBUG builds.</summary>
 public enum DrawingDiagnosticKind
 {
-    /// <summary>A tab character reached <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Cursorial.Output.Style)"/>;
+    /// <summary>A tab character reached <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>;
     /// it was substituted with one space (the cell grid has no tab stops — expand tabs upstream).</summary>
     TabInText,
 
     /// <summary>A C0/C1 control character (other than a line break or tab) reached
-    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Cursorial.Output.Style)"/>;
+    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>;
     /// it was skipped (zero columns) rather than stored as a junk cell.</summary>
     ControlCharacterInText,
 

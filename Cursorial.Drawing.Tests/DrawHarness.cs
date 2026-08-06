@@ -17,7 +17,7 @@ internal static class DrawHarness
         scene.Draw(draw);
 
         var buffer = new CellBuffer(columns, rows);
-        var baseStyle = Style.Default.WithBackground(baseBackground ?? Color.FromRgb(0, 0, 0));
+        var baseStyle = CellStyle.Default.WithBackground(baseBackground ?? Color.FromRgb(0, 0, 0));
         new SceneCompositor(baseStyle).Composite([new SceneLayer(scene)], buffer.AsView());
         return buffer;
     }
@@ -38,7 +38,7 @@ internal static class DrawHarness
         }
 
         var buffer = new CellBuffer(columns, rows);
-        var baseStyle = Style.Default.WithBackground(baseBackground ?? Color.FromRgb(0, 0, 0));
+        var baseStyle = CellStyle.Default.WithBackground(baseBackground ?? Color.FromRgb(0, 0, 0));
         new SceneCompositor(baseStyle).Composite(layers, buffer.AsView());
 
         foreach (var s in scenes) s.Dispose();

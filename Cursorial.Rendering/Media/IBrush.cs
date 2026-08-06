@@ -5,7 +5,7 @@ namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A color <em>source</em> the drawing layer samples per cell. Implementations resolve a solid color,
-/// a gradient, or (in future) an image / tile / pattern. A brush never enters <see cref="Style"/> or
+/// a gradient, or (in future) an image / tile / pattern. A brush never enters <see cref="CellStyle"/> or
 /// a cell — it is resolved to a scalar <see cref="Color"/> at draw time (a terminal cell shows one
 /// solid color).
 /// </summary>

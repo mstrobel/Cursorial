@@ -68,7 +68,7 @@ internal sealed class RenderDemo : InteractiveDemo
 
     private static Icon[] BuildIcons(Assembly assembly)
     {
-        var iconStyle = new Style(Color.Default, Color.FromRgb(40, 52, 87), default, default, default);
+        var iconStyle = new CellStyle(Color.Default, Color.FromRgb(40, 52, 87), default, default, default);
         var result = new Icon[IconSpecs.Length];
         for (int i = 0; i < IconSpecs.Length; i++)
             result[i] = Icon.FromEmbedded(
@@ -87,7 +87,7 @@ internal sealed class RenderDemo : InteractiveDemo
     // wide-left+continuation, an alpha-blended overlay with a pushed blending mode, and a clock
     // that changes once per second — the clock is how you tell the diff renderer is doing per-cell
     // deltas instead of repainting the whole screen each frame.
-    private void PaintRenderShowcase(CellBufferView buf, in Style style, OutputCapabilities outputCaps)
+    private void PaintRenderShowcase(CellBufferView buf, in CellStyle style, OutputCapabilities outputCaps)
     {
         // The sized title flows through a ScaledText content (Phase 3) — on terminals that honor
         // OSC 66 it attaches a SizedTextFragment; on the rest it falls back to a bundled FIGlet
@@ -105,7 +105,7 @@ internal sealed class RenderDemo : InteractiveDemo
         int rows = buf.Rows;
 
         // ---- Title bar ----
-        var titleStyle = new Style(
+        var titleStyle = new CellStyle(
             Foreground: Colors.Black,
             Background: Colors.LightBlue,
             Attributes: TextAttributes.Bold,
@@ -122,7 +122,7 @@ internal sealed class RenderDemo : InteractiveDemo
             for (int i = 0; i < 16 && (1 + i * 3 + 2) < cols; i++)
             {
                 var bg = Color.FromPalette((byte)i);
-                var swatch = new Style(
+                var swatch = new CellStyle(
                     Foreground: Color.Default,
                     Background: bg,
                     Attributes: default,
@@ -146,7 +146,7 @@ internal sealed class RenderDemo : InteractiveDemo
                 byte r = (byte)(255 - (i * 255 / width));
                 byte g = (byte)(i * 255 / width);
                 byte b = (byte)(128 + (i * 64 / width) % 128);
-                var swatch = new Style(
+                var swatch = new CellStyle(
                     Foreground: Color.Default,
                     Background: Color.FromRgb(r, g, b),
                     Attributes: default,
@@ -236,7 +236,7 @@ internal sealed class RenderDemo : InteractiveDemo
                     for (int dx = 0; dx < overlayWidth; dx++)
                     {
                         buf.Set(1 + overlayStart + dx, row + 1 + dy,
-                                " ", new Style(
+                                " ", new CellStyle(
                                     Color.Default,
                                     Color.FromRgba(128, 128, 128, 128),
                                     default, default, default));

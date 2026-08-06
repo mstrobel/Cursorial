@@ -97,7 +97,7 @@ internal sealed class PaletteDemo : InteractiveDemo
         PaintPaletteShowcase(Buffer, _colors, Style, _status);
     }
 
-    private static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, in Style style, string? statusMessage)
+    private static void PaintPaletteShowcase(CellBufferView buffer, IColorPalette? palette, in CellStyle style, string? statusMessage)
     {
         buffer.CursorVisible = false;
         buffer.Clear();

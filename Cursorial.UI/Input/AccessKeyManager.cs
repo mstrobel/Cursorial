@@ -1,6 +1,6 @@
 using Cursorial.Input;
 using Cursorial.Input.Events;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Terminal;
 
 namespace Cursorial.UI.Input;

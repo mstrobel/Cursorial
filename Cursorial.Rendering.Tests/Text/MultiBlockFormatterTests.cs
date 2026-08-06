@@ -26,7 +26,7 @@ public class MultiBlockFormatterTests
     [Fact]
     public void HorizontalRule_CustomGlyphAndStyle()
     {
-        var redStyle = Style.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var redStyle = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
         var doc = new RichTextBuilder()
             .HorizontalRule(glyph: "═", style: redStyle, alignment: TextAlignment.Center)
             .Build();
@@ -236,7 +236,7 @@ public class MultiBlockFormatterTests
 
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => _size;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             PaintCalled = true;
             LastPaintBounds = bounds;

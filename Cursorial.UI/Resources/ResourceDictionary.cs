@@ -1,5 +1,7 @@
 using System.Collections;
 
+using Cursorial.Media;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -339,7 +341,7 @@ public sealed class ResourceDictionary : IEnumerable<KeyValuePair<object, object
 
     /// <summary>The variant used when this dictionary's deferred StaticResource captures freeze (set per-realization, CD7).</summary>
     internal ThemeVariant CurrentVariantForRealization
-        => UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
+        => UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor);
 
     // ───────────────────────────── internals ─────────────────────────────
 

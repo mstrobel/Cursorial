@@ -3,12 +3,12 @@ using Cursorial.Output;
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
-/// Supplies the <see cref="Style"/> for the glyph cell at (<paramref name="column"/>, <paramref name="row"/>).
+/// Supplies the <see cref="CellStyle"/> for the glyph cell at (<paramref name="column"/>, <paramref name="row"/>).
 /// Lets a font be painted with a position-dependent color source (e.g. a gradient flowing across a FIGlet
 /// headline) while the font itself stays unaware of brushes — the provider takes only cell coordinates and a
-/// <see cref="Style"/>, never a higher-layer brush type.
+/// <see cref="CellStyle"/>, never a higher-layer brush type.
 /// </summary>
-public delegate Style GlyphStyleProvider(int column, int row);
+public delegate CellStyle GlyphStyleProvider(int column, int row);
 
 /// <summary>
 /// A font that renders text into cells of a <see cref="CellBuffer"/>. Implementations cover
@@ -45,9 +45,9 @@ public interface IGlyphFont
     /// </summary>
     /// <param name="style">The style to validate and potentially adjust.</param>
     /// <returns>
-    /// A modified <see cref="Style"/> instance that is compatible with the current font.
+    /// A modified <see cref="CellStyle"/> instance that is compatible with the current font.
     /// </returns>
-    Style EnsureCompatibleStyle(in Style style);
+    CellStyle EnsureCompatibleStyle(in CellStyle style);
 
     /// <summary>
     /// Measure the cell footprint of <paramref name="text"/> when painted with this font, without
@@ -67,7 +67,7 @@ public interface IGlyphFont
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
     /// </remarks>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style);
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style);
 
     /// <summary>
     /// Paint <paramref name="text"/> sampling <paramref name="styleProvider"/> per cell, so a caller can color

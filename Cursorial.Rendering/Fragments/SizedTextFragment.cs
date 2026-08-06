@@ -43,7 +43,7 @@ public sealed class SizedTextFragment : IBufferFragment
     private readonly string[] _lines;
 
     /// <summary>Construct a sized-text fragment at the requested sizing, text content, and style.</summary>
-    public SizedTextFragment(in TextSizing sizing, string text, in Style style)
+    public SizedTextFragment(in TextSizing sizing, string text, in CellStyle style)
     {
         ArgumentNullException.ThrowIfNull(text);
         Sizing = sizing;
@@ -66,7 +66,7 @@ public sealed class SizedTextFragment : IBufferFragment
     public string Text { get; }
 
     /// <summary>The style applied to the whole rendered region.</summary>
-    public Style Style { get; }
+    public CellStyle Style { get; }
 
     /// <summary>The text content split into individual lines, one OSC 66 emission per line.</summary>
     public ReadOnlySpan<string> Lines => _lines;
@@ -80,7 +80,7 @@ public sealed class SizedTextFragment : IBufferFragment
     public object Key => (Text, Sizing, Style);
 
     /// <inheritdoc/>
-    public Style? StyleOverride => Style;
+    public CellStyle? StyleOverride => Style;
 
     /// <inheritdoc/>
     public FragmentLayer Layer => FragmentLayer.Cells;

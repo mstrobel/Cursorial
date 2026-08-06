@@ -98,7 +98,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
             .Build();
     }
 
-    private static RichText BuildDocument(in Style defaultStyle)
+    private static RichText BuildDocument(in CellStyle defaultStyle)
     {
         var builder = new RichTextBuilder(defaultStyle);
         var opts = BrushMarkup.Options(defaultStyle);   // enables [brush=…] gradient markup (inline + registry)

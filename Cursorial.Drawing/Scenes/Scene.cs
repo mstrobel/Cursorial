@@ -9,7 +9,7 @@ namespace Cursorial.Drawing;
 
 /// <summary>
 /// A drawing surface backed by its own <see cref="CellBuffer"/>, cleared to
-/// <see cref="Style.Transparent"/> so unpainted cells contribute nothing when the scene is later
+/// <see cref="CellStyle.Transparent"/> so unpainted cells contribute nothing when the scene is later
 /// composited (see <see cref="SceneCompositor"/>). A scene is the unit of <b>cached raster</b>:
 /// its drawn cells persist, and <see cref="Draw"/> re-rasters only when the owner has marked it
 /// dirty via <see cref="Invalidate"/>. The expensive work (gradient sampling, junction resolution,
@@ -34,7 +34,7 @@ public sealed class Scene : IDisposable
         // The wipe below is the buffer's own Clear, so a buffer whose blank is not transparent would
         // make a silently opaque scene — every unpainted cell occluding what it composites over.
         // CreateBuffer is the only sanctioned source; this catches a future one that forgets.
-        Debug.Assert(buffer.DefaultStyle == Style.Transparent,
+        Debug.Assert(buffer.DefaultStyle == CellStyle.Transparent,
                      "a scene's backing buffer must be constructed with a transparent blank (Scene.CreateBuffer)");
 
         _buffer = buffer;
@@ -57,15 +57,15 @@ public sealed class Scene : IDisposable
 
     /// <summary>
     /// The backing buffer every scene must have: one whose <b>blank is</b>
-    /// <see cref="Style.Transparent"/>, not merely one that was filled with it once. Unpainted cells
+    /// <see cref="CellStyle.Transparent"/>, not merely one that was filled with it once. Unpainted cells
     /// have to contribute nothing when the scene composites, and everything that blanks a cell of its
     /// own accord — the buffer's wide-pair hygiene, a view clear, the clear extensions — asks
     /// <see cref="CellBuffer.DefaultStyle"/> what blank means here. A buffer merely filled transparent
-    /// answers <see cref="Style.Default"/> to that question and punches opaque holes into the surface.
+    /// answers <see cref="CellStyle.Default"/> to that question and punches opaque holes into the surface.
     /// Shared with <see cref="ScenePool"/> so the invariant is stated once.
     /// </summary>
     internal static CellBuffer CreateBuffer(int columns, int rows)
-        => new(columns, rows, defaultStyle: Style.Transparent);
+        => new(columns, rows, defaultStyle: CellStyle.Transparent);
 
     /// <summary>Width of the scene in cells.</summary>
     public int Columns => _buffer.Columns;
@@ -153,7 +153,7 @@ public sealed class Scene : IDisposable
     }
 
     /// <summary>
-    /// Wipe the raster. A scene buffer's blank <em>is</em> <see cref="Style.Transparent"/>
+    /// Wipe the raster. A scene buffer's blank <em>is</em> <see cref="CellStyle.Transparent"/>
     /// (<see cref="CreateBuffer"/>), so the plain clear writes exactly the transparent, glyphless cells
     /// this used to fill by hand — "clear" and "clear to this surface's blank" are now the same
     /// operation, and the hand-rolled fill was only ever compensating for a buffer that disagreed.

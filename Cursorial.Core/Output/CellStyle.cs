@@ -9,7 +9,7 @@ namespace Cursorial.Output;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="Style"/> is a value type. Equality is component-wise; <c>default(Style)</c>
+/// <see cref="CellStyle"/> is a value type. Equality is component-wise; <c>default(Style)</c>
 /// describes "no styling" — both colors are <see cref="Color.Default"/>, no attributes set.
 /// </para>
 /// <para>
@@ -37,7 +37,7 @@ namespace Cursorial.Output;
 /// hyperlink. The renderer emits hyperlink open/close brackets at run boundaries, so adjacent
 /// cells with the same hyperlink share one logical link target.
 /// </param>
-public readonly record struct Style(
+public readonly record struct CellStyle(
     Color Foreground,
     Color Background,
     TextAttributes Attributes,
@@ -46,7 +46,7 @@ public readonly record struct Style(
     Hyperlink Hyperlink = default)
 {
     /// <summary>The "no styling" sentinel — default colors and no attributes.</summary>
-    public static Style Default => default;
+    public static CellStyle Default => default;
 
     /// <summary>
     /// The compositing identity: foreground, background, and underline color are all
@@ -57,41 +57,41 @@ public readonly record struct Style(
     /// paints the terminal's default colors <em>opaquely</em>. <see cref="Hyperlink"/> is left at
     /// its default (<see cref="Output.Hyperlink.None"/>).
     /// </summary>
-    public static Style Transparent { get; } = Default.WithForeground(Color.Transparent)
+    public static CellStyle Transparent { get; } = Default.WithForeground(Color.Transparent)
                                                       .WithBackground(Color.Transparent)
                                                       .WithUnderlineColor(Color.Transparent);
 
     /// <summary>The default style for text shadows.</summary>
-    public static Style DefaultShadow { get; } = Default.WithForeground(Color.FromRgba(0, 0, 0, 127))
+    public static CellStyle DefaultShadow { get; } = Default.WithForeground(Color.FromRgba(0, 0, 0, 127))
                                                         .WithUnderlineColor(Color.FromRgba(0, 0, 0, 127))
                                                         .WithBackground(Color.Transparent);
 
     /// <summary>Replace the foreground color.</summary>
-    public Style WithForeground(Color color) => this with { Foreground = color };
+    public CellStyle WithForeground(Color color) => this with { Foreground = color };
 
     /// <summary>Replace the background color.</summary>
-    public Style WithBackground(Color color) => this with { Background = color };
+    public CellStyle WithBackground(Color color) => this with { Background = color };
 
     /// <summary>Replace the entire attribute set.</summary>
-    public Style WithAttributes(TextAttributes attributes) => this with { Attributes = attributes };
+    public CellStyle WithAttributes(TextAttributes attributes) => this with { Attributes = attributes };
 
     /// <summary>Add the given attribute bits to the existing set.</summary>
-    public Style AddAttributes(TextAttributes attributes) => this with { Attributes = Attributes | attributes };
+    public CellStyle AddAttributes(TextAttributes attributes) => this with { Attributes = Attributes | attributes };
 
     /// <summary>Clear the given attribute bits from the existing set.</summary>
-    public Style RemoveAttributes(TextAttributes attributes) => this with { Attributes = Attributes & ~attributes };
+    public CellStyle RemoveAttributes(TextAttributes attributes) => this with { Attributes = Attributes & ~attributes };
 
     /// <summary>Set the underline shape (does not toggle the <see cref="TextAttributes.Underline"/> flag).</summary>
-    public Style WithUnderlineStyle(UnderlineStyle style) => this with { UnderlineStyle = style };
+    public CellStyle WithUnderlineStyle(UnderlineStyle style) => this with { UnderlineStyle = style };
 
     /// <summary>Replace the underline color.</summary>
-    public Style WithUnderlineColor(Color color) => this with { UnderlineColor = color };
+    public CellStyle WithUnderlineColor(Color color) => this with { UnderlineColor = color };
 
     /// <summary>Replace the hyperlink — pass <see cref="Output.Hyperlink.None"/> (or <c>default</c>) to clear.</summary>
-    public Style WithHyperlink(Hyperlink hyperlink) => this with { Hyperlink = hyperlink };
+    public CellStyle WithHyperlink(Hyperlink hyperlink) => this with { Hyperlink = hyperlink };
 
     /// <summary>Convenience: replace the hyperlink with the given URI and optional id.</summary>
-    public Style WithHyperlink(string? uri, string? id = null)
+    public CellStyle WithHyperlink(string? uri, string? id = null)
         => this with { Hyperlink = new Hyperlink(uri, id) };
 
     /// <summary>True when no foreground, background, attribute, or hyperlink carries any non-default value.</summary>
@@ -103,7 +103,7 @@ public readonly record struct Style(
     //        UnderlineStyle == default &&
     //        UnderlineColor.IsDefault &&
     //        Hyperlink.IsEmpty;
-    public Style BlendOver(in Style backdrop, IBlendingMode? blendingMode = null)
+    public CellStyle BlendOver(in CellStyle backdrop, IBlendingMode? blendingMode = null)
     {
         var mode = blendingMode ?? BlendingModes.Default;
 

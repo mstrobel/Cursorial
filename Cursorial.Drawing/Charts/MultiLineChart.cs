@@ -134,7 +134,7 @@ public sealed class MultiLineChart : ILayeredChart
             first = false;
 
             var color = line.Brush.ColorAt(position.Column, position.Row, _renderedArea);
-            rtb.Run(line.EffectiveMarkerGlyph, Style.Default.WithForeground(color));
+            rtb.Run(line.EffectiveMarkerGlyph, CellStyle.Default.WithForeground(color));
             rtb.Run(" " + coordinates);
         }
 

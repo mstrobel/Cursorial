@@ -126,7 +126,7 @@ internal sealed class FormatDemo : InteractiveDemo
     // indicator. Fragments whose anchor falls inside the visible window are re-attached at
     // translated coordinates so inline graphics (Kitty icons, Sixel) scroll with the cells.
     private static void PaintScrolledShowcase(
-        CellBufferView screen, CellBufferView offscreen, int scrollOffset, int viewportRows, int docRows, in Style style)
+        CellBufferView screen, CellBufferView offscreen, int scrollOffset, int viewportRows, int docRows, in CellStyle style)
     {
         screen.CursorVisible = false;
         screen.Clear(style);
@@ -173,7 +173,7 @@ internal sealed class FormatDemo : InteractiveDemo
             if (x > rect.ColumnEnd + 2)
                 x = rect.ColumnEnd + 2;
 
-            var indicatorStyle = Style.Default
+            var indicatorStyle = CellStyle.Default
                                       .WithForeground(style.Background)
                                       .WithBackground(style.Foreground.WithAlpha(191));
 
@@ -182,7 +182,7 @@ internal sealed class FormatDemo : InteractiveDemo
         }
     }
 
-    private static RichText BuildFormattingShowcase(in Style defaultStyle = default)
+    private static RichText BuildFormattingShowcase(in CellStyle defaultStyle = default)
     {
         // A composite document mixing BBcode markup (for the prose-heavy sections) and the builder
         // (for FIGlet + HR blocks that don't have terse markup equivalents). Builds once and is

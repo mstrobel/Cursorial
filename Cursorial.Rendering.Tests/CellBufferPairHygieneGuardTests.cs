@@ -5,7 +5,7 @@ using Cursorial.Rendering;
 namespace Cursorial.Tests.Rendering;
 
 /// <summary>
-/// Both write paths — <see cref="CellBuffer.Set(int, int, string?, in Style)"/> and the raw indexer —
+/// Both write paths — <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> and the raw indexer —
 /// blank the surviving half of a wide pair they break apart. Neither may do that on the word of the
 /// <em>overwritten</em> cell alone: it must first confirm the neighbor really is the pairing half.
 /// The buffer can legitimately be inconsistent when they run — <see cref="CellBuffer.Fill(in Rect, in Cell)"/>
@@ -19,7 +19,7 @@ public class CellBufferPairHygieneGuardTests
     private static readonly Color Green = Color.FromRgb(0, 160, 0);
     private static readonly Color Blue = Color.FromRgb(0, 0, 200);
 
-    private static readonly Style Innocent = Style.Default.WithBackground(Green);
+    private static readonly CellStyle Innocent = CellStyle.Default.WithBackground(Green);
 
     /// <summary>
     /// A pair at columns 1–2, then one of its halves stomped by a raw <see cref="CellBuffer.Fill(in Rect, in Cell)"/>
@@ -29,7 +29,7 @@ public class CellBufferPairHygieneGuardTests
     private static CellBuffer BufferWithBrokenPair(int stompedColumn, string bystander)
     {
         var buf = new CellBuffer(6, 1);
-        buf.Set(1, 0, "中", Style.Default.WithBackground(Red));
+        buf.Set(1, 0, "中", CellStyle.Default.WithBackground(Red));
         buf.Fill(new Rect(stompedColumn, 0, 1, 1), new Cell(bystander, CellKind.Single, Innocent));
         return buf;
     }
@@ -41,7 +41,7 @@ public class CellBufferPairHygieneGuardTests
         var buf = BufferWithBrokenPair(stompedColumn: 1, bystander: "A");
         Assert.Equal(CellKind.WideContinuation, buf[2, 0].Kind);   // the inconsistency really is there
 
-        buf.Set(2, 0, "x", Style.Default.WithBackground(Blue));
+        buf.Set(2, 0, "x", CellStyle.Default.WithBackground(Blue));
 
         Assert.Equal("A", buf[1, 0].Grapheme);
         Assert.Equal(Green, buf[1, 0].Style.Background);
@@ -55,7 +55,7 @@ public class CellBufferPairHygieneGuardTests
         var buf = BufferWithBrokenPair(stompedColumn: 2, bystander: "B");
         Assert.Equal(CellKind.WideLeft, buf[1, 0].Kind);
 
-        buf.Set(1, 0, "x", Style.Default.WithBackground(Blue));
+        buf.Set(1, 0, "x", CellStyle.Default.WithBackground(Blue));
 
         Assert.Equal("B", buf[2, 0].Grapheme);
         Assert.Equal(Green, buf[2, 0].Style.Background);
@@ -68,10 +68,10 @@ public class CellBufferPairHygieneGuardTests
         // A lone WideLeft at 1 with the NEXT pair butted right against it at 2–3. Blanking column 2
         // on kind alone would decapitate that pair and strand its continuation at 3.
         var buf = new CellBuffer(6, 1);
-        buf.Set(2, 0, "全", Style.Default.WithBackground(Green));
-        buf.Fill(new Rect(1, 0, 1, 1), new Cell("中", CellKind.WideLeft, Style.Default.WithBackground(Red)));
+        buf.Set(2, 0, "全", CellStyle.Default.WithBackground(Green));
+        buf.Fill(new Rect(1, 0, 1, 1), new Cell("中", CellKind.WideLeft, CellStyle.Default.WithBackground(Red)));
 
-        buf.Set(1, 0, "x", Style.Default.WithBackground(Blue));
+        buf.Set(1, 0, "x", CellStyle.Default.WithBackground(Blue));
 
         Assert.Equal("全", buf[2, 0].Grapheme);
         Assert.Equal(CellKind.WideLeft, buf[2, 0].Kind);
@@ -83,7 +83,7 @@ public class CellBufferPairHygieneGuardTests
     {
         var buf = BufferWithBrokenPair(stompedColumn: 1, bystander: "A");
 
-        buf[2, 0] = new Cell("x", CellKind.Single, Style.Default.WithBackground(Blue));
+        buf[2, 0] = new Cell("x", CellKind.Single, CellStyle.Default.WithBackground(Blue));
 
         Assert.Equal("A", buf[1, 0].Grapheme);
         Assert.Equal(Green, buf[1, 0].Style.Background);
@@ -94,7 +94,7 @@ public class CellBufferPairHygieneGuardTests
     {
         var buf = BufferWithBrokenPair(stompedColumn: 2, bystander: "B");
 
-        buf[1, 0] = new Cell("x", CellKind.Single, Style.Default.WithBackground(Blue));
+        buf[1, 0] = new Cell("x", CellKind.Single, CellStyle.Default.WithBackground(Blue));
 
         Assert.Equal("B", buf[2, 0].Grapheme);
         Assert.Equal(Green, buf[2, 0].Style.Background);
@@ -107,7 +107,7 @@ public class CellBufferPairHygieneGuardTests
         // a fresh pair across a broken one has to leave the row fully paired either way.
         var buf = BufferWithBrokenPair(stompedColumn: 2, bystander: "B");
 
-        buf.Set(1, 0, "全", Style.Default.WithBackground(Blue));
+        buf.Set(1, 0, "全", CellStyle.Default.WithBackground(Blue));
 
         AssertNoStrandedHalves(buf);
         Assert.Equal(CellKind.WideLeft, buf[1, 0].Kind);

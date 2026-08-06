@@ -27,7 +27,7 @@ public class CorrectnessHardeningTests
         scene.Draw(_ => { });                                 // frame 1: empty
 
         var buffer = new CellBuffer(8, 1);                    // target wider than the clip → col 5 isn't the buffer edge
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         var clip = new Rect(0, 0, 5, 1);                      // ends at col 5, bisecting the wide glyph
         var layers = new[] { new SceneLayer(scene, new CompositeParameters(clip: clip)) };
         compositor.Composite(layers, buffer.AsView());        // frame 1: full-target union

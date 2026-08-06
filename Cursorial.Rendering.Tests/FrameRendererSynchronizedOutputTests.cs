@@ -78,7 +78,7 @@ public class FrameRendererSynchronizedOutputTests
         renderer.Render(buffer, firstWriter);
 
         // Mutate the buffer slightly so the second render has work to do.
-        buffer.Set(0, 0, "X", Style.Default);
+        buffer.Set(0, 0, "X", CellStyle.Default);
 
         var secondWriter = new ArrayBufferWriter<byte>();
         renderer.Render(buffer, secondWriter);

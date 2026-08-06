@@ -13,7 +13,7 @@ public class DrawingContextBlitTests
         var buffer = new CellBuffer(columns, rows);
         for (int row = 0; row < rows; row++)
         for (int column = 0; column < columns; column++)
-            buffer.Set(column, row, glyph, Style.Default);
+            buffer.Set(column, row, glyph, CellStyle.Default);
         return buffer;
     }
 

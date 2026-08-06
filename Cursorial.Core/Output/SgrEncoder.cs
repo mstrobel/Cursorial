@@ -6,17 +6,17 @@ using Cursorial.Text;
 namespace Cursorial.Output;
 
 /// <summary>
-/// Encodes a <see cref="Style"/> into the SGR escape-sequence bytes that drive a terminal's
+/// Encodes a <see cref="CellStyle"/> into the SGR escape-sequence bytes that drive a terminal's
 /// rendering state. Pure — no awareness of terminal capabilities (use <c>StyleQuantizer</c> to
 /// adapt a style for a given capability set first) and no internal "previously-emitted" state.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Two operations are provided. <see cref="WriteAbsolute"/> emits <c>SGR 0</c> (reset all)
-/// followed by the parameters needed to express <see cref="Style"/>, producing a sequence that
+/// followed by the parameters needed to express <see cref="CellStyle"/>, producing a sequence that
 /// puts the terminal into a known state regardless of what was previously set. This is the
 /// right call for one-off styled output ("print red text"). <see cref="WriteDelta"/> emits only
-/// the parameters needed to transition from one <see cref="Style"/> to another — the right
+/// the parameters needed to transition from one <see cref="CellStyle"/> to another — the right
 /// call for a frame compositor that's painting many adjacent runs of styled cells.
 /// </para>
 /// <para>
@@ -51,7 +51,7 @@ public static class SgrEncoder
     /// Emit an SGR sequence that puts the terminal's rendering state into <paramref name="style"/>
     /// regardless of what was previously active. Always begins with <c>SGR 0</c>.
     /// </summary>
-    public static void WriteAbsolute(IBufferWriter<byte> writer, in Style style)
+    public static void WriteAbsolute(IBufferWriter<byte> writer, in CellStyle style)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
@@ -81,7 +81,7 @@ public static class SgrEncoder
     /// <paramref name="to"/> does not. Emits nothing (writes zero bytes) when the two styles
     /// are equal.
     /// </summary>
-    public static void WriteDelta(IBufferWriter<byte> writer, in Style from, in Style to)
+    public static void WriteDelta(IBufferWriter<byte> writer, in CellStyle from, in CellStyle to)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (from == to) return;
@@ -140,7 +140,7 @@ public static class SgrEncoder
     }
 
     private static void WriteStyleParameters(
-        in Style style,
+        in CellStyle style,
         Span<byte> buffer,
         ref int written,
         ref bool needSeparator)

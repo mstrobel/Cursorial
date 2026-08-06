@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using Cursorial.Output;
 using Cursorial.Rendering.Content;
 
 namespace Cursorial.Rendering.Fonts;
@@ -23,7 +24,7 @@ namespace Cursorial.Rendering.Fonts;
 /// Per-line glyph rendering: each character line ends with one or more occurrences of an
 /// end-marker character (the last character of the line). The parser strips them. Embedded
 /// ANSI escape sequences (rare, but some "colored" fonts use them) are filtered out — we
-/// don't apply colors from the font, only the consumer's <see cref="Cursorial.Output.Style"/>.
+/// don't apply colors from the font, only the consumer's <see cref="CellStyle"/>.
 /// </para>
 /// </remarks>
 public static partial class FigletFontParser

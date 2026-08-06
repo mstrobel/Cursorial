@@ -102,7 +102,7 @@ public class FigletFontTests
         var font = BuildBehaviorFont(FigletLayoutMode.None);
         var buffer = new CellBuffer(10, 5);
 
-        var painted = font.Paint(buffer, 0, 0, "A", Style.Default);
+        var painted = font.Paint(buffer, 0, 0, "A", CellStyle.Default);
 
         Assert.Equal(new Size(3, 3), painted);
         Assert.Equal("A", buffer[1, 0].Grapheme);
@@ -126,7 +126,7 @@ public class FigletFontTests
 
         var buffer = new CellBuffer(5, 1);
 
-        font.Paint(buffer, 0, 0, "X", Style.Default);
+        font.Paint(buffer, 0, 0, "X", CellStyle.Default);
 
         Assert.Equal("X", buffer[0, 0].Grapheme);
         Assert.Equal(" ", buffer[1, 0].Grapheme); // hardblank → visible space
@@ -138,14 +138,14 @@ public class FigletFontTests
     {
         var font = BuildBehaviorFont(FigletLayoutMode.None);
         var buffer = new CellBuffer(5, 5);
-        buffer.Fill(new Cell(" ", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(255, 0, 0))));
+        buffer.Fill(new Cell(" ", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(255, 0, 0))));
 
         buffer.PushBlendingMode(BlendingModes.Plus);
 
         try
         {
             font.Paint(buffer, 0, 0,
-                       "A", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+                       "A", CellStyle.Default.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally
         {
@@ -163,7 +163,7 @@ public class FigletFontTests
         var buffer = new CellBuffer(5, 5);
 
         // 'A' is 3 wide. Anchor at column 3 — only 2 columns fit.
-        font.Paint(buffer, 3, 0, "A", Style.Default);
+        font.Paint(buffer, 3, 0, "A", CellStyle.Default);
 
         // Cells inside the buffer at the right side got painted; the third column would have
         // been at col 5, which is past the right edge.
@@ -332,7 +332,7 @@ public class FigletFontTests
         // Paint into a buffer big enough for the measured size and assert at least one cell got
         // ink.
         var buffer = new CellBuffer(size.Columns + 2, size.Rows);
-        font.Paint(buffer, 0, 0, "Hi", Style.Default);
+        font.Paint(buffer, 0, 0, "Hi", CellStyle.Default);
 
         bool anyInk = false;
 

@@ -18,7 +18,7 @@ namespace Cursorial.Tests.Drawing;
 /// That is a property of the buffer's <b>blank</b>, not of one fill performed at construction — every
 /// piece of code that blanks a cell of its own accord (the buffer's wide-pair hygiene, a view clear,
 /// the clear extensions) asks <see cref="CellBuffer.DefaultStyle"/> what blank means on this surface,
-/// and a buffer that was merely <em>filled</em> transparent answers <see cref="Style.Default"/> — the
+/// and a buffer that was merely <em>filled</em> transparent answers <see cref="CellStyle.Default"/> — the
 /// opaque value, which punches a hole straight through the group.
 /// </summary>
 public class SceneSurfaceBlankTests
@@ -28,7 +28,7 @@ public class SceneSurfaceBlankTests
     {
         using var scene = Scene.Create(6, 3);
 
-        Assert.Equal(Style.Transparent, scene.Buffer.DefaultStyle);
+        Assert.Equal(CellStyle.Transparent, scene.Buffer.DefaultStyle);
     }
 
     [Fact]
@@ -37,11 +37,11 @@ public class SceneSurfaceBlankTests
         var pool = new ScenePool();
 
         var first = pool.Rent(6, 3);
-        Assert.Equal(Style.Transparent, first.Buffer.DefaultStyle);
+        Assert.Equal(CellStyle.Transparent, first.Buffer.DefaultStyle);
         first.Dispose();
 
         var reused = pool.Rent(6, 3);
-        Assert.Equal(Style.Transparent, reused.Buffer.DefaultStyle);
+        Assert.Equal(CellStyle.Transparent, reused.Buffer.DefaultStyle);
         reused.Dispose();
     }
 
@@ -52,7 +52,7 @@ public class SceneSurfaceBlankTests
 
         for (int row = 0; row < scene.Rows; row++)
         for (int col = 0; col < scene.Columns; col++)
-            Assert.Equal(Style.Transparent, scene.GetCell(col, row).Style);
+            Assert.Equal(CellStyle.Transparent, scene.GetCell(col, row).Style);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class SceneSurfaceBlankTests
         using var scene = Scene.Create(6, 2);
         scene.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1), Color.FromRgb(10, 20, 30)));
 
-        Assert.Equal(Style.Transparent, scene.GetCell(5, 1).Style);
+        Assert.Equal(CellStyle.Transparent, scene.GetCell(5, 1).Style);
     }
 
     [Fact]
@@ -76,8 +76,8 @@ public class SceneSurfaceBlankTests
 
         scene.Buffer.View(1, 0, 2, 1).Clear();
 
-        Assert.Equal(Style.Transparent, scene.GetCell(1, 0).Style);
-        Assert.Equal(Style.Transparent, scene.GetCell(2, 0).Style);
+        Assert.Equal(CellStyle.Transparent, scene.GetCell(1, 0).Style);
+        Assert.Equal(CellStyle.Transparent, scene.GetCell(2, 0).Style);
     }
 
     [Fact]
@@ -86,11 +86,11 @@ public class SceneSurfaceBlankTests
         using var scene = Scene.Create(6, 1);
         scene.Draw(ctx =>
                    {
-                       ctx.Set(0, 0, "漢", Style.Transparent);
-                       ctx.Set(1, 0, "x", Style.Transparent);   // stomps the continuation
+                       ctx.Set(0, 0, "漢", CellStyle.Transparent);
+                       ctx.Set(1, 0, "x", CellStyle.Transparent);   // stomps the continuation
                    });
 
-        Assert.Equal(Style.Transparent, scene.GetCell(0, 0).Style);
+        Assert.Equal(CellStyle.Transparent, scene.GetCell(0, 0).Style);
     }
 
     // ---- ClearToTransparent collapsed into CellBuffer.Clear -------------------------------
@@ -104,7 +104,7 @@ public class SceneSurfaceBlankTests
         scene.Invalidate();
         scene.Draw(_ => { });
 
-        Assert.Equal(Style.Transparent, scene.GetCell(0, 0).Style);
+        Assert.Equal(CellStyle.Transparent, scene.GetCell(0, 0).Style);
     }
 
     [Fact]

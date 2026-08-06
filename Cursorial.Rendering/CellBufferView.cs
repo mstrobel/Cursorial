@@ -200,10 +200,10 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>
     /// The blank style of the backing buffer — see <see cref="CellBuffer.DefaultStyle"/>. The view is
     /// a coordinate / clip filter, not a separate state container, so it has no blank style of its
-    /// own. <see cref="Style.Default"/> on a default-constructed view, where there is no buffer to
+    /// own. <see cref="CellStyle.Default"/> on a default-constructed view, where there is no buffer to
     /// ask (every operation on such a view is a safe no-op).
     /// </summary>
-    public Style DefaultStyle => _buffer?.DefaultStyle ?? Style.Default;
+    public CellStyle DefaultStyle => _buffer?.DefaultStyle ?? CellStyle.Default;
 
     /// <summary>The view's rectangle in view-local coordinates: anchored at <c>(0, 0)</c>.</summary>
     public Rect Bounds => new(0, 0, Columns, Rows);
@@ -229,8 +229,8 @@ public readonly struct CellBufferView : ICellSurface
                : default;
 
     /// <summary>
-    /// The <see cref="Style"/> of the <see cref="CellKind.WideLeft"/> immediately left of the
-    /// view-local (<paramref name="column"/>, <paramref name="row"/>), or <see cref="Style.Default"/>
+    /// The <see cref="CellStyle"/> of the <see cref="CellKind.WideLeft"/> immediately left of the
+    /// view-local (<paramref name="column"/>, <paramref name="row"/>), or <see cref="CellStyle.Default"/>
     /// when there is no such cell.
     /// </summary>
     /// <remarks>
@@ -239,18 +239,18 @@ public readonly struct CellBufferView : ICellSurface
     /// leading half — and the cut is exactly what puts that half one column outside the view. The
     /// result is a color, never a cell, so it can't smuggle content past the clip.
     /// </remarks>
-    internal Style StyleOfLeadingHalf(int column, int row)
+    internal CellStyle StyleOfLeadingHalf(int column, int row)
     {
-        if (_buffer is null) return Style.Default;
+        if (_buffer is null) return CellStyle.Default;
 
         int bufferColumn = column + OffsetColumn - 1;
         int bufferRow = row + OffsetRow;
 
         if (bufferColumn < 0 || bufferColumn >= _buffer.Columns || bufferRow < 0 || bufferRow >= _buffer.Rows)
-            return Style.Default;
+            return CellStyle.Default;
 
         var left = _buffer[bufferColumn, bufferRow];
-        return left.Kind == CellKind.WideLeft ? left.Style : Style.Default;
+        return left.Kind == CellKind.WideLeft ? left.Style : CellStyle.Default;
     }
 
     // ---- Cursor pass-through ------------------------------------------------------------
@@ -350,7 +350,7 @@ public readonly struct CellBufferView : ICellSurface
     /// past the view's right edge degrade to a blank single cell. Returns the number of cells
     /// the placement occupied (0, 1, or 2).
     /// </summary>
-    public int Set(int column, int row, string? grapheme, in Style style)
+    public int Set(int column, int row, string? grapheme, in CellStyle style)
     {
         if (_buffer is null) return 0;
         if (!Contains(column, row)) return 0;
@@ -371,7 +371,7 @@ public readonly struct CellBufferView : ICellSurface
     /// <summary>
     /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at the
     /// view-local <c>(column, row)</c>, advancing the column by each cluster's width (1 or 2) and
-    /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in Style)"/>.
+    /// applying the active blending mode per cell — see <see cref="Set(int, int, string?, in CellStyle)"/>.
     /// A start outside the view is dropped (returns 0); a cluster that would not fit in the
     /// remaining columns stops the write rather than being clipped. The write is single-row by
     /// contract: it <b>stops at the first C0/C1 control character</b> (including newlines and tabs)
@@ -379,7 +379,7 @@ public readonly struct CellBufferView : ICellSurface
     /// multi-line text) for multi-row layout, and expand tabs upstream. Returns the number of
     /// columns written.
     /// </summary>
-    public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
+    public int Write(int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         if (_buffer is null || text.IsEmpty) return 0;
         if (!Contains(column, row)) return 0;
@@ -490,7 +490,7 @@ public readonly struct CellBufferView : ICellSurface
     /// returns false. The cell grid is not modified (see <see cref="CellBuffer.AddFragment"/>
     /// for the layering contract).
     /// </summary>
-    public bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
+    public bool AddFragment(int column, int row, IBufferFragment fragment, in CellStyle anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
         if (_buffer is null || !Contains(column, row)) return false;

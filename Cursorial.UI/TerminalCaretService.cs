@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Text;
 
 namespace Cursorial.UI;
 

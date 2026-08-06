@@ -263,7 +263,7 @@ public class ImageContentTests
                    {
                        Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
                    };
-        var painted = content.Paint(buffer, 0, 0, Style.Default, caps);
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, caps);
 
         Assert.Single(buffer.Fragments);
         Assert.IsType<KittyImageFragment>(buffer.Fragments[(0, 0)].Fragment);
@@ -280,7 +280,7 @@ public class ImageContentTests
                    {
                        Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: false, ITerm2InlineImages: true),
                    };
-        content.Paint(buffer, 0, 0, Style.Default, caps);
+        content.Paint(buffer, 0, 0, CellStyle.Default, caps);
 
         Assert.IsType<ITerm2ImageFragment>(buffer.Fragments[(0, 0)].Fragment);
     }
@@ -296,7 +296,7 @@ public class ImageContentTests
                    {
                        Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: true),
                    };
-        content.Paint(buffer, 0, 0, Style.Default, caps);
+        content.Paint(buffer, 0, 0, CellStyle.Default, caps);
 
         Assert.IsType<ITerm2ImageFragment>(buffer.Fragments[(0, 0)].Fragment);
     }
@@ -310,7 +310,7 @@ public class ImageContentTests
 
         content.Measure(expectedSize, OutputCapabilities.None);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
 
         // No fragment registered — placeholder painted as cells.
         Assert.Empty(buffer.Fragments);
@@ -325,11 +325,11 @@ public class ImageContentTests
     [Fact]
     public void Paint_PlaceholderStyleOverridesCallerStyle()
     {
-        var placeholder = Style.Default.WithBackground(Color.FromRgb(50, 50, 50));
+        var placeholder = CellStyle.Default.WithBackground(Color.FromRgb(50, 50, 50));
         var content = new Image(new ImageData(PngBytes(), ImageFormat.Png, new Size(4, 2)), placeholder);
         var buffer = new CellBuffer(10, 5);
 
-        content.Paint(buffer, 0, 0, Style.Default.WithBackground(Color.FromRgb(255, 0, 0)), OutputCapabilities.None);
+        content.Paint(buffer, 0, 0, CellStyle.Default.WithBackground(Color.FromRgb(255, 0, 0)), OutputCapabilities.None);
 
         // Every painted cell should carry the PlaceholderStyle's background, not the caller's.
         Assert.Equal(Color.FromRgb(50, 50, 50), buffer[0, 0].Style.Background);
@@ -346,7 +346,7 @@ public class ImageContentTests
         var buffer = new CellBuffer(20, 10);
         var caps = OutputCapabilities.None with
                    { Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false) };
-        content.Paint(buffer, 0, 0, Style.Default, caps);
+        content.Paint(buffer, 0, 0, CellStyle.Default, caps);
 
         string header = EmitFragmentHeader(buffer, caps);
         Assert.Contains("c=", header);         // columns pinned (the specified dimension)
@@ -360,7 +360,7 @@ public class ImageContentTests
         var buffer = new CellBuffer(20, 10);
         var caps = OutputCapabilities.None with
                    { Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false) };
-        content.Paint(buffer, 0, 0, Style.Default, caps);
+        content.Paint(buffer, 0, 0, CellStyle.Default, caps);
 
         string header = EmitFragmentHeader(buffer, caps);
         Assert.DoesNotContain("c=", header);   // columns derived from aspect → omitted

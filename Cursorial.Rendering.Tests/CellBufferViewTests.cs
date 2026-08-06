@@ -5,6 +5,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering;
 
@@ -91,7 +92,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        view.Set(0, 0, "X", Style.Default with { Foreground = Color.FromRgb(255, 0, 0) });
+        view.Set(0, 0, "X", CellStyle.Default with { Foreground = Color.FromRgb(255, 0, 0) });
 
         Assert.Equal("X", buf[4, 3].Grapheme);
         // Verify nothing else got written.
@@ -149,7 +150,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        view[2, 1] = new Cell("Q", CellKind.Single, Style.Default);
+        view[2, 1] = new Cell("Q", CellKind.Single, CellStyle.Default);
         Assert.Equal("Q", buf[6, 4].Grapheme);
         Assert.Equal("Q", view[2, 1].Grapheme);
     }
@@ -239,11 +240,11 @@ public class CellBufferViewTests
     {
         var buf = new CellBuffer(10, 10);
         // Pre-seed cells outside the view's region so we can verify they're untouched.
-        buf[0, 0] = new Cell("X", CellKind.Single, Style.Default);
-        buf[9, 9] = new Cell("Y", CellKind.Single, Style.Default);
+        buf[0, 0] = new Cell("X", CellKind.Single, CellStyle.Default);
+        buf[9, 9] = new Cell("Y", CellKind.Single, CellStyle.Default);
 
         var view = buf.View(3, 3, 4, 4);
-        view.Fill(new Cell(".", CellKind.Single, Style.Default));
+        view.Fill(new Cell(".", CellKind.Single, CellStyle.Default));
 
         // Inside the view: replaced.
         Assert.Equal(".", buf[3, 3].Grapheme);
@@ -259,7 +260,7 @@ public class CellBufferViewTests
     public void Clear_ResetsOnlyCellsInsideView()
     {
         var buf = new CellBuffer(10, 10);
-        buf.Fill(new Cell("X", CellKind.Single, Style.Default));
+        buf.Fill(new Cell("X", CellKind.Single, CellStyle.Default));
 
         var view = buf.View(3, 3, 4, 4);
         view.Clear();
@@ -440,7 +441,7 @@ public class CellBufferViewTests
     public void CellBuffer_FillRect_FillsOnlyTheGivenRect()
     {
         var buf = new CellBuffer(10, 10);
-        buf.Fill(new Rect(3, 3, 4, 4), new Cell(".", CellKind.Single, Style.Default));
+        buf.Fill(new Rect(3, 3, 4, 4), new Cell(".", CellKind.Single, CellStyle.Default));
 
         Assert.Equal(".", buf[3, 3].Grapheme);
         Assert.Equal(".", buf[6, 6].Grapheme);
@@ -453,7 +454,7 @@ public class CellBufferViewTests
     public void CellBuffer_ClearCells_ResetsOnlyTheGivenRect()
     {
         var buf = new CellBuffer(10, 10);
-        buf.Fill(new Cell("X", CellKind.Single, Style.Default));
+        buf.Fill(new Cell("X", CellKind.Single, CellStyle.Default));
 
         buf.ClearCells(new Rect(3, 3, 4, 4));
 
@@ -468,7 +469,7 @@ public class CellBufferViewTests
     {
         var buf = new CellBuffer(10, 10);
         // Rect extends past buffer; only the in-buffer slice fills.
-        buf.Fill(new Rect(8, 8, 5, 5), new Cell(".", CellKind.Single, Style.Default));
+        buf.Fill(new Rect(8, 8, 5, 5), new Cell(".", CellKind.Single, CellStyle.Default));
 
         Assert.Equal(".", buf[8, 8].Grapheme);
         Assert.Equal(".", buf[9, 9].Grapheme);
@@ -482,7 +483,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        int advanced = view.Write(1, 2, "ab", Style.Default);
+        int advanced = view.Write(1, 2, "ab", CellStyle.Default);
 
         Assert.Equal(2, advanced);
         Assert.Equal("a", buf[5, 5].Grapheme);   // (4+1, 3+2)
@@ -495,7 +496,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 6, 5);
 
-        int advanced = view.Write(0, 0, "中b", Style.Default);
+        int advanced = view.Write(0, 0, "中b", CellStyle.Default);
 
         Assert.Equal(3, advanced);
         Assert.Equal(CellKind.WideLeft, buf[4, 3].Kind);
@@ -509,7 +510,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(0, 0, 3, 1);   // 3 columns wide
 
-        int advanced = view.Write(0, 0, "ab中", Style.Default);
+        int advanced = view.Write(0, 0, "ab中", CellStyle.Default);
 
         Assert.Equal(2, advanced);          // wide 中 can't fit the single remaining column
         Assert.Equal("a", buf[0, 0].Grapheme);
@@ -534,7 +535,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        int advanced = view.Write(0, 0, "ab\ncd", Style.Default);
+        int advanced = view.Write(0, 0, "ab\ncd", CellStyle.Default);
 
         Assert.Equal(2, advanced);
         Assert.Equal("a", buf[4, 3].Grapheme);
@@ -549,7 +550,7 @@ public class CellBufferViewTests
     {
         var buf = new CellBuffer(10, 5);
         var view = buf.View(2, 1, 5, 3);   // backing rect cols [2,7) rows [1,4)
-        var cell = new Cell(".", CellKind.Single, Style.Default);
+        var cell = new Cell(".", CellKind.Single, CellStyle.Default);
 
         // View-local rect cols [1,4) rows [0,2) → backing cols [3,6) rows [1,3).
         view.Fill(new Rect(1, 0, 3, 2), cell);
@@ -566,7 +567,7 @@ public class CellBufferViewTests
     {
         var buf = new CellBuffer(10, 5);
         var view = buf.View(2, 1, 3, 2);   // backing rect cols [2,5) rows [1,3)
-        var cell = new Cell("#", CellKind.Single, Style.Default);
+        var cell = new Cell("#", CellKind.Single, CellStyle.Default);
 
         // Oversized view-local rect — only the in-view slice fills.
         view.Fill(new Rect(0, 0, 100, 100), cell);

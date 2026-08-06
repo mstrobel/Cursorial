@@ -17,7 +17,7 @@ public class DrawingContextGradientTests
     private static CellBuffer Composite(Scene scene, int cols, int rows)
     {
         var buffer = new CellBuffer(cols, rows);
-        new SceneCompositor(Style.Default.WithBackground(Black)).Composite(new[] { new SceneLayer(scene) }, buffer.AsView());
+        new SceneCompositor(CellStyle.Default.WithBackground(Black)).Composite(new[] { new SceneLayer(scene) }, buffer.AsView());
         return buffer;
     }
 

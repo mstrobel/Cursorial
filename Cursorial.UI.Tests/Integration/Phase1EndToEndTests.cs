@@ -9,11 +9,10 @@ using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.Tests.UI.Integration;
 

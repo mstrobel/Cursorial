@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
@@ -101,7 +102,7 @@ public static class ResourceScopes
 
         public bool TryGetResource(object key, out object? value)
         {
-            var variant = UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
+            var variant = UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor);
 
             if (UIApplication.Current is { } app)
             {

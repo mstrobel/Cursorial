@@ -19,13 +19,13 @@ namespace Cursorial.Rendering;
 /// we expose row spans later.
 /// </para>
 /// <para>
-/// <b>Wide cells.</b> <see cref="Set(int, int, string, in Style)"/> computes grapheme width via
+/// <b>Wide cells.</b> <see cref="Set(int, int, string, in CellStyle)"/> computes grapheme width via
 /// <see cref="GraphemeWidth"/>, stores the cluster at <c>(row, col)</c> as
 /// <see cref="CellKind.WideLeft"/> when its width is 2, and writes the right-half marker
 /// (<see cref="Cell.WideContinuation"/>) into <c>(row, col + 1)</c>. Overwrites also clean up:
 /// if the previous occupant of <c>(row, col)</c> was a wide-left, its dangling continuation is
 /// stripped to a blank single; if the previous occupant was a continuation, the wide-left to its
-/// left is. Either way the blank left behind carries the <see cref="Style"/> of the <b>pair</b> —
+/// left is. Either way the blank left behind carries the <see cref="CellStyle"/> of the <b>pair</b> —
 /// only the glyph and the kind are cleared. The buffer therefore never exposes orphan continuations
 /// or partial wide cells.
 /// </para>
@@ -51,7 +51,7 @@ public sealed class CellBuffer : ICellSurface
 {
     /// <summary>
     /// A grapheme that is durable whitespace, meaning it will not be overwritten by any other
-    /// whitespace grapheme when calling <see cref="Set(int, int, string?, in Style)"/>.
+    /// whitespace grapheme when calling <see cref="Set(int, int, string?, in CellStyle)"/>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -78,7 +78,7 @@ public sealed class CellBuffer : ICellSurface
     private int _columns;
     private int _rows;
 
-    private readonly Style _defaultStyle;
+    private readonly CellStyle _defaultStyle;
     private readonly Stack<IBlendingMode> _blendStack = new();
     private readonly Dictionary<(int Column, int Row), FragmentEntry> _fragments = new();
 
@@ -112,7 +112,7 @@ public sealed class CellBuffer : ICellSurface
     /// The style a blank cell carries on this buffer, overriding whatever
     /// <paramref name="capabilities"/> would have derived. <see langword="null"/> (the default) keeps
     /// the derivation. Supply it for a surface whose blank is not the terminal's default —
-    /// <see cref="Style.Transparent"/> for an intermediate compositing surface, whose unpainted cells
+    /// <see cref="CellStyle.Transparent"/> for an intermediate compositing surface, whose unpainted cells
     /// must contribute nothing when it is blended onwards.
     /// </param>
     /// <remarks>
@@ -123,7 +123,7 @@ public sealed class CellBuffer : ICellSurface
     /// declaration disagreeing from birth, which is exactly the lie <see cref="DefaultStyle"/> exists
     /// to prevent. Taking it here makes that state unrepresentable.
     /// </remarks>
-    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null, Style? defaultStyle = null)
+    public CellBuffer(int columns, int rows, TerminalCapabilities? capabilities = null, CellStyle? defaultStyle = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rows);
@@ -139,21 +139,21 @@ public sealed class CellBuffer : ICellSurface
         FillWithDefaultStyle();
     }
 
-    private static Style DeriveDefaultStyle(TerminalCapabilities? capabilities)
+    private static CellStyle DeriveDefaultStyle(TerminalCapabilities? capabilities)
     {
         // If the default foreground or background color is known, use the actual color in RGB
         // form so we can take advantage of alpha blending.
         if (capabilities is { Output.Color: { DefaultForeground: var fg, DefaultBackground: var bg } } &&
             (fg is { Kind: ColorKind.Rgb } || bg is { Kind: ColorKind.Rgb }))
         {
-            return Style.Default with
+            return CellStyle.Default with
                    {
                        Foreground = fg ?? Color.Default,
                        Background = bg ?? Color.Default
                    };
         }
 
-        return Style.Default;
+        return CellStyle.Default;
     }
 
     /// <summary>Width of the buffer in cells.</summary>
@@ -173,7 +173,7 @@ public sealed class CellBuffer : ICellSurface
     /// <remarks>
     /// <para>
     /// Whatever the constructor's <c>defaultStyle</c> argument said; failing that,
-    /// <see cref="Style.Default"/> unless the terminal reported its own default foreground /
+    /// <see cref="CellStyle.Default"/> unless the terminal reported its own default foreground /
     /// background, in which case those colors (in RGB form, so alpha blending has something real to
     /// blend against) are the buffer's notion of blank.
     /// </para>
@@ -184,7 +184,7 @@ public sealed class CellBuffer : ICellSurface
     /// with something else, which says nothing about what a subsequent <see cref="Clear()"/> writes.
     /// </para>
     /// </remarks>
-    public Style DefaultStyle => _defaultStyle;
+    public CellStyle DefaultStyle => _defaultStyle;
 
     /// <summary>Cursor row position (0-based). Used by the renderer at frame emission.</summary>
     public int CursorRow { get; set; }
@@ -242,13 +242,13 @@ public sealed class CellBuffer : ICellSurface
 
     /// <summary>
     /// Direct access to a cell. Setting via the indexer bypasses the active blending mode — use
-    /// <see cref="Set(int, int, string, in Style)"/> for normal text content — but it does
+    /// <see cref="Set(int, int, string, in CellStyle)"/> for normal text content — but it does
     /// maintain the wide-pair invariant: overwriting either half of an existing pair strips the
     /// orphaned partner to a blank single that keeps its own style (unless the write replaces that
     /// half in kind, which keeps the pair whole — the cell-by-cell pair-copy pattern region blits
     /// use), storing a
     /// <see cref="CellKind.WideLeft"/> writes its continuation (degrading to a blank single at
-    /// the right edge, as <see cref="Set(int, int, string, in Style)"/> does), and storing a
+    /// the right edge, as <see cref="Set(int, int, string, in CellStyle)"/> does), and storing a
     /// continuation with no <see cref="CellKind.WideLeft"/> to pair with stores a blank single
     /// instead. The buffer therefore never holds half a wide glyph — the invariant the
     /// <see cref="FrameRenderer"/>'s wide-cell emission contract depends on (a split pair makes
@@ -320,7 +320,7 @@ public sealed class CellBuffer : ICellSurface
     /// to a blank single first (keeping that pair's style) — overwriting a WideLeft with a
     /// continuation would otherwise orphan the cell two columns over.
     /// </summary>
-    private void WriteWidePair(int index, int column, string? grapheme, in Style style)
+    private void WriteWidePair(int index, int column, string? grapheme, in CellStyle style)
     {
         if (_cells[index + 1].Kind == CellKind.WideLeft && column + 2 < _columns &&
             _cells[index + 2].Kind == CellKind.WideContinuation)
@@ -338,14 +338,14 @@ public sealed class CellBuffer : ICellSurface
 
     /// <summary>
     /// Strip an orphaned <see cref="CellKind.WideLeft"/> down to a blank single, <b>keeping its
-    /// <see cref="Style"/></b> — only the glyph and the kind are cleared.
+    /// <see cref="CellStyle"/></b> — only the glyph and the kind are cleared.
     /// </summary>
     /// <remarks>
     /// Resetting it to <see cref="Cell.Blank"/> would be wrong twice: it discards the style the cell
     /// legitimately carried (a selection tint, a panel fill, a themed run), punching a
-    /// differently-styled hole mid-region; and <see cref="Style.Default"/> may not even be this
+    /// differently-styled hole mid-region; and <see cref="CellStyle.Default"/> may not even be this
     /// buffer's notion of blank — <see cref="Clear()"/> / <see cref="ClearCells"/> write
-    /// <c>_defaultStyle</c>, and a surface based on <see cref="Style.Transparent"/> (an intermediate
+    /// <c>_defaultStyle</c>, and a surface based on <see cref="CellStyle.Transparent"/> (an intermediate
     /// group buffer) would get an <em>opaque</em> orphan that occludes what the surface must let
     /// through. Preserving the style also matches the degrade sites, which already do.
     /// </remarks>
@@ -363,7 +363,7 @@ public sealed class CellBuffer : ICellSurface
     /// there. So the caller must pass the leading half's style, read <b>before</b> the write that
     /// clobbers it — every call site here is a write that is about to do exactly that.
     /// </remarks>
-    private void OrphanContinuationToBlankSingle(int index, in Style style)
+    private void OrphanContinuationToBlankSingle(int index, in CellStyle style)
         => _cells[index] = new Cell(null, CellKind.Single, style);
 
     /// <summary>
@@ -371,7 +371,7 @@ public sealed class CellBuffer : ICellSurface
     /// handling wide-cell width and adjacent-cell cleanup. Returns the number of cells the
     /// placement occupied (1 or 2).
     /// </summary>
-    public int Set(int column, int row, string? grapheme, in Style style)
+    public int Set(int column, int row, string? grapheme, in CellStyle style)
     {
         ValidateCoordinates(column, row);
 
@@ -437,14 +437,14 @@ public sealed class CellBuffer : ICellSurface
     /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at
     /// <c>(column, row)</c>, advancing the column by each cluster's width (1 for normal, 2 for
     /// wide) and applying the active blending mode per cell — exactly as
-    /// <see cref="Set(int, int, string?, in Style)"/> does for a single cluster. A cluster that
+    /// <see cref="Set(int, int, string?, in CellStyle)"/> does for a single cluster. A cluster that
     /// would not fit in the remaining columns stops the write rather than being clipped to a
     /// partial glyph. The write is single-row by contract: it <b>stops at the first C0/C1 control
     /// character</b> (including newlines and tabs) rather than storing it as a junk cell — split
     /// text into lines (or use the drawing layer's multi-line text) for multi-row layout, and
     /// expand tabs upstream. Returns the number of columns written.
     /// </summary>
-    public int Write(int column, int row, ReadOnlySpan<char> text, in Style style)
+    public int Write(int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         ValidateCoordinates(column, row);
         if (text.IsEmpty) return 0;
@@ -529,7 +529,7 @@ public sealed class CellBuffer : ICellSurface
     /// <see langword="false"/> when the anchor falls outside the view.
     /// </para>
     /// </remarks>
-    public bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default)
+    public bool AddFragment(int column, int row, IBufferFragment fragment, in CellStyle anchorStyle = default)
     {
         ArgumentNullException.ThrowIfNull(fragment);
         ValidateCoordinates(column, row);
@@ -714,7 +714,7 @@ public sealed class CellBuffer : ICellSurface
     public void ClearForceRepaint() => _forceRepaintRegions.Clear();
 
     /// <summary>
-    /// Replace every cell with <paramref name="cell"/>, blending its <see cref="Style"/> against
+    /// Replace every cell with <paramref name="cell"/>, blending its <see cref="CellStyle"/> against
     /// each position's existing cell through <see cref="CurrentBlendingMode"/>. When the active
     /// mode is <see cref="BlendingModes.Default"/>, the fast path is a single <c>Array.Fill</c>
     /// — every cell becomes <paramref name="cell"/> verbatim.
@@ -795,10 +795,10 @@ public sealed class CellBuffer : ICellSurface
         }
     }
 
-    private Style BlendStyle(in Style source, in Style backdrop)
+    private CellStyle BlendStyle(in CellStyle source, in CellStyle backdrop)
         => source.BlendOver(backdrop, CurrentBlendingMode);
 
-    private static Style BlendStyle(in Style source, in Style backdrop, IBlendingMode mode)
+    private static CellStyle BlendStyle(in CellStyle source, in CellStyle backdrop, IBlendingMode mode)
     {
         return source with
                {
@@ -924,7 +924,7 @@ public sealed class CellBuffer : ICellSurface
     /// anchor style the renderer uses as the SGR backdrop before invoking the fragment's emit
     /// callback.
     /// </summary>
-    public readonly record struct FragmentEntry(IBufferFragment Fragment, Style AnchorStyle);
+    public readonly record struct FragmentEntry(IBufferFragment Fragment, CellStyle AnchorStyle);
 
     /// <summary>Internal: raw row span for renderer access. Not part of the public-API stability guarantee.</summary>
     internal ReadOnlySpan<Cell> GetRowSpan(int row)

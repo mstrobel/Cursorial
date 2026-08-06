@@ -5,8 +5,8 @@
 
 using Cursorial.Input;
 using Cursorial.Input.Events;
-using Cursorial.Output;
 using Cursorial.Tests.UI.LayoutMatrix;
+using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

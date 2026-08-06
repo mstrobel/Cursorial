@@ -43,7 +43,7 @@ public class Image : FragmentContent
     private DecodedImage? _resampledImage;
 
     /// <summary>Construct an image content from the supplied data.</summary>
-    public Image(ImageData? data, in Style placeholderStyle = default, string? placeholderText = null)
+    public Image(ImageData? data, in CellStyle placeholderStyle = default, string? placeholderText = null)
     {
         _data = data;
         PlaceholderStyle = placeholderStyle;
@@ -54,7 +54,7 @@ public class Image : FragmentContent
     }
 
     /// <summary>Construct an image content from the supplied data.</summary>
-    public Image(Uri resourceUri, Size renderSize = default, in Style placeholderStyle = default, string? placeholderText = null, IResourceLoader? loader = null)
+    public Image(Uri resourceUri, Size renderSize = default, in CellStyle placeholderStyle = default, string? placeholderText = null, IResourceLoader? loader = null)
         : this(LoadImage(resourceUri, renderSize, loader), placeholderStyle, placeholderText)
     {
         ResourceUri = resourceUri;
@@ -72,7 +72,7 @@ public class Image : FragmentContent
     public ImageData? Data => _data;
 
     /// <summary>Style applied to the placeholder rectangle when no graphics protocol is supported.</summary>
-    public Style PlaceholderStyle { get; init; }
+    public CellStyle PlaceholderStyle { get; init; }
 
     /// <summary>Text to display when no graphics protocol is supported. For icons, could be an emoji.</summary>
     public string PlaceholderText { get; init; }
@@ -112,7 +112,7 @@ public class Image : FragmentContent
     }
 
     /// <inheritdoc/>
-    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
     {
         if (capabilities.Graphics is {KittyGraphics: false, ITerm2InlineImages: false, Sixel: false})
             return null;
@@ -288,7 +288,7 @@ public class Image : FragmentContent
         return preliminarySize;
     }
 
-    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
     {
         var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = PlaceholderStyle });
         var formatter = new TextFormatter { Wrap = WrapMode.WordWrap, Alignment = TextAlignment.Center };

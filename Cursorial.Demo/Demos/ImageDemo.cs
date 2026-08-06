@@ -103,7 +103,7 @@ internal sealed class ImageDemo : InteractiveDemo, IDemo
         byte[] bytes,
         ImageFormat format,
         OutputCapabilities outputCaps,
-        in Style defaultStyle)
+        in CellStyle defaultStyle)
     {
         buf.CursorVisible = false;
         buf.Clear();

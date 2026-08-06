@@ -12,8 +12,6 @@ using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 
-using CellStyle = Cursorial.Output.Style;
-
 namespace Cursorial.UI.DataViews;
 
 /// <summary>

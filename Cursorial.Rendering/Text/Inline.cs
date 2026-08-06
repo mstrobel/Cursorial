@@ -41,7 +41,7 @@ public abstract record Inline;
 /// </remarks>
 public sealed record TextRun(
     string Text,
-    Style Style = default,
+    CellStyle Style = default,
     IGlyphMap? Map = null,
     string? Hyperlink = null,
     object? Tag = null) : Inline

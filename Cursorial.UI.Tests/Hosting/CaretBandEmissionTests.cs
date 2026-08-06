@@ -1,6 +1,6 @@
-using Cursorial.Output;
 using Cursorial.Terminal;
 using Cursorial.Tests.UI.LayoutMatrix;
+using Cursorial.Text;
 using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;

@@ -28,7 +28,7 @@ internal abstract class InteractiveDemo : IDemo
     protected TerminalSession Session { get; private set; } = null!;
     protected CellBuffer Buffer { get; private set; } = null!;
     protected FrameRenderer Renderer { get; private set; } = null!;
-    protected Style Style { get; private set; }
+    protected CellStyle Style { get; private set; }
     protected TerminalPalette Palette { get; private set; } = null!;
     protected TerminalCapabilities Capabilities { get; private set; } = null!;
     protected System.IO.Pipelines.PipeWriter Writer { get; private set; } = null!;

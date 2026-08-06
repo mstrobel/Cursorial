@@ -10,10 +10,10 @@ namespace Cursorial.Rendering.Text;
 /// brushes live in Drawing (the §8 invariant: <c>IBrush</c> never enters <c>Style</c>).
 /// </summary>
 public readonly struct BrushedTextContext(
-    Style baseStyle, int column, int row, Rect block, int logicalColumn, int scopeWidth, object? tag)
+    CellStyle baseStyle, int column, int row, Rect block, int logicalColumn, int scopeWidth, object? tag)
 {
     /// <summary>The cell's flat style — a resolver typically returns this with its colors swapped for brushed ones.</summary>
-    public Style BaseStyle { get; } = baseStyle;
+    public CellStyle BaseStyle { get; } = baseStyle;
 
     /// <summary>The cell's column (buffer-local).</summary>
     public int Column { get; } = column;
@@ -46,8 +46,8 @@ public readonly struct BrushedTextContext(
 }
 
 /// <summary>
-/// Resolves the effective <see cref="Style"/> for one painted text cell. A higher layer supplies it to
+/// Resolves the effective <see cref="CellStyle"/> for one painted text cell. A higher layer supplies it to
 /// <see cref="FormattedText.Paint"/> to brush-color formatted text; the painter calls it per grapheme cell when
 /// present. Cell width is grapheme-driven, so a substituted style never shifts the layout.
 /// </summary>
-public delegate Style BrushedTextResolver(in BrushedTextContext context);
+public delegate CellStyle BrushedTextResolver(in BrushedTextContext context);

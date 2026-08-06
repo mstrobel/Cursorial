@@ -104,7 +104,7 @@ public sealed class FrameRenderer
     private bool[]? _dirtyCells;
     private bool _hasDirtyRegions;
 
-    private Style _currentStyle;
+    private CellStyle _currentStyle;
     private Hyperlink _currentHyperlink;
     private int _cursorRow;
     private int _cursorCol;
@@ -207,7 +207,7 @@ public sealed class FrameRenderer
             SgrEncoder.WriteReset(output);
 
             CursorWriter.WriteMoveTo(output, 0, 0);
-            _currentStyle = Style.Default;
+            _currentStyle = CellStyle.Default;
             _currentHyperlink = Hyperlink.None;
             _cursorRow = 0;
             _cursorCol = 0;
@@ -258,7 +258,7 @@ public sealed class FrameRenderer
         // terminal back into default style; the next frame's first non-default cell pays the
         // SGR re-establishment cost (a handful of bytes).
         SgrEncoder.WriteReset(output);
-        _currentStyle = Style.Default;
+        _currentStyle = CellStyle.Default;
 
         // Same reasoning for OSC 8 — leaving a hyperlink open at frame boundary would extend
         // the link target into the next prompt or any subsequent ad-hoc terminal output.
@@ -583,7 +583,7 @@ public sealed class FrameRenderer
         return new Cell(
             Grapheme: " ",
             Kind: CellKind.Single,
-            Style: Style.Default.WithBackground(background));
+            Style: CellStyle.Default.WithBackground(background));
     }
 
     /// <summary>
@@ -688,7 +688,7 @@ public sealed class FrameRenderer
         // well-defined way.
         _cursorCol = -1;
         _cursorRow = -1;
-        _currentStyle = Style.Default;
+        _currentStyle = CellStyle.Default;
         _currentHyperlink = Hyperlink.None;
         SgrEncoder.WriteReset(output);
     }
@@ -714,7 +714,7 @@ public sealed class FrameRenderer
     }
 
     // Emit the SGR delta needed to move from the current style to <paramref name="target"/>.
-    private void SyncStyle(IBufferWriter<byte> output, in Style target)
+    private void SyncStyle(IBufferWriter<byte> output, in CellStyle target)
     {
         if (target == _currentStyle) return;
         SgrEncoder.WriteDelta(output, _currentStyle, target);
@@ -1008,7 +1008,7 @@ public sealed class FrameRenderer
     /// <summary>Bracket-emit a fragment's payload with DECSC / DECRC + cursor + SGR backdrop.</summary>
     internal void EmitFragmentBytes(int col, int row, CellBuffer.FragmentEntry entry,
                                     IBufferWriter<byte> output, OutputCapabilities caps,
-                                    Style existingStyle)
+                                    CellStyle existingStyle)
     {
         CursorWriter.WriteSavePosition(output);
         CursorWriter.WriteMoveTo(output, col, row);
@@ -1024,7 +1024,7 @@ public sealed class FrameRenderer
 
         anchorStyle = AdaptStyle(anchorStyle, col, row);
 
-        if (anchorStyle != Style.Default)
+        if (anchorStyle != CellStyle.Default)
             SgrEncoder.WriteDelta(output, in existingStyle, in anchorStyle);
 
         entry.Fragment.Emit(col, row, output, caps);
@@ -1034,7 +1034,7 @@ public sealed class FrameRenderer
         // DECRC's SGR-restore behavior varies across terminals (xterm restores it; some VT
         // emulators don't). Explicitly resync our SGR tracking by writing an SGR reset.
         SgrEncoder.WriteReset(output);
-        _currentStyle = Style.Default;
+        _currentStyle = CellStyle.Default;
 
         // DECRC's *cursor*-restore behavior is also implementation-defined when the saved-state
         // stack has been disturbed in between (some conhost versions, ConEmu/Cmder, …).
@@ -1063,7 +1063,7 @@ public sealed class FrameRenderer
         CursorWriter.WriteRestorePosition(output);
 
         SgrEncoder.WriteReset(output);
-        _currentStyle = Style.Default;
+        _currentStyle = CellStyle.Default;
 
         // See EmitFragmentBytes for why we invalidate the tracked cursor after DECRC: the
         // restore is implementation-defined when the SC/RC stack has been disturbed, and
@@ -1082,7 +1082,7 @@ public sealed class FrameRenderer
         return quantized == cell.Style ? cell : cell with { Style = quantized };
     }
 
-    private Style AdaptStyle(in Style style, int column, int row)
+    private CellStyle AdaptStyle(in CellStyle style, int column, int row)
     {
         if (_quantizer is null) return style;
         // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full

@@ -1,13 +1,12 @@
 using System.Windows.Input;
 
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Themes;
-
-using Style = Cursorial.Output.Style;
 
 namespace Cursorial.Gallery.ViewModels;
 
@@ -37,7 +36,7 @@ public class WelcomeViewModel : PageViewModel
 
     private static RichText MakeWelcomeText(IGlyphFont font, string text, TextSizing? sizing = null)
     {
-        var rtb = new RichTextBuilder(Style.Transparent.WithForeground(Color.Default), TextTrimming.CharacterEllipsis, WrapMode.NoWrap);
+        var rtb = new RichTextBuilder(CellStyle.Transparent.WithForeground(Color.Default), TextTrimming.CharacterEllipsis, WrapMode.NoWrap);
 
         foreach (var line in text.Split('\n'))
             rtb.Run(line, new GlyphSource(font, sizing ?? TextSizing.Normal));

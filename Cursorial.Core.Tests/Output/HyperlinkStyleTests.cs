@@ -40,7 +40,7 @@ public class HyperlinkStyleTests
     [Fact]
     public void Style_WithHyperlink_PropagatesToTheField()
     {
-        var styled = Style.Default.WithHyperlink("https://example.com");
+        var styled = CellStyle.Default.WithHyperlink("https://example.com");
         Assert.False(styled.Hyperlink.IsEmpty);
         Assert.Equal("https://example.com", styled.Hyperlink.Uri);
     }
@@ -48,21 +48,21 @@ public class HyperlinkStyleTests
     [Fact]
     public void Style_WithHyperlinkStringOverload_AcceptsId()
     {
-        var styled = Style.Default.WithHyperlink("https://example.com", "id-42");
+        var styled = CellStyle.Default.WithHyperlink("https://example.com", "id-42");
         Assert.Equal("id-42", styled.Hyperlink.Id);
     }
 
     [Fact]
     public void Style_WithHyperlinkNone_ClearsHyperlink()
     {
-        var styled = Style.Default.WithHyperlink("https://example.com").WithHyperlink(Hyperlink.None);
+        var styled = CellStyle.Default.WithHyperlink("https://example.com").WithHyperlink(Hyperlink.None);
         Assert.True(styled.Hyperlink.IsEmpty);
     }
 
     [Fact]
     public void Style_IsDefault_FalseWhenHyperlinkSet()
     {
-        var styled = Style.Default.WithHyperlink("https://example.com");
+        var styled = CellStyle.Default.WithHyperlink("https://example.com");
         Assert.False(styled.IsDefault);
     }
 }

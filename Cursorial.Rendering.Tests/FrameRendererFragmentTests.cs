@@ -26,9 +26,9 @@ public class FrameRendererFragmentTests
         // covered-cell skip only applies inside the footprint.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "a", Style.Default);
+        buffer.Set(0, 0, "a", CellStyle.Default);
         buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
-        buffer.Set(3, 0, "z", Style.Default); // outside coverage
+        buffer.Set(3, 0, "z", CellStyle.Default); // outside coverage
 
         var output = Render(r, buffer);
 
@@ -53,7 +53,7 @@ public class FrameRendererFragmentTests
         var r = new FrameRenderer();
         var bg = Color.FromRgb(40, 60, 80);
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(1, 0, " ", Style.Default.WithBackground(bg));
+        buffer.Set(1, 0, " ", CellStyle.Default.WithBackground(bg));
         buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
         Render(r, buffer); // frame 1: covered → front records the bg-only placeholder
 
@@ -72,7 +72,7 @@ public class FrameRendererFragmentTests
         // next frame must not keep re-emitting them. The renderer clears the regions at end-of-render.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(1, 0, "x", Style.Default);
+        buffer.Set(1, 0, "x", CellStyle.Default);
         Render(r, buffer);
 
         buffer.ForceRepaint(1, 0, 1, 1);
@@ -92,8 +92,8 @@ public class FrameRendererFragmentTests
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
         var panelBg = Color.FromRgb(40, 60, 80);
-        buffer.Set(1, 0, "U", Style.Default.WithBackground(panelBg));
-        buffer.Set(2, 0, "V", Style.Default.WithBackground(panelBg));
+        buffer.Set(1, 0, "U", CellStyle.Default.WithBackground(panelBg));
+        buffer.Set(2, 0, "V", CellStyle.Default.WithBackground(panelBg));
         buffer.AddFragment(1, 0, new SentinelFragment(new Size(2, 1), "[F]"));
 
         var output = Render(r, buffer);
@@ -155,7 +155,7 @@ public class FrameRendererFragmentTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "Hello",
-            Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+            CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
 
         buffer.AddFragment(0, 0, fragment);
 
@@ -177,7 +177,7 @@ public class FrameRendererFragmentTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "Hello",
-            Style.Default);
+            CellStyle.Default);
 
         buffer.AddFragment(0, 0, fragment);
 
@@ -191,7 +191,7 @@ public class FrameRendererFragmentTests
     public void SizedTextFragment_ReportsCorrectSize()
     {
         // "Hello" = 5 narrow clusters, scale 2 → width 10, height 2.
-        var fragment = new SizedTextFragment(new TextSizing(Scale: 2), "Hello", Style.Default);
+        var fragment = new SizedTextFragment(new TextSizing(Scale: 2), "Hello", CellStyle.Default);
         Assert.Equal(new Size(10, 2), fragment.GetSize());
     }
 
@@ -204,7 +204,7 @@ public class FrameRendererFragmentTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 1, Width: 3),
             "Hello",
-            Style.Default);
+            CellStyle.Default);
 
         Assert.Equal(new Size(5, 1), fragment.GetSize());
     }

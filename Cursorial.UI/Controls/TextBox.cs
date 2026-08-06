@@ -1,10 +1,11 @@
 using System.Text;
 
 using Cursorial.Input;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 using Cursorial.UI.Input;
 
 // ReSharper disable NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract

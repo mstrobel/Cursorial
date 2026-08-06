@@ -562,11 +562,11 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => availableSpace;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             for (int r = bounds.Row; r < bounds.RowEnd; r++)
             for (int c = bounds.Column; c < bounds.ColumnEnd; c++)
-                buffer.Set(c, r, glyph, Style.Default.WithForeground(Color.FromRgb(255, 255, 255)));
+                buffer.Set(c, r, glyph, CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255)));
             return bounds;
         }
     }
@@ -576,7 +576,7 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
             var size = fragment.GetSize();

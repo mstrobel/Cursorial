@@ -19,7 +19,7 @@ public class FrameRendererScrollDetectionTests
     private static void FillRow(CellBuffer buffer, int row, string text)
     {
         for (int c = 0; c < buffer.Columns && c < text.Length; c++)
-            buffer.Set(c, row, text[c].ToString(), Style.Default);
+            buffer.Set(c, row, text[c].ToString(), CellStyle.Default);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class FrameRendererScrollDetectionTests
         Render(r, buffer);
 
         // Change one cell — not a scroll.
-        buffer.Set(2, 1, "X", Style.Default);
+        buffer.Set(2, 1, "X", CellStyle.Default);
         var output = Render(r, buffer);
 
         Assert.DoesNotContain("\x1b[1S", output);

@@ -17,8 +17,8 @@ public class CellBufferFragmentTests
         // the caller painted them so they can render through any portion of the fragment's
         // protocol payload that doesn't fully cover them.
         var buffer = new CellBuffer(10, 3);
-        buffer.Set(2, 0, "a", Style.Default);
-        buffer.Set(3, 0, "b", Style.Default);
+        buffer.Set(2, 0, "a", CellStyle.Default);
+        buffer.Set(3, 0, "b", CellStyle.Default);
 
         buffer.AddFragment(2, 0, new StubFragment(new Size(4, 2)));
 
@@ -47,7 +47,7 @@ public class CellBufferFragmentTests
         // (and during) the fragment's registration. Callers who want a clean state should
         // explicitly repaint the region.
         var buffer = new CellBuffer(10, 3);
-        buffer.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(40, 40, 40)));
+        buffer.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(40, 40, 40)));
 
         buffer.AddFragment(0, 0, new StubFragment(new Size(3, 1)));
         Assert.True(buffer.RemoveFragment(0, 0));
@@ -87,7 +87,7 @@ public class CellBufferFragmentTests
         // — callers are responsible for not straddling wide cells across fragment boundaries
         // if they want clean visuals.
         var buffer = new CellBuffer(10, 1);
-        buffer.Set(0, 0, "中", Style.Default); // wide-left at (0,0), continuation at (0,1)
+        buffer.Set(0, 0, "中", CellStyle.Default); // wide-left at (0,0), continuation at (0,1)
 
         buffer.AddFragment(1, 0, new StubFragment(new Size(1, 1)));
 

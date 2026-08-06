@@ -2,13 +2,12 @@ using System.Runtime.InteropServices;
 
 using Cursorial.Drawing;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
-
-using Style = Cursorial.Output.Style;
 
 namespace Cursorial.Tests.UI;
 
@@ -483,7 +482,7 @@ public class RenderGroupDamageTests
     /// </summary>
     private sealed class Screen(int columns, int rows, Color backdrop)
     {
-        private readonly SceneCompositor _compositor = new(Style.Default.WithBackground(backdrop));
+        private readonly SceneCompositor _compositor = new(CellStyle.Default.WithBackground(backdrop));
         private readonly List<SceneLayer> _layers = [];
 
         internal CellBuffer Target { get; } = new(columns, rows);

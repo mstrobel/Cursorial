@@ -41,7 +41,7 @@ public class CellBufferTests
     public void Set_SingleCharacter_StoresAsSingleWidth()
     {
         var buf = new CellBuffer(5, 1);
-        int width = buf.Set(0, 0, "a", Style.Default);
+        int width = buf.Set(0, 0, "a", CellStyle.Default);
 
         Assert.Equal(1, width);
         Assert.Equal(CellKind.Single, buf[0, 0].Kind);
@@ -52,7 +52,7 @@ public class CellBufferTests
     public void Set_WideCharacter_StoresAsWideLeftAndContinuation()
     {
         var buf = new CellBuffer(5, 1);
-        int width = buf.Set(0, 0, "中", Style.Default);
+        int width = buf.Set(0, 0, "中", CellStyle.Default);
 
         Assert.Equal(2, width);
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
@@ -64,7 +64,7 @@ public class CellBufferTests
     public void Set_WideCharacterAtRightEdge_DegradesToBlankSingleWidth()
     {
         var buf = new CellBuffer(3, 1);
-        int width = buf.Set(2, 0, "中", Style.Default); // last column
+        int width = buf.Set(2, 0, "中", CellStyle.Default); // last column
 
         Assert.Equal(1, width);
         Assert.Equal(CellKind.Single, buf[2, 0].Kind);
@@ -75,10 +75,10 @@ public class CellBufferTests
     public void Set_OverwriteWideLeft_ClearsOrphanContinuation()
     {
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
         Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
 
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
 
         Assert.Equal(CellKind.Single, buf[0, 0].Kind);
         Assert.Equal(default, buf[1, 0]); // orphan continuation cleared
@@ -88,10 +88,10 @@ public class CellBufferTests
     public void Set_OverwriteWideContinuation_ClearsLeftWideHalf()
     {
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
 
-        buf.Set(1, 0, "x", Style.Default);
+        buf.Set(1, 0, "x", CellStyle.Default);
 
         Assert.Equal(default, buf[0, 0]); // orphan wide-left cleared
         Assert.Equal(CellKind.Single, buf[1, 0].Kind);
@@ -102,8 +102,8 @@ public class CellBufferTests
     public void Set_OutOfBounds_Throws()
     {
         var buf = new CellBuffer(5, 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(0, 1, "a", Style.Default));
-        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(5, 0, "a", Style.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(0, 1, "a", CellStyle.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Set(5, 0, "a", CellStyle.Default));
     }
 
     // ---- Indexer ----
@@ -112,7 +112,7 @@ public class CellBufferTests
     public void Indexer_RoundTripsRawCell()
     {
         var buf = new CellBuffer(5, 1);
-        var cell = new Cell("x", CellKind.Single, Style.Default.WithAttributes(TextAttributes.Bold));
+        var cell = new Cell("x", CellKind.Single, CellStyle.Default.WithAttributes(TextAttributes.Bold));
         buf[0, 0] = cell;
         Assert.Equal(cell, buf[0, 0]);
     }
@@ -126,9 +126,9 @@ public class CellBufferTests
     public void Indexer_SingleOverContinuation_ClearsOrphanWideLeft()
     {
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
-        buf[1, 0] = new Cell("x", CellKind.Single, Style.Default); // raw write over the right half
+        buf[1, 0] = new Cell("x", CellKind.Single, CellStyle.Default); // raw write over the right half
 
         Assert.Equal(default, buf[0, 0]); // the orphaned WideLeft was blanked
         Assert.Equal("x", buf[1, 0].Grapheme);
@@ -138,9 +138,9 @@ public class CellBufferTests
     public void Indexer_SingleOverWideLeft_ClearsOrphanContinuation()
     {
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
-        buf[0, 0] = new Cell("x", CellKind.Single, Style.Default); // raw write over the left half
+        buf[0, 0] = new Cell("x", CellKind.Single, CellStyle.Default); // raw write over the left half
 
         Assert.Equal("x", buf[0, 0].Grapheme);
         Assert.Equal(default, buf[1, 0]); // the orphaned continuation was blanked
@@ -150,7 +150,7 @@ public class CellBufferTests
     public void Indexer_WideLeft_WritesContinuation()
     {
         var buf = new CellBuffer(5, 1);
-        var style = Style.Default.WithAttributes(TextAttributes.Bold);
+        var style = CellStyle.Default.WithAttributes(TextAttributes.Bold);
 
         buf[0, 0] = new Cell("中", CellKind.WideLeft, style);
 
@@ -168,7 +168,7 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(3, 1);
 
-        buf[2, 0] = new Cell("中", CellKind.WideLeft, Style.Default); // last column — no room for the right half
+        buf[2, 0] = new Cell("中", CellKind.WideLeft, CellStyle.Default); // last column — no room for the right half
 
         Assert.Equal(CellKind.Single, buf[2, 0].Kind);
         Assert.Null(buf[2, 0].Grapheme);
@@ -181,7 +181,7 @@ public class CellBufferTests
         // pair with — it must not survive as half a glyph.
         var buf = new CellBuffer(5, 1);
 
-        buf[2, 0] = Cell.WideContinuation with { Style = Style.Default };
+        buf[2, 0] = Cell.WideContinuation with { Style = CellStyle.Default };
 
         Assert.Equal(CellKind.Single, buf[2, 0].Kind);
         Assert.Null(buf[2, 0].Grapheme);
@@ -194,7 +194,7 @@ public class CellBufferTests
         // WideLeft write auto-writes a continuation; the explicit continuation write replaces it
         // in kind and must NOT trigger the orphan cleanup (which would blank the just-written left).
         var source = new CellBuffer(5, 1);
-        source.Set(0, 0, "中", Style.Default);
+        source.Set(0, 0, "中", CellStyle.Default);
 
         var buf = new CellBuffer(5, 1);
         buf[0, 0] = source[0, 0];
@@ -211,9 +211,9 @@ public class CellBufferTests
         // Writing a pair whose continuation lands on the NEXT pair's WideLeft must blank that
         // pair's own continuation two columns over — otherwise it survives as half a glyph.
         var buf = new CellBuffer(6, 1);
-        buf.Set(1, 0, "中", Style.Default); // pair at (1,2)
+        buf.Set(1, 0, "中", CellStyle.Default); // pair at (1,2)
 
-        buf[0, 0] = new Cell("全", CellKind.WideLeft, Style.Default); // pair at (0,1) — overwrites 中's left
+        buf[0, 0] = new Cell("全", CellKind.WideLeft, CellStyle.Default); // pair at (0,1) — overwrites 中's left
 
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
         Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
@@ -225,9 +225,9 @@ public class CellBufferTests
     {
         // The same cascade through Set (the pre-existing gap the indexer work surfaced).
         var buf = new CellBuffer(6, 1);
-        buf.Set(1, 0, "中", Style.Default); // pair at (1,2)
+        buf.Set(1, 0, "中", CellStyle.Default); // pair at (1,2)
 
-        buf.Set(0, 0, "全", Style.Default); // pair at (0,1) — its continuation overwrites 中's left
+        buf.Set(0, 0, "全", CellStyle.Default); // pair at (0,1) — its continuation overwrites 中's left
 
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
         Assert.Equal(CellKind.WideContinuation, buf[1, 0].Kind);
@@ -240,8 +240,8 @@ public class CellBufferTests
     public void Clear_ResetsAllCellsToDefault()
     {
         var buf = new CellBuffer(3, 3);
-        buf.Set(0, 0, "a", Style.Default);
-        buf.Set(1, 1, "中", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
+        buf.Set(1, 1, "中", CellStyle.Default);
 
         buf.Clear();
 
@@ -256,7 +256,7 @@ public class CellBufferTests
     public void Fill_AssignsCellEverywhere()
     {
         var buf = new CellBuffer(2, 2);
-        var fill = new Cell(".", CellKind.Single, Style.Default.WithAttributes(TextAttributes.Italic));
+        var fill = new Cell(".", CellKind.Single, CellStyle.Default.WithAttributes(TextAttributes.Italic));
 
         buf.Fill(fill);
 
@@ -273,7 +273,7 @@ public class CellBufferTests
     public void Resize_DiscardsContents()
     {
         var buf = new CellBuffer(3, 3);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
         buf.Resize(5, 5);
 
         Assert.Equal(5, buf.Columns);
@@ -285,7 +285,7 @@ public class CellBufferTests
     public void Resize_SameDimensions_ClearsContents()
     {
         var buf = new CellBuffer(3, 3);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
         buf.Resize(3, 3);
 
         Assert.Equal(default, buf[0, 0]);
@@ -323,7 +323,7 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(10, 1);
 
-        int advanced = buf.Write(0, 0, "abc", Style.Default);
+        int advanced = buf.Write(0, 0, "abc", CellStyle.Default);
 
         Assert.Equal(3, advanced);
         Assert.Equal("a", buf[0, 0].Grapheme);
@@ -337,7 +337,7 @@ public class CellBufferTests
         var buf = new CellBuffer(10, 1);
 
         // "a中b": single + wide (2 cells) + single = 4 columns.
-        int advanced = buf.Write(0, 0, "a中b", Style.Default);
+        int advanced = buf.Write(0, 0, "a中b", CellStyle.Default);
 
         Assert.Equal(4, advanced);
         Assert.Equal(CellKind.Single, buf[0, 0].Kind);
@@ -353,7 +353,7 @@ public class CellBufferTests
         var buf = new CellBuffer(10, 1);
 
         // A ZWJ family sequence is a single (wide) grapheme cluster, not its component runes.
-        int advanced = buf.Write(0, 0, "👨‍👩‍👧!", Style.Default);
+        int advanced = buf.Write(0, 0, "👨‍👩‍👧!", CellStyle.Default);
 
         Assert.Equal(3, advanced);                       // wide cluster (2) + "!" (1)
         Assert.Equal(CellKind.WideLeft, buf[0, 0].Kind);
@@ -367,7 +367,7 @@ public class CellBufferTests
         var buf = new CellBuffer(3, 1);
 
         // "ab中": a, b fit at columns 0,1; the wide 中 can't fit in the single remaining column.
-        int advanced = buf.Write(0, 0, "ab中", Style.Default);
+        int advanced = buf.Write(0, 0, "ab中", CellStyle.Default);
 
         Assert.Equal(2, advanced);
         Assert.Equal("a", buf[0, 0].Grapheme);
@@ -380,8 +380,8 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(5, 1);
 
-        Assert.Equal(0, buf.Write(0, 0, "", Style.Default));
-        Assert.Equal(0, buf.Write(0, 0, (string?)null, Style.Default));
+        Assert.Equal(0, buf.Write(0, 0, "", CellStyle.Default));
+        Assert.Equal(0, buf.Write(0, 0, (string?)null, CellStyle.Default));
         Assert.Equal(default(Cell), buf[0, 0]);
     }
 
@@ -391,7 +391,7 @@ public class CellBufferTests
         // Single-row contract: a newline is not interpreted, it terminates the write (no junk cell).
         var buf = new CellBuffer(10, 1);
 
-        int advanced = buf.Write(0, 0, "ab\ncd", Style.Default);
+        int advanced = buf.Write(0, 0, "ab\ncd", CellStyle.Default);
 
         Assert.Equal(2, advanced);
         Assert.Equal("a", buf[0, 0].Grapheme);
@@ -407,7 +407,7 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(10, 1);
 
-        Assert.Equal(0, buf.Write(0, 0, text, Style.Default));
+        Assert.Equal(0, buf.Write(0, 0, text, CellStyle.Default));
         Assert.Equal(default(Cell), buf[0, 0]);
     }
 
@@ -416,7 +416,7 @@ public class CellBufferTests
     {
         var buf = new CellBuffer(10, 1);
 
-        int advanced = buf.Write(0, 0, "ab" + (char) 0x9C + "cd", Style.Default);   // U+009C (ST)
+        int advanced = buf.Write(0, 0, "ab" + (char) 0x9C + "cd", CellStyle.Default);   // U+009C (ST)
 
         Assert.Equal(2, advanced);
         Assert.Equal("b", buf[1, 0].Grapheme);
@@ -427,7 +427,7 @@ public class CellBufferTests
     public void Write_InvalidStart_Throws()
     {
         var buf = new CellBuffer(5, 1);
-        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Write(5, 0, "x", Style.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => buf.Write(5, 0, "x", CellStyle.Default));
     }
 
     [Fact]
@@ -436,10 +436,10 @@ public class CellBufferTests
         // Default mode is a verbatim replace (consistent with the whole-buffer Fill), so a
         // transparent fill actually clears the region rather than blending to a no-op.
         var buf = new CellBuffer(4, 2);
-        buf.Fill(new Rect(0, 0, 4, 2), new Cell("X", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(10, 20, 30))));
+        buf.Fill(new Rect(0, 0, 4, 2), new Cell("X", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(10, 20, 30))));
         Assert.Equal(Color.FromRgb(10, 20, 30), buf[0, 0].Style.Background);
 
-        buf.Fill(new Rect(0, 0, 4, 2), new Cell(null, CellKind.Single, Style.Transparent));
+        buf.Fill(new Rect(0, 0, 4, 2), new Cell(null, CellKind.Single, CellStyle.Transparent));
         Assert.True(buf[0, 0].Style.Background.IsTransparent);
         Assert.Null(buf[0, 0].Grapheme);
     }

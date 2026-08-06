@@ -1,6 +1,6 @@
 using System.Reflection;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Terminal;
 using Cursorial.UI.Configuration;
 
@@ -56,7 +56,7 @@ public sealed partial class UIApplication
     /// releases those surfaces and returns every boundary to flat compositing, where a translucent
     /// ancestor is re-blended wherever a descendant boundary overlaps it. Default
     /// <see langword="true"/>; opacity itself is unaffected either way, and below
-    /// <see cref="Cursorial.Output.ColorDepth.Ansi256"/> groups never materialise regardless (those
+    /// <see cref="ColorDepth.Ansi256"/> groups never materialise regardless (those
     /// tiers collapse to palette indices, where the blend is discarded).
     /// </summary>
     /// <remarks>

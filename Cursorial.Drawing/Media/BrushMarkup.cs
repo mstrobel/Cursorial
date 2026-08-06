@@ -33,7 +33,7 @@ public static class BrushMarkup
 
     /// <summary>Build <see cref="TextMarkupOptions"/> wired with the brush <see cref="Resolver"/> (inline
     /// gradients + an optional registry) plus the given default style.</summary>
-    public static TextMarkupOptions Options(Style defaultStyle = default,
+    public static TextMarkupOptions Options(CellStyle defaultStyle = default,
                                             IReadOnlyDictionary<string, BrushedStyle>? registry = null) =>
         new() { DefaultStyle = defaultStyle, BrushResolver = Resolver(registry) };
 

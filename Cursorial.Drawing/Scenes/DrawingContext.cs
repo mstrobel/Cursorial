@@ -16,10 +16,10 @@ namespace Cursorial.Drawing;
 
 /// <summary>
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
-/// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="Style"/> before
+/// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="CellStyle"/> before
 /// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush
 /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (solid or gradient), single-line brush
-/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>, and
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>, and
 /// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
 /// <see cref="DrawBox(in Rect, in Pen, bool)"/> / <see cref="DrawRectangle(in Rect, in Pen, IBrush?, bool)"/>.
 /// <see cref="Color"/> overloads wrap a <see cref="SolidColorBrush"/> / <see cref="Pen"/> for the
@@ -27,7 +27,7 @@ namespace Cursorial.Drawing;
 /// </summary>
 /// <remarks>
 /// <see cref="Set"/> / <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> /
-/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
 /// flush once after the draw delegate returns — last, so existing glyphs (text) survive a box edge
@@ -70,7 +70,7 @@ public sealed class DrawingContext
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
     /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
-    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in Style)"/>), the document/content
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>,
     /// <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
@@ -175,7 +175,7 @@ public sealed class DrawingContext
     /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set"/>'s rules); the
     /// scene's source colors are later composited onto a target by <see cref="SceneCompositor"/>.
     /// </summary>
-    public void Set(int column, int row, string? grapheme, in Style style)
+    public void Set(int column, int row, string? grapheme, in CellStyle style)
     {
         if (_stateStack.Count == 0) { _surface.Set(column, row, grapheme, in style); return; }
         EmitMapped(column, row, grapheme, in style);
@@ -184,7 +184,7 @@ public sealed class DrawingContext
     // Translate + clip a single glyph write under an active push. A wide glyph whose right half would fall
     // outside the active clip degrades to a blank single cell (mirroring the surface-edge degrade in
     // CellBufferView.Set), so a clip can never strand a continuation past its edge.
-    private void EmitMapped(int localCol, int localRow, string? grapheme, in Style style)
+    private void EmitMapped(int localCol, int localRow, string? grapheme, in CellStyle style)
     {
         if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
 
@@ -435,10 +435,10 @@ public sealed class DrawingContext
     }
 
     private static Cell DurableCell(Color color, TextAttributes attributes = default)
-        => new(CellBuffer.DurableEmptyGrapheme, CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
+        => new(CellBuffer.DurableEmptyGrapheme, CellKind.Single, CellStyle.Default.WithBackground(color).WithAttributes(attributes));
 
     private static Cell WeakCell(Color color, TextAttributes attributes = default)
-        => new(null, CellKind.Single, Style.Default.WithBackground(color).WithAttributes(attributes));
+        => new(null, CellKind.Single, CellStyle.Default.WithBackground(color).WithAttributes(attributes));
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -641,7 +641,7 @@ public sealed class DrawingContext
 
     /// <summary>Draw text (multi-line capable, see the brush overload) with a solid foreground (and optional background) color.</summary>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in Style baseStyle = default)
+                         Color foreground, Color? background = null, in CellStyle baseStyle = default)
         => DrawText(column, row, text, new SolidColorBrush(foreground),
                     background is { } bg ? new SolidColorBrush(bg) : null, baseStyle);
 
@@ -674,7 +674,7 @@ public sealed class DrawingContext
     /// fill (or the composite target) show through under the glyph.
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in Style baseStyle = default)
+                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
     {
         ArgumentNullException.ThrowIfNull(foreground);
         if (text.IsEmpty) return Size.Empty;
@@ -714,7 +714,7 @@ public sealed class DrawingContext
 
     // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
     private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, IBrush foreground, IBrush background,
-                             in Style baseStyle, in SampleBounds bounds, bool transformed)
+                             in CellStyle baseStyle, in SampleBounds bounds, bool transformed)
     {
         if (line.IsEmpty) return 0;
         if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
@@ -907,7 +907,7 @@ public sealed class DrawingContext
         // ReSharper disable once RedundantLambdaParameterType
         return (in BrushedTextContext ctx) =>
                {
-                   Style style;
+                   CellStyle style;
 
                    // A run that declares its own brush wins, sampled at its declaration scope.
                    if (ctx.Tag is BrushedStyle bs)
@@ -961,7 +961,7 @@ public sealed class DrawingContext
     /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
     /// cell-space rectangle over whatever ink is there.
     /// </summary>
-    public void TintCells(in Rect bounds, in Style style)
+    public void TintCells(in Rect bounds, in CellStyle style)
     {
         // Per-cell translate + clip via TryMap, like the scalar write path — bounds is in
         // current-local coordinates while the active clip is in scene coordinates, so a
@@ -990,7 +990,7 @@ public sealed class DrawingContext
     /// scrolled editor): the font clips to the surface, exactly like a cell write. The direct
     /// glyph-text primitive FIGlet-rendered editors paint words with.
     /// </summary>
-    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in Style style)
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in CellStyle style)
     {
         ArgumentNullException.ThrowIfNull(face);
         ArgumentNullException.ThrowIfNull(text);
@@ -999,7 +999,7 @@ public sealed class DrawingContext
         face.Paint(surface, column, row, text, style);
     }
 
-    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in Style)"/>
+    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in CellStyle)"/>
     public void DrawGlyphText(IGlyphFont face, int column, int row, string text, GlyphStyleProvider styleProvider)
     {
         ArgumentNullException.ThrowIfNull(face);
@@ -1046,7 +1046,7 @@ public sealed class DrawingContext
     /// content (sized text) it is the SGR backdrop, which is how a selection background rides an
     /// OSC 66 emission (proposal-glyph-runs Phase 2).
     /// </summary>
-    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities, in Style style)
+    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities, in CellStyle style)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -1365,7 +1365,7 @@ public sealed class DrawingContext
         }
 
         var titleBrush = title.Brush ?? pen.ResolveBrush();
-        DrawText(gapStart + 1, top, text, titleBrush, background: null, Style.Default.WithAttributes(title.Attributes));
+        DrawText(gapStart + 1, top, text, titleBrush, background: null, CellStyle.Default.WithAttributes(title.Attributes));
     }
 
     // Grapheme-aware truncation to at most maxWidth display columns; returns the kept prefix and
@@ -1460,7 +1460,7 @@ public sealed class DrawingContext
         Color background = overwrite && underBg.Kind != ColorKind.Default && underBg.IsOpaque
                                ? underBg
                                : Colors.Transparent;
-        var style = Style.Default
+        var style = CellStyle.Default
             .WithForeground(color)
             .WithBackground(background)
             .WithAttributes(attributes);

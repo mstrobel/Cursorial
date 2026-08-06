@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
@@ -7,8 +8,6 @@ using Cursorial.Text;
 using Cursorial.UI.DataViews.Shaping;
 using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.DataViews;
 

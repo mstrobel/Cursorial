@@ -224,7 +224,7 @@ public sealed class TextFormatter
     }
 
     private List<LineDraft> PlainTextToLines(int availableColumns, OutputCapabilities capabilities, string blockText,
-                                             GlyphSource? source = null, Style style = default)
+                                             GlyphSource? source = null, CellStyle style = default)
     {
         // Author-supplied line breaks are honored as hard breaks. The paragraph lane keeps its
         // documented contract (LineBreak inlines are the channel; a literal '\n' in a TextRun is
@@ -983,7 +983,7 @@ public sealed class TextFormatter
         /// against a zero-descent face (ansi-shadow, 7/7) the baseline row IS the bottom row.
         /// </para>
         /// </remarks>
-        public FormattedTextRun ToRun(in Style style) => new(Text, style, null)
+        public FormattedTextRun ToRun(in CellStyle style) => new(Text, style, null)
                                                          {
                                                              Source = Source,
                                                              VerticalAlignment = MixedSource
@@ -1284,7 +1284,7 @@ public sealed class TextFormatter
     }
 
     private readonly record struct SoftBreakPoint(
-        int FragmentIndex, int WidthBefore, Style Style, string? Hyperlink, GlyphSource Source);
+        int FragmentIndex, int WidthBefore, CellStyle Style, string? Hyperlink, GlyphSource Source);
 
     /// <summary>
     /// Mutable line buffer used during layout. Converts to an immutable

@@ -56,7 +56,7 @@ public sealed class Sparkline
             int level = 1 + (int) Math.Round(Math.Clamp(range.Normalize(v), 0.0, 1.0) * 7.0);   // 1..8 (min visible)
             var color = Brush.ColorAt(col, row, bounds);
             context.Set(col, row, BlockGlyphs.Glyph(level, BlockAxis.Vertical),
-                        Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
+                        CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
         }
     }
 }

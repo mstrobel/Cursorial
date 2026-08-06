@@ -1,4 +1,4 @@
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI.Input;
 
 // ReSharper disable EventNeverSubscribedTo.Global

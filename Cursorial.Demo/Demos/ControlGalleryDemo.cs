@@ -1,7 +1,7 @@
 using Cursorial.Drawing.Charts;     // BarChart / IChart
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;             // ColorDepth / Color
+// ColorDepth / Color
 using Cursorial.Rendering;          // Margins
 using Cursorial.UI;
 using Cursorial.UI.Controls;

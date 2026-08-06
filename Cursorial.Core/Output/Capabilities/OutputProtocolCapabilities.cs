@@ -44,7 +44,7 @@ namespace Cursorial.Output.Capabilities;
 /// for the GUI mouse cursor (I-beam over text inputs, hand over clickable elements, the family
 /// of resize cursors over draggable borders, …). Gated to terminals known to implement the
 /// protocol — Kitty, Ghostty, and Foot today. <see cref="Output.MouseCursorWriter"/> emits the
-/// sequences; the enum of supported shapes is <see cref="Output.MouseCursorShape"/>.
+/// sequences; the enum of supported shapes is <see cref="Media.MouseCursorShape"/>.
 /// </param>
 public sealed record OutputProtocolCapabilities(bool BracketedPasteEnable,
                                                 bool FocusReportingEnable,

@@ -62,7 +62,7 @@ public abstract class FragmentContent : IContent
     /// Returns true if a fragment is needed, otherwise false.
     /// </returns>
     // ReSharper disable once VirtualMemberNeverOverridden.Global
-    protected internal virtual bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, in Style style, OutputCapabilities? capabilities = null)
+    protected internal virtual bool IsFragmentNeeded(in CellBufferView buffer, Size availableSpace, in CellStyle style, OutputCapabilities? capabilities = null)
     {
         // A (re)create is needed when we don't already have a usable fragment registered in the
         // buffer, OR when the available space differs from what the cached fragment was built for.
@@ -95,7 +95,7 @@ public abstract class FragmentContent : IContent
     /// available-space match; subclasses add whatever else they bake into the fragment
     /// (<see cref="Content.ScaledText"/> adds the style, which becomes the OSC 66 SGR backdrop).
     /// </summary>
-    protected internal virtual bool IsCachedFragmentStale(Size availableSpace, in Style style, OutputCapabilities? capabilities = null)
+    protected internal virtual bool IsCachedFragmentStale(Size availableSpace, in CellStyle style, OutputCapabilities? capabilities = null)
         => _fragmentAvailableSpace != availableSpace;
 
     /// <summary>Determines the required size to render the content within the specified constraints.</summary>
@@ -108,7 +108,7 @@ public abstract class FragmentContent : IContent
 
         if (canCreateFragment is false)
         {
-            RealizedPlaceholder ??= BuildPlaceholder(availableSpace, capabilities, Style.Default);
+            RealizedPlaceholder ??= BuildPlaceholder(availableSpace, capabilities, CellStyle.Default);
         
             if (RealizedPlaceholder is {} placeholder)
                 size = placeholder.Measure(availableSpace, capabilities);
@@ -139,7 +139,7 @@ public abstract class FragmentContent : IContent
     /// <param name="style">The styling information to apply during rendering.</param>
     /// <param name="capabilities">The output capabilities to consider for rendering.</param>
     /// <returns>A rectangle representing the actual area occupied by the rendered content.</returns>
-    public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -207,7 +207,7 @@ public abstract class FragmentContent : IContent
         return actualBounds;
     }
 
-    protected abstract IContent? BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style);
+    protected abstract IContent? BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style);
 
     // ReSharper disable UnusedParameter.Global
     /// <summary>
@@ -217,7 +217,7 @@ public abstract class FragmentContent : IContent
     /// <param name="bounds">The rectangular area within which the content should be rendered.</param>
     /// <param name="style">The style to apply while rendering the content.</param>
     /// <param name="capabilities">The output capabilities that define rendering constraints and features.</param>
-    protected virtual void PaintOverride(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities) {}
+    protected virtual void PaintOverride(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities) {}
 
     /// <summary>Renders a placeholder graphic within the specified bounds using the provided style and output capabilities.</summary>
     /// <param name="buffer">The cell buffer where the placeholder will be rendered.</param>
@@ -225,7 +225,7 @@ public abstract class FragmentContent : IContent
     /// <param name="style">The style applied to the placeholder during rendering.</param>
     /// <param name="capabilities">The output capabilities to consider during rendering.</param>
     /// <returns>A <see cref="Rect"/> representing the actual area occupied by the rendered placeholder.</returns>
-    protected virtual Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected virtual Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -249,7 +249,7 @@ public abstract class FragmentContent : IContent
     /// <param name="style">The style to apply when creating the fragment.</param>
     /// <param name="capabilities">The output capabilities used in fragment creation.</param>
     /// <returns>An instance of <see cref="IBufferFragment"/> representing the created fragment, or null if creation is not possible.</returns>
-    protected abstract IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities);
+    protected abstract IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities);
 
     // ReSharper restore UnusedParameter.Global
 }

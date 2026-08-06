@@ -3,7 +3,7 @@ using System.ComponentModel;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;

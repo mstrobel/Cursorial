@@ -14,7 +14,7 @@ public class CellBufferBlitTests
         var buffer = new CellBuffer(columns, rows);
         for (int row = 0; row < rows; row++)
         for (int column = 0; column < columns; column++)
-            buffer.Set(column, row, glyph, Style.Default);
+            buffer.Set(column, row, glyph, CellStyle.Default);
         return buffer;
     }
 
@@ -51,7 +51,7 @@ public class CellBufferBlitTests
         var source = new CellBuffer(4, 2);
         for (int row = 0; row < 2; row++)
         for (int column = 0; column < 4; column++)
-            source.Set(column, row, column < 2 ? "A" : "B", Style.Default);
+            source.Set(column, row, column < 2 ? "A" : "B", CellStyle.Default);
 
         var destination = new CellBuffer(2, 2);
         destination.Blit(source.View(new Rect(2, 0, 2, 2)), new Rect(0, 0, 2, 2));
@@ -102,8 +102,8 @@ public class CellBufferBlitTests
         // Raw _cells writes bypassed the pair hygiene the indexer enforces, so a copy that cut a
         // wide glyph in half left a WideLeft with no continuation (or vice versa) in the target.
         var source = new CellBuffer(4, 1);
-        source.Set(0, 0, "漢", Style.Default);   // occupies columns 0-1
-        source.Set(2, 0, "字", Style.Default);   // occupies columns 2-3
+        source.Set(0, 0, "漢", CellStyle.Default);   // occupies columns 0-1
+        source.Set(2, 0, "字", CellStyle.Default);   // occupies columns 2-3
 
         var destination = new CellBuffer(3, 1);
         destination.Blit(source.View(new Rect(0, 0, 4, 1)), new Rect(0, 0, 4, 1));
@@ -124,7 +124,7 @@ public class CellBufferBlitTests
         // which the cut has left one column outside the copied view.
         var background = Color.FromRgb(90, 30, 30);
         var source = new CellBuffer(6, 1);
-        source.Set(1, 0, "中", Style.Default.WithBackground(background));   // pair at columns 1-2
+        source.Set(1, 0, "中", CellStyle.Default.WithBackground(background));   // pair at columns 1-2
 
         var destination = new CellBuffer(4, 1);
         destination.Blit(source.View(new Rect(2, 0, 2, 1)), new Rect(0, 0, 2, 1)); // starts on the continuation
@@ -141,7 +141,7 @@ public class CellBufferBlitTests
         // before that, writing a leading half would make the indexer pair-write one column PAST the
         // rectangle — a blit scribbling outside the region it was given.
         var source = new CellBuffer(4, 1);
-        source.Set(2, 0, "字", Style.Default);   // a wide glyph at the rect's last column
+        source.Set(2, 0, "字", CellStyle.Default);   // a wide glyph at the rect's last column
 
         var destination = Filled(6, 1, "o");     // roomy: the indexer would happily pair-write
         destination.Blit(source.View(new Rect(0, 0, 4, 1)), new Rect(0, 0, 3, 1));
@@ -160,7 +160,7 @@ public class CellBufferBlitTests
         var backing = Filled(6, 1, "o");
         var window = backing.View(new Rect(1, 0, 2, 1));   // window covers backing columns 1-2
 
-        window[1, 0] = new Cell("字", CellKind.WideLeft, Style.Default);
+        window[1, 0] = new Cell("字", CellKind.WideLeft, CellStyle.Default);
 
         Assert.Equal("o", backing[3, 0].Grapheme);                     // outside the window: untouched
         Assert.NotEqual(CellKind.WideContinuation, backing[3, 0].Kind);

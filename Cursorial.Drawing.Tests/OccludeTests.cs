@@ -25,7 +25,7 @@ public class OccludeTests
     public void FillOpaque_OccludesLowerLayerGlyph()
     {
         var b = DrawHarness.RenderLayers(4, 3, null,
-            lower => lower.Set(1, 1, "X", Style.Default.WithForeground(Red)),   // bottom
+            lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),   // bottom
             upper => upper.FillOpaque(new Rect(0, 0, 3, 3), Blue));             // top
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);            // the lower 'X' is hidden
         Assert.Equal(Blue, b[1, 1].Style.Background);
@@ -36,7 +36,7 @@ public class OccludeTests
     {
         // Contrast: a background-only fill keeps the lower glyph (only the background merges).
         var b = DrawHarness.RenderLayers(4, 3, null,
-            lower => lower.Set(1, 1, "X", Style.Default.WithForeground(Red)),
+            lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),
             upper => upper.FillRectangle(new Rect(0, 0, 3, 3), Blue));
         Assert.Equal("X", b[1, 1].Grapheme);
         Assert.Equal(Blue, b[1, 1].Style.Background);
@@ -47,7 +47,7 @@ public class OccludeTests
     {
         // The recipe: fill opaque, then an overwriting border keeps the panel background under its glyph.
         var b = DrawHarness.RenderLayers(6, 4, null,
-            lower => lower.Set(0, 0, "X", Style.Default.WithForeground(Red)),
+            lower => lower.Set(0, 0, "X", CellStyle.Default.WithForeground(Red)),
             upper =>
             {
                 upper.FillOpaque(new Rect(0, 0, 4, 3), Blue);
@@ -64,7 +64,7 @@ public class OccludeTests
         // Filling over a wide glyph's right half must blank its orphaned left half (no stranded WideLeft).
         var b = DrawHarness.Render(4, 1, ctx =>
         {
-            ctx.Set(0, 0, "中", Style.Default.WithForeground(White));   // WideLeft @0, continuation @1
+            ctx.Set(0, 0, "中", CellStyle.Default.WithForeground(White));   // WideLeft @0, continuation @1
             ctx.FillOpaque(new Rect(1, 0, 2, 1), Blue);                 // overwrites the continuation
         });
         Assert.True(string.IsNullOrEmpty(b[0, 0].Grapheme));   // orphaned WideLeft cleaned up
@@ -78,7 +78,7 @@ public class OccludeTests
         // Even a translucent (frosted) fill replaces the lower glyph — only the background blends.
         var frosted = new SolidColorBrush(Color.FromRgba(0, 0, 255, 128));
         var b = DrawHarness.RenderLayers(4, 3, Color.FromRgb(0, 0, 0),
-            lower => lower.Set(1, 1, "X", Style.Default.WithForeground(Red)),
+            lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),
             upper => upper.FillOpaque(new Rect(0, 0, 3, 3), frosted));
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);   // glyph occluded regardless of fill alpha
     }

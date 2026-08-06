@@ -32,7 +32,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(1, fragment.Lines.Length);
         Assert.Equal("hello", fragment.Lines[0]);
     }
@@ -43,7 +43,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello\nworld",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(2, fragment.Lines.Length);
         Assert.Equal("hello", fragment.Lines[0]);
         Assert.Equal("world", fragment.Lines[1]);
@@ -55,7 +55,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello\r\nworld",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(2, fragment.Lines.Length);
         Assert.Equal("hello", fragment.Lines[0]);
         Assert.Equal("world", fragment.Lines[1]);
@@ -67,7 +67,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(1, fragment.Lines.Length);
         Assert.Equal("", fragment.Lines[0]);
     }
@@ -78,7 +78,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 1),
             "hello\n",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(2, fragment.Lines.Length);
         Assert.Equal("hello", fragment.Lines[0]);
         Assert.Equal("", fragment.Lines[1]);
@@ -92,7 +92,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hi\nhello",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(new Size(10, 4), fragment.GetSize());
     }
 
@@ -104,7 +104,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2, Width: 3),
             "ab\ncde",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(new Size(6, 4), fragment.GetSize());
     }
 
@@ -116,7 +116,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(new Size(10, 2), fragment.GetSize());
     }
 
@@ -126,7 +126,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hi",
-            Style.Default);
+            CellStyle.Default);
         var output = EmitToString(fragment);
 
         // Single OSC 66 payload — no CUP between lines.
@@ -146,7 +146,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello\nworld",
-            Style.Default);
+            CellStyle.Default);
         var output = EmitToString(fragment);
 
         int oscCount = 0;
@@ -170,7 +170,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello\nworld",
-            Style.Default);
+            CellStyle.Default);
         var output = EmitToString(fragment);
 
         Assert.Contains("[3;1H", output);
@@ -181,7 +181,7 @@ public class SizedTextFragmentMultiLineTests
     {
         // Style is terminal-global SGR — one emission at the start covers all lines. The CUP
         // moves between lines don't disturb SGR, so the second OSC 66 inherits.
-        var style = Style.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var style = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "hello\nworld",
@@ -208,7 +208,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 3),
             "line1\nline2\nline3",
-            Style.Default);
+            CellStyle.Default);
         var output = EmitToString(fragment);
 
         // The CUPs we issue between lines: row 3 (line 2 anchored at scale=3) and row 6.
@@ -224,7 +224,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "a\n\nb",
-            Style.Default);
+            CellStyle.Default);
         var output = EmitToString(fragment);
 
         Assert.Contains("[3;1H", output); // line 2 cup (row 2 = "[3;1H" on the wire)
@@ -241,7 +241,7 @@ public class SizedTextFragmentMultiLineTests
         var fragment = new SizedTextFragment(
             new TextSizing(Scale: 2),
             "a\n\nb",
-            Style.Default);
+            CellStyle.Default);
         Assert.Equal(new Size(2, 6), fragment.GetSize());
     }
 
@@ -260,12 +260,12 @@ public class SizedTextFragmentMultiLineTests
         // Pre-paint cells in the fragment's footprint that we don't want to see emitted.
         for (int row = 0; row < 4; row++)
             for (int col = 0; col < 10; col++)
-                buffer.Set(col, row, "X", Style.Default);
+                buffer.Set(col, row, "X", CellStyle.Default);
 
         buffer.AddFragment(0, 0, new SizedTextFragment(
                                new TextSizing(Scale: 2),
                                "hi\nbye",
-                               Style.Default));
+                               CellStyle.Default));
 
         var w = new ArrayBufferWriter<byte>();
         r.Render(buffer, w);

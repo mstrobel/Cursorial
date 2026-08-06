@@ -60,7 +60,7 @@ public class ShadowTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             ctx.FillRectangle(new Rect(0, 0, 8, 4), fill);
-            ctx.Set(0, 0, "A", Style.Default.WithForeground(White).WithBackground(fill));
+            ctx.Set(0, 0, "A", CellStyle.Default.WithForeground(White).WithBackground(fill));
             ctx.DrawInnerShadow(new Rect(0, 0, 8, 4), ShadowGeometry.Inner(radius: 1, strength: 0.5), Black);
         });
         Assert.Equal("A", b[0, 0].Grapheme);   // the glyph survives the read-modify-write
@@ -106,7 +106,7 @@ public class ShadowTests
         var fg = Color.FromRgb(210, 210, 210);
         var b = DrawHarness.Render(12, 10, ctx =>
         {
-            ctx.Set(8, 5, "x", Style.Default.WithForeground(fg));   // a glyph in the shadow's path (right of cols 3..7)
+            ctx.Set(8, 5, "x", CellStyle.Default.WithForeground(fg));   // a glyph in the shadow's path (right of cols 3..7)
             ctx.DrawDropShadow(new Rect(3, 3, 5, 4), ShadowGeometry.Drop(radius: 1, strength: 0.7), Black);
         }, baseBackground: White);
         Assert.Equal("x", b[8, 5].Grapheme);

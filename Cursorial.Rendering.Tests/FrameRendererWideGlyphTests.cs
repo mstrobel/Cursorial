@@ -30,7 +30,7 @@ public class FrameRendererWideGlyphTests
         // position, skip the continuation, trust the cursor to advance by 2.
         var r = new FrameRenderer(CapsWithWideGlyphs(true));
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -50,7 +50,7 @@ public class FrameRendererWideGlyphTests
         // shrunk it, c+1 retains the wide-left's style instead of being abandoned.
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -75,8 +75,8 @@ public class FrameRendererWideGlyphTests
         // relying on `_cursorCol += cell.Width`.
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
-        buf.Set(2, 0, "X", Style.Default); // first cell after the wide glyph's continuation
+        buf.Set(0, 0, "中", CellStyle.Default);
+        buf.Set(2, 0, "X", CellStyle.Default); // first cell after the wide glyph's continuation
 
         var output = Render(r, buf);
 
@@ -98,7 +98,7 @@ public class FrameRendererWideGlyphTests
         // doesn't engage — emit the glyph normally.
         var r = new FrameRenderer();
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
         var output = Render(r, buf);
         int idx = output.IndexOf('中');
@@ -121,8 +121,8 @@ public class FrameRendererWideGlyphTests
         // appear exactly once (col 1 is skipped on its own iteration, not repainted).
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(2, 1);
-        buf.Set(0, 0, "─", Style.Default);
-        buf.Set(1, 0, "X", Style.Default);
+        buf.Set(0, 0, "─", CellStyle.Default);
+        buf.Set(1, 0, "X", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -141,8 +141,8 @@ public class FrameRendererWideGlyphTests
         // rule glyph comes before its neighbor and there's no CUP-back.
         var r = new FrameRenderer(CapsWithWideGlyphs(true));
         var buf = new CellBuffer(2, 1);
-        buf.Set(0, 0, "─", Style.Default);
-        buf.Set(1, 0, "X", Style.Default);
+        buf.Set(0, 0, "─", CellStyle.Default);
+        buf.Set(1, 0, "X", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -157,7 +157,7 @@ public class FrameRendererWideGlyphTests
         // painted as the pre-paint, so no column is left blank (the "rule has gaps" failure).
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(4, 1);
-        for (int c = 0; c < 4; c++) buf.Set(c, 0, "─", Style.Default);
+        for (int c = 0; c < 4; c++) buf.Set(c, 0, "─", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -173,7 +173,7 @@ public class FrameRendererWideGlyphTests
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(4, 1);
         foreach (var (c, ch) in new[] { (0, "a"), (1, "b"), (2, "c"), (3, "d") })
-            buf.Set(c, 0, ch, Style.Default);
+            buf.Set(c, 0, ch, CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -189,15 +189,15 @@ public class FrameRendererWideGlyphTests
         // content may have been clobbered by the glyph's wide render on the prior frame. The
         // full-redraw frame would mask this, so the assertion is on the second (diff) frame.
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
-        var gutter = Style.Default.WithBackground(Color.FromRgb(10, 20, 30));
+        var gutter = CellStyle.Default.WithBackground(Color.FromRgb(10, 20, 30));
 
         var buf1 = new CellBuffer(3, 1);
-        buf1.Set(0, 0, "─", Style.Default);
+        buf1.Set(0, 0, "─", CellStyle.Default);
         buf1.Set(1, 0, " ", gutter);
         Render(r, buf1); // establishes the front buffer
 
         var buf2 = new CellBuffer(3, 1);
-        buf2.Set(0, 0, "═", Style.Default); // col 0 changed (light → double rule)
+        buf2.Set(0, 0, "═", CellStyle.Default); // col 0 changed (light → double rule)
         buf2.Set(1, 0, " ", gutter);        // col 1 model-unchanged
         var output = Render(r, buf2);
 
@@ -216,8 +216,8 @@ public class FrameRendererWideGlyphTests
         // edge.
         var r = new FrameRenderer(CapsWithWideGlyphs(false));
         var buf = new CellBuffer(2, 1);
-        buf.Set(0, 0, "a", Style.Default);
-        buf.Set(1, 0, "─", Style.Default); // ambiguous glyph in the last column
+        buf.Set(0, 0, "a", CellStyle.Default);
+        buf.Set(1, 0, "─", CellStyle.Default); // ambiguous glyph in the last column
 
         var output = Render(r, buf);
         Assert.Contains("─", output);

@@ -48,7 +48,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(ColorDepth.Truecolor));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(255, 128, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(255, 128, 0)));
 
         var output = Render(r, buf);
         Assert.Contains("38;2;255;128;0", output);
@@ -61,7 +61,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(ColorDepth.Ansi256));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
 
         var output = Render(r, buf);
         // 38;2;... (truecolor) should NOT appear; 38;5;<idx> should.
@@ -74,7 +74,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(ColorDepth.Ansi256));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromPalette(196)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromPalette(196)));
 
         var output = Render(r, buf);
         Assert.Contains("38;5;196", output);
@@ -87,7 +87,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(ColorDepth.Ansi16));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromPalette(196))); // bright red palette
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromPalette(196))); // bright red palette
 
         var output = Render(r, buf);
         Assert.DoesNotContain("38;5;", output); // no palette-form SGR
@@ -102,7 +102,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(extendedUnderline: false));
         var buf = new CellBuffer(3, 1);
-        var curlyStyle = Style.Default
+        var curlyStyle = CellStyle.Default
             .WithAttributes(TextAttributes.Underline)
             .WithUnderlineStyle(UnderlineStyle.Curly);
         buf.Set(0, 0, "x", curlyStyle);
@@ -119,7 +119,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(overline: false));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithAttributes(TextAttributes.Overline));
+        buf.Set(0, 0, "x", CellStyle.Default.WithAttributes(TextAttributes.Overline));
 
         var output = Render(r, buf);
         Assert.DoesNotContain("53m", output); // SGR 53 = overline-on
@@ -133,7 +133,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer(Caps(ColorDepth.Ansi256));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        buf.Set(0, 0, "a", CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
 
         Render(r, buf); // first frame
         var output = Render(r, buf); // second frame, identical buffer
@@ -150,7 +150,7 @@ public class FrameRendererQuantizationTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(255, 128, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(255, 128, 0)));
 
         var output = Render(r, buf);
         Assert.Contains("38;2;255;128;0", output);
@@ -167,7 +167,7 @@ public class FrameRendererQuantizationTests
     {
         var buf = new CellBuffer(width, 1);
         for (int c = 0; c < width; c++)
-            buf.Set(c, 0, "x", Style.Default.WithForeground(fg));
+            buf.Set(c, 0, "x", CellStyle.Default.WithForeground(fg));
         return buf;
     }
 

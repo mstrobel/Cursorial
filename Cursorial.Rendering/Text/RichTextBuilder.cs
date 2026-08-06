@@ -15,7 +15,7 @@ namespace Cursorial.Rendering.Text;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Style scoping.</b> <see cref="Push(in Style)"/> pushes a style onto an inheritance stack;
+/// <b>Style scoping.</b> <see cref="Push(in CellStyle)"/> pushes a style onto an inheritance stack;
 /// each child layer merges with its parent (child wins where set). <see cref="PushMap"/> and
 /// <see cref="PushHyperlink"/> apply per-run attributes similarly. The returned
 /// <see cref="StyleScope"/> pops the corresponding layer on disposal — use
@@ -31,7 +31,7 @@ namespace Cursorial.Rendering.Text;
 public sealed class RichTextBuilder
 {
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
-    private readonly Style _defaultStyle;
+    private readonly CellStyle _defaultStyle;
     private readonly GlyphSource? _defaultGlyphSource;
     private readonly TextTrimming _defaultTrimming;
     private readonly WrapMode _defaultWrap;
@@ -51,12 +51,12 @@ public sealed class RichTextBuilder
 
     // Style / map / hyperlink stacks. The TOP of each stack is the active value applied to
     // appended runs that don't supply their own.
-    private readonly Stack<Style> _styles = new();
+    private readonly Stack<CellStyle> _styles = new();
     private readonly Stack<IGlyphMap?> _maps = new();
     private readonly Stack<string?> _hyperlinks = new();
     private readonly Stack<object?> _tags = new();
 
-    public RichTextBuilder(Style defaultStyle = default,
+    public RichTextBuilder(CellStyle defaultStyle = default,
                            TextTrimming? defaultTrimming = null,
                            WrapMode? defaultWrap = null,
                            GlyphSource? defaultGlyphSource = null)
@@ -97,7 +97,7 @@ public sealed class RichTextBuilder
     /// <see cref="Run(string)"/> calls inherit the resulting style. Dispose the returned
     /// <see cref="StyleScope"/> to pop.
     /// </summary>
-    public StyleScope Push(in Style style)
+    public StyleScope Push(in CellStyle style)
     {
         var current = _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
         _styles.Push(current.Compose(in style));
@@ -146,7 +146,7 @@ public sealed class RichTextBuilder
     }
 
     /// <summary>Append a text run with an explicit style, ignoring the style stack (but inheriting the tag).</summary>
-    public RichTextBuilder Run(string text, in Style style)
+    public RichTextBuilder Run(string text, in CellStyle style)
     {
         return Run(text, source: null, style, CurrentTag);
     }
@@ -156,7 +156,7 @@ public sealed class RichTextBuilder
     /// layout onto every derived <see cref="FormattedTextRun"/>. A higher layer (Drawing) uses it to attach a
     /// brush to the run; Rendering never interprets it.
     /// </summary>
-    public RichTextBuilder Run(string text, in Style style, object? tag)
+    public RichTextBuilder Run(string text, in CellStyle style, object? tag)
     {
         return Run(text, source: null, style, tag);
     }
@@ -167,7 +167,7 @@ public sealed class RichTextBuilder
     /// participant in the paragraph flow — it wraps, trims, and aligns like plain text, at the
     /// source's per-cluster cell advances.
     /// </summary>
-    public RichTextBuilder Run(string text, GlyphSource? source, in Style style = default, object? tag = null)
+    public RichTextBuilder Run(string text, GlyphSource? source, in CellStyle style = default, object? tag = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
@@ -180,7 +180,7 @@ public sealed class RichTextBuilder
 
     /// <summary>Append a text run at the given OSC 66 <paramref name="sizing"/> — shorthand for a
     /// <see cref="GlyphSource"/> with no fallback face.</summary>
-    public RichTextBuilder Run(string text, in TextSizing sizing, in Style style = default)
+    public RichTextBuilder Run(string text, in TextSizing sizing, in CellStyle style = default)
         => Run(text, new GlyphSource(null, sizing), style);
 
     /// <summary>Append a hard line break inside the current paragraph.</summary>
@@ -194,7 +194,7 @@ public sealed class RichTextBuilder
     /// Append a one-shot hyperlinked run. Convenience for the common case where the link
     /// target's scope matches a single run's text.
     /// </summary>
-    public RichTextBuilder Hyperlink(string text, string uri, in Style style = default)
+    public RichTextBuilder Hyperlink(string text, string uri, in CellStyle style = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentException.ThrowIfNullOrEmpty(uri);
@@ -252,7 +252,7 @@ public sealed class RichTextBuilder
     public RichTextBuilder HorizontalRule(
         // ReSharper disable once MethodOverloadWithOptionalParameter
         string glyph = "─",
-        in Style style = default,
+        in CellStyle style = default,
         TextAlignment? alignment = null,
         Margins? margin = null)
     {
@@ -289,7 +289,7 @@ public sealed class RichTextBuilder
     /// <summary>Append a <see cref="FigletBlock"/>.</summary>
     public RichTextBuilder Figlet(
         string text, IGlyphFont face,
-        in Style style = default,
+        in CellStyle style = default,
         TextAlignment? alignment = null,
         Margins margin = default)
     {
@@ -305,7 +305,7 @@ public sealed class RichTextBuilder
     /// <summary>Append a <see cref="SizedTextBlock"/> using the supplied OSC 66 sizing parameters.</summary>
     public RichTextBuilder SizedText(
         string text, TextSizing sizing,
-        in Style style = default,
+        in CellStyle style = default,
         IGlyphFont? fallback = null,
         TextAlignment? alignment = null,
         Margins margin = default)
@@ -344,7 +344,7 @@ public sealed class RichTextBuilder
 
     // ---- Internals ----
 
-    private Style CurrentStyle => _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
+    private CellStyle CurrentStyle => _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
     private IGlyphMap? CurrentMap => _maps.Count > 0 ? _maps.Peek() : null;
     private string? CurrentHyperlink => _hyperlinks.Count > 0 ? _hyperlinks.Peek() : null;
     private object? CurrentTag => _tags.Count > 0 ? _tags.Peek() : null;
@@ -376,7 +376,7 @@ public sealed class RichTextBuilder
         _openMargin = default;
     }
 
-    private Style DefaultStyle(Style style) => style == default ? _defaultStyle : style;
+    private CellStyle DefaultStyle(CellStyle style) => style == default ? _defaultStyle : style;
 
     internal void PopLayer(StyleScope.Layer layer)
     {
@@ -391,7 +391,7 @@ public sealed class RichTextBuilder
 }
 
 /// <summary>
-/// Disposable scope returned by <see cref="RichTextBuilder.Push(in Style)"/>,
+/// Disposable scope returned by <see cref="RichTextBuilder.Push(in CellStyle)"/>,
 /// <see cref="RichTextBuilder.PushMap"/>, and <see cref="RichTextBuilder.PushHyperlink"/>.
 /// Disposing pops the corresponding layer off the builder's stack. Intended for
 /// <c>using var _ = builder.Push(...);</c> lexical scoping.
@@ -420,7 +420,7 @@ internal static class StyleExtensions
     /// Compose two styles, child winning on every field that's non-default. Used to merge a
     /// pushed style with its parent on the builder's style stack.
     /// </summary>
-    public static Style Compose(this in Style parent, in Style child)
+    public static CellStyle Compose(this in CellStyle parent, in CellStyle child)
     {
         var result = parent;
         if (!child.Foreground.IsDefault) result = result.WithForeground(child.Foreground);

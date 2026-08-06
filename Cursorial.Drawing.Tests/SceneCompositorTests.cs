@@ -15,7 +15,7 @@ public class SceneCompositorTests
     private static readonly Color Red = Color.FromRgb(255, 0, 0);
     private static readonly Color RedHalf = Color.FromRgba(255, 0, 0, 128);
 
-    private static SceneCompositor OverBlueBase() => new(Style.Default.WithBackground(Blue));
+    private static SceneCompositor OverBlueBase() => new(CellStyle.Default.WithBackground(Blue));
 
     private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
 
@@ -351,8 +351,8 @@ public class SceneCompositorTests
     public void BaseLayer_Backdrop_CompositesOverStoredCells()
     {
         var backdrop = new CellBuffer(2, 1);
-        backdrop[0, 0] = new Cell(null, CellKind.Single, Style.Default.WithBackground(Red));
-        backdrop[1, 0] = new Cell(null, CellKind.Single, Style.Default.WithBackground(Blue));
+        backdrop[0, 0] = new Cell(null, CellKind.Single, CellStyle.Default.WithBackground(Red));
+        backdrop[1, 0] = new Cell(null, CellKind.Single, CellStyle.Default.WithBackground(Blue));
         var compositor = new SceneCompositor(backdrop);
 
         var buffer = new CellBuffer(2, 1);

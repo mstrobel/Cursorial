@@ -1,5 +1,4 @@
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Terminal;
 

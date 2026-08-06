@@ -66,7 +66,7 @@ public class NegativeTranslateBlockTextTests
         var actual = Row(20, ctx =>
         {
             using (ctx.PushTranslate(dx, 0))
-                ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, Style.Default);
+                ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, CellStyle.Default);
         });
 
         Assert.Equal(expected, actual);
@@ -85,13 +85,13 @@ public class NegativeTranslateBlockTextTests
         {
             for (var row = 0; row < 3; row++)
             for (var column = 0; column < 9; column++)
-                ctx.Set(column + dx, row, FigletCell(column, row), Style.Default);
+                ctx.Set(column + dx, row, FigletCell(column, row), CellStyle.Default);
         });
 
         var actual = Grid(12, 3, ctx =>
         {
             using (ctx.PushTranslate(dx, 0))
-                ctx.DrawGlyphText(font, 0, 0, "ABC", Style.Default);
+                ctx.DrawGlyphText(font, 0, 0, "ABC", CellStyle.Default);
         });
 
         Assert.Equal(expected, actual);
@@ -112,13 +112,13 @@ public class NegativeTranslateBlockTextTests
         {
             for (var row = 0; row < 3; row++)
             for (var column = 0; column < 9; column++)
-                ctx.Set(column, row + dy, FigletCell(column, row), Style.Default);
+                ctx.Set(column, row + dy, FigletCell(column, row), CellStyle.Default);
         });
 
         var actual = Grid(12, 3, ctx =>
         {
             using (ctx.PushTranslate(0, dy))
-                ctx.DrawGlyphText(font, 0, 0, "ABC", Style.Default);
+                ctx.DrawGlyphText(font, 0, 0, "ABC", CellStyle.Default);
         });
 
         Assert.Equal(expected, actual);
@@ -142,7 +142,7 @@ public class NegativeTranslateBlockTextTests
                 if (painter == "formatted")
                     ctx.DrawFormattedText(Format(Run), new Rect(0, 0, Run.Length, 1), OutputCapabilities.None);
                 else
-                    ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, Style.Default);
+                    ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, CellStyle.Default);
             }
         });
 
@@ -169,14 +169,14 @@ public class NegativeTranslateBlockTextTests
 
     private static FormattedText Format(string text)
         => new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.None }
-           .Format(new RichTextBuilder().Run(text, Style.Default).Build(), text.Length);
+           .Format(new RichTextBuilder().Run(text, CellStyle.Default).Build(), text.Length);
 
     /// <summary>The always-correct leg: the same cells placed one at a time through the translate.</summary>
     private static string PerCellReference(int dx)
         => Row(20, ctx =>
         {
             for (var column = 0; column < Run.Length; column++)
-                ctx.Set(column + dx, 0, Run[column].ToString(), Style.Default);
+                ctx.Set(column + dx, 0, Run[column].ToString(), CellStyle.Default);
         });
 
     private static string Row(int columns, Action<DrawingContext> draw) => Grid(columns, 1, draw)[0..columns];

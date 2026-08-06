@@ -73,7 +73,7 @@ public sealed class ChartPresenterScratchTests
         // Cells the chart doesn't paint are blitted onwards and must contribute nothing. Filling the
         // buffer transparent after construction gets the CONTENTS right but leaves DefaultStyle
         // answering the opaque Style.Default — the answer every blank-a-cell path in the buffer reads.
-        Assert.Equal(Output.Style.Transparent, presenter.CompositingScratchBlank);
+        Assert.Equal(Output.CellStyle.Transparent, presenter.CompositingScratchBlank);
     }
 
     [Fact] // a source that cannot use the scratch releases it

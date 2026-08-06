@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 
 using Cursorial.Gallery.Infrastructure;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Dialogs;
 

@@ -53,7 +53,7 @@ public readonly record struct Pen
 
     /// <summary>
     /// Non-color SGR styling carried onto each stroked cell (bold / faint / blink …) — the stroke's
-    /// equivalent of <see cref="Style.Attributes"/>. Color still comes from <see cref="Brush"/>.
+    /// equivalent of <see cref="CellStyle.Attributes"/>. Color still comes from <see cref="Brush"/>.
     /// </summary>
     public TextAttributes Attributes { get; init; }
 

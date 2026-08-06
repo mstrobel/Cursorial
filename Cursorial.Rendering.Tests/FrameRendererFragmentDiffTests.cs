@@ -62,8 +62,8 @@ public class FrameRendererFragmentDiffTests
         // still the space-with-bg form), and re-emits the actual glyphs.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "Q", Style.Default);
-        buffer.Set(1, 0, "Z", Style.Default);
+        buffer.Set(0, 0, "Q", CellStyle.Default);
+        buffer.Set(1, 0, "Z", CellStyle.Default);
         // Sentinel chosen to share no letters with the cell glyphs so contains-checks are
         // unambiguous.
         buffer.AddFragment(0, 0, new SentinelFragment(new Size(2, 1), "[OVL]"));
@@ -110,8 +110,8 @@ public class FrameRendererFragmentDiffTests
         // their actual glyphs because the fragment composites on a separate plane.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "X", Style.Default);
-        buffer.Set(1, 0, "Y", Style.Default);
+        buffer.Set(0, 0, "X", CellStyle.Default);
+        buffer.Set(1, 0, "Y", CellStyle.Default);
         buffer.AddFragment(0, 0, new EraseTrackingFragment(new Size(2, 1)));
 
         var output = Render(r, buffer);
@@ -128,7 +128,7 @@ public class FrameRendererFragmentDiffTests
         // cells.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "X", Style.Default.WithBackground(Color.FromRgb(30, 30, 30)));
+        buffer.Set(0, 0, "X", CellStyle.Default.WithBackground(Color.FromRgb(30, 30, 30)));
         var fragment = new SentinelFragment(new Size(1, 1), "F");
         buffer.AddFragment(0, 0, fragment);
 
@@ -165,7 +165,7 @@ public class FrameRendererFragmentDiffTests
         // wide-left position and the continuation position, totaling two cells of bg paint.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "中", Style.Default.WithBackground(Color.FromRgb(80, 80, 80)));
+        buffer.Set(0, 0, "中", CellStyle.Default.WithBackground(Color.FromRgb(80, 80, 80)));
         buffer.AddFragment(0, 0, new SentinelFragment(new Size(2, 1), "F"));
 
         var output = Render(r, buffer);
@@ -189,7 +189,7 @@ public class FrameRendererFragmentDiffTests
         // (same instance, unchanged identity) must re-emit on top, or it silently disappears.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        var dark = Style.Default.WithBackground(Color.FromRgb(20, 20, 20));
+        var dark = CellStyle.Default.WithBackground(Color.FromRgb(20, 20, 20));
         buffer.Set(0, 0, " ", dark);
         buffer.Set(1, 0, " ", dark);
         var fragment = new SentinelFragment(new Size(2, 1), "SIZED");
@@ -200,7 +200,7 @@ public class FrameRendererFragmentDiffTests
 
         // The panel underneath flips to a light background — the SAME fragment instance stays put
         // (its owner was never invalidated), so absent the fix the fragment diff-skips.
-        var light = Style.Default.WithBackground(Color.FromRgb(230, 230, 230));
+        var light = CellStyle.Default.WithBackground(Color.FromRgb(230, 230, 230));
         buffer.Set(0, 0, " ", light);
         buffer.Set(1, 0, " ", light);
         var second = Render(r, buffer);
@@ -216,8 +216,8 @@ public class FrameRendererFragmentDiffTests
         // re-transmit the fragment (no churn), even though it's a Cells-layer fragment.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(20, 20, 20)));
-        buffer.Set(1, 0, " ", Style.Default.WithBackground(Color.FromRgb(20, 20, 20)));
+        buffer.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(20, 20, 20)));
+        buffer.Set(1, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(20, 20, 20)));
         var fragment = new SentinelFragment(new Size(2, 1), "SIZED");
         buffer.AddFragment(0, 0, fragment);
 
@@ -235,12 +235,12 @@ public class FrameRendererFragmentDiffTests
         // the cells under it change — that churn is what exhausts a terminal's image store.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "A", Style.Default);
+        buffer.Set(0, 0, "A", CellStyle.Default);
         var overlay = new EraseTrackingFragment(new Size(2, 1)); // Overlay layer, emits "EMIT"
         buffer.AddFragment(0, 0, overlay);
         Render(r, buffer);
 
-        buffer.Set(0, 0, "B", Style.Default); // underlying cell changes (overlay doesn't cover it)
+        buffer.Set(0, 0, "B", CellStyle.Default); // underlying cell changes (overlay doesn't cover it)
         var output = Render(r, buffer);
 
         Assert.Contains("B", output);          // the cell repaints normally

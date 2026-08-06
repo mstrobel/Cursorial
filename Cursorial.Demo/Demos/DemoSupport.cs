@@ -8,8 +8,6 @@ using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
 
-using Style = Cursorial.Output.Style;
-
 // ReSharper disable RedundantAssignment
 // ReSharper disable CheckNamespace
 
@@ -20,7 +18,7 @@ internal static class DemoSupport
     public static async Task<(TerminalSession session,
                               CellBuffer buffer,
                               FrameRenderer renderer,
-                              Style style,
+                              CellStyle style,
                               TerminalPalette palette,
                               TerminalCapabilities capabilities)> PrepareDemo()
     {
@@ -132,7 +130,7 @@ internal static class DemoSupport
                            };
         }
 
-        var style = Style.Default with { Foreground = fg, Background = bg }; // Use rgb colors to enable alpha blending.
+        var style = CellStyle.Default with { Foreground = fg, Background = bg }; // Use rgb colors to enable alpha blending.
 
         // Falling back to Console.WindowWidth/Height as a last resort, but on non-console stdout
         // (MSYS2 / Cygwin / MobaXterm bash) those throw IOException("The handle is invalid").
@@ -232,7 +230,7 @@ internal static class DemoSupport
         await writer.WriteAsync(Encoding.UTF8.GetBytes(text + "\r\n"));
     }
 
-    public static void PaintLine(CellBufferView buf, int col, int row, string text, Style style)
+    public static void PaintLine(CellBufferView buf, int col, int row, string text, CellStyle style)
     {
         if (row < 0 || row >= buf.Rows) return;
         int x = col;
@@ -246,7 +244,7 @@ internal static class DemoSupport
         }
     }
 
-    public static int PaintWord(CellBufferView buf, int col, int row, string text, Style style)
+    public static int PaintWord(CellBufferView buf, int col, int row, string text, CellStyle style)
     {
         int startCol = col;
         int x = col;
@@ -261,7 +259,7 @@ internal static class DemoSupport
         return x - startCol;
     }
 
-    public static void PaintTextRow(CellBufferView buffer, int column, int row, string text, in Style style)
+    public static void PaintTextRow(CellBufferView buffer, int column, int row, string text, in CellStyle style)
     {
         if (row < 0 || row >= buffer.Rows) return;
         int x = column;

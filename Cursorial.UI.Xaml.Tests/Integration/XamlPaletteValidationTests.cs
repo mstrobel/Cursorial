@@ -3,7 +3,6 @@
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;

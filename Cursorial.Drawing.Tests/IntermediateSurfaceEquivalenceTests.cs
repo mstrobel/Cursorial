@@ -156,14 +156,14 @@ public class IntermediateSurfaceEquivalenceTests
         // The concrete case that rejects folding the foreground at the intermediate. A glyph with a
         // translucent foreground over its own opaque background, in a group at 0.5, over green.
         using var member = Scene.Create(1, 1);
-        member.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(RedHalf).WithBackground(Blue)));
+        member.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(RedHalf).WithBackground(Blue)));
 
-        var flat = Composite(Style.Default.WithBackground(Green), 1, 1,
+        var flat = Composite(CellStyle.Default.WithBackground(Green), 1, 1,
                              [new SceneLayer(member, new CompositeParameters(opacity: 128))]);
 
         using var surface = Scene.Create(1, 1);
         surface.CompositeInto(SceneCompositor.ForIntermediate(), [new SceneLayer(member)]);
-        var grouped = Composite(Style.Default.WithBackground(Green), 1, 1,
+        var grouped = Composite(CellStyle.Default.WithBackground(Green), 1, 1,
                                 [new SceneLayer(surface, new CompositeParameters(opacity: 128))]);
 
         Assert.Equal(Color.FromRgb(64, 95, 95), flat[0, 0].Style.Foreground);
@@ -176,8 +176,8 @@ public class IntermediateSurfaceEquivalenceTests
         // What folding at the intermediate would have produced instead: the group's backdrop applied twice.
         using var prefolded = Scene.Create(1, 1);
         var folded = Color.Composite(RedHalf, Blue, BlendingModes.Default);
-        prefolded.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(folded).WithBackground(Blue)));
-        var wrong = Composite(Style.Default.WithBackground(Green), 1, 1,
+        prefolded.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(folded).WithBackground(Blue)));
+        var wrong = Composite(CellStyle.Default.WithBackground(Green), 1, 1,
                               [new SceneLayer(prefolded, new CompositeParameters(opacity: 128))]);
 
         Assert.Equal(Color.FromRgb(64, 63, 127), wrong[0, 0].Style.Foreground);
@@ -191,17 +191,17 @@ public class IntermediateSurfaceEquivalenceTests
         // translucent black scrim above it. Tinting against the surface's unresolved (still translucent)
         // foreground lands on the wrong color and the final pass folds the background in a second time.
         using var member = Scene.Create(1, 1);
-        member.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(RedHalf).WithBackground(Blue)));
+        member.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(RedHalf).WithBackground(Blue)));
 
         using var scrim = Scene.Create(1, 1);
-        scrim.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(BlackHalf)));
+        scrim.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(BlackHalf)));
 
-        var flat = Composite(Style.Default.WithBackground(Green), 1, 1,
+        var flat = Composite(CellStyle.Default.WithBackground(Green), 1, 1,
                              [new SceneLayer(member), new SceneLayer(scrim)]);
 
         using var surface = Scene.Create(1, 1);
         surface.CompositeInto(SceneCompositor.ForIntermediate(), [new SceneLayer(member), new SceneLayer(scrim)]);
-        var grouped = Composite(Style.Default.WithBackground(Green), 1, 1, [new SceneLayer(surface)]);
+        var grouped = Composite(CellStyle.Default.WithBackground(Green), 1, 1, [new SceneLayer(surface)]);
 
         Assert.Equal(Color.FromRgb(63, 0, 63), flat[0, 0].Style.Foreground);
         Assert.Equal(Color.FromRgb(0, 0, 127), flat[0, 0].Style.Background);
@@ -216,8 +216,8 @@ public class IntermediateSurfaceEquivalenceTests
         // also the one branch that writes a cell the source's footprint does not cover (the pair partner
         // repair), which is exactly the kind of asymmetry this file exists to catch.
         var backdrop = new CellBuffer(6, 1);
-        backdrop.Fill(new Cell(null, CellKind.Single, Style.Default.WithBackground(Green)));
-        backdrop.Set(2, 0, "🙂", Style.Default.WithForeground(Blue).WithBackground(Green));
+        backdrop.Fill(new Cell(null, CellKind.Single, CellStyle.Default.WithBackground(Green)));
+        backdrop.Set(2, 0, "🙂", CellStyle.Default.WithForeground(Blue).WithBackground(Green));
 
         foreach (var opacity in GroupOpacities)
         foreach (var (column, width) in new[] { (0, 3), (3, 3), (2, 2), (0, 6) })
@@ -226,7 +226,7 @@ public class IntermediateSurfaceEquivalenceTests
             source.Draw(ctx =>
             {
                 for (int c = 0; c < width; c++)
-                    ctx.Set(c, 0, null, Style.Default.WithBackground(Color.FromRgba(255, 0, 0, 200)));
+                    ctx.Set(c, 0, null, CellStyle.Default.WithBackground(Color.FromRgba(255, 0, 0, 200)));
             });
 
             var parameters = new CompositeParameters(offsetColumn: column);
@@ -256,9 +256,9 @@ public class IntermediateSurfaceEquivalenceTests
             using var source = Scene.Create(6, 1);
             source.Draw(ctx =>
             {
-                ctx.Set(0, 0, "漢", Style.Default.WithForeground(Blue).WithBackground(RedHalf));
-                ctx.Set(2, 0, "漢", Style.Default.WithForeground(Green).WithBackground(Blue));
-                ctx.Set(4, 0, "漢", Style.Default.WithForeground(Blue).WithBackground(Green));
+                ctx.Set(0, 0, "漢", CellStyle.Default.WithForeground(Blue).WithBackground(RedHalf));
+                ctx.Set(2, 0, "漢", CellStyle.Default.WithForeground(Green).WithBackground(Blue));
+                ctx.Set(4, 0, "漢", CellStyle.Default.WithForeground(Blue).WithBackground(Green));
             });
 
             AssertPathsAgree(new Setup
@@ -269,7 +269,7 @@ public class IntermediateSurfaceEquivalenceTests
                                  Columns = 6,
                                  Rows = 1,
                                  GroupRect = new Rect(0, 0, 6, 1),
-                                 BaseStyle = Style.Default.WithBackground(Green)
+                                 BaseStyle = CellStyle.Default.WithBackground(Green)
                              },
                              opacity);
         }
@@ -294,8 +294,8 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void WideGlyphCutAtTheFootprintEdge_KeepsReplaceSemanticsThroughAnIdentityGroup()
     {
-        var baseStyle = Style.Default.WithBackground(Green).WithUnderlineStyle(UnderlineStyle.Curly);
-        var glyphStyle = Style.Default.WithForeground(Blue).WithBackground(Red)
+        var baseStyle = CellStyle.Default.WithBackground(Green).WithUnderlineStyle(UnderlineStyle.Curly);
+        var glyphStyle = CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                               .WithUnderlineStyle(UnderlineStyle.Dashed).WithUnderlineColor(Blue)
                               .AddAttributes(TextAttributes.Bold);
 
@@ -372,19 +372,19 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void EmojiStompedByAGroupMember_KeepsReplaceSemanticsThroughAnIdentityGroup()
     {
-        var baseStyle = Style.Default.WithBackground(Green);
+        var baseStyle = CellStyle.Default.WithBackground(Green);
 
         // The explicit underline color keeps this test on the reclassification and off the residual pinned by
         // WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface (a wide pair's DEFAULT underline color is
         // resolved wherever the pair is stored, which for a group is the surface).
         using var lower = Scene.Create(2, 1);
-        lower.Draw(ctx => ctx.Set(0, 0, "🙂", Style.Default.WithForeground(Blue).WithBackground(Red)
+        lower.Draw(ctx => ctx.Set(0, 0, "🙂", CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                                                    .WithUnderlineStyle(UnderlineStyle.Dashed)
                                                    .WithUnderlineColor(Blue)));
         Assert.Equal(CellKind.WideLeft, lower.GetCell(0, 0).Kind);
 
         using var upper = Scene.Create(2, 1);
-        upper.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Blue)));
+        upper.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Blue)));
 
         var layers = new[] { new SceneLayer(lower), new SceneLayer(upper) };
 
@@ -425,20 +425,20 @@ public class IntermediateSurfaceEquivalenceTests
         // whatever the base held there; on a surface it has to replace too, or the base's glyph survives
         // under the group.
         var backdrop = new CellBuffer(4, 1);
-        backdrop.Fill(new Cell(null, CellKind.Single, Style.Default.WithBackground(Green)));
-        backdrop.Set(1, 0, "M", Style.Default.WithForeground(Blue).WithBackground(Green));
+        backdrop.Fill(new Cell(null, CellKind.Single, CellStyle.Default.WithBackground(Green)));
+        backdrop.Set(1, 0, "M", CellStyle.Default.WithForeground(Blue).WithBackground(Green));
 
         // An explicit OPAQUE underline color: a wide pair's underline color is resolved wherever the pair is
         // stored, and for a default/translucent one that is the surface rather than the screen — the residual
         // pinned by WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface, orthogonal to what this test is
         // about.
         using var lower = Scene.Create(2, 1);
-        lower.Draw(ctx => ctx.Set(0, 0, "漢", Style.Default.WithForeground(Blue).WithBackground(Red)
+        lower.Draw(ctx => ctx.Set(0, 0, "漢", CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                                                   .WithUnderlineStyle(UnderlineStyle.Dashed)
                                                   .WithUnderlineColor(Blue)));
 
         using var upper = Scene.Create(1, 1);
-        upper.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(Green).WithBackground(Blue)));
+        upper.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(Green).WithBackground(Blue)));
 
         var layers = new[] { new SceneLayer(lower), new SceneLayer(upper) };
 
@@ -464,15 +464,15 @@ public class IntermediateSurfaceEquivalenceTests
         // same consequence on a surface — and the only orphan the compositor's own write does not sit
         // adjacent to.
         var backdrop = new CellBuffer(5, 1);
-        backdrop.Fill(new Cell(null, CellKind.Single, Style.Default.WithBackground(Green)));
-        backdrop.Set(2, 0, "M", Style.Default.WithForeground(Blue).WithBackground(Green));
+        backdrop.Fill(new Cell(null, CellKind.Single, CellStyle.Default.WithBackground(Green)));
+        backdrop.Set(2, 0, "M", CellStyle.Default.WithForeground(Blue).WithBackground(Green));
 
         using var lower = Scene.Create(3, 1);
-        lower.Draw(ctx => ctx.Set(1, 0, "漢", Style.Default.WithForeground(Blue).WithBackground(Red)
+        lower.Draw(ctx => ctx.Set(1, 0, "漢", CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                                                   .WithUnderlineColor(Blue)));   // see the test above
 
         using var upper = Scene.Create(2, 1);
-        upper.Draw(ctx => ctx.Set(0, 0, "漢", Style.Default.WithForeground(Green).WithBackground(Blue)));
+        upper.Draw(ctx => ctx.Set(0, 0, "漢", CellStyle.Default.WithForeground(Green).WithBackground(Blue)));
 
         var layers = new[] { new SceneLayer(lower), new SceneLayer(upper) };
 
@@ -497,12 +497,12 @@ public class IntermediateSurfaceEquivalenceTests
     /// destination's <i>background</i>, one that is inherits the destination's underline color. A wide pair is
     /// the only write the compositor makes through <c>Set</c>, so a wide glyph's underline color is resolved
     /// wherever its pair is stored — through a group that is the surface, whose base is
-    /// <see cref="Style.Transparent"/>. An intact pair is re-resolved by the outer <c>Set</c> and agrees; the
+    /// <see cref="CellStyle.Transparent"/>. An intact pair is re-resolved by the outer <c>Set</c> and agrees; the
     /// SURVIVING HALF of a pair the hygiene broke leaves the surface as a replacing blank, written through the
     /// indexer, and carries the surface-resolved value to the screen.
     /// </summary>
     /// <remarks>
-    /// Bounded to <see cref="Style.UnderlineColor"/> — grapheme, kind, background, foreground, attributes and
+    /// Bounded to <see cref="CellStyle.UnderlineColor"/> — grapheme, kind, background, foreground, attributes and
     /// underline <i>style</i> all agree. It needs an underline color that is still translucent when it reaches
     /// the compositor, which is what a scene's transparent clear turns <see cref="Color.Default"/> into for a
     /// cell carrying no <see cref="TextAttributes.Underline"/> — and SGR 58 is only emitted for a cell that
@@ -514,7 +514,7 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void WidePairSurvivor_ResolvesItsUnderlineColorAtTheSurface()
     {
-        var pairStyle = Style.Default.WithForeground(Blue).WithBackground(Red)
+        var pairStyle = CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                              .WithUnderlineStyle(UnderlineStyle.Dashed);   // underline color left at Default
 
         var (flat, grouped) = BrokenPairOverGreen(pairStyle);
@@ -538,15 +538,15 @@ public class IntermediateSurfaceEquivalenceTests
 
     // A lower member's wide pair at (0, 1) with the left half overwritten by an upper member's narrow glyph,
     // over an opaque green base: the pair hygiene's blank lands at (1, 0) on both paths.
-    private static (CellBuffer Flat, CellBuffer Grouped) BrokenPairOverGreen(Style pairStyle)
+    private static (CellBuffer Flat, CellBuffer Grouped) BrokenPairOverGreen(CellStyle pairStyle)
     {
-        var baseStyle = Style.Default.WithBackground(Green);
+        var baseStyle = CellStyle.Default.WithBackground(Green);
 
         using var lower = Scene.Create(2, 1);
         lower.Draw(ctx => ctx.Set(0, 0, "漢", pairStyle));
 
         using var upper = Scene.Create(1, 1);
-        upper.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(Green).WithBackground(Blue)));
+        upper.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(Green).WithBackground(Blue)));
 
         var layers = new[] { new SceneLayer(lower), new SceneLayer(upper) };
 
@@ -569,7 +569,7 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void DurableEmptyCells_RideThroughAGroupUnchanged()
     {
-        var baseStyle = Style.Default.WithBackground(Green);
+        var baseStyle = CellStyle.Default.WithBackground(Green);
 
         using var panel = Scene.Create(3, 1);
         panel.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 3, 1), Blue));
@@ -604,7 +604,7 @@ public class IntermediateSurfaceEquivalenceTests
         // The durable empty also still OCCLUDES through a group — the property FillOpaque wants it for. A
         // glyph on a lower layer must not show through the panel's blank cells.
         using var lower = Scene.Create(3, 1);
-        lower.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(Red).WithBackground(Red)));
+        lower.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(Red).WithBackground(Red)));
 
         var stackedFlat = Composite(baseStyle, 3, 1, [new SceneLayer(lower), new SceneLayer(panel)]);
         using var stackedSurface = Scene.Create(3, 1);
@@ -650,17 +650,17 @@ public class IntermediateSurfaceEquivalenceTests
 
         // Stored, it is an ordinary single cell — not a wide left, not a continuation, not dropped.
         var probe = new CellBuffer(2, 1);
-        Assert.Equal(1, probe.Set(0, 0, ReplacingBlank, Style.Default));
+        Assert.Equal(1, probe.Set(0, 0, ReplacingBlank, CellStyle.Default));
         Assert.Equal(CellKind.Single, probe[0, 0].Kind);
         Assert.Equal(ReplacingBlank, probe[0, 0].Grapheme);
 
         // A caller CAN write the value as content (nothing validates it), and the compositor claims it: the
         // final pass translates it to a blank rather than emitting a noncharacter to the terminal.
         using var source = Scene.Create(1, 1);
-        source.Draw(ctx => ctx.Set(0, 0, ReplacingBlank, Style.Default.WithForeground(Blue).WithBackground(Red)));
+        source.Draw(ctx => ctx.Set(0, 0, ReplacingBlank, CellStyle.Default.WithForeground(Blue).WithBackground(Red)));
         Assert.Equal(ReplacingBlank, source.GetCell(0, 0).Grapheme);
 
-        var target = Composite(Style.Default.WithBackground(Green), 1, 1, [new SceneLayer(source)]);
+        var target = Composite(CellStyle.Default.WithBackground(Green), 1, 1, [new SceneLayer(source)]);
 
         Assert.Null(target[0, 0].Grapheme);
         Assert.Equal(Red, target[0, 0].Style.Background);   // it still REPLACED — it is a replacing blank
@@ -741,7 +741,7 @@ public class IntermediateSurfaceEquivalenceTests
 
         // A surface holding a marker: a wide glyph cut in half by its layer's clip.
         using var member = Scene.Create(4, 1);
-        member.Draw(ctx => ctx.Set(0, 0, "漢", Style.Default.WithForeground(Blue).WithBackground(Red)));
+        member.Draw(ctx => ctx.Set(0, 0, "漢", CellStyle.Default.WithForeground(Blue).WithBackground(Red)));
 
         using var surface = Scene.Create(4, 1);
         surface.CompositeInto(SceneCompositor.ForIntermediate(),
@@ -755,7 +755,7 @@ public class IntermediateSurfaceEquivalenceTests
             poisoned[column, 0] = surface.GetCell(column, 0);
 
         using var content = Scene.Create(1, 1);
-        content.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
+        content.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
 
         DrawingDiagnostics.DiagnosticRaised += Sink;
         try
@@ -788,7 +788,7 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void ResolveSurfaceCell_TranslatesTheMarkerAndLeavesRealContentAlone()
     {
-        var glyphStyle = Style.Default.WithForeground(Blue).WithBackground(Red)
+        var glyphStyle = CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                               .WithUnderlineStyle(UnderlineStyle.Dashed).AddAttributes(TextAttributes.Bold);
 
         using var member = Scene.Create(4, 1);
@@ -805,7 +805,7 @@ public class IntermediateSurfaceEquivalenceTests
         var resolved = SceneCompositor.ResolveSurfaceCell(raw);
 
         // Exactly the cell the flat path puts on screen — only the grapheme moves.
-        var flat = Composite(Style.Default.WithBackground(Green), 4, 1, [new SceneLayer(member, parameters)]);
+        var flat = Composite(CellStyle.Default.WithBackground(Green), 4, 1, [new SceneLayer(member, parameters)]);
         Assert.Equal(flat[0, 0], resolved);
         Assert.Null(resolved.Grapheme);
         Assert.Equal(raw with { Grapheme = null }, resolved);
@@ -837,8 +837,8 @@ public class IntermediateSurfaceEquivalenceTests
         // outer one (still an intermediate) and be translated exactly once, by the pass that writes the
         // buffer a FrameRenderer diffs: translating earlier loses replace semantics again, later leaks a
         // compositor-internal grapheme into the terminal's buffer.
-        var baseStyle = Style.Default.WithBackground(Green).WithUnderlineStyle(UnderlineStyle.Curly);
-        var glyphStyle = Style.Default.WithForeground(Blue).WithBackground(Red)
+        var baseStyle = CellStyle.Default.WithBackground(Green).WithUnderlineStyle(UnderlineStyle.Curly);
+        var glyphStyle = CellStyle.Default.WithForeground(Blue).WithBackground(Red)
                               .WithUnderlineStyle(UnderlineStyle.Dashed).AddAttributes(TextAttributes.Bold);
 
         using var member = Scene.Create(4, 1);
@@ -988,7 +988,7 @@ public class IntermediateSurfaceEquivalenceTests
 
     /// <summary>
     /// <b>DOCUMENTED DIVERGENCE 3 of 4.</b> Over a <b>non-RGB backdrop</b> — a palette color or the
-    /// terminal default, which is the compositor's own <see cref="Style.Default"/> base — grouping moves
+    /// terminal default, which is the compositor's own <see cref="CellStyle.Default"/> base — grouping moves
     /// where alpha is flattened. <see cref="Color.Composite"/> and <see cref="Color.CompositeOver"/> both
     /// discard the backdrop and return the blended source at alpha 255 when either operand is non-RGB
     /// (deliberately: there is no lossless RGB for a palette entry). Flat, that happens at the
@@ -1004,13 +1004,13 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void MultiContributorGroupOverANonRgbBackdrop_MovesWhereAlphaIsFlattened()
     {
-        var baseStyle = Style.Default;   // foreground and background both Color.Default
+        var baseStyle = CellStyle.Default;   // foreground and background both Color.Default
 
         using var lower = Scene.Create(1, 1);
-        lower.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Color.FromRgba(255, 0, 0, 128))));
+        lower.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Color.FromRgba(255, 0, 0, 128))));
 
         using var upper = Scene.Create(1, 1);
-        upper.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
+        upper.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
 
         var layers = new[] { new SceneLayer(lower), new SceneLayer(upper) };
 
@@ -1053,14 +1053,14 @@ public class IntermediateSurfaceEquivalenceTests
     [Fact]
     public void GlyphOverATranslucentCellBackground_CoveredByAScrim_DivergesInTheForeground()
     {
-        var baseStyle = Style.Default.WithForeground(Red).WithBackground(Red);
+        var baseStyle = CellStyle.Default.WithForeground(Red).WithBackground(Red);
 
         using var text = Scene.Create(1, 1);
-        text.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(Color.FromRgba(255, 255, 255, 128))
+        text.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(Color.FromRgba(255, 255, 255, 128))
                                                  .WithBackground(Color.FromRgba(0, 0, 0, 64))));
 
         using var scrim = Scene.Create(1, 1);
-        scrim.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
+        scrim.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Color.FromRgba(0, 0, 255, 128))));
 
         var layers = new[] { new SceneLayer(text), new SceneLayer(scrim) };
 
@@ -1085,7 +1085,7 @@ public class IntermediateSurfaceEquivalenceTests
         // The same stack with an OPAQUE cell background under the glyph is bit-identical — which is what
         // the resolved-tint rule was verified against, and what makes sticky group-ness safe in practice.
         using var opaqueText = Scene.Create(1, 1);
-        opaqueText.Draw(ctx => ctx.Set(0, 0, "X", Style.Default.WithForeground(Color.FromRgba(255, 255, 255, 128))
+        opaqueText.Draw(ctx => ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(Color.FromRgba(255, 255, 255, 128))
                                                         .WithBackground(Blue)));
 
         var opaqueLayers = new[] { new SceneLayer(opaqueText), new SceneLayer(scrim) };
@@ -1110,7 +1110,7 @@ public class IntermediateSurfaceEquivalenceTests
         // Narrowing this is the scheduled SceneLayer.Damage work, which is why Scene.CompositeInto already
         // reports the region it rewrote.
         using var source = Scene.Create(2, 1);
-        source.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Blue)));
+        source.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Blue)));
 
         var setup = new Setup
                     {
@@ -1120,7 +1120,7 @@ public class IntermediateSurfaceEquivalenceTests
                         Columns = 10,
                         Rows = 5,
                         GroupRect = new Rect(1, 1, 8, 4),
-                        BaseStyle = Style.Default.WithBackground(Green)
+                        BaseStyle = CellStyle.Default.WithBackground(Green)
                     };
 
         var memberParameters = setup.SourceParameters.WithOpacity(128);
@@ -1145,7 +1145,7 @@ public class IntermediateSurfaceEquivalenceTests
         flat.ClearDirty();
         grouped.ClearDirty();
         source.Invalidate();
-        source.Draw(ctx => ctx.Set(0, 0, null, Style.Default.WithBackground(Red)));
+        source.Draw(ctx => ctx.Set(0, 0, null, CellStyle.Default.WithBackground(Red)));
 
         flatCompositor.Composite([new SceneLayer(source, memberParameters)], flat.AsView());
         var rewritten = surface.CompositeInto(surfaceCompositor, [new SceneLayer(source, rebased)]);
@@ -1178,7 +1178,7 @@ public class IntermediateSurfaceEquivalenceTests
         /// <summary>Where the group surface sits on the target; must contain the source's footprint.</summary>
         public required Rect GroupRect { get; init; }
 
-        public Style BaseStyle { get; init; }
+        public CellStyle BaseStyle { get; init; }
         public CellBuffer? Backdrop { get; init; }
     }
 
@@ -1262,7 +1262,7 @@ public class IntermediateSurfaceEquivalenceTests
         return buffer;
     }
 
-    private static CellBuffer Composite(Style baseStyle, int columns, int rows, ReadOnlySpan<SceneLayer> layers)
+    private static CellBuffer Composite(CellStyle baseStyle, int columns, int rows, ReadOnlySpan<SceneLayer> layers)
     {
         var buffer = new CellBuffer(columns, rows);
         buffer.Fill(new Cell(null, CellKind.Single, baseStyle));
@@ -1468,18 +1468,18 @@ public class IntermediateSurfaceEquivalenceTests
             for (int column = 0; column < scene.Columns; column++)
             {
                 if (random.Next(5) == 0) continue;
-                ctx.Set(column, row, null, Style.Default.WithBackground(RandomRgb(random, (byte) random.Next(1, 255))));
+                ctx.Set(column, row, null, CellStyle.Default.WithBackground(RandomRgb(random, (byte) random.Next(1, 255))));
             }
         });
 
-    private static Style OpaqueRgbStyle(Random random) =>
+    private static CellStyle OpaqueRgbStyle(Random random) =>
         new(RandomRgb(random, 255), RandomRgb(random, 255), TextAttributes.None, UnderlineStyle.Single,
             RandomRgb(random, 255));
 
     private static Color RandomRgb(Random random, byte alpha) =>
         Color.FromRgba((byte) random.Next(256), (byte) random.Next(256), (byte) random.Next(256), alpha);
 
-    private static Style RandomStyle(Random random, bool translucent) =>
+    private static CellStyle RandomStyle(Random random, bool translucent) =>
         new(RandomColor(random, translucent),
             RandomColor(random, translucent),
             (TextAttributes) random.Next(0, 1 << 4),

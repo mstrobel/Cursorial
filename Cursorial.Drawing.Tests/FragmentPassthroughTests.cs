@@ -34,7 +34,7 @@ public class FragmentPassthroughTests
         Assert.True(scene.Buffer.AsView().ContainsFragment(frag.Key));   // landed on the scene buffer
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([Layer(scene)], target.AsView());
 
         Assert.True(target.AsView().TryGetFragmentAnchor(frag.Key, out var anchor));
         Assert.Equal((3, 1), anchor);   // no offset → same anchor on the target
@@ -48,7 +48,7 @@ public class FragmentPassthroughTests
         scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
 
         var target = new CellBuffer(12, 6);
-        new SceneCompositor(Style.Default).Composite([Layer(scene, offsetColumn: 5, offsetRow: 2)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([Layer(scene, offsetColumn: 5, offsetRow: 2)], target.AsView());
 
         Assert.True(target.AsView().TryGetFragmentAnchor(frag.Key, out var anchor));
         Assert.Equal((5, 2), anchor);   // (0,0) + offset(5,2)
@@ -63,7 +63,7 @@ public class FragmentPassthroughTests
 
         var target = new CellBuffer(12, 4);
         var view = target.AsView();
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
 
         compositor.Composite([Layer(scene, offsetColumn: 1)], view);
         compositor.Composite([Layer(scene, offsetColumn: 4)], view);   // slide right
@@ -88,7 +88,7 @@ public class FragmentPassthroughTests
 
         var target = new CellBuffer(10, 4);
         var clip = new Rect(0, 0, 5, 4);   // only the left half
-        new SceneCompositor(Style.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
 
         Assert.True(target.AsView().ContainsFragment(inFrag.Key));    // anchor (1,1) inside the clip
         Assert.False(target.AsView().ContainsFragment(outFrag.Key));  // anchor (8,1) outside → dropped
@@ -105,7 +105,7 @@ public class FragmentPassthroughTests
 
         var target = new CellBuffer(10, 4);
         var clip = new Rect(0, 0, 2, 4);   // keep only the left 2 columns
-        new SceneCompositor(Style.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
 
         int fragmentCount = target.AsView().Fragments.Count;
         Assert.Equal(1, fragmentCount);
@@ -124,7 +124,7 @@ public class FragmentPassthroughTests
         scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), new FragmentContent(frag), OutputCapabilities.None));
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default)
+        new SceneCompositor(CellStyle.Default)
             .Composite([new SceneLayer(scene, new CompositeParameters(clip: new Rect(0, 0, 2, 4)))], target.AsView());
 
         int fragmentCount = target.AsView().Fragments.Count;
@@ -139,7 +139,7 @@ public class FragmentPassthroughTests
         scene.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default)
+        new SceneCompositor(CellStyle.Default)
             .Composite([new SceneLayer(scene, new CompositeParameters(clip: new Rect(0, 0, 8, 4)))], target.AsView());
 
         Assert.True(target.AsView().TryGetFragmentAnchor(frag.Key, out var anchor));   // same fragment, not cropped
@@ -359,7 +359,7 @@ public class FragmentPassthroughTests
 
         var target = new CellBuffer(12, 4);
         var clip = new Rect(2, 0, 10, 4);   // keep cols [2,4) of the fragment
-        new SceneCompositor(Style.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([new SceneLayer(scene, new CompositeParameters(clip: clip))], target.AsView());
 
         int fragmentCount = target.AsView().Fragments.Count;
         Assert.Equal(1, fragmentCount);
@@ -382,14 +382,14 @@ public class FragmentPassthroughTests
         var target = new CellBuffer(10, 4);
         // Compositor A places the fragment, then is discarded — exactly the WindowManager.ResetCompositor path
         // (a popup open/close rebuilds the SceneCompositor, losing its _fragmentAnchors).
-        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([Layer(scene)], target.AsView());
         Assert.True(target.AsView().ContainsFragment(frag.Key));
 
         // The element is gone (tab switched away): a FRESH compositor composites a scene with NO fragment.
         // Its first composite is a full reset, which must drop A's orphan rather than strand the image on screen.
         using var empty = Scene.Create(10, 4);
         empty.Draw(_ => { });
-        new SceneCompositor(Style.Default).Composite([Layer(empty)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([Layer(empty)], target.AsView());
 
         Assert.Equal(0, target.AsView().Fragments.Count); // orphan cleared (the image-not-removed bug)
     }
@@ -402,8 +402,8 @@ public class FragmentPassthroughTests
         scene.Draw(ctx => ctx.DrawContent(new Rect(3, 1, 2, 1), new FragmentContent(frag), OutputCapabilities.None));
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // compositor A
-        new SceneCompositor(Style.Default).Composite([Layer(scene)], target.AsView()); // fresh B — still present
+        new SceneCompositor(CellStyle.Default).Composite([Layer(scene)], target.AsView()); // compositor A
+        new SceneCompositor(CellStyle.Default).Composite([Layer(scene)], target.AsView()); // fresh B — still present
 
         Assert.True(target.AsView().ContainsFragment(frag.Key));
         Assert.Equal(1, target.AsView().Fragments.Count);
@@ -424,7 +424,7 @@ public class FragmentPassthroughTests
         occ.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
 
         Assert.Equal(0, target.AsView().Fragments.Count); // image hidden under the popup → its cells/placeholder show
     }
@@ -439,7 +439,7 @@ public class FragmentPassthroughTests
         occ.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
+        new SceneCompositor(CellStyle.Default).Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
 
         Assert.Equal(1, target.AsView().Fragments.Count);
         foreach (var (anchor, entry) in target.AsView().Fragments)
@@ -459,7 +459,7 @@ public class FragmentPassthroughTests
         higherZone.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite(
+        new SceneCompositor(CellStyle.Default).Composite(
             [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higherZone) { SurfaceZ = 0, IsOccluder = true }], target.AsView());
 
         Assert.True(target.AsView().ContainsFragment(frag.Key)); // same SurfaceZ → not occluded
@@ -475,7 +475,7 @@ public class FragmentPassthroughTests
         higher.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        new SceneCompositor(Style.Default).Composite(
+        new SceneCompositor(CellStyle.Default).Composite(
             [new SceneLayer(lower) { SurfaceZ = 0 }, new SceneLayer(higher) { SurfaceZ = 1, IsOccluder = false }], target.AsView());
 
         Assert.True(target.AsView().ContainsFragment(frag.Key));
@@ -504,7 +504,7 @@ public class FragmentPassthroughTests
         empty.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         compositor.Composite([Layer(withImage)], target.AsView());  // image committed → it joins the ghost set
         target.ClearForceRepaint();                                 // ignore the first-frame full-union marks
 
@@ -523,7 +523,7 @@ public class FragmentPassthroughTests
         occ.Draw(_ => { });
 
         var target = new CellBuffer(10, 4);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         compositor.Composite([new SceneLayer(lower) { SurfaceZ = 0 }], target.AsView());   // image visible
         target.ClearForceRepaint();
 
@@ -548,12 +548,12 @@ public class FragmentPassthroughTests
         var target = new CellBuffer(10, 4);
 
         // A — the image is visible (Media tab, no popup). It joins A's ghost set.
-        var a = new SceneCompositor(Style.Default);
+        var a = new SceneCompositor(CellStyle.Default);
         a.Composite([new SceneLayer(lower) { SurfaceZ = 0 }], target.AsView());
 
         // B — a popup opened (WindowManager.ResetCompositor): adopt A's ghost; the image is now occluded
         // (suppressed from the target as a registered fragment, but its scene is still alive, so it stays a ghost).
-        var b = new SceneCompositor(Style.Default);
+        var b = new SceneCompositor(CellStyle.Default);
         b.AdoptGhostFootprints(a);
         b.Composite([new SceneLayer(lower) { SurfaceZ = 0 }, Occluder(occ, z: 1)], target.AsView());
         Assert.Equal(0, target.AsView().Fragments.Count);   // confirms the image is NOT a registered target fragment
@@ -561,7 +561,7 @@ public class FragmentPassthroughTests
 
         // C — a tab switch dismissed the popup (another ResetCompositor): adopt B's ghost; the image scene is gone.
         // The ghost hand-off is the only record of the occluded image, so without it this removal would be missed.
-        var c = new SceneCompositor(Style.Default);
+        var c = new SceneCompositor(CellStyle.Default);
         c.AdoptGhostFootprints(b);
         c.Composite([Layer(empty)], target.AsView());
 
@@ -579,7 +579,7 @@ public class FragmentPassthroughTests
 
         var target = new CellBuffer(10, 4);
         var ex = Record.Exception(() =>
-            new SceneCompositor(Style.Default).Composite([Layer(scene, offsetColumn: -3, offsetRow: -3)], target.AsView()));
+            new SceneCompositor(CellStyle.Default).Composite([Layer(scene, offsetColumn: -3, offsetRow: -3)], target.AsView()));
 
         Assert.Null(ex);
     }
@@ -588,7 +588,7 @@ public class FragmentPassthroughTests
     public void Composite_ShrinkInPlaceCellsImage_ForceRepaintsTheExposedRemainder()
     {
         var target = new CellBuffer(12, 6);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
 
         IBufferFragment big = new FakeFragment(6, 4);
         using (var sceneBig = Scene.Create(12, 6))
@@ -617,7 +617,7 @@ public class FragmentPassthroughTests
     public void Composite_RemovedImageOverlappingASurvivor_ForceRepaintsOnlyTheDisjointPart()
     {
         var target = new CellBuffer(12, 4);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
 
         // Frame 1: two distinct Cells-layer images, A at cols [0,4) and B at cols [3,7) (they share col 3).
         IBufferFragment a = new FakeFragment(4, 2);
@@ -650,7 +650,7 @@ public class FragmentPassthroughTests
         scene.Draw(ctx => ctx.DrawContent(new Rect(1, 1, 2, 2), new FragmentContent(frag), OutputCapabilities.None));
 
         var target = new CellBuffer(10, 4);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         compositor.Composite([Layer(scene)], target.AsView());   // image committed → ghost
         target.ClearForceRepaint();
 
@@ -710,7 +710,7 @@ public class FragmentPassthroughTests
         var content = new Image(new ImageData(SolidPng(16, 16), ImageFormat.Png, new Size(2, 1)));
         using var scene = Scene.Create(10, 4);
         var target = new CellBuffer(10, 4);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         var renderer = new FrameRenderer(caps);
 
         void Raster(string label)
@@ -719,7 +719,7 @@ public class FragmentPassthroughTests
             scene.Draw(ctx =>
             {
                 ctx.DrawContent(new Rect(0, 0, 2, 1), content, caps);
-                for (int i = 0; i < label.Length; i++) ctx.Set(i, 2, label[i].ToString(), Style.Default);
+                for (int i = 0; i < label.Length; i++) ctx.Set(i, 2, label[i].ToString(), CellStyle.Default);
             });
         }
 
@@ -755,7 +755,7 @@ public class FragmentPassthroughTests
         var first = FirstFragment(scene);
 
         scene.Invalidate();
-        var highlighted = Style.Default.WithBackground(Color.FromRgb(10, 20, 30));
+        var highlighted = CellStyle.Default.WithBackground(Color.FromRgb(10, 20, 30));
         scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), content, caps, highlighted));
 
         var second = FirstFragment(scene);
@@ -843,7 +843,7 @@ public class FragmentPassthroughTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
             var size = fragment.GetSize();

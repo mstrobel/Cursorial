@@ -5,7 +5,7 @@ namespace Cursorial.Media;
 /// <summary>
 /// Combines a "source" color with a "backdrop" color to produce a result. Used by
 /// <c>CellBuffer.PushBlendingMode</c> to control how new cells composite over existing ones —
-/// the cell-buffer blends each color channel of the source <see cref="Style"/> with the
+/// the cell-buffer blends each color channel of the source <see cref="CellStyle"/> with the
 /// existing cell's matching channel through the active blending mode, then stores the result.
 /// </summary>
 /// <remarks>
@@ -28,7 +28,7 @@ public interface IBlendingMode
     /// <summary>
     /// Compute the composite color of <paramref name="source"/> over <paramref name="backdrop"/>.
     /// </summary>
-    /// <param name="source">The color being drawn — typically the new <see cref="Style"/>'s field.</param>
+    /// <param name="source">The color being drawn — typically the new <see cref="CellStyle"/>'s field.</param>
     /// <param name="backdrop">The color already present at the target position.</param>
     Color Blend(Color source, Color backdrop);
 }

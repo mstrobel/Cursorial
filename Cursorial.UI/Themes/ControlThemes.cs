@@ -13,7 +13,6 @@ using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
 using Calendar = Cursorial.UI.Controls.Calendar;
-using CellStyle = Cursorial.Output.Style;
 
 // ReSharper disable AccessToStaticMemberViaDerivedType
 

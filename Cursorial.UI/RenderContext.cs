@@ -2,14 +2,13 @@ using Cursorial.Drawing;
 using Cursorial.Drawing.Charts;
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI;
 
@@ -223,7 +222,7 @@ public sealed class RenderContext
 
     /// <summary>Paints embedded content with an explicit <paramref name="style"/> — the SGR backdrop for
     /// protocol-backed content (a selection background riding an OSC 66 emission).</summary>
-    public void DrawContent(in Rect bounds, IContent content, in Cursorial.Output.Style style)
+    public void DrawContent(in Rect bounds, IContent content, in Cursorial.Output.CellStyle style)
     {
         Inner.DrawContent(bounds, content, _capabilities, style);
     }
@@ -236,7 +235,7 @@ public sealed class RenderContext
     /// <remarks>
     /// This method provides selection-highlight primitive for glyph-rendered (FIGlet) text: geometry never shifts.
     /// </remarks>
-    public void TintCells(in Rect bounds, in Cursorial.Output.Style style)
+    public void TintCells(in Rect bounds, in Cursorial.Output.CellStyle style)
     {
         Inner.TintCells(bounds, style);
     }
@@ -244,7 +243,7 @@ public sealed class RenderContext
     /// <summary>Paints text through a glyph font at an element-local anchor (which may be negative —
     /// a scrolled editor); the font clips like a cell write. Optional brush colors per cell.</summary>
     public void DrawGlyphText(Cursorial.Rendering.Fonts.IGlyphFont face, int column, int row, string text,
-                              IBrush? foreground, in Cursorial.Output.Style style, in Rect brushBounds)
+                              IBrush? foreground, in Cursorial.Output.CellStyle style, in Rect brushBounds)
     {
         if (foreground is null)
         {

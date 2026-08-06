@@ -19,8 +19,6 @@ using Cursorial.UI.Input;
 using Cursorial.UI.Themes;
 using Cursorial.UI.Xaml;
 
-using CS = Cursorial.Output.Style;
-
 // P9.8 — the XAML style-inspector (design doc §3.9 / proposal §2.8 "style inspector overlay"): load a .xaml
 // file, render it on the real frame loop, then inspect the element under the cursor — for it, the overlay
 // lists every property with a live, non-default contribution (UIObject.GetSetProperties) and its full
@@ -1230,7 +1228,7 @@ internal sealed class InspectorDemo : IDemo
                         null                       => NullDisplay,
                         Cell c                     => $"{{Cell({c.Kind}) Grapheme=\"{EscapeGraphemes(c.Grapheme)}\", " +
                                                       $"Style=\"{FormatValue(c.Style)}\"}}",
-                        CS cs                      => $"{{CellStyle fg={FormatValue(cs.Foreground)}, " +
+                        CellStyle cs                      => $"{{CellStyle fg={FormatValue(cs.Foreground)}, " +
                                                       $"bg={FormatValue(cs.Background)}, " +
                                                       $"ul={FormatValue(cs.UnderlineStyle)}" +
                                                       $"({FormatValue(cs.UnderlineColor)})" +
@@ -1297,13 +1295,13 @@ internal sealed class InspectorDemo : IDemo
                     Node("Style",
                          new[]
                          {
-                             Node(nameof(CS.Foreground), NoValue, inlineValue: FormatValue(s.Foreground)),
-                             Node(nameof(CS.Background), NoValue, inlineValue: FormatValue(s.Background)),
-                             Node(nameof(CS.Attributes), NoValue, inlineValue: FormatValue(s.Attributes)),
-                             Node(nameof(CS.UnderlineStyle), NoValue, inlineValue: FormatValue(s.UnderlineStyle)),
-                             Node(nameof(CS.UnderlineColor), NoValue, inlineValue: FormatValue(s.UnderlineColor)),
-                             Node(nameof(CS.Hyperlink), NoValue, inlineValue: FormatValue(s.Hyperlink.Uri)),
-                             Node(nameof(CS.Background), NoValue, inlineValue: FormatValue(s.Background))
+                             Node(nameof(CellStyle.Foreground), NoValue, inlineValue: FormatValue(s.Foreground)),
+                             Node(nameof(CellStyle.Background), NoValue, inlineValue: FormatValue(s.Background)),
+                             Node(nameof(CellStyle.Attributes), NoValue, inlineValue: FormatValue(s.Attributes)),
+                             Node(nameof(CellStyle.UnderlineStyle), NoValue, inlineValue: FormatValue(s.UnderlineStyle)),
+                             Node(nameof(CellStyle.UnderlineColor), NoValue, inlineValue: FormatValue(s.UnderlineColor)),
+                             Node(nameof(CellStyle.Hyperlink), NoValue, inlineValue: FormatValue(s.Hyperlink.Uri)),
+                             Node(nameof(CellStyle.Background), NoValue, inlineValue: FormatValue(s.Background))
                          },
                          expanded: false));
             }

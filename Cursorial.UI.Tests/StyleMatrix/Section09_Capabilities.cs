@@ -1,7 +1,7 @@
 // xUnit1031 (no blocking task ops) does not apply here; the single async test awaits the
 // renegotiation path the same way the P2 suites do (the synthetic host completes synchronously).
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
 

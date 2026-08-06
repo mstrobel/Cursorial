@@ -24,7 +24,7 @@ public class ScenePoolTests
 
         var buffer = new CellBuffer(2, 1);
         var view = buffer.AsView();
-        new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(0, 0, 255)))
+        new SceneCompositor(CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)))
             .Composite(new[] { new SceneLayer(second) }, view);
 
         // The reused (undrawn) scene is transparent, so the blue base shows — the old red is gone.
@@ -244,7 +244,7 @@ public class ScenePoolTests
 
         // If b and c aliased one buffer, c's blue would have overwritten b. Composite b → still red.
         var buffer = new CellBuffer(1, 1);
-        new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(0, 0, 0)))
+        new SceneCompositor(CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 0)))
             .Composite(new[] { new SceneLayer(b) }, buffer.AsView());
         Assert.Equal(Color.FromRgb(255, 0, 0), buffer[0, 0].Style.Background);
     }

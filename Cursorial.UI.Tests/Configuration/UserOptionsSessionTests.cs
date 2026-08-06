@@ -1,7 +1,7 @@
 // xUnit1031 disabled: UITestHost is single-thread-affine (see FrameLoopTests).
 #pragma warning disable xUnit1031
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.UI;
 using Cursorial.UI.Configuration;
 using Cursorial.UI.Controls;

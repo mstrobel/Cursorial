@@ -66,7 +66,7 @@ public class CellBufferBlendingTests
     public void Set_NoActiveMode_StoresSourceVerbatim()
     {
         var buf = new CellBuffer(3, 1);
-        var style = Style.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var style = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
         buf.Set(0, 0, "x", style);
 
         Assert.Equal(Color.FromRgb(255, 0, 0), buf[0, 0].Style.Foreground);
@@ -79,12 +79,12 @@ public class CellBufferBlendingTests
         // Lay down a half-gray cell first. The foreground composes against the underlying
         // cell's *background* (not foreground — the source's glyph replaces whatever
         // foreground content was there), so seed the bg with half-gray too.
-        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(128, 128, 128)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(128, 128, 128)));
 
         // Push Multiply, set with half-gray foreground. The result should be ~1/4
         // (half-gray × half-gray = quarter-gray).
         buf.PushBlendingMode(BlendingModes.Multiply);
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgb(128, 128, 128)));
 
         Assert.Equal(Color.FromRgb(64, 64, 64), buf[0, 0].Style.Foreground);
         // The grapheme of the new cell should be the source's, not the previous one.
@@ -95,10 +95,10 @@ public class CellBufferBlendingTests
     public void Set_BlendsBackground()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(200, 200, 200)));
+        buf.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(200, 200, 200)));
 
         buf.PushBlendingMode(BlendingModes.Multiply);
-        buf.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(128, 128, 128)));
+        buf.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(128, 128, 128)));
 
         // 128 * 200 / 255 ≈ 100.
         Assert.Equal((byte) 100, buf[0, 0].Style.Background.Red);
@@ -108,10 +108,10 @@ public class CellBufferBlendingTests
     public void Set_NonColorStyleFieldsAreSourceVerbatim()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithAttributes(TextAttributes.Italic));
+        buf.Set(0, 0, "x", CellStyle.Default.WithAttributes(TextAttributes.Italic));
 
         buf.PushBlendingMode(BlendingModes.Multiply);
-        buf.Set(0, 0, "y", Style.Default.WithAttributes(TextAttributes.Bold));
+        buf.Set(0, 0, "y", CellStyle.Default.WithAttributes(TextAttributes.Bold));
 
         // Source attributes win — no blending of non-color style fields.
         Assert.Equal(TextAttributes.Bold, buf[0, 0].Style.Attributes);
@@ -121,12 +121,12 @@ public class CellBufferBlendingTests
     public void Set_AfterPop_StopsBlending()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(128, 128, 128)));
 
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.PopBlendingMode();
 
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgb(255, 255, 255)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255)));
         Assert.Equal(Color.FromRgb(255, 255, 255), buf[0, 0].Style.Foreground);
     }
 
@@ -136,7 +136,7 @@ public class CellBufferBlendingTests
     public void Fill_NoActiveMode_FastPathReplacesEveryCell()
     {
         var buf = new CellBuffer(3, 2);
-        var fill = new Cell("x", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(100, 100, 100)));
+        var fill = new Cell("x", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(100, 100, 100)));
 
         buf.Fill(fill);
 
@@ -152,13 +152,13 @@ public class CellBufferBlendingTests
     {
         var buf = new CellBuffer(3, 1);
         // Different existing backgrounds in each cell.
-        buf.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(255, 0, 0)));
-        buf.Set(1, 0, " ", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
-        buf.Set(2, 0, " ", Style.Default.WithBackground(Color.FromRgb(0, 0, 255)));
+        buf.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(255, 0, 0)));
+        buf.Set(1, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+        buf.Set(2, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)));
 
         buf.PushBlendingMode(BlendingModes.Multiply);
         // Fill with half-gray.
-        buf.Fill(new Cell(" ", CellKind.Single, Style.Default.WithBackground(Color.FromRgb(128, 128, 128))));
+        buf.Fill(new Cell(" ", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(128, 128, 128))));
 
         // Each cell multiplied: half-gray * red = (128, 0, 0), etc.
         Assert.Equal((byte) 128, buf[0, 0].Style.Background.Red);
@@ -176,10 +176,10 @@ public class CellBufferBlendingTests
         // Alpha controls how much of the backdrop *cell's background* shows through the
         // newly painted foreground (the source's glyph fully replaces the prior glyph).
         // Seed the backdrop bg with the color we expect to see preserved.
-        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(200, 100, 50)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(200, 100, 50)));
 
         // Fully transparent source foreground — backdrop bg shows through entirely.
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(0, 0, 0, 0)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(0, 0, 0, 0)));
 
         Assert.Equal(Color.FromRgb(200, 100, 50), buf[0, 0].Style.Foreground);
         // The grapheme is still the source's — alpha controls color compositing only.
@@ -190,8 +190,8 @@ public class CellBufferBlendingTests
     public void Set_AlphaFullSource_ReplacesBackdropColor()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(200, 100, 50)));
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(0, 0, 0, 255)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(200, 100, 50)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(0, 0, 0, 255)));
 
         Assert.Equal(Color.FromRgb(0, 0, 0), buf[0, 0].Style.Foreground);
     }
@@ -201,10 +201,10 @@ public class CellBufferBlendingTests
     {
         var buf = new CellBuffer(3, 1);
         // Backdrop bg = black; the source's foreground alpha-blends against it.
-        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(0, 0, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 0)));
 
         // Half-alpha white over black — expect mid-gray (~128).
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(255, 255, 255, 128)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(255, 255, 255, 128)));
 
         var fg = buf[0, 0].Style.Foreground;
         Assert.InRange(fg.Red, (byte) 126, (byte) 130);
@@ -216,8 +216,8 @@ public class CellBufferBlendingTests
     public void Set_StoredCellsAreAlwaysOpaque()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(50, 50, 50)));
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(200, 200, 200, 128)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(50, 50, 50)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(200, 200, 200, 128)));
 
         // Stored cell's alpha is normalized to 255 — alpha is consumed at composite time.
         Assert.Equal((byte) 255, buf[0, 0].Style.Foreground.Alpha);
@@ -229,12 +229,12 @@ public class CellBufferBlendingTests
         var buf = new CellBuffer(3, 1);
         // Backdrop bg = light-gray — the alpha-blended source foreground composes against the
         // underlying cell's *background*, since the source's glyph replaces the prior glyph.
-        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(200, 200, 200)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(200, 200, 200)));
 
         // Multiply with mid-gray gives (200 * 128/255) ≈ 100.
         // Half-alpha source: result = blended * 0.5 + backdrop * 0.5 = 100 * 0.5 + 200 * 0.5 ≈ 150.
         buf.PushBlendingMode(BlendingModes.Multiply);
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(128, 128, 128, 128)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(128, 128, 128, 128)));
 
         var fg = buf[0, 0].Style.Foreground;
         Assert.InRange(fg.Red, (byte) 145, (byte) 155);
@@ -248,7 +248,7 @@ public class CellBufferBlendingTests
 
         // Half-alpha source — we don't know default's RGB so the source wins (with alpha
         // normalized to 255 on the stored cell).
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromRgba(100, 100, 100, 128)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgba(100, 100, 100, 128)));
 
         Assert.Equal(Color.FromRgb(100, 100, 100), buf[0, 0].Style.Foreground);
     }
@@ -257,10 +257,10 @@ public class CellBufferBlendingTests
     public void Set_AlphaIgnoredWhenSourceIsPalette()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(50, 50, 50)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(50, 50, 50)));
 
         // Palette source with explicit alpha — short-circuits to source (palette index).
-        buf.Set(0, 0, "y", Style.Default.WithForeground(Color.FromPalette(3).WithAlpha(128)));
+        buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromPalette(3).WithAlpha(128)));
 
         Assert.Equal(ColorKind.Palette, buf[0, 0].Style.Foreground.Kind);
         Assert.Equal((byte) 3, buf[0, 0].Style.Foreground.PaletteIndex);
@@ -272,7 +272,7 @@ public class CellBufferBlendingTests
     public void Clear_IgnoresActiveBlendingMode()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
         buf.PushBlendingMode(BlendingModes.Multiply);
         buf.Clear();
 
@@ -283,10 +283,10 @@ public class CellBufferBlendingTests
     public void Indexer_IgnoresActiveBlendingMode()
     {
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithForeground(Color.FromRgb(128, 128, 128)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithForeground(Color.FromRgb(128, 128, 128)));
         buf.PushBlendingMode(BlendingModes.Multiply);
 
-        var explicitCell = new Cell("z", CellKind.Single, Style.Default.WithForeground(Color.FromRgb(255, 255, 255)));
+        var explicitCell = new Cell("z", CellKind.Single, CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255)));
         buf[0, 0] = explicitCell;
 
         Assert.Equal(explicitCell, buf[0, 0]);

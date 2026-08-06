@@ -16,7 +16,7 @@ public class ICellSurfaceTests
     {
         surface.Clear();
         surface.CursorVisible = false;
-        return surface.Write(0, 0, "hi 中", Style.Default);   // h i space (3) + wide 中 (2) = 5
+        return surface.Write(0, 0, "hi 中", CellStyle.Default);   // h i space (3) + wide 中 (2) = 5
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class ICellSurfaceTests
     // View() is part of the contract too — a sub-view obtained through the constraint draws onto
     // the underlying buffer at the offset.
     private static void WriteToSubView<TSurface>(TSurface surface) where TSurface : ICellSurface
-        => surface.View(2, 1, 4, 2).Write(0, 0, "x", Style.Default);
+        => surface.View(2, 1, 4, 2).Write(0, 0, "x", CellStyle.Default);
 
     [Fact]
     public void View_WorksThroughGenericConstraint_ForBothSurfaces()

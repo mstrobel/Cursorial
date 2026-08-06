@@ -63,7 +63,7 @@ public sealed class Icon : Image
     /// <param name="loader">Resource loader. <see langword="null" /> uses <see cref="ResourceLoader.Default" />.</param>
     public Icon(Uri resourceUri,
                 string fallbackGlyph,
-                in Style fallbackStyle = default,
+                in CellStyle fallbackStyle = default,
                 Size renderSize = default,
                 ImageFormat? format = null,
                 IResourceLoader? loader = null) : base(resourceUri,
@@ -82,7 +82,7 @@ public sealed class Icon : Image
     public string FallbackGlyph => PlaceholderText;
 
     /// <summary>Style applied to the glyph-fallback placeholder.</summary>
-    public Style FallbackStyle => PlaceholderStyle;
+    public CellStyle FallbackStyle => PlaceholderStyle;
 
     /// <summary>Image format used to decode the loaded bytes.</summary>
     public ImageFormat Format { get; private init; }
@@ -97,7 +97,7 @@ public sealed class Icon : Image
     public static Icon FromEmbedded(string assemblyName,
                                     string resourceName,
                                     string fallbackGlyph,
-                                    in Style fallbackStyle = default,
+                                    in CellStyle fallbackStyle = default,
                                     Size renderSize = default,
                                     ImageFormat? format = null)
         => new(ResourceLoader.Embedded(assemblyName, resourceName), fallbackGlyph, in fallbackStyle, renderSize, format);
@@ -109,7 +109,7 @@ public sealed class Icon : Image
     public static Icon FromEmbedded(Assembly assembly,
                                     string resourceName,
                                     string fallbackGlyph,
-                                    in Style fallbackStyle = default,
+                                    in CellStyle fallbackStyle = default,
                                     Size renderSize = default,
                                     ImageFormat? format = null)
         => new(ResourceLoader.Embedded(assembly, resourceName), fallbackGlyph, in fallbackStyle, renderSize, format);
@@ -121,7 +121,7 @@ public sealed class Icon : Image
     public static Icon FromFile(string path,
                                 string fallbackGlyph,
                                 Size renderSize = default,
-                                in Style fallbackStyle = default,
+                                in CellStyle fallbackStyle = default,
                                 ImageFormat? format = null)
     {
         var uri = Path.IsPathRooted(path) ? ResourceLoader.File(path) : new Uri(path, UriKind.Relative);

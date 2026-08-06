@@ -1,5 +1,7 @@
 using System.Buffers;
 
+using Cursorial.Media;
+
 namespace Cursorial.Output;
 
 /// <summary>

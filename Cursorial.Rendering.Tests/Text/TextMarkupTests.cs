@@ -293,7 +293,7 @@ public class TextMarkupTests
 
         public Cursorial.Rendering.Rect Paint(
             in Cursorial.Rendering.CellBufferView buffer, in Cursorial.Rendering.Rect bounds,
-            in Style style, Output.Capabilities.OutputCapabilities capabilities)
+            in CellStyle style, Output.Capabilities.OutputCapabilities capabilities)
             => bounds;
     }
 

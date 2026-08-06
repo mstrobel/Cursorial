@@ -34,16 +34,16 @@ public class CellTests
     [Fact]
     public void WideLeft_IsTwoCellsWide()
     {
-        var cell = new Cell("中", CellKind.WideLeft, Style.Default);
+        var cell = new Cell("中", CellKind.WideLeft, CellStyle.Default);
         Assert.Equal(2, cell.Width);
     }
 
     [Fact]
     public void Equality_IsByValue()
     {
-        var a = new Cell("a", CellKind.Single, Style.Default.WithAttributes(TextAttributes.Bold));
-        var b = new Cell("a", CellKind.Single, Style.Default.WithAttributes(TextAttributes.Bold));
+        var a = new Cell("a", CellKind.Single, CellStyle.Default.WithAttributes(TextAttributes.Bold));
+        var b = new Cell("a", CellKind.Single, CellStyle.Default.WithAttributes(TextAttributes.Bold));
         Assert.Equal(a, b);
-        Assert.NotEqual(a, b with { Style = Style.Default });
+        Assert.NotEqual(a, b with { Style = CellStyle.Default });
     }
 }

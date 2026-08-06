@@ -171,7 +171,7 @@ public class DecoratedFont : IGlyphFont
     public int Descender => Inner.Descender + (Position == DecorationPosition.Above ? 0 : 1);
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style)
+    public CellStyle EnsureCompatibleStyle(in CellStyle style)
     {
         var attributes = style.Attributes & ~ForbiddenAttributes;
 
@@ -209,7 +209,7 @@ public class DecoratedFont : IGlyphFont
     /// <returns>
     /// A <see cref="Size"/> structure representing the number of columns and rows occupied by the rendered text and its decoration.
     /// </returns>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         var above = Position == DecorationPosition.Above;
         var compatibleStyle = EnsureCompatibleStyle(style);

@@ -1,5 +1,7 @@
 // ReSharper disable CheckNamespace
 
+using Cursorial.Media;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -29,7 +31,7 @@ public static class ResourceDiagnostics
         ArgumentNullException.ThrowIfNull(key);
 
         var lines = new List<string>();
-        var variant = UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
+        var variant = UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor);
         ResourceExtensions.Walk(element, key, variant, lines, out _);
         return lines;
     }

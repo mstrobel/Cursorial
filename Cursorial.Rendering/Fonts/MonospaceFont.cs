@@ -46,7 +46,7 @@ public sealed class MonospaceFont : IGlyphFont
     public int Descender => 0;
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style) => style;
+    public CellStyle EnsureCompatibleStyle(in CellStyle style) => style;
 
     /// <inheritdoc/>
     public GlyphMetrics GetMetrics() => GlyphMetrics.Monospace;
@@ -78,7 +78,7 @@ public sealed class MonospaceFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         return PaintCore(buffer, column, row, text, style, null);
     }
@@ -89,7 +89,7 @@ public sealed class MonospaceFont : IGlyphFont
         return PaintCore(buffer, column, row, text, default, styleProvider);
     }
 
-    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style,
+    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
                                   GlyphStyleProvider? styleProvider = null)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;

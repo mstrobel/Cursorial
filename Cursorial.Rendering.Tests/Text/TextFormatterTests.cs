@@ -333,7 +333,7 @@ public class TextFormatterTests
     [Fact]
     public void Format_PreservesStyles()
     {
-        var bold = Style.Default.WithAttributes(TextAttributes.Bold);
+        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
         var builder = new RichTextBuilder().Run("normal ");
         using (builder.Push(in bold)) builder.Run("bold");
         builder.Run(" more");

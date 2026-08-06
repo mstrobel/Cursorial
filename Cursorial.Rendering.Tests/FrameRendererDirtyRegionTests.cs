@@ -20,8 +20,8 @@ public class FrameRendererDirtyRegionTests
         // No MarkDirty calls — current behavior preserved: every cell diff'd against front.
         var r = new FrameRenderer();
         var buffer = new CellBuffer(5, 2);
-        buffer.Set(0, 0, "a", Style.Default);
-        buffer.Set(4, 1, "z", Style.Default);
+        buffer.Set(0, 0, "a", CellStyle.Default);
+        buffer.Set(4, 1, "z", CellStyle.Default);
 
         var output = Render(r, buffer);
 
@@ -43,8 +43,8 @@ public class FrameRendererDirtyRegionTests
         var buffer = new CellBuffer(10, 3);
         Render(r, buffer);
 
-        buffer.Set(1, 0, "I", Style.Default);
-        buffer.Set(8, 0, "O", Style.Default);
+        buffer.Set(1, 0, "I", CellStyle.Default);
+        buffer.Set(8, 0, "O", CellStyle.Default);
         buffer.MarkDirty(new Rect(column: 0, row: 0, columns: 3, rows: 1));
 
         var output = Render(r, buffer);
@@ -62,8 +62,8 @@ public class FrameRendererDirtyRegionTests
         Render(r, buffer);
 
         // Paint a cell inside the dirty region and one outside; only the marked one should emit.
-        buffer.Set(1, 0, "I", Style.Default);
-        buffer.Set(8, 0, "O", Style.Default);
+        buffer.Set(1, 0, "I", CellStyle.Default);
+        buffer.Set(8, 0, "O", CellStyle.Default);
         buffer.MarkDirty(new Rect(column: 0, row: 0, columns: 3, rows: 1));
 
         var output = Render(r, buffer);
@@ -81,8 +81,8 @@ public class FrameRendererDirtyRegionTests
         var buffer = new CellBuffer(10, 2);
         Render(r, buffer);
 
-        buffer.Set(1, 0, "X", Style.Default);
-        buffer.Set(5, 0, "Y", Style.Default);
+        buffer.Set(1, 0, "X", CellStyle.Default);
+        buffer.Set(5, 0, "Y", CellStyle.Default);
         // Two overlapping regions covering both X (col 1) and Y (col 5).
         buffer.MarkDirty(new Rect(0, 0, 4, 1));
         buffer.MarkDirty(new Rect(3, 0, 4, 1));
@@ -115,7 +115,7 @@ public class FrameRendererDirtyRegionTests
         var buffer = new CellBuffer(5, 2);
         Render(r, buffer);
 
-        buffer.Set(0, 0, "X", Style.Default);
+        buffer.Set(0, 0, "X", CellStyle.Default);
         // Region anchored within bounds but extending past the right edge — clamped.
         buffer.MarkDirty(new Rect(0, 0, 100, 100));
 
@@ -152,7 +152,7 @@ public class FrameRendererDirtyRegionTests
         // that's marked dirty but actually unchanged doesn't re-emit.
         var r = RestrictedRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(0, 0, "S", Style.Default);
+        buffer.Set(0, 0, "S", CellStyle.Default);
         Render(r, buffer);
 
         // Second render with the same content — but the region is marked dirty.

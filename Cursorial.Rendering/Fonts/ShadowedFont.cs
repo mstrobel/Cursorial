@@ -6,7 +6,7 @@ namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
 /// A decorator that wraps any <see cref="IGlyphFont"/> and paints an offset shadow under each
-/// glyph before the foreground cells. The shadow uses a separate <see cref="Style"/> so a
+/// glyph before the foreground cells. The shadow uses a separate <see cref="CellStyle"/> so a
 /// caller can dim or recolor it independently of the glyph itself; the underlying font does
 /// all the actual layout work — this wrapper just paints twice with different anchors.
 /// </summary>
@@ -40,21 +40,21 @@ public sealed class ShadowedFont : IGlyphFont
     /// <param name="shadowStyle">Style applied to the shadow pass. Caller-supplied; typical values use the same foreground as the glyph but with low alpha, or a darker tone.</param>
     /// <param name="shadowBlendingMode">The blending mode to use when applying the shadow. Defaults to <see cref="BlendingModes.Default"/>.</param>
     /// <param name="displayName">The display name to use when describing this font to a user.</param>
-    public ShadowedFont(IGlyphFont inner, (int Columns, int Rows) offset = default, in Style shadowStyle = default, IBlendingMode? shadowBlendingMode = null, string? displayName = null)
+    public ShadowedFont(IGlyphFont inner, (int Columns, int Rows) offset = default, in CellStyle shadowStyle = default, IBlendingMode? shadowBlendingMode = null, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(inner);
 
         DisplayName = displayName ?? $"{inner.DisplayName} (Shadowed)";
         Inner = inner;
         Offset = offset == default ? (1, 1) : offset;
-        ShadowStyle = EnsureCompatibleShadowStyle(shadowStyle.IsDefault ? Style.DefaultShadow : shadowStyle);
+        ShadowStyle = EnsureCompatibleShadowStyle(shadowStyle.IsDefault ? CellStyle.DefaultShadow : shadowStyle);
 
         _shadowBlendingMode = shadowBlendingMode;
     }
 
     /// <summary>The default shadowed font, with a 1-cell offset and default shadow style.</summary>
     public static ShadowedFont Default { get; } = new(MonospaceFont.Default,
-                                                      shadowStyle: Style.DefaultShadow,
+                                                      shadowStyle: CellStyle.DefaultShadow,
                                                       shadowBlendingMode: BlendingModes.Multiply);
 
     /// <summary>The underlying font that produces glyph cell patterns.</summary>
@@ -64,7 +64,7 @@ public sealed class ShadowedFont : IGlyphFont
     public (int Columns, int Rows) Offset { get; }
 
     /// <summary>Style applied to the shadow pass.</summary>
-    public Style ShadowStyle { get; }
+    public CellStyle ShadowStyle { get; }
 
     /// <summary>The blending mode to use when applying the shadow. Defaults to <see cref="BlendingModes.Default"/>.</summary>
     public IBlendingMode ShadowBlendingMode => _shadowBlendingMode ?? BlendingModes.Default;
@@ -124,10 +124,10 @@ public sealed class ShadowedFont : IGlyphFont
     public int Descender => Inner.Descender + Math.Abs(Offset.Rows);
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style)
+    public CellStyle EnsureCompatibleStyle(in CellStyle style)
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
 
-    private Style EnsureCompatibleShadowStyle(in Style style) 
+    private CellStyle EnsureCompatibleShadowStyle(in CellStyle style) 
         => style with
            {
                Attributes = style.Attributes & ~ForbiddenShadowAttributes,
@@ -146,7 +146,7 @@ public sealed class ShadowedFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         return PaintCore(buffer, column, row, text, style, styleProvider: null);
     }
@@ -156,13 +156,13 @@ public sealed class ShadowedFont : IGlyphFont
         return PaintCore(buffer, column, row, text, default, styleProvider);
     }
 
-    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style,
+    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
                            GlyphStyleProvider? styleProvider = null)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
         var shadowStyle = ShadowStyle;
-        var blendingMode = _shadowBlendingMode ?? (shadowStyle == Style.DefaultShadow ? BlendingModes.Multiply : BlendingModes.Default);
+        var blendingMode = _shadowBlendingMode ?? (shadowStyle == CellStyle.DefaultShadow ? BlendingModes.Multiply : BlendingModes.Default);
         var pushBlendingMode = buffer.CurrentBlendingMode != blendingMode;
 
         // Paint the shadow first, then the glyph. The buffer's active blending mode applies to

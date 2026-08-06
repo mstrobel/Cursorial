@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Output;
 
 namespace Cursorial.Tests.Output;

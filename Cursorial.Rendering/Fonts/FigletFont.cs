@@ -44,9 +44,9 @@ public sealed class FigletFont : IGlyphFont
                                                        TextAttributes.Strikethrough;
 
     // ReSharper disable once ReplaceWithFieldKeyword
-    private static readonly Style s_defaultStyle = default(Style) with { Background = Color.Transparent };
+    private static readonly CellStyle s_defaultStyle = default(CellStyle) with { Background = Color.Transparent };
 
-    public static ref readonly Style DefaultStyle => ref s_defaultStyle;
+    public static ref readonly CellStyle DefaultStyle => ref s_defaultStyle;
 
     private readonly Dictionary<uint, FigletGlyph> _glyphs;
     private readonly FigletGlyph _spaceGlyph;
@@ -167,7 +167,7 @@ public sealed class FigletFont : IGlyphFont
     public string DisplayName => Name;
 
     /// <inheritdoc/>
-    public Style EnsureCompatibleStyle(in Style style)
+    public CellStyle EnsureCompatibleStyle(in CellStyle style)
         => style with { Attributes = style.Attributes & ~ForbiddenAttributes };
 
     private GlyphMetrics? _metrics;
@@ -204,7 +204,7 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
         var compatible = EnsureCompatibleStyle(style);
         return PaintCore(buffer, column, row, text, (_, _) => compatible);

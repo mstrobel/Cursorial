@@ -17,7 +17,7 @@ public static class BrushedTextExtensions
     /// supplies the run's non-color style (attributes, underline shape); colors come from the brush.
     /// </summary>
     public static RichTextBuilder BrushedRun(this RichTextBuilder builder, string text, BrushedStyle brushed,
-                                             Style baseStyle = default)
+                                             CellStyle baseStyle = default)
     {
         ArgumentNullException.ThrowIfNull(builder);
         return builder.Run(text, baseStyle, tag: brushed);

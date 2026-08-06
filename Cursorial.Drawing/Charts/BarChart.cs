@@ -252,6 +252,6 @@ public sealed class BarChart : IChart
             return;
 
         var color = Brush.ColorAt(column, row, bounds);
-        context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
+        context.Set(column, row, glyph, CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
     }
 }

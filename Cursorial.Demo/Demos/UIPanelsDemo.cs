@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Text;
 using Cursorial.UI;

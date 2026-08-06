@@ -57,8 +57,8 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default);
-        buf.Set(1, 0, "b", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
+        buf.Set(1, 0, "b", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -73,7 +73,7 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
 
         Render(r, buf);             // first frame
         var output = Render(r, buf); // second frame, identical buffer
@@ -91,11 +91,11 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(5, 1);
-        buf.Set(0, 0, "h", Style.Default);
-        buf.Set(1, 0, "i", Style.Default);
+        buf.Set(0, 0, "h", CellStyle.Default);
+        buf.Set(1, 0, "i", CellStyle.Default);
         Render(r, buf);
 
-        buf.Set(1, 0, "o", Style.Default);
+        buf.Set(1, 0, "o", CellStyle.Default);
         var output = Render(r, buf);
 
         // Should NOT re-emit 'h' (it's unchanged). Should emit 'o'.
@@ -110,11 +110,11 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
         Render(r, buf);
 
         var buf2 = new CellBuffer(5, 2);
-        buf2.Set(0, 0, "a", Style.Default);
+        buf2.Set(0, 0, "a", CellStyle.Default);
         var output = Render(r, buf2);
 
         Assert.Contains("\x1b[2J", output); // clear screen — full redraw
@@ -127,7 +127,7 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer(new FrameRendererOptions(ForceFullRedraw: true));
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
         Render(r, buf);
 
         var output = Render(r, buf);
@@ -141,9 +141,9 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        var bold = Style.Default.WithAttributes(TextAttributes.Bold);
+        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
         buf.Set(0, 0, "a", bold);
-        buf.Set(1, 0, "b", Style.Default);
+        buf.Set(1, 0, "b", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -160,7 +160,7 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
 
         var output = Render(r, buf);
 
@@ -176,10 +176,10 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(4, 1);
-        buf.Set(0, 0, "中", Style.Default);
+        buf.Set(0, 0, "中", CellStyle.Default);
         Render(r, buf);
 
-        buf.Set(0, 0, "x", Style.Default);
+        buf.Set(0, 0, "x", CellStyle.Default);
         var output = Render(r, buf);
 
         // Both (0,0) and (0,1) changed: (0,0) WideLeft → Single 'x', (0,1) WideContinuation → Blank.
@@ -195,7 +195,7 @@ public class FrameRendererTests
     {
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "a", Style.Default);
+        buf.Set(0, 0, "a", CellStyle.Default);
         Render(r, buf);
 
         r.Reset();
@@ -309,7 +309,7 @@ public class FrameRendererTests
         // bg-bleed when the terminal has to fill new rows (resize, scroll, etc.).
         var r = new FrameRenderer();
         var buf = new CellBuffer(3, 1);
-        buf.Set(0, 0, "x", Style.Default.WithBackground(Color.FromRgb(255, 0, 0)));
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(255, 0, 0)));
 
         var output = Render(r, buf);
         Assert.EndsWith("\x1b[0m", output);

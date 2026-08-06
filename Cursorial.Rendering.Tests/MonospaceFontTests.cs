@@ -36,7 +36,7 @@ public class MonospaceFontTests
     public void Paint_AsciiAtAnchor_LaysDownCells()
     {
         var buffer = new CellBuffer(10, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 2, 0, "hi", Style.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 2, 0, "hi", CellStyle.Default);
 
         Assert.Equal(new Size(2, 1), painted);
         Assert.Equal("h", buffer[2, 0].Grapheme);
@@ -47,7 +47,7 @@ public class MonospaceFontTests
     public void Paint_AtRightEdge_ClipsRatherThanThrows()
     {
         var buffer = new CellBuffer(5, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 3, 0, "abcdef", Style.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 3, 0, "abcdef", CellStyle.Default);
 
         // Only 2 cells fit at column 3 in a 5-wide buffer (cols 3, 4).
         Assert.Equal(new Size(2, 1), painted);
@@ -57,8 +57,8 @@ public class MonospaceFontTests
     public void Paint_OutOfBoundsAnchor_PaintsNothing()
     {
         var buffer = new CellBuffer(5, 1);
-        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 0, 5, "x", Style.Default));
-        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", Style.Default));
+        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 0, 5, "x", CellStyle.Default));
+        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", CellStyle.Default));
     }
 
     [Fact]
@@ -67,13 +67,13 @@ public class MonospaceFontTests
         // Pushing Multiply against a red backdrop with green source should produce yellow.
         // (Both treated as opaque; alpha=255 short-circuits to the mode's blend.)
         var buffer = new CellBuffer(2, 1);
-        buffer.Set(0, 0, " ", Style.Default.WithBackground(Color.FromRgb(255, 0, 0)));
+        buffer.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(255, 0, 0)));
 
         buffer.PushBlendingMode(BlendingModes.Plus);
         try
         {
             MonospaceFont.Default.Paint(buffer, 0, 0,
-                "x", Style.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+                "x", CellStyle.Default.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally { buffer.PopBlendingMode(); }
 

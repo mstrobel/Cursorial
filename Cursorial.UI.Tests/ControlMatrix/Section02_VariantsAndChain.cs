@@ -1,5 +1,4 @@
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;

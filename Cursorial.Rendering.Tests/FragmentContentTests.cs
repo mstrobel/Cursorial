@@ -23,9 +23,9 @@ public class FragmentContentTests
         var content = new CountingContent();
         var bounds = new Rect(0, 0, 4, 2);
 
-        content.Paint(buffer, bounds, Style.Default, OutputCapabilities.None);
-        content.Paint(buffer, bounds, Style.Default, OutputCapabilities.None);
-        content.Paint(buffer, bounds, Style.Default, OutputCapabilities.None);
+        content.Paint(buffer, bounds, CellStyle.Default, OutputCapabilities.None);
+        content.Paint(buffer, bounds, CellStyle.Default, OutputCapabilities.None);
+        content.Paint(buffer, bounds, CellStyle.Default, OutputCapabilities.None);
 
         // Built once on the first paint; the later two paints reuse the cached fragment.
         Assert.Equal(1, content.CreateCount);
@@ -37,8 +37,8 @@ public class FragmentContentTests
         var buffer = new CellBuffer(10, 4);
         var content = new CountingContent();
 
-        content.Paint(buffer, new Rect(0, 0, 4, 2), Style.Default, OutputCapabilities.None);
-        content.Paint(buffer, new Rect(0, 0, 6, 3), Style.Default, OutputCapabilities.None);
+        content.Paint(buffer, new Rect(0, 0, 4, 2), CellStyle.Default, OutputCapabilities.None);
+        content.Paint(buffer, new Rect(0, 0, 6, 3), CellStyle.Default, OutputCapabilities.None);
 
         // The available space changed → a re-measure / recreate is required.
         Assert.Equal(2, content.CreateCount);
@@ -54,13 +54,13 @@ public class FragmentContentTests
             return availableSpace;
         }
 
-        protected override IBufferFragment CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        protected override IBufferFragment CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             CreateCount++;
             return new StubFragment(bounds.Size);
         }
 
-        protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
+        protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
             => throw new NotSupportedException("Placeholder not exercised by this test.");
     }
 

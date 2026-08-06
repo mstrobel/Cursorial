@@ -116,7 +116,7 @@ public class BrushedFormattedTextTests
         // Regression: a document whose DefaultStyle sets a foreground must still receive the brush on its
         // inherited text — the brush overrides the document default; only a run's OWN explicit color wins.
         var gray = Color.FromRgb(180, 180, 180);
-        var doc = new RichTextBuilder(Style.Default.WithForeground(gray)).Run("aaaa bbbb").Build();
+        var doc = new RichTextBuilder(CellStyle.Default.WithForeground(gray)).Run("aaaa bbbb").Build();
         var ft = new TextFormatter().Format(doc, 9);
 
         var b = DrawHarness.Render(12, 3, ctx =>
@@ -136,7 +136,7 @@ public class BrushedFormattedTextTests
     {
         var green = Color.FromRgb(0, 200, 0);
         var ft = new TextFormatter().Format(
-            new RichTextBuilder().Run("X", Style.Default.WithForeground(green)).Build(), 8);
+            new RichTextBuilder().Run("X", CellStyle.Default.WithForeground(green)).Build(), 8);
         var b = DrawHarness.Render(8, 2, ctx =>
             ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), new SolidColorBrush(Red), OutputCapabilities.None));
 
@@ -250,7 +250,7 @@ public class BrushedFormattedTextTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => new(1, 1);
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             buffer.Set(bounds.Column, bounds.Row, glyph, style);
             return new Rect(bounds.Column, bounds.Row, 1, 1);

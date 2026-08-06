@@ -187,7 +187,7 @@ public class SceneLayerDamageTests
             incremental.Composite(layers, view);
 
             var reference = new CellBuffer(12, 6);
-            new SceneCompositor(Style.Default.WithBackground(Backdrop))
+            new SceneCompositor(CellStyle.Default.WithBackground(Backdrop))
                 .Composite([new SceneLayer(scene, layers[0].Parameters)], reference.AsView());
 
             for (var row = 0; row < 6; row++)
@@ -201,7 +201,7 @@ public class SceneLayerDamageTests
     private static (SceneCompositor Compositor, CellBuffer Buffer, CellBufferView View, Scene Scene) Fixture(int columns, int rows)
     {
         var buffer = new CellBuffer(columns, rows);
-        return (new SceneCompositor(Style.Default.WithBackground(Backdrop)), buffer, buffer.AsView(), Scene.Create(columns, rows));
+        return (new SceneCompositor(CellStyle.Default.WithBackground(Backdrop)), buffer, buffer.AsView(), Scene.Create(columns, rows));
     }
 
     /// <summary>

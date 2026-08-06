@@ -248,7 +248,7 @@ public class ChartTests
         Assert.Equal(2, layers.Count);
 
         var target = new CellBuffer(6, 4);
-        new SceneCompositor(Style.Default)
+        new SceneCompositor(CellStyle.Default)
             .Composite([new SceneLayer(layers[0]), new SceneLayer(layers[1])], target.AsView());
 
         var bg = target[0, 3].Style.Background;   // a cell under both flat fills

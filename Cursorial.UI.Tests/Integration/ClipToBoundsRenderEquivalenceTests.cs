@@ -6,14 +6,13 @@
 using System.Text;
 
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Text;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
-
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.Tests.UI.Integration;
 

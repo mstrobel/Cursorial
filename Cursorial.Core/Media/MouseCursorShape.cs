@@ -1,4 +1,6 @@
-namespace Cursorial.Output;
+using Cursorial.Output;
+
+namespace Cursorial.Media;
 
 /// <summary>
 /// Pointer / mouse-cursor shape values understood by Kitty's OSC 22 pointer-shape protocol,

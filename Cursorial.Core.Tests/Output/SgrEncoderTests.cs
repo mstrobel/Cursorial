@@ -10,7 +10,7 @@ namespace Cursorial.Tests.Output;
 public class SgrEncoderTests
 {
     // ReSharper disable once InconsistentNaming
-    private static Style DS => Style.Default;
+    private static CellStyle DS => CellStyle.Default;
 
     private static string Encode(Action<IBufferWriter<byte>> action)
     {
@@ -99,7 +99,7 @@ public class SgrEncoderTests
     [Fact]
     public void WriteAbsolute_FgBgAndBold_OrderedConsistently()
     {
-        Style style = DS.WithForeground(Color.FromPalette(2))
+        CellStyle style = DS.WithForeground(Color.FromPalette(2))
                         .WithBackground(Color.FromPalette(7))
                         .WithAttributes(TextAttributes.Bold);
 
@@ -129,7 +129,7 @@ public class SgrEncoderTests
     [Fact]
     public void WriteAbsolute_UnderlineColorRgb_EmitsSgr582rgb()
     {
-        Style style = DS
+        CellStyle style = DS
                       .WithAttributes(TextAttributes.Underline)
                       .WithUnderlineColor(Color.FromRgb(255, 0, 128));
 
@@ -144,7 +144,7 @@ public class SgrEncoderTests
     [Fact]
     public void WriteAbsolute_UnderlineColorPalette_EmitsSgr585idx()
     {
-        Style style = DS
+        CellStyle style = DS
                       .WithAttributes(TextAttributes.Underline)
                       .WithUnderlineColor(Color.FromPalette(5));
 
@@ -157,7 +157,7 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_IdenticalStyles_EmitsNothing()
     {
-        Style style = DS
+        CellStyle style = DS
                       .WithForeground(Color.FromPalette(3))
                       .WithAttributes(TextAttributes.Bold);
 
@@ -168,8 +168,8 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_ChangeForegroundOnly_EmitsOnlyForeground()
     {
-        Style from = DS.WithForeground(Color.FromPalette(1));
-        Style to = DS.WithForeground(Color.FromPalette(2));
+        CellStyle from = DS.WithForeground(Color.FromPalette(1));
+        CellStyle to = DS.WithForeground(Color.FromPalette(2));
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[32m", s);
     }
@@ -177,8 +177,8 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_AddBoldKeepingFg_EmitsOnlyBold()
     {
-        Style from = DS.WithForeground(Color.FromPalette(1));
-        Style to = from.AddAttributes(TextAttributes.Bold);
+        CellStyle from = DS.WithForeground(Color.FromPalette(1));
+        CellStyle to = from.AddAttributes(TextAttributes.Bold);
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[1m", s);
     }
@@ -186,8 +186,8 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_RemoveItalic_EmitsResetCode23()
     {
-        Style from = DS.WithAttributes(TextAttributes.Italic);
-        Style to = DS;
+        CellStyle from = DS.WithAttributes(TextAttributes.Italic);
+        CellStyle to = DS;
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[23m", s);
     }
@@ -196,8 +196,8 @@ public class SgrEncoderTests
     public void WriteDelta_RemoveBoldAndFaint_EmitsSingleSgr22()
     {
         // SGR 22 resets both Bold and Faint — emit it once, not twice.
-        Style from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint);
-        Style to = DS;
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint);
+        CellStyle to = DS;
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[22m", s);
     }
@@ -205,8 +205,8 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_SwapBoldForItalic_EmitsResetAndAdd()
     {
-        Style from = DS.WithAttributes(TextAttributes.Bold);
-        Style to = DS.WithAttributes(TextAttributes.Italic);
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold);
+        CellStyle to = DS.WithAttributes(TextAttributes.Italic);
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[22;3m", s);
     }
@@ -214,9 +214,9 @@ public class SgrEncoderTests
     [Fact]
     public void WriteDelta_UnderlineShapeChange_ReEmitsUnderline()
     {
-        Style from = DS.WithAttributes(TextAttributes.Underline)
+        CellStyle from = DS.WithAttributes(TextAttributes.Underline)
                        .WithUnderlineStyle(UnderlineStyle.Single);
-        Style to = from.WithUnderlineStyle(UnderlineStyle.Curly);
+        CellStyle to = from.WithUnderlineStyle(UnderlineStyle.Curly);
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[4:3m", s);
     }

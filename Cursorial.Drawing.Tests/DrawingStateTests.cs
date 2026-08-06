@@ -19,7 +19,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             using (ctx.PushTranslate(2, 1))
-                ctx.Set(0, 0, "X", Style.Default.WithForeground(White));
+                ctx.Set(0, 0, "X", CellStyle.Default.WithForeground(White));
         });
         Assert.Equal("X", b[2, 1].Grapheme);   // local (0,0) → scene (2,1)
         Assert.True(string.IsNullOrEmpty(b[0, 0].Grapheme));
@@ -142,7 +142,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(6, 3, ctx =>
         {
             ctx.PushClip(new Rect(0, 0, 2, 2));   // intentionally leaked
-            ctx.Set(0, 0, "Z", Style.Default.WithForeground(White));
+            ctx.Set(0, 0, "Z", CellStyle.Default.WithForeground(White));
         });
         Assert.Equal("Z", b[0, 0].Grapheme);
     }

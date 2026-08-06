@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Terminal;
 
 // ReSharper disable CheckNamespace

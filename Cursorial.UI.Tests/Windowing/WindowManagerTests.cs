@@ -94,7 +94,7 @@ public sealed class WindowManagerTests
 
         // Make that zone's scene a group surface carrying the marker: a wide glyph cut in half by its
         // member's clip degrades to a blank that still has to replace, which intermediate mode marks.
-        var glyphStyle = Cursorial.Output.Style.Default
+        var glyphStyle = Cursorial.Output.CellStyle.Default
                                   .WithForeground(Color.FromRgb(0, 0, 255))
                                   .WithBackground(Color.FromRgb(255, 0, 0));
 

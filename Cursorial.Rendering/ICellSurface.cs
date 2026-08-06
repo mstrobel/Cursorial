@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering;
 
@@ -54,24 +55,24 @@ internal interface ICellSurface
     /// what code that blanks or clips cells on its own must use.
     /// </summary>
     /// <remarks>
-    /// Explicitly <em>not</em> necessarily <see cref="Style.Default"/>: a buffer constructed against a
+    /// Explicitly <em>not</em> necessarily <see cref="CellStyle.Default"/>: a buffer constructed against a
     /// terminal that reported its own default colors carries those instead. Reaching for
-    /// <see cref="Cell.Blank"/> (i.e. <see cref="Style.Default"/>) rather than asking the surface
+    /// <see cref="Cell.Blank"/> (i.e. <see cref="CellStyle.Default"/>) rather than asking the surface
     /// punches a differently-styled hole into whatever region the blanked cells sat in — and because
-    /// <see cref="Style.Default"/> is <em>opaque</em>, on a surface whose blank is translucent it also
+    /// <see cref="CellStyle.Default"/> is <em>opaque</em>, on a surface whose blank is translucent it also
     /// occludes content the surface was supposed to let through.
     /// </remarks>
-    Style DefaultStyle { get; }
+    CellStyle DefaultStyle { get; }
 
     /// <summary>Raw cell read / write at <c>(column, row)</c> — bypasses wide-cell handling and blending.</summary>
     Cell this[int column, int row] { get; set; }
 
     /// <summary>Place a single grapheme cluster, handling wide-cell width. Returns columns occupied.</summary>
-    int Set(int column, int row, string? grapheme, in Style style);
+    int Set(int column, int row, string? grapheme, in CellStyle style);
 
     /// <summary>Lay out a string's grapheme clusters across a single row, stopping at the first
     /// C0/C1 control character. Returns columns written.</summary>
-    int Write(int column, int row, ReadOnlySpan<char> text, in Style style);
+    int Write(int column, int row, ReadOnlySpan<char> text, in CellStyle style);
 
     /// <summary>Fill every cell with <paramref name="cell"/>, applying the active blending mode.</summary>
     void Fill(in Cell cell);
@@ -95,7 +96,7 @@ internal interface ICellSurface
     /// Register a fragment at <c>(column, row)</c>. Returns <see langword="true"/> when registered,
     /// <see langword="false"/> when the anchor falls outside the surface and the fragment is dropped.
     /// </summary>
-    bool AddFragment(int column, int row, IBufferFragment fragment, in Style anchorStyle = default);
+    bool AddFragment(int column, int row, IBufferFragment fragment, in CellStyle anchorStyle = default);
 
     /// <summary>Remove the fragment anchored at <c>(column, row)</c>. Returns true when one was removed.</summary>
     bool RemoveFragment(int column, int row);

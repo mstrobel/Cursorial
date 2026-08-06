@@ -44,8 +44,8 @@ public class FrameRendererContinuationStyleTests
         // (legal through the raw indexer, meaningless to a terminal) must never reach the wire.
         var renderer = new FrameRenderer(CapsWithWideGlyphs(false));
         var buffer = new CellBuffer(4, 1);
-        buffer.Set(0, 0, "中", Style.Default.WithBackground(Color.FromRgb(80, 80, 80)));
-        buffer[1, 0] = Cell.WideContinuation with { Style = Style.Default.WithBackground(Color.FromRgb(9, 9, 9)) };
+        buffer.Set(0, 0, "中", CellStyle.Default.WithBackground(Color.FromRgb(80, 80, 80)));
+        buffer[1, 0] = Cell.WideContinuation with { Style = CellStyle.Default.WithBackground(Color.FromRgb(9, 9, 9)) };
 
         var output = Render(renderer, buffer);
 
@@ -79,8 +79,8 @@ public class FrameRendererContinuationStyleTests
         // the wide-glyph defense one branch over does the opposite.
         var renderer = new FrameRenderer(CapsWithWideGlyphs(false));
         var buffer = new CellBuffer(4, 1);
-        buffer.Set(0, 0, "─", Style.Default.WithBackground(Color.FromRgb(40, 50, 60)));
-        buffer.Set(1, 0, "中", Style.Default.WithBackground(Color.FromRgb(10, 20, 30))); // pair at 1-2
+        buffer.Set(0, 0, "─", CellStyle.Default.WithBackground(Color.FromRgb(40, 50, 60)));
+        buffer.Set(1, 0, "中", CellStyle.Default.WithBackground(Color.FromRgb(10, 20, 30))); // pair at 1-2
 
         var output = Render(renderer, buffer);
 
@@ -109,11 +109,11 @@ public class FrameRendererContinuationStyleTests
         // branch returns before it can emit, so a mismatch is invisible in a plain diff frame.)
         var renderer = new FrameRenderer();
         var buffer = new CellBuffer(6, 1);
-        buffer.Set(1, 0, "中", Style.Default.WithBackground(Color.FromRgb(80, 80, 80))); // pair at 1-2
-        buffer.Set(4, 0, "x", Style.Default);
+        buffer.Set(1, 0, "中", CellStyle.Default.WithBackground(Color.FromRgb(80, 80, 80))); // pair at 1-2
+        buffer.Set(4, 0, "x", CellStyle.Default);
         Render(renderer, buffer);
 
-        buffer.Set(4, 0, "y", Style.Default);
+        buffer.Set(4, 0, "y", CellStyle.Default);
         var output = Render(renderer, buffer);
 
         Assert.Contains("y", output);
@@ -135,8 +135,8 @@ public class FrameRendererContinuationStyleTests
 
         for (int row = 0; row < 4; row++)
         {
-            buffer.Set(0, row, "中", Style.Default);              // pair at columns 0-1
-            buffer.Set(2, row, ((char) ('A' + row)).ToString(), Style.Default);
+            buffer.Set(0, row, "中", CellStyle.Default);              // pair at columns 0-1
+            buffer.Set(2, row, ((char) ('A' + row)).ToString(), CellStyle.Default);
         }
 
         Render(renderer, buffer);
@@ -144,8 +144,8 @@ public class FrameRendererContinuationStyleTests
         buffer.Clear();
         for (int row = 0; row < 4; row++)
         {
-            buffer.Set(0, row, "中", Style.Default);
-            buffer.Set(2, row, ((char) ('B' + row)).ToString(), Style.Default); // shifted up by one
+            buffer.Set(0, row, "中", CellStyle.Default);
+            buffer.Set(2, row, ((char) ('B' + row)).ToString(), CellStyle.Default); // shifted up by one
         }
 
         var output = Render(renderer, buffer);
@@ -165,7 +165,7 @@ public class FrameRendererContinuationStyleTests
         // the fragment sits on one panel-colored column and one terminal-default hole.
         var renderer = new FrameRenderer();
         var buffer = new CellBuffer(5, 1);
-        buffer.Set(1, 0, "中", Style.Default.WithBackground(Color.FromRgb(80, 80, 80))); // pair at 1-2
+        buffer.Set(1, 0, "中", CellStyle.Default.WithBackground(Color.FromRgb(80, 80, 80))); // pair at 1-2
         buffer.AddFragment(1, 0, new CoveringFragment(new Size(2, 1)));
 
         var output = Render(renderer, buffer);

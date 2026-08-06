@@ -283,7 +283,7 @@ public class TextBlock : UIElement
     {
         var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
                                           defaultWrap: wrappingOverride ?? TextWrapping,
-                                          defaultStyle: Output.Style.Transparent);
+                                          defaultStyle: Output.CellStyle.Transparent);
 
         return BuildPlainText(this, text, builder);
     }

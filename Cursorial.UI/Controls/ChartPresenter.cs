@@ -59,7 +59,7 @@ public class ChartPresenter : DrawnContentPresenter
 
     /// <summary>Test seam: the scratch's blank style, which must be transparent — see
     /// <see cref="RentCompositingScratch"/>.</summary>
-    internal Output.Style? CompositingScratchBlank => _buffer?.DefaultStyle;
+    internal Output.CellStyle? CompositingScratchBlank => _buffer?.DefaultStyle;
 
     /// <summary>
     /// Drops the layered-compositing scratch. Nothing outside a render observes it, so releasing is
@@ -98,7 +98,7 @@ public class ChartPresenter : DrawnContentPresenter
             _bufferCapabilities == context.Capabilities &&
             (long) cached.Columns * cached.Rows <= needed * 2)
         {
-            cached.Clear(Output.Style.Transparent);
+            cached.Clear(Output.CellStyle.Transparent);
             _compositor ??= new SceneCompositor(cached);
             return cached;
         }
@@ -109,7 +109,7 @@ public class ChartPresenter : DrawnContentPresenter
         // DefaultStyle true here — the answer everything that blanks a cell of its own accord reads.
         var buffer = new CellBuffer(size.Columns, size.Rows,
                                     TerminalCapabilities.None with { Output = context.Capabilities },
-                                    defaultStyle: Output.Style.Transparent);
+                                    defaultStyle: Output.CellStyle.Transparent);
 
         _buffer = buffer;
         _bufferCapabilities = context.Capabilities;

@@ -4,6 +4,7 @@ using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
 using Cursorial.Input.Parsing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Terminal.Stdio;

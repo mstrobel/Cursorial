@@ -63,7 +63,7 @@ public sealed class ScaledText : FragmentContent
     /// </summary>
     public BrushedTextResolver? BrushResolver { get; set; }
 
-    protected internal override bool IsCachedFragmentStale(Size availableSpace, in Style style,
+    protected internal override bool IsCachedFragmentStale(Size availableSpace, in CellStyle style,
                                                            OutputCapabilities? capabilities = null)
     {
         // The style is baked into the emission (the OSC 66 SGR backdrop), so a style change —
@@ -80,7 +80,7 @@ public sealed class ScaledText : FragmentContent
         var text = Text;
 
         // OSC 66 path: scaled glyphs at Sizing.Scale × text-width × 1 row. Wrap if it wouldn't fit.
-        var probeFragment = new SizedTextFragment(Sizing, text, Style.Default);
+        var probeFragment = new SizedTextFragment(Sizing, text, CellStyle.Default);
         if (probeFragment.IsSupported(capabilities))
         {
             canCreateFragment = true;
@@ -110,7 +110,7 @@ public sealed class ScaledText : FragmentContent
         return new Size(Math.Min(monospaceColumns, availableSpace.Columns), Math.Max(1, rows));
     }
 
-    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in Style style)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
     {
         var rtb = new RichTextBuilder();
 
@@ -133,9 +133,9 @@ public sealed class ScaledText : FragmentContent
         return ft;
     }
 
-    private Style _placeholderStyle;
+    private CellStyle _placeholderStyle;
 
-    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -157,7 +157,7 @@ public sealed class ScaledText : FragmentContent
         // A selection-style backdrop covers the WHOLE piece rect — glyph ink is sparse, and a
         // highlight that only tints ink cells is unreadable. Background-or-attribute styles fill
         // first; the glyphs paint over the fill carrying the same style.
-        if (style != Style.Default)
+        if (style != CellStyle.Default)
             buffer.ClearCells(rect, style);
 
         if (RealizedPlaceholder is FormattedText ft)
@@ -169,7 +169,7 @@ public sealed class ScaledText : FragmentContent
         return bounds;
     }
 
-    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in Style style,
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style,
                                                        OutputCapabilities capabilities)
     {
         var fragment = new SizedTextFragment(Sizing, Text, style);

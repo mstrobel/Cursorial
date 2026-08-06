@@ -15,8 +15,6 @@ using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 
-using Style = Cursorial.Output.Style;
-
 namespace Cursorial.Tests.UI;
 
 /// <summary>
@@ -306,7 +304,7 @@ public class RenderGroupCompositingTests
         coverTree.CollectLayers(layers, surfaceZ: 1, isOccluder: true);
 
         var target = new CellBuffer(12, 4);
-        new SceneCompositor(Style.Default.WithBackground(Green))
+        new SceneCompositor(CellStyle.Default.WithBackground(Green))
             .Composite(CollectionsMarshal.AsSpan(layers), new CellBufferView(target));
 
         // Fully covered by the higher opaque surface: the remainder is not a single rectangle, so the
@@ -521,7 +519,7 @@ public class RenderGroupCompositingTests
     {
         var quantizer = new StyleQuantizer(Ansi256Terminal.Output);
 
-        Color Quantize(Color color) => quantizer.Quantize(Style.Default.WithBackground(color)).Background;
+        Color Quantize(Color color) => quantizer.Quantize(CellStyle.Default.WithBackground(color)).Background;
 
         // The acceptance pair: dialog chrome (grouped, one blend) vs the scroller's old double blend.
         var chrome = Quantize(DialogOverBackdrop);              // rgb(189, 0, 10)
@@ -725,7 +723,7 @@ public class RenderGroupCompositingTests
     {
         var layers = new List<SceneLayer>();
         tree.CollectLayers(layers, surfaceZ: surfaceZ, isOccluder: isOccluder);
-        new SceneCompositor(Style.Default.WithBackground(backdrop))
+        new SceneCompositor(CellStyle.Default.WithBackground(backdrop))
             .Composite(CollectionsMarshal.AsSpan(layers), new CellBufferView(target));
     }
 
@@ -773,7 +771,7 @@ public class RenderGroupCompositingTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
             var size = fragment.GetSize();

@@ -7,7 +7,7 @@ using Cursorial.Text;
 namespace Cursorial.Output;
 
 /// <summary>
-/// Capability-aware <see cref="Style"/> adapter. Applies the target terminal's
+/// Capability-aware <see cref="CellStyle"/> adapter. Applies the target terminal's
 /// <see cref="OutputCapabilities"/> to a style — quantizes colors to the available depth,
 /// folds extended underline shapes to <see cref="UnderlineStyle.Single"/> when the terminal
 /// doesn't support the extended forms, and drops attributes the terminal doesn't honor.
@@ -15,7 +15,7 @@ namespace Cursorial.Output;
 /// <remarks>
 /// <para>
 /// Separating this from <see cref="SgrEncoder"/> means the encoder stays pure: it emits exactly
-/// what the <see cref="Style"/> describes, with no capability-conditional branches. A typical
+/// what the <see cref="CellStyle"/> describes, with no capability-conditional branches. A typical
 /// pipeline is <c>style → StyleQuantizer.Quantize → SgrEncoder.Write{Absolute|Delta}</c>.
 /// </para>
 /// <para>
@@ -81,7 +81,7 @@ public sealed class StyleQuantizer
     public OutputCapabilities Capabilities => _capabilities;
 
     /// <summary>Return a copy of <paramref name="style"/> that the target terminal can render verbatim.</summary>
-    public Style Quantize(in Style style)
+    public CellStyle Quantize(in CellStyle style)
     {
         var fg = QuantizeColor(style.Foreground);
         var bg = QuantizeColor(style.Background);
@@ -105,18 +105,18 @@ public sealed class StyleQuantizer
         if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
             link = hyperlink;
 
-        return new Style(fg, bg, attrs, underlineStyle, underlineColor, link);
+        return new CellStyle(fg, bg, attrs, underlineStyle, underlineColor, link);
     }
 
     /// <summary>
-    /// Quantize <paramref name="style"/> like <see cref="Quantize(in Style)"/>, but apply ordered
+    /// Quantize <paramref name="style"/> like <see cref="Quantize(in CellStyle)"/>, but apply ordered
     /// (Bayer) dithering to <see cref="ColorKind.Rgb"/> colors before palette reduction, using the
     /// destination cell's position to pick the dither phase. Spatially perturbing the color before
     /// snapping it to the nearest palette entry trades a stippled texture for perceived depth, so a
     /// smooth RGB gradient stops banding into flat stripes on a 256- or 16-color terminal.
     /// </summary>
     /// <remarks>
-    /// On a <see cref="ColorDepth.Truecolor"/> target this is identical to <see cref="Quantize(in Style)"/>
+    /// On a <see cref="ColorDepth.Truecolor"/> target this is identical to <see cref="Quantize(in CellStyle)"/>
     /// (no reduction happens, so there is nothing to dither and perturbation would only corrupt the exact
     /// color); on <see cref="ColorDepth.NoColor"/> color is discarded either way. Non-RGB
     /// (<see cref="ColorKind.Palette"/> / <see cref="ColorKind.Default"/>) and <see cref="Color.Transparent"/>
@@ -127,7 +127,7 @@ public sealed class StyleQuantizer
     /// <param name="style">The style whose foreground / background / underline colors are dithered.</param>
     /// <param name="column">Destination terminal column (0-based) — selects the Bayer X phase.</param>
     /// <param name="row">Destination terminal row (0-based) — selects the Bayer Y phase.</param>
-    public Style QuantizeDithered(in Style style, int column, int row)
+    public CellStyle QuantizeDithered(in CellStyle style, int column, int row)
     {
         // Mirror of Quantize: identical structure and capability gating; only the three color sites swap
         // QuantizeColor → DitherColor. Keep the two in sync.
@@ -153,7 +153,7 @@ public sealed class StyleQuantizer
         if (_cachedCapabilities.HasFlag(CachedCapabilities.Hyperlinks) && style.Hyperlink is { Uri: not null } hyperlink)
             link = hyperlink;
 
-        return new Style(fg, bg, attrs, underlineStyle, underlineColor, link);
+        return new CellStyle(fg, bg, attrs, underlineStyle, underlineColor, link);
     }
 
     // Canonical 4×4 Bayer ordered-dither threshold matrix (values 0–15), indexed by (row&3, column&3).

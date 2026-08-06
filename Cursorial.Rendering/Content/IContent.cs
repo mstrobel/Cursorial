@@ -30,14 +30,14 @@ public static class ContentExtensions
     /// Paint <paramref name="content"/> with an implicit bounds rectangle running from
     /// <c>(column, row)</c> to the buffer's far edge — the simple "paint here, use whatever
     /// space is left" call. For layout-aware sizing the
-    /// <see cref="IContent.Paint(in CellBufferView, in Rect, in Style, OutputCapabilities)"/>
+    /// <see cref="IContent.Paint(in CellBufferView, in Rect, in CellStyle, OutputCapabilities)"/>
     /// overload should be called directly with an explicit <see cref="Rect"/>.
     /// </summary>
     public static Rect Paint(this IContent content,
                              in CellBufferView buffer,
                              int column,
                              int row,
-                             in Style style,
+                             in CellStyle style,
                              OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -79,5 +79,5 @@ public interface IContent
     /// <param name="bounds">Allocated rectangle in buffer-cell coordinates.</param>
     /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop; fonts pass it to <see cref="CellBuffer.Set"/>.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
-    Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities);
+    Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities);
 }

@@ -1,7 +1,7 @@
-using Cursorial.Drawing.Media;     // Pens (the opt-in GroupBox border)
+using Cursorial.Drawing.Media;      // Pens (the opt-in GroupBox border)
 using Cursorial.Input;
+using Cursorial.Media;              // ColorDepth
 using Cursorial.Rendering;          // Margins
-using Cursorial.Output;             // ColorDepth
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;

@@ -75,10 +75,10 @@ public class TrimIndicatorTests
     private sealed class LegacyExternalFace : IGlyphFont
     {
         public string DisplayName => "Legacy";
-        public Style EnsureCompatibleStyle(in Style style) => style;
+        public CellStyle EnsureCompatibleStyle(in CellStyle style) => style;
         public Size Measure(ReadOnlySpan<char> text) => new(text.Length, 1);
 
-        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in Style style)
+        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
             => Measure(text);
     }
 
@@ -188,7 +188,7 @@ public class TrimIndicatorTests
 
         // The defect, reproduced directly — the face draws U+2026 as nothing at all.
         var naive = new CellBuffer(columns, face.Height);
-        face.Paint(naive, 0, 0, "…", Style.Default);
+        face.Paint(naive, 0, 0, "…", CellStyle.Default);
         Assert.Equal(0, InkCount(naive, 0, columns, face.Height));
 
         var p = FormatFiglet(face, "AAAAAA", columns);

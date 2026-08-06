@@ -20,7 +20,7 @@ namespace Cursorial.Tests.Drawing;
 // fragment accounting (FrameRenderer.ComputeFragmentGuardCells).
 public class SceneCompositorSlideRenderTests
 {
-    private static readonly Style Panel = Style.Default.WithBackground(Color.FromRgb(20, 30, 40));
+    private static readonly CellStyle Panel = CellStyle.Default.WithBackground(Color.FromRgb(20, 30, 40));
 
     private static SceneLayer Layer(Scene scene, int offsetColumn = 0, int offsetRow = 0) =>
         new(scene, new CompositeParameters(offsetColumn, offsetRow));
@@ -55,7 +55,7 @@ public class SceneCompositorSlideRenderTests
             new Rect(0, 0, 10, 6), new PanelWithFragment(fragment, 3, 2, Panel), OutputCapabilities.None));
 
         var target = new CellBuffer(12, 10);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         var renderer = new FrameRenderer();
 
         compositor.Composite([Layer(scene, offsetRow: 1)], target.AsView());
@@ -90,7 +90,7 @@ public class SceneCompositorSlideRenderTests
         // row; frame C removes it. The shadow's bg-only tint writes land inside the footprint, so
         // both transitions must rewrite the WHOLE footprint and re-emit the fragment — otherwise
         // the band stays damaged after the menu closes (multicells torn, image band erased).
-        var accent = Style.Default.WithBackground(Color.FromRgb(50, 60, 70));
+        var accent = CellStyle.Default.WithBackground(Color.FromRgb(50, 60, 70));
         var fragment = new SentinelFragment(new Size(2, 2), "[SIZED]");
         using var scene = Scene.Create(12, 6);
         scene.Draw(ctx => ctx.DrawContent(
@@ -99,13 +99,13 @@ public class SceneCompositorSlideRenderTests
         // A 6×1 translucent black band — bg-only cells, alpha 120 — grazing the rect's lower row.
         using var shadow = Scene.Create(6, 1);
         shadow.Draw(_ => { });
-        var shadowStyle = Style.Default.WithBackground(Color.FromRgb(0, 0, 0).WithAlpha(120));
+        var shadowStyle = CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 0).WithAlpha(120));
         var shadowView = shadow.Buffer.AsView();
         for (int c = 0; c < 6; c++)
             shadowView[c, 0] = new Cell(null, CellKind.Single, shadowStyle);
 
         var target = new CellBuffer(12, 6);
-        var compositor = new SceneCompositor(Style.Default);
+        var compositor = new SceneCompositor(CellStyle.Default);
         var renderer = new FrameRenderer();
 
         compositor.Composite([new SceneLayer(scene, new CompositeParameters()) { SurfaceZ = 0 }], target.AsView());
@@ -154,19 +154,19 @@ public class SceneCompositorSlideRenderTests
     // scene anchor. An optional accent cell carries a distinct background so tests can observe
     // whole-footprint rewrites of otherwise-unchanged cells.
     private sealed class PanelWithFragment(
-        IBufferFragment fragment, int fragmentColumn, int fragmentRow, Style fill,
+        IBufferFragment fragment, int fragmentColumn, int fragmentRow, CellStyle fill,
         (int Column, int Row)? accentCell = null) : IContent
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         {
             for (int r = bounds.Row; r < bounds.RowEnd; r++)
                 for (int c = bounds.Column; c < bounds.ColumnEnd; c++)
                     buffer.Set(c, r, " ", fill);
 
             if (accentCell is { } accent)
-                buffer.Set(accent.Column, accent.Row, " ", Style.Default.WithBackground(Color.FromRgb(50, 60, 70)));
+                buffer.Set(accent.Column, accent.Row, " ", CellStyle.Default.WithBackground(Color.FromRgb(50, 60, 70)));
 
             buffer.AddFragment(fragmentColumn, fragmentRow, fragment, fill);
             var size = fragment.GetSize();

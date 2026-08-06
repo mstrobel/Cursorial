@@ -70,7 +70,7 @@ public class BundledFigletEllipsisTests
         var size = face.Measure("…");
         var buffer = new CellBuffer(size.Columns + 2, size.Rows + 2);
 
-        face.Paint(buffer, 0, 0, "…", Style.Default);
+        face.Paint(buffer, 0, 0, "…", CellStyle.Default);
 
         int total = Ink(buffer);
         int inside = Ink(buffer, size.Columns, size.Rows);
@@ -135,12 +135,12 @@ public class BundledFigletEllipsisTests
         {
             var size = face.Measure(ch.ToString());
             var buffer = new CellBuffer(Math.Max(1, size.Columns), size.Rows);
-            face.Paint(buffer, 0, 0, ch.ToString(), Style.Default);
+            face.Paint(buffer, 0, 0, ch.ToString(), CellStyle.Default);
             Assert.True(Ink(buffer) > 0, $"{name}: '{ch}' painted no ink");
         }
 
         var space = new CellBuffer(Math.Max(1, face.Measure(" ").Columns), face.Height);
-        face.Paint(space, 0, 0, " ", Style.Default);
+        face.Paint(space, 0, 0, " ", CellStyle.Default);
         Assert.Equal(0, Ink(space));
     }
 

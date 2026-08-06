@@ -16,7 +16,7 @@ namespace Cursorial.Rendering.Text;
 /// The result of formatting a <see cref="RichText"/> document against a column budget. Immutable
 /// — format once and paint many times; querying <see cref="Size"/> doesn't need a buffer.
 /// </summary>
-public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, int ProvidedColumns, in Style DefaultStyle = default, bool FillEntireBounds = false) : IContent
+public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, int ProvidedColumns, in CellStyle DefaultStyle = default, bool FillEntireBounds = false) : IContent
 {
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
     public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty, 0);
@@ -150,7 +150,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// Used by the single-Style elements (rule / figlet / sized / content), which carry no per-run tag — so the
     /// run rect equals the block and the tag is null.
     /// </summary>
-    private static Style ResolveStyle(BrushedTextResolver? resolver, in Style baseStyle, int column, int row, in Rect block)
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle baseStyle, int column, int row, in Rect block)
         => resolver?.Invoke(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null)) ?? baseStyle;
 
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
@@ -419,7 +419,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)
         => Size.ClampTo(availableSpace);
 
-    Rect IContent.Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapabilities capabilities)
+    Rect IContent.Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
         => Paint(buffer, bounds, capabilities);
 }
 
@@ -465,7 +465,7 @@ public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Siz
 /// when the rule is narrower than the available column budget (rare for HRs but supported).
 /// </summary>
 public sealed record FormattedHorizontalRule(
-    string Glyph, Style Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
+    string Glyph, CellStyle Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to
@@ -527,7 +527,7 @@ public sealed record FormattedTextRun : FormattedRun
     /// <see cref="CellBufferView.Set"/>.
     /// </summary>
     [SetsRequiredMembers]
-    public FormattedTextRun(string Text, Style Style, string? Hyperlink = null)
+    public FormattedTextRun(string Text, CellStyle Style, string? Hyperlink = null)
     {
         this.Text = Text;
         this.Style = Style;
@@ -541,7 +541,7 @@ public sealed record FormattedTextRun : FormattedRun
     public override int CellWidth => Source.Metrics.StringWidth(Text);
 
     public required string Text { get; init; }
-    public required Style Style { get; init; }
+    public required CellStyle Style { get; init; }
 
     public string? Hyperlink { get; init; }
 
@@ -580,7 +580,7 @@ public sealed record FormattedTextRun : FormattedRun
     /// </summary>
     internal InlineRunScope? Scope { get; init; }
 
-    public void Deconstruct(out string text, out Style style, out string? hyperlink)
+    public void Deconstruct(out string text, out CellStyle style, out string? hyperlink)
     {
         text = Text;
         style = Style;
@@ -604,7 +604,7 @@ internal sealed class InlineRunScope
 /// <see cref="IContent.Paint"/> with a rect of (<see cref="Width"/>, 1) anchored at the run's
 /// cell position, with the captured <see cref="Style"/> as backdrop.
 /// </summary>
-public sealed record FormattedContentRun(IContent Content, int Width, Style Style = default) : FormattedRun
+public sealed record FormattedContentRun(IContent Content, int Width, CellStyle Style = default) : FormattedRun
 {
     /// <inheritdoc/>
     public override int CellWidth => Width;

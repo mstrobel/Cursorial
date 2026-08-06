@@ -31,7 +31,7 @@ public sealed class TextMarkupOptions
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The default style applied to all text.</summary>
-    public Style DefaultStyle { get; init; }
+    public CellStyle DefaultStyle { get; init; }
 
     /// <summary>
     /// Resolves a <c>[brush=VALUE]</c> markup value to an <b>opaque tag</b> attached to the runs it wraps — the

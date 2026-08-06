@@ -68,7 +68,7 @@ internal sealed class RasterBenchDemo : IDemo
 
         private const int PhaseFrames = 150;   // ~5 s per scenario at 33 ms/frame
 
-        private static readonly Style HudStyle = Style.Default
+        private static readonly CellStyle HudStyle = CellStyle.Default
             .WithForeground(Color.FromRgb(13, 15, 24))
             .WithBackground(Color.FromRgb(224, 175, 104));
 

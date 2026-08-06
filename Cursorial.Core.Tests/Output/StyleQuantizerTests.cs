@@ -37,7 +37,7 @@ public class StyleQuantizerTests
     {
         var q = new StyleQuantizer(Caps());
 
-        Style style = Style.Default
+        CellStyle style = CellStyle.Default
                            .WithForeground(Color.FromRgb(123, 45, 200))
                            .WithBackground(Color.FromPalette(196));
 
@@ -51,7 +51,7 @@ public class StyleQuantizerTests
     public void Ansi256_QuantizesRgbToPalette()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
-        var result = q.Quantize(Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        var result = q.Quantize(CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
         Assert.Equal(ColorKind.Palette, result.Foreground.Kind);
     }
 
@@ -59,7 +59,7 @@ public class StyleQuantizerTests
     public void Ansi256_PassesHigherPaletteIndicesThrough()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
-        var result = q.Quantize(Style.Default.WithForeground(Color.FromPalette(196)));
+        var result = q.Quantize(CellStyle.Default.WithForeground(Color.FromPalette(196)));
         Assert.Equal(Color.FromPalette(196), result.Foreground);
     }
 
@@ -67,7 +67,7 @@ public class StyleQuantizerTests
     public void Ansi16_QuantizesRgbToAnsi16()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi16));
-        var result = q.Quantize(Style.Default.WithForeground(Color.FromRgb(255, 0, 0)));
+        var result = q.Quantize(CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0)));
         Assert.Equal(ColorKind.Palette, result.Foreground.Kind);
         Assert.InRange(result.Foreground.PaletteIndex, (byte) 0, (byte) 15);
     }
@@ -76,7 +76,7 @@ public class StyleQuantizerTests
     public void Ansi16_ReducesHigherPaletteIndices()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi16));
-        var result = q.Quantize(Style.Default.WithForeground(Color.FromPalette(196)));
+        var result = q.Quantize(CellStyle.Default.WithForeground(Color.FromPalette(196)));
         Assert.InRange(result.Foreground.PaletteIndex, (byte) 0, (byte) 15);
     }
 
@@ -85,7 +85,7 @@ public class StyleQuantizerTests
     {
         var q = new StyleQuantizer(Caps(ColorDepth.NoColor));
 
-        Style result = q.Quantize(Style.Default
+        CellStyle result = q.Quantize(CellStyle.Default
                                        .WithForeground(Color.FromRgb(255, 0, 0))
                                        .WithBackground(Color.FromPalette(2)));
 
@@ -99,7 +99,7 @@ public class StyleQuantizerTests
     public void DropsItalicWhenNotSupported()
     {
         var q = new StyleQuantizer(Caps(italic: false));
-        var result = q.Quantize(Style.Default.WithAttributes(TextAttributes.Italic | TextAttributes.Bold));
+        var result = q.Quantize(CellStyle.Default.WithAttributes(TextAttributes.Italic | TextAttributes.Bold));
         Assert.Equal(TextAttributes.Bold, result.Attributes);
     }
 
@@ -107,7 +107,7 @@ public class StyleQuantizerTests
     public void DropsOverlineWhenNotSupported()
     {
         var q = new StyleQuantizer(Caps(overline: false));
-        var result = q.Quantize(Style.Default.WithAttributes(TextAttributes.Overline));
+        var result = q.Quantize(CellStyle.Default.WithAttributes(TextAttributes.Overline));
         Assert.Equal(TextAttributes.None, result.Attributes);
     }
 
@@ -115,7 +115,7 @@ public class StyleQuantizerTests
     public void DropsUnderlineWhenNotSupported()
     {
         var q = new StyleQuantizer(Caps(underline: false));
-        var result = q.Quantize(Style.Default.WithAttributes(TextAttributes.Underline));
+        var result = q.Quantize(CellStyle.Default.WithAttributes(TextAttributes.Underline));
         Assert.Equal(TextAttributes.None, result.Attributes);
     }
 
@@ -126,7 +126,7 @@ public class StyleQuantizerTests
     {
         var q = new StyleQuantizer(Caps(extendedUnderline: false));
 
-        Style result = q.Quantize(Style.Default
+        CellStyle result = q.Quantize(CellStyle.Default
                                        .WithAttributes(TextAttributes.Underline)
                                        .WithUnderlineStyle(UnderlineStyle.Curly));
 
@@ -138,7 +138,7 @@ public class StyleQuantizerTests
     {
         var q = new StyleQuantizer(Caps(coloredUnderline: false));
 
-        Style result = q.Quantize(Style.Default
+        CellStyle result = q.Quantize(CellStyle.Default
                                        .WithAttributes(TextAttributes.Underline)
                                        .WithUnderlineColor(Color.FromRgb(255, 0, 0)));
 
@@ -150,7 +150,7 @@ public class StyleQuantizerTests
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
 
-        Style result = q.Quantize(Style.Default
+        CellStyle result = q.Quantize(CellStyle.Default
                                        .WithAttributes(TextAttributes.Underline)
                                        .WithUnderlineColor(Color.FromRgb(0, 0, 255)));
 
@@ -187,7 +187,7 @@ public class StyleQuantizerTests
         // A constant mid-gray, dithered, lands on different palette stops at adjacent Bayer phases —
         // that spatial split is what breaks the band. Oracle-pinned to the exact bytes.
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
-        Style style = Style.Default.WithForeground(Color.FromRgb(105, 105, 105));
+        CellStyle style = CellStyle.Default.WithForeground(Color.FromRgb(105, 105, 105));
 
         var a = q.QuantizeDithered(style, 0, 0).Foreground;   // Bayer threshold 0  → −22.5 → rgb 82
         var b = q.QuantizeDithered(style, 1, 0).Foreground;   // Bayer threshold 8  → +1.5  → rgb 106
@@ -203,7 +203,7 @@ public class StyleQuantizerTests
     public void QuantizeDithered_IsDeterministic()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
-        Style style = Style.Default.WithForeground(Color.FromRgb(105, 105, 105)).WithBackground(Color.FromRgb(40, 90, 200));
+        CellStyle style = CellStyle.Default.WithForeground(Color.FromRgb(105, 105, 105)).WithBackground(Color.FromRgb(40, 90, 200));
         Assert.Equal(q.QuantizeDithered(style, 3, 2), q.QuantizeDithered(style, 3, 2));
     }
 
@@ -212,7 +212,7 @@ public class StyleQuantizerTests
     {
         // No reduction happens at full depth, so dithering must be a no-op — the exact RGB survives.
         var q = new StyleQuantizer(Caps(ColorDepth.Truecolor));
-        Style style = Style.Default.WithForeground(Color.FromRgb(105, 105, 105)).WithBackground(Color.FromRgb(7, 99, 200));
+        CellStyle style = CellStyle.Default.WithForeground(Color.FromRgb(105, 105, 105)).WithBackground(Color.FromRgb(7, 99, 200));
         Assert.Equal(q.Quantize(style), q.QuantizeDithered(style, 1, 1));
         Assert.Equal(Color.FromRgb(105, 105, 105), q.QuantizeDithered(style, 1, 1).Foreground);
     }
@@ -224,7 +224,7 @@ public class StyleQuantizerTests
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
         foreach (var c in new[] { Color.FromPalette(196), Color.Default, Color.Transparent })
         {
-            Style style = Style.Default.WithForeground(c);
+            CellStyle style = CellStyle.Default.WithForeground(c);
             Assert.Equal(q.Quantize(style).Foreground, q.QuantizeDithered(style, 2, 3).Foreground);
         }
     }
@@ -236,7 +236,7 @@ public class StyleQuantizerTests
     {
         // Black and white at every Bayer phase must clamp cleanly to a valid palette index (no wrap).
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi256));
-        Style style = Style.Default.WithForeground(Color.FromRgb((byte) r, (byte) g, (byte) b));
+        CellStyle style = CellStyle.Default.WithForeground(Color.FromRgb((byte) r, (byte) g, (byte) b));
         for (int row = 0; row < 4; row++)
         for (int col = 0; col < 4; col++)
         {
@@ -249,7 +249,7 @@ public class StyleQuantizerTests
     public void QuantizeDithered_Ansi16_StaysInRange()
     {
         var q = new StyleQuantizer(Caps(ColorDepth.Ansi16));
-        Style style = Style.Default.WithForeground(Color.FromRgb(105, 160, 70));
+        CellStyle style = CellStyle.Default.WithForeground(Color.FromRgb(105, 160, 70));
         for (int row = 0; row < 4; row++)
         for (int col = 0; col < 4; col++)
             Assert.InRange(q.QuantizeDithered(style, col, row).Foreground.PaletteIndex, (byte) 0, (byte) 15);

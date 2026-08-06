@@ -23,7 +23,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2));
         var buffer = new CellBuffer(40, 6);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, WithTextSizing());
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, WithTextSizing());
 
         Assert.NotEmpty(buffer.Fragments);
         Assert.IsType<SizedTextFragment>(buffer.Fragments[(0, 0)].Fragment);
@@ -37,7 +37,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2));
         var buffer = new CellBuffer(80, 8);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
 
         // No fragment should have been attached — fallback paints cells directly.
         Assert.Empty(buffer.Fragments);
@@ -67,7 +67,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 5));
         var buffer = new CellBuffer(80, 8);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
 
         // No fragment should have been attached — fallback paints cells directly.
         Assert.Empty(buffer.Fragments);
@@ -100,7 +100,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi");
         var buffer = new CellBuffer(10, 2);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, WithTextSizing());
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, WithTextSizing());
 
         Assert.Empty(buffer.Fragments);
         Assert.Equal(new Size(2, 1), painted.Size);
@@ -115,7 +115,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2), FigletFonts.Mini);
         var buffer = new CellBuffer(40, 8);
 
-        var painted = content.Paint(buffer, 0, 0, Style.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
 
         Assert.Empty(buffer.Fragments);
         Assert.Equal(FigletFonts.Mini.Height, painted.Rows);
@@ -147,8 +147,8 @@ public class ShadowedFontTests
         var font = new FigletFont("test", '$', 1, FigletLayoutMode.None,
                                   new Dictionary<uint, FigletGlyph> { ['X'] = glyph });
 
-        var shadowStyle = Style.Default.WithForeground(Color.FromRgb(100, 100, 100));
-        var fgStyle = Style.Default.WithForeground(Color.FromRgb(255, 255, 255));
+        var shadowStyle = CellStyle.Default.WithForeground(Color.FromRgb(100, 100, 100));
+        var fgStyle = CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255));
 
         var shadowed = new ShadowedFont(font, offset: (1, 0), shadowStyle: shadowStyle);
         var buffer = new CellBuffer(5, 1);
@@ -171,6 +171,6 @@ public class ShadowedFontTests
         var shadowed = new ShadowedFont(FigletFonts.Mini);
         var buffer = new CellBuffer(10, 5);
 
-        Assert.Equal(Size.Empty, shadowed.Paint(buffer, 0, 0, "", Style.Default));
+        Assert.Equal(Size.Empty, shadowed.Paint(buffer, 0, 0, "", CellStyle.Default));
     }
 }

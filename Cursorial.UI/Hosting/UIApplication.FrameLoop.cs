@@ -3,6 +3,7 @@ using System.Runtime.ExceptionServices;
 
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;

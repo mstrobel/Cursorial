@@ -57,7 +57,7 @@ public class FigletGradientTests
     {
         // No document brush → the headline keeps its single block style; per-cell sampling is opt-in via the brush.
         var doc = new RichTextBuilder()
-            .Figlet("HI", FigletFonts.Standard, Style.Default.WithForeground(Red))
+            .Figlet("HI", FigletFonts.Standard, CellStyle.Default.WithForeground(Red))
             .Build();
         var ft = new TextFormatter().Format(doc, 40, maxRows: null, OutputCapabilities.None);
         var b = DrawHarness.Render(40, 10, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 40, 10), OutputCapabilities.None));

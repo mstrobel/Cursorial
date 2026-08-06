@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.UI.Themes;
 
 // ReSharper disable CheckNamespace
@@ -44,7 +45,7 @@ public static class ResourceExtensions
     }
 
     private static ThemeVariant ResolveVariant(ThemeVariant? explicitVariant)
-        => explicitVariant ?? UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, Output.ColorDepth.Truecolor);
+        => explicitVariant ?? UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor);
 
     /// <summary>The maximum resource-alias (<see cref="ResourceReference"/>) chase depth before a cycle is declared (design doc §11.4a).</summary>
     private const int MaxAliasChase = 8;

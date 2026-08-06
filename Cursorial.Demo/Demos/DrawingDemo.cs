@@ -71,7 +71,7 @@ internal sealed class DrawingDemo : InteractiveDemo
             _rows = Math.Max(1, rows);
 
             // Dark base; the compositor resets each dirty region to it before compositing the z-stack.
-            _compositor = new SceneCompositor(Style.Default.WithBackground(Color.FromRgb(16, 18, 24)));
+            _compositor = new SceneCompositor(CellStyle.Default.WithBackground(Color.FromRgb(16, 18, 24)));
 
             _wallpaper = BuildWallpaper(_cols, _rows, cellAspect);
 
@@ -184,7 +184,7 @@ internal sealed class DrawingDemo : InteractiveDemo
                 ctx.FillRectangle(scene.Bounds, new SolidColorBrush(fill));
 
                 // A small opaque label tab so panels are identifiable while they overlap.
-                var labelStyle = Style.Default.WithForeground(Color.FromRgb(245, 245, 250)).WithBackground(labelBackground);
+                var labelStyle = CellStyle.Default.WithForeground(Color.FromRgb(245, 245, 250)).WithBackground(labelBackground);
                 ctx.Set(1, 0, label.ToString(), labelStyle);
             });
             return scene;

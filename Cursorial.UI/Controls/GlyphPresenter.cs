@@ -1,11 +1,11 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 using Size = Cursorial.Rendering.Size;
-using CellStyle = Cursorial.Output.Style;
 
 namespace Cursorial.UI.Controls;
 

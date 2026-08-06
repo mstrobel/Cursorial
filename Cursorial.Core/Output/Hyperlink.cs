@@ -3,7 +3,7 @@ namespace Cursorial.Output;
 /// <summary>
 /// An OSC 8 hyperlink anchor — a URI plus an optional identifier that lets the terminal group
 /// adjacent runs that point at the same target into one logical link. Used as a field of
-/// <see cref="Style"/>; the renderer emits the OSC 8 open/close brackets around runs that
+/// <see cref="CellStyle"/>; the renderer emits the OSC 8 open/close brackets around runs that
 /// share the same hyperlink value.
 /// </summary>
 /// <remarks>
@@ -15,7 +15,7 @@ namespace Cursorial.Output;
 /// changes). Per the OSC 8 spec, ids beyond 250 bytes are not guaranteed to be honored.
 /// </para>
 /// </remarks>
-/// <param name="Uri">The target URI. Must be UTF-8 encodable; passing <see langword="null"/> disables the hyperlink for the bearing <see cref="Style"/>.</param>
+/// <param name="Uri">The target URI. Must be UTF-8 encodable; passing <see langword="null"/> disables the hyperlink for the bearing <see cref="CellStyle"/>.</param>
 /// <param name="Id">Optional group identifier. When two adjacent runs carry the same id, terminals collapse them into a single hyperlink target.</param>
 public readonly record struct Hyperlink(string? Uri, string? Id = null)
 {

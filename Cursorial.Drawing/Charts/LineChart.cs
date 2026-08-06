@@ -251,7 +251,7 @@ public sealed class LineChart : IChart
                 if (!context.IsVisible(column, row)) continue;
 
                 var color = Brush.ColorAt(column, row, area);
-                context.Set(column, row, glyph, Style.Default.WithForeground(color).WithBackground(Colors.Transparent));
+                context.Set(column, row, glyph, CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
             }
         }
     }
@@ -324,7 +324,7 @@ public sealed class LineChart : IChart
         // RichText, matching MultiLineChart's shape: the marker glyph in the line's brush color
         // (sampled at the hit cell) as the indicator, then the coordinates.
         var rtb = new RichTextBuilder();
-        rtb.Run(EffectiveMarkerGlyph, Style.Default.WithForeground(Brush.ColorAt(position.Column, position.Row, _renderedArea)));
+        rtb.Run(EffectiveMarkerGlyph, CellStyle.Default.WithForeground(Brush.ColorAt(position.Column, position.Row, _renderedArea)));
         rtb.Run(" " + coordinates);
         hitObject = rtb.Build();
         return true;

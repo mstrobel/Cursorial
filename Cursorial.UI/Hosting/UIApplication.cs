@@ -5,6 +5,7 @@ using System.Windows.Input;
 using Cursorial.Input;
 using Cursorial.Input.Capabilities;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;

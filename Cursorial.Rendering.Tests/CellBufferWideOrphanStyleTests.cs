@@ -8,10 +8,10 @@ namespace Cursorial.Tests.Rendering;
 
 /// <summary>
 /// When a write invalidates half of a wide glyph pair, the surviving half is stripped to a blank
-/// single carrying the <b>pair's</b> <see cref="Style"/>. Resetting it to <see cref="Cell.Blank"/>
+/// single carrying the <b>pair's</b> <see cref="CellStyle"/>. Resetting it to <see cref="Cell.Blank"/>
 /// would punch a differently-styled hole through whatever region the pair sat in (a selection tint,
-/// a panel fill), and on a surface whose blank is not <see cref="Style.Default"/> — an intermediate
-/// group buffer, based on <see cref="Style.Transparent"/> — it would leave an <em>opaque</em> cell
+/// a panel fill), and on a surface whose blank is not <see cref="CellStyle.Default"/> — an intermediate
+/// group buffer, based on <see cref="CellStyle.Transparent"/> — it would leave an <em>opaque</em> cell
 /// that occludes content the surface was supposed to let through.
 /// <para>
 /// Where that style comes from depends on which half survives. A surviving <b>wide-left</b> keeps
@@ -53,10 +53,10 @@ public class CellBufferWideOrphanStyleTests
     public void Set_OverwriteWideLeft_OrphanedContinuationInheritsTheWideLeftsStyle()
     {
         var buf = new CellBuffer(6, 1);
-        var tinted = Style.Default.WithForeground(White).WithBackground(Red);
+        var tinted = CellStyle.Default.WithForeground(White).WithBackground(Red);
         buf.Set(1, 0, "中", tinted);
 
-        buf.Set(1, 0, "a", Style.Default.WithBackground(Blue)); // clobbers the left half
+        buf.Set(1, 0, "a", CellStyle.Default.WithBackground(Blue)); // clobbers the left half
 
         // Red, not Blue: the orphan inherits the style of the wide-left that was there, not the one
         // the clobbering write is installing.
@@ -68,10 +68,10 @@ public class CellBufferWideOrphanStyleTests
     public void Set_OverwriteContinuation_OrphanedWideLeftKeepsItsStyle()
     {
         var buf = new CellBuffer(6, 1);
-        var tinted = Style.Default.WithForeground(White).WithBackground(Red);
+        var tinted = CellStyle.Default.WithForeground(White).WithBackground(Red);
         buf.Set(1, 0, "中", tinted);
 
-        buf.Set(2, 0, "a", Style.Default.WithBackground(Blue)); // clobbers the continuation
+        buf.Set(2, 0, "a", CellStyle.Default.WithBackground(Blue)); // clobbers the continuation
 
         AssertBlankedInPlace(buf[1, 0]);
         Assert.Equal(Red, buf[1, 0].Style.Background);
@@ -81,10 +81,10 @@ public class CellBufferWideOrphanStyleTests
     public void Indexer_OverwriteWideLeft_OrphanedContinuationInheritsTheWideLeftsStyle()
     {
         var buf = new CellBuffer(6, 1);
-        var tinted = Style.Default.WithForeground(White).WithBackground(Red);
+        var tinted = CellStyle.Default.WithForeground(White).WithBackground(Red);
         buf[1, 0] = new Cell("中", CellKind.WideLeft, tinted);
 
-        buf[1, 0] = new Cell("a", CellKind.Single, Style.Default.WithBackground(Blue));
+        buf[1, 0] = new Cell("a", CellKind.Single, CellStyle.Default.WithBackground(Blue));
 
         AssertBlankedInPlace(buf[2, 0]);
         Assert.Equal(Red, buf[2, 0].Style.Background);
@@ -94,10 +94,10 @@ public class CellBufferWideOrphanStyleTests
     public void Indexer_OverwriteContinuation_OrphanedWideLeftKeepsItsStyle()
     {
         var buf = new CellBuffer(6, 1);
-        var tinted = Style.Default.WithForeground(White).WithBackground(Red);
+        var tinted = CellStyle.Default.WithForeground(White).WithBackground(Red);
         buf[1, 0] = new Cell("中", CellKind.WideLeft, tinted);
 
-        buf[2, 0] = new Cell("a", CellKind.Single, Style.Default.WithBackground(Blue));
+        buf[2, 0] = new Cell("a", CellKind.Single, CellStyle.Default.WithBackground(Blue));
 
         AssertBlankedInPlace(buf[1, 0]);
         Assert.Equal(Red, buf[1, 0].Style.Background);
@@ -110,9 +110,9 @@ public class CellBufferWideOrphanStyleTests
         // THAT pair's continuation at 3 is orphaned two columns over — and its style has to be read
         // off the wide-left at 2 before the incoming pair's continuation overwrites it.
         var buf = new CellBuffer(6, 1);
-        buf.Set(2, 0, "中", Style.Default.WithBackground(Red));
+        buf.Set(2, 0, "中", CellStyle.Default.WithBackground(Red));
 
-        buf.Set(1, 0, "全", Style.Default.WithBackground(Blue));
+        buf.Set(1, 0, "全", CellStyle.Default.WithBackground(Blue));
 
         AssertBlankedInPlace(buf[3, 0]);
         Assert.Equal(Red, buf[3, 0].Style.Background);
@@ -122,9 +122,9 @@ public class CellBufferWideOrphanStyleTests
     public void Indexer_WideLeftOverNextPairsWideLeft_CascadedOrphanInheritsItsWideLeftsStyle()
     {
         var buf = new CellBuffer(6, 1);
-        buf[2, 0] = new Cell("中", CellKind.WideLeft, Style.Default.WithBackground(Red));
+        buf[2, 0] = new Cell("中", CellKind.WideLeft, CellStyle.Default.WithBackground(Red));
 
-        buf[1, 0] = new Cell("全", CellKind.WideLeft, Style.Default.WithBackground(Blue));
+        buf[1, 0] = new Cell("全", CellKind.WideLeft, CellStyle.Default.WithBackground(Blue));
 
         AssertBlankedInPlace(buf[3, 0]);
         Assert.Equal(Red, buf[3, 0].Style.Background);
@@ -138,13 +138,13 @@ public class CellBufferWideOrphanStyleTests
         // base style, so a default-styled cell is a visible hole, not a blank.
         var background = Color.FromRgb(30, 30, 40);
         var buf = BufferWithBaseStyle(Color.FromRgb(220, 220, 220), background);
-        buf.Set(1, 0, "中", Style.Default.WithForeground(White));
+        buf.Set(1, 0, "中", CellStyle.Default.WithForeground(White));
 
-        buf.Set(1, 0, "a", Style.Default.WithForeground(White));
+        buf.Set(1, 0, "a", CellStyle.Default.WithForeground(White));
 
         AssertBlankedInPlace(buf[2, 0]);
         Assert.Equal(background, buf[2, 0].Style.Background);
-        Assert.NotEqual(Style.Default, buf[2, 0].Style);
+        Assert.NotEqual(CellStyle.Default, buf[2, 0].Style);
     }
 
     [Fact]
@@ -157,9 +157,9 @@ public class CellBufferWideOrphanStyleTests
         // carries no style of its own — so this is the case that fails if the inheritance is
         // dropped rather than sourced from the wide-left.
         var buf = TransparentSurface();
-        buf.Set(1, 0, "中", Style.Transparent.WithForeground(White));
+        buf.Set(1, 0, "中", CellStyle.Transparent.WithForeground(White));
 
-        buf.Set(1, 0, "a", Style.Transparent.WithForeground(White));
+        buf.Set(1, 0, "a", CellStyle.Transparent.WithForeground(White));
 
         AssertBlankedInPlace(buf[2, 0]);
         Assert.True(buf[2, 0].Style.Background.IsTransparent);
@@ -171,9 +171,9 @@ public class CellBufferWideOrphanStyleTests
         // The compositor writes through the raw indexer, so the indexer's orphan sites carry the
         // same obligation as Set's.
         var buf = TransparentSurface();
-        buf[1, 0] = new Cell("中", CellKind.WideLeft, Style.Transparent.WithForeground(White));
+        buf[1, 0] = new Cell("中", CellKind.WideLeft, CellStyle.Transparent.WithForeground(White));
 
-        buf[2, 0] = new Cell("a", CellKind.Single, Style.Transparent.WithForeground(White));
+        buf[2, 0] = new Cell("a", CellKind.Single, CellStyle.Transparent.WithForeground(White));
 
         AssertBlankedInPlace(buf[1, 0]);
         Assert.True(buf[1, 0].Style.Background.IsTransparent);
@@ -185,9 +185,9 @@ public class CellBufferWideOrphanStyleTests
     public void Set_OrphanedHalf_LeavesNoStrandedPairMember(int clobberedColumn)
     {
         var buf = new CellBuffer(6, 1);
-        buf.Set(1, 0, "中", Style.Default.WithBackground(Red));
+        buf.Set(1, 0, "中", CellStyle.Default.WithBackground(Red));
 
-        buf.Set(clobberedColumn, 0, "a", Style.Default.WithBackground(Blue));
+        buf.Set(clobberedColumn, 0, "a", CellStyle.Default.WithBackground(Blue));
 
         // Style preservation must not smuggle the KIND through: no half-glyph may survive, or the
         // frame renderer emits into a wide glyph's right half.
@@ -208,7 +208,7 @@ public class CellBufferWideOrphanStyleTests
     {
         var buf = new CellBuffer(6, 1);
         // Exactly what SceneCompositor's reset-to-base writes for an intermediate surface.
-        buf.Fill(new Cell(null, CellKind.Single, Style.Transparent));
+        buf.Fill(new Cell(null, CellKind.Single, CellStyle.Transparent));
         return buf;
     }
 }

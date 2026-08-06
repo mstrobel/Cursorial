@@ -55,7 +55,7 @@ public interface IBufferFragment
     /// If the fragment provides its own style that should be blended over the anchor style, it may
     /// advertise it here.
     /// </summary>
-    Style? StyleOverride => null;
+    CellStyle? StyleOverride => null;
    
     /// <summary>
     /// Classification of the fragment by display-stack layer — see <see cref="FragmentLayer"/>

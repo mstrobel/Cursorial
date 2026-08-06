@@ -32,6 +32,9 @@ public sealed class SolidColorBrush : IBrush
     /// <summary>The brush's declared color. The opacity-folded value actually painted is <see cref="ColorAt"/>.</summary>
     public Color Color { get; init; }
 
+    /// <inheritdoc/>
+    public bool IsUniform => true;
+
     /// <summary>
     /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB
     /// only). Throws <see cref="ArgumentOutOfRangeException"/> on a non-finite value; clamps to [0, 1].

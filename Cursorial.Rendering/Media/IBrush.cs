@@ -19,6 +19,11 @@ namespace Cursorial.Rendering.Media;
 public interface IBrush
 {
     /// <summary>
+    /// Indicates whether this brush is <em>uniform</em>, i.e., it produces the same color for all sampling locations.
+    /// </summary>
+    bool IsUniform => false;
+
+    /// <summary>
     /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB
     /// only). Clamped to [0, 1].
     /// </summary>

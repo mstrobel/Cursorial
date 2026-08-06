@@ -1,0 +1,308 @@
+using Cursorial.Media;
+using Cursorial.Output;
+using Cursorial.Text;
+
+namespace Cursorial.Rendering.Media;
+
+/// <summary>
+/// A style DELTA: the channels it carries, and what to do to them. Applying it to a
+/// <see cref="CellStyle"/> yields a new one; channels it does not carry pass through.
+/// <c>default</c> is the identity — applying it returns the base unchanged.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Value channels are NULLABLE, and <see langword="null"/> is the only encoding of "absent". That is
+/// deliberate: the defect this type exists to retire is a sentinel doing double duty —
+/// <c>Color.Default</c> pressed into service as "no opinion", which makes "set the background to the
+/// terminal default" unexpressible. A separate presence bitmask would fix that too, but it puts
+/// presence and value in two places the caller has to keep in agreement, and it reads badly at the
+/// use site (<c>if (d.Channels.HasFlag(Foreground))</c> versus
+/// <c>if (d.Foreground is { } fg)</c>).
+/// </para>
+/// <para>
+/// The size cost is real and is accepted. <see cref="CellStyle"/> keeps non-nullable channels
+/// because it is per-cell hot data copied per pixel through compositing; a <see cref="PartialStyle"/>
+/// is built per OPERATION and usually hoisted out of the loop entirely, so it should buy
+/// expressiveness with the bytes.
+/// </para>
+/// <para>
+/// Attributes are a <c>(Clear, Xor)</c> mask pair rather than a value, which gives three states plus
+/// a fourth operation: <c>result = (base &amp; ~Clear) ^ Xor</c>.
+/// <list type="table">
+///   <item><term>set on</term>   <description><c>Clear = f, Xor = f</c></description></item>
+///   <item><term>set off</term>  <description><c>Clear = f, Xor = 0</c></description></item>
+///   <item><term>toggle</term>   <description><c>Clear = 0, Xor = f</c></description></item>
+///   <item><term>leave</term>    <description><c>Clear = 0, Xor = 0</c></description></item>
+/// </list>
+/// Toggle is the one the current code cannot express, and the one selection-on-inverse-text needs.
+/// </para>
+/// </remarks>
+public readonly record struct PartialStyle
+{
+    public static readonly PartialStyle Default = default;
+
+    public Color?     Foreground     { get; init; }
+    public Color?     Background     { get; init; }
+    public Color?     UnderlineColor { get; init; }
+    public Hyperlink? Hyperlink      { get; init; }
+
+    /// <summary>
+    /// The underline SHAPE, when this delta turns the underline on. <see langword="null"/> means "no
+    /// explicit shape" — either because the delta leaves the underline alone, or because it removes
+    /// it. Which of those applies is carried by the underline FLAG, so the shape needs no presence bit of its own:
+    /// <list type="table">
+    ///   <item><term>leave</term>  <description><c>Underline ∉ Clear</c></description></item>
+    ///   <item><term>remove</term> <description><c>Underline ∈ Clear</c>, <c>∉ Xor</c></description></item>
+    ///   <item><term>set</term>    <description><c>Underline ∈ Clear</c> and <c>∈ Xor</c></description></item>
+    /// </list>
+    /// </summary>
+    public UnderlineStyle? UnderlineShape { get; init; }
+
+    // ---- storage: one mask pair over the whole flag word ----
+
+    // The (Clear, Xor) pair is STORAGE, not interface: it is the form that composes associatively
+    // (see Then), but it makes a reader do bit algebra to answer "what does this delta do to Bold?".
+    // The three properties below are the interface — disjoint, exhaustive, and directly readable.
+    // Callers construct through the factories, so the encoding never surfaces.
+    internal TextAttributes Clear { get; init; }
+    internal TextAttributes Xor   { get; init; }
+
+    /// <summary>Attributes this delta forces ON, whatever the base had.</summary>
+    public TextAttributes SetAttributes => Clear & Xor;
+
+    /// <summary>Attributes this delta forces OFF, whatever the base had.</summary>
+    public TextAttributes UnsetAttributes => Clear & ~Xor;
+
+    /// <summary>Attributes this delta INVERTS — on becomes off, off becomes on.</summary>
+    public TextAttributes ToggledAttributes => Xor & ~Clear;
+
+    /// <summary>How this delta's colors combine with the base's. <see langword="null"/> replaces.</summary>
+    public IBlendingMode? Mode { get; init; }
+
+    // ---- decomposed axes: PROJECTIONS onto the mask pair, never separate state ----
+
+    private const TextAttributes WeightMask = TextAttributes.Bold | TextAttributes.Faint;
+
+    /// <summary>The weight this delta imposes, or <see langword="null"/> if it leaves weight alone.</summary>
+    public TextWeight? Weight => (Clear & WeightMask) != WeightMask
+                                     ? null
+                                     : (Xor & TextAttributes.Bold)  != 0 ? TextWeight.Bold
+                                     : (Xor & TextAttributes.Faint) != 0 ? TextWeight.Faint
+                                     : TextWeight.Normal;
+
+    /// <summary>The posture this delta imposes, or <see langword="null"/> if it leaves it alone.</summary>
+    public TextStyle? Posture => (Clear & TextAttributes.Italic) is 0
+                                     ? null
+                                     : (Xor & TextAttributes.Italic) != 0 ? TextStyle.Italic : TextStyle.Normal;
+
+    /// <summary>
+    /// Whether this delta says anything about the underline — either setting a shape (which implies
+    /// turning it on) or forcing the flag through the mask (which is how removal is recorded).
+    /// </summary>
+    /// <remarks>
+    /// A null <see cref="UnderlineShape"/> alone is ambiguous: it is "no opinion" for a delta that
+    /// leaves the underline be, and "no shape" for one that removes it. This resolves that, and is
+    /// what <see cref="Then"/> keys on so a later removal is not undone by an earlier shape.
+    /// </remarks>
+    public bool HasUnderlineOpinion =>
+        UnderlineShape is not null || (Clear & TextAttributes.Underline) != 0;
+
+    /// <summary>
+    /// Whether this delta REMOVES the underline: it forces the flag off and offers no shape. A shape
+    /// wins, because a shape implies turning the underline on — so a composed delta carrying both is
+    /// a set, not a removal.
+    /// </summary>
+    private bool RemovesUnderline =>
+        UnderlineShape is null &&
+        (Clear & TextAttributes.Underline) != 0 &&
+        (Xor & TextAttributes.Underline) is 0;
+
+    /// <summary>
+    /// True when this delta is inert in EVERY context — applying it returns the base unchanged, and
+    /// composing it changes nothing about what follows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Defined as equality with <c>default</c> rather than as a list of per-field checks, so EVERY
+    /// field participates automatically. That is deliberate, and it is the second attempt: the
+    /// hand-written form needed each field remembered individually, and <see cref="Mode"/> — the one
+    /// member with no presence bit, governed only by <see langword="null"/> — was duly forgotten. The
+    /// record's generated equality cannot forget one, so a field added later is covered without
+    /// anybody reading this comment. It works because §3's encoding makes a zeroed struct inert:
+    /// <c>Clear</c> rather than <c>Keep</c> means <c>default</c> IS the identity.
+    /// </para>
+    /// <para>
+    /// Why <see cref="Mode"/> has to count, given it cannot affect <see cref="ApplyTo"/> on its own
+    /// (it is read only inside the per-channel color combine, which no absent channel reaches):
+    /// <see cref="Then"/> PROPAGATES it, so a delta carrying only a mode is a blend carrier that
+    /// changes how subsequent deltas' colors land. Excluding it would leave this property sound for
+    /// the direct-apply fast path and a trap for the obvious next use — pruning no-op deltas out of a
+    /// chain, which would silently drop the blend.
+    /// </para>
+    /// </remarks>
+    public bool IsIdentity => this == default;
+
+    /// <summary>The axes that are genuinely independent booleans — the only ones the flag-level
+    /// <see cref="WithSet"/>/<see cref="WithCleared"/>/<see cref="WithToggled"/> factories accept.
+    /// Bold, Faint, Italic and Underline have their own axes and are rejected there.</summary>
+    public const TextAttributes Booleans =
+        TextAttributes.Strikethrough | TextAttributes.Overline | TextAttributes.Inverse |
+        TextAttributes.Blink | TextAttributes.Hidden;
+
+    // ---- construction ----
+
+    public static PartialStyle WithForeground(Color c) => new() { Foreground = c };
+    public static PartialStyle WithBackground(Color c) => new() { Background = c };
+    /// <summary>
+    /// Recolour the underline WITHOUT asserting one — "whatever underline exists is this colour".
+    /// Deliberately weaker than <see cref="WithUnderline"/>, which turns the underline on.
+    /// </summary>
+    /// <remarks>
+    /// The asymmetry is the point, not an oversight. A theme wants to say "error underlines are red"
+    /// without also claiming everything is underlined; if the colour forced the flag, that would be
+    /// unsayable — the same shape of loss as <c>Color.Default</c> meaning "absent", which this type
+    /// exists to retire. Pinned by <c>WithUnderlineColor_DoesNotForceAnUnderline</c>.
+    /// </remarks>
+    public static PartialStyle WithUnderlineColor(Color c) => new() { UnderlineColor = c };
+    public static PartialStyle WithHyperlink(Hyperlink link) => new() { Hyperlink = link };
+    public static PartialStyle WithBlending(IBlendingMode mode) => new() { Mode = mode };
+
+    /// <summary>Impose a weight — forces Bold ON and Faint OFF, or vice versa, or both off for Normal.
+    /// The shared SGR 22 reset is why one mask covers both.</summary>
+    public static PartialStyle Weighted(TextWeight w) => new()
+    {
+        Clear = WeightMask,
+        Xor   = w switch { TextWeight.Bold => TextAttributes.Bold,
+                           TextWeight.Faint => TextAttributes.Faint,
+                           _ => 0 },
+    };
+
+    public static PartialStyle Postured(TextStyle p) => new()
+    {
+        Clear = TextAttributes.Italic,
+        Xor   = p is TextStyle.Italic ? TextAttributes.Italic : 0,
+    };
+
+    /// <summary>Force <paramref name="flags"/> ON. Must be within <see cref="Booleans"/>.</summary>
+    public static PartialStyle WithSet(TextAttributes flags) =>
+        new() { Clear = Require(flags), Xor = flags };
+
+    /// <summary>Force <paramref name="flags"/> OFF.</summary>
+    public static PartialStyle WithCleared(TextAttributes flags) =>
+        new() { Clear = Require(flags) };
+
+    /// <summary>INVERT <paramref name="flags"/> — on becomes off and off becomes on.</summary>
+    public static PartialStyle WithToggled(TextAttributes flags) =>
+        new() { Xor = Require(flags) };
+
+    // Bold/Faint/Italic/Underline reach the mask only by mistake — they have their own axes, and
+    // routing them through the flag word is how `Bold | Faint` gets written.
+    private static TextAttributes Require(TextAttributes flags) =>
+        (flags & ~Booleans) is 0
+            ? flags
+            : throw new ArgumentOutOfRangeException(
+                  nameof(flags),
+                  $"{flags & ~Booleans} has its own axis; set Weight / Posture / Underline instead.");
+
+    /// <summary>Underline in <paramref name="shape"/>, coloured <paramref name="color"/>.</summary>
+    public static PartialStyle WithUnderline(UnderlineStyle shape, Color color) =>
+        new() { UnderlineShape = shape, UnderlineColor = color };
+
+    /// <summary>Remove any underline — forces the flag off and leaves no shape.</summary>
+    public static PartialStyle WithoutUnderline() =>
+        new() { Clear = TextAttributes.Underline };
+
+    // ---- fluent composition: ONLY where `with` cannot do the job ----
+    //
+    // The nullable channels (Foreground, Background, UnderlineColor, Hyperlink, Mode) need no fluent
+    // setter: `with { Foreground = c }` sets presence and value in one act, and the invariant that
+    // once justified them — keeping a presence mask in step with a value — no longer exists.
+    //
+    // The ATTRIBUTE axes are different. They live in the (Clear, Xor) pair, where the correct edit is
+    // an algebra rather than an assignment, and `with { Xor = … }` would let a caller write states the
+    // factories exist to forbid. Those keep fluent forms, each defined as `Then` of its static — so
+    // there is one implementation of the algebra, not two.
+
+    /// <summary>Force <paramref name="flags"/> ON in addition to whatever this delta already does.</summary>
+    public PartialStyle Setting(TextAttributes flags) => Then(WithSet(flags));
+
+    /// <summary>Force <paramref name="flags"/> OFF in addition to whatever this delta already does.</summary>
+    public PartialStyle Clearing(TextAttributes flags) => Then(WithCleared(flags));
+
+    /// <summary>INVERT <paramref name="flags"/> in addition to whatever this delta already does.</summary>
+    public PartialStyle Toggling(TextAttributes flags) => Then(WithToggled(flags));
+
+    /// <summary>Impose a weight in addition to whatever this delta already does.</summary>
+    public PartialStyle Weighing(TextWeight w) => Then(Weighted(w));
+
+    /// <summary>Impose a posture in addition to whatever this delta already does.</summary>
+    public PartialStyle Posturing(TextStyle p) => Then(Postured(p));
+
+    /// <summary>Add an underline in addition to whatever this delta already does.</summary>
+    public PartialStyle Underlining(UnderlineStyle shape, Color color) => Then(WithUnderline(shape, color));
+
+    /// <summary>Remove the underline in addition to whatever this delta already does.</summary>
+    public PartialStyle RemovingUnderline() => Then(WithoutUnderline());
+
+    // ---- application ----
+
+    public CellStyle ApplyTo(in CellStyle b)
+    {
+        if (IsIdentity) return b;
+
+        var mode = Mode;   // a local function in a struct cannot capture `this` (CS1673)
+
+        return b with
+        {
+            Foreground     = Foreground     is { } fg ? Combine(fg, b.Foreground,     mode) : b.Foreground,
+            Background     = Background     is { } bg ? Combine(bg, b.Background,     mode) : b.Background,
+            UnderlineColor = UnderlineColor is { } uc ? Combine(uc, b.UnderlineColor, mode) : b.UnderlineColor,
+            Hyperlink      = Hyperlink      ?? b.Hyperlink,
+
+            // Removal resets the shape as well as the flag. Leaving a stale shape behind would be
+            // invisible (a shape means nothing with the flag off) but it breaks the composition law:
+            // applying set-then-remove in sequence would leave the SET shape, while the composed
+            // equivalent leaves the BASE's, so `a.Then(b)` and `b(a(s))` would disagree on a field
+            // nothing reads. Removing it entirely makes them agree.
+            UnderlineStyle = RemovesUnderline ? default : UnderlineShape ?? b.UnderlineStyle,
+
+            // A shape implies the flag, STRUCTURALLY rather than by convention: any delta carrying an
+            // UnderlineShape turns the underline on, however it was built. That makes a plain
+            // `with { UnderlineShape = … }` complete on its own, so the one coupling `with` could
+            // otherwise break is not a rule anyone has to remember. Removal is the mask's job
+            // (Underline in Clear, absent from Xor), which no shape accompanies.
+            Attributes     = UnderlineShape is null
+                                 ? (b.Attributes & ~Clear) ^ Xor
+                                 : ((b.Attributes & ~Clear) ^ Xor) | TextAttributes.Underline,
+        };
+
+        static Color Combine(Color source, Color backdrop, IBlendingMode? mode) =>
+            mode is null ? source : Color.Composite(source, backdrop, mode);
+    }
+
+    /// <summary>
+    /// This delta, then <paramref name="next"/> — one delta equivalent to applying both in order.
+    /// The attribute algebra composes exactly: <c>Clear = C₁ | C₂</c>, <c>Xor = (X₁ &amp; ~C₂) ^ X₂</c>.
+    /// </summary>
+    /// <remarks>
+    /// Law: <c>a.Then(b).ApplyTo(s)</c> ≡ <c>b.ApplyTo(a.ApplyTo(s))</c>, for every <c>a</c>,
+    /// <c>b</c>, <c>s</c>.
+    /// </remarks>
+    public PartialStyle Then(in PartialStyle next) => new()
+    {
+        Foreground     = next.Foreground     ?? Foreground,
+        Background     = next.Background     ?? Background,
+        UnderlineColor = next.UnderlineColor ?? UnderlineColor,
+        Hyperlink      = next.Hyperlink      ?? Hyperlink,
+
+        // NOT `next.UnderlineShape ?? UnderlineShape`. A null shape is ambiguous on its own — it means
+        // "no opinion" for a delta that leaves the underline alone, and "definitely no shape" for one
+        // that REMOVES it. Falling back on null would let an earlier shape survive a later removal,
+        // and (since a shape implies the flag) resurrect the underline the caller just took away.
+        // `HasUnderlineOpinion` disambiguates from the mask, which is where removal is recorded.
+        UnderlineShape = next.HasUnderlineOpinion ? next.UnderlineShape : UnderlineShape,
+        Clear          = Clear | next.Clear,
+        Xor            = (Xor & ~next.Clear) ^ next.Xor,
+        Mode           = next.Mode ?? Mode,
+    };
+}

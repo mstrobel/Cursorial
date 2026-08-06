@@ -581,7 +581,34 @@ and `StyleDeltaTemplate` in `Cursorial.Drawing` on the assumption that a brush-c
 not descend. `IBrush` has since moved to `Cursorial.Rendering.Media`, which removes that constraint
 and lets both live together.
 
-## 10. The types, in full
+## 10. The types
+
+> **IMPLEMENTED (2026-08-06)** on `feature/styling-redesign`:
+> `Cursorial.Rendering/Media/PartialStyle.cs`, `StyleDeltaTemplate.cs`, with the laws of §12 pinned
+> in `Cursorial.Rendering.Tests/Media/PartialStyleTests.cs` (610 cases).
+>
+> **The code is the specification now.** What follows is kept for the REASONING — why the shape is
+> what it is — and the listings below are illustrative, not authoritative. Four things changed during
+> implementation and the text has not been rewritten around them, because a spec that duplicates
+> shipped code drifts silently:
+>
+> 1. **`StyleChannels` does not exist.** Value channels are nullable; `null` is the only encoding of
+>    absent. The presence bitmask read badly at the use site (`d.Channels.HasFlag(…)` versus
+>    `d.Foreground is { } fg`), and its only remaining justification was struct size — which §2
+>    already disowns for an operation type. Deleting it also simplified `Then` from four `Has()`
+>    ternaries to four `??`.
+> 2. **No fluent setters for the nullable channels.** With presence and value set in one act,
+>    `with { Foreground = c }` is complete, so §10.2's "fluent setters maintain presence, `with` does
+>    not" is a rule about a problem that no longer exists. Fluent methods survive only for the
+>    ATTRIBUTE axes, where the correct edit is an algebra rather than an assignment.
+> 3. **`Clear`/`Xor` are `internal`.** They are storage — the form that composes — not interface.
+>    The public reading is `SetAttributes` / `UnsetAttributes` / `ToggledAttributes`, a disjoint and
+>    exhaustive partition, so no caller does bit algebra to learn what a delta does.
+> 4. **A shape implies the underline flag, structurally.** `ApplyTo` derives it from
+>    `UnderlineShape`'s presence, which is what makes a plain `with { UnderlineShape = … }` complete.
+>    Removal is carried by the mask and resets the shape — see §12.4.
+
+### 10.0 The listings below are the pre-implementation sketch
 
 Written against the real shapes: `CellStyle(Color Foreground, Color Background, TextAttributes
 Attributes, UnderlineStyle UnderlineStyle, Color UnderlineColor, Hyperlink Hyperlink)`,
@@ -1046,6 +1073,22 @@ Only non-solid brushes cannot be auto-populated this way, because their colour d
 being painted — which is precisely the reason the template form exists.
 
 ## 12. What the type has to prove
+
+**All of these now exist** as `PartialStyleTests`. Two were only discovered BY writing them, and both
+are recorded here because they are the kind of defect inspection does not find:
+
+- **§12.4a — `Then` resurrected a removed underline.** `next.UnderlineShape ?? UnderlineShape` treats
+  a null shape as "no opinion", but `WithoutUnderline` also has a null shape, meaning "no shape". So
+  `WithUnderline(Double).Then(WithoutUnderline())` kept the `Double`, and shape-implies-flag then
+  turned the underline back ON. That is exactly the sentinel-doing-double-duty defect §1 opens by
+  criticising, reintroduced on one channel. Resolved by `HasUnderlineOpinion`, which disambiguates
+  from the mask — where removal is actually recorded.
+- **§12.4b — removal left a stale shape.** Set-then-remove applied in sequence leaves the SET shape;
+  the composed equivalent leaves the BASE's. Invisible in rendering — a shape means nothing with the
+  flag off — but it breaks the composition law on a field nothing reads. Removal now resets the shape.
+
+Neither is reachable through the public API by accident, and neither would survive a hand-picked test
+set: both were found by asserting the law over ALL 196 ordered pairs of a 14-delta sample.
 
 Testable properties, in the order they should be written:
 

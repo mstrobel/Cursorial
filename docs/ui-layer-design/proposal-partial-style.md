@@ -965,9 +965,9 @@ public readonly record struct StyleDeltaTemplate
 
 ## 11. Worked examples — what each call site becomes
 
-### 11.1 Selection tint (`DrawingContext.TintCells`)
+### 11.1 Selection tint (`DrawingContext.TintCells`) — ✅ MIGRATED
 
-Today, with the mask hardcoded and no way to express "invert":
+Before, with the mask hardcoded and no way to express "invert":
 
 ```csharp
 var tinted = cell.Style with { Attributes = (cell.Style.Attributes & ~TextAttributes.Inverse) | style.Attributes };
@@ -975,15 +975,45 @@ if (!style.Background.IsDefault)
     tinted = tinted with { Background = style.Background };
 ```
 
-After — the caller states the operation, and gains the toggle it could not previously ask for:
+After, the whole body — the operation is the caller's, so the method has none of its own:
 
 ```csharp
-// colour selection: paint the selection background, leave everything else
-surface.Restyle(bounds, PartialStyle.Background(selectionColor));
-
-// nocolor selection: INVERT inverse, so selected text on already-inverse text reads correctly
-surface.Restyle(bounds, PartialStyle.Toggle(TextAttributes.Inverse));
+var cell = _surface[sceneColumn, sceneRow];
+_surface[sceneColumn, sceneRow] = cell with { Style = style.ApplyTo(cell.Style) };
 ```
+
+`DrawingContext.TintCells` and its `RenderContext` passthrough now take a `PartialStyle`; the one
+caller (`TextPresenter.DrawFaceLine`, the glyph-face selection highlight) states both legs:
+
+```csharp
+// nocolor / no selection brush: FORCE Inverse, in whichever direction the run needs
+tint = inverse ? PartialStyle.WithCleared(TextAttributes.Inverse)
+               : PartialStyle.WithSet(TextAttributes.Inverse);
+
+// colour: paint the selection background AND clear Inverse — which the old spelling did
+// invisibly, via the hardcoded `& ~Inverse`, while the caller passed no attributes at all
+tint = PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse);
+```
+
+Three things the migration had to be careful about, each now pinned by a test:
+
+1. **The `& ~Inverse` ran on BOTH paths**, including the colour one where `style.Attributes` was
+   `None` — so the clear was invisible at the call site. A bare `WithBackground(colour)` leaves
+   selected inverse text inverted under its new background.
+2. **One `CellStyle` spelling meant two opposite operations.** `CellStyle.Default.WithAttributes(
+   inverse ? None : Inverse)` was a *clear* when the run was already inverse and a *set* when it was
+   not — legible only once you knew `TintCells` cleared the flag first. The two are now separate
+   factories, and say so.
+3. **The `Background.IsDefault` guard is load-bearing and survives, at the call site.** `Brushes.Default`
+   is a legal `TextBox.SelectionBrush` and samples to `Color.Default` everywhere, so "the brush stated
+   no background" is reachable. To a `PartialStyle` a present-but-default background is an ordinary
+   opinion — which is the point (§5d) — so the caller must now decide, rather than have the sentinel
+   decide for it.
+
+The `Toggle` this section originally reached for is available (`WithToggled`) and covered by
+`DrawingContextTintTests.TintCells_TogglesPerCell`, but the selection call site does not need it:
+`inverse` is a whole-run property the presenter already knows, so a forced set/clear is both
+sufficient and more predictable than a per-cell flip.
 
 ### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites)
 

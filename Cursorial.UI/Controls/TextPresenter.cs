@@ -521,11 +521,28 @@ public sealed class TextPresenter : UIElement
             {
                 var selRect = new Rect(selStart, localRow, selEnd - selStart, lineRows);
 
-                var tint = noColor || selectionBrush is null
-                               ? CellStyle.Default.WithAttributes(inverse ? TextAttributes.None : TextAttributes.Inverse)
-                               : CellStyle.Transparent.WithBackground(selectionBrush.ColorAt(
-                                                                      selStart + (selEnd - selStart) / 2, localRow,
-                                                                      selRect));
+                // The tint is a DELTA, and every leg FORCES Inverse rather than OR-ing it on — which is
+                // what the old CellStyle spelling meant, obscured by the fact that it said it twice:
+                // TintCells cleared Inverse unconditionally, and the caller then OR-ed its own back.
+                PartialStyle tint;
+                if (noColor || selectionBrush is null)
+                {
+                    // `inverse` means the block above already painted the whole run inverse, so the
+                    // selection reads by UN-inverting it; otherwise the selection is the inversion.
+                    tint = inverse
+                               ? PartialStyle.WithCleared(TextAttributes.Inverse)
+                               : PartialStyle.WithSet(TextAttributes.Inverse);
+                }
+                else
+                {
+                    // A brush that samples to the terminal default states no background — Brushes.Default
+                    // is a legal SelectionBrush, and a default background here would be indistinguishable
+                    // from no selection at all. The Inverse clear happens on this path too.
+                    var color = selectionBrush.ColorAt(selStart + (selEnd - selStart) / 2, localRow, selRect);
+                    tint = color.IsDefault
+                               ? PartialStyle.WithCleared(TextAttributes.Inverse)
+                               : PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse);
+                }
 
                 context.TintCells(selRect, tint);
             }

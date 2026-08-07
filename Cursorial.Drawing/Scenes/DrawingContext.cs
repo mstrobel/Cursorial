@@ -955,13 +955,22 @@ public sealed class DrawingContext
     }
 
     /// <summary>
-    /// Restyles the cells in <paramref name="bounds"/> IN PLACE — graphemes are preserved, the
-    /// style's background replaces each cell's (when non-default) and its attributes OR in. The
-    /// selection-highlight primitive for glyph-rendered text (FIGlet editors): painting is left
-    /// untouched, so glyph geometry never shifts with the selection; the highlight is a clean
-    /// cell-space rectangle over whatever ink is there.
+    /// Restyles the cells in <paramref name="bounds"/> IN PLACE — graphemes are preserved and each
+    /// cell's style becomes whatever <paramref name="style"/> yields from it; channels the delta does
+    /// not carry pass through untouched. The selection-highlight primitive for glyph-rendered text
+    /// (FIGlet editors): painting is left untouched, so glyph geometry never shifts with the
+    /// selection; the highlight is a clean cell-space rectangle over whatever ink is there.
     /// </summary>
-    public void TintCells(in Rect bounds, in CellStyle style)
+    /// <remarks>
+    /// The operation is entirely the caller's to state — this method has no opinion of its own. The
+    /// former <see cref="CellStyle"/> parameter was a delta in all but type, and carried three
+    /// hardcoded decisions the caller could not override: <see cref="TextAttributes.Inverse"/> was
+    /// always cleared first, the remaining attributes were OR-ed on (so "turn this off" was
+    /// unsayable), and <see cref="Color.IsDefault"/> doubled as "no background stated" (so "tint to
+    /// the terminal default" was unsayable). A <see cref="PartialStyle"/> says all three, and adds
+    /// the toggle that selection-on-inverse-text actually wants.
+    /// </remarks>
+    public void TintCells(in Rect bounds, in PartialStyle style)
     {
         // Per-cell translate + clip via TryMap, like the scalar write path — bounds is in
         // current-local coordinates while the active clip is in scene coordinates, so a
@@ -974,12 +983,7 @@ public sealed class DrawingContext
                     continue;
 
                 var cell = _surface[sceneColumn, sceneRow];
-                var tinted = cell.Style with { Attributes = (cell.Style.Attributes & ~TextAttributes.Inverse) | style.Attributes };
-
-                if (!style.Background.IsDefault)
-                    tinted = tinted with { Background = style.Background };
-
-                _surface[sceneColumn, sceneRow] = cell with { Style = tinted };
+                _surface[sceneColumn, sceneRow] = cell with { Style = style.ApplyTo(cell.Style) };
             }
         }
     }

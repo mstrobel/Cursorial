@@ -639,20 +639,47 @@ public sealed class DrawingContext
         return best == int.MaxValue ? -1 : best;
     }
 
-    /// <summary>Draw text (multi-line capable, see the brush overload) with a solid foreground (and optional background) color.</summary>
+    /// <summary>Draw text (multi-line capable, see the template overload) with a solid foreground (and optional background) color.</summary>
+    /// <remarks>
+    /// <paramref name="background"/> is <see cref="Brushes.Transparent"/> when omitted — NOT "no
+    /// opinion". See the brush overload.
+    /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          Color foreground, Color? background = null, in CellStyle baseStyle = default)
         => DrawText(column, row, text, new SolidColorBrush(foreground),
                     background is { } bg ? new SolidColorBrush(bg) : null, baseStyle);
 
     /// <summary>
+    /// Draw <paramref name="text"/> with <paramref name="foreground"/> (and optional
+    /// <paramref name="background"/>) sampled per cell — the two-brush convenience form of the
+    /// template overload, for the common case where the only thing that varies per cell is colour.
+    /// </summary>
+    /// <remarks>
+    /// <b>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, not
+    /// absence.</b> That is this overload's historical contract and it is preserved verbatim: the
+    /// glyph cell's background is OVERWRITTEN with transparent, which lets a prior fill (or the
+    /// composite target) show through and, crucially, does NOT leave
+    /// <paramref name="baseStyle"/>'s own background standing. A caller that wants the base's
+    /// background to survive is asking for the template overload, where <see langword="null"/>
+    /// means exactly that.
+    /// </remarks>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
+    {
+        ArgumentNullException.ThrowIfNull(foreground);
+
+        return DrawText(column, row, text,
+                        new StyleDeltaTemplate { Foreground = foreground, Background = background ?? Brushes.Transparent },
+                        baseStyle);
+    }
+
+    /// <summary>
     /// Draw <paramref name="text"/> starting at <paramref name="column"/>, <paramref name="row"/>,
-    /// sampling <paramref name="foreground"/> (and optional <paramref name="background"/>) per cell —
-    /// so a gradient brush colors the text continuously, glyph by glyph.
-    /// <paramref name="background"/> defaults to transparent (glyph only). Grapheme-aware (wide
+    /// resolving <paramref name="style"/> per cell over <paramref name="baseStyle"/> — so a gradient
+    /// brush colors the text continuously, glyph by glyph. Grapheme-aware (wide
     /// clusters occupy two cells). <c>\r\n</c>, <c>\n</c>, and <c>\r</c> are line breaks: each
     /// subsequent line continues at the original start <paramref name="column"/> one row down; empty
-    /// lines consume a row; the active clip/translate applies per line; the brush samples against
+    /// lines consume a row; the active clip/translate applies per line; the brushes sample against
     /// the <b>full multi-line extent</b> (widest line × line count), so a gradient flows down the
     /// lines. A tab is substituted with one space and any other C0/C1 control is skipped (zero
     /// columns) — each with a DEBUG diagnostic (<see cref="DrawingDiagnostics"/>). Returns the
@@ -667,20 +694,37 @@ public sealed class DrawingContext
     /// brush-bounds anchor samples contract-equivalently (shifted to a zero origin).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Base style plus delta</b>, the shape
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+    /// already takes, and for the same reason: a draw OWNS the cells it inks, so a whole
+    /// <see cref="CellStyle"/> is a legitimate ground state, while the delta says what varies per
+    /// cell — including the channels a brush pair had nowhere to put. Attributes, the underline
+    /// shape and colour, a hyperlink and a blending mode all ride in
+    /// <paramref name="style"/> now; a channel it declines to state falls through to
+    /// <paramref name="baseStyle"/> untouched. In particular <c>Background = null</c> is <b>no
+    /// opinion</b> — the base's background reaches the cell — which is NOT what an omitted
+    /// background means on the brush overload.
+    /// </para>
+    /// <para>
+    /// Both brush channels sample against one rect (the run's extent): a text run's background
+    /// covers precisely the cells its glyphs do, so its fill bounds and content bounds coincide.
+    /// A <see cref="StyleDeltaTemplate.IsUniform"/> template resolves ONCE for the whole run
+    /// instead of per cell — the readability a pair of opaque brushes could not offer.
+    /// </para>
+    /// <para>
     /// Glyphs are written through <see cref="CellBuffer.Set"/>, which composites against the
     /// transparent scene backdrop and stores opaque — so per-cell <em>translucent</em> foreground /
     /// background alpha is consumed here, not preserved for the compositor. For scene-level
     /// translucency use a composite opacity instead. A transparent background correctly lets a prior
     /// fill (or the composite target) show through under the glyph.
+    /// </para>
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
+                         in StyleDeltaTemplate style, in CellStyle baseStyle = default)
     {
-        ArgumentNullException.ThrowIfNull(foreground);
         if (text.IsEmpty) return Size.Empty;
         bool transformed = _stateStack.Count != 0;
-
-        var bg = background ?? Brushes.Transparent;
 
         // Measure pass: the brush bounds are the full multi-line extent (widest sanitized line ×
         // line count) anchored at the start cell, sampled in local coordinates — a gradient flows
@@ -698,6 +742,12 @@ public sealed class DrawingContext
         }
         var bounds = new SampleBounds(column, row, widest, lineCount);
 
+        // The common case — a solid colour, or none — cannot vary by cell, and the VALUE form is what
+        // makes that readable: fold it once here rather than resolving two brushes at every cluster.
+        // Sampled at the run's own anchor against its own bounds, so a hand-written uniform brush is
+        // never handed a degenerate rect it has to tolerate.
+        CellStyle? uniform = style.IsUniform ? bounds.Resolve(style, column, row).ApplyTo(baseStyle) : null;
+
         int maxAdvance = 0;
         int currentRow = row;
         var remaining = text;
@@ -705,7 +755,8 @@ public sealed class DrawingContext
         while (moreLines)
         {
             var line = NextLine(ref remaining, out moreLines);
-            maxAdvance = Math.Max(maxAdvance, DrawTextLine(column, currentRow, line, foreground, bg, in baseStyle, in bounds, transformed));
+            maxAdvance = Math.Max(maxAdvance,
+                                  DrawTextLine(column, currentRow, line, in style, in baseStyle, in uniform, in bounds, transformed));
             currentRow++;
         }
 
@@ -713,8 +764,9 @@ public sealed class DrawingContext
     }
 
     // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
-    private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, IBrush foreground, IBrush background,
-                             in CellStyle baseStyle, in SampleBounds bounds, bool transformed)
+    // `uniform` is the pre-folded style when the template cannot vary by cell; null means resolve per cluster.
+    private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, in StyleDeltaTemplate template,
+                             in CellStyle baseStyle, in CellStyle? uniform, in SampleBounds bounds, bool transformed)
     {
         if (line.IsEmpty) return 0;
         if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
@@ -749,8 +801,7 @@ public sealed class DrawingContext
             if (transformed)
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
-                var style = baseStyle.WithForeground(bounds.Sample(foreground, column, row))
-                                     .WithBackground(bounds.Sample(background, column, row));
+                var style = uniform ?? bounds.Resolve(template, column, row).ApplyTo(baseStyle);
                 EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
                 column += width;
             }
@@ -759,8 +810,7 @@ public sealed class DrawingContext
                 if (column < 0) { column += width; continue; }  // left-edge clip (negative start; the run still advances)
                 if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
 
-                var style = baseStyle.WithForeground(bounds.Sample(foreground, column, row))
-                                     .WithBackground(bounds.Sample(background, column, row));
+                var style = uniform ?? bounds.Resolve(template, column, row).ApplyTo(baseStyle);
                 column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
             }
         }

@@ -179,6 +179,20 @@ public sealed class RenderContext
     /// text's bounding box: widest line's advance × line count — per line the full local width
     /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
+    /// <remarks>
+    /// <paramref name="style"/> is a per-cell DELTA over <paramref name="baseStyle"/> — attributes,
+    /// underline, hyperlink and blending mode included, not just the two colour channels the brush
+    /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the base's survives);
+    /// on the brush overload an omitted background is <see cref="Brushes.Transparent"/>. See
+    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/>.
+    /// </remarks>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         in StyleDeltaTemplate style, in CellStyle baseStyle = default)
+        => Inner.DrawText(column, row, text, style, baseStyle);
+
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/>
+    /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, which
+    /// overwrites <paramref name="baseStyle"/>'s background rather than deferring to it.</remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, baseStyle);

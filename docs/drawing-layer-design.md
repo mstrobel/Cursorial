@@ -169,7 +169,8 @@ dividing by its extent).
 - **`Brushes`** — static cache mirroring `Colors` (`Brushes.Transparent`, `Brushes.Red`, …). Since a
   `SolidColorBrush` is immutable it's safe to share; reach for these instead of allocating a fresh
   `new SolidColorBrush(Color.Xxx)`. `DrawingContext.DrawText`'s default background is
-  `Brushes.Transparent`.
+  `Brushes.Transparent` on its `Color` / `IBrush` overloads — its `StyleDeltaTemplate` overload reads
+  an absent background as *no opinion* instead, deferring to the base style (§13.1).
 - **`GradientBrush`** (abstract base) holds the sorted stops, `GradientSpread` (Pad/Repeat/Reflect),
   and opacity, and owns the shared per-cell resolution: subclasses map a cell to a parameter `t`
   (`ComputeOffset`), the base applies spread (`ApplySpread`) and interpolates the stops. Concrete:
@@ -822,7 +823,7 @@ Until this batch every plain-text entry point treated its input as a single line
 control character became a width-1 junk cell. This section pins the line-break and control-character
 contract per tier; the changes landed together (user-pinned decisions, restated normatively here).
 
-### 13.1 `DrawingContext.DrawText` — multi-line (both overloads)
+### 13.1 `DrawingContext.DrawText` — multi-line (all overloads)
 
 - **Line breaks**: `\r\n`, `\n`, and `\r` are all line breaks (one rule, three forms — a lone `\r`
   is a break, never an overstrike). Each subsequent line continues at the **original start column**,
@@ -874,7 +875,7 @@ today (window/OSC titles are Core's, out of scope).
 | Rendering — `RichTextBuilder` / `TextMarkup` / `TextFormatter` (`FormattedText`) | Hard breaks are **structural**: `LineBreak` inlines (`.LineBreak()`, `[br/]`) and paragraph boundaries. A literal `\n` in run text is **not** a break — the formatter deliberately treats it as a word character (wrap whitespace excludes `\r`/`\n`; markup preserves source whitespace) and it reaches `Set` as a junk cell | Expanded to `TabWidth` spaces (a `SpaceAtom` — wrappable like a space) | junk cell | Pre-existing; verified + recorded (hardening candidate if it bites; tab cell corrected post-audit — the formatter expands, it does not store) |
 | Rendering — FIGlet (`FigletFont.Measure/Paint`) | Single-line; any codepoint without a glyph — including `\n` — falls back to the **space glyph** | space glyph | space glyph | Pre-existing; recorded |
 | Rendering — `ScaledText` (OSC 66 content) | Text passes unsanitized to the protocol fragment or the fallback `IGlyphFont`; single-line by usage | as above | as above | Pre-existing; recorded |
-| Drawing — `DrawingContext.DrawText` (Color + IBrush) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
+| Drawing — `DrawingContext.DrawText` (Color + IBrush + StyleDeltaTemplate) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
 | Drawing — `PanelTitle` (`DrawTitledBox`/`DrawPanel`) | **First line only** (§13.2); the title then rides `DrawText`'s tab/control rules | space | skipped | **Changed this batch** |
 | Drawing — charts (`Axes` labels, `BarChart` value/category labels) | Labels ride `DrawText`, so an embedded break now continues one row down at the start column; labels are single-line by convention and numeric formatting never produces breaks | space | skipped | Inherited; recorded |
 | UI — `RenderContext.DrawText` | Thin veneer over Drawing's: multi-line + `Size` return (element-local) | space | skipped | **Changed this batch** |

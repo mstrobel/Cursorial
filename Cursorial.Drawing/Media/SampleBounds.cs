@@ -39,6 +39,28 @@ internal readonly record struct SampleBounds(int Column, int Row, int Columns, i
                    : brush.ColorAt(column - Column, row - Row, new Rect(0, 0, columns, rows));
     }
 
+    /// <summary>
+    /// Resolve <paramref name="template"/> at the scene cell (<paramref name="column"/>,
+    /// <paramref name="row"/>) against these bounds — <see cref="Sample"/>'s contract for every brush
+    /// channel at once, including the negative-origin shift, so a template resolves exactly where the
+    /// two brushes it replaced used to sample.
+    /// </summary>
+    /// <remarks>
+    /// One rect, not the four-argument <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect, in Rect)"/>:
+    /// a text run's background covers precisely the cells its glyphs do, so its fill bounds and content
+    /// bounds are the same rectangle. The distinction belongs to operations that fill a box larger than
+    /// their ink.
+    /// </remarks>
+    public PartialStyle Resolve(in StyleDeltaTemplate template, int column, int row)
+    {
+        int columns = Math.Min(Columns, ushort.MaxValue);
+        int rows = Math.Min(Rows, ushort.MaxValue);
+
+        return (uint) Column <= ushort.MaxValue && (uint) Row <= ushort.MaxValue
+                   ? template.Resolve(column, row, new Rect(Column, Row, columns, rows))
+                   : template.Resolve(column - Column, row - Row, new Rect(0, 0, columns, rows));
+    }
+
     /// <summary>The smallest bounds containing both this and <paramref name="other"/> (the figure back-patch union).</summary>
     public SampleBounds Union(in SampleBounds other)
     {

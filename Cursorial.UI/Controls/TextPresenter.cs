@@ -374,7 +374,13 @@ public sealed class TextPresenter : UIElement
                     muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
                 }
 
-                DrawText(context, 0, 0, placeholder, muted, null, baseStyle);
+                // An unresolvable muted brush is ABSENCE, and the template says so directly — the
+                // base's (default) foreground stands, which is what the Brushes.Default fallback
+                // this replaced was spelling the long way round. The background is stated for the
+                // same reason the cell lane states it: transparent, so the field's chrome shows.
+                context.DrawText(0, 0, placeholder,
+                                 new StyleDeltaTemplate { Foreground = muted, Background = Brushes.Transparent },
+                                 baseStyle);
             }
 
             return;
@@ -708,17 +714,22 @@ public sealed class TextPresenter : UIElement
     }
 
     /// <summary>
-    /// The base's VALUE form, for the primitives that take a whole <see cref="CellStyle"/>. The
-    /// foreground is deliberately dropped: it reaches those primitives as the BRUSH argument, which
-    /// they sample per cell — resolving it here would pin one colour for the whole run, and a
-    /// gradient base would paint flat.
+    /// The base's VALUE form, for the primitives that STILL take a whole <see cref="CellStyle"/> —
+    /// the glyph-face lane and the sized-run lane. The foreground is deliberately dropped: it reaches
+    /// those primitives as the BRUSH argument, which they sample per cell — resolving it here would
+    /// pin one colour for the whole run, and a gradient base would paint flat.
     /// </summary>
     /// <remarks>
     /// The sample point is <c>(0, 0)</c> against an empty box because every channel left after the
     /// foreground is removed is position-independent by construction (see
     /// <see cref="ResolveLineBaseStyle"/>). A base that grew a position-dependent BACKGROUND would
-    /// need the real bounds threaded in here — and the fact that the presenter's primitives take one
+    /// need the real bounds threaded in here — and the fact that these primitives take one
     /// background <em>colour</em>, not a brush, is what would surface it.
+    /// <para>
+    /// The CELL lane no longer calls this: <c>DrawText</c> takes the template whole, so the base
+    /// travels to the primitive un-resolved and the primitive samples it. That is the unpack this
+    /// method used to exist for, and it is gone from the lane that paints most of the text.
+    /// </para>
     /// </remarks>
     private static CellStyle ResolveLineBaseValue(in StyleDeltaTemplate lineBase)
         => (lineBase with { Foreground = null }).Resolve(0, 0, default).ApplyTo(CellStyle.Default);
@@ -733,10 +744,11 @@ public sealed class TextPresenter : UIElement
             return;
 
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
-        var baseStyle = ResolveLineBaseValue(lineBase);
 
         if (EditingSource is { PaintsAsCells: false } source)
         {
+            var baseStyle = ResolveLineBaseValue(lineBase);
+
             // A non-cell editor run paints per selection segment — the "fragment splits at
             // selection boundaries" model: [pre][selected][post] as separate pieces, the
             // selected piece's backdrop carrying the highlight.
@@ -789,11 +801,25 @@ public sealed class TextPresenter : UIElement
 
         var span = text.AsSpan(from, to - from);
 
-        // ADD, never replace: baseStyle already carries the presenter's folded attributes, so a
-        // WithAttributes here would wipe every OTHER axis (Bold, Italic, …) the fold delivered.
-        // This is the style the run paints in when it is NOT selected — and the base the selection
-        // delta toggles against, so the highlight contrasts its surroundings either way round.
-        var style = inverse ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
+        // THE UNPACK IS GONE. The line base travels to the primitive as the TEMPLATE it already is,
+        // and the primitive samples every brush channel per cell — where this used to resolve the
+        // base to a value, pull the foreground brush back out, and hand the two along in parallel
+        // arguments.
+        //
+        // Inverse is the presenter's axis, not the base's, so it rides the BASE the delta falls
+        // through to rather than being OR-ed onto a pre-folded value. That is the same composition:
+        // the base's attribute half is `Applying`, which forces its bits ON whatever the backdrop
+        // held, so folding it over a backdrop that already carries Inverse lands exactly where
+        // OR-ing Inverse onto the fold did — including on NoColor, where the base states Inverse
+        // itself.
+        var runBase = inverse ? CellStyle.Default.AddAttributes(TextAttributes.Inverse) : CellStyle.Default;
+
+        // DrawText's background contract, now STATED rather than inherited. The primitive's brush
+        // overload substitutes Transparent for an omitted background; its template overload reads a
+        // null background as "no opinion" and lets the base's through. The cell lane wants the
+        // former — transparent is what lets the field's chrome show under the glyph — so it says so,
+        // and does not depend on which overload it happens to reach.
+        var run = lineBase.WithBackground(Brushes.Transparent);
 
         if (selected && (!noColor || Owner?.IsFocused is true))
         {
@@ -801,37 +827,18 @@ public sealed class TextPresenter : UIElement
             var rect = new Rect(localColumn, localRow, Math.Max(0, runWidth), 1);
             var selection = ResolveSelectionStyle(noColor, selectionBrush, localColumn + runWidth / 2, localRow, rect);
 
-            // The cell lane hands DrawText the BRUSH rather than the delta's sample, so a gradient
-            // still colours per cell (DrawText overwrites CellStyle.Background from its brush argument
-            // either way); the delta's Background says only WHETHER the rule found one usable.
-            DrawText(context, localColumn, localRow, span, lineBase.Foreground,
-                     selection.Background is null ? null : selectionBrush, selection.ApplyTo(style));
-        }
-        else
-        {
-            DrawText(context, localColumn, localRow, span, lineBase.Foreground, null, style);
-        }
-    }
+            // Composed folds the selection's ATTRIBUTE half (the Inverse clear-or-toggle) onto the
+            // base's. Its resolved Background is read as a DECISION, not as a value — the brush
+            // itself goes into the template, so a gradient selection colours per cell exactly as the
+            // base's foreground does, which a resolved colour could never do.
+            run = run.Composed(selection);
 
-    /// <summary>
-    /// THE UNPACK for the cell lane: the brush channel of the line base in one argument, its value
-    /// channels in the other, and <see cref="RenderContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
-    /// doing the per-cell sampling it already does.
-    /// </summary>
-    /// <remarks>
-    /// <b><see cref="Brushes.Default"/> is not a fallback colour.</b> It samples to
-    /// <see cref="Color.Default"/> everywhere, which is exactly what the primitive's colour overload
-    /// substitutes — the two calls are identical in the foreground. What it buys is the BACKGROUND:
-    /// this used to branch two ways because the base was a value and the brush travelled beside it,
-    /// and the no-brush leg called the colour overload with a hardcoded <c>null</c> background. Since
-    /// <c>DrawText</c> writes its background brush over the base style's, that leg silently repainted
-    /// a selected run's highlight as <see cref="Color.Transparent"/> — the fourth invisible selection
-    /// in this file, and the only one that was a side effect of the parallel parameter rather than of
-    /// the selection rule. One overload, one background, no leg to get wrong.
-    /// </remarks>
-    private static void DrawText(RenderContext context, int column, int row, ReadOnlySpan<char> text,
-                                 IBrush? foreground, IBrush? background, in CellStyle style)
-        => context.DrawText(column, row, text, foreground ?? Brushes.Default, background, style);
+            if (selection.Background is not null)
+                run = run.WithBackground(selectionBrush);
+        }
+
+        context.DrawText(localColumn, localRow, span, run, runBase);
+    }
 
     private IBrush? ResolveBrush(string key)
         => this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;

@@ -1079,6 +1079,12 @@ Two consequences worth recording:
   base's brush channel goes in one argument and its value channels — via a small
   `ResolveLineBaseValue` that drops the foreground precisely because the brush carries it — go in the
   other. Nothing wanted pushing deeper; the primitives were already delta-shaped where it mattered.
+
+  > **Superseded for the CELL lane** by §11.8: `DrawText` now takes the template itself, so the
+  > lane hands the base down whole and the unpack is gone rather than relocated. The paragraph is
+  > kept because its reasoning was right about the OTHER lanes and still governs them —
+  > `ResolveLineBaseValue` survives for the face lane and the sized-run lane, whose primitives
+  > (`DrawGlyphText`, `FormattedTextRun`) still take a resolved style.
 - **The parallel parameter was itself producing a defect.** The private `DrawText` branched on "is
   there a brush?", and its no-brush leg called the *colour* overload with a hardcoded `null` background.
   `DrawText` writes its background brush over the base style's, so that leg repainted a selected run's
@@ -1337,6 +1343,64 @@ No `IsDefault`-as-sentinel was lost. The one occurrence in this chain is that in
 which is an input the resolver reads, not an encoding of absence in what it returns; and a brush that
 samples to `Color.Default` still lands as a real foreground opinion, because the template carries the
 BRUSH and only `null` means absent.
+
+### 11.8 The text primitives: `DrawText` takes a template — ✅ MIGRATED
+
+Same shape as §11.3/§11.7, same reasoning, one layer up:
+
+```csharp
+// before: two brushes travelling beside a whole style — the pair StyleDeltaTemplate carries in one value
+public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                     IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default);
+
+// after: base + delta, as IGlyphFont.Paint already took
+public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                     in StyleDeltaTemplate style, in CellStyle baseStyle = default);
+```
+
+Base style PLUS delta rather than a bare delta, for §11.3's reason: a draw OWNS the cells it inks, so a
+whole `CellStyle` is a legitimate ground state, while the delta says what varies per cell. `Fill*` is a
+separate slice and untouched.
+
+**The `Color` and `IBrush` overloads are KEPT**, as thin wrappers that build a template. Collapsing them
+would push every solid-colour caller — charts, `DataGrid`'s seven painters, `Axes`, `PanelTitle` — through
+template construction to say something the two-argument form already says, and the whole point of the
+convenience overloads is that the simple case is not made to pay for the general one.
+
+Three things this had to settle:
+
+1. **An omitted background means DIFFERENT things at the two entry points, and that is the design, not a
+   leak.** On the brush overload it stays `Brushes.Transparent`, which OVERWRITES `baseStyle`'s background;
+   on the template it is absence, so the base's background survives. The two are not interchangeable at the
+   cell: `CellBuffer.Set` rescues the grapheme under a whitespace write whose background is not opaque, and
+   `Color.Transparent` qualifies where `Color.Default` does not — so drawing a space with each lands a
+   different GRAPHEME, not merely a different sentinel. Pinned by
+   `SpaceOverContent_TransparentRescuesTheGlyph_WhereNoOpinionOverwritesIt`.
+2. **The sampling rect did not move.** `DrawText` samples against the full multi-line extent (widest
+   sanitized line × line count) anchored at the start cell, carried in the signed `SampleBounds` rather than
+   the `ushort`-backed `Rect` so a negative anchor shifts contract-equivalently instead of throwing. That
+   carrier grew a `Resolve(template, column, row)` that applies the same shift to every brush channel at
+   once — one rect for foreground and background alike, because a text run's background covers precisely
+   the cells its glyphs do. `DrawFaceLine`'s per-WORD brush bounds are a separate pre-existing quirk and
+   were left alone.
+3. **`IsUniform` became readable here too.** A solid template — the overwhelming majority — folds once for
+   the whole run instead of sampling two brushes at every cluster. Verified by mutation: hoisting
+   unconditionally fails four gradient tests across both overloads.
+
+**`TextPresenter`'s cell-lane unpack is gone**, which is what the slice was for. `ResolveLineBaseValue` +
+`lineBase.Foreground` at the paint site are replaced by the line base travelling to the primitive whole;
+the private `DrawText` helper that existed only to re-join the two halves is deleted, and with it its
+`?? Brushes.Default` (an absent foreground is now absence, and `CellStyle.Default`'s foreground is what it
+falls through to — the same `Color.Default` the fallback resolved to). `Inverse` moved from being OR-ed
+onto a pre-folded value to riding the BASE the delta falls through to; the two compose to the same
+attribute word because the base's half is `Applying`, which forces its bits on whatever the backdrop held.
+The selection likewise stops discarding its brush: `Composed` folds its attribute half and the brush itself
+goes into the template, so a gradient selection could colour per cell. Frame parity was verified cell for
+cell over fourteen presenter configurations (colour and NoColor tiers, selected and not, inverse, attributes,
+multi-line, placeholder): zero diff.
+
+`ResolveLineBaseValue` SURVIVES for the face lane and the sized-run lane, whose primitives still take a
+resolved `CellStyle`. Retiring it entirely waits on `DrawGlyphText`'s caller-side shape, not on this slice.
 
 ## 12. What the type has to prove
 

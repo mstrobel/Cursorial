@@ -414,4 +414,93 @@ public sealed class TextPresenterLineBaseTests
         Assert.NotEqual(Selection, At(host, box, 0, 0).Style.Background);
         Assert.NotEqual(Selection, At(host, box, PlainText.Length - 1, 0).Style.Background);
     }
+
+    // ───────── the cell lane reaches the primitive as a TEMPLATE, not as brush + value ─────────
+
+    /// <summary>
+    /// The base's non-colour channels reach the cell lane's cells. They used to be pre-folded into a
+    /// resolved <c>CellStyle</c> before the primitive saw them; they now ride the delta the primitive
+    /// resolves per cell, and the underline SHAPE is the discriminating one — it is the channel a
+    /// brush pair had nowhere to carry, so a lane that dropped the delta would still get the colours
+    /// right and lose this.
+    /// </summary>
+    [Fact]
+    public void PlainLane_LineBaseAttributesAndUnderlineShape_ReachTheCells()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid), b =>
+        {
+            TextElement.SetTextWeight(b, TextWeight.Bold);
+            TextElement.SetUnderline(b, UnderlineStyle.Curly);
+            TextElement.SetStrikethrough(b, true);
+        });
+        using var _ = host;
+
+        Assert.True(Presenter(box).EditingSource.PaintsAsCells);
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        for (var column = 0; column < PlainText.Length; column++)
+        {
+            var style = At(host, box, column, 0).Style;
+            Assert.True(style.Attributes.HasFlag(TextAttributes.Bold), $"column {column}: {style.Attributes}");
+            Assert.True(style.Attributes.HasFlag(TextAttributes.Underline), $"column {column}: {style.Attributes}");
+            Assert.True(style.Attributes.HasFlag(TextAttributes.Strikethrough), $"column {column}: {style.Attributes}");
+            Assert.Equal(UnderlineStyle.Curly, style.UnderlineStyle);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="TextAttributes.Inverse"/> is the PRESENTER's axis and now rides the base style the
+    /// delta falls through to, rather than being OR-ed onto a pre-folded value. The two compose to the
+    /// same word — that is the claim, and this is what would catch it if they did not: the base's own
+    /// axes must survive alongside it, in both directions.
+    /// </summary>
+    [Fact]
+    public void PlainLane_InverseComposesWithTheBasesOwnAttributes()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid), b =>
+        {
+            TextElement.SetInverse(b, true);
+            TextElement.SetTextWeight(b, TextWeight.Bold);
+            TextElement.SetBlink(b, true);
+        });
+        using var _ = host;
+
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        var expected = TextAttributes.Bold | TextAttributes.Blink | TextAttributes.Inverse;
+
+        for (var column = 0; column < PlainText.Length; column++)
+        {
+            var style = At(host, box, column, 0).Style;
+            Assert.Equal(expected, style.Attributes & expected);
+        }
+    }
+
+    /// <summary>
+    /// The trap the migration had to walk past, at the presenter: the cell lane still paints a
+    /// <b>transparent</b> background, so the field's own chrome shows under every glyph. On a template
+    /// an absent background means "no opinion" — which would leave the base's instead — so the lane
+    /// states transparent rather than inheriting it from whichever overload it reaches.
+    /// </summary>
+    /// <remarks>
+    /// The evidence is a cell the RUN did not paint, in the same row: the chrome painted it, and the
+    /// text cells must match it exactly. Asserting a literal colour would only pin the theme.
+    /// </remarks>
+    [Fact]
+    public void PlainLane_UnselectedRun_LetsTheFieldsChromeShowUnderTheGlyphs()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid));
+        using var _ = host;
+
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        // A cell inside the field but past the text — chrome only, no run.
+        var chrome = At(host, box, PlainText.Length + 5, 0);
+        Assert.True(string.IsNullOrWhiteSpace(chrome.Grapheme), $"the run reached this cell: '{chrome.Grapheme}'");
+        Assert.False(chrome.Style.Background.IsDefault,
+                     "the field painted no background — this fixture cannot tell transparent from absent");
+
+        for (var column = 0; column < PlainText.Length; column++)
+            Assert.Equal(chrome.Style.Background, At(host, box, column, 0).Style.Background);
+    }
 }

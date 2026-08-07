@@ -25,8 +25,9 @@ namespace Cursorial.Tests.UI.Hosting;
 /// pool hop.
 /// </para>
 /// <para>
-/// That is why the dialog suites wait through <see cref="HeadlessPump"/> instead of
-/// <see cref="Task.Wait(TimeSpan)"/>.
+/// That is why the host's own <see cref="UIHeadlessHost.RunUntilCompleted"/> — which this file
+/// guards, and which the dialog suites reach through <see cref="HeadlessPump"/> — pumps while it
+/// polls instead of calling <see cref="Task.Wait(TimeSpan)"/>.
 /// </para>
 /// </summary>
 public sealed class DispatcherResumptionWaitTests
@@ -49,9 +50,9 @@ public sealed class DispatcherResumptionWaitTests
         Assert.False(flow.IsCompleted);
 
         var clock = Stopwatch.StartNew();
-        var result = HeadlessPump.WaitForResult(host, flow, "the UI-bound flow");
 
-        Assert.Equal(Answer, result);
+        Assert.True(host.RunUntilCompleted(flow), "the UI-bound flow did not complete within the deadline");
+        Assert.Equal(Answer, flow.Result);
 
         // The point of the fix: completion tracked the 400 ms hop instead of burning the deadline.
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(2),

@@ -184,37 +184,48 @@ public sealed class AccessTextPresenter : UIElement
         if (cluster is null)
             return;
 
-        var keyAttributes = default(TextAttributes);
+        // The cue as a VALUE (proposal-partial-style §11.4): two channels and one attribute, with
+        // everything else inherited from the label's own style — which is exactly a PartialStyle. It is
+        // built once here and applied to `baseTextStyle` at the paint below, rather than being folded
+        // into a hand-assembled flag word.
+        var cue = default(PartialStyle);
 
         var hasKeyUnderline = KeyUnderline is not null;
-        if (hasKeyUnderline)
-            keyAttributes |= TextAttributes.Underline;
-
-        if (KeyInverse)
-            keyAttributes |= TextAttributes.Inverse;
-
-        keyAttributes |= KeyWeight switch
-                         {
-                             TextWeight.Bold  => TextAttributes.Bold,
-                             TextWeight.Faint => TextAttributes.Faint,
-                             _                => default
-                         };
-
         var keyUnderlineStyle = KeyUnderline ?? UnderlineStyle.Single;
-        var combined = resolved.Flags | keyAttributes;
 
-        // If our normal presentation is reverse-video, and the key is supposed to be reverse-video,
-        // clear the flag for the 'double-reverse-video' effect.
-        if (resolved.Flags.HasFlag(TextAttributes.Inverse) && keyAttributes.HasFlag(TextAttributes.Inverse))
-            combined &= ~TextAttributes.Inverse;
+        // Reverse-video is a TOGGLE, not a union. If our normal presentation is already reverse-video
+        // and the key is supposed to be too, the flag comes back OFF for the 'double-reverse-video'
+        // effect — which is what the old `combined &= ~Inverse` special case spelled by hand, and what
+        // the delta algebra says directly.
+        if (KeyInverse)
+            cue = cue.Toggling(TextAttributes.Inverse);
 
-        var hasUnderline = combined.HasFlag(TextAttributes.Underline);
-        var style = new CellStyle().WithAttributes(combined);
+        // WEIGHT IS AN AXIS, AND THE CUE WINS. Bold and Faint share the SGR 22 reset, so `Bold | Faint`
+        // is not "two attributes" — reaching it emits ESC[1m from a Faint predecessor and ESC[2m from a
+        // Bold one, so the painted weight depends on whatever was painted before it (measured identically
+        // in Kitty and Ghostty). The old `resolved.Flags | keyAttributes` reached it whenever a Faint
+        // label carried a Bold cue, which the shipped Ansi16 theme produces (InteractiveCueWeight = Bold).
+        // `Weighing` IMPOSES the cue's weight and clears the other, because the cue is the later and more
+        // specific statement: it is the theme saying "this grapheme is the mnemonic", against a weight the
+        // label states for its text as a whole.
+        //
+        // TextWeight.Normal is deliberately NOT imposed. It is the property's default and the value every
+        // colour tier ships, so treating it as an opinion would have the resting cue strip the weight off
+        // the mnemonic of every bold label — "no cue weight" is what Normal has always meant here.
+        if (KeyWeight is not TextWeight.Normal)
+            cue = cue.Weighing(KeyWeight);
+
         var indicatorBrush = IndicatorBrush ?? Foreground;
-        
-        if (indicatorBrush is not null)
+
+        // The underline rides the cue when the key states one, and also when the LABEL is underlined —
+        // in which case the cue still owns the shape and the indicator colour over its own grapheme.
+        // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
+        // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
+        if (hasKeyUnderline || (resolved.Flags & TextAttributes.Underline) != 0)
         {
-            if (hasUnderline)
+            cue = cue with { UnderlineShape = keyUnderlineStyle };
+
+            if (indicatorBrush is not null)
             {
                 // Sample the brush against the TEXT's own box — origin at the first character of the
                 // first line — not against `Bounds`, which is parent-relative. `column` is
@@ -224,13 +235,14 @@ public sealed class AccessTextPresenter : UIElement
                 // head. Solid brushes ignore `bounds`, which is why it went unnoticed.
                 var textBounds = new Rect(0, 0, GraphemeWidth.StringWidth(labelText), 1);
 
-                style = style.WithUnderlineStyle(keyUnderlineStyle)
-                             .WithUnderlineColor(indicatorBrush.ColorAt(column, 0, textBounds));
+                cue = cue with { UnderlineColor = indicatorBrush.ColorAt(column, 0, textBounds) };
             }
-
-            if (hasKeyUnderline is false)
-                foreground = indicatorBrush; // if no distinguishing cue, paint the entire marker
         }
+
+        if (indicatorBrush is not null && hasKeyUnderline is false)
+            foreground = indicatorBrush; // if no distinguishing cue, paint the entire marker
+
+        var style = cue.ApplyTo(baseTextStyle);
 
         if (foreground is {} fg)
             context.DrawText(column, 0, cluster, fg, baseStyle: style);

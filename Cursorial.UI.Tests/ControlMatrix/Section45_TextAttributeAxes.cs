@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
@@ -489,6 +490,176 @@ public sealed class Section45_TextAttributeAxes
         Assert.Equal("*", cell.Grapheme);
         Assert.Equal(TextAttributes.Bold | TextAttributes.Underline, cell.Style.Attributes);
         Assert.Equal(UnderlineStyle.Curly, cell.Style.UnderlineStyle);
+    }
+
+    // ─────────── the weight AXIS at the two remaining flag-word OR sites (Bold|Faint retirement) ───────────
+    //
+    // `Bold | Faint` is not "two attributes": they share the SGR 22 reset, so reaching that state emits
+    // ESC[1m from a Faint predecessor and ESC[2m from a Bold one — the painted weight depends on what was
+    // painted before it (measured identically in Kitty and Ghostty). PartialStyle can no longer construct
+    // it and TextElement.ComposeAttributes cannot produce it (TA1); these rows cover the two UI sites that
+    // reached it by OR-ing a flag word onto the element fold, with no markup involved.
+    //
+    // Every attribute assertion below is an EQUALITY on the whole word, deliberately: this suite renders
+    // through the real theme, so `HasFlag` would let a stray theme attribute ride along unnoticed, and
+    // asserting "Bold is present" is exactly the check `Bold|Faint` passes.
+
+    private const string CueLabelText = "Save";
+
+    /// <summary>An <c>AccessTextPresenter</c> with the cue armed and every cue channel stated locally
+    /// (local value beats the theme's <c>AccessTextPresenter</c> style rule), so the rows below vary one
+    /// thing at a time.</summary>
+    private static AccessTextPresenter CueLabel(TextWeight keyWeight,
+                                                UnderlineStyle? keyUnderline = UnderlineStyle.Single,
+                                                Color? indicator = null)
+    {
+        var presenter = new AccessTextPresenter
+        {
+            Text                = new AccessText(CueLabelText, CueLabelText[0], 0),
+            KeyWeight           = keyWeight,
+            KeyInverse          = false,
+            KeyUnderline        = keyUnderline,
+            IndicatorBrush      = new SolidColorBrush(indicator ?? Color.FromRgb(0, 200, 40)),
+            Foreground          = Brushes.Red,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment   = VerticalAlignment.Top,
+        };
+
+        // Without this the whole cue block early-outs, and every row below would pass vacuously.
+        AccessKeyManager.SetShowUnderline(presenter, true);
+        return presenter;
+    }
+
+    private static TextAttributes WeightBit(TextWeight w) => w switch
+    {
+        TextWeight.Bold  => TextAttributes.Bold,
+        TextWeight.Faint => TextAttributes.Faint,
+        _                => TextAttributes.None,
+    };
+
+    [Fact] // TA18 — the cue is a value with two channels and one attribute: shape and indicator colour land on the key cell
+    public void TA18_AccessKeyCue_PaintsItsShapeAndIndicatorColour()
+    {
+        var indicator = Color.FromRgb(0, 200, 40);
+        var presenter = CueLabel(TextWeight.Normal, UnderlineStyle.Curly, indicator);
+
+        using var host = UIHeadlessHost.Create();
+        host.ShowRoot(presenter);
+        Assert.True(host.RunUntilIdle());
+
+        var key = host.GetCell(0, 0);
+        Assert.Equal("S", key.Grapheme);                              // the cue cell is INKED, not an untouched blank
+        Assert.Equal(TextAttributes.Underline, key.Style.Attributes); // exactly the cue's one attribute
+        Assert.Equal(UnderlineStyle.Curly, key.Style.UnderlineStyle); // the SHAPE the cue carries
+        Assert.Equal(indicator, key.Style.UnderlineColor);            // ...and its COLOUR, from IndicatorBrush
+
+        var plain = host.GetCell(1, 0);                               // the rest of the label carries none of it
+        Assert.Equal("a", plain.Grapheme);
+        Assert.Equal(TextAttributes.None, plain.Style.Attributes);
+    }
+
+    [Theory] // TA19 — element weight vs cue weight: ONE bit is painted, and the CUE is the one that wins
+    [InlineData(TextWeight.Faint,  TextWeight.Bold)]   // the shipped case: an Ansi16 Bold cue over Faint content
+    [InlineData(TextWeight.Bold,   TextWeight.Faint)]  // the mirror
+    [InlineData(TextWeight.Bold,   TextWeight.Normal)] // Normal = "the cue has no weight opinion": the element's survives
+    [InlineData(TextWeight.Normal, TextWeight.Bold)]   // one weight only — unchanged by the axis rule
+    [InlineData(TextWeight.Normal, TextWeight.Normal)]
+    public void TA19_AccessKeyCue_ImposesItsWeight_NeverBoldAndFaint(TextWeight elementWeight, TextWeight cueWeight)
+    {
+        var presenter = CueLabel(cueWeight);
+        TextElement.SetTextWeight(presenter, elementWeight);
+
+        using var host = UIHeadlessHost.Create();
+        host.ShowRoot(presenter);
+        Assert.True(host.RunUntilIdle());
+
+        // Reachability: the element fold really carries the weight under test (the theme renders too —
+        // "the fixture sets no X" is not evidence that X is absent from the frame).
+        Assert.Equal(WeightBit(elementWeight), TextElement.ComposeAttributes(presenter).Flags);
+
+        // The cue is the later, more specific statement, so it IMPOSES its weight and clears the other;
+        // TextWeight.Normal is the property's default and means "no opinion", so it leaves the element's be.
+        var expected = cueWeight is TextWeight.Normal ? WeightBit(elementWeight) : WeightBit(cueWeight);
+
+        var key = host.GetCell(0, 0);
+        Assert.Equal("S", key.Grapheme);
+        Assert.Equal(expected | TextAttributes.Underline, key.Style.Attributes);
+
+        // ...and the cue is local to its grapheme: the rest of the label keeps the ELEMENT's weight.
+        var plain = host.GetCell(1, 0);
+        Assert.Equal("a", plain.Grapheme);
+        Assert.Equal(WeightBit(elementWeight), plain.Style.Attributes);
+    }
+
+    // TA20 — the low-fidelity placeholder: Faint IMPOSES itself over an inherited Bold, never Bold|Faint.
+    //
+    // `fold` and `expected` are stated per row rather than derived, because the NoColor row is the reason
+    // this suite's equality assertions matter: the theme's :caps-nocolor rule arms Inverse on the TextBox,
+    // so the frame carries an attribute the fixture never set. A HasFlag check would have hidden it — and
+    // would equally have hidden the Bold this row exists to prove is gone.
+    [Theory]
+    [InlineData(ColorDepth.Ansi16,  TextWeight.Bold,   TextAttributes.Bold,                     TextAttributes.Faint)]
+    [InlineData(ColorDepth.NoColor, TextWeight.Bold,   TextAttributes.Bold | TextAttributes.Inverse,
+                                                       TextAttributes.Faint | TextAttributes.Inverse)]
+    [InlineData(ColorDepth.Ansi16,  TextWeight.Normal, TextAttributes.None,                     TextAttributes.Faint)] // one weight only — unchanged
+    [InlineData(ColorDepth.Ansi16,  TextWeight.Faint,  TextAttributes.Faint,                    TextAttributes.Faint)]
+    public void TA20_LowFidelityPlaceholder_ImposesFaint(ColorDepth tier, TextWeight weight,
+                                                         TextAttributes fold, TextAttributes expected)
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Cursorial.Rendering.Size(30, 6),
+        });
+
+        host.Application.RequestedColorTier = tier;
+
+        var box = new TextBox
+        {
+            Placeholder         = "name",
+            Width               = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment   = VerticalAlignment.Top,
+        };
+
+        TextElement.SetTextWeight(box, weight);
+        host.ShowRoot(box);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(tier, host.Application.ActualThemeVariant.Tier);      // the low-fidelity leg is ARMED
+        Assert.Equal(fold, TextElement.ComposeAttributes(box).Flags);      // ...and the fold is what the row says
+
+        var origin = box.TranslateToWindow(0, 0);
+        var cell = host.GetCell(origin.Column + 1, origin.Row);                // past the 1-col border padding
+        Assert.Equal("n", cell.Grapheme);                                      // the placeholder IS painted here
+        Assert.Equal(expected, cell.Style.Attributes);
+    }
+
+    [Fact] // TA21 — the colour tiers are untouched: MutedBrush carries the placeholder, so no Faint is imposed
+    public void TA21_ColourTierPlaceholder_KeepsTheElementsWeight()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+        {
+            InitialSize = new Cursorial.Rendering.Size(30, 6),
+        });
+
+        var box = new TextBox
+        {
+            Placeholder         = "name",
+            Width               = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment   = VerticalAlignment.Top,
+        };
+
+        TextElement.SetTextWeight(box, TextWeight.Bold);
+        host.ShowRoot(box);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.ActualThemeVariant.Tier >= ColorDepth.Ansi256); // NOT the low-fidelity leg
+
+        var origin = box.TranslateToWindow(0, 0);
+        var cell = host.GetCell(origin.Column + 1, origin.Row);
+        Assert.Equal("n", cell.Grapheme);
+        Assert.Equal(TextAttributes.Bold, cell.Style.Attributes); // the element's weight, alone
     }
 
     private static T? FindDescendant<T>(UIElement root) where T : UIElement

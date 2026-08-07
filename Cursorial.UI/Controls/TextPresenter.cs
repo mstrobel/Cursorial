@@ -347,19 +347,30 @@ public sealed class TextPresenter : UIElement
                 // MutedBrush carries the placeholder color on color tiers; Faint carries the de-emphasis on the
                 // NoColor tier where MutedBrush resolves to Default (adoption-spec §5: placeholder → Faint).
                 IBrush? muted;
-                TextAttributes attributes = TextElement.ComposeAttributes(owner).Flags/* | TextAttributes.Faint*/;
+                var baseStyle = CellStyle.Default.WithAttributes(TextElement.ComposeAttributes(owner).Flags);
 
                 var lowFidelity = UIApplication.Current?.ActualThemeVariant.Tier < ColorDepth.Ansi256;
 
                 if (lowFidelity)
-                    attributes |= TextAttributes.Faint;
-
-                if (lowFidelity)
+                {
+                    // WEIGHT IS AN AXIS, AND FAINT WINS. This used to be `attributes |= Faint`, which
+                    // produced `Bold | Faint` from one property plus a tier check — a TextWeight="Bold"
+                    // TextBox at Ansi16/NoColor. That state is not renderable: Bold and Faint share the
+                    // SGR 22 reset, so reaching it emits ESC[1m from a Faint predecessor and ESC[2m from
+                    // a Bold one, and the placeholder's weight ends up depending on what was painted
+                    // before it. `Weighted` IMPOSES Faint and clears the inherited Bold, because the
+                    // de-emphasis IS the placeholder treatment down here — on a tier with no muted colour
+                    // to carry it, Faint is the entire signal that this is a prompt and not real content,
+                    // so it must not be the side that loses.
+                    baseStyle = PartialStyle.Weighted(TextWeight.Faint).ApplyTo(baseStyle);
                     muted = foreground;
+                }
                 else
+                {
                     muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
+                }
 
-                DrawText(context, 0, 0, placeholder, muted, null, CellStyle.Default.WithAttributes(attributes));
+                DrawText(context, 0, 0, placeholder, muted, null, baseStyle);
             }
 
             return;

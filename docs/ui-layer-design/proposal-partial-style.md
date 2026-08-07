@@ -1121,18 +1121,46 @@ The nocolor inverse pre-fill in `TextPresenter` is NOT retired by this. Box mode
 the band fill also covers the inter-word gaps the face never inks, so it is not a replacement — and a
 universal band fill was separately measured and rejected (it grew SGR sequences 14–16%).
 
-### 11.4 The access key (`proposal-unified-text-path.md` §3)
+### 11.4 The access key (`proposal-unified-text-path.md` §3) — ✅ MIGRATED
 
-Two channels and one attribute, everything else inherited — and it is a *value*, so the formatter
-can carry it through layout and apply it at paint without a closure:
+Two channels and one attribute, everything else inherited — and it is a *value*, so it is built once
+and applied at paint rather than folded into a hand-assembled flag word:
 
 ```csharp
-var cue = default(PartialStyle).WithUnderline(UnderlineStyle.Single, indicator);
+var cue = PartialStyle.WithUnderline(UnderlineStyle.Single, indicator);
 ```
 
-Note what is *not* written: `Set(TextAttributes.Underline)`. That call would throw — `Underline` has
-its own axis, so `Require` rejects it — and `WithUnderline` already forces the flag on, because a
+*(The sketch this section shipped with read `default(PartialStyle).WithUnderline(…)`. `WithUnderline`
+is a static FACTORY — the instance sibling is `Underlining` — so the corrected spelling is above, and
+the `default(PartialStyle)` seed is what the real call site keeps, because it accumulates three
+independently-conditional channels before the underline is known to apply at all.)*
+
+Note what is *not* written: `WithSet(TextAttributes.Underline)`. That call would throw — `Underline`
+has its own axis, so `Require` rejects it — and `WithUnderline` already forces the flag on, because a
 shape without the flag is meaningless. The API refuses the half-expressed version of the operation.
+`AccessTextPresenter` states the shape through `with { UnderlineShape = … }` for the same reason: a
+shape implies the flag inside `ApplyTo`, so the presenter never needs the call that does not exist.
+
+**What the migration changed at the call site**, beyond the shape of the code:
+
+1. **Reverse-video became a `Toggling`.** The presenter's cue had a hand-written special case —
+   `combined &= ~Inverse` when the label was *already* inverse and the cue wanted inverse too, for
+   the double-reverse-video effect. That is a toggle, and the delta algebra says it in one call.
+2. **Weight became an axis, and the CUE wins.** `resolved.Flags | keyAttributes` produced `Bold |
+   Faint` whenever a Faint label carried a Bold cue — which the shipped Ansi16 theme does
+   (`InteractiveCueWeight = Bold`). `Weighing` imposes the cue's weight and clears the other, because
+   the cue is the later and more specific statement: the theme naming one grapheme the mnemonic,
+   against a weight the label states for its text as a whole. `TextWeight.Normal` is deliberately
+   *not* imposed — it is the property's default and the value every colour tier ships, so treating it
+   as an opinion would strip the weight off the mnemonic of every bold label.
+3. **The cue's underline shape stopped being conditional on the indicator brush.** The old code set
+   the shape and the colour together, inside `if (indicatorBrush is not null)`, so a `KeyUnderline`
+   of `Curly` silently degraded to `Single` when no brush resolved. The shape now rides the delta
+   unconditionally and only the sampled colour is brush-gated.
+
+The one thing the migration deliberately did **not** move is the sampling rect: the indicator colour
+is still sampled against the *text's* own box, origin at the first character of the first line, not
+against the parent-relative `Bounds` (`AccessKeyCueBrushTests`).
 
 ### 11.5 Composition, and why `Then` matters
 
@@ -1257,6 +1285,18 @@ Three things this migration had to be careful about, each now pinned by a test:
    > `BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint`, and
    > `EveryPublicFlagWordEntryPoint_RejectsTheAxisOwningFlags` now states the guard over the whole public
    > surface by reflection, so a future unguarded sibling fails a test rather than a terminal.
+   >
+   > **The two remaining producers are also gone**, and they were not in this layer: the type could no
+   > longer construct `Bold | Faint`, but two UI call sites still reached it by OR-ing a flag word onto
+   > the element fold, with no markup involved. `AccessTextPresenter` unioned the access-key cue onto
+   > `TextElement.ComposeAttributes` (§11.4), and `TextPresenter`'s placeholder did `attributes |=
+   > TextAttributes.Faint` on the low-fidelity leg — so a `TextWeight="Bold"` TextBox at Ansi16/NoColor
+   > painted its placeholder in the unrenderable state from one property plus a tier check. Both now
+   > IMPOSE a weight the way `CreateBrushResolver` does, and each states its winner and why: the CUE
+   > wins at the access key (the later, more specific statement), and FAINT wins at the placeholder (on
+   > a tier with no muted colour, the de-emphasis is the entire signal that this is a prompt). Pinned
+   > by `Section45_TextAttributeAxes` rows TA19–TA21, which assert the whole attribute word with
+   > equality rather than `HasFlag` — "Bold is present" is exactly the check `Bold | Faint` passes.
 2. **The inline-vs-block scope distinction had to survive a per-cell → per-run reshaping.** Inline sampling
    was `ColorAt(LogicalColumn, 0, Rect(0, 0, ScopeWidth, 1))` — a remapped COORDINATE — and a per-run
    resolver hands back a rect, not a coordinate. It is expressible because the remap is a constant offset

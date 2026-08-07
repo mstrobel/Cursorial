@@ -4,6 +4,7 @@
 #pragma warning disable xUnit1031
 
 using Cursorial.UI;
+using Cursorial.UI.Data;
 using Cursorial.UI.Hosting.Headless;
 
 namespace Cursorial.Tests.UI.Hosting;
@@ -219,6 +220,107 @@ public sealed class UIDispatcherTests
         dispatcher.Wake();
         Assert.True(dispatcher.WaitForWake(TimeSpan.FromMilliseconds(1)));
         Assert.False(dispatcher.WaitForWake(TimeSpan.FromMilliseconds(1)));
+    }
+
+    // ───────────────────────────── the binding engine's ambient seam ─────────────────────────────
+    //
+    // BindingExpressionCore.DispatchSourceChange reads BindingDispatcher.Current ONCE PER PUSH and,
+    // on the UI thread, immediately discards it (CheckAccess() is true). Resolving the ambient
+    // dispatcher must therefore cost nothing — a per-read wrapper allocation is a real production
+    // cost on every binding push in every app, not just a test artifact.
+
+    [Fact]
+    public void BindingDispatcher_AmbientResolution_AllocatesNothingPerRead()
+    {
+        using var host = CreateHost(out _);
+
+        // The ambient gate is OPEN: a host is alive on this thread, so UIApplication.Current is
+        // non-null and Current resolves the ambient dispatcher (no test override installed).
+        Assert.NotNull(BindingDispatcher.Current);
+
+        IUIDispatcher? sink = null;
+        for (var i = 0; i < 256; i++) // warm up: JIT the getter before measuring
+            sink = BindingDispatcher.Current;
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 256; i++)
+            sink = BindingDispatcher.Current;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.NotNull(sink); // keeps the reads escaping — no dead-code / stack-allocation elision
+        Assert.True(
+            allocated == 0,
+            $"BindingDispatcher.Current allocated {allocated} B over 256 reads " +
+            $"({allocated / 256.0} B per read; expected 0).");
+    }
+
+    [Fact]
+    public void BindingDispatcher_AmbientResolution_IsTheApplicationDispatcher_NoWrapper()
+    {
+        using var host = CreateHost(out var app);
+
+        var first = BindingDispatcher.Current;
+        var second = BindingDispatcher.Current;
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);          // stable identity across reads — nothing is manufactured
+        Assert.Same(app.Dispatcher, first);  // and no adapter type stands between the two
+    }
+
+    [Fact]
+    public void BindingDispatcher_AmbientResolution_CheckAccess_TrueOnOwnerThread_FalseElsewhere()
+    {
+        using var host = CreateHost(out _);
+
+        var dispatcher = BindingDispatcher.Current;
+        Assert.NotNull(dispatcher);
+        Assert.True(dispatcher.CheckAccess());                               // the push's same-thread fast path
+        Assert.False(WorkerThread.Run(() => dispatcher.CheckAccess()));      // the cross-thread marshal path
+    }
+
+    [Fact]
+    public void BindingDispatcher_AmbientResolution_PostQueuesOnTheApplicationDispatcher()
+    {
+        using var host = CreateHost(out var app);
+
+        var dispatcher = BindingDispatcher.Current;
+        Assert.NotNull(dispatcher);
+
+        var ran = false;
+        dispatcher.Post(() => ran = true);
+        Assert.False(ran);                        // never inline (design doc §10.3)
+        Assert.Equal(1, app.Dispatcher.JobCount); // landed on the application's own queue
+
+        host.RunFrame();
+        Assert.True(ran);
+    }
+
+    [Fact]
+    public void BindingDispatcher_Override_WinsOverAmbient_AndRestores()
+    {
+        using var host = CreateHost(out var app);
+
+        var fake = new StubDispatcher();
+        using (BindingDispatcher.Install(fake))
+            Assert.Same(fake, BindingDispatcher.Current);
+
+        Assert.Same(app.Dispatcher, BindingDispatcher.Current); // the scope restored the ambient path
+    }
+
+    [Fact]
+    public void BindingDispatcher_Current_IsNull_WithNoApplication()
+    {
+        // Deliberately measured on a FRESH thread: UIApplication.Current is [ThreadStatic], and a
+        // pool thread can carry a leaked non-null slot from an earlier test (see the hazard note in
+        // TeardownAndExceptionTests). A brand-new thread's slot is unambiguously clean.
+        Assert.Null(WorkerThread.Run(() => BindingDispatcher.Current));
+    }
+
+    private sealed class StubDispatcher : IUIDispatcher
+    {
+        public bool CheckAccess() => true;
+
+        public void Post(Action callback) => callback();
     }
 
     private static UIHeadlessHost CreateHost(out UIApplication app)

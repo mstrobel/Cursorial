@@ -2,8 +2,10 @@ namespace Cursorial.UI.Data;
 
 /// <summary>
 /// The minimal dispatcher seam the binding engine consumes for cross-thread INPC marshaling
-/// (design doc §6.9). S6 owns the concrete <c>UIDispatcher</c>; the engine needs only
-/// <see cref="CheckAccess"/> and <see cref="Post"/>. <b>Pinned</b>: posted work runs in the next
+/// (design doc §6.9). S6 owns the concrete <c>UIDispatcher</c>, which implements this interface
+/// <em>directly</em> (same assembly, identical member shapes) so the ambient lookup never allocates
+/// an adapter; the engine needs only <see cref="CheckAccess"/> and <see cref="Post"/>. Keep any new
+/// member on this seam implementable by <c>UIDispatcher</c> as-is. <b>Pinned</b>: posted work runs in the next
 /// frame's dispatch drain <em>before layout</em>, and <see cref="Post"/> MUST wake the event-driven
 /// frame loop when no drain is pending (the <c>Invalidate()</c> pattern) — a background VM update
 /// must not wait for unrelated input.
@@ -28,11 +30,14 @@ internal static class BindingDispatcher
     // falls back to the ambient application's dispatcher.
     private static volatile IUIDispatcher? _override;
 
-    /// <summary>The current dispatcher — the test override, else the ambient application's dispatcher.</summary>
-    public static IUIDispatcher? Current => _override ?? AmbientDispatcher;
-
-    private static IUIDispatcher? AmbientDispatcher
-        => UIApplication.Current?.Dispatcher is { } dispatcher ? new UIDispatcherAdapter(dispatcher) : null;
+    /// <summary>
+    /// The current dispatcher — the test override, else the ambient application's dispatcher.
+    /// <b>Allocation-free</b>: <c>UIDispatcher</c> implements <see cref="IUIDispatcher"/> itself, so
+    /// the ambient arm is a plain reference read, not a wrapper. This is read <b>once per binding
+    /// push</b> (<c>BindingExpressionCore.DispatchSourceChange</c>) and discarded unused on the UI
+    /// thread, so anything manufactured here is per-push garbage in every app — keep it a read.
+    /// </summary>
+    public static IUIDispatcher? Current => _override ?? UIApplication.Current?.Dispatcher;
 
     /// <summary>
     /// Installs a process-wide dispatcher override (tests / hosting); returns a scope that restores
@@ -54,12 +59,5 @@ internal static class BindingDispatcher
     private sealed class Scope(IUIDispatcher? prior) : IDisposable
     {
         public void Dispose() => _override = prior;
-    }
-
-    private sealed class UIDispatcherAdapter(UIDispatcher dispatcher) : IUIDispatcher
-    {
-        public bool CheckAccess() => dispatcher.CheckAccess();
-
-        public void Post(Action callback) => dispatcher.Post(callback);
     }
 }

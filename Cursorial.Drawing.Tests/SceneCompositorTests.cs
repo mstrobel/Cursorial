@@ -67,6 +67,31 @@ public class SceneCompositorTests
 
     // ---- Base, transparency, coverage ----
 
+    [Fact] // regression: the base is what makes an uncovered cell BLENDABLE — see WindowManager.RenderFrameCore ⓪
+    public void Base_FromTheTargetsDerivedBlank_KeepsATranslucentSourceBlended()
+    {
+        // A terminal that reported its default background: CellBuffer.DeriveDefaultStyle promotes it to RGB
+        // "so we can take advantage of alpha blending", and that promoted blank is the buffer's DefaultStyle.
+        var terminalDefault = Color.FromRgb(30, 30, 46);
+        var buffer = new CellBuffer(4, 1, defaultStyle: CellStyle.Default.WithBackground(terminalDefault));
+        var scene = Scene.Create(4, 1);
+        Fill(scene, new SolidColorBrush(RedHalf));
+        var layers = new[] { new SceneLayer(scene) };
+
+        // Based on the target's own blank, the source's alpha survives: a genuine 50% blend.
+        Assert.True(new SceneCompositor(buffer.DefaultStyle).Composite(layers, buffer.AsView()));
+        Assert.Equal(Color.Composite(RedHalf, terminalDefault, BlendingModes.Default), buffer[0, 0].Style.Background);
+
+        // The defect it pins: a CellStyle.Default base overwrites the derived blank with a NON-RGB color, and
+        // Color.Composite reports a non-RGB backdrop's result at full opacity — the alpha is discarded outright.
+        var unblendable = new CellBuffer(4, 1, defaultStyle: CellStyle.Default.WithBackground(terminalDefault));
+        scene.Invalidate();
+        Fill(scene, new SolidColorBrush(RedHalf));
+        Assert.True(new SceneCompositor().Composite(layers, unblendable.AsView()));
+        Assert.Equal(RedHalf.WithAlpha(255), unblendable[0, 0].Style.Background);
+        Assert.NotEqual(buffer[0, 0].Style.Background, unblendable[0, 0].Style.Background);
+    }
+
     [Fact]
     public void UncoveredCells_ShowBase_PaintedCells_ShowComposite()
     {

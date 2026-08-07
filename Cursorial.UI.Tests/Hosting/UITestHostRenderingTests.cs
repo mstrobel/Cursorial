@@ -5,6 +5,7 @@
 
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.Text;
 using Cursorial.UI;
@@ -36,7 +37,14 @@ public sealed class UITestHostRenderingTests
         Assert.StartsWith("BBBBBB", host.GetRowText(1));
         Assert.Equal("A", host.GetCell(0, 0).Grapheme);
         Assert.Equal("B", host.GetCell(5, 1).Grapheme);
-        Assert.True(host.GetCell(6, 0).IsBlank);
+        // A cell no probe painted carries the SURFACE's blank, which is not necessarily CellStyle.Default
+        // (what Cell.IsBlank tests): on a truecolor host the buffer's blank is the terminal's reported default
+        // fg/bg promoted to RGB by CellBuffer.DeriveDefaultStyle, and the frame compositor resets the cells it
+        // rewrites to that derived blank rather than flattening them back to Color.Default.
+        var unpainted = host.GetCell(6, 0);
+        Assert.Equal(CellKind.Single, unpainted.Kind);
+        Assert.True(string.IsNullOrEmpty(unpainted.Grapheme));
+        Assert.Equal(host.FrameBuffer.DefaultStyle, unpainted.Style);
 
         // Byte assertions: the first frame emitted a non-empty delta containing the painted runs.
         var wire = System.Text.Encoding.UTF8.GetString(host.LastFrameBytes.Span);

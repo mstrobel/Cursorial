@@ -47,13 +47,32 @@ public readonly record struct PartialStyle
     public Hyperlink? Hyperlink      { get; init; }
 
     /// <summary>
+    /// <para>
     /// The underline SHAPE, when this delta turns the underline on. <see langword="null"/> means "no
     /// explicit shape" — either because the delta leaves the underline alone, or because it removes
     /// it. Which of those applies is carried by the underline FLAG, so the shape needs no presence bit of its own:
     /// <list type="table">
-    ///   <item><term>leave</term>  <description><c>Underline ∉ Clear</c></description></item>
-    ///   <item><term>remove</term> <description><c>Underline ∈ Clear</c>, <c>∉ Xor</c></description></item>
-    ///   <item><term>set</term>    <description><c>Underline ∈ Clear</c> and <c>∈ Xor</c></description></item>
+    ///   <item><term>ignored</term> <description><c>Underline ∉ Clear</c></description></item>
+    ///   <item><term>removed</term> <description><c>Underline ∈ Clear</c>, <c>∉ Xor</c></description></item>
+    ///   <item><term>applied</term> <description><c>Underline ∈ Clear</c> and <c>∈ Xor</c></description></item>
+    /// </list>
+    /// </para>
+    /// The interaction between <c>UnderlineShape</c> and the <see cref="TextAttributes.Underline"/> flag
+    /// is as follows:
+    /// <list type="bullet"> 
+    /// <item>
+    /// If the flag is <b>PRESENT</b> in <c>RemovedAttributes</c>, no underline will apply. If a shape is
+    /// specified, it becomes a <b>REMNANT</b> and will NOT carry over during composition (e.g., via <c>Then()</c>).
+    /// </item>
+    /// <item>
+    /// When the flag is <b>PRESENT</b> in <c>AppliedAttributes</c>, the specified shape will be applied
+    /// if present; otherwise, the <see cref="UnderlineStyle.Single">default shape</see> will be applied.
+    /// </item>
+    /// <item>
+    /// When a shape is specified, but the flag is <b>ABSENT</b> from both <c>AppliedAttributes</c> and
+    /// <c>RemovedAttributes</c>, the shape will still be applied <b>UNLESS</b> the delta is composed with
+    /// another delta which overrides its shape or removes the flag.
+    /// </item>
     /// </list>
     /// </summary>
     public UnderlineStyle? UnderlineShape { get; init; }
@@ -68,10 +87,10 @@ public readonly record struct PartialStyle
     internal TextAttributes Xor   { get; init; }
 
     /// <summary>Attributes this delta forces ON, whatever the base had.</summary>
-    public TextAttributes SetAttributes => Clear & Xor;
+    public TextAttributes AppliedAttributes => Clear & Xor;
 
     /// <summary>Attributes this delta forces OFF, whatever the base had.</summary>
-    public TextAttributes UnsetAttributes => Clear & ~Xor;
+    public TextAttributes RemovedAttributes => Clear & ~Xor;
 
     /// <summary>Attributes this delta INVERTS — on becomes off, off becomes on.</summary>
     public TextAttributes ToggledAttributes => Xor & ~Clear;
@@ -96,26 +115,10 @@ public readonly record struct PartialStyle
                                      : (Xor & TextAttributes.Italic) != 0 ? TextStyle.Italic : TextStyle.Normal;
 
     /// <summary>
-    /// Whether this delta says anything about the underline — either setting a shape (which implies
-    /// turning it on) or forcing the flag through the mask (which is how removal is recorded).
+    /// Whether this delta REMOVES the underline: it forces the flag off, leaving any provided shape a dead remnant.
     /// </summary>
-    /// <remarks>
-    /// A null <see cref="UnderlineShape"/> alone is ambiguous: it is "no opinion" for a delta that
-    /// leaves the underline be, and "no shape" for one that removes it. This resolves that, and is
-    /// what <see cref="Then"/> keys on so a later removal is not undone by an earlier shape.
-    /// </remarks>
-    public bool HasUnderlineOpinion =>
-        UnderlineShape is not null || (Clear & TextAttributes.Underline) != 0;
-
-    /// <summary>
-    /// Whether this delta REMOVES the underline: it forces the flag off and offers no shape. A shape
-    /// wins, because a shape implies turning the underline on — so a composed delta carrying both is
-    /// a set, not a removal.
-    /// </summary>
-    private bool RemovesUnderline =>
-        UnderlineShape is null &&
-        (Clear & TextAttributes.Underline) != 0 &&
-        (Xor & TextAttributes.Underline) is 0;
+    private bool RemovesUnderline => (Clear & TextAttributes.Underline) != 0 &&
+                                     (Xor & TextAttributes.Underline) is 0;
 
     /// <summary>
     /// True when this delta is inert in EVERY context — applying it returns the base unchanged, and
@@ -125,7 +128,7 @@ public readonly record struct PartialStyle
     /// <para>
     /// Defined as equality with <c>default</c> rather than as a list of per-field checks, so EVERY
     /// field participates automatically. That is deliberate, and it is the second attempt: the
-    /// hand-written form needed each field remembered individually, and <see cref="Mode"/> — the one
+    /// handwritten form needed each field remembered individually, and <see cref="Mode"/> — the one
     /// member with no presence bit, governed only by <see langword="null"/> — was duly forgotten. The
     /// record's generated equality cannot forget one, so a field added later is covered without
     /// anybody reading this comment. It works because §3's encoding makes a zeroed struct inert:
@@ -143,7 +146,7 @@ public readonly record struct PartialStyle
     public bool IsIdentity => this == default;
 
     /// <summary>The axes that are genuinely independent booleans — the only ones the flag-level
-    /// <see cref="WithSet"/>/<see cref="WithCleared"/>/<see cref="WithToggled"/> factories accept.
+    /// <see cref="WithApplied"/>/<see cref="WithRemoved"/>/<see cref="WithToggled"/> factories accept.
     /// Bold, Faint, Italic and Underline have their own axes and are rejected there.</summary>
     public const TextAttributes Booleans =
         TextAttributes.Strikethrough | TextAttributes.Overline | TextAttributes.Inverse |
@@ -154,12 +157,12 @@ public readonly record struct PartialStyle
     public static PartialStyle WithForeground(Color c) => new() { Foreground = c };
     public static PartialStyle WithBackground(Color c) => new() { Background = c };
     /// <summary>
-    /// Recolour the underline WITHOUT asserting one — "whatever underline exists is this colour".
+    /// Recolor the underline WITHOUT asserting one — "whatever underline exists is this color".
     /// Deliberately weaker than <see cref="WithUnderline"/>, which turns the underline on.
     /// </summary>
     /// <remarks>
     /// The asymmetry is the point, not an oversight. A theme wants to say "error underlines are red"
-    /// without also claiming everything is underlined; if the colour forced the flag, that would be
+    /// without also claiming everything is underlined; if the color forced the flag, that would be
     /// unsayable — the same shape of loss as <c>Color.Default</c> meaning "absent", which this type
     /// exists to retire. Pinned by <c>WithUnderlineColor_DoesNotForceAnUnderline</c>.
     /// </remarks>
@@ -184,14 +187,16 @@ public readonly record struct PartialStyle
     };
 
     /// <summary>Force <paramref name="flags"/> ON. Must be within <see cref="Booleans"/>.</summary>
-    public static PartialStyle WithSet(TextAttributes flags) =>
+    public static PartialStyle WithApplied(TextAttributes flags) =>
         new() { Clear = Require(flags), Xor = flags };
 
-    /// <summary>Force <paramref name="flags"/> OFF.</summary>
-    public static PartialStyle WithCleared(TextAttributes flags) =>
+    /// <summary>Force <paramref name="flags"/> OFF. Must be within <see cref="Booleans"/></summary>
+    public static PartialStyle WithRemoved(TextAttributes flags) =>
         new() { Clear = Require(flags) };
 
-    /// <summary>INVERT <paramref name="flags"/> — on becomes off and off becomes on.</summary>
+    /// <summary>
+    /// INVERT <paramref name="flags"/> — on becomes off and off becomes on. Must be within <see cref="Booleans"/>
+    /// </summary>
     public static PartialStyle WithToggled(TextAttributes flags) =>
         new() { Xor = Require(flags) };
 
@@ -210,7 +215,7 @@ public readonly record struct PartialStyle
     // equals `WithAdded(Bold | Faint)` exactly, so splitting the call splits the check. Its one
     // caller — the base-attribute leg of `DrawingContext.CreateBrushResolver` — now folds the word
     // through `Weighted` / `Postured` / `WithSet`, one axis at a time.
-    private static TextAttributes Require(TextAttributes flags) =>
+    internal static TextAttributes Require(TextAttributes flags) =>
         (flags & ~Booleans) is 0
             ? flags
             : throw new ArgumentOutOfRangeException(
@@ -232,7 +237,7 @@ public readonly record struct PartialStyle
     /// <remarks>
     /// One channel does not round-trip, and cannot: a null <see cref="CellStyle.Hyperlink"/> is
     /// indistinguishable from "no opinion" on this side, so the result never REMOVES a hyperlink the
-    /// base carries. That is the same absent-versus-empty conflation this type retires for colours,
+    /// base carries. That is the same absent-versus-empty conflation this type retires for colors,
     /// surviving one layer down in <see cref="CellStyle"/> itself, and it is why this is an adapter
     /// for legacy call sites rather than the way to build a delta.
     /// </remarks>
@@ -256,17 +261,21 @@ public readonly record struct PartialStyle
 
     /// <summary>
     /// <see cref="From"/> minus the background: the INK of <paramref name="style"/> and no opinion
-    /// about the cells around it, which selects STAMP mode at a glyph paint.
+    /// about the surrounding cells, which selects STAMP mode at a glyph paint.
     /// </summary>
     public static PartialStyle FromInk(in CellStyle style) => From(style) with { Background = null };
 
     /// <summary>Underline in <paramref name="shape"/>, coloured <paramref name="color"/>.</summary>
-    public static PartialStyle WithUnderline(UnderlineStyle shape, Color color) =>
-        new() { UnderlineShape = shape, UnderlineColor = color };
+    public static PartialStyle WithUnderline(UnderlineStyle? shape = null, Color? color = null) =>
+        new()
+        {
+            UnderlineShape = shape, UnderlineColor = color,
+            Clear = TextAttributes.Underline, Xor = TextAttributes.Underline
+        };
 
     /// <summary>Remove any underline — forces the flag off and leaves no shape.</summary>
     public static PartialStyle WithoutUnderline() =>
-        new() { Clear = TextAttributes.Underline };
+        new() { Clear = TextAttributes.Underline, UnderlineShape = null };
 
     // ---- fluent composition: ONLY where `with` cannot do the job ----
     //
@@ -280,10 +289,14 @@ public readonly record struct PartialStyle
     // there is one implementation of the algebra, not two.
 
     /// <summary>Force <paramref name="flags"/> ON in addition to whatever this delta already does.</summary>
-    public PartialStyle Setting(TextAttributes flags) => Then(WithSet(flags));
+    public PartialStyle Applying(TextAttributes flags) => Then(WithApplied(flags));
+
+    /// <summary>Force <paramref name="flags"/> IGNORED (no opinion) in addition to whatever this delta already does.</summary>
+    public PartialStyle Ignoring(TextAttributes flags)
+        => this with { Clear = Clear & ~Require(flags), Xor = Xor & ~flags };
 
     /// <summary>Force <paramref name="flags"/> OFF in addition to whatever this delta already does.</summary>
-    public PartialStyle Clearing(TextAttributes flags) => Then(WithCleared(flags));
+    public PartialStyle Removing(TextAttributes flags) => Then(WithRemoved(flags));
 
     /// <summary>INVERT <paramref name="flags"/> in addition to whatever this delta already does.</summary>
     public PartialStyle Toggling(TextAttributes flags) => Then(WithToggled(flags));
@@ -295,7 +308,7 @@ public readonly record struct PartialStyle
     public PartialStyle Posturing(TextStyle p) => Then(Postured(p));
 
     /// <summary>Add an underline in addition to whatever this delta already does.</summary>
-    public PartialStyle Underlining(UnderlineStyle shape, Color color) => Then(WithUnderline(shape, color));
+    public PartialStyle Underlining(UnderlineStyle? shape = null, Color? color = null) => Then(WithUnderline(shape, color));
 
     /// <summary>Remove the underline in addition to whatever this delta already does.</summary>
     public PartialStyle RemovingUnderline() => Then(WithoutUnderline());
@@ -327,7 +340,7 @@ public readonly record struct PartialStyle
             // `with { UnderlineShape = … }` complete on its own, so the one coupling `with` could
             // otherwise break is not a rule anyone has to remember. Removal is the mask's job
             // (Underline in Clear, absent from Xor), which no shape accompanies.
-            Attributes     = UnderlineShape is null
+            Attributes     = UnderlineShape is null || RemovesUnderline
                                  ? (b.Attributes & ~Clear) ^ Xor
                                  : ((b.Attributes & ~Clear) ^ Xor) | TextAttributes.Underline,
         };
@@ -344,21 +357,28 @@ public readonly record struct PartialStyle
     /// Law: <c>a.Then(b).ApplyTo(s)</c> ≡ <c>b.ApplyTo(a.ApplyTo(s))</c>, for every <c>a</c>,
     /// <c>b</c>, <c>s</c>.
     /// </remarks>
-    public PartialStyle Then(in PartialStyle next) => new()
-    {
-        Foreground     = next.Foreground     ?? Foreground,
-        Background     = next.Background     ?? Background,
-        UnderlineColor = next.UnderlineColor ?? UnderlineColor,
-        Hyperlink      = next.Hyperlink      ?? Hyperlink,
+    public PartialStyle Then(in PartialStyle next) =>
+        new()
+        {
+            Foreground = next.Foreground ?? Foreground,
+            Background = next.Background ?? Background,
+            UnderlineColor = next.UnderlineColor ?? UnderlineColor,
+            Hyperlink = next.Hyperlink ?? Hyperlink,
 
-        // NOT `next.UnderlineShape ?? UnderlineShape`. A null shape is ambiguous on its own — it means
-        // "no opinion" for a delta that leaves the underline alone, and "definitely no shape" for one
-        // that REMOVES it. Falling back on null would let an earlier shape survive a later removal,
-        // and (since a shape implies the flag) resurrect the underline the caller just took away.
-        // `HasUnderlineOpinion` disambiguates from the mask, which is where removal is recorded.
-        UnderlineShape = next.HasUnderlineOpinion ? next.UnderlineShape : UnderlineShape,
-        Clear          = Clear | next.Clear,
-        Xor            = (Xor & ~next.Clear) ^ next.Xor,
-        Mode           = next.Mode ?? Mode,
-    };
+            // NOT strictly `next.UnderlineShape ?? UnderlineShape`. A null shape is ambiguous on its own —
+            // it means "no opinion" for a delta that leaves the underline alone, and "definitely no shape"
+            // for one that REMOVES it. Check for removal, and if removed, coalesce to null. Otherwise, apply
+            // `next.UnderlineShape ?? UnderlineShape`. Makes chains like `Underlining(Curly).Underlining()`
+            // coherent without leaving remnants on `Underlining(Curly).RemoveUnderlining()`.
+            // ...and the fallback is only THIS delta's shape when this delta did not itself remove the
+            // underline. A removal RESETS the shape, so a later shapeless add inherits that reset value
+            // rather than the base's — falling back unconditionally would let the base's shape survive an
+            // intermediate removal, which application-in-order does not do.
+            UnderlineShape = next.RemovesUnderline
+                                 ? null
+                                 : next.UnderlineShape ?? (RemovesUnderline ? default(UnderlineStyle) : UnderlineShape),
+            Clear = Clear | next.Clear,
+            Xor = (Xor & ~next.Clear) ^ next.Xor,
+            Mode = next.Mode ?? Mode,
+        };
 }

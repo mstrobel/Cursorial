@@ -266,7 +266,7 @@ public class GlyphStampOrBoxTests
         // which would make this test about the wrong thing.
         MonospaceFont.Default.Paint(buffer, 0, 0, "hi",
                                     PartialStyle.WithUnderline(UnderlineStyle.Curly, underline)
-                                                .Setting(TextAttributes.Inverse));
+                                                .Applying(TextAttributes.Inverse));
 
         for (int c = 0; c < 2; c++)
         {
@@ -288,7 +288,7 @@ public class GlyphStampOrBoxTests
     {
         var buffer = Filled();
 
-        Sparse().Paint(buffer, 0, 0, "A", PartialStyle.WithForeground(Ink).Setting(TextAttributes.Inverse));
+        Sparse().Paint(buffer, 0, 0, "A", PartialStyle.WithForeground(Ink).Applying(TextAttributes.Inverse));
 
         foreach (var (column, row) in Strokes)
             Assert.True(buffer[column, row].Style.Attributes.HasFlag(TextAttributes.Inverse),

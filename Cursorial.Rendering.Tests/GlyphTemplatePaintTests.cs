@@ -111,7 +111,7 @@ public class GlyphTemplatePaintTests
     {
         var buffer = new CellBuffer(4, 1);
         MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich.AddAttributes(TextAttributes.Inverse),
-                                    default(StyleDeltaTemplate).Clearing(TextAttributes.Inverse), Wide);
+                                    default(StyleDeltaTemplate).Removing(TextAttributes.Inverse), Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Inverse));
         Assert.True(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Bold));   // untouched
@@ -186,7 +186,7 @@ public class GlyphTemplatePaintTests
     {
         var buffer = new CellBuffer(6, 1);
         WideFace().Paint(buffer, 0, 0, "A", CellStyle.Default,
-                         default(StyleDeltaTemplate).Setting(TextAttributes.Strikethrough), Wide);
+                         default(StyleDeltaTemplate).Applying(TextAttributes.Strikethrough), Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Strikethrough));
     }
@@ -206,7 +206,7 @@ public class GlyphTemplatePaintTests
 
         ((IGlyphFont) face).Paint(buffer, 2, 0, "ab", Rich,
                                   new StyleDeltaTemplate { Foreground = new UniformBrush(Green) }
-                                      .Setting(TextAttributes.Inverse),
+                                      .Applying(TextAttributes.Inverse),
                                   Wide);
 
         Assert.Equal([(2, 0)], face.Anchors);

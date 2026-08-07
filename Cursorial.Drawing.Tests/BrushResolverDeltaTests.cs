@@ -91,8 +91,8 @@ public class BrushResolverDeltaTests
         Assert.Null(delta.UnderlineColor);
         Assert.Null(delta.UnderlineShape);
         Assert.Null(delta.Hyperlink);
-        Assert.Equal(default, delta.SetAttributes);
-        Assert.Equal(default, delta.UnsetAttributes);
+        Assert.Equal(default, delta.AppliedAttributes);
+        Assert.Equal(default, delta.RemovedAttributes);
         Assert.Equal(default, delta.ToggledAttributes);
 
         Assert.Equal(baseStyle with { Foreground = Green }, delta.ApplyTo(baseStyle));
@@ -114,7 +114,7 @@ public class BrushResolverDeltaTests
 
         Assert.Equal(Blue, delta.Foreground);
         Assert.Null(delta.Background);
-        Assert.Equal(default, delta.SetAttributes);
+        Assert.Equal(default, delta.AppliedAttributes);
     }
 
     /// <summary>
@@ -158,13 +158,13 @@ public class BrushResolverDeltaTests
 
         var brushed = resolver(Context(Rich(Red)));
 
-        Assert.Equal(TextAttributes.Bold | TextAttributes.Inverse, brushed.Delta.SetAttributes);
+        Assert.Equal(TextAttributes.Bold | TextAttributes.Inverse, brushed.Delta.AppliedAttributes);
         Assert.Equal(default, brushed.Delta.ToggledAttributes);
 
         // Bold arrives as a WEIGHT, and a weight is exclusive: Faint is forced off in the same breath.
         // That is the only thing the delta unsets, and it is visible in the intent triple rather than
         // hidden in the mask.
-        Assert.Equal(TextAttributes.Faint, brushed.Delta.UnsetAttributes);
+        Assert.Equal(TextAttributes.Faint, brushed.Delta.RemovedAttributes);
 
         // The run's own Italic and Strikethrough are untouched; the element's two arrive on top.
         var applied = brushed.ApplyTo(2, 1, Rich(Red));

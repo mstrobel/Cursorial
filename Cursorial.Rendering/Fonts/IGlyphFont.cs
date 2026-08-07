@@ -106,10 +106,10 @@ public interface IGlyphFont
     /// delegate, which existed only because <see cref="IBrush"/> lived in the drawing layer and
     /// <c>Cursorial.Rendering</c> could not name it — so the caller wrapped brush sampling in a closure and
     /// the font sampled blind. <see cref="IBrush"/> is in Rendering now, and
-    /// <see cref="StyleDeltaTemplate.Resolve"/> IS that callback's signature plus the bounds it was closing
-    /// over. Passing the value form also makes <see cref="StyleDeltaTemplate.IsUniform"/> readable, which a
-    /// callback could never expose: the common case (a solid colour, or no colour at all) resolves once
-    /// instead of once per cell.
+    /// <see cref="StyleDeltaTemplate.Resolve(int,int,in Rect,in Rect)"/> IS that callback's signature plus
+    /// the content and fill bounds it was closing over. Passing the value form also makes
+    /// <see cref="StyleDeltaTemplate.IsUniform"/> readable, which a callback could never expose: the common
+    /// case (a solid color, or no color at all) resolves once instead of once per cell.
     /// </para>
     /// <para>
     /// <b>The base style is REQUIRED, not defaulted.</b> A <see cref="StyleDeltaTemplate"/> is a delta, so

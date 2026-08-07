@@ -618,7 +618,7 @@ public sealed class TextPresenter : UIElement
         var background = noColor ? null : selectionBrush?.ColorAt(column, row, bounds);
 
         return background is { IsDefault: false } color
-                   ? PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse)
+                   ? PartialStyle.WithBackground(color).Removing(TextAttributes.Inverse)
                    : PartialStyle.WithToggled(TextAttributes.Inverse);
     }
 

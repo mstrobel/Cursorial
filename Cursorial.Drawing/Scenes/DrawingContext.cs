@@ -993,7 +993,7 @@ public sealed class DrawingContext
                    // inherited Strikethrough. `Setting` is the union for flags that have no axis of their own.
                    var booleans = baseAttributes & PartialStyle.Booleans;
                    if (booleans != default)
-                       delta = delta.Setting(booleans);
+                       delta = delta.Applying(booleans);
 
                    // Underline's axis has no "on, and no further opinion" form — the flag travels with a
                    // SHAPE, which implies it once resolved. Re-stating the run's own shape is that form: the

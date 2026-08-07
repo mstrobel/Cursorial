@@ -50,11 +50,12 @@ public class PartialStyleTests
             PartialStyle.Weighted(TextWeight.Faint),
             PartialStyle.Weighted(TextWeight.Normal),
             PartialStyle.Postured(TextStyle.Italic),
-            PartialStyle.WithSet(TextAttributes.Inverse),
-            PartialStyle.WithCleared(TextAttributes.Inverse),
+            PartialStyle.WithApplied(TextAttributes.Inverse),
+            PartialStyle.WithRemoved(TextAttributes.Inverse),
             PartialStyle.WithToggled(TextAttributes.Inverse),
             PartialStyle.WithToggled(TextAttributes.Blink | TextAttributes.Overline),
             PartialStyle.WithUnderline(UnderlineStyle.Double, Color.FromRgb(9, 9, 9)),
+            PartialStyle.WithUnderline(),
             PartialStyle.WithoutUnderline(),
             PartialStyle.WithHyperlink(default),
         ];
@@ -92,12 +93,12 @@ public class PartialStyleTests
     {
         foreach (var f in BooleanAxes)
         {
-            Assert.True(PartialStyle.WithToggled(f).Setting(f).ApplyTo(Busy).Attributes.HasFlag(f));
-            Assert.False(PartialStyle.WithToggled(f).Clearing(f).ApplyTo(Busy).Attributes.HasFlag(f));
+            Assert.True(PartialStyle.WithToggled(f).Applying(f).ApplyTo(Busy).Attributes.HasFlag(f));
+            Assert.False(PartialStyle.WithToggled(f).Removing(f).ApplyTo(Busy).Attributes.HasFlag(f));
 
             // ...regardless of what the base had.
-            Assert.True(PartialStyle.WithToggled(f).Setting(f).ApplyTo(default).Attributes.HasFlag(f));
-            Assert.False(PartialStyle.WithToggled(f).Clearing(f).ApplyTo(default).Attributes.HasFlag(f));
+            Assert.True(PartialStyle.WithToggled(f).Applying(f).ApplyTo(default).Attributes.HasFlag(f));
+            Assert.False(PartialStyle.WithToggled(f).Removing(f).ApplyTo(default).Attributes.HasFlag(f));
         }
     }
 
@@ -198,8 +199,8 @@ public class PartialStyleTests
     {
         // Without this the decomposed vocabulary decays back into flags one call site at a time —
         // and `Bold | Faint`, a state the wire cannot represent, becomes writable again.
-        Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithSet(f));
-        Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithCleared(f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithApplied(f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithRemoved(f));
         Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithToggled(f));
     }
 
@@ -256,9 +257,11 @@ public class PartialStyleTests
         // Not vacuous: the members we KNOW take a flag word were actually reached and invoked.
         Assert.Superset(new HashSet<string>
                         {
-                            "PartialStyle.WithSet", "PartialStyle.WithCleared", "PartialStyle.WithToggled",
-                            "PartialStyle.Setting", "PartialStyle.Clearing", "PartialStyle.Toggling",
-                            "StyleDeltaTemplate.Setting", "StyleDeltaTemplate.Clearing", "StyleDeltaTemplate.Toggling",
+                            "PartialStyle.WithApplied", "PartialStyle.WithRemoved", "PartialStyle.WithToggled",
+                            "PartialStyle.Applying", "PartialStyle.Removing", "PartialStyle.Toggling",
+                            "PartialStyle.Ignoring", "StyleDeltaTemplate.Applying", "StyleDeltaTemplate.Removing",
+                            "StyleDeltaTemplate.Toggling", "StyleDeltaTemplate.Ignoring", "StyleDeltaTemplate.Keeping",
+                            "StyleDeltaTemplate.Dropping"
                         },
                         probed);
         Assert.True(accepted.Count == 0,
@@ -314,6 +317,48 @@ public class PartialStyleTests
         Assert.Null(PartialStyle.WithoutUnderline().UnderlineShape);
     }
 
+    /// <summary>
+    /// The shapeless underline states the FLAG and nothing else: the base's shape survives it, exactly
+    /// as an absent colour channel leaves the base's colour alone.
+    /// </summary>
+    [Fact]
+    public void ABareUnderline_ForcesTheFlag_AndInheritsTheBaseShape()
+    {
+        var bare = PartialStyle.WithUnderline();
+        Assert.Null(bare.UnderlineShape);
+
+        var applied = bare.ApplyTo(default(CellStyle) with { UnderlineStyle = UnderlineStyle.Dotted });
+
+        Assert.True(applied.Attributes.HasFlag(TextAttributes.Underline));
+        Assert.Equal(UnderlineStyle.Dotted, applied.UnderlineStyle);
+    }
+
+    /// <summary>
+    /// "No opinion on the shape" must not READ as "no shape". Composing a bare underline after one that
+    /// states a shape has to leave that shape standing — the case that made a shape-or-mask predicate
+    /// the wrong thing for <c>Then</c> to key on.
+    /// </summary>
+    [Fact]
+    public void ABareUnderline_DoesNotErase_AnEarlierShape()
+    {
+        var composed = PartialStyle.WithUnderline(UnderlineStyle.Curly).Underlining();
+
+        Assert.Equal(UnderlineStyle.Curly, composed.UnderlineShape);
+        Assert.Equal(UnderlineStyle.Curly, composed.ApplyTo(default).UnderlineStyle);
+    }
+
+    /// <summary>
+    /// The converse: a removal after a shape still removes, and leaves no remnant behind to resurrect it.
+    /// </summary>
+    [Fact]
+    public void ARemoval_AfterAShape_Removes_AndKeepsNoRemnant()
+    {
+        var composed = PartialStyle.WithUnderline(UnderlineStyle.Curly).RemovingUnderline();
+
+        Assert.Null(composed.UnderlineShape);
+        Assert.False(composed.ApplyTo(default).Attributes.HasFlag(TextAttributes.Underline));
+    }
+
     [Fact]
     public void LeavingTheUnderlineAlone_IsDistinctFromRemovingIt()
     {
@@ -361,12 +406,12 @@ public class PartialStyleTests
     [Fact]
     public void IntentProperties_ReportWhatTheDeltaActuallyDoes()
     {
-        var d = PartialStyle.WithSet(TextAttributes.Inverse)
-                            .Clearing(TextAttributes.Blink)
+        var d = PartialStyle.WithApplied(TextAttributes.Inverse)
+                            .Removing(TextAttributes.Blink)
                             .Toggling(TextAttributes.Overline);
 
-        Assert.Equal(TextAttributes.Inverse,  d.SetAttributes);
-        Assert.Equal(TextAttributes.Blink,    d.UnsetAttributes);
+        Assert.Equal(TextAttributes.Inverse,  d.AppliedAttributes);
+        Assert.Equal(TextAttributes.Blink,    d.RemovedAttributes);
         Assert.Equal(TextAttributes.Overline, d.ToggledAttributes);
     }
 
@@ -378,13 +423,13 @@ public class PartialStyleTests
         // reconstruct intent from the encoding, and no axis can appear in two of them at once.
         var d = a.Then(b);
 
-        Assert.Equal(default, d.SetAttributes & d.UnsetAttributes);
-        Assert.Equal(default, d.SetAttributes & d.ToggledAttributes);
-        Assert.Equal(default, d.UnsetAttributes & d.ToggledAttributes);
+        Assert.Equal(default, d.AppliedAttributes & d.RemovedAttributes);
+        Assert.Equal(default, d.AppliedAttributes & d.ToggledAttributes);
+        Assert.Equal(default, d.RemovedAttributes & d.ToggledAttributes);
 
         foreach (var f in BooleanAxes)
         {
-            var touched = (d.SetAttributes | d.UnsetAttributes | d.ToggledAttributes).HasFlag(f);
+            var touched = (d.AppliedAttributes | d.RemovedAttributes | d.ToggledAttributes).HasFlag(f);
             var moved = d.ApplyTo(Busy).Attributes.HasFlag(f) != Busy.Attributes.HasFlag(f)
                      || d.ApplyTo(default).Attributes.HasFlag(f) != default(CellStyle).Attributes.HasFlag(f);
 

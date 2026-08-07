@@ -68,8 +68,8 @@ public readonly record struct BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bo
     /// <summary>The identity: no channel claimed, so the run paints exactly as it was formatted.</summary>
     public static BrushedTextStyle None => default;
 
-    /// <summary>Resolve the delta for one cell — <see cref="StyleDeltaTemplate.Resolve"/> against
-    /// <see cref="Bounds"/>, so no caller has to keep the two halves paired by hand.</summary>
+    /// <summary>Resolve the delta for one cell — <see cref="StyleDeltaTemplate.Resolve(int,int,in Rect)"/>
+    /// against <see cref="Bounds"/>, so no caller has to keep the two halves paired by hand.</summary>
     public PartialStyle Resolve(int column, int row) => Delta.Resolve(column, row, Bounds);
 
     /// <summary>Resolve for one cell and fold onto <paramref name="baseStyle"/>.</summary>

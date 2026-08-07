@@ -224,6 +224,10 @@ public abstract class TextElement
     public static readonly AttachedProperty<UnderlineStyle?> UnderlineProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, UnderlineStyle?>("Underline");
 
+    /// <summary>Underline brush (SGR 58/59). Non-inheriting.</summary>
+    public static readonly AttachedProperty<IBrush?> UnderlineBrushProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("UnderlineBrush");
+
     /// <summary>Strikethrough (SGR 9/29). Non-inheriting.</summary>
     public static readonly AttachedProperty<bool> StrikethroughProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, bool>("Strikethrough");
@@ -285,6 +289,20 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(UnderlineProperty, value);
+    }
+
+    /// <summary>Reads the underline brush attached property to <paramref name="element"/> (<see langword="null"/> = none).</summary>
+    public static IBrush? GetUnderlineBrush(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(UnderlineBrushProperty);
+    }
+
+    /// <summary>Sets the underline brush attached property on <paramref name="element"/> (<see langword="null"/> = none).</summary>
+    public static void SetUnderlineBrush(UIElement element, IBrush? value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(UnderlineBrushProperty, value);
     }
 
     /// <summary>Reads the strikethrough axis attached to <paramref name="element"/>.</summary>

@@ -193,14 +193,14 @@ public class DecoratedFont : IGlyphFont
     /// </summary>
     private PartialStyle EnsureCompatibleStyle(in PartialStyle style)
     {
-        var compatible = style.Clearing(ForbiddenAttributes);
+        var compatible = style.Removing(ForbiddenAttributes);
 
         return Position switch
                {
                    // Underline has its own axis, so it is removed through its own factory rather than
                    // through the flag word — see the decoration style below.
                    DecorationPosition.Below => compatible.RemovingUnderline(),
-                   DecorationPosition.Above => compatible.Clearing(TextAttributes.Overline),
+                   DecorationPosition.Above => compatible.Removing(TextAttributes.Overline),
                    _                        => compatible
                };
     }
@@ -247,7 +247,7 @@ public class DecoratedFont : IGlyphFont
         // Underline is split out of the mask because it has its own axis: WithCleared REJECTS it (a
         // flag-word route to a decomposed attribute is the mistake that guard exists to catch), and
         // RemovingUnderline is the factory that owns both halves of it.
-        var decoratorStyle = ink.Clearing(ForbiddenDecorationAttributes & ~TextAttributes.Underline)
+        var decoratorStyle = ink.Removing(ForbiddenDecorationAttributes & ~TextAttributes.Underline)
                                 .RemovingUnderline();
 
         int offset = _decorationWidth.GetValueOrDefault();

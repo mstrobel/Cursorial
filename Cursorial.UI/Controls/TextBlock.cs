@@ -1,3 +1,4 @@
+using Cursorial.Drawing.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
@@ -65,6 +66,10 @@ public class TextBlock : UIElement
     /// <inheritdoc cref="TextElement.UnderlineProperty"/>
     public static readonly StyledProperty<UnderlineStyle?> UnderlineProperty =
         TextElement.UnderlineProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.UnderlineBrushProperty"/>
+    public static readonly StyledProperty<IBrush?> UnderlineBrushProperty =
+        TextElement.UnderlineBrushProperty.AddOwner<TextBlock>();
 
     /// <inheritdoc cref="TextElement.StrikethroughProperty"/>
     public static readonly StyledProperty<bool> StrikethroughProperty =

@@ -1,4 +1,8 @@
+using Cursorial.Rendering.Media;
+using Cursorial.Text;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Media;
 
 namespace Cursorial.UI;
 
@@ -45,5 +49,50 @@ public static class Extensions
                          FocusNavigationMethod.Pointer or
                          FocusNavigationMethod.Directional or
                          FocusNavigationMethod.AccessKey;
+    }
+
+    private static readonly TextAttributes[] BooleanAttributes
+        = Enum.GetValues<TextAttributes>()
+              .Where(t => PartialStyle.Booleans.HasFlag(t))
+              .ToArray();
+
+    extension(StyleDeltaTemplate)
+    {
+        /// <summary>
+        /// Derives a <see cref="StyleDeltaTemplate"/> from a UI element by reconciling its decomposed text and
+        /// brush properties. Values are read at <see cref="UIObject.GetBaseValue">base priority</see> — inherited
+        /// included, animated excluded. A theme-resolved default (e.g., <see cref="TextElement.ForegroundProperty"/>)
+        /// counts as a stated opinion, so compose this before any delta that should override it.
+        /// </summary>
+        public static StyleDeltaTemplate FromElement(UIElement element)
+        {
+            ArgumentNullException.ThrowIfNull(element);
+
+            var t = new StyleDeltaTemplate
+                    {
+                        Foreground = element.GetBaseValue(TextElement.ForegroundProperty),
+                        Background = element.GetBaseValue(Panel.BackgroundProperty),
+                        UnderlineColor = element.GetBaseValue(TextElement.UnderlineBrushProperty),
+                        Mode = element.GetBaseValue(RenderOptions.BlendingModeProperty)
+                    };
+
+            if (element.GetBaseValue(TextElement.UnderlineProperty) is {} underlineShape)
+                t = t.Underlining(underlineShape); // Underline is not in BooleanAttributes, so set separately.
+
+            var resolvedAttributes = TextElement.ComposeAttributes(element);
+
+            var booleans = TextAttributes.None;
+
+            foreach (var attribute in BooleanAttributes)
+            {
+                if (resolvedAttributes.Flags.HasFlag(attribute))
+                    booleans |= attribute;
+            }
+
+            if (booleans != TextAttributes.None)
+                t = t.Applying(booleans);
+
+            return t;
+        }
     }
 }

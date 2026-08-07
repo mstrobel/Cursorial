@@ -58,7 +58,7 @@ public class DrawingContextTintTests
     public void TintCells_LeavesTheBackgroundAloneWhenTheDeltaCarriesNone()
     {
         using var scene = Tinted(1, 1, Opaque(Blue),
-                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithSet(TextAttributes.Inverse)));
+                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithApplied(TextAttributes.Inverse)));
 
         Assert.Equal(Blue, scene.GetCell(0, 0).Style.Background);
     }
@@ -108,7 +108,7 @@ public class DrawingContextTintTests
     public void TintCells_ForcesSetAttributesOn(TextAttributes existing, bool expected)
     {
         using var scene = Tinted(1, 1, Opaque(Blue, existing),
-                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithSet(TextAttributes.Inverse)));
+                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithApplied(TextAttributes.Inverse)));
 
         Assert.Equal(expected, scene.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse));
     }
@@ -123,7 +123,7 @@ public class DrawingContextTintTests
     public void TintCells_ForcesClearedAttributesOff(TextAttributes flag)
     {
         using var scene = Tinted(1, 1, Opaque(Blue, flag),
-                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithCleared(flag)));
+                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithRemoved(flag)));
 
         Assert.False(scene.GetCell(0, 0).Style.Attributes.HasFlag(flag));
     }
@@ -154,7 +154,7 @@ public class DrawingContextTintTests
     public void TintCells_LeavesAttributesTheDeltaSaysNothingAboutAlone()
     {
         using var scene = Tinted(1, 1, Opaque(Blue, TextAttributes.Bold | TextAttributes.Underline),
-                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithSet(TextAttributes.Inverse)));
+                                 c => c.TintCells(new Rect(0, 0, 1, 1), PartialStyle.WithApplied(TextAttributes.Inverse)));
 
         var attributes = scene.GetCell(0, 0).Style.Attributes;
         Assert.True(attributes.HasFlag(TextAttributes.Bold));
@@ -173,7 +173,7 @@ public class DrawingContextTintTests
     {
         using var scene = Tinted(1, 1, Opaque(Blue, TextAttributes.Inverse | TextAttributes.Bold),
                                  c => c.TintCells(new Rect(0, 0, 1, 1),
-                                                  PartialStyle.WithBackground(Red).Clearing(TextAttributes.Inverse)));
+                                                  PartialStyle.WithBackground(Red).Removing(TextAttributes.Inverse)));
 
         var style = scene.GetCell(0, 0).Style;
         Assert.Equal(Red, style.Background);

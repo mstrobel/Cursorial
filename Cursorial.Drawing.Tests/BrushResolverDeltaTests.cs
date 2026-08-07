@@ -145,8 +145,9 @@ public class BrushResolverDeltaTests
     // ───────────────────────────── the base-attribute leg ─────────────────────────────
 
     /// <summary>
-    /// <c>AddAttributes</c> was an OR, and the delta must stay one: the element's inherited attributes are
-    /// FORCED ON and the run's own survive alongside. A replace would be the obvious mistranslation.
+    /// The element's inherited attributes are FORCED ON and the run's own survive alongside — on every axis
+    /// except weight, where "alongside" is not a state the terminal has (see below). A replace would be the
+    /// obvious mistranslation.
     /// </summary>
     [Fact]
     public void BaseAttributes_AreSetNotReplaced()
@@ -158,8 +159,12 @@ public class BrushResolverDeltaTests
         var brushed = resolver(Context(Rich(Red)));
 
         Assert.Equal(TextAttributes.Bold | TextAttributes.Inverse, brushed.Delta.SetAttributes);
-        Assert.Equal(default, brushed.Delta.UnsetAttributes);
         Assert.Equal(default, brushed.Delta.ToggledAttributes);
+
+        // Bold arrives as a WEIGHT, and a weight is exclusive: Faint is forced off in the same breath.
+        // That is the only thing the delta unsets, and it is visible in the intent triple rather than
+        // hidden in the mask.
+        Assert.Equal(TextAttributes.Faint, brushed.Delta.UnsetAttributes);
 
         // The run's own Italic and Strikethrough are untouched; the element's two arrive on top.
         var applied = brushed.ApplyTo(2, 1, Rich(Red));
@@ -169,13 +174,14 @@ public class BrushResolverDeltaTests
     }
 
     /// <summary>
-    /// Bold and Faint share the SGR 22 reset and therefore share an axis on <see cref="PartialStyle"/>, where
-    /// <c>Weighted</c> forces one on and the other OFF. The element-attribute leg is not a weight decision,
-    /// though — it is a flag-word union — so an inherited Bold must not silently strip a run's Faint. This is
-    /// the case that rules out decomposing the leg into the per-axis factories.
+    /// Bold and Faint share the SGR 22 reset, so they share an AXIS: a cell carrying both is not a cell with
+    /// two attributes, it is a cell the encoder cannot spell. Reaching it emits <c>ESC[1m</c> from a Faint
+    /// predecessor and <c>ESC[2m</c> from a Bold one — same destination, different bytes, and the terminal
+    /// keeps whichever arrived last. So the base-attribute leg folds weight through the axis: an inherited
+    /// Bold IMPOSES Bold, clearing the run's own Faint, rather than unioning into a state nothing can render.
     /// </summary>
     [Fact]
-    public void BaseAttributes_DoNotClearTheRunsOppositeWeightFlag()
+    public void BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint()
     {
         var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
                                                           baseAttributes: TextAttributes.Bold, UnderlineStyle.Single);
@@ -183,7 +189,94 @@ public class BrushResolverDeltaTests
         var run = CellStyle.Default.WithAttributes(TextAttributes.Faint);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
 
-        Assert.Equal(TextAttributes.Bold | TextAttributes.Faint, applied.Attributes);
+        Assert.Equal(TextAttributes.Bold, applied.Attributes);
+    }
+
+    /// <summary>The converse, so the rule is a weight axis and not a Bold special case.</summary>
+    [Fact]
+    public void BaseAttributes_Faint_ImposesTheWeight_ClearingTheRunsBold()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
+                                                          baseAttributes: TextAttributes.Faint, UnderlineStyle.Single);
+
+        var run = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var applied = resolver(Context(run)).ApplyTo(2, 1, run);
+
+        Assert.Equal(TextAttributes.Faint, applied.Attributes);
+    }
+
+    /// <summary>
+    /// A flag WORD can carry both — <c>ComposeAttributes</c> cannot produce that, but a caller that ORs its
+    /// own flags onto the composed word can. The leg resolves it deterministically rather than passing the
+    /// contradiction through: Bold wins. The choice is arbitrary; being FIXED is not, because the alternative
+    /// is a cell whose rendering depends on what was painted before it.
+    /// </summary>
+    [Fact]
+    public void BaseAttributes_CarryingBothWeights_ResolveToBold()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
+                                                          baseAttributes: TextAttributes.Bold | TextAttributes.Faint,
+                                                          UnderlineStyle.Single);
+
+        foreach (var run in new[] { CellStyle.Default,
+                                    CellStyle.Default.WithAttributes(TextAttributes.Bold),
+                                    CellStyle.Default.WithAttributes(TextAttributes.Faint) })
+            Assert.Equal(TextAttributes.Bold, resolver(Context(run)).ApplyTo(2, 1, run).Attributes);
+    }
+
+    /// <summary>
+    /// The axis treatment is confined to the axes. The genuine booleans have no partner sharing a reset, so
+    /// they still UNION — an inherited Strikethrough must not evict a run's Overline the way an inherited
+    /// Bold evicts its Faint. This is the guard against over-applying the fix.
+    /// </summary>
+    [Fact]
+    public void BaseAttributes_BooleanFlags_StillUnionWithTheRunsOwn()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
+                                                          baseAttributes: TextAttributes.Strikethrough,
+                                                          UnderlineStyle.Single);
+
+        var run = CellStyle.Default.WithAttributes(TextAttributes.Overline);
+        var applied = resolver(Context(run)).ApplyTo(2, 1, run);
+
+        Assert.Equal(TextAttributes.Strikethrough | TextAttributes.Overline, applied.Attributes);
+    }
+
+    /// <summary>
+    /// Italic owns an axis too, but a one-sided one — there is no attribute it excludes — so the union and
+    /// the axis coincide and folding it through <c>Posturing</c> changes nothing observable.
+    /// </summary>
+    [Fact]
+    public void BaseAttributes_Italic_FoldsExactlyAsAUnionWould()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
+                                                          baseAttributes: TextAttributes.Italic, UnderlineStyle.Single);
+
+        foreach (var run in new[] { CellStyle.Default,
+                                    CellStyle.Default.WithAttributes(TextAttributes.Italic),
+                                    CellStyle.Default.WithAttributes(TextAttributes.Bold | TextAttributes.Overline) })
+            Assert.Equal(run.Attributes | TextAttributes.Italic,
+                         resolver(Context(run)).ApplyTo(2, 1, run).Attributes);
+    }
+
+    /// <summary>
+    /// End to end through the public painting API, on the cells actually in the frame — the seam-level tests
+    /// above prove the delta, this proves the paint. A run styled Faint under an element-inherited Bold
+    /// leaves exactly one weight flag in the buffer.
+    /// </summary>
+    [Fact]
+    public void PaintedCells_CarryOneWeightFlag_NotBoth()
+    {
+        var doc = new RichTextBuilder().Run("hi", CellStyle.Default.WithAttributes(TextAttributes.Faint)).Build();
+        var ft = new TextFormatter().Format(doc, 10, maxRows: null, OutputCapabilities.None);
+
+        var b = DrawHarness.Render(10, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 10, 2),
+                                                                       OutputCapabilities.None,
+                                                                       TextAttributes.Bold));
+
+        Assert.Equal("h", b[0, 0].Grapheme);
+        Assert.Equal(TextAttributes.Bold, b[0, 0].Style.Attributes);
+        Assert.Equal(TextAttributes.Bold, b[1, 0].Style.Attributes);
     }
 
     [Fact]
@@ -229,6 +322,26 @@ public class BrushResolverDeltaTests
 
         Assert.True(applied.Attributes.HasFlag(TextAttributes.Underline));
         Assert.Equal(UnderlineStyle.Dotted, applied.UnderlineStyle);
+    }
+
+    /// <summary>
+    /// The Underline FLAG lands even when the element states no shape — the rider's guard is about the
+    /// SHAPE, not about whether the underline arrives at all. Worth its own test because Underline owns an
+    /// axis, so it cannot travel with the booleans, and the shape rider deliberately declines to fire here.
+    /// </summary>
+    [Theory]
+    [InlineData(UnderlineStyle.Single)]   // no shape stated — the run keeps its own
+    [InlineData(UnderlineStyle.Dotted)]   // a shape stated — the rider overrides
+    public void BaseAttributes_Underline_TurnsTheFlagOnWhateverTheShape(UnderlineStyle baseShape)
+    {
+        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
+                                                          TextAttributes.Underline, baseShape);
+
+        // Rich() carries Curly WITHOUT the Underline flag, so the shape is inert until the flag arrives.
+        var applied = resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red));
+
+        Assert.True(applied.Attributes.HasFlag(TextAttributes.Underline));
+        Assert.Equal(baseShape is UnderlineStyle.Single ? UnderlineStyle.Curly : baseShape, applied.UnderlineStyle);
     }
 
     // ───────────────────────────── the chain, end to end ─────────────────────────────

@@ -1175,6 +1175,22 @@ Three things this migration had to be careful about, each now pinned by a test:
    It is not a hole in `WithSet`'s guard — that guard catches routing an axis through the boolean
    factories by ACCIDENT, and here the union is the intent. Verified by mutation: making it a replace
    fails three tests, including `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag`.
+
+   > **Retracted.** `PartialStyle.WithAdded`, `PartialStyle.Adding` and `StyleDeltaTemplate.Adding` have
+   > since been REMOVED; the paragraph above is kept only so the reversal is legible. It concedes its own
+   > defeat in the phrase "strip a run's own Faint": the union's one distinguishing capability is reaching
+   > `Bold | Faint`, and that is not a state the wire has. The encoder emits `ESC[1m` to reach it from a
+   > Faint predecessor and `ESC[2m` from a Bold one — same destination, different bytes, whichever arrived
+   > last wins — while `PartialStyle.Weight` reports plain `Bold` for it either way, so the accessor and
+   > the frame disagree in silence. Nor could a guard have been bolted on: composition is exact, so
+   > `WithAdded(Bold).Adding(Faint)` equals `WithAdded(Bold | Faint)` and any per-call check is evaded by
+   > splitting the call. The inherited-attribute leg now folds its flag word one axis at a time —
+   > `Weighing` for weight (Bold wins a word carrying both, deterministically), `Posturing` for posture,
+   > `Setting` for the genuine booleans, and the run's own shape re-stated to carry the underline flag.
+   > `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag` was inverted into
+   > `BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint`, and
+   > `EveryPublicFlagWordEntryPoint_RejectsTheAxisOwningFlags` now states the guard over the whole public
+   > surface by reflection, so a future unguarded sibling fails a test rather than a terminal.
 2. **The inline-vs-block scope distinction had to survive a per-cell → per-run reshaping.** Inline sampling
    was `ColorAt(LogicalColumn, 0, Rect(0, 0, ScopeWidth, 1))` — a remapped COORDINATE — and a per-run
    resolver hands back a rect, not a coordinate. It is expressible because the remap is a constant offset

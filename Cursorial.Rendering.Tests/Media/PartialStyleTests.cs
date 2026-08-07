@@ -1,3 +1,4 @@
+using System.Reflection;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Media;
@@ -200,6 +201,92 @@ public class PartialStyleTests
         Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithSet(f));
         Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithCleared(f));
         Assert.Throws<ArgumentOutOfRangeException>(() => PartialStyle.WithToggled(f));
+    }
+
+    /// <summary>
+    /// The guard is stated over the WHOLE public flag-word surface, by reflection, rather than over the
+    /// three factories a reader happens to remember. A factory that took a <see cref="TextAttributes"/>
+    /// and skipped <c>Require</c> would hand back exactly the states the guard exists to forbid —
+    /// including <c>Bold | Faint</c>, which no terminal can render (the two share the SGR 22 reset, so
+    /// the emitter's choice of byte depends on the predecessor cell) and which
+    /// <see cref="PartialStyle.Weight"/> silently reports as plain <c>Bold</c>.
+    /// </summary>
+    /// <remarks>
+    /// Reflection, not a hand-written list, because the failure mode is a member ADDED later. And it
+    /// covers <see cref="StyleDeltaTemplate"/> too: the template's fluent methods delegate to
+    /// <see cref="PartialStyle"/>'s, so a hole in either is a hole in both.
+    /// </remarks>
+    [Fact]
+    public void EveryPublicFlagWordEntryPoint_RejectsTheAxisOwningFlags()
+    {
+        TextAttributes[] forbidden =
+        [
+            TextAttributes.Bold, TextAttributes.Faint, TextAttributes.Italic, TextAttributes.Underline,
+            TextAttributes.Bold | TextAttributes.Faint,
+            TextAttributes.Inverse | TextAttributes.Bold,   // a boolean smuggling an axis alongside it
+        ];
+
+        var accepted = new List<string>();
+        var probed = new HashSet<string>();
+
+        foreach (var type in new[] { typeof(PartialStyle), typeof(StyleDeltaTemplate) })
+        foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance))
+        {
+            var parameters = method.GetParameters();
+            if (parameters is not [{ ParameterType: var p }] || p != typeof(TextAttributes))
+                continue;
+
+            var instance = method.IsStatic ? null : Activator.CreateInstance(type);
+            probed.Add($"{type.Name}.{method.Name}");
+
+            foreach (var flags in forbidden)
+            {
+                try
+                {
+                    method.Invoke(instance, [flags]);
+                    accepted.Add($"{type.Name}.{method.Name}({flags})");
+                }
+                catch (TargetInvocationException e) when (e.InnerException is ArgumentOutOfRangeException)
+                {
+                    // The guard fired, which is the whole point.
+                }
+            }
+        }
+
+        // Not vacuous: the members we KNOW take a flag word were actually reached and invoked.
+        Assert.Superset(new HashSet<string>
+                        {
+                            "PartialStyle.WithSet", "PartialStyle.WithCleared", "PartialStyle.WithToggled",
+                            "PartialStyle.Setting", "PartialStyle.Clearing", "PartialStyle.Toggling",
+                            "StyleDeltaTemplate.Setting", "StyleDeltaTemplate.Clearing", "StyleDeltaTemplate.Toggling",
+                        },
+                        probed);
+        Assert.True(accepted.Count == 0,
+                    $"public flag-word members accepted an axis-owning flag: {string.Join(", ", accepted)}");
+    }
+
+    /// <summary>
+    /// ...and the same forbidden state is unreachable by COMPOSING legal deltas, which is the half a
+    /// per-call guard cannot cover: two calls that are each individually fine must not add up to
+    /// <c>Bold | Faint</c> either.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Pairs))]
+    public void NoCompositionOfPublicDeltas_ReachesBothWeightFlags(PartialStyle a, PartialStyle b)
+    {
+        const TextAttributes Both = TextAttributes.Bold | TextAttributes.Faint;
+
+        // Bases that each carry ONE weight (and one that carries neither), so a delta that merely
+        // passes the base through cannot manufacture the state on its own.
+        CellStyle[] bases =
+        [
+            Busy,                                                                       // Bold
+            Busy with { Attributes = (Busy.Attributes & ~Both) | TextAttributes.Faint }, // Faint
+            default,                                                                    // neither
+        ];
+
+        foreach (var s in bases)
+            Assert.NotEqual(Both, a.Then(b).ApplyTo(s).Attributes & Both);
     }
 
     // ---- 9. the underline shape implies the flag, structurally ----

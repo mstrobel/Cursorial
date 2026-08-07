@@ -195,32 +195,21 @@ public readonly record struct PartialStyle
     public static PartialStyle WithToggled(TextAttributes flags) =>
         new() { Xor = Require(flags) };
 
-    /// <summary>
-    /// Force every flag in <paramref name="flags"/> ON across the WHOLE flag word — the union
-    /// <c>base | flags</c>, leaving flags outside the set exactly as the base had them. The only
-    /// factory that accepts the axis-owning flags, and it is deliberately the weakest thing that can
-    /// be said about them.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This is the delta form of <see cref="CellStyle.AddAttributes"/>, and it exists because that OR
-    /// is a real operation the per-axis factories cannot express. <see cref="Weighted"/> imposes a
-    /// weight — Bold on means Faint OFF, because they share the SGR 22 reset — whereas an OR of Bold
-    /// onto a Faint base yields both. Both behaviours are wanted: an element that SETS a weight wants
-    /// the former, while an inherited attribute word merged onto a run's own wants the latter, and
-    /// silently substituting one is a clear the caller never asked for.
-    /// </para>
-    /// <para>
-    /// It is not a hole in <see cref="WithSet"/>'s guard. That guard catches the specific accident of
-    /// routing an axis through the boolean factories — writing <c>WithSet(Bold | Faint)</c> and
-    /// meaning a weight. Here the union IS the intent, and the name says so.
-    /// </para>
-    /// </remarks>
-    public static PartialStyle WithAdded(TextAttributes flags) =>
-        new() { Clear = flags, Xor = flags };
-
     // Bold/Faint/Italic/Underline reach the mask only by mistake — they have their own axes, and
     // routing them through the flag word is how `Bold | Faint` gets written.
+    //
+    // There is deliberately NO unguarded sibling. One existed — `WithAdded`, the flag-word union
+    // `base | flags` — justified as the delta form of `CellStyle.AddAttributes` for merging an
+    // inherited attribute word onto a run's own. It was `WithSet` with this guard removed, and that
+    // was its only distinguishing capability: it existed to do the forbidden thing. The state it
+    // bought is not renderable. `Bold | Faint` share the SGR 22 reset, so reaching it emits ESC[1m
+    // from a Faint predecessor and ESC[2m from a Bold one — same destination, different bytes, and
+    // the terminal keeps whichever arrived last (confirmed in Kitty and Ghostty). `Weight` reports
+    // Bold for it regardless, because it tests `Xor & Bold` first, so the accessor and the frame
+    // disagree in silence. And no per-call guard could have rescued it: `WithAdded(Bold).Adding(Faint)`
+    // equals `WithAdded(Bold | Faint)` exactly, so splitting the call splits the check. Its one
+    // caller — the base-attribute leg of `DrawingContext.CreateBrushResolver` — now folds the word
+    // through `Weighted` / `Postured` / `WithSet`, one axis at a time.
     private static TextAttributes Require(TextAttributes flags) =>
         (flags & ~Booleans) is 0
             ? flags
@@ -255,9 +244,6 @@ public readonly record struct PartialStyle
 
     /// <summary>INVERT <paramref name="flags"/> in addition to whatever this delta already does.</summary>
     public PartialStyle Toggling(TextAttributes flags) => Then(WithToggled(flags));
-
-    /// <summary>Union <paramref name="flags"/> ON in addition to whatever this delta already does.</summary>
-    public PartialStyle Adding(TextAttributes flags) => Then(WithAdded(flags));
 
     /// <summary>Impose a weight in addition to whatever this delta already does.</summary>
     public PartialStyle Weighing(TextWeight w) => Then(Weighted(w));

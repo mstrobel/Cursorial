@@ -893,7 +893,7 @@ public sealed class DrawingContext
     /// <param name="documentBrush">The brush applied to the document text. Can be null, which is the identity — the run keeps its colors.</param>
     /// <param name="documentForeground">The document's default foreground. A run whose foreground equals it (or is unset) counts as having INHERITED it, and so is the brush's to color.</param>
     /// <param name="docBounds">The sampling bounds for a document-scoped run brush.</param>
-    /// <param name="baseAttributes">The element-effective attributes, UNION-merged onto every cell (default none = the identity).</param>
+    /// <param name="baseAttributes">The element-effective attributes, merged onto every cell PER AXIS (default none = the identity). Booleans union with the run's own; weight and posture are IMPOSED, so an inherited Bold clears a run's Faint — the pair is unrenderable, sharing the SGR 22 reset.</param>
     /// <param name="baseUnderlineShape">The element's underline shape, applied only when <paramref name="baseAttributes"/> carries the Underline presence bit and the shape is not the <see cref="UnderlineStyle.Single"/> default.</param>
     /// <returns>
     /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and returns the delta to fold
@@ -960,18 +960,47 @@ public sealed class DrawingContext
                        }
                    }
 
-                   // The base-attribute leg: OR the element-effective attributes onto the run's own
-                   // (default none = a no-op for every pre-existing caller). When the base carries the
+                   // The base-attribute leg: merge the element-effective attributes onto the run's own,
+                   // per AXIS (default none = a no-op for every pre-existing caller). When the base carries the
                    // Underline presence bit with a non-Single shape, the shape rides along (the widened
                    // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
                    // today, so the base shape never overwrites authored run state.
                    if (baseAttributes == default)
                        return new BrushedTextStyle(delta, bounds);
 
-                   // Adding, not the per-axis factories: this is the flag-word UNION the old `AddAttributes`
-                   // performed, so an inherited Bold must not clear a run's own Faint the way `Weighing(Bold)`
-                   // would. A set, never an unset.
-                   delta = delta.Adding(baseAttributes);
+                   // `baseAttributes` is a flag WORD, but it is folded through the per-AXIS API rather than
+                   // unioned in wholesale. Weight is why. Bold and Faint share the SGR 22 reset, so a cell
+                   // carrying both is not "two attributes" — it is a state the encoder cannot spell: reaching
+                   // it emits ESC[1m from a Faint predecessor and ESC[2m from a Bold one, and the terminal
+                   // keeps whichever arrived last. (`PartialStyle.Weight` reports Bold for it either way, so
+                   // the accessor and the frame disagree in silence.) An inherited Bold therefore IMPOSES a
+                   // weight, clearing the run's own Faint, rather than unioning into something unrenderable.
+                   if ((baseAttributes & TextAttributes.Bold) != 0)
+                       // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot
+                       // produce one, but a caller that ORs its own flags onto the composed word can. Bold
+                       // wins: the choice is arbitrary, being FIXED is not, since the alternative is a cell
+                       // whose appearance depends on what was painted before it.
+                       delta = delta.Weighing(TextWeight.Bold);
+                   else if ((baseAttributes & TextAttributes.Faint) != 0)
+                       delta = delta.Weighing(TextWeight.Faint);
+
+                   // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it
+                   // are the same operation, and the axis-typed form is the one that says which axis it is.
+                   if ((baseAttributes & TextAttributes.Italic) != 0)
+                       delta = delta.Posturing(TextStyle.Italic);
+
+                   // The genuine booleans keep unioning: no reset is shared, so a run's Overline survives an
+                   // inherited Strikethrough. `Setting` is the union for flags that have no axis of their own.
+                   var booleans = baseAttributes & PartialStyle.Booleans;
+                   if (booleans != default)
+                       delta = delta.Setting(booleans);
+
+                   // Underline's axis has no "on, and no further opinion" form — the flag travels with a
+                   // SHAPE, which implies it once resolved. Re-stating the run's own shape is that form: the
+                   // underline arrives and the shape is left exactly where it was, which is what the flag-word
+                   // union did. The rider below then overrides the shape when the element states one.
+                   if ((baseAttributes & TextAttributes.Underline) != 0)
+                       delta = delta with { UnderlineShape = ctx.BaseStyle.UnderlineStyle };
 
                    // A shape implies the Underline flag once resolved, and the guard only lets the shape
                    // through when the element already carries that flag — so the two agree and the rider adds

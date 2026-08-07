@@ -62,9 +62,6 @@ public readonly record struct StyleDeltaTemplate
     /// <summary>INVERT <paramref name="flags"/> in addition to whatever this template already does.</summary>
     public StyleDeltaTemplate Toggling(TextAttributes flags) => Composed(PartialStyle.WithToggled(flags));
 
-    /// <inheritdoc cref="PartialStyle.WithAdded"/>
-    public StyleDeltaTemplate Adding(TextAttributes flags) => Composed(PartialStyle.WithAdded(flags));
-
     /// <summary>Impose a weight in addition to whatever this template already does.</summary>
     public StyleDeltaTemplate Weighing(TextWeight w) => Composed(PartialStyle.Weighted(w));
 

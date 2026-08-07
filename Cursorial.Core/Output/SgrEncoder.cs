@@ -81,11 +81,38 @@ public static class SgrEncoder
     /// <paramref name="to"/> does not. Emits nothing (writes zero bytes) when the two styles
     /// are equal.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The invariant: applied to a terminal whose SGR state is exactly <paramref name="from"/>,
+    /// these bytes leave it in exactly <paramref name="to"/>. Two consequences drive the
+    /// implementation, and neither follows from a naive added/removed set difference:
+    /// </para>
+    /// <list type="number">
+    /// <item>
+    /// Whenever a reset code is emitted, every piece of state that code clears which
+    /// <paramref name="to"/> still wants must be re-emitted after it. <c>SGR 22</c> clears both
+    /// Bold and Faint, so a weight present in <em>both</em> styles — and therefore in neither the
+    /// added nor the removed set — still has to go back out (<c>Bold|Faint</c> → <c>Bold</c> is
+    /// <c>22;1</c>, not a bare <c>22</c>).
+    /// </item>
+    /// <item>
+    /// Every axis whose <em>value</em> differs must be emitted even when its on/off flag is
+    /// unchanged. The underline shape is a value carried by the same <c>SGR 4</c> parameter that
+    /// turns the underline on, so a shape change under a surviving Underline flag still emits
+    /// <c>4:n</c>.
+    /// </item>
+    /// </list>
+    /// </remarks>
     public static void WriteDelta(IBufferWriter<byte> writer, in CellStyle from, in CellStyle to)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (from == to) return;
 
+        // Worst case: FG truecolor (16) + BG truecolor (17) + every attribute reset (24) +
+        // underline truecolor (18) + `ESC [` and the final `m` (3). The reset and set phases
+        // can't both be maximal: a reset only fires for an attribute the destination doesn't
+        // want, so the only parameter that can join a full reset run is the `1`/`2` restored
+        // after the shared 22 (+2). Comfortably inside the same 96-byte budget as WriteAbsolute.
         var buffer = writer.GetSpan(96);
         int written = 0;
 
@@ -105,21 +132,10 @@ public static class SgrEncoder
             WriteBackground(to.Background, buffer, ref written, ref needSeparator);
         }
 
-        // Attributes: figure out which bits are turning on (need to enable) and which are
-        // turning off (need explicit disable codes — there's no "blanket reset Italic" so
-        // each attribute has its own disable parameter).
-        var added = to.Attributes & ~from.Attributes;
-        var removed = from.Attributes & ~to.Attributes;
-
-        if (added != TextAttributes.None || removed != TextAttributes.None)
-        {
-            WriteAttributeChanges(added, removed, to.UnderlineStyle, buffer, ref written, ref needSeparator);
-        }
-        else if (to.Attributes.HasFlag(TextAttributes.Underline) && from.UnderlineStyle != to.UnderlineStyle)
-        {
-            // Underline was already on; only the shape changed. Re-emit it with the new shape.
-            WriteUnderline(to.UnderlineStyle, buffer, ref written, ref needSeparator);
-        }
+        // Attributes. Called unconditionally: "nothing to say" is not the same as "no flags
+        // changed" — a bare underline-shape change moves no flags but still needs an SGR 4:n —
+        // and the `written == 2` check below already elides a genuinely empty sequence.
+        WriteAttributeChanges(from, to, buffer, ref written, ref needSeparator);
 
         // Underline color.
         if (from.UnderlineColor != to.UnderlineColor)
@@ -166,17 +182,25 @@ public static class SgrEncoder
     }
 
     private static void WriteAttributeChanges(
-        TextAttributes added,
-        TextAttributes removed,
-        UnderlineStyle underlineStyle,
+        in CellStyle from,
+        in CellStyle to,
         Span<byte> buffer,
         ref int written,
         ref bool needSeparator)
     {
-        // Per-attribute SGR codes and their matching reset codes. Bold and Faint share SGR 22
-        // for reset (xterm convention); we emit 22 once if either was removed.
-        if (removed.HasFlag(TextAttributes.Bold) || removed.HasFlag(TextAttributes.Faint))
-            WriteParam(22, buffer, ref written, ref needSeparator);
+        // SGR 22 is the one genuinely shared reset in Cursorial's model: it disables Bold AND
+        // Faint (xterm convention), so it's emitted once if either weight was removed. Every
+        // other reset below is effectively single-member. (ECMA-48 also has 23 clearing Fraktur
+        // and 25 clearing rapid blink, but Cursorial models neither attribute, so neither reset
+        // can do collateral damage here.)
+        const TextAttributes weightMask = TextAttributes.Bold | TextAttributes.Faint;
+
+        var added = to.Attributes & ~from.Attributes;
+        var removed = from.Attributes & ~to.Attributes;
+
+        // Reset phase — ascending parameter order.
+        var weightReset = (removed & weightMask) != TextAttributes.None;
+        if (weightReset) WriteParam(22, buffer, ref written, ref needSeparator);
 
         if (removed.HasFlag(TextAttributes.Italic)) WriteParam(23, buffer, ref written, ref needSeparator);
         if (removed.HasFlag(TextAttributes.Underline)) WriteParam(24, buffer, ref written, ref needSeparator);
@@ -186,18 +210,33 @@ public static class SgrEncoder
         if (removed.HasFlag(TextAttributes.Strikethrough)) WriteParam(29, buffer, ref written, ref needSeparator);
         if (removed.HasFlag(TextAttributes.Overline)) WriteParam(55, buffer, ref written, ref needSeparator);
 
-        if (added.HasFlag(TextAttributes.Bold)) WriteParam(1, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Faint)) WriteParam(2, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Italic)) WriteParam(3, buffer, ref written, ref needSeparator);
+        // `stale` = what `to` wants whose terminal state the reset phase did NOT leave correct:
+        // newly-added, plus anything the shared 22 collaterally cleared. Always a subset of
+        // to.Attributes, so this can never turn on something the destination doesn't want.
+        // Another shared reset later means OR-ing one more `to.Attributes & <mask>` term here.
+        var stale = added;
+        if (weightReset) stale |= to.Attributes & weightMask;
 
-        if (added.HasFlag(TextAttributes.Underline))
-            WriteUnderline(underlineStyle, buffer, ref written, ref needSeparator);
+        // Set phase — ascending parameter order.
+        if (stale.HasFlag(TextAttributes.Bold)) WriteParam(1, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Faint)) WriteParam(2, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Italic)) WriteParam(3, buffer, ref written, ref needSeparator);
 
-        if (added.HasFlag(TextAttributes.Blink)) WriteParam(5, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Inverse)) WriteParam(7, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Hidden)) WriteParam(8, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Strikethrough)) WriteParam(9, buffer, ref written, ref needSeparator);
-        if (added.HasFlag(TextAttributes.Overline)) WriteParam(53, buffer, ref written, ref needSeparator);
+        // SGR 4 carries the shape, so it also goes stale when the shape changes under a surviving
+        // Underline flag — the flag is then in neither `added` nor `removed`. Gated on the
+        // destination actually wanting an underline, so a shape change with the flag off emits
+        // nothing (the off-form is always the plain 24 above, never `4:0`).
+        if (to.Attributes.HasFlag(TextAttributes.Underline) &&
+            (stale.HasFlag(TextAttributes.Underline) || from.UnderlineStyle != to.UnderlineStyle))
+        {
+            WriteUnderline(to.UnderlineStyle, buffer, ref written, ref needSeparator);
+        }
+
+        if (stale.HasFlag(TextAttributes.Blink)) WriteParam(5, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Inverse)) WriteParam(7, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Hidden)) WriteParam(8, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Strikethrough)) WriteParam(9, buffer, ref written, ref needSeparator);
+        if (stale.HasFlag(TextAttributes.Overline)) WriteParam(53, buffer, ref written, ref needSeparator);
     }
 
     private static void WriteUnderline(

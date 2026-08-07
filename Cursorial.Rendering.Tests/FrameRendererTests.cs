@@ -153,6 +153,31 @@ public class FrameRendererTests
         Assert.Contains("\x1b[22m", output);  // bold-off (SGR 22) before 'b'
     }
 
+    [Fact]
+    public void StyleChange_BetweenCells_ReEmitsUnderlineShape()
+    {
+        var r = new FrameRenderer();
+        var buf = new CellBuffer(3, 1);
+        var boldSingle = CellStyle.Default
+                                  .WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                                  .WithUnderlineStyle(UnderlineStyle.Single);
+        var italicCurly = CellStyle.Default
+                                   .WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
+                                   .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        buf.Set(0, 0, "a", boldSingle);
+        buf.Set(1, 0, "b", italicCurly);
+
+        var output = Render(r, buf);
+
+        // The Underline flag survives the transition, so it appears in neither the added nor the
+        // removed set — but the shape it carries changed, so SGR 4:3 still has to go out.
+        // SyncStyle assigns `_currentStyle = target` unconditionally, so an under-emitted
+        // parameter would leave the renderer's model permanently ahead of the terminal, with no
+        // later frame ever correcting it.
+        Assert.Contains("4:3", output);
+    }
+
     // ---- Wide cells ----
 
     [Fact]

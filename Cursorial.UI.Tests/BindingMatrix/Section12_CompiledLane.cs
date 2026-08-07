@@ -53,12 +53,20 @@ public class Section12_CompiledLane
         for (var i = 0; i < 64; i++) // warm up: materialize the typed entry + the subscription closure
             vm.BumpAge();
 
-        // Steady-state allocation = the MINIMUM over a few attempts. The assembly already disables tiered JIT +
-        // server/concurrent GC (see the csproj), yet a CPU-starved CI runner (this failed only on macOS CI, where the
-        // full-solution `dotnet test` runs 7 assemblies at once) can still land a ONE-TIME JIT/lazy-init allocation
-        // inside a single measured window — the observed spike was a flat ~6 KB, uncorrelated with the push count.
-        // Re-warming between attempts settles it; a GENUINE per-push allocation allocates on EVERY attempt, so the min
-        // stays > 0 and this assertion still catches it (the zero-box contract is unchanged, just measured robustly).
+        // Steady-state allocation = the MINIMUM over a few attempts, so a one-off JIT/lazy-init spike inside one
+        // window cannot fail the assertion while a GENUINE per-push allocation — present in every window — still does.
+        //
+        // That second case is not hypothetical: this test caught one. The intermittent macOS CI failures reported a
+        // flat 6144 B, which an earlier note here read as a one-time spike "uncorrelated with the push count". It was
+        // exactly correlated — 6144 / 256 = 24 B per push, one small object — and the min-of-4 did not mask it, it
+        // just had a wrong explanation attached. `BindingDispatcher.Current` resolved the ambient dispatcher by
+        // allocating a fresh wrapper on every read, which the caller then discarded because `CheckAccess()` was true;
+        // `UIDispatcher` now implements `IUIDispatcher` directly and the read is a bare reference.
+        //
+        // Why it was intermittent rather than constant: the allocation only happened when `UIApplication.Current` was
+        // non-null on the pushing thread, and this test never builds a host. It inherited a leaked [ThreadStatic] slot
+        // from an earlier test whenever xUnit handed it a poisoned pool thread — likelier on a 3-vCPU runner executing
+        // 7 assemblies at once. See `Hosting/UIDispatcherTests` for the direct, leak-independent assertion.
         long best = long.MaxValue;
         for (var attempt = 0; attempt < 4 && best != 0; attempt++)
         {

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 
+using Cursorial.UI.Data;
+
 // ReSharper disable CheckNamespace
 
 namespace Cursorial.UI;
@@ -26,8 +28,17 @@ namespace Cursorial.UI;
 /// After shutdown, <see cref="InvokeAsync(Action)"/> returns a canceled task and
 /// <see cref="Post(Action)"/> is dropped — nothing enqueues into the void.
 /// </para>
+/// <para>
+/// <b>It <em>is</em> the binding engine's seam.</b> <see cref="IUIDispatcher"/> (design doc §6.9)
+/// is exactly <see cref="CheckAccess"/> + <see cref="Post(Action)"/>, both of which this type
+/// already exposes, so it implements the interface directly rather than being wrapped. That is
+/// load-bearing for allocation, not tidiness: <c>BindingExpressionCore</c> resolves the ambient
+/// dispatcher <b>once per binding push</b> and, on the UI thread, discards it immediately
+/// (<see cref="CheckAccess"/> is true) — an adapter object there would be 24 B of garbage per push
+/// in every app.
+/// </para>
 /// </remarks>
-public sealed class UIDispatcher
+public sealed class UIDispatcher : IUIDispatcher
 {
     private readonly ConcurrentQueue<DispatcherJob> _jobs = new();
     private readonly SemaphoreSlim _wake = new(0, 1);

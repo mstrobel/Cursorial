@@ -497,17 +497,21 @@ public sealed class TextPresenter : UIElement
         // attribute, then 'un-invert' only the selection rectangle. This is necessary for figlet fonts that only
         // write sparsely; otherwise the inversion would be partial (non-rectangular).
         //
-        // Note that in the next 'if' block down, the selection block flips the presenter's native the 'Inverse'
-        // flag, ensuring the highlighting contrasts the content regardless of whether the presenter is light-on-dark
-        // or dark-on-light.
+        // Note that in the next 'if' block down, the selection block FLIPS whatever Inverse state each cell is
+        // actually in, ensuring the highlighting contrasts the content regardless of whether the presenter is
+        // light-on-dark or dark-on-light.
         if (inverse)
         {
-            var tint = CellStyle.Default.WithAttributes(TextAttributes.Inverse);
             var startColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
             var endColumn = glyphs.ColumnOf(to - lineStart) - _scrollColumn;
 
+            // The line's OWN attributes ride the fill (masked to the ones that may spread), not
+            // TextAttributes.Inverse alone. FillOpaque writes space-bearing cells; CellBuffer.Set
+            // rescues the grapheme and composites the foreground back, but NOT the attributes — so a
+            // bare Inverse here silently stripped Bold / Italic / … from every cell the face inked.
             context.FillOpaque(new Rect(startColumn, localRow, endColumn - startColumn, lineRows),
-                               Color.Transparent, tint.Attributes);
+                               Color.Transparent,
+                               (baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse);
         }
 
         // Selection: tint the selected span in place — graphemes untouched. Clamped to the
@@ -521,32 +525,90 @@ public sealed class TextPresenter : UIElement
             {
                 var selRect = new Rect(selStart, localRow, selEnd - selStart, lineRows);
 
-                // The tint is a DELTA, and every leg FORCES Inverse rather than OR-ing it on — which is
-                // what the old CellStyle spelling meant, obscured by the fact that it said it twice:
-                // TintCells cleared Inverse unconditionally, and the caller then OR-ed its own back.
-                PartialStyle tint;
-                if (noColor || selectionBrush is null)
-                {
-                    // `inverse` means the block above already painted the whole run inverse, so the
-                    // selection reads by UN-inverting it; otherwise the selection is the inversion.
-                    tint = inverse
-                               ? PartialStyle.WithCleared(TextAttributes.Inverse)
-                               : PartialStyle.WithSet(TextAttributes.Inverse);
-                }
-                else
-                {
-                    // A brush that samples to the terminal default states no background — Brushes.Default
-                    // is a legal SelectionBrush, and a default background here would be indistinguishable
-                    // from no selection at all. The Inverse clear happens on this path too.
-                    var color = selectionBrush.ColorAt(selStart + (selEnd - selStart) / 2, localRow, selRect);
-                    tint = color.IsDefault
-                               ? PartialStyle.WithCleared(TextAttributes.Inverse)
-                               : PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse);
-                }
-
-                context.TintCells(selRect, tint);
+                // The tint is a DELTA against whatever each cell already holds, so this call site does
+                // not need to know the presenter's inverse state at all — which is the point: the
+                // toggle reads the CELL, not a presenter-level bool standing in for it.
+                context.TintCells(selRect,
+                                  ResolveSelectionStyle(noColor, selectionBrush,
+                                                        selStart + (selEnd - selStart) / 2, localRow, selRect));
             }
         }
+    }
+
+    /// <summary>
+    /// Attributes safe to spread across cells the presenter did not ink. An ALLOWLIST, never a
+    /// denylist: a new <see cref="TextAttributes"/> member must default to NOT spreading, because the
+    /// failure mode of spreading something unnoticed is far louder than the failure mode of not
+    /// spreading it.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><see cref="TextAttributes.Bold"/> / <see cref="TextAttributes.Faint"/> /
+    /// <see cref="TextAttributes.Italic"/> are invisible on a blank cell, so spreading them is free and
+    /// keeps the SGR state uniform across the band.</item>
+    /// <item><see cref="TextAttributes.Inverse"/> is visible on a blank and is the entire reason the
+    /// fill exists.</item>
+    /// <item><see cref="TextAttributes.Underline"/> / <see cref="TextAttributes.Strikethrough"/> /
+    /// <see cref="TextAttributes.Overline"/> are visible on blanks and MUST be excluded — spreading
+    /// them would rule every row of a multi-row FIGlet band.</item>
+    /// <item><see cref="TextAttributes.Blink"/> is excluded deliberately even though it is only
+    /// conditionally ink-dependent: as long as there is a mechanism to accomplish what the author
+    /// wants, the common case should steer into the pit of success. The asymmetry of harm decides it —
+    /// excluded-but-wanted is a subtle inconsistency, included-but-unwanted strobes the whole content
+    /// rect.</item>
+    /// <item><see cref="TextAttributes.Hidden"/> is a no-op on blanks by definition, so it is safe.</item>
+    /// </list>
+    /// The mask lives HERE, in the policy, and deliberately not in <c>FillOpaque</c>: the primitive must
+    /// keep painting exactly what it is handed — an author who passes <c>Blink</c> asked for it — and
+    /// masking there would remove the very escape hatch this ruling depends on.
+    /// </remarks>
+    private const TextAttributes FillAttributes =
+        TextAttributes.Bold | TextAttributes.Faint | TextAttributes.Italic |
+        TextAttributes.Inverse | TextAttributes.Hidden;
+
+    /// <summary>
+    /// THE selection rule, in one place: <b>no usable selection brush ⇒ TOGGLE
+    /// <see cref="TextAttributes.Inverse"/>; a usable brush ⇒ paint its background and CLEAR
+    /// <see cref="TextAttributes.Inverse"/>.</b> All three painting lanes (plain cells, sized runs,
+    /// glyph-face tints) route through here — each used to hand-roll it, and they drifted: the sized
+    /// lane's spelling left the selection INVISIBLE on a colour tier whose theme resolves no
+    /// <c>SelectionBrush</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why CLEAR on the brush path.</b> If <see cref="TextAttributes.Inverse"/> survives, the
+    /// terminal swaps the channels at render time: the brush's <em>background</em> colour comes out as
+    /// the visible foreground and the band the caller meant to paint never appears — and the visible
+    /// foreground then comes from the cell's background channel, which is <see cref="Color.Transparent"/>
+    /// here, so the text renders as the backdrop. Clearing is what makes the brush's declared channel the
+    /// one you see. (It used to happen by accident, as a side effect of <c>TintCells</c> clearing
+    /// Inverse unconditionally, and nobody could say why.)
+    /// </para>
+    /// <para>
+    /// <b>Why TOGGLE on the no-brush path.</b> Forcing the flag depends on a presenter-level bool being
+    /// an accurate proxy for every cell's state, and when the proxy is wrong the selection is
+    /// <em>invisible</em> — forcing Inverse on cells that are already inverse changes nothing. A toggle
+    /// reads each cell's actual state instead, which is what "the selection flips the content" always
+    /// meant; the old ternaries were hand-rolled XORs standing in for an operation the old API could not
+    /// express.
+    /// </para>
+    /// <para>
+    /// <paramref name="noColor"/> is not a selection concept here — it only decides whether a brush is
+    /// USABLE. Neither is a brush that samples to the terminal default: <c>Brushes.Default</c> is a legal
+    /// <see cref="TextBox.SelectionBrush"/>, and a default background is indistinguishable from no
+    /// selection at all, so it falls through to the toggle rather than painting nothing. (A
+    /// present-but-default background is a real opinion to a <see cref="PartialStyle"/> where it was
+    /// silence to a <see cref="CellStyle"/>, so the guard has to be stated rather than inherited.)
+    /// </para>
+    /// </remarks>
+    private static PartialStyle ResolveSelectionStyle(bool noColor, IBrush? selectionBrush,
+                                                      int column, int row, in Rect bounds)
+    {
+        var background = noColor ? null : selectionBrush?.ColorAt(column, row, bounds);
+
+        return background is { IsDefault: false } color
+                   ? PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse)
+                   : PartialStyle.WithToggled(TextAttributes.Inverse);
     }
 
     private CellStyle ResolveLineBaseStyle(bool noColor)
@@ -580,22 +642,19 @@ public sealed class TextPresenter : UIElement
             // selection boundaries" model: [pre][selected][post] as separate pieces, the
             // selected piece's backdrop carrying the highlight.
             var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
-            var rect = new Rect(localColumn, localRow, runWidth, source.Metrics.LineRows);
-            var backdrop = baseStyle;
+            var rect = new Rect(localColumn, localRow, Math.Max(0, runWidth), source.Metrics.LineRows);
+
+            // ADD, never replace — backdrop starts as baseStyle (the folded attributes), not Default.
+            // The selection delta then applies to the style the run WOULD have painted in, which is
+            // what makes the toggle contrast: an inverse run's selection un-inverts, a plain run's
+            // inverts. The old spelling toggled off `baseStyle` instead, so an inverse run's selection
+            // came out identical to its surroundings.
+            var backdrop = inverse ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
 
             if (selected && (!noColor || Owner?.IsFocused is true))
             {
-                backdrop = noColor || selectionBrush is null
-                               ? backdrop.WithAttributes(noColor
-                                                             ? baseStyle.Attributes ^ TextAttributes.Inverse
-                                                             : baseStyle.Attributes)
-                               : backdrop.WithBackground(
-                                   selectionBrush.ColorAt(localColumn + runWidth / 2, localRow, rect));
-            }
-            else if (inverse)
-            {
-                // ADD, never replace — backdrop starts as baseStyle (the folded attributes), not Default.
-                backdrop = backdrop.AddAttributes(TextAttributes.Inverse);
+                backdrop = ResolveSelectionStyle(noColor, selectionBrush, localColumn + runWidth / 2, localRow, rect)
+                    .ApplyTo(backdrop);
             }
 
             var runText = text[from..to];
@@ -631,15 +690,21 @@ public sealed class TextPresenter : UIElement
 
         // ADD, never replace: baseStyle already carries the presenter's folded attributes, so a
         // WithAttributes here would wipe every OTHER axis (Bold, Italic, …) the fold delivered.
-        var style = inverse && !selected ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
-        var selectionStyle = baseStyle.WithAttributes(style.Attributes ^ TextAttributes.Inverse);
+        // This is the style the run paints in when it is NOT selected — and the base the selection
+        // delta toggles against, so the highlight contrasts its surroundings either way round.
+        var style = inverse ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
 
         if (selected && (!noColor || Owner?.IsFocused is true))
         {
-            if (noColor)
-                DrawText(context, localColumn, localRow, span, foreground, null, selectionStyle);
-            else
-                DrawText(context, localColumn, localRow, span, foreground, selectionBrush, style);
+            var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
+            var rect = new Rect(localColumn, localRow, Math.Max(0, runWidth), 1);
+            var selection = ResolveSelectionStyle(noColor, selectionBrush, localColumn + runWidth / 2, localRow, rect);
+
+            // The cell lane hands DrawText the BRUSH rather than the delta's sample, so a gradient
+            // still colours per cell (DrawText overwrites CellStyle.Background from its brush argument
+            // either way); the delta's Background says only WHETHER the rule found one usable.
+            DrawText(context, localColumn, localRow, span, foreground,
+                     selection.Background is null ? null : selectionBrush, selection.ApplyTo(style));
         }
         else
         {

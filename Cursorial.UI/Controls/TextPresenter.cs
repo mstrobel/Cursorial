@@ -594,7 +594,8 @@ public sealed class TextPresenter : UIElement
             }
             else if (inverse)
             {
-                backdrop = backdrop.WithAttributes(TextAttributes.Inverse);
+                // ADD, never replace — backdrop starts as baseStyle (the folded attributes), not Default.
+                backdrop = backdrop.AddAttributes(TextAttributes.Inverse);
             }
 
             var runText = text[from..to];
@@ -628,7 +629,9 @@ public sealed class TextPresenter : UIElement
 
         var span = text.AsSpan(from, to - from);
 
-        var style = inverse && !selected ? baseStyle.WithAttributes(TextAttributes.Inverse) : baseStyle;
+        // ADD, never replace: baseStyle already carries the presenter's folded attributes, so a
+        // WithAttributes here would wipe every OTHER axis (Bold, Italic, …) the fold delivered.
+        var style = inverse && !selected ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
         var selectionStyle = baseStyle.WithAttributes(style.Attributes ^ TextAttributes.Inverse);
 
         if (selected && (!noColor || Owner?.IsFocused is true))

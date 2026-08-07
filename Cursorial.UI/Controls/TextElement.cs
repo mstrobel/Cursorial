@@ -34,7 +34,8 @@ public readonly record struct ResolvedTextAttributes(TextAttributes Flags, Under
         var newStyle = style with { Attributes =  Flags };
 
         if (Flags.HasFlag(TextAttributes.Underline))
-            newStyle = style with { UnderlineStyle = UnderlineShape };
+            newStyle = newStyle with { UnderlineStyle = UnderlineShape }; // from newStyle — rebuilding from
+                                                                         // 'style' would drop the flags above
         
         return newStyle;
     }

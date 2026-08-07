@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 
 using Cursorial.Input;
@@ -129,6 +130,62 @@ public sealed class UIHeadlessHost : IAsyncDisposable, IDisposable
         }
 
         return Application.IsIdle;
+    }
+
+    /// <summary>The default deadline for <see cref="RunUntilCompleted"/> — generous, because only a genuinely hung flow reaches it.</summary>
+    public static TimeSpan DefaultCompletionTimeout { get; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>How long each poll parks on the task's completion signal before pumping another frame.</summary>
+    private static readonly TimeSpan CompletionPollInterval = TimeSpan.FromMilliseconds(1);
+
+    /// <summary>
+    /// Steps frames until <paramref name="task"/> completes — the wait for a task that may resume ON
+    /// the UI thread — or returns <see langword="false"/> when <paramref name="timeout"/> (default
+    /// 5 s) is hit first. Completion means <em>terminal state</em>: a faulted or canceled task
+    /// returns <see langword="true"/> with its outcome left on the task for the caller to observe.
+    /// <para>
+    /// <see cref="Create"/> makes the calling thread the UI thread, and a frame installs the
+    /// application's <c>SynchronizationContext</c> — so an <c>await</c> reached inside a frame
+    /// captures it and posts its resumption back to the dispatcher, where only a later frame can run
+    /// it. Work that has meanwhile left for the thread pool is invisible to <c>UIApplication.IsIdle</c>
+    /// (it inspects the dispatcher-side queues only), so <see cref="RunUntilIdle"/> can legitimately
+    /// report idle in the window before the pool thread posts. A caller that then BLOCKS this thread
+    /// on the task — <c>task.Wait(…)</c> — guarantees the queued resumption can never run: a hard
+    /// deadlock that ends at the timeout instead of at completion. Pumping while polling closes that
+    /// window.
+    /// </para>
+    /// <para>
+    /// <b>Bounded by TIME, not by frames</b>, alone among this type's <c>RunUntil…</c> methods — and
+    /// deliberately so: the work being waited on has left the dispatcher, and no number of frames
+    /// makes a pool thread post its resumption any sooner. A frame bound would express a budget for
+    /// something the frames do not drive.
+    /// </para>
+    /// <para>
+    /// The poll comes BEFORE the pump: a task whose tail never touches the UI thread completes on the
+    /// first short poll, so the common case pumps no extra frames at all and no frame-sensitive
+    /// assertion moves.
+    /// </para>
+    /// </summary>
+    public bool RunUntilCompleted(Task task, TimeSpan? timeout = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(task);
+
+        var limit = timeout ?? DefaultCompletionTimeout;
+        var clock = Stopwatch.StartNew();
+        var pending = new[] { task };
+
+        // WaitAny (not Wait) parks on the completion signal without propagating the task's outcome:
+        // a fault belongs to the caller's own await/Result, not to the wait that observed it.
+        while (Task.WaitAny(pending, CompletionPollInterval) < 0)
+        {
+            if (clock.Elapsed >= limit)
+                return false;
+
+            RunFrame();
+        }
+
+        return true;
     }
 
     /// <summary>

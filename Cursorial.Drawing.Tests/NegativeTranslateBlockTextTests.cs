@@ -5,6 +5,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -66,7 +67,7 @@ public class NegativeTranslateBlockTextTests
         var actual = Row(20, ctx =>
         {
             using (ctx.PushTranslate(dx, 0))
-                ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, CellStyle.Default);
+                ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, default(PartialStyle));
         });
 
         Assert.Equal(expected, actual);
@@ -91,7 +92,7 @@ public class NegativeTranslateBlockTextTests
         var actual = Grid(12, 3, ctx =>
         {
             using (ctx.PushTranslate(dx, 0))
-                ctx.DrawGlyphText(font, 0, 0, "ABC", CellStyle.Default);
+                ctx.DrawGlyphText(font, 0, 0, "ABC", default(PartialStyle));
         });
 
         Assert.Equal(expected, actual);
@@ -118,7 +119,7 @@ public class NegativeTranslateBlockTextTests
         var actual = Grid(12, 3, ctx =>
         {
             using (ctx.PushTranslate(0, dy))
-                ctx.DrawGlyphText(font, 0, 0, "ABC", CellStyle.Default);
+                ctx.DrawGlyphText(font, 0, 0, "ABC", default(PartialStyle));
         });
 
         Assert.Equal(expected, actual);
@@ -142,7 +143,7 @@ public class NegativeTranslateBlockTextTests
                 if (painter == "formatted")
                     ctx.DrawFormattedText(Format(Run), new Rect(0, 0, Run.Length, 1), OutputCapabilities.None);
                 else
-                    ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, CellStyle.Default);
+                    ctx.DrawGlyphText(MonospaceFont.Default, 0, 0, Run, default(PartialStyle));
             }
         });
 

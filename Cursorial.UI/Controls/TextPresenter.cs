@@ -696,7 +696,7 @@ public sealed class TextPresenter : UIElement
 
         var booleans = flags & PartialStyle.Booleans;
         if (booleans != default)
-            template = template.Setting(booleans);
+            template = template.Applying(booleans);
 
         // A shape implies the flag (PartialStyle.ApplyTo derives it structurally), so stating the
         // shape is the whole of "underline, in this style" — and stating it only when the fold

@@ -11,8 +11,8 @@ namespace Cursorial.Tests.Drawing;
 
 // Capability #8: a FIGlet headline in a formatted-text document, painted with a brush, samples the brush
 // PER rendered cell — so a gradient flows across the big glyphs instead of the whole headline taking one
-// center-sampled color. The §9 invariant holds: the seam is a brush-blind GlyphStyleProvider; IBrush never
-// enters Cursorial.Rendering.
+// center-sampled color. The seam is now a StyleDeltaTemplate handed to the face (GlyphStyleProvider, the
+// callback that predated IBrush living in Cursorial.Rendering, is retired — see proposal-partial-style §11.7).
 public class FigletGradientTests
 {
     private static readonly Color Red = Color.FromRgb(255, 0, 0);

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -80,17 +81,23 @@ public sealed class MonospaceFont : IGlyphFont
     /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
-        return PaintCore(buffer, column, row, text, style, null);
+        return PaintCore(buffer, column, row, text, style, delta: null, bounds: default);
     }
 
+    /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      GlyphStyleProvider styleProvider)
+                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, default, styleProvider);
+        // A uniform template resolves to the same value everywhere, so fold it once here and take the flat
+        // path — one cluster loop with no per-cell resolve, identical to painting a plain style.
+        return delta.IsUniform
+                   ? PaintCore(buffer, column, row, text, delta.Resolve(column, row, bounds).ApplyTo(baseStyle),
+                               delta: null, bounds: default)
+                   : PaintCore(buffer, column, row, text, baseStyle, delta, bounds);
     }
 
     private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                                  GlyphStyleProvider? styleProvider = null)
+                                  in StyleDeltaTemplate? delta, in Rect bounds)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -129,7 +136,10 @@ public sealed class MonospaceFont : IGlyphFont
                 // CellBuffer.Set takes a string; materialize the cluster once per call.
                 // For most graphemes this is 1–4 chars — short enough that an alternative
                 // span-based Set is a future micro-optimization.
-                var clusterStyle = styleProvider?.Invoke(col, row) ?? style;
+                // Resolved per cluster, not once up front: a non-uniform template is position-dependent, so
+                // hoisting the resolve out of the loop would paint one cell's answer across the whole run.
+                // (The uniform case never reaches here — the overload above folds it and passes null.)
+                var clusterStyle = delta is null ? style : delta.Value.Resolve(col, row, bounds).ApplyTo(style);
                 int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
 
                 // The one case where the surface knows better than the layout: a wide glyph at the

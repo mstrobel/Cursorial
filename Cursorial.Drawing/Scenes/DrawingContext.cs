@@ -885,19 +885,35 @@ public sealed class DrawingContext
     }
 
     /// <summary>
-    /// Creates a brush resolver that generates text styles based on the provided brush, foreground color,
-    /// document bounds, and text attributes. The resolver determines the final style of text rendering
-    /// for use in drawing operations, accommodating document-specific configurations and underline shapes.
+    /// Creates a brush resolver: the per-cell style DELTA a brushed document imposes on whatever style the
+    /// formatter already resolved for that cell. Each leg owns exactly the channels it has an opinion about —
+    /// a brush owns a foreground, the element-attribute leg owns the flags it inherits — and the painter
+    /// folds the result onto the run's own style.
     /// </summary>
-    /// <param name="documentBrush">The brush applied to the document text. Can be null to use default behavior.</param>
-    /// <param name="documentForeground">The default foreground color used for rendering text within the document bounds.</param>
-    /// <param name="docBounds">Defines the rectangular boundary within which the text style applies.</param>
-    /// <param name="baseAttributes">The foundational set of text attributes that augment text styling. These include alignment, weight, and other styling parameters.</param>
-    /// <param name="baseUnderlineShape">Defines the default underline style to apply to the document text (e.g., single, double).</param>
+    /// <param name="documentBrush">The brush applied to the document text. Can be null, which is the identity — the run keeps its colors.</param>
+    /// <param name="documentForeground">The document's default foreground. A run whose foreground equals it (or is unset) counts as having INHERITED it, and so is the brush's to color.</param>
+    /// <param name="docBounds">The sampling bounds for a document-scoped run brush.</param>
+    /// <param name="baseAttributes">The element-effective attributes, UNION-merged onto every cell (default none = the identity).</param>
+    /// <param name="baseUnderlineShape">The element's underline shape, applied only when <paramref name="baseAttributes"/> carries the Underline presence bit and the shape is not the <see cref="UnderlineStyle.Single"/> default.</param>
     /// <returns>
-    /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and resolves the appropriate
-    /// text style based on the brush and other styling parameters supplied to this method.
+    /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and returns the delta to fold
+    /// onto that cell's base style.
     /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Each leg previously built a whole <see cref="CellStyle"/> from <see cref="BrushedTextContext.BaseStyle"/>,
+    /// so the two legs that mean "no change" said it by reconstructing the base — a copy the caller then applied
+    /// on top of the value it was copied from. They are now the identity, which is both cheaper and honest: the
+    /// resolver's job is to say what the BRUSH does, and on those legs it does nothing. The base style stays on
+    /// the context because the third leg still has to READ it to decide whether the run's foreground was
+    /// inherited.
+    /// </para>
+    /// <para>
+    /// And each leg previously SAMPLED its brush, which is why the resolver ran per cell. It now hands the brush
+    /// back unsampled, paired with the rect to sample it against — so the whole delegate runs once per run, and
+    /// a glyph face receives the brush rather than a callback it must invoke blind for every cell.
+    /// </para>
+    /// </remarks>
     public static BrushedTextResolver CreateBrushResolver(IBrush? documentBrush,
                                                           Color documentForeground,
                                                           Rect docBounds,
@@ -907,35 +923,41 @@ public sealed class DrawingContext
         // ReSharper disable once RedundantLambdaParameterType
         return (in BrushedTextContext ctx) =>
                {
-                   CellStyle style;
+                   StyleDeltaTemplate delta = default;
+                   Rect bounds = default;
 
-                   // A run that declares its own brush wins, sampled at its declaration scope.
+                   // A run that declares its own brush wins, at its declaration scope.
                    if (ctx.Tag is BrushedStyle bs)
                    {
-                       // Inline → wrap-invariant 1-D reading-order strip: sample at the cell's cumulative
-                       // logical offset within the source run, over the run's total width, so the gradient
-                       // flows continuously across a wrap instead of restarting per line-piece. Block /
-                       // Document → the 2-D laid-out box.
-                       Color foreground = bs.Scope == DeclarationScope.Inline
-                                              ? bs.Foreground.ColorAt(ctx.LogicalColumn, 0, new Rect(0, 0, Math.Max(1, ctx.ScopeWidth), 1))
-                                              : bs.Foreground.ColorAt(ctx.Column, ctx.Row,
-                                                                      bs.Scope == DeclarationScope.Document ? docBounds : ctx.Block);
-
-                       style = ctx.BaseStyle.WithForeground(foreground);
+                       // Inline → the wrap-invariant 1-D reading-order strip, so the gradient flows
+                       // continuously across a wrap instead of restarting per line-piece. Block / Document →
+                       // the 2-D laid-out box. The painter pre-computed the strip as a rebased rect, so the
+                       // choice is which RECT to hand back rather than which coordinate convention to sample in.
+                       delta = new StyleDeltaTemplate { Foreground = bs.Foreground };
+                       bounds = bs.Scope switch
+                                {
+                                    DeclarationScope.Inline   => ctx.InlineScope,
+                                    DeclarationScope.Document => docBounds,
+                                    _                         => ctx.Block,
+                                };
                    }
                    else if (documentBrush is null)
                    {
-                       style = ctx.BaseStyle;
+                       // No brush anywhere: the brush leg has nothing to say. Note this is NOT the same as
+                       // "the brush sampled to Color.Default" — that is a real foreground opinion and lands
+                       // through the branches above and below, which is exactly the distinction a nullable
+                       // channel buys over `Color.Default`-as-absent.
                    }
                    else
                    {
-                       // Otherwise the document brush colors cells that inherited the document
+                       // Otherwise the document brush colors runs that inherited the document
                        // foreground; an explicit run color (differing from the default) wins.
                        var fg = ctx.BaseStyle.Foreground;
-                       bool inherited = fg.IsDefault || fg == documentForeground;
-                       style = inherited
-                                   ? ctx.BaseStyle.WithForeground(documentBrush.ColorAt(ctx.Column, ctx.Row, ctx.Block))
-                                   : ctx.BaseStyle;
+                       if (fg.IsDefault || fg == documentForeground)
+                       {
+                           delta = new StyleDeltaTemplate { Foreground = documentBrush };
+                           bounds = ctx.Block;
+                       }
                    }
 
                    // The base-attribute leg: OR the element-effective attributes onto the run's own
@@ -944,13 +966,20 @@ public sealed class DrawingContext
                    // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
                    // today, so the base shape never overwrites authored run state.
                    if (baseAttributes == default)
-                       return style;
+                       return new BrushedTextStyle(delta, bounds);
 
-                   var merged = style.AddAttributes(baseAttributes);
+                   // Adding, not the per-axis factories: this is the flag-word UNION the old `AddAttributes`
+                   // performed, so an inherited Bold must not clear a run's own Faint the way `Weighing(Bold)`
+                   // would. A set, never an unset.
+                   delta = delta.Adding(baseAttributes);
+
+                   // A shape implies the Underline flag once resolved, and the guard only lets the shape
+                   // through when the element already carries that flag — so the two agree and the rider adds
+                   // a shape rather than an underline.
                    if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
-                       merged = merged.WithUnderlineStyle(baseUnderlineShape);
+                       delta = delta with { UnderlineShape = baseUnderlineShape };
 
-                   return merged;
+                   return new BrushedTextStyle(delta, bounds);
                };
     }
 
@@ -1004,14 +1033,23 @@ public sealed class DrawingContext
     }
 
     /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in CellStyle)"/>
-    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, GlyphStyleProvider styleProvider)
+    /// <remarks>
+    /// <paramref name="delta"/> is a per-cell DELTA against <paramref name="style"/>, its brushes sampled
+    /// against <paramref name="brushBounds"/>, so a position-dependent source (a gradient) states only the
+    /// channel it owns and the rest of the style carries through. Both extra parameters are required for the
+    /// reasons
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+    /// gives: a delta with no base has nothing to fall through to, and a brush's coordinate space is the scope
+    /// it was declared at, not the cells this call happens to paint.
+    /// </remarks>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in CellStyle style,
+                              in StyleDeltaTemplate delta, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(face);
         ArgumentNullException.ThrowIfNull(text);
-        ArgumentNullException.ThrowIfNull(styleProvider);
 
         var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        face.Paint(surface, column, row, text, styleProvider);
+        face.Paint(surface, column, row, text, style, delta, brushBounds);
     }
 
     /// <summary>

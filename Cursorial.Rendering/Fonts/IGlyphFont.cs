@@ -1,14 +1,7 @@
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Fonts;
-
-/// <summary>
-/// Supplies the <see cref="CellStyle"/> for the glyph cell at (<paramref name="column"/>, <paramref name="row"/>).
-/// Lets a font be painted with a position-dependent color source (e.g. a gradient flowing across a FIGlet
-/// headline) while the font itself stays unaware of brushes — the provider takes only cell coordinates and a
-/// <see cref="CellStyle"/>, never a higher-layer brush type.
-/// </summary>
-public delegate CellStyle GlyphStyleProvider(int column, int row);
 
 /// <summary>
 /// A font that renders text into cells of a <see cref="CellBuffer"/>. Implementations cover
@@ -70,13 +63,44 @@ public interface IGlyphFont
     Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style);
 
     /// <summary>
-    /// Paint <paramref name="text"/> sampling <paramref name="styleProvider"/> per cell, so a caller can color
-    /// the glyphs with a position-dependent source (a gradient across a headline) without the font knowing
-    /// about brushes. The default samples the provider once at the anchor and paints a single style; fonts that
-    /// render cell-by-cell (e.g. <see cref="FigletFont"/>) override this to sample each painted cell.
+    /// Paint <paramref name="text"/> with <paramref name="baseStyle"/>, adjusted per painted cell by
+    /// <paramref name="delta"/> resolved against <paramref name="bounds"/> — so a caller can color the glyphs
+    /// with a position-dependent source (a gradient across a headline) without pre-resolving it. The default
+    /// resolves once at the anchor and paints a single folded style; fonts that render cell-by-cell (e.g.
+    /// <see cref="FigletFont"/>) override this to resolve each painted cell.
     /// </summary>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
-        => Paint(buffer, column, row, text, styleProvider(column, row));
+    /// <remarks>
+    /// <para>
+    /// <b>Why a template and not a callback.</b> This overload used to take a <c>GlyphStyleProvider</c>
+    /// delegate, which existed only because <see cref="IBrush"/> lived in the drawing layer and
+    /// <c>Cursorial.Rendering</c> could not name it — so the caller wrapped brush sampling in a closure and
+    /// the font sampled blind. <see cref="IBrush"/> is in Rendering now, and
+    /// <see cref="StyleDeltaTemplate.Resolve"/> IS that callback's signature plus the bounds it was closing
+    /// over. Passing the value form also makes <see cref="StyleDeltaTemplate.IsUniform"/> readable, which a
+    /// callback could never expose: the common case (a solid colour, or no colour at all) resolves once
+    /// instead of once per cell.
+    /// </para>
+    /// <para>
+    /// <b>The base style is REQUIRED, not defaulted.</b> A <see cref="StyleDeltaTemplate"/> is a delta, so
+    /// without a base there is nothing for the channels it declines to state to fall through to — the font
+    /// would silently paint them from <c>default</c>, which is the loss this signature exists to prevent.
+    /// </para>
+    /// <para>
+    /// <b>The bounds are REQUIRED too, and are not the painted footprint.</b> They are the brush's coordinate
+    /// space, which belongs to the SCOPE the brush was declared at — a paragraph, a block, the whole document,
+    /// or an inline run's wrap-invariant reading-order strip — and is routinely larger than, or differently
+    /// shaped from, the cells this call paints. Defaulting them to the footprint would restart every gradient
+    /// at each run boundary, silently demoting a document-scoped brush to a run-scoped one. A caller that
+    /// genuinely wants the footprint says so with <c>new Rect(column, row, Measure(text))</c>.
+    /// </para>
+    /// <para>
+    /// Implementations fold with <see cref="PartialStyle.ApplyTo"/> and must resolve PER SAMPLE unless
+    /// <see cref="StyleDeltaTemplate.IsUniform"/> says the answer cannot vary.
+    /// </para>
+    /// </remarks>
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle baseStyle,
+               in StyleDeltaTemplate delta, in Rect bounds)
+        => Paint(buffer, column, row, text, delta.Resolve(column, row, bounds).ApplyTo(baseStyle));
 
     /// <summary>
     /// The advance metrics text layout consults to wrap and trim text rendered with this font

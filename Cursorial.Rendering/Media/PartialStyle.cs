@@ -195,6 +195,30 @@ public readonly record struct PartialStyle
     public static PartialStyle WithToggled(TextAttributes flags) =>
         new() { Xor = Require(flags) };
 
+    /// <summary>
+    /// Force every flag in <paramref name="flags"/> ON across the WHOLE flag word — the union
+    /// <c>base | flags</c>, leaving flags outside the set exactly as the base had them. The only
+    /// factory that accepts the axis-owning flags, and it is deliberately the weakest thing that can
+    /// be said about them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the delta form of <see cref="CellStyle.AddAttributes"/>, and it exists because that OR
+    /// is a real operation the per-axis factories cannot express. <see cref="Weighted"/> imposes a
+    /// weight — Bold on means Faint OFF, because they share the SGR 22 reset — whereas an OR of Bold
+    /// onto a Faint base yields both. Both behaviours are wanted: an element that SETS a weight wants
+    /// the former, while an inherited attribute word merged onto a run's own wants the latter, and
+    /// silently substituting one is a clear the caller never asked for.
+    /// </para>
+    /// <para>
+    /// It is not a hole in <see cref="WithSet"/>'s guard. That guard catches the specific accident of
+    /// routing an axis through the boolean factories — writing <c>WithSet(Bold | Faint)</c> and
+    /// meaning a weight. Here the union IS the intent, and the name says so.
+    /// </para>
+    /// </remarks>
+    public static PartialStyle WithAdded(TextAttributes flags) =>
+        new() { Clear = flags, Xor = flags };
+
     // Bold/Faint/Italic/Underline reach the mask only by mistake — they have their own axes, and
     // routing them through the flag word is how `Bold | Faint` gets written.
     private static TextAttributes Require(TextAttributes flags) =>
@@ -231,6 +255,9 @@ public readonly record struct PartialStyle
 
     /// <summary>INVERT <paramref name="flags"/> in addition to whatever this delta already does.</summary>
     public PartialStyle Toggling(TextAttributes flags) => Then(WithToggled(flags));
+
+    /// <summary>Union <paramref name="flags"/> ON in addition to whatever this delta already does.</summary>
+    public PartialStyle Adding(TextAttributes flags) => Then(WithAdded(flags));
 
     /// <summary>Impose a weight in addition to whatever this delta already does.</summary>
     public PartialStyle Weighing(TextWeight w) => Then(Weighted(w));

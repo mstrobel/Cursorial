@@ -797,7 +797,7 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   = deferred-translucent background outside the element (compositor darkens the target); inner = draw-time
   composite-and-store-opaque against the cell's own fill (preserves the glyph). Linear falloff, per-edge.
 - **Brush-aware FIGlet headlines** — a `.Figlet` block in a formatted-text document painted with a brush
-  samples it **per rendered cell** (gradient across the big glyphs), via a brush-blind `GlyphStyleProvider`
+  samples it **per rendered cell** (gradient across the big glyphs), via a `StyleDeltaTemplate` handed to the face
   default-interface-method on `IGlyphFont` that `FigletFont` overrides. OSC 66 sized text stays one solid
   color (protocol limit).
 - **`JunctionMode.Blend`** — an opt-in pen junction mode: where two strokes from different records cross,

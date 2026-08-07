@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -148,16 +149,24 @@ public sealed class ShadowedFont : IGlyphFont
     /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
     {
-        return PaintCore(buffer, column, row, text, style, styleProvider: null);
+        return PaintCore(buffer, column, row, text, style, delta: null, bounds: default);
     }
 
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base style reaches BOTH passes. It used to reach neither — this overload had no base to pass, so
+    /// <see cref="PaintCore"/> got <c>default</c> and the shadow derived its underline shape from it, while
+    /// the glyph pass got whatever the caller's callback chose to restate. A delta plus a base makes the two
+    /// passes agree by construction.
+    /// </remarks>
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, default, styleProvider);
+        return PaintCore(buffer, column, row, text, baseStyle, delta, bounds);
     }
 
     private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                           GlyphStyleProvider? styleProvider = null)
+                           in StyleDeltaTemplate? delta, in Rect bounds)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -173,10 +182,9 @@ public sealed class ShadowedFont : IGlyphFont
 
         try
         {
-            var baseStyle = style;
-
-            if (styleProvider is not null)
-                baseStyle = styleProvider(column, row);
+            // The shadow is a single pass, so it resolves the template ONCE — at the anchor, like the
+            // interface's own default template overload — and folds it onto the caller's base.
+            var baseStyle = delta is null ? style : delta.Value.Resolve(column, row, bounds).ApplyTo(style);
 
             var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(style.UnderlineStyle)
                                                   .WithAttributes((shadowStyle.Attributes | baseStyle.Attributes) & ~ForbiddenShadowAttributes)
@@ -190,8 +198,8 @@ public sealed class ShadowedFont : IGlyphFont
                 buffer.PopBlendingMode();
         }
 
-        var painted = styleProvider is {} sp 
-                          ? Inner.Paint(buffer, column, row, text, sp) 
+        var painted = delta is { } d
+                          ? Inner.Paint(buffer, column, row, text, in style, in d, in bounds)
                           : Inner.Paint(buffer, column, row, text, in style);
 
         if (painted.IsEmpty)

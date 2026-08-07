@@ -251,11 +251,11 @@ public sealed class RenderContext
             return;
         }
 
-        var captured = style;
-        var brush = foreground;
-        var bounds = brushBounds;
-        Inner.DrawGlyphText(face, column, row, text,
-                            (c, r) => captured.WithForeground(brush.ColorAt(c, r, bounds)));
+        // The brush owns a FOREGROUND and says nothing else — the base style flows through as the fold's
+        // backdrop, and the brush goes to the face unsampled instead of being wrapped in a closure the face
+        // had to invoke blind.
+        Inner.DrawGlyphText(face, column, row, text, style,
+                            new StyleDeltaTemplate { Foreground = foreground }, brushBounds);
     }
 
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>

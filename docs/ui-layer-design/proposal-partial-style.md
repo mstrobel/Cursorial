@@ -309,7 +309,13 @@ converter by CLR type. That path should get an explicit test, not an assumption.
 §5b fast path still applies — all-solid brushes make `Resolve` loop-invariant, so it resolves ONCE
 and only genuinely position-varying brushes pay per-cell work.
 
-## 5c. The delegates that already have delta semantics
+## 5c. The delegates that already have delta semantics — ✅ MIGRATED (see §11.7)
+
+> **Superseded in part.** Both delegates did convert, but `GlyphStyleProvider` was RETIRED rather than
+> re-typed: once `IBrush` moved into `Cursorial.Rendering`, the callback's whole reason for existing was
+> gone and `StyleDeltaTemplate.Resolve` turned out to BE its signature. `BrushedTextResolver` survives and
+> now returns a template, once per run. §11.7 records what actually landed.
+
 
 Two public delegates produce styling per position, and BOTH return a whole `Style`:
 
@@ -1031,7 +1037,11 @@ PartialStyle.Set(TextAttributes.Inverse)
 The third is the tell: `CellStyle.Default.WithAttributes(...)` only works because `Default` reads as
 "unset" for the colour channels. It is a `PartialStyle` spelled in a type that cannot say so.
 
-### 11.3 Glyph paint: stamp versus box (§5f)
+### 11.3 Glyph paint: stamp versus box (§5f) — ⏳ NOT YET
+
+The brushed `IGlyphFont.Paint` overload has migrated (§11.7), but this section is about the FLAT overload,
+which still takes a whole `CellStyle`. Presence-decides-stamp-vs-box is a separate step.
+
 
 Presence does the work — no new flag, no second overload:
 
@@ -1101,6 +1111,85 @@ static bool IsSet(UIElement e, StyledProperty p) =>
 
 Only non-solid brushes cannot be auto-populated this way, because their colour depends on the cell
 being painted — which is precisely the reason the template form exists.
+
+### 11.7 The per-cell glyph styling chain — ✅ MIGRATED
+
+Tracked as two steps (the `BrushedTextResolver` return type, and the `GlyphStyleProvider` return type).
+**They were done as ONE**, because they are one chain: `FormattedText` built the provider *from* the
+resolver, so migrating either alone would have lost information at exactly that adapter — a resolver
+returning a delta feeding a provider expected to return a whole style, or the reverse. There was no
+intermediate state worth having.
+
+The step also came out differently from the sketch above, in a way worth recording.
+
+**`GlyphStyleProvider` is gone, not re-typed.** The plan was to change its return type to `PartialStyle`.
+That was done first, and it worked — and then it was thrown away, because the delegate itself was the
+artefact of a constraint that no longer holds:
+
+```csharp
+// before: a callback, because Cursorial.Rendering could not name IBrush, so the CALLER had to sample
+public delegate CellStyle GlyphStyleProvider(int column, int row);
+Size Paint(…, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider);
+
+// after: the value form. StyleDeltaTemplate.Resolve IS that signature, plus the sampling bounds the
+// closure was capturing, plus IsUniform
+Size Paint(…, ReadOnlySpan<char> text, in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds);
+```
+
+Three things follow from passing the value instead of a closure over it:
+
+1. **`IsUniform` becomes readable.** A delegate is opaque, so every painted cell had to call it even for a
+   solid colour. `MonospaceFont` and `FigletFont` now resolve a uniform template ONCE and take the same
+   path as a flat style. Pinned by `Monospace_ResolvesAUniformTemplateOnce` (one brush sample for a
+   six-cell run) against `Monospace_ResolvesANonUniformTemplatePerCell` (six).
+2. **The base style became a parameter.** It had to: a delta with no base has nothing for its absent
+   channels to fall through to. `ShadowedFont` had been passing `default` for it — the provider overload
+   had no base to pass — so its shadow pass silently lost the run's underline shape. That was the one
+   pre-existing defect this step fixed, and it is what the red test caught.
+3. **The bounds became a parameter too, and are deliberately NOT the painted footprint.** They are the
+   brush's coordinate space, which belongs to the scope the brush was declared at — a block, the document,
+   or an inline run's reading-order strip — and defaulting them to the glyphs being painted would restart
+   every gradient at each run boundary.
+
+**`BrushedTextResolver` moved from per-CELL to per-RUN.** Everything it decides — which brush wins, at what
+scope, whether the run's foreground was inherited, which inherited attributes merge in — is a property of
+the run; only the sampling was per cell, and a template samples itself. It now returns
+`BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bounds)`:
+
+```csharp
+// the run declares its own brush:      new StyleDeltaTemplate { Foreground = bs.Foreground }, at its scope
+// no document brush:                   the IDENTITY — where it used to rebuild ctx.BaseStyle to say "no change"
+// document brush, foreground inherited: new StyleDeltaTemplate { Foreground = documentBrush }, over the block
+// document brush, foreground its own:   the IDENTITY again
+```
+
+The two identity legs are the payoff. A `CellStyle` return could only spell "no change" as a copy of the
+base — which the painter then applied on top of the value it was copied from, per cell.
+
+Three things this migration had to be careful about, each now pinned by a test:
+
+1. **`AddAttributes` is an OR, and the per-axis factories cannot express one.** `Weighted(Bold)` forces
+   Faint OFF — they share the SGR 22 reset — so decomposing the inherited-attribute leg into axes would
+   strip a run's own Faint under an inherited Bold. This needed a new factory, `PartialStyle.WithAdded`
+   (and `StyleDeltaTemplate.Adding`): the flag-word union, the only one that accepts the axis-owning flags.
+   It is not a hole in `WithSet`'s guard — that guard catches routing an axis through the boolean
+   factories by ACCIDENT, and here the union is the intent. Verified by mutation: making it a replace
+   fails three tests, including `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag`.
+2. **The inline-vs-block scope distinction had to survive a per-cell → per-run reshaping.** Inline sampling
+   was `ColorAt(LogicalColumn, 0, Rect(0, 0, ScopeWidth, 1))` — a remapped COORDINATE — and a per-run
+   resolver hands back a rect, not a coordinate. It is expressible because the remap is a constant offset
+   within a line-piece: the painter now supplies `BrushedTextContext.InlineScope`, a 1-row rect REBASED so
+   that sampling at the cell's own `(column, row)` yields its logical offset. One sampling convention, both
+   scopes. Pinned by `FormattedText_InlineScopeIsWrapInvariant` (the ramp continues across a wrap instead
+   of restarting) and `RunBrush_SamplesAgainstItsDeclarationScope`.
+3. **`BrushedTextContext.BaseStyle` stays.** The resolver still READS it — `fg.IsDefault || fg ==
+   documentForeground` is the inherited-foreground test — it merely stops returning it. The base played two
+   roles and only the second one went away.
+
+No `IsDefault`-as-sentinel was lost. The one occurrence in this chain is that inherited-foreground test,
+which is an input the resolver reads, not an encoding of absence in what it returns; and a brush that
+samples to `Color.Default` still lands as a real foreground opinion, because the template carries the
+BRUSH and only `null` means absent.
 
 ## 12. What the type has to prove
 

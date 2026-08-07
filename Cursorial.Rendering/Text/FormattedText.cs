@@ -6,6 +6,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 // ReSharper disable RedundantCast
@@ -146,12 +147,25 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     /// <summary>
-    /// Resolve one cell's style via the optional brush resolver (or the flat <paramref name="baseStyle"/>).
+    /// Resolve one cell's style: the optional brush resolver's delta, sampled at
+    /// (<paramref name="column"/>, <paramref name="row"/>) and folded onto <paramref name="baseStyle"/>.
     /// Used by the single-Style elements (rule / figlet / sized / content), which carry no per-run tag — so the
     /// run rect equals the block and the tag is null.
     /// </summary>
     private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle baseStyle, int column, int row, in Rect block)
-        => resolver?.Invoke(new BrushedTextContext(baseStyle, column, row, block, logicalColumn: 0, scopeWidth: 0, tag: null)) ?? baseStyle;
+        => resolver is null ? baseStyle : Brushed(resolver, baseStyle, column, row, block).ApplyTo(column, row, baseStyle);
+
+    /// <summary>
+    /// The same query, stopping one step earlier — for the FIGlet arm, which hands the unsampled TEMPLATE to
+    /// the face so a multi-cell glyph can sample per cell rather than per character.
+    /// </summary>
+    /// <remarks>
+    /// These elements have no inline scope of their own, so their strip is the single cell being asked about:
+    /// an inline-scoped brush over a one-wide strip resolves at offset 0, which is what the previous per-cell
+    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
+    /// </remarks>
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle baseStyle, int column, int row, in Rect block)
+        => resolver(new BrushedTextContext(baseStyle, block, new Rect(column, row, 1, 1), tag: null));
 
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
                                        OutputCapabilities capabilities, BrushedTextResolver? resolver)
@@ -216,10 +230,17 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // figlet block, which is itself a font-sourced run: infinite
                             // recursion by construction.
                             if (resolver is null)
+                            {
                                 face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style);
+                            }
                             else
-                                face.Paint(buffer, cursor, runRow, glyphText.Text,
-                                           (GlyphStyleProvider) ((c, r) => ResolveStyle(resolver, glyphText.Style, c, r, blockRect)));
+                            {
+                                // The template goes to the face UNSAMPLED: one FIGlet character covers many
+                                // cells, so the face is the only thing that knows which cells exist to sample.
+                                var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect);
+                                face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style,
+                                           brushed.Delta, brushed.Bounds);
+                            }
                         }
                         else
                         {
@@ -245,12 +266,25 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     }
                     case FormattedTextRun text:
                     {
-                        // Wrap-invariant inline sampling: a grapheme's logical offset within its source run is
-                        // the run's logical start (constant per piece) + its column advance within this piece,
-                        // and W is the run's total width — so an inline brush samples the same 1-D strip no
-                        // matter where the run wrapped. Constant-per-piece values are hoisted out of the loop.
-                        int pieceStartColumn = cursor;
+                        // Wrap-invariant inline sampling, expressed as a REBASED RECT: a grapheme's logical
+                        // offset within its source run is its column minus the column at which the run's
+                        // logical offset 0 would sit, and W is the run's total width — so an inline brush
+                        // samples the same 1-D strip no matter where the run wrapped, and the sampling call
+                        // takes the cell's own coordinates like every other scope.
                         int scopeWidth = text.Scope?.TotalWidth ?? Math.Max(1, text.CellWidth);
+                        var inlineScope = new Rect(cursor - text.LogicalStart, runRow, Math.Max(1, scopeWidth), 1);
+
+                        // ONE resolver call per run: which brush wins, at what scope, and which inherited
+                        // attributes merge are all run-level facts. Only the sampling is per cell, and the
+                        // template does that itself — hoisted entirely when it cannot vary.
+                        var brushed = resolver is null
+                                          ? BrushedTextStyle.None
+                                          : resolver(new BrushedTextContext(text.Style, blockRect, inlineScope, text.Tag));
+
+                        var uniformStyle = brushed.Delta.IsUniform
+                                               ? brushed.ApplyTo(cursor, runRow, text.Style)
+                                               : default;
+
                         var enumerator = text.Text.GetGraphemeEnumerator();
                         while (enumerator.MoveNext())
                         {
@@ -268,12 +302,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             int width = GraphemeWidth.ClusterWidth(grapheme);
                             if (width < 1) width = 1;
 
-                            // Resolver (when present) recolors per cell. Width is grapheme-driven, so a
-                            // substituted style is layout-safe.
-                            var style = resolver?.Invoke(
-                                            new BrushedTextContext(text.Style, cursor, runRow, blockRect,
-                                                                   text.LogicalStart + (cursor - pieceStartColumn), scopeWidth, text.Tag))
-                                        ?? text.Style;
+                            // The run's delta, resolved for THIS cell and folded onto the run's own style —
+                            // so a brush that owns only a foreground leaves the rest alone. Width is
+                            // grapheme-driven, so a substituted style is layout-safe.
+                            var style = brushed.Delta.IsUniform
+                                            ? uniformStyle
+                                            : brushed.ApplyTo(cursor, runRow, text.Style);
 
                             // The one case where the surface knows better: a wide glyph at the window's
                             // right edge degrades to a blank single, and the next grapheme belongs in the

@@ -3,6 +3,7 @@ using System.Globalization;
 
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -211,16 +212,40 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <summary>
-    /// Paint sampling <paramref name="styleProvider"/> per painted cell — so a gradient (or any position-dependent
-    /// source) flows across the rendered glyphs rather than the whole headline taking one flat color.
+    /// Paint <paramref name="baseStyle"/> adjusted per painted cell by <paramref name="delta"/> resolved
+    /// against <paramref name="bounds"/> — so a gradient (or any position-dependent source) flows across the
+    /// rendered glyphs rather than the whole headline taking one flat color, while the channels the delta says
+    /// nothing about come from the base.
     /// </summary>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+    /// <remarks>
+    /// This face is the reason the per-cell overload exists at all: one CHARACTER covers many cells here, so
+    /// resolving once per character (let alone once per run) would band the gradient at glyph boundaries.
+    /// A uniform template cannot vary, though, so it takes the same single-style path as the flat overload —
+    /// a saving the previous callback form could not even ask about.
+    /// </remarks>
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
     {
-        ArgumentNullException.ThrowIfNull(styleProvider);
-        return PaintCore(buffer, column, row, text, (c, r) => EnsureCompatibleStyle(styleProvider(c, r)));
+        // EnsureCompatibleStyle applies to the FOLDED style, not to the base alone: a delta is a second way
+        // for an attribute this face cannot render to arrive, and the face's constraint is on what it paints.
+        if (delta.IsUniform)
+        {
+            var uniform = EnsureCompatibleStyle(delta.Resolve(column, row, bounds).ApplyTo(baseStyle));
+            return PaintCore(buffer, column, row, text, (_, _) => uniform);
+        }
+
+        // `in` parameters cannot be captured; the fold needs all three at every sample.
+        var fallback = baseStyle;
+        var template = delta;
+        var box = bounds;
+
+        return PaintCore(buffer, column, row, text,
+                         (c, r) => EnsureCompatibleStyle(template.Resolve(c, r, box).ApplyTo(fallback)));
     }
 
-    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider provider)
+    // The resolved-style form both Paint overloads funnel into: by this point the template has been resolved
+    // and folded, so what flows through here is a plain per-cell CellStyle lookup.
+    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, Func<int, int, CellStyle> provider)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -250,7 +275,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, GlyphStyleProvider style)
+    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, Func<int, int, CellStyle> style)
     {
         var lines = glyph.Lines;
 

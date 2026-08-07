@@ -212,6 +212,84 @@ public class SgrEncoderTests
     }
 
     [Fact]
+    public void WriteDelta_RemoveBoldOnly_EmitsSgr22WithNothingReAdded()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold);
+        CellStyle to = DS;
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_RemoveFaintOnly_EmitsSgr22WithNothingReAdded()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Faint);
+        CellStyle to = DS;
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_DropFaintKeepingBold_ReEmitsBold()
+    {
+        // SGR 22 clears BOTH weights, so the surviving Bold has to be re-emitted even though it
+        // was already set in `from` (and therefore isn't in the added set).
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;1m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_DropBoldKeepingFaint_ReEmitsFaint()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint);
+        CellStyle to = DS.WithAttributes(TextAttributes.Faint);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;2m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_SwapBoldForFaint_EmitsResetThenFaint()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold);
+        CellStyle to = DS.WithAttributes(TextAttributes.Faint);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;2m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_SwapFaintForBold_EmitsResetThenBold()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Faint);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;1m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_SurvivingWeightWithOtherAttributeChanges_OrdersResetsBeforeSets()
+    {
+        // Faint and Italic go away, Underline arrives, Bold survives the shared SGR 22 reset.
+        // Reset codes come first (22, 23), then the set codes in attribute order (1, 4).
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint | TextAttributes.Italic);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;23;1;4m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_WeightSwapWithExtendedUnderline_EmitsResetThenSetsInOrder()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Faint);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;1;4:3m", s);
+    }
+
+    [Fact]
     public void WriteDelta_UnderlineShapeChange_ReEmitsUnderline()
     {
         CellStyle from = DS.WithAttributes(TextAttributes.Underline)
@@ -220,4 +298,207 @@ public class SgrEncoderTests
         var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
         Assert.Equal("\x1b[4:3m", s);
     }
+
+    // ---- WriteDelta: underline shape is a value carried by SGR 4 ----
+    //
+    // The shape is not a flag of its own: it rides on the same SGR 4 parameter that turns the
+    // underline on. So it has to be re-emitted whenever it changes, even when the Underline flag
+    // itself survives the transition unchanged (and is therefore in neither the added nor the
+    // removed set).
+
+    [Fact]
+    public void WriteDelta_UnderlineShapeChangeAlongsideOtherAttributeChanges_ReEmitsUnderline()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Single);
+        CellStyle to = DS.WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;3;4:3m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnderlineShapeChangeWithAttributeRemoval_ReEmitsUnderline()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Italic | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Curly);
+        CellStyle to = DS.WithAttributes(TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Dotted);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[23;4:4m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnderlineShapeChangeToSingleWithAttributeAdded_ReEmitsPlainSgr4()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Double);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Single);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[1;4m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_WeightResetAndUnderlineShapeChange_ReEmitsBoth()
+    {
+        // Both failure modes at once: SGR 22 collaterally clears the surviving Bold, and the
+        // underline shape changes under a surviving Underline flag.
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Single);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;1;4:3m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnchangedUnderlineShapeWithAttributeAdded_DoesNotReEmitUnderline()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Curly);
+        CellStyle to = from.AddAttributes(TextAttributes.Bold);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[1m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_WeightResetWithSurvivingUnderline_DoesNotReEmitUnderline()
+    {
+        // SGR 22 clears the weights only — the underline is untouched by it, so nothing to restore.
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Curly);
+        CellStyle to = DS.WithAttributes(TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnderlineRemovedWithShapeChange_EmitsOnlySgr24()
+    {
+        // The destination has no underline, so the (now irrelevant) shape must not leak out.
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Single);
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[24m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_ShapeChangeWithUnderlineOff_EmitsNothing()
+    {
+        // Styles differ, but only in a field neither side surfaces — no empty `ESC [ m`.
+        CellStyle from = DS.WithUnderlineStyle(UnderlineStyle.Single);
+        CellStyle to = DS.WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("", s);
+    }
+
+    // ---- WriteDelta: single-member resets ----
+
+    [Theory]
+    [InlineData(TextAttributes.Italic, "\x1b[23m")]
+    [InlineData(TextAttributes.Blink, "\x1b[25m")]
+    [InlineData(TextAttributes.Inverse, "\x1b[27m")]
+    [InlineData(TextAttributes.Hidden, "\x1b[28m")]
+    [InlineData(TextAttributes.Strikethrough, "\x1b[29m")]
+    [InlineData(TextAttributes.Overline, "\x1b[55m")]
+    public void WriteDelta_RemoveSingleMemberAttribute_EmitsOnlyItsResetCode(
+        TextAttributes attribute,
+        string expected)
+    {
+        CellStyle from = DS.WithAttributes(attribute);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, DS));
+        Assert.Equal(expected, s);
+    }
+
+    [Fact]
+    public void WriteDelta_RemoveEveryAttribute_EmitsResetCodesAscending()
+    {
+        CellStyle from = DS.WithAttributes(AllAttributes);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, DS));
+        Assert.Equal("\x1b[22;23;24;25;27;28;29;55m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_AddEveryAttribute_EmitsSetCodesAscending()
+    {
+        CellStyle to = DS.WithAttributes(AllAttributes).WithUnderlineStyle(UnderlineStyle.Single);
+        var s = Encode(w => SgrEncoder.WriteDelta(w, DS, to));
+        Assert.Equal("\x1b[1;2;3;4;5;7;8;9;53m", s);
+    }
+
+    // ---- WriteDelta: cross-axis ordering ----
+
+    [Fact]
+    public void WriteDelta_ForegroundChangeWithWeightReset_EmitsColorThenResetThenSet()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Faint)
+                           .WithForeground(Color.FromPalette(1));
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold)
+                         .WithForeground(Color.FromPalette(2));
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[32;22;1m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnderlineShapeChangeWithUnchangedUnderlineColor_OmitsColor()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Single)
+                           .WithUnderlineColor(Color.FromRgb(255, 0, 128));
+        CellStyle to = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly)
+                         .WithUnderlineColor(Color.FromRgb(255, 0, 128));
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[1;4:3m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_UnderlineShapeAndColorChange_EmitsShapeBeforeColor()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Single);
+        CellStyle to = DS.WithAttributes(TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly)
+                         .WithUnderlineColor(Color.FromPalette(5));
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[4:3;58:5:5m", s);
+    }
+
+    [Fact]
+    public void WriteDelta_WeightResetWithUnderlineColorReset_EmitsResetThenColorReset()
+    {
+        CellStyle from = DS.WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                           .WithUnderlineStyle(UnderlineStyle.Curly)
+                           .WithUnderlineColor(Color.FromPalette(5));
+        CellStyle to = DS.WithAttributes(TextAttributes.Underline)
+                         .WithUnderlineStyle(UnderlineStyle.Curly);
+
+        var s = Encode(w => SgrEncoder.WriteDelta(w, from, to));
+        Assert.Equal("\x1b[22;59m", s);
+    }
+
+    private const TextAttributes AllAttributes = TextAttributes.Bold |
+                                                 TextAttributes.Faint |
+                                                 TextAttributes.Italic |
+                                                 TextAttributes.Underline |
+                                                 TextAttributes.Blink |
+                                                 TextAttributes.Inverse |
+                                                 TextAttributes.Hidden |
+                                                 TextAttributes.Strikethrough |
+                                                 TextAttributes.Overline;
 }

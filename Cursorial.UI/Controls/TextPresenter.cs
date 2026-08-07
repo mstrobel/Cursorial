@@ -337,13 +337,17 @@ public sealed class TextPresenter : UIElement
         if (viewportColumns <= 0 || viewportRows <= 0)
             return;
 
-        var foreground = owner.Foreground ?? ResolveBrush(ThemeKeys.TextBrush);
         var text = owner.DisplayText ?? string.Empty;
 
         if (text.Length == 0)
         {
             if (owner.Placeholder is { Length: > 0 } placeholder)
             {
+                // The placeholder is NOT the line base and deliberately does not ride it: it resolves
+                // its own brush (muted, or the presenter's own on a tier with no muted colour to
+                // carry the de-emphasis) and its own attribute word.
+                var foreground = ResolveForegroundBrush();
+
                 // MutedBrush carries the placeholder color on color tiers; Faint carries the de-emphasis on the
                 // NoColor tier where MutedBrush resolves to Default (adoption-spec §5: placeholder → Faint).
                 IBrush? muted;
@@ -390,9 +394,16 @@ public sealed class TextPresenter : UIElement
         var selectionStart = owner.ToDisplayIndex(modelSelectionStart);
         var selectionEnd = owner.ToDisplayIndex(modelSelectionEnd);
 
+        // ONE line base for the whole render pass. It used to be resolved per LANE — once in the face
+        // painter and once per run in the cell painter — with the foreground brush threaded alongside
+        // it, which is two chances for the two lanes to disagree about the same ground state. This
+        // file has already produced three separate invisible-selection defects out of exactly that
+        // shape, so the base is built once here and handed down as a single carrier.
+        var lineBase = ResolveLineBaseStyle(noColor);
+
         if (!owner.IsMultiLine)
         {
-            RenderSingleLine(context, text, viewportColumns, foreground, noColor, selectionBrush, selectionStart, selectionEnd, inverse);
+            RenderSingleLine(context, text, viewportColumns, lineBase, noColor, selectionBrush, selectionStart, selectionEnd, inverse);
             return;
         }
 
@@ -421,19 +432,19 @@ public sealed class TextPresenter : UIElement
             if (EditingSource is { Font: {} font, Sizing.IsNormal: true } faceSource && font != MonospaceFont.Default)
             {
                 DrawFaceLine(context, glyphs, lineStart, text, firstChar, lastChar, selFrom, selTo, localRow,
-                             foreground, noColor, selectionBrush, inverse, faceSource);
+                             lineBase, noColor, selectionBrush, inverse, faceSource);
             }
             else
             {
-                DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
-                DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush, inverse);
-                DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, lineBase, selected: false, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, lineBase, selected: true, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, lineBase, selected: false, noColor, selectionBrush, inverse);
             }
         }
     }
 
-    private void RenderSingleLine(RenderContext context, string text, int viewport, IBrush? foreground, bool noColor,
-                                  IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
+    private void RenderSingleLine(RenderContext context, string text, int viewport, in StyleDeltaTemplate lineBase,
+                                  bool noColor, IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
     {
         var layout = GraphemeLayout.Build(text, EditingMetrics);
         // The visible char window covers the viewport — boundary at/before the left edge through the boundary
@@ -448,13 +459,13 @@ public sealed class TextPresenter : UIElement
         if (EditingSource is { Font: not null, Sizing.IsNormal: true } faceSource)
         {
             DrawFaceLine(context, layout, 0, text, firstChar, lastChar, selFrom, selTo, 0,
-                         foreground, noColor, selectionBrush, inverse, faceSource);
+                         lineBase, noColor, selectionBrush, inverse, faceSource);
             return;
         }
 
-        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, foreground, selected: false, noColor, selectionBrush, inverse);
-        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, foreground, selected: true, noColor, selectionBrush, inverse);
-        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, foreground, selected: false, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, lineBase, selected: false, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, lineBase, selected: true, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, lineBase, selected: false, noColor, selectionBrush, inverse);
     }
 
     /// <summary>
@@ -465,7 +476,7 @@ public sealed class TextPresenter : UIElement
     /// </summary>
     private void DrawFaceLine(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text,
                               int from, int to, int selFrom, int selTo, int localRow,
-                              IBrush? foreground, bool noColor, IBrush? selectionBrush, bool inverse,
+                              in StyleDeltaTemplate lineBase, bool noColor, IBrush? selectionBrush, bool inverse,
                               GlyphSource source)
     {
         if (to <= from)
@@ -473,7 +484,7 @@ public sealed class TextPresenter : UIElement
 
         int lineRows = source.Metrics.LineRows;
 
-        var baseStyle = ResolveLineBaseStyle(noColor);
+        var baseStyle = ResolveLineBaseValue(lineBase);
 
         int viewport = Math.Max(1, _viewportColumns);
 
@@ -498,9 +509,12 @@ public sealed class TextPresenter : UIElement
             if (wordColumn + wordWidth <= 0) continue; // fully scrolled off to the left
             if (wordColumn >= viewport) break;         // this and everything after: off to the right
 
+            // THE UNPACK, and the only place the face lane needs one: the primitive takes a brush and
+            // a whole style, and does the per-cell sampling itself, so the base's brush channel goes
+            // in one argument and its value channels in the other.
             var brushBounds = new Rect(Math.Max(0, wordColumn), localRow, Math.Max(1, wordWidth), lineRows);
             context.DrawGlyphText(source.Font!, wordColumn, localRow, text[wordStart..i],
-                                  foreground, baseStyle, brushBounds);
+                                  lineBase.Foreground, baseStyle, brushBounds);
         }
 
         // Special case for .caps-nocolor: if the text presentation area is inverted by default, then rather than
@@ -622,31 +636,105 @@ public sealed class TextPresenter : UIElement
                    : PartialStyle.WithToggled(TextAttributes.Inverse);
     }
 
-    private CellStyle ResolveLineBaseStyle(bool noColor)
+    /// <summary>The presenter's foreground BRUSH — what the line base rides on, and the placeholder's
+    /// fallback when its own muted brush does not resolve.</summary>
+    private IBrush? ResolveForegroundBrush() => Owner?.Foreground ?? ResolveBrush(ThemeKeys.TextBrush);
+
+    /// <summary>
+    /// A visual line's GROUND STATE: the style every run, fill and tint on that line is then a delta
+    /// against. A <see cref="StyleDeltaTemplate"/> rather than a <see cref="CellStyle"/> for one
+    /// reason — <b>capability</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ownership rule this presenter otherwise follows (an operation that OWNS its cells takes a
+    /// whole <see cref="CellStyle"/>; one that MODIFIES cells somebody else wrote takes a delta) says
+    /// a ground state may be a whole style, and that argument is sound as far as it goes. It is not
+    /// decisive, because it answers the wrong question: a <see cref="CellStyle"/> can only carry a
+    /// RESOLVED <see cref="Color"/>, so a base built as one can never be brushed. The rule says the
+    /// base may own its cells; it does not say the base must be colour-resolved.
+    /// </para>
+    /// <para>
+    /// What that bought before was a parallel parameter: the brush travelled BESIDE the base through
+    /// every signature between here and the paint, and each painting lane re-decided "is there a
+    /// brush?" at the end of it. One carrier ends both.
+    /// </para>
+    /// </remarks>
+    private StyleDeltaTemplate ResolveLineBaseStyle(bool noColor)
     {
         var attr = TextElement.ComposeAttributes(this);
 
-        var baseStyle = CellStyle.Default
-                                 .WithBackground(noColor ? Color.Default : Color.Transparent)
-                                 .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse);
+        // Inverse is the PRESENTER's axis, not the run's, and each lane imposes it the way its own
+        // geometry needs: the face lane as one whole-band fill (so a sparse FIGlet inverts as a clean
+        // rectangle rather than per glyph hole), the cell lane per run. So the base states it OFF —
+        // except on NoColor, where the theme's caps rule makes Inverse the only content signal there
+        // is and the base carries it. Verbatim from the value form this replaced.
+        var flags = noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse;
 
-        if (attr.Flags.HasFlag(TextAttributes.Underline))
-            baseStyle = baseStyle.WithUnderlineStyle(attr.UnderlineShape);
+        var template = new StyleDeltaTemplate
+        {
+            Foreground = ResolveForegroundBrush(),
 
-        return baseStyle;
+            // Sentinels, not authored fills, and both position-independent — which is what lets
+            // ResolveLineBaseValue sample them at a fixed point. Transparent lets whatever the field's
+            // chrome painted show through under the glyph; Default is NoColor's "say nothing".
+            Background = noColor ? Brushes.Default : Brushes.Transparent,
+        };
+
+        // The attribute WORD is folded per AXIS rather than unioned in wholesale, for the reason
+        // DrawingContext.CreateBrushResolver gives at length: Bold and Faint share the SGR 22 reset,
+        // so `Bold | Faint` is not two attributes but a state the encoder cannot spell. Setting's
+        // guard rejects the axis-owning flags outright, which is the type refusing to let this be
+        // written the short way.
+        if ((flags & TextAttributes.Bold) != 0)
+            template = template.Weighing(TextWeight.Bold);
+        else if ((flags & TextAttributes.Faint) != 0)
+            template = template.Weighing(TextWeight.Faint);
+
+        if ((flags & TextAttributes.Italic) != 0)
+            template = template.Posturing(TextStyle.Italic);
+
+        var booleans = flags & PartialStyle.Booleans;
+        if (booleans != default)
+            template = template.Setting(booleans);
+
+        // A shape implies the flag (PartialStyle.ApplyTo derives it structurally), so stating the
+        // shape is the whole of "underline, in this style" — and stating it only when the fold
+        // delivered the flag is what keeps the two from disagreeing.
+        if ((flags & TextAttributes.Underline) != 0)
+            template = template with { UnderlineShape = attr.UnderlineShape };
+
+        return template;
     }
+
+    /// <summary>
+    /// The base's VALUE form, for the primitives that take a whole <see cref="CellStyle"/>. The
+    /// foreground is deliberately dropped: it reaches those primitives as the BRUSH argument, which
+    /// they sample per cell — resolving it here would pin one colour for the whole run, and a
+    /// gradient base would paint flat.
+    /// </summary>
+    /// <remarks>
+    /// The sample point is <c>(0, 0)</c> against an empty box because every channel left after the
+    /// foreground is removed is position-independent by construction (see
+    /// <see cref="ResolveLineBaseStyle"/>). A base that grew a position-dependent BACKGROUND would
+    /// need the real bounds threaded in here — and the fact that the presenter's primitives take one
+    /// background <em>colour</em>, not a brush, is what would surface it.
+    /// </remarks>
+    private static CellStyle ResolveLineBaseValue(in StyleDeltaTemplate lineBase)
+        => (lineBase with { Foreground = null }).Resolve(0, 0, default).ApplyTo(CellStyle.Default);
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the
     // line's per-cluster columns and lineStart is the line's model offset (0 for single-line).
     private void DrawLineRun(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text, int from, int to,
-                             int localRow, IBrush? foreground, bool selected, bool noColor, IBrush? selectionBrush, bool inverse)
+                             int localRow, in StyleDeltaTemplate lineBase, bool selected, bool noColor,
+                             IBrush? selectionBrush, bool inverse)
     {
         if (to <= from)
             return;
 
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
-        var baseStyle = ResolveLineBaseStyle(noColor);
-    
+        var baseStyle = ResolveLineBaseValue(lineBase);
+
         if (EditingSource is { PaintsAsCells: false } source)
         {
             // A non-cell editor run paints per selection segment — the "fragment splits at
@@ -689,7 +777,9 @@ public sealed class TextPresenter : UIElement
             var piecePara = new FormattedParagraph([pieceLine], new Size(runWidth, rect.Rows), TextAlignment.Left, false);
             var piece = new FormattedText([piecePara], piecePara.Size, runWidth);
 
-            if (foreground is {} pieceBrush)
+            // The document carries no colour of its own, so the base's brush IS the run's foreground;
+            // with no brush the document's own (unset) colours stand, which is the two-argument form.
+            if (lineBase.Foreground is {} pieceBrush)
                 context.DrawFormattedText(piece, rect, pieceBrush);
             else
                 context.DrawFormattedText(piece, rect);
@@ -714,23 +804,34 @@ public sealed class TextPresenter : UIElement
             // The cell lane hands DrawText the BRUSH rather than the delta's sample, so a gradient
             // still colours per cell (DrawText overwrites CellStyle.Background from its brush argument
             // either way); the delta's Background says only WHETHER the rule found one usable.
-            DrawText(context, localColumn, localRow, span, foreground,
+            DrawText(context, localColumn, localRow, span, lineBase.Foreground,
                      selection.Background is null ? null : selectionBrush, selection.ApplyTo(style));
         }
         else
         {
-            DrawText(context, localColumn, localRow, span, foreground, null, style);
+            DrawText(context, localColumn, localRow, span, lineBase.Foreground, null, style);
         }
     }
 
+    /// <summary>
+    /// THE UNPACK for the cell lane: the brush channel of the line base in one argument, its value
+    /// channels in the other, and <see cref="RenderContext.DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
+    /// doing the per-cell sampling it already does.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="Brushes.Default"/> is not a fallback colour.</b> It samples to
+    /// <see cref="Color.Default"/> everywhere, which is exactly what the primitive's colour overload
+    /// substitutes — the two calls are identical in the foreground. What it buys is the BACKGROUND:
+    /// this used to branch two ways because the base was a value and the brush travelled beside it,
+    /// and the no-brush leg called the colour overload with a hardcoded <c>null</c> background. Since
+    /// <c>DrawText</c> writes its background brush over the base style's, that leg silently repainted
+    /// a selected run's highlight as <see cref="Color.Transparent"/> — the fourth invisible selection
+    /// in this file, and the only one that was a side effect of the parallel parameter rather than of
+    /// the selection rule. One overload, one background, no leg to get wrong.
+    /// </remarks>
     private static void DrawText(RenderContext context, int column, int row, ReadOnlySpan<char> text,
                                  IBrush? foreground, IBrush? background, in CellStyle style)
-    {
-        if (foreground is {} brush)
-            context.DrawText(column, row, text, brush, background, style);
-        else
-            context.DrawText(column, row, text, Color.Default, null, style);
-    }
+        => context.DrawText(column, row, text, foreground ?? Brushes.Default, background, style);
 
     private IBrush? ResolveBrush(string key)
         => this.TryFindResource(key, out var value) && value is IBrush brush ? brush : null;

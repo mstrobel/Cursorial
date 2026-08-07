@@ -210,24 +210,28 @@ public class GlyphTemplatePaintTests
                                   Wide);
 
         Assert.Equal([(2, 0)], face.Anchors);
+
+        // The flat overload takes a DELTA now, and the default's adapter states every channel of the
+        // folded style — so folding it back onto the ground style must reproduce that style exactly.
+        // A channel the adapter dropped shows up here as one gone default.
         Assert.Equal(Rich with
                      {
                          Foreground = Green,
                          Attributes = Rich.Attributes | TextAttributes.Inverse,
                      },
-                     face.Painted);
+                     face.Painted.ApplyTo(CellStyle.Default));
     }
 
     private sealed class RecordingFace : IGlyphFont
     {
         public List<(int Column, int Row)> Anchors { get; } = [];
-        public CellStyle Painted { get; private set; }
+        public PartialStyle Painted { get; private set; }
 
         public string DisplayName => "recording";
         public CellStyle EnsureCompatibleStyle(in CellStyle style) => style;
         public Size Measure(ReadOnlySpan<char> text) => new(text.Length, 1);
 
-        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
         {
             Anchors.Add((column, row));
             Painted = style;

@@ -1024,36 +1024,102 @@ sufficient and more predictable than a per-cell flip.
 ### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites)
 
 ```csharp
-// :573   baseStyle.Attributes ^ TextAttributes.Inverse
+// :573   baseStyle.Attributes ^ TextAttributes.Inverse                         ✅ MIGRATED
 PartialStyle.Toggle(TextAttributes.Inverse)
 
 // :541   .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse)
+//                                                                             ❓ OPEN QUESTION — see below
 noColor ? PartialStyle.Set(attr.Flags) : PartialStyle.Set(attr.Flags).Clearing(TextAttributes.Inverse)
 
 // :505   CellStyle.Default.WithAttributes(TextAttributes.Inverse)   ← "delta" faked via Default
+//                                                                             ✅ MIGRATED
 PartialStyle.Set(TextAttributes.Inverse)
 ```
 
 The third is the tell: `CellStyle.Default.WithAttributes(...)` only works because `Default` reads as
 "unset" for the colour channels. It is a `PartialStyle` spelled in a type that cannot say so.
 
-### 11.3 Glyph paint: stamp versus box (§5f) — ⏳ NOT YET
+**Two of the three have landed**, both through the selection-rule work rather than as a migration of
+their own:
 
-The brushed `IGlyphFont.Paint` overload has migrated (§11.7), but this section is about the FLAT overload,
-which still takes a whole `CellStyle`. Presence-decides-stamp-vs-box is a separate step.
+- The `^ Inverse` toggle is now `ResolveSelectionStyle`'s `PartialStyle.WithToggled(TextAttributes.Inverse)`,
+  the fall-through leg beside `WithBackground(colour).Clearing(Inverse)` (§11.1).
+- The band pre-fill no longer fakes a delta through `CellStyle.Default`: it is
+  `context.FillOpaque(rect, Color.Transparent, (baseStyle.Attributes & FillAttributes) | Inverse)`,
+  which states the attribute word directly and masks it through an allowlist. Not a `PartialStyle`, and
+  deliberately so — it is an opaque fill, an operation that OWNS the cells it writes, and the interesting
+  question there turned out to be *which attributes may spread onto cells nobody inked*, which is what
+  `FillAttributes` answers.
 
+**The third is an open question, not a pending task.** `ResolveLineBaseStyle` is not obviously a
+migration target at all. It does not modify anybody's cells: it establishes the line's GROUND STATE, the
+style every run and every fill on that line is then a delta against. By the ownership rule this document
+keeps arriving at — an operation that owns its cells takes a whole `CellStyle`, one that modifies cells
+somebody else wrote takes a delta — a ground state is the definitional case for the whole style. Its
+`WithAttributes` is not algebra faked through a sentinel; it is a constructor writing the one field it
+owns.
 
-Presence does the work — no new flag, no second overload:
+The counter-argument is that `noColor ? attr.Flags : attr.Flags & ~Inverse` really is a hand-rolled mask,
+and that the presenter would read better if the line's ground state were assembled from the element's
+value sources the §11.6 way. That is a *derivation* question, though, not a *representation* one. Left
+open, and deliberately not migrated: converting it would turn a value into a delta with no second
+operand, which is the shape §5's opening argument warns about in the other direction.
+
+### 11.3 Glyph paint: stamp versus box (§5f) — ✅ MIGRATED
+
+The FLAT `IGlyphFont.Paint` overload takes a `PartialStyle`. Presence does the work — no new flag, no
+second overload:
 
 ```csharp
 // stamp: ink the strokes, gaps show whatever is underneath (a FIGlet over existing content)
-face.Paint(buffer, column, row, text, PartialStyle.Foreground(fg));
+face.Paint(buffer, column, row, text, PartialStyle.WithForeground(fg));
 
 // box: fill the glyph's box first, then ink — no pre-fill needed by the caller
-face.Paint(buffer, column, row, text, PartialStyle.Foreground(fg).WithBackground(bg));
+face.Paint(buffer, column, row, text, PartialStyle.WithForeground(fg) with { Background = bg });
 ```
 
-The second is what the nocolor inverse pre-fill exists to fake today.
+**Why a delta belongs on a paint at all**, given the ownership rule §11.2 leans on: a paint always OWNS
+its ink cells — it writes them outright, and the channels it declines to state fall through to what the
+cell already held, as any delta's do. What the delta buys is a fact about the OTHER cells, whether this
+paint also owns the GAPS between the strokes. A whole style has nowhere to put that answer; the presence
+of one channel is exactly the room it needs. That reasoning now lives on the interface member, because it
+is the thing that makes this not an exception.
+
+Four things the migration had to settle, each pinned by a test in `GlyphStampOrBoxTests`:
+
+1. **The box is one fill, not per-cell opinion.** `GlyphPaint.Ink` fills `Measure(text)`'s rect with the
+   BACKGROUND ONLY and hands the ink pass the same delta minus its background. Minus, because re-stating
+   it would composite the same colour onto itself, which is not a no-op under a pushed blending mode —
+   `ShadowedFont` paints its shadow under `Multiply`. Background *only*, because the attributes that are
+   visible on a blank (Underline, Strikethrough, Overline) would rule a line clean across a multi-row
+   glyph box; which attributes may spread is a question that already has an owner, and it is
+   `TextPresenter.FillAttributes`, an allowlist this layer cannot see.
+2. **The DECORATORS settle the box, not their inner face.** `ShadowedFont` and `DecoratedFont` fill their
+   own (larger) box and forward a stamp inward. Forwarding the background instead would have the inner
+   face fill the GLYPH's box a second time, after the shadow had been painted into it — a drop shadow
+   surviving only in the offset fringe, erased everywhere it was meant to show through the glyph's holes.
+3. **`CellBuffer.Set` has a `Color.Default` rule of its own, and it limits box mode.** Its blend reads a
+   `Color.Default` source background as "keep the backdrop's", so boxing with `Color.Default` CLEARS the
+   box's cells (grapheme and all) but cannot repaint a coloured backdrop back to the terminal default.
+   The distinction this section exists for is still real and still observable — stamp leaves the content,
+   box removes it — but "reset these cells to the terminal background" remains unsayable one layer down.
+   Asserted in `Box_WithTheTerminalDefaultBackground_StillBoxes` so the limit is stated rather than
+   discovered.
+4. **Call sites that still hold a whole `CellStyle` must decide, out loud.** `FormattedText`'s
+   resolver-less FIGlet run, `RenderContext.DrawGlyphText`'s no-brush leg, and the interface's own default
+   template overload all read `Background.IsDefault` and pick — exactly the §11.1(3) rule: the caller
+   decides now, rather than having the sentinel decide for it. `PartialStyle.From` / `FromInk` are the two
+   adapters, and `From` is lossless except for one channel it cannot be — a null `CellStyle.Hyperlink` is
+   indistinguishable from "no opinion", so the adapter can never mean "remove the link".
+
+The mode this migration REMOVES is "paint the ink in a stated background, leave the gaps" — which was
+what the old signature actually did, and which is incoherent for a sparse face (background-coloured
+strokes floating over unrelated content). One test asserted it, `FigletFontTests.Paint_RespectsBlendingMode`,
+whose "untouched" gap is now filled and blended like every other cell of the box.
+
+The nocolor inverse pre-fill in `TextPresenter` is NOT retired by this. Box mode fills each GLYPH's box;
+the band fill also covers the inter-word gaps the face never inks, so it is not a replacement — and a
+universal band fill was separately measured and rejected (it grew SGR sequences 14–16%).
 
 ### 11.4 The access key (`proposal-unified-text-path.md` §3)
 

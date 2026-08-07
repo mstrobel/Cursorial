@@ -79,9 +79,15 @@ public sealed class MonospaceFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
-        return PaintCore(buffer, column, row, text, style, delta: null, bounds: default);
+        // Every cell in this face's box is a cell it inks (a run of spaces is still a run of cells it
+        // writes), so box mode adds nothing a caller could see EXCEPT at the edges — a clipped run, or
+        // one whose measured width outruns what fit. The fill runs anyway rather than being special-cased
+        // away: "the background reached the box" must not depend on which face is under the call.
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
+
+        return PaintCore(buffer, column, row, text, default, delta: null, bounds: default, ink);
     }
 
     /// <inheritdoc/>
@@ -92,12 +98,14 @@ public sealed class MonospaceFont : IGlyphFont
         // path — one cluster loop with no per-cell resolve, identical to painting a plain style.
         return delta.IsUniform
                    ? PaintCore(buffer, column, row, text, delta.Resolve(column, row, bounds).ApplyTo(baseStyle),
-                               delta: null, bounds: default)
-                   : PaintCore(buffer, column, row, text, baseStyle, delta, bounds);
+                               delta: null, bounds: default, ink: null)
+                   : PaintCore(buffer, column, row, text, baseStyle, delta, bounds, ink: null);
     }
 
+    // Exactly one of `delta` and `ink` is non-null, and `style` is the base the FORMER folds onto: the
+    // template overload carries its own base, while the flat one is a delta over the cells themselves.
     private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                                  in StyleDeltaTemplate? delta, in Rect bounds)
+                                  in StyleDeltaTemplate? delta, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -139,7 +147,11 @@ public sealed class MonospaceFont : IGlyphFont
                 // Resolved per cluster, not once up front: a non-uniform template is position-dependent, so
                 // hoisting the resolve out of the loop would paint one cell's answer across the whole run.
                 // (The uniform case never reaches here — the overload above folds it and passes null.)
-                var clusterStyle = delta is null ? style : delta.Value.Resolve(col, row, bounds).ApplyTo(style);
+                // The flat path folds over the CELL, which is what makes an absent channel mean "leave it":
+                // the cluster keeps the colour, attribute or hyperlink the caller declined to state.
+                var clusterStyle = ink is { } d  ? GlyphPaint.Over(buffer, col, row, d)
+                                 : delta is null ? style
+                                                 : delta.Value.Resolve(col, row, bounds).ApplyTo(style);
                 int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
 
                 // The one case where the surface knows better than the layout: a wide glyph at the

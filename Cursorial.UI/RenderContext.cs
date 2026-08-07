@@ -247,7 +247,13 @@ public sealed class RenderContext
     {
         if (foreground is null)
         {
-            Inner.DrawGlyphText(face, column, row, text, style);
+            // No brush: the style goes down flat, and its background has to be read through the sentinel
+            // it arrived in — Color.Default is a CellStyle's only word for "no opinion", so it STAMPS
+            // (a FIGlet line keeps showing the band underneath through its holes, which is what the
+            // presenter's inverse pre-fill is there to be seen through), and anything else is a real
+            // background and BOXES.
+            Inner.DrawGlyphText(face, column, row, text,
+                                style.Background.IsDefault ? PartialStyle.FromInk(style) : PartialStyle.From(style));
             return;
         }
 

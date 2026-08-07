@@ -5,6 +5,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -78,7 +79,7 @@ public class TrimIndicatorTests
         public CellStyle EnsureCompatibleStyle(in CellStyle style) => style;
         public Size Measure(ReadOnlySpan<char> text) => new(text.Length, 1);
 
-        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
             => Measure(text);
     }
 
@@ -188,7 +189,7 @@ public class TrimIndicatorTests
 
         // The defect, reproduced directly — the face draws U+2026 as nothing at all.
         var naive = new CellBuffer(columns, face.Height);
-        face.Paint(naive, 0, 0, "…", CellStyle.Default);
+        face.Paint(naive, 0, 0, "…", default(PartialStyle));
         Assert.Equal(0, InkCount(naive, 0, columns, face.Height));
 
         var p = FormatFiglet(face, "AAAAAA", columns);

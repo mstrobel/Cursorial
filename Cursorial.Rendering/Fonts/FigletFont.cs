@@ -205,10 +205,18 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
-        var compatible = EnsureCompatibleStyle(style);
-        return PaintCore(buffer, column, row, text, (_, _) => compatible);
+        // This face is the reason the two modes exist: its glyphs are mostly holes, so a stamp shows
+        // whatever it was painted over and a box does not. Both go through the same ink pass — the box
+        // has already been filled by the time GlyphPaint hands the delta back, minus its background.
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
+
+        // Compatibility applies to the FOLDED style, per cell: the delta is one way for an attribute this
+        // face cannot render to arrive and the cell underneath is another, and the face's constraint is on
+        // what it paints, not on what it was told.
+        return PaintCore(buffer, column, row, text,
+                         (_, _, backdrop) => EnsureCompatibleStyle(GlyphPaint.Over(backdrop, ink)));
     }
 
     /// <summary>
@@ -231,7 +239,7 @@ public sealed class FigletFont : IGlyphFont
         if (delta.IsUniform)
         {
             var uniform = EnsureCompatibleStyle(delta.Resolve(column, row, bounds).ApplyTo(baseStyle));
-            return PaintCore(buffer, column, row, text, (_, _) => uniform);
+            return PaintCore(buffer, column, row, text, (_, _, _) => uniform);
         }
 
         // `in` parameters cannot be captured; the fold needs all three at every sample.
@@ -240,12 +248,15 @@ public sealed class FigletFont : IGlyphFont
         var box = bounds;
 
         return PaintCore(buffer, column, row, text,
-                         (c, r) => EnsureCompatibleStyle(template.Resolve(c, r, box).ApplyTo(fallback)));
+                         (c, r, _) => EnsureCompatibleStyle(template.Resolve(c, r, box).ApplyTo(fallback)));
     }
 
     // The resolved-style form both Paint overloads funnel into: by this point the template has been resolved
-    // and folded, so what flows through here is a plain per-cell CellStyle lookup.
-    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, Func<int, int, CellStyle> provider)
+    // and folded, so what flows through here is a plain per-cell CellStyle lookup. The third argument is the
+    // style the cell being painted already holds — the base the flat overload's delta folds onto, and unread
+    // by the template path, whose base came from its caller.
+    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                           Func<int, int, CellStyle, CellStyle> provider)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -275,7 +286,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, Func<int, int, CellStyle> style)
+    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, Func<int, int, CellStyle, CellStyle> style)
     {
         var lines = glyph.Lines;
 
@@ -327,6 +338,20 @@ public sealed class FigletFont : IGlyphFont
                 if (ch == HardBlank) cluster = " ";
                 else cluster = line.Length == grapheme.Length ? line : grapheme.ToString();
 
+                // The cell as it stands, read ONCE and used twice: as the smush look-back below, and
+                // as the base the flat overload's delta folds onto (an absent channel means "keep
+                // whatever is here").
+                //
+                // Read, not the indexer: the indexer VALIDATES and throws, and its contract is
+                // "the caller has proven this is in range". The guards above prove the cell is
+                // inside the window, but they used to be written against [0, Columns) — which is
+                // the wrong interval on a re-based view, so a negative push translate turned this
+                // look-back into an ArgumentOutOfRangeException thrown out of the render pass.
+                // Read is the non-throwing form and yields a blank outside the window, which is
+                // exactly the "nothing to smush with" answer — and, for the flat overload, the
+                // "nothing underneath to inherit" one.
+                var existing = buffer.Read(targetCol, targetRow);
+
                 // Smushing: if a previous glyph in this same Paint call already wrote a non-space
                 // character into this cell (which happens when ComputeOverlap added the +1 smush
                 // bonus), apply the FIGlet smush rule to merge the two characters rather than
@@ -337,14 +362,6 @@ public sealed class FigletFont : IGlyphFont
                 // a correct overlap computation).
                 if (cluster != " " && cluster.Length == 1)
                 {
-                    // Read, not the indexer: the indexer VALIDATES and throws, and its contract is
-                    // "the caller has proven this is in range". The guards above prove the cell is
-                    // inside the window, but they used to be written against [0, Columns) — which is
-                    // the wrong interval on a re-based view, so a negative push translate turned this
-                    // look-back into an ArgumentOutOfRangeException thrown out of the render pass.
-                    // Read is the non-throwing form and yields a blank outside the window, which is
-                    // exactly the "nothing to smush with" answer.
-                    var existing = buffer.Read(targetCol, targetRow);
                     if (existing.Grapheme is { Length: > 0 and 1 } prev &&
                         prev[0] is var prevCh &&
                         prevCh != ' ' &&
@@ -354,7 +371,7 @@ public sealed class FigletFont : IGlyphFont
                     }
                 }
 
-                buffer.Set(targetCol, targetRow, cluster, style(targetCol, targetRow));
+                buffer.Set(targetCol, targetRow, cluster, style(targetCol, targetRow, existing.Style));
 
                 targetCol += width;
             }

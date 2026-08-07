@@ -3,6 +3,7 @@ using System.Text;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering;
@@ -95,7 +96,7 @@ public class VerticalMetricsTests
     {
         var size = face.Measure(ch.ToString());
         var buffer = new CellBuffer(Math.Max(1, size.Columns), face.Height);
-        face.Paint(buffer, 0, 0, ch.ToString(), CellStyle.Default);
+        face.Paint(buffer, 0, 0, ch.ToString(), default(PartialStyle));
 
         for (int c = 0; c < buffer.Columns; c++)
             if (buffer[c, row].Grapheme is { Length: > 0 } g && g.Trim().Length > 0)
@@ -157,7 +158,7 @@ public class VerticalMetricsTests
         public CellStyle EnsureCompatibleStyle(in CellStyle style) => style;
         public Size Measure(ReadOnlySpan<char> text) => new(text.Length, 1);
 
-        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+        public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
             => Measure(text);
     }
 
@@ -263,7 +264,7 @@ public class VerticalMetricsTests
     {
         var size = face.Measure(text);
         var buffer = new CellBuffer(Math.Max(1, size.Columns), Math.Max(1, size.Rows));
-        face.Paint(buffer, 0, 0, text, CellStyle.Default);
+        face.Paint(buffer, 0, 0, text, default(PartialStyle));
 
         var rows = new List<int>();
 

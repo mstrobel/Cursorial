@@ -147,9 +147,20 @@ public sealed class ShadowedFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    /// <remarks>
+    /// <b>The box is settled HERE, once, for the whole decorated footprint</b> — shadow rows included —
+    /// and both passes then go inward as stamps. Forwarding the caller's background instead would have
+    /// the inner face fill the GLYPH's box a second time, after the shadow had already been laid into
+    /// it: a drop shadow surviving only in the offset fringe, erased everywhere it was meant to show
+    /// through the glyph's holes. A shadow never owns gaps; that is what makes it a shadow.
+    /// </remarks>
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
-        return PaintCore(buffer, column, row, text, style, delta: null, bounds: default);
+        if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
+
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
+
+        return PaintCore(buffer, column, row, text, default, delta: null, bounds: default, ink);
     }
 
     /// <inheritdoc/>
@@ -162,11 +173,12 @@ public sealed class ShadowedFont : IGlyphFont
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
                       in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, baseStyle, delta, bounds);
+        return PaintCore(buffer, column, row, text, baseStyle, delta, bounds, ink: null);
     }
 
+    // Exactly one of `delta` and `ink` is non-null; `style` is the base the FORMER folds onto.
     private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                           in StyleDeltaTemplate? delta, in Rect bounds)
+                           in StyleDeltaTemplate? delta, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -183,14 +195,24 @@ public sealed class ShadowedFont : IGlyphFont
         try
         {
             // The shadow is a single pass, so it resolves the template ONCE — at the anchor, like the
-            // interface's own default template overload — and folds it onto the caller's base.
-            var baseStyle = delta is null ? style : delta.Value.Resolve(column, row, bounds).ApplyTo(style);
+            // interface's own default template overload — and folds it onto the caller's base. The flat
+            // path has no base of its own, so the shadow is derived from the channels the delta STATES,
+            // over the ground style; the channels it declines to state are, by definition, ones the
+            // caller had no shadow-worthy opinion about either.
+            var baseStyle = ink is { } i    ? i.ApplyTo(CellStyle.Default)
+                          : delta is null   ? style
+                                            : delta.Value.Resolve(column, row, bounds).ApplyTo(style);
 
-            var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(style.UnderlineStyle)
+            // The template path reads the CALLER's underline shape, unchanged from before this migration;
+            // the flat path has only the resolved one, which is the same value whenever the delta says
+            // nothing about the underline.
+            var effectiveShadowStyle = shadowStyle.WithUnderlineStyle(ink is null ? style.UnderlineStyle : baseStyle.UnderlineStyle)
                                                   .WithAttributes((shadowStyle.Attributes | baseStyle.Attributes) & ~ForbiddenShadowAttributes)
                                                   .BlendOver(baseStyle);
 
-            Inner.Paint(buffer, column + Offset.Columns, row + Offset.Rows, text, effectiveShadowStyle);
+            // FromInk, never From: the shadow stamps. See the flat overload's remarks.
+            Inner.Paint(buffer, column + Offset.Columns, row + Offset.Rows, text,
+                        PartialStyle.FromInk(effectiveShadowStyle));
         }
         finally
         {
@@ -198,9 +220,9 @@ public sealed class ShadowedFont : IGlyphFont
                 buffer.PopBlendingMode();
         }
 
-        var painted = delta is { } d
-                          ? Inner.Paint(buffer, column, row, text, in style, in d, in bounds)
-                          : Inner.Paint(buffer, column, row, text, in style);
+        var painted = ink is { } inkDelta
+                          ? Inner.Paint(buffer, column, row, text, in inkDelta)
+                          : Inner.Paint(buffer, column, row, text, in style, delta!.Value, in bounds);
 
         if (painted.IsEmpty)
             return Size.Empty;

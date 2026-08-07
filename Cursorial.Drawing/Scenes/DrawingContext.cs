@@ -1052,7 +1052,14 @@ public sealed class DrawingContext
     /// scrolled editor): the font clips to the surface, exactly like a cell write. The direct
     /// glyph-text primitive FIGlet-rendered editors paint words with.
     /// </summary>
-    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in CellStyle style)
+    /// <remarks>
+    /// <paramref name="style"/> is a DELTA, and its background decides whether the paint owns the cells
+    /// the face does not ink: absent stamps (a FIGlet's holes keep showing what was underneath), present
+    /// fills the glyph's box first. The decision stays with the caller — this layer has no way to know
+    /// which a run meant, and neither did the whole <c>CellStyle</c> this parameter used to be. See
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in PartialStyle)"/>.
+    /// </remarks>
+    public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in PartialStyle style)
     {
         ArgumentNullException.ThrowIfNull(face);
         ArgumentNullException.ThrowIfNull(text);
@@ -1061,7 +1068,7 @@ public sealed class DrawingContext
         face.Paint(surface, column, row, text, style);
     }
 
-    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in CellStyle)"/>
+    /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in PartialStyle)"/>
     /// <remarks>
     /// <paramref name="delta"/> is a per-cell DELTA against <paramref name="style"/>, its brushes sampled
     /// against <paramref name="brushBounds"/>, so a position-dependent source (a gradient) states only the

@@ -231,7 +231,16 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // recursion by construction.
                             if (resolver is null)
                             {
-                                face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style);
+                                // A run carries a whole CellStyle, so its background arrives through the very
+                                // sentinel the delta retires, and the run has no other way to say which it
+                                // meant. Read it out loud, here, once: a stated background is the run's own
+                                // and BOXES the glyphs, while Color.Default is "nothing to say" and the face
+                                // STAMPS — a FIGlet run showing whatever the block sits on through the holes
+                                // in its glyphs, which is what it did before there was a way to ask.
+                                face.Paint(buffer, cursor, runRow, glyphText.Text,
+                                           glyphText.Style.Background.IsDefault
+                                               ? PartialStyle.FromInk(glyphText.Style)
+                                               : PartialStyle.From(glyphText.Style));
                             }
                             else
                             {

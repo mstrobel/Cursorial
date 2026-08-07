@@ -55,12 +55,43 @@ public interface IGlyphFont
     /// insufficient room.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>The background's PRESENCE picks the mode</b> — there is no flag and no second overload,
+    /// because there is nothing a flag could say that the delta does not already:
+    /// <list type="table">
+    ///   <item><term>background absent</term><description><b>STAMP.</b> Only the cells the face inks
+    ///   are written; the gaps keep whatever was underneath, grapheme and style alike. That is what
+    ///   lets a <see cref="FigletFont"/> headline sit over existing content and show it through the
+    ///   holes in its glyphs.</description></item>
+    ///   <item><term>background present</term><description><b>BOX.</b> The glyph's whole
+    ///   <see cref="Measure"/> box is filled with that background first, then the ink goes down on
+    ///   top — so the caller gets an opaque block without pre-filling it, and gets one for
+    ///   <see cref="Cursorial.Media.Color.Default"/> too.</description></item>
+    /// </list>
+    /// The pair is exactly what a <see cref="CellStyle"/> could not spell: its only word for "no
+    /// opinion about the background" is <see cref="Cursorial.Media.Color.Default"/>, which is also its word for "the
+    /// terminal's own background", so whichever way a face chose to read that sentinel, one of the
+    /// two modes was unreachable.
+    /// </para>
+    /// <para>
+    /// <b>Why a delta here at all — and why that is not an exception to the ownership rule.</b> The
+    /// rule this codebase follows is that an operation which OWNS the cells it writes takes a whole
+    /// <see cref="CellStyle"/> (nothing is underneath for an absent channel to mean), while one that
+    /// MODIFIES cells somebody else wrote takes a delta — <c>DrawingContext.TintCells</c>, the
+    /// selection highlight. A paint always owns its INK cells: it writes them outright, and the
+    /// channels the delta declines to state fall through to what those cells already held, as any
+    /// delta's do. What the delta buys is a fact about the OTHER cells — whether this paint also owns
+    /// the GAPS between the strokes. A whole style has nowhere to put that answer; the presence of
+    /// one channel is precisely the room it needs, which is why the delta is the right shape here.
+    /// </para>
+    /// <para>
     /// Fonts must respect the buffer's active blending mode by routing all cell writes through
     /// <see cref="CellBuffer.Set"/> rather than the raw indexer. Coordinates beyond the buffer's
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
+    /// </para>
     /// </remarks>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style);
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style);
 
     /// <summary>
     /// Paint <paramref name="text"/> with <paramref name="baseStyle"/>, adjusted per painted cell by
@@ -97,10 +128,23 @@ public interface IGlyphFont
     /// Implementations fold with <see cref="PartialStyle.ApplyTo"/> and must resolve PER SAMPLE unless
     /// <see cref="StyleDeltaTemplate.IsUniform"/> says the answer cannot vary.
     /// </para>
+    /// <para>
+    /// The default folds to a whole <see cref="CellStyle"/> and hands it to the flat overload, which
+    /// takes a delta — so this is where the two vocabularies meet, and the meeting costs one bit. A
+    /// whole style cannot say "no opinion about the background", so the adapter reads the only signal
+    /// it has and says so out loud: a <see cref="Cursorial.Media.Color.Default"/> background stamps, anything else
+    /// boxes. A caller that needs the distinction states it, by calling the flat overload with a
+    /// delta of its own.
+    /// </para>
     /// </remarks>
     Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle baseStyle,
                in StyleDeltaTemplate delta, in Rect bounds)
-        => Paint(buffer, column, row, text, delta.Resolve(column, row, bounds).ApplyTo(baseStyle));
+    {
+        var folded = delta.Resolve(column, row, bounds).ApplyTo(baseStyle);
+
+        return Paint(buffer, column, row, text,
+                     folded.Background.IsDefault ? PartialStyle.FromInk(folded) : PartialStyle.From(folded));
+    }
 
     /// <summary>
     /// The advance metrics text layout consults to wrap and trim text rendered with this font

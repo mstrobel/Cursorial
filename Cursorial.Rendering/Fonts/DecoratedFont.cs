@@ -1,6 +1,7 @@
 using System.Text;
 
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -186,6 +187,25 @@ public class DecoratedFont : IGlyphFont
     }
 
     /// <summary>
+    /// <see cref="EnsureCompatibleStyle(in CellStyle)"/> for a delta: the same attributes, forced OFF
+    /// rather than masked out — which is what masking a whole style's word already did, said in the
+    /// vocabulary that can also say it about a channel it was never told.
+    /// </summary>
+    private PartialStyle EnsureCompatibleStyle(in PartialStyle style)
+    {
+        var compatible = style.Clearing(ForbiddenAttributes);
+
+        return Position switch
+               {
+                   // Underline has its own axis, so it is removed through its own factory rather than
+                   // through the flag word — see the decoration style below.
+                   DecorationPosition.Below => compatible.RemovingUnderline(),
+                   DecorationPosition.Above => compatible.Clearing(TextAttributes.Overline),
+                   _                        => compatible
+               };
+    }
+
+    /// <summary>
     /// Measures the dimensions of the specified text when rendered using the current font,
     /// including any additional decorations that modify the size.
     /// </summary>
@@ -209,26 +229,34 @@ public class DecoratedFont : IGlyphFont
     /// <returns>
     /// A <see cref="Size"/> structure representing the number of columns and rows occupied by the rendered text and its decoration.
     /// </returns>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
         var above = Position == DecorationPosition.Above;
         var compatibleStyle = EnsureCompatibleStyle(style);
-        
-        var size = Inner.Paint(buffer, column, above ? row + 1 : row, text, compatibleStyle);
+
+        // The box covers the decoration row too — it is part of this face's Measure — so it is settled
+        // here and the inner face is handed a stamp, exactly as ShadowedFont does and for the same
+        // reason: a decorated face's box is bigger than its inner face's, and only this level knows it.
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), compatibleStyle);
+
+        var size = Inner.Paint(buffer, column, above ? row + 1 : row, text, ink);
 
         _decoration ??= DecorationGlyph.ToString();
         _decorationWidth ??= GraphemeWidth.ClusterWidth(_decoration);
 
-        var decoratorStyle = compatibleStyle with { Attributes = compatibleStyle.Attributes & ~ForbiddenDecorationAttributes };
-        
+        // Underline is split out of the mask because it has its own axis: WithCleared REJECTS it (a
+        // flag-word route to a decomposed attribute is the mistake that guard exists to catch), and
+        // RemovingUnderline is the factory that owns both halves of it.
+        var decoratorStyle = ink.Clearing(ForbiddenDecorationAttributes & ~TextAttributes.Underline)
+                                .RemovingUnderline();
+
         int offset = _decorationWidth.GetValueOrDefault();
 
         for (int i = 0, n = size.Columns; i < n; i += offset)
         {
-            if (above)
-                buffer.Set(column + i, row, _decoration, decoratorStyle);
-            else
-                buffer.Set(column + i, row + 1, _decoration, decoratorStyle);
+            int decorationRow = above ? row : row + 1;
+            buffer.Set(column + i, decorationRow, _decoration,
+                       GlyphPaint.Over(buffer, column + i, decorationRow, decoratorStyle));
         }
 
         return size with { Rows = size.Rows + 1 };

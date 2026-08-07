@@ -217,6 +217,49 @@ public readonly record struct PartialStyle
                   nameof(flags),
                   $"{flags & ~Booleans} has its own axis; set Weight / Posture / Underline instead.");
 
+    // Every flag the type knows about, assembled from the two vocabularies rather than written as a
+    // literal so a flag added to either is covered without anybody remembering this line.
+    private const TextAttributes EveryAttribute =
+        Booleans | TextAttributes.Bold | TextAttributes.Faint | TextAttributes.Italic | TextAttributes.Underline;
+
+    /// <summary>
+    /// The delta a whole <see cref="CellStyle"/> means: EVERY channel stated, so
+    /// <c>From(s).ApplyTo(anything) == s</c>. The adapter for code that still holds a
+    /// <see cref="CellStyle"/> — and, because a stated background is an OPINION about the cells the
+    /// glyph does not ink, the form that selects BOX mode at a glyph paint. Use
+    /// <see cref="FromInk"/> for the stamp.
+    /// </summary>
+    /// <remarks>
+    /// One channel does not round-trip, and cannot: a null <see cref="CellStyle.Hyperlink"/> is
+    /// indistinguishable from "no opinion" on this side, so the result never REMOVES a hyperlink the
+    /// base carries. That is the same absent-versus-empty conflation this type retires for colours,
+    /// surviving one layer down in <see cref="CellStyle"/> itself, and it is why this is an adapter
+    /// for legacy call sites rather than the way to build a delta.
+    /// </remarks>
+    public static PartialStyle From(in CellStyle style) => new()
+    {
+        Foreground     = style.Foreground,
+        Background     = style.Background,
+        UnderlineColor = style.UnderlineColor,
+        Hyperlink      = style.Hyperlink,
+
+        // Shape iff the flag: a shape implies the underline is ON (see ApplyTo), and a style without
+        // the flag must record a REMOVAL — flag in Clear, absent from Xor, no shape — which the mask
+        // below already spells. Keeps property 11 (flag and shape never disagree) true by construction.
+        UnderlineShape = (style.Attributes & TextAttributes.Underline) != 0 ? style.UnderlineStyle : null,
+
+        // Clear EVERY flag and re-set the style's own: a whole CellStyle states the entire word, so
+        // the base's attributes must not survive underneath it.
+        Clear          = EveryAttribute,
+        Xor            = style.Attributes,
+    };
+
+    /// <summary>
+    /// <see cref="From"/> minus the background: the INK of <paramref name="style"/> and no opinion
+    /// about the cells around it, which selects STAMP mode at a glyph paint.
+    /// </summary>
+    public static PartialStyle FromInk(in CellStyle style) => From(style) with { Background = null };
+
     /// <summary>Underline in <paramref name="shape"/>, coloured <paramref name="color"/>.</summary>
     public static PartialStyle WithUnderline(UnderlineStyle shape, Color color) =>
         new() { UnderlineShape = shape, UnderlineColor = color };

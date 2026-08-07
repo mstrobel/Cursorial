@@ -4,6 +4,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Text;
 
@@ -153,7 +154,7 @@ public class ShadowedFontTests
         var shadowed = new ShadowedFont(font, offset: (1, 0), shadowStyle: shadowStyle);
         var buffer = new CellBuffer(5, 1);
 
-        shadowed.Paint(buffer, 0, 0, "X", fgStyle);
+        shadowed.Paint(buffer, 0, 0, "X", PartialStyle.FromInk(fgStyle));
 
         // Glyph at column 0 wins (painted last with foreground style).
         Assert.Equal("X", buffer[0, 0].Grapheme);
@@ -171,6 +172,6 @@ public class ShadowedFontTests
         var shadowed = new ShadowedFont(FigletFonts.Mini);
         var buffer = new CellBuffer(10, 5);
 
-        Assert.Equal(Size.Empty, shadowed.Paint(buffer, 0, 0, "", CellStyle.Default));
+        Assert.Equal(Size.Empty, shadowed.Paint(buffer, 0, 0, "", default(PartialStyle)));
     }
 }

@@ -1,7 +1,3 @@
-// xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine and
-// the awaited dialog tasks finish on pure (non-UI) continuations, so a bounded Wait cannot deadlock.
-#pragma warning disable xUnit1031
-
 using System.Text;
 
 using Cursorial.Input;
@@ -64,12 +60,16 @@ public sealed class TaskDialogTests
         return text.ToString();
     }
 
-    /// <summary>Pumps the host idle, then waits out the dialog task's pure (non-UI) mapping tail.</summary>
+    /// <summary>
+    /// Pumps the host idle, then keeps pumping while it waits out the dialog task's tail — a dialog
+    /// task may resume back ON the UI thread (a dispatcher-posted continuation that runs only in a
+    /// frame), so blocking the UI thread here would deadlock until the deadline. See
+    /// <see cref="HeadlessPump"/>.
+    /// </summary>
     private static TResult Complete<TResult>(UIHeadlessHost host, Task<TResult> task)
     {
         Assert.True(host.RunUntilIdle());
-        Assert.True(task.Wait(TimeSpan.FromSeconds(5)), "the dialog task did not complete");
-        return task.Result;
+        return HeadlessPump.WaitForResult(host, task, "the dialog task");
     }
 
     // ── Rendering ────────────────────────────────────────────────────────────────────────────────

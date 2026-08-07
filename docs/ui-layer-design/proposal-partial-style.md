@@ -1021,14 +1021,14 @@ The `Toggle` this section originally reached for is available (`WithToggled`) an
 `inverse` is a whole-run property the presenter already knows, so a forced set/clear is both
 sufficient and more predictable than a per-cell flip.
 
-### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites)
+### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites) — ✅ MIGRATED
 
 ```csharp
 // :573   baseStyle.Attributes ^ TextAttributes.Inverse                         ✅ MIGRATED
 PartialStyle.Toggle(TextAttributes.Inverse)
 
 // :541   .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse)
-//                                                                             ❓ OPEN QUESTION — see below
+//                                                                             ✅ MIGRATED — see below
 noColor ? PartialStyle.Set(attr.Flags) : PartialStyle.Set(attr.Flags).Clearing(TextAttributes.Inverse)
 
 // :505   CellStyle.Default.WithAttributes(TextAttributes.Inverse)   ← "delta" faked via Default
@@ -1051,19 +1051,44 @@ their own:
   question there turned out to be *which attributes may spread onto cells nobody inked*, which is what
   `FillAttributes` answers.
 
-**The third is an open question, not a pending task.** `ResolveLineBaseStyle` is not obviously a
-migration target at all. It does not modify anybody's cells: it establishes the line's GROUND STATE, the
-style every run and every fill on that line is then a delta against. By the ownership rule this document
-keeps arriving at — an operation that owns its cells takes a whole `CellStyle`, one that modifies cells
-somebody else wrote takes a delta — a ground state is the definitional case for the whole style. Its
-`WithAttributes` is not algebra faked through a sentinel; it is a constructor writing the one field it
-owns.
+**The third has landed too, and the argument that decided it is worth keeping.** This entry recorded
+`ResolveLineBaseStyle` as an OPEN QUESTION and leaned against migrating: it does not modify anybody's
+cells, it establishes the line's GROUND STATE — the style every run and every fill on that line is then
+a delta against — and by the ownership rule this document keeps arriving at (an operation that owns its
+cells takes a whole `CellStyle`, one that modifies cells somebody else wrote takes a delta) a ground
+state is the definitional case for the whole style.
 
-The counter-argument is that `noColor ? attr.Flags : attr.Flags & ~Inverse` really is a hand-rolled mask,
-and that the presenter would read better if the line's ground state were assembled from the element's
-value sources the §11.6 way. That is a *derivation* question, though, not a *representation* one. Left
-open, and deliberately not migrated: converting it would turn a value into a delta with no second
-operand, which is the shape §5's opening argument warns about in the other direction.
+That argument is sound and it is not decisive, because it answers the wrong question. **A `CellStyle` can
+carry only a RESOLVED `Color`, so a line base built as one can never be brushed.** The ownership rule
+says the base MAY own its cells; it does not say the base must be colour-resolved. Capability wins over
+the rule here, and the rule survives intact for every site where the two do not collide.
+
+What the value form actually cost was a PARALLEL PARAMETER. The element's foreground brush could not ride
+in the base, so it travelled beside it — `IBrush? foreground` threaded through `RenderSingleLine`,
+`DrawFaceLine`, `DrawLineRun` and the presenter's private `DrawText`, with every signature between the
+resolve and the paint carrying both halves of one thing. `ResolveLineBaseStyle` now returns a
+`StyleDeltaTemplate` with the brush in it, resolved ONCE per render pass and handed down as a single
+carrier; three signatures shed the second parameter, and the base stopped being resolved once per lane
+(the two-lane divergence that produced three separate invisible-selection defects in this file is now
+structurally unavailable, not merely watched for).
+
+Two consequences worth recording:
+
+- **The unpack lands at the `RenderContext` boundary, and that is the right cut.** `DrawText` and
+  `DrawGlyphText` already take a brush plus a whole style and already do the per-cell sampling, so the
+  base's brush channel goes in one argument and its value channels — via a small
+  `ResolveLineBaseValue` that drops the foreground precisely because the brush carries it — go in the
+  other. Nothing wanted pushing deeper; the primitives were already delta-shaped where it mattered.
+- **The parallel parameter was itself producing a defect.** The private `DrawText` branched on "is
+  there a brush?", and its no-brush leg called the *colour* overload with a hardcoded `null` background.
+  `DrawText` writes its background brush over the base style's, so that leg repainted a selected run's
+  highlight as `Transparent`: a fourth invisible selection, this one caused by the split carrier rather
+  than by the selection rule. With one carrier there is no leg — an absent brush is `Brushes.Default`,
+  which samples to the same `Color.Default` the colour overload substitutes and keeps the background.
+
+The remaining observation from the open-question entry still stands and is still not a representation
+question: the line's ground state would read better assembled from the element's value sources the §11.6
+way. That is a *derivation* change, tracked there.
 
 ### 11.3 Glyph paint: stamp versus box (§5f) — ✅ MIGRATED
 

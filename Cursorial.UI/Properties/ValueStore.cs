@@ -193,7 +193,20 @@ internal sealed class ValueStore
         {
             // Un-animated: the overwrite IS the base (M121) — and dies with its lane (M123) or on
             // the lane's next re-emit (M122). The winning-base channel sees it (A20 seam).
-            var oldBaseValue = entry.BasePriority != BindingPriority.Unset ? entry.BaseValue : metadata.DefaultValue;
+            //
+            // The Unset arm is a storeless-tier baseline like every other, so it must answer what a
+            // READ would answer — the inherited walk-up, else the (possibly themed) Default tier —
+            // which is exactly GetUnsetFallback (M96/M302; the bca71650 correction applied to the one
+            // Default-tier exit it did not reach). No RESTING state can take it: the guard above sends
+            // an Unset effective lane to the local mouth, and an un-animated entry has its effective
+            // and base lanes assigned together at every mutation site, so an Unset base implies an
+            // Unset effective. It IS taken re-entrantly (PD18) — a winning-base observer that writes
+            // from inside Reevaluate's retraction window, where the base is already Unset and the
+            // effective has not caught up (M307). Answered raw, that write reported null as the old
+            // base of a themed brush and skipped the inherited walk entirely.
+            var oldBaseValue = entry.BasePriority != BindingPriority.Unset
+                ? entry.BaseValue
+                : GetUnsetFallback(property, metadata, out _); // inherited-or-default (M96 shape)
             entry.BaseValue = coerced;
             entry.BaseIsCoerced = wasCoerced;
             if (entry.BasePriority == BindingPriority.LocalValue)

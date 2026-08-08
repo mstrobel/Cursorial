@@ -15,6 +15,13 @@ namespace Cursorial.Tests.UI;
 /// inheritance included — beats it. The lazy read keeps provenance honest (still Default) and the
 /// theme-origin catch-all repaints default-tier consumers (they own no subscription to pulse).
 /// </summary>
+/// <remarks>
+/// This file also holds precedence-matrix <b>§21 (M302–M307)</b>, the tier's normative rows — the one
+/// exception to the matrix's file-per-section rule, because the §0.1 fixture's <c>Host</c> is a bare
+/// <c>UIObject</c> and <c>DefaultResourceKey</c> resolution needs a <c>UIElement</c> with a resource
+/// chain. The headless host is also what lets the rows assert the FRAME, which is the whole point: the
+/// failure mode is a property and a frame that disagree.
+/// </remarks>
 public class DefaultResourceKeyTests
 {
     private sealed class Probe : UIElement
@@ -25,7 +32,7 @@ public class DefaultResourceKeyTests
                 new PropertyMetadata<string?>("fallback") { DefaultResourceKey = "cursorial.tests.no-such-key" });
     }
 
-    [Fact]
+    [Fact] // M302 (resolution at rest)
     public void BareTextBlock_ResolvesThemeTextBrush_AtDefaultTier()
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
@@ -40,7 +47,7 @@ public class DefaultResourceKeyTests
         Assert.Equal(BindingPriority.Default, text.GetValueSource(TextBlock.ForegroundProperty).Priority);
     }
 
-    [Fact]
+    [Fact] // M302 (the ladder above the tier is unchanged)
     public void InheritedValue_BeatsTheThemeReactiveDefault()
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
@@ -56,7 +63,7 @@ public class DefaultResourceKeyTests
         Assert.Equal(BindingPriority.Inherited, text.GetValueSource(TextBlock.ForegroundProperty).Priority);
     }
 
-    [Fact]
+    [Fact] // M302 (unresolvable key ⇒ the registered default, PD8)
     public void UnresolvableKey_FallsBackToTheMetadataDefault()
     {
         using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
@@ -199,6 +206,9 @@ public class DefaultResourceKeyTests
     /// <summary>A local write that is neither the themed default nor <see cref="BrushProbe.NullSentinel"/>.</summary>
     private static readonly SolidColorBrush Marker = new(Color.FromRgb(200, 30, 90));
 
+    /// <summary>The re-entrant overwrite — distinct from <see cref="Marker"/> and from the themed brush.</summary>
+    private static readonly SolidColorBrush Overwrite = new(Color.FromRgb(11, 220, 140));
+
     private static UIHeadlessHost NewHost()
         => UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
 
@@ -226,7 +236,7 @@ public class DefaultResourceKeyTests
     /// no-op, the notification and <c>AffectsRender</c> never fire — and the entry has ALREADY been
     /// written, so the element is silently null while the frame still shows the theme.
     /// </summary>
-    [Fact]
+    [Fact] // M304
     public void WritingNullOverAThemedDefault_NotifiesAndRepaints()
     {
         using var host = NewHost();
@@ -251,7 +261,7 @@ public class DefaultResourceKeyTests
     /// <c>GetUnsetFallback</c> — answered raw it equals the retracted local, the promotion looks
     /// equal-valued and returns silently, and the frame stays on the withdrawn value forever.
     /// </summary>
-    [Fact]
+    [Fact] // M305
     public void ClearingBackToAThemedDefault_NotifiesAndRepaints()
     {
         using var host = NewHost();
@@ -282,7 +292,7 @@ public class DefaultResourceKeyTests
     /// <c>metadata.DefaultValue</c>. Anything that caches the payload (a <c>Changed</c> callback, an
     /// animation handoff snapshot) reads this, not the property.
     /// </summary>
-    [Fact]
+    [Fact] // M303
     public void LeavingAThemedDefault_CarriesTheThemedBrushAsTheOldValue()
     {
         using var host = NewHost();
@@ -299,6 +309,120 @@ public class DefaultResourceKeyTests
         Assert.Same(Marker, recorder.NewValue);
         Assert.Equal(BindingPriority.LocalValue, recorder.Priority);
         Assert.Equal(Marker.Color, host.GetCell(0, 0).Style.Background);
+    }
+
+    /// <summary>
+    /// <b>Both directions, end to end.</b> The M100 pair (<c>Default→Local→Default</c>) at the themed
+    /// tier, run twice: once with an ordinary brush, once with the RAW <c>metadata.DefaultValue</c>
+    /// (<see langword="null"/>) as the written value. The second round is the discriminator — a
+    /// raw-answered baseline makes BOTH of its steps compare equal and stay silent while the effective
+    /// value and the frame move underneath.
+    /// </summary>
+    [Fact] // M306
+    public void SourceTransitions_AcrossTheThemedTier_BothDirections()
+    {
+        using var host = NewHost();
+        var probe = ShowProbe(host, out var themed, out var themedInk);
+
+        var recorder = new BrushRecorder();
+        using var subscription = probe.AddObserver(BrushProbe.FillProperty, recorder);
+
+        Assert.Equal(BindingPriority.Default, probe.GetValueSource(BrushProbe.FillProperty).Priority);
+
+        probe.SetValue(BrushProbe.FillProperty, Marker);
+        host.RunUntilIdle();
+        Assert.Equal(BindingPriority.LocalValue, probe.GetValueSource(BrushProbe.FillProperty).Priority);
+        Assert.Equal(1, recorder.Count);
+        Assert.Same(themed, recorder.OldValue);
+        Assert.Same(Marker, recorder.NewValue);
+        Assert.Equal(Marker.Color, host.GetCell(0, 0).Style.Background);
+
+        probe.ClearValue(BrushProbe.FillProperty);
+        host.RunUntilIdle();
+        Assert.Equal(BindingPriority.Default, probe.GetValueSource(BrushProbe.FillProperty).Priority);
+        Assert.Equal(2, recorder.Count);
+        Assert.Same(Marker, recorder.OldValue);
+        Assert.Same(themed, recorder.NewValue);
+        Assert.Equal(themedInk, host.GetCell(0, 0).Style.Background);
+
+        probe.SetValue(BrushProbe.FillProperty, null); // the raw default, written as a VALUE (not CV)
+        host.RunUntilIdle();
+        Assert.Equal(BindingPriority.LocalValue, probe.GetValueSource(BrushProbe.FillProperty).Priority);
+        Assert.Equal(3, recorder.Count);
+        Assert.Same(themed, recorder.OldValue);
+        Assert.Null(recorder.NewValue);
+        Assert.Equal(BrushProbe.NullSentinel, host.GetCell(0, 0).Style.Background);
+
+        probe.ClearValue(BrushProbe.FillProperty);
+        host.RunUntilIdle();
+        Assert.Equal(BindingPriority.Default, probe.GetValueSource(BrushProbe.FillProperty).Priority);
+        Assert.Equal(4, recorder.Count);
+        Assert.Null(recorder.OldValue);
+        Assert.Same(themed, recorder.NewValue);
+        Assert.Equal(themedInk, host.GetCell(0, 0).Style.Background);
+    }
+
+    /// <summary>
+    /// A winning-base observer (A20) that issues exactly ONE re-entrant <c>SetCurrentValue</c> from its
+    /// first delivery — the PD18 synchronous-recursion contract exercised at the one seam where the
+    /// entry is mid-update.
+    /// </summary>
+    private sealed class ReentrantOverwriter(UIObject target) : IValueObserver<IBrush?>
+    {
+        private bool _fired;
+
+        public List<(IBrush? Old, IBrush? New)> BaseDeliveries { get; } = [];
+
+        void IValueObserver<IBrush?>.OnPropertyChanged(
+            UIObject source, UIProperty property, IBrush? oldValue, IBrush? newValue, BindingPriority priority)
+        {
+        }
+
+        void IValueObserver<IBrush?>.OnBaseValueChanged(
+            UIObject source, UIProperty property, IBrush? oldBaseValue, IBrush? newBaseValue, bool isAnimated)
+        {
+            BaseDeliveries.Add((oldBaseValue, newBaseValue));
+
+            if (_fired)
+                return;
+
+            _fired = true;
+            target.SetCurrentValue(BrushProbe.FillProperty, Overwrite);
+        }
+    }
+
+    /// <summary>
+    /// <b>The re-entrant seam.</b> <c>SetCurrentValue</c>'s un-animated arm carries its own
+    /// <c>oldBaseValue</c> baseline, and its <c>BasePriority == Unset</c> branch is unreachable from any
+    /// RESTING state (the method's own guard routes an <c>Unset</c> effective lane to the local mouth, and
+    /// for an un-animated entry the effective and base lanes are assigned together at every mutation site).
+    /// It is reachable from inside <c>Reevaluate</c>'s retraction window: the base lane has already been
+    /// set to <c>Unset</c> when the A20 winning-base channel fires, and the effective lane has not caught
+    /// up — so a base observer that writes (PD18) lands in exactly that branch. The baseline it reports
+    /// must be the same READ every other Default-tier exit answers: the themed brush, never the raw
+    /// <c>metadata.DefaultValue</c> (<see langword="null"/> here).
+    /// </summary>
+    [Fact] // M307
+    public void ReentrantSetCurrentValueDuringABaseRetraction_BaselinesOnTheThemedBrush()
+    {
+        using var host = NewHost();
+        var probe = ShowProbe(host, out var themed, out _);
+
+        probe.SetValue(BrushProbe.FillProperty, Marker);
+        host.RunUntilIdle();
+
+        var observer = new ReentrantOverwriter(probe);
+        using var subscription = probe.AddObserver(
+            BrushProbe.FillProperty, observer, new ObserverOptions { IncludeBaseChanges = true });
+
+        probe.ClearValue(BrushProbe.FillProperty); // retracts the only contribution ⇒ base goes Unset
+        host.RunUntilIdle();
+
+        Assert.Equal(2, observer.BaseDeliveries.Count);
+        Assert.Same(Marker, observer.BaseDeliveries[0].Old);  // the retraction: the local value …
+        Assert.Same(themed, observer.BaseDeliveries[0].New);  // … yielding to the themed default
+        Assert.Same(themed, observer.BaseDeliveries[1].Old);  // the re-entrant overwrite REPLACES the themed brush …
+        Assert.Same(Overwrite, observer.BaseDeliveries[1].New);
     }
 
     private static Color ForegroundOfGlyph(UIHeadlessHost host, string grapheme)

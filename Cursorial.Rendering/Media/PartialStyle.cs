@@ -41,6 +41,41 @@ public readonly record struct PartialStyle
 {
     public static readonly PartialStyle Default = default;
 
+    /// <summary>
+    /// The default text shadow: half-alpha black ink that fills nothing, composited MULTIPLY.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A delta rather than a whole <see cref="CellStyle"/>, and it lives here rather than beside
+    /// <see cref="CellStyle.Default"/>, for two reasons that are really one. A shadow has an opinion about
+    /// three colour channels and about nothing else — a whole style would have had to state the attribute
+    /// word, the underline shape and the hyperlink as well, and its one consumer
+    /// (<c>ShadowedFont</c>) had to hand-patch those channels back off the base before it could composite,
+    /// because a value type cannot say "leave this one alone". Absence says it here.
+    /// </para>
+    /// <para>
+    /// And a shadow's <see cref="Mode"/> is part of what a shadow IS — it darkens what it falls on — so it
+    /// belongs to the constant. A <see cref="CellStyle"/> had nowhere to put one, which is why the same
+    /// consumer used to recover the mode by comparing the style it held against this constant's old
+    /// whole-style form: any caller who happened to pass an equal style silently inherited MULTIPLY too.
+    /// </para>
+    /// <para>
+    /// <see cref="Background"/> is <see cref="Color.Transparent"/> — "a shadow never fills" — which is
+    /// weaker than absence would be here: absent means the base's background flows through unchallenged,
+    /// transparent means the shadow states one and it composites away to the same thing. The stated form
+    /// keeps this usable as a delta over a nonempty background without also boxing it.
+    /// </para>
+    /// </remarks>
+    public static PartialStyle DefaultShadow { get; } = new()
+    {
+        Foreground     = ShadowInk,
+        UnderlineColor = ShadowInk,
+        Background     = Color.Transparent,
+        Mode           = BlendingModes.Multiply,
+    };
+
+    private static Color ShadowInk => Color.FromRgba(0, 0, 0, 127);
+
     public Color?     Foreground     { get; init; }
     public Color?     Background     { get; init; }
     public Color?     UnderlineColor { get; init; }

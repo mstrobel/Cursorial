@@ -798,15 +798,16 @@ public sealed class CellBuffer : ICellSurface
     private CellStyle BlendStyle(in CellStyle source, in CellStyle backdrop)
         => source.BlendOver(backdrop, CurrentBlendingMode);
 
+    /// <remarks>
+    /// The <see cref="Fill(in Cell)"/> paths hoist <see cref="CurrentBlendingMode"/> out of their loops, so
+    /// they need the mode passed in — that is the ONLY reason this overload exists. The rule itself lives in
+    /// <see cref="CellStyle.BlendOver"/> and is not restated here: a hand-copy of it drifted off the guarded
+    /// underline rule and left <see cref="Set"/> and <see cref="Fill(in Cell)"/> compositing underline colour
+    /// differently. <c>CellBufferBlendingTests.SetAndFill_ResolveTheSameSourceOverTheSameBackdropIdentically</c>
+    /// pins the two paths together.
+    /// </remarks>
     private static CellStyle BlendStyle(in CellStyle source, in CellStyle backdrop, IBlendingMode mode)
-    {
-        return source with
-               {
-                   Foreground = Color.Composite(source.Foreground, backdrop.Background, mode),
-                   Background = source.Background != Color.Default ? Color.Composite(source.Background, backdrop.Background, mode) : backdrop.Background,
-                   UnderlineColor = Color.Composite(source.UnderlineColor, backdrop.UnderlineColor, mode)
-               };
-    }
+        => source.BlendOver(backdrop, mode);
 
     // ---- View factories -------------------------------------------------------------------
 

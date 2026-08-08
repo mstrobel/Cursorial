@@ -291,4 +291,155 @@ public class CellBufferBlendingTests
 
         Assert.Equal(explicitCell, buf[0, 0]);
     }
+
+    // ---- Set and Fill apply ONE blending rule ----------------------------------------------
+
+    private const string Glyph = "x";
+
+    private static readonly Color Red = Color.FromRgb(255, 0, 0);
+    private static readonly Color Green = Color.FromRgb(0, 255, 0);
+    private static readonly Color Blue = Color.FromRgb(0, 0, 255);
+    private static readonly Color Grey = Color.FromRgb(128, 128, 128);
+    private static readonly Color TranslucentRed = Color.FromRgba(255, 0, 0, 128);
+
+    /// <summary>
+    /// Resolve <paramref name="source"/> over <paramref name="backdrop"/> twice — once through
+    /// <see cref="CellBuffer.Set"/>, once through <see cref="CellBuffer.Fill(in Cell)"/> — and hand back
+    /// both stored cells. Identical buffer size, identical seeded backdrop (written through the indexer,
+    /// which does not blend), identical active mode, identical grapheme and kind: the ONLY thing that can
+    /// make the two differ is the blending rule each path applies. A non-blank grapheme keeps
+    /// <see cref="CellBuffer.Set"/> off its blank-rescue path, so both paths reduce to the blend alone.
+    /// </summary>
+    private static (Cell ViaSet, Cell ViaFill) BlendBothWays(CellStyle source, CellStyle backdrop, IBlendingMode mode)
+    {
+        var set = new CellBuffer(1, 1);
+        set[0, 0] = new Cell(Glyph, CellKind.Single, backdrop);
+        set.PushBlendingMode(mode);
+        set.Set(0, 0, Glyph, source);
+
+        var fill = new CellBuffer(1, 1);
+        fill[0, 0] = new Cell(Glyph, CellKind.Single, backdrop);
+        fill.PushBlendingMode(mode);
+        fill.Fill(new Cell(Glyph, CellKind.Single, source));
+
+        return (set[0, 0], fill[0, 0]);
+    }
+
+    /// <summary>
+    /// THE invariant: the same source over the same backdrop under the same blending mode must produce
+    /// the same cell through <see cref="CellBuffer.Set"/> as through <see cref="CellBuffer.Fill(in Cell)"/>.
+    /// One rule — <see cref="CellStyle.BlendOver"/> — encoded once. The two paths formerly held private
+    /// copies of it that drifted apart on the underline colour; every channel is asserted here, not just
+    /// the one that drifted, so a copy re-introduced anywhere in the style is caught.
+    /// </summary>
+    [Fact]
+    public void SetAndFill_ResolveTheSameSourceOverTheSameBackdropIdentically()
+    {
+        CellStyle[] backdrops =
+        [
+            CellStyle.Default,
+            CellStyle.Default.WithBackground(Blue).WithUnderlineColor(Green),
+            CellStyle.Default.WithBackground(Grey).WithUnderlineColor(Red)
+                             .WithAttributes(TextAttributes.Underline),
+            CellStyle.Transparent
+        ];
+
+        CellStyle[] sources =
+        [
+            CellStyle.Default.WithForeground(Grey),
+            CellStyle.Default.WithForeground(Grey).WithBackground(Grey),
+            CellStyle.Default.WithUnderlineColor(TranslucentRed).WithUnderlineStyle(UnderlineStyle.Curly),
+            CellStyle.Default.WithAttributes(TextAttributes.Underline),   // underlined, colour left Default
+            CellStyle.Default.WithForeground(Red).WithBackground(Green).WithUnderlineColor(Blue)
+                             .WithAttributes(TextAttributes.Underline | TextAttributes.Bold),
+            CellStyle.Transparent
+        ];
+
+        IBlendingMode[] modes =
+        [
+            BlendingModes.Multiply, BlendingModes.Screen, BlendingModes.Lighten, BlendingModes.Plus
+        ];
+
+        foreach (var mode in modes)
+        {
+            foreach (var backdrop in backdrops)
+            {
+                foreach (var source in sources)
+                {
+                    var (viaSet, viaFill) = BlendBothWays(source, backdrop, mode);
+                    string where = $"mode={mode.GetType().Name}, source={source}, backdrop={backdrop}";
+
+                    Assert.True(viaSet.Style.Foreground == viaFill.Style.Foreground,
+                                $"Foreground disagrees: Set={viaSet.Style.Foreground}, Fill={viaFill.Style.Foreground} — {where}");
+                    Assert.True(viaSet.Style.Background == viaFill.Style.Background,
+                                $"Background disagrees: Set={viaSet.Style.Background}, Fill={viaFill.Style.Background} — {where}");
+                    Assert.True(viaSet.Style.UnderlineColor == viaFill.Style.UnderlineColor,
+                                $"UnderlineColor disagrees: Set={viaSet.Style.UnderlineColor}, Fill={viaFill.Style.UnderlineColor} — {where}");
+                    Assert.True(viaSet.Style.Attributes == viaFill.Style.Attributes,
+                                $"Attributes disagree: Set={viaSet.Style.Attributes}, Fill={viaFill.Style.Attributes} — {where}");
+                    Assert.True(viaSet.Style.UnderlineStyle == viaFill.Style.UnderlineStyle,
+                                $"UnderlineStyle disagrees: Set={viaSet.Style.UnderlineStyle}, Fill={viaFill.Style.UnderlineStyle} — {where}");
+                    Assert.True(viaSet.Style.Hyperlink == viaFill.Style.Hyperlink,
+                                $"Hyperlink disagrees: Set={viaSet.Style.Hyperlink}, Fill={viaFill.Style.Hyperlink} — {where}");
+                    Assert.True(viaSet == viaFill, $"cells disagree: Set={viaSet}, Fill={viaFill} — {where}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The guard <see cref="CellStyle.BlendOver"/> puts on the underline colour. A source that names no
+    /// underline colour (<see cref="Color.Default"/>) AND carries no <see cref="TextAttributes.Underline"/>
+    /// has no underline opinion at all, so the backdrop's underline colour survives untouched. Set the
+    /// attribute and the source now HAS an underline, so its (defaulted) colour is what resolves and the
+    /// backdrop's is dropped. Those are different branches; <see cref="CellBuffer.Fill(in Cell)"/>'s private
+    /// copy of the rule had no guard and took neither.
+    /// </summary>
+    [Fact]
+    public void Fill_UnderlineColourGuard_SeparatesNoUnderlineFromDefaultColouredUnderline()
+    {
+        var backdrop = CellStyle.Default.WithBackground(Blue).WithUnderlineColor(Green);
+
+        var bare = CellStyle.Default.WithForeground(Grey);
+        var underlined = CellStyle.Default.WithForeground(Grey).WithAttributes(TextAttributes.Underline);
+
+        var (setBare, fillBare) = BlendBothWays(bare, backdrop, BlendingModes.Multiply);
+        var (setUnderlined, fillUnderlined) = BlendBothWays(underlined, backdrop, BlendingModes.Multiply);
+
+        // No underline anywhere in the source: nothing of its own to resolve, so the backdrop's colour is kept.
+        Assert.Equal(Green, setBare.Style.UnderlineColor);
+        Assert.Equal(Green, fillBare.Style.UnderlineColor);
+
+        // Underlined with a Default colour: the source DOES have an underline, so its Default resolves
+        // (Composite returns a non-RGB source verbatim) and the backdrop's colour is gone.
+        Assert.Equal(Color.Default, setUnderlined.Style.UnderlineColor);
+        Assert.Equal(Color.Default, fillUnderlined.Style.UnderlineColor);
+    }
+
+    /// <summary>
+    /// What the underline colour composites AGAINST. Cell compositing resolves a translucent colour against
+    /// what is physically behind the cell, and on a terminal cell that is the backdrop's BACKGROUND — an
+    /// underline colour sits in front of nothing. <see cref="CellBuffer.Fill(in Cell)"/>'s private copy of the
+    /// rule composited against the backdrop's UNDERLINE colour, which lands somewhere else entirely whenever
+    /// the two differ and the source's underline colour is translucent enough for the target to matter.
+    /// </summary>
+    [Fact]
+    public void Fill_TranslucentUnderlineColour_CompositesAgainstTheBackdropBackground()
+    {
+        var backdrop = CellStyle.Default.WithBackground(Blue).WithUnderlineColor(Green);
+        var source = CellStyle.Default.WithUnderlineColor(TranslucentRed)
+                                      .WithUnderlineStyle(UnderlineStyle.Curly)
+                                      .WithAttributes(TextAttributes.Underline);
+
+        var (viaSet, viaFill) = BlendBothWays(source, backdrop, BlendingModes.Multiply);
+
+        // Multiply((255,0,0) × (0,0,255)) = (0,0,0), then half-alpha over the blue backdrop → (0,0,127).
+        var againstBackground = Color.FromRgb(0, 0, 127);
+        // Had it composited against the backdrop's underline colour (green) it would land here instead.
+        var againstUnderlineColour = Color.FromRgb(0, 127, 0);
+
+        Assert.Equal(againstBackground, viaSet.Style.UnderlineColor);
+        Assert.Equal(againstBackground, viaFill.Style.UnderlineColor);
+        Assert.NotEqual(againstUnderlineColour, viaFill.Style.UnderlineColor);
+    }
 }

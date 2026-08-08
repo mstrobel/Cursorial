@@ -2,7 +2,7 @@ using Cursorial.Media;
 using Cursorial.Rendering.Imaging;
 
 // ReSharper disable InconsistentNaming
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Samples a decoded RGBA image at fractional pixel coordinates, shared by <see cref="ImageBrush"/> and

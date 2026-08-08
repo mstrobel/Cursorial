@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering.Media;
 

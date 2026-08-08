@@ -3,6 +3,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI;

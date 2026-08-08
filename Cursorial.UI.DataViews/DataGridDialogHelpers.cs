@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.DataViews.Shaping;
@@ -299,7 +300,7 @@ internal static class DataGridDialogHelpers
             panel.Children.Add(new TextBlock
             {
                 Text = new string('▒', Math.Max(1, end - start)),
-                Foreground = new Cursorial.Drawing.Media.SolidColorBrush(stops[i]),
+                Foreground = new SolidColorBrush(stops[i]),
             });
         }
         return panel;

@@ -1,6 +1,5 @@
 using System.Text;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Output;

@@ -1,8 +1,8 @@
+using Cursorial.Drawing;
 using Cursorial.Output;
-using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Drawing-side authoring sugar for brush-bearing rich text: declare a brush on a run while keeping

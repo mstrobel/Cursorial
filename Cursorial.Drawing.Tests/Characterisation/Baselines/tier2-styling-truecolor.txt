@@ -2042,14 +2042,14 @@ paint: bounds=0,0 24x3 returned=0,0 14x1 fragments=0
 == markup-indexed-colors ==
 desc: [fg=NNN] palette indices — a Palette-kind Color, which is NOT an RGB triple.
 paint: bounds=0,0 24x3 returned=0,0 13x1 fragments=0
-  r00 c00 S  "1" fg=@196 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "9" fg=@196 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "6" fg=@196 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "1" fg=#ff0000 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "9" fg=#ff0000 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "6" fg=#ff0000 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c03 S  " " fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "b" fg=. bg=@17 at=. ul=Single uc=. hl=.
-  r00 c05 S  "g" fg=. bg=@17 at=. ul=Single uc=. hl=.
-  r00 c06 S  "1" fg=. bg=@17 at=. ul=Single uc=. hl=.
-  r00 c07 S  "7" fg=. bg=@17 at=. ul=Single uc=. hl=.
+  r00 c04 S  "b" fg=. bg=#00005f at=. ul=Single uc=. hl=.
+  r00 c05 S  "g" fg=. bg=#00005f at=. ul=Single uc=. hl=.
+  r00 c06 S  "1" fg=. bg=#00005f at=. ul=Single uc=. hl=.
+  r00 c07 S  "7" fg=. bg=#00005f at=. ul=Single uc=. hl=.
   r00 c08 S  " " fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c09 S  "z" fg=@0 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  "e" fg=@0 bg=#1e1e2e at=. ul=Single uc=. hl=.

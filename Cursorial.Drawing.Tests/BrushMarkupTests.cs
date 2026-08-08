@@ -1,7 +1,7 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -97,7 +97,7 @@ public class BrushMarkupTests
         Assert.True(MarkupColor.TryParse("red", out var red));
         Assert.Equal(Color.FromPalette(1), red);
         Assert.True(MarkupColor.TryParse("200", out var pal));
-        Assert.Equal(Color.FromPalette(200), pal);
+        Assert.Equal(ColorPalette.Ansi256[200], pal);
         Assert.False(MarkupColor.TryParse("notacolor", out _));
         Assert.False(MarkupColor.TryParse("", out _));
         Assert.False(MarkupColor.TryParse("300", out _));   // palette out of range

@@ -2,9 +2,9 @@
 // affine, so the test body IS the UI thread and RunUntilIdle must block on it.
 #pragma warning disable xUnit1031
 
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.Text;
 using Cursorial.UI;

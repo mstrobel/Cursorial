@@ -1,5 +1,5 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 
@@ -112,7 +112,7 @@ namespace GenApp { public partial class InitView : StackPanel { public InitView(
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         // The init-only Color is set in the construction object initializer (a post-construction `.Color =` is CS8852).
-        Assert.Contains("new global::Cursorial.Drawing.Media.SolidColorBrush { Color =", lowered);
+        Assert.Contains("new global::Cursorial.Rendering.Media.SolidColorBrush { Color =", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));

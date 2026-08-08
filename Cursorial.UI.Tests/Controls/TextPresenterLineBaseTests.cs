@@ -2,13 +2,10 @@
 // affine — an async test method would resume off the UI thread and trip the affinity asserts.
 #pragma warning disable xUnit1031
 
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
-using Cursorial.Terminal;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

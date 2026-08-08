@@ -1,9 +1,9 @@
 using System.Windows.Input;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

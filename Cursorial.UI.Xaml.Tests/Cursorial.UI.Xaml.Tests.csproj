@@ -22,8 +22,8 @@
     <ItemGroup>
         <!-- Named exactly as the generator's embed target would (AssemblyName.dotted-path) — the
              fixture behind the cursorial://-scheme provider tests. -->
-        <EmbeddedResource Include="TestData\EmbeddedProbe.xaml"
-                          LogicalName="TestData.EmbeddedProbe.xaml" />
+        <CursorialXaml Include="TestData\EmbeddedProbe.xaml"
+                       LogicalName="TestData.EmbeddedProbe.xaml" />
     </ItemGroup>
 
     <ItemGroup>
@@ -32,5 +32,11 @@
         <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
         <ProjectReference Include="..\Cursorial.UI.Hosting.Headless\Cursorial.UI.Hosting.Headless.csproj" />
     </ItemGroup>
+
+    <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+
+    <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->
+    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
 
 </Project>

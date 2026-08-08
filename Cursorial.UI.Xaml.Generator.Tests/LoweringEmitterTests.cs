@@ -1,8 +1,8 @@
 using System.Reflection;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -808,7 +808,7 @@ namespace TestApp { public partial class StaticView : Button { public StaticView
 
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
-        Assert.Contains("global::Cursorial.Drawing.Media.Brushes.TrueBlack", lowered); // x:Static resolved
+        Assert.Contains("global::Cursorial.Rendering.Media.Brushes.TrueBlack", lowered); // x:Static resolved
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));

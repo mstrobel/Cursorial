@@ -1,6 +1,7 @@
+using Cursorial.Drawing;
 using Cursorial.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A gradient whose color sweeps around a center — a full 360° sweep clockwise from 12 o'clock,

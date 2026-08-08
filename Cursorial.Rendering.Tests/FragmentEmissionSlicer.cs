@@ -8,9 +8,9 @@ namespace Cursorial.Tests.Rendering;
 /// and payload from the cell pass around it.
 /// </summary>
 /// <remarks>
-/// Lifted out of <c>FrameRendererDefaultColorTests</c> so the text-pipeline characterisation harness
+/// Lifted out of <c>FrameRendererDefaultColorTests</c> so the text-pipeline characterization harness
 /// in <c>Cursorial.Drawing.Tests</c> (which compiles this file by link) slices brackets exactly the way the
-/// existing default-colour tests do, rather than restating the rule a second time.
+/// existing default-color tests do, rather than restating the rule a second time.
 /// </remarks>
 internal static class FragmentEmissionSlicer
 {
@@ -48,7 +48,7 @@ internal static class FragmentEmissionSlicer
 
     /// <summary>
     /// The bytes of the one fragment emission in <paramref name="output"/>. Fails the calling test when no
-    /// bracket is present or it is left unclosed.
+    /// bracket is present, or it is left unclosed.
     /// </summary>
     public static string Single(string output)
     {

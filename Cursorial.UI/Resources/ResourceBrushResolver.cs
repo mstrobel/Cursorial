@@ -1,6 +1,9 @@
-using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.UI.Themes;
+
+using R = Cursorial.UI.ResourceExtensions;
 
 // ReSharper disable CheckNamespace
 
@@ -16,23 +19,69 @@ namespace Cursorial.UI;
 /// </summary>
 public static class ResourceBrushResolver
 {
+    private static readonly Dictionary<byte, string> Ansi16ThemeKeys =
+        new()
+        {
+            { 0, ThemeKeys.AnsiBlack },
+            { 1, ThemeKeys.AnsiRed },
+            { 2, ThemeKeys.AnsiGreen },
+            { 3, ThemeKeys.AnsiYellow },
+            { 4, ThemeKeys.AnsiBlue },
+            { 5, ThemeKeys.AnsiMagenta },
+            { 6, ThemeKeys.AnsiCyan },
+            { 7, ThemeKeys.AnsiWhite },
+            { 8, ThemeKeys.AnsiLightBlack },
+            { 9, ThemeKeys.AnsiLightRed },
+            { 10, ThemeKeys.AnsiLightGreen },
+            { 11, ThemeKeys.AnsiLightYellow },
+            { 12, ThemeKeys.AnsiLightBlue },
+            { 13, ThemeKeys.AnsiLightMagenta },
+            { 14, ThemeKeys.AnsiLightCyan },
+            { 15, ThemeKeys.AnsiLightWhite }
+        };
+
+    private static readonly Func<string, object?> ApplicationLookup =
+        s => R.WalkApplicationTail(s, R.ResolveVariant(null), null, out var o) ? o : null;
+
+    private static Func<string, object?> ElementLookup(UIElement scope)
+        => s => scope.TryFindResource(s, out var resolved) ? resolved : null;
+
+    /// <summary>A brush resolver that walks the application tail.</summary>
+    public static Func<string, object?> ForApplication { get; } = CreateCore(ApplicationLookup);
+
     /// <summary>Creates a brush resolver over <paramref name="scope"/>'s chain.</summary>
     public static Func<string, object?> Create(UIElement scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        return CreateCore(ElementLookup(scope));
+    }
+
+    private static Func<string, object?> CreateCore(Func<string, object?> innerLookup)
+    {
+        ArgumentNullException.ThrowIfNull(innerLookup);
+
         var inline = BrushMarkup.Resolver();
 
         return value =>
-        {
-            // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
-            if (inline(value) is { } parsed)
-                return parsed;
+               {
+                   // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
+                   if (inline(value) is BrushedStyle { Foreground: {} f } brushedStyle)
+                   {
+                       if (f is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i and < 16 } } &&
+                           Ansi16ThemeKeys.TryGetValue(i, out var themeKey) &&
+                           innerLookup(themeKey) is IBrush themeBrush)
+                       {
+                           brushedStyle = brushedStyle with { Foreground = themeBrush };
+                       }
 
-            // 2. A bare resource name resolved through the element's chain to an IBrush.
-            if (scope.TryFindResource(value, out var resolved) && resolved is IBrush brush)
-                return new BrushedStyle(brush);
+                       return brushedStyle;
+                   }
 
-            return null; // unknown — the parser raises "Unrecognized brush"
-        };
+                   // 2. A bare resource name resolved through the element's chain to an IBrush.
+                   if (innerLookup(value) is IBrush brush)
+                       return new BrushedStyle(brush);
+
+                   return null; // unknown — the parser raises "Unrecognized brush"
+               };
     }
 }

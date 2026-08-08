@@ -13,15 +13,7 @@ namespace Cursorial.Tests.Rendering.Media;
 /// </summary>
 public class StyleDeltaTemplateTests
 {
-    /// <summary>A brush is all this file needs of one — <c>Cursorial.Drawing</c> sits above this assembly.</summary>
-    private sealed class UniformBrush(Color color) : IBrush
-    {
-        public bool IsUniform => true;
-
-        public Color ColorAt(int column, int row, Rect bounds) => color;
-    }
-
-    private static readonly IBrush Ink = new UniformBrush(Color.FromRgb(200, 30, 40));
+    private static readonly IBrush Ink = new SolidColorBrush(Color.FromRgb(200, 30, 40));
 
     /// <summary>
     /// A shapeless underline states the FLAG and nothing else, so an earlier shape stands. "No opinion on

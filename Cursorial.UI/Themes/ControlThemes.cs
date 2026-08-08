@@ -1,7 +1,6 @@
 using System.Globalization;
 
 using Cursorial.Animation;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;

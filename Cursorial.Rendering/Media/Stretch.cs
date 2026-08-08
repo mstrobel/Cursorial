@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>How an <see cref="ImageBrush"/> fits its source image into the paint bounds.</summary>
 public enum Stretch
@@ -11,7 +11,7 @@ public enum Stretch
     None,
 
     /// <summary>Scale to fit <em>within</em> the bounds preserving aspect; the unfilled remainder
-    /// (letterbox / pillarbox) samples transparent.</summary>
+    /// (letterbox / pillar-box) samples transparent.</summary>
     Uniform,
 
     /// <summary>Scale to <em>fill</em> the bounds preserving aspect; the overflow is cropped.</summary>

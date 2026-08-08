@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>Texture filtering an image-sampling brush uses when a cell falls between source texels.</summary>
 public enum BrushInterpolation

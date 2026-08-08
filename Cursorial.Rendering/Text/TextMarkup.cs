@@ -1,9 +1,11 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -479,9 +481,12 @@ public static class TextMarkup
         {
             if (string.IsNullOrEmpty(value))
                 throw Error(position, "[brush] requires a value: [brush=name] or [brush=linear:colorA,colorB].");
-            if (options.BrushResolver is not { } resolver)
-                throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (the Drawing layer wires one up).");
-            return resolver(value) ?? throw Error(position, $"Unrecognized brush '{value}'.");
+
+            var resolver = options.BrushResolver;
+            if (resolver is not null)
+                return resolver(value) ?? throw Error(position, $"Unrecognized brush '{value}'.");
+
+            throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (the Drawing layer wires one up).");
         }
 
         // ---- Color parsing ----
@@ -493,6 +498,13 @@ public static class TextMarkup
             return MarkupColor.TryParse(raw, out var color)
                        ? color
                        : throw Error(position, $"Unrecognized color '{raw}'. Use a name, palette index 0–255, or #hex.");
+        }
+
+        private static IBrush? TryParseBrush(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return null;
+            MarkupColor.TryParseBrush(raw, out var brush);
+            return brush;
         }
 
         private static FormatException Error(int position, string message) =>

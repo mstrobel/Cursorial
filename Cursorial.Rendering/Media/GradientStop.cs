@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>A color placed at a normalized offset (0–1) along a gradient.</summary>
 public readonly record struct GradientStop

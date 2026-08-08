@@ -1,12 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

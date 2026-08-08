@@ -1,7 +1,7 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 

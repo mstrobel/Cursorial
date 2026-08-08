@@ -1,6 +1,6 @@
-using Cursorial.Rendering.Media;
+using Cursorial.Drawing;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A brush declared on a rich-text run — its foreground <see cref="IBrush"/> and the

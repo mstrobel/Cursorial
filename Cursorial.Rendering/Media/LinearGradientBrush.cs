@@ -1,7 +1,8 @@
+using Cursorial.Drawing;
 using Cursorial.Markup;
 using Cursorial.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A gradient whose color varies along the line from a start point to an end point. Endpoints are

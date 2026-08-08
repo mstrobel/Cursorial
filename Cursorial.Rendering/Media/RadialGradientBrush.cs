@@ -1,6 +1,7 @@
+using Cursorial.Drawing;
 using Cursorial.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A gradient whose color varies with (elliptical) distance from a center toward an optional focal

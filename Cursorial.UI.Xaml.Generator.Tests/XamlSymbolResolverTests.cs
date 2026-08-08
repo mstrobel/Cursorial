@@ -35,7 +35,8 @@ public class XamlSymbolResolverTests
         Assert.Equal("Cursorial.UI.Controls.StackPanel", resolver.Resolve(Ui, "StackPanel", out _)!.ToDisplayString());
         Assert.Equal("Cursorial.UI.Controls.Border", resolver.Resolve(Ui, "Border", out _)!.ToDisplayString());
         // SolidColorBrush lives in Cursorial.Drawing.Media — also probed by the ui xmlns.
-        Assert.Equal("Cursorial.Drawing.Media.SolidColorBrush", resolver.Resolve(Ui, "SolidColorBrush", out _)!.ToDisplayString());
+        Assert.Equal("Cursorial.Rendering.Media.SolidColorBrush", resolver.Resolve(Ui, "SolidColorBrush", out _)!.ToDisplayString());
+        Assert.Equal("Cursorial.Drawing.Media.Pen", resolver.Resolve(Ui, "Pen", out _)!.ToDisplayString());
     }
 
     [Fact]

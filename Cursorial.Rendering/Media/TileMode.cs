@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>How a <see cref="TileBrush"/> fills cells beyond its first tile.</summary>
 public enum TileMode

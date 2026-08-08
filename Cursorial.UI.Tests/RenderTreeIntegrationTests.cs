@@ -1,8 +1,8 @@
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

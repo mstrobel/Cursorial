@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 

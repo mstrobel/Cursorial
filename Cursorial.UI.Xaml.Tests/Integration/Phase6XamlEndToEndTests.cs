@@ -354,7 +354,7 @@ public sealed class Phase6XamlEndToEndTests
 
 /// <summary>
 /// A XAML-constructible brush (parameterless ctor + a string-convertible <c>Color</c>) for the
-/// integration documents — the resource/binding brush value (<see cref="Drawing.Media.SolidColorBrush"/>
+/// integration documents — the resource/binding brush value (<see cref="SolidColorBrush"/>
 /// is immutable / not XAML-activatable). Public so it resolves as an unprefixed default-xmlns name.
 /// </summary>
 public sealed class XamlTestBrush : IBrush

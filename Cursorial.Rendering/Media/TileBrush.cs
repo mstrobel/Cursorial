@@ -1,9 +1,7 @@
 using Cursorial.Media;
-using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
-using Cursorial.Rendering.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A brush that tiles a source image across the paint bounds. The image fills a tile of

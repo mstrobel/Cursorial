@@ -1,8 +1,7 @@
+using Cursorial.Drawing;
 using Cursorial.Media;
-using Cursorial.Rendering;
-using Cursorial.Rendering.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Base class for gradient brushes. Holds the (sorted) stops, spread, and opacity, and owns the

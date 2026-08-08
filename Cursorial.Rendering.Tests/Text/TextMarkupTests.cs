@@ -61,7 +61,7 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[fg=42]text[/fg]");
         var run = FirstRun(rt);
 
-        Assert.Equal(42, run.Style.Foreground.PaletteIndex);
+        Assert.Equal(ColorPalette.Ansi256[42], run.Style.Foreground);
     }
 
     [Fact]

@@ -1,5 +1,5 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI.Controls;

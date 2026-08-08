@@ -1,4 +1,4 @@
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>How a gradient behaves outside its [0, 1] parameter range.</summary>
 public enum GradientSpread : byte

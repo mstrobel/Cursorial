@@ -9,7 +9,6 @@
 using System.Collections.Immutable;
 
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;

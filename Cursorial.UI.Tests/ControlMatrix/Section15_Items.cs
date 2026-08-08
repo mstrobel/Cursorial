@@ -2,8 +2,8 @@ using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;

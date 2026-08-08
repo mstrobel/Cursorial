@@ -44,7 +44,7 @@ public static class ResourceExtensions
         return Walk(element, key, ResolveVariant(variant), searched: null, out value);
     }
 
-    private static ThemeVariant ResolveVariant(ThemeVariant? explicitVariant)
+    internal static ThemeVariant ResolveVariant(ThemeVariant? explicitVariant)
         => explicitVariant ?? UIApplication.Current?.ActualThemeVariant ?? new ThemeVariant(ThemeBase.Dark, ColorDepth.Truecolor);
 
     /// <summary>The maximum resource-alias (<see cref="ResourceReference"/>) chase depth before a cycle is declared (design doc §11.4a).</summary>

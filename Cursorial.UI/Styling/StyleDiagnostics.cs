@@ -5,6 +5,7 @@ using System.Text;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Data;
 
 // ReSharper disable CheckNamespace

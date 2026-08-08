@@ -1,8 +1,6 @@
 using Cursorial.Media;
-using Cursorial.Rendering;
-using Cursorial.Rendering.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A brush that paints a single solid color (optionally at reduced opacity). Immutable by contract;
@@ -14,10 +12,11 @@ public sealed class SolidColorBrush : IBrush
 {
     private readonly double _opacity = 1.0;
 
+    private static readonly SolidColorBrush[] Ansi16Brushes =
+        Enumerable.Range(0, 16).Select(i => new SolidColorBrush(Color.FromPalette((byte) i))).ToArray();
+
     /// <summary>Creates a brush over the terminal-default color — for XAML element declaration; set <see cref="Color"/> / <see cref="Opacity"/> via init.</summary>
-    public SolidColorBrush()
-    {
-    }
+    public SolidColorBrush() {}
 
     /// <summary>
     /// Create a solid brush. <paramref name="opacity"/> (0–1) scales the color's alpha (RGB only —
@@ -70,6 +69,7 @@ public sealed class SolidColorBrush : IBrush
     {
         if (index < 0 || index > byte.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(index), index, "Index must be between 0 and 255.");
+        if (index < 16) return Ansi16Brushes[index];
         return new(Color.FromPalette((byte) index));
     }
 

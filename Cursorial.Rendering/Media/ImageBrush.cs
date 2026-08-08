@@ -1,9 +1,7 @@
 using Cursorial.Media;
-using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
-using Cursorial.Rendering.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// A brush that fills a shape or text run by sampling a decoded RGBA image. The image is mapped into the

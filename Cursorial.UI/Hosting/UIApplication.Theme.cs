@@ -2,6 +2,7 @@ using System.Buffers;
 
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.UI.Themes;
 
@@ -219,7 +220,7 @@ public sealed partial class UIApplication : IResourceHost
     {
         var rgbVariant = new ThemeVariant(_actualThemeVariant.Base, ColorDepth.Truecolor);
         if (ResourceExtensions.WalkApplicationTail(ThemeKeys.AccentBrush, rgbVariant, searched: null, out var value) &&
-            value is Drawing.Media.SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
+            value is SolidColorBrush { Color: { Kind: ColorKind.Rgb } accent })
         {
             PaletteWriter.WriteSetCursor(output, accent.Red, accent.Green, accent.Blue);
             _cursorColorEmitted = true;

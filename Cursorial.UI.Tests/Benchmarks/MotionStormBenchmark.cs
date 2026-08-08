@@ -4,6 +4,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
@@ -479,7 +480,7 @@ public class MotionStormBenchmark(ITestOutputHelper output)
     private static Style CreateButtonHoverRule()
     {
         var style = new Style(Selectors.OfType<Button>().PseudoClass("pointerover"));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, new Drawing.Media.SolidColorBrush(Color.FromRgb(80, 120, 200))));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(80, 120, 200))));
         return style;
     }
 }

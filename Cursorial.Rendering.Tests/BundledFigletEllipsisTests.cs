@@ -1,4 +1,3 @@
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;

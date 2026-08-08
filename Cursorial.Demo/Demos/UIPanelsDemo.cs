@@ -2,10 +2,10 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;

@@ -1,6 +1,6 @@
 using Cursorial.Media;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Predefined <see cref="SolidColorBrush"/> instances for the terminal default, transparent, true

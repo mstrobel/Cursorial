@@ -1,7 +1,9 @@
+using Cursorial.Drawing;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Text;
 
-namespace Cursorial.Drawing.Media;
+namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Wires gradient brushes into <see cref="TextMarkup"/> via a <c>[brush=VALUE]…[/brush]</c> tag. Two authoring
@@ -18,6 +20,7 @@ namespace Cursorial.Drawing.Media;
 /// </summary>
 public static class BrushMarkup
 {
+
     /// <summary>
     /// A <see cref="TextMarkupOptions.BrushResolver"/>: parses inline gradient syntax or, failing that, looks
     /// <paramref name="registry"/> up by name. Returns null (the parser then raises "unrecognized brush") when
@@ -44,13 +47,38 @@ public static class BrushMarkup
         brushed = default;
 
         int colon = value.IndexOf(':');
-        if (colon <= 0) return false;
+
+        if (colon <= 0)
+        {
+            if (MarkupColor.TryParse(value, out var c))
+            {
+                var brush =
+                    c.Kind switch
+                    {
+                        ColorKind.Palette when c.PaletteIndex < 16 => SolidColorBrush.FromPalette(c.PaletteIndex),
+                        ColorKind.Palette                          => BrushPalette.Ansi256[c.PaletteIndex],
+                        ColorKind.Rgb                              => new SolidColorBrush(c),
+                        _                                          => Brushes.Default
+                    };
+
+                brushed = new BrushedStyle(brush);
+                return true;
+            }
+
+            return false;
+        }
+
         string kind = value[..colon].ToLowerInvariant();
 
-        var tokens = value[(colon + 1)..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (tokens.Length < 2) return false;   // a gradient needs at least two stops
+        var tokens = value[(colon + 1)..]
+           .Split(',',
+                  StringSplitOptions.RemoveEmptyEntries |
+                  StringSplitOptions.TrimEntries);
+
+        if (tokens.Length < 2) return false; // a gradient needs at least two stops
 
         var stops = new GradientStop[tokens.Length];
+
         for (int i = 0; i < tokens.Length; i++)
         {
             if (!MarkupColor.TryParse(tokens[i], out var color)) return false;
@@ -58,15 +86,16 @@ public static class BrushMarkup
         }
 
         GradientBrush? gradient = kind switch
-        {
-            "linear" => new LinearGradientBrush(stops),
-            "radial" => new RadialGradientBrush(stops),
-            "conic"  => new ConicGradientBrush(stops),
-            _        => null,
-        };
+                                  {
+                                      "linear" => new LinearGradientBrush(stops),
+                                      "radial" => new RadialGradientBrush(stops),
+                                      "conic"  => new ConicGradientBrush(stops),
+                                      _        => null
+                                  };
+
         if (gradient is null) return false;
 
-        brushed = new BrushedStyle(gradient);   // Inline scope by default — the run's 1-D strip
+        brushed = new BrushedStyle(gradient); // Inline scope by default — the run's 1-D strip
         return true;
     }
 }

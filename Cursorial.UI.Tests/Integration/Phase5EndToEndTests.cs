@@ -616,6 +616,57 @@ public sealed class Phase5EndToEndTests
         Assert.Equal(lightInk, host.GetCell(0, 0).Style.Foreground); // re-formatted under the new variant — no staleness
     }
 
+    /// <summary>
+    /// The <see cref="RichTextPresenter"/> sibling of
+    /// <see cref="TextBlock_ReFormatsOnThemeVariantFlip_GetResourceVersionAndVariantCacheKey"/>. A
+    /// <see cref="string"/> <c>Source</c> is parsed through <c>ResourceBrushResolver</c>, which BAKES
+    /// the resolved <c>IBrush</c> into the produced <c>RichText</c> — "resolution is
+    /// static-per-parse; freshness rides the <c>GetResourceVersion</c> cache-key contract". The
+    /// presenter's cached parse must therefore carry the same freshness terms the TextBlock cache key
+    /// does, or a variant flip repaints the pre-flip ink forever (the parse is sticky:
+    /// <c>_cachedState.Source</c> shadows <c>Source</c> on every later read).
+    /// </summary>
+    [Fact]
+    public void RichTextPresenter_ReParsesOnThemeVariantFlip_GetResourceVersionAndVariantCacheKey()
+    {
+        using var host = Create();
+
+        var darkInk = Color.FromRgb(200, 210, 240);
+        var lightInk = Color.FromRgb(20, 24, 60);
+        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(ThemeBase.Dark, null)] =
+            new ResourceDictionary { ["ink"] = new SolidColorBrush(darkInk) };
+        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(ThemeBase.Light, null)] =
+            new ResourceDictionary { ["ink"] = new SolidColorBrush(lightInk) };
+
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.RunFrame();
+
+        var presenter = new RichTextPresenter
+                        {
+                            Source = "[brush=ink]Hello[/brush]",
+                            HorizontalAlignment = HorizontalAlignment.Left,
+                            VerticalAlignment = VerticalAlignment.Top
+                        };
+        host.ShowRoot(presenter);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(ThemeBase.Dark, host.Application.ActualThemeVariant.Base);
+        Assert.Equal(darkInk, host.GetCell(0, 0).Style.Foreground); // parsed against the Dark dictionary
+
+        // A re-render under the SAME variant serves the cached parse — still dark.
+        presenter.InvalidateVisual();
+        host.RunFrame();
+        Assert.Equal(darkInk, host.GetCell(0, 0).Style.Foreground);
+
+        host.Application.RequestedThemeBase = ThemeBase.Light;
+        host.RunFrame();
+        Assert.Equal(ThemeBase.Light, host.Application.ActualThemeVariant.Base);
+
+        presenter.InvalidateVisual();
+        host.RunFrame();
+        Assert.Equal(lightInk, host.GetCell(0, 0).Style.Foreground); // re-parsed under the new variant
+    }
+
     // ───────────────────────────── shared finders ─────────────────────────────
 
     private static Cell FindCell(UIHeadlessHost host, Func<Cell, bool> predicate, int rows)

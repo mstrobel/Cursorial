@@ -1,9 +1,12 @@
+using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.Tests.UI.Controls;
 
@@ -123,5 +126,48 @@ public sealed class IconTests
         host.RunUntilIdle();
 
         Assert.Contains("T", host.GetRowText(0)); // the icon rendered its Unicode floor inside the button
+    }
+
+    /// <summary>
+    /// An icon takes its host's ink by INHERITANCE (doc §12: "<c>Control.Foreground</c> (inherited) tints the
+    /// glyph/emoji/text tiers"), so it follows the host through a reverse-video state. This is the constraint
+    /// that rules a <c>Foreground</c> pin out of <c>Theme.Icon</c>: a pin sits at
+    /// <see cref="BindingPriority.Style"/>, which beats <see cref="BindingPriority.Inherited"/>, and the glyph
+    /// would hold resting TextBrush ink on the focus state's TextBrush fill — an invisible glyph.
+    /// </summary>
+    [Fact]
+    public void Icon_InFocusedButton_TakesTheButtonsReverseVideoInk()
+    {
+        using var host = Host();
+        host.Application.NerdFontAvailable = false;
+        var icon = new Icon { Text = "T" };
+        var button = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Content = icon,
+        };
+        host.ShowRoot(button);
+        host.RunUntilIdle();
+
+        button.Focus();
+        host.RunUntilIdle();
+
+        Assert.True(button.TryFindResource(ThemeKeys.ButtonForegroundFocus, out var focusInk));
+        Assert.Equal(BindingPriority.Inherited, icon.GetValueSource(Control.ForegroundProperty).Priority);
+        Assert.Equal(((SolidColorBrush)focusInk!).Color, GlyphInk(host, "T"));
+    }
+
+    private static Color GlyphInk(UIHeadlessHost host, string grapheme)
+    {
+        for (var r = 0; r < host.FrameBuffer.Rows; r++)
+        for (var c = 0; c < host.FrameBuffer.Columns; c++)
+        {
+            var cell = host.GetCell(c, r);
+            if (cell.Grapheme == grapheme)
+                return cell.Style.Foreground;
+        }
+
+        throw new Xunit.Sdk.XunitException($"No cell rendered the grapheme '{grapheme}'.");
     }
 }

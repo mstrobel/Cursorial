@@ -86,4 +86,80 @@ public class DefaultResourceKeyTests
 
         Assert.NotEqual(dark, light);
     }
+
+    /// <summary>
+    /// The template-part clone of <see cref="ThemeBaseFlip_RepaintsDefaultTierText"/>: an
+    /// <see cref="Icon"/> with NO ambient <c>Foreground</c> (a bare root — under a <c>Window</c>
+    /// every descendant gets a real INHERITED value and this lane never opens). The bare TextBlock
+    /// above re-reads the themed default itself, so a repaint suffices; a control paints through a
+    /// template, and <c>{TemplateBinding Foreground}</c> latches a COPY at
+    /// <see cref="BindingPriority.Template"/>. The default-tier catch-all skips that copy (it only
+    /// invalidates, and only elements still AT <see cref="BindingPriority.Default"/>), so repainting
+    /// re-paints the stale value. The theme must PIN <c>Foreground</c> to a resource so the flip
+    /// raises a real change the template plumbing can forward.
+    /// </summary>
+    [Fact]
+    public void ThemeBaseFlip_RepaintsDefaultTierIcon()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
+        var icon = new Icon { Text = "*", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        host.ShowRoot(icon);
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.RunUntilIdle();
+
+        Assert.Equal("*", host.GetCell(0, 0).Grapheme); // the Text tier landed where we sample
+        var dark = host.GetCell(0, 0).Style.Foreground;
+
+        host.Application.RequestedThemeBase = ThemeBase.Light;
+        host.RunUntilIdle();
+        var light = host.GetCell(0, 0).Style.Foreground;
+
+        Assert.NotEqual(dark, light);
+    }
+
+    /// <summary>
+    /// The same clone for <see cref="Expander"/>'s header twisty — a template part whose
+    /// <c>Foreground</c> is a <c>{TemplateBinding}</c> copy. This one is GREEN today, and the reason is
+    /// worth pinning: the templated parent of the header template is <c>PART_Header</c> (a
+    /// <see cref="ToggleButton"/>), NOT the <see cref="Expander"/>, and <c>Theme.ToggleButton</c> pins
+    /// <c>Foreground</c> to the palette spine — so the copy's source is never at
+    /// <see cref="BindingPriority.Default"/>, whatever <c>Theme.Expander</c> does or does not set.
+    /// Removing that pin makes this test fail with exactly the stuck-ink symptom the Icon clone shows,
+    /// which is what earns it a place here as a regression guard.
+    /// </summary>
+    [Fact]
+    public void ThemeBaseFlip_RepaintsDefaultTierExpanderHeader()
+    {
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(20, 4) });
+        var expander = new Expander
+                       {
+                           Header = "Head",
+                           Content = new TextBlock { Text = "body" },
+                           HorizontalAlignment = HorizontalAlignment.Left,
+                           VerticalAlignment = VerticalAlignment.Top
+                       };
+        host.ShowRoot(expander);
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.RunUntilIdle();
+        var dark = ForegroundOfGlyph(host, "⏵");
+
+        host.Application.RequestedThemeBase = ThemeBase.Light;
+        host.RunUntilIdle();
+        var light = ForegroundOfGlyph(host, "⏵");
+
+        Assert.NotEqual(dark, light);
+    }
+
+    private static Color ForegroundOfGlyph(UIHeadlessHost host, string grapheme)
+    {
+        for (var r = 0; r < host.FrameBuffer.Rows; r++)
+        for (var c = 0; c < host.FrameBuffer.Columns; c++)
+        {
+            var cell = host.GetCell(c, r);
+            if (cell.Grapheme == grapheme)
+                return cell.Style.Foreground;
+        }
+
+        throw new Xunit.Sdk.XunitException($"No cell rendered the grapheme '{grapheme}'.");
+    }
 }

@@ -59,7 +59,19 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         public bool RowCapBit => MaxRows is {} cap && Text is { Size.Rows: var rows } && rows >= cap;
     }
 
+    /// <summary>
+    /// The freshness terms a cached PARSE rides — the same <c>(resource version, ActualThemeVariant)</c>
+    /// cache-key contract <see cref="TextBlock"/> folds into its <c>FormattedText</c> key (design doc
+    /// §11.6/CD16). Parsing a <see cref="string"/> <see cref="Source"/> resolves <c>[brush=…]</c> through
+    /// <see cref="ResourceBrushResolver"/> and BAKES the resulting brushes into the <see cref="RichText"/>:
+    /// resolution is static-per-parse, and the parse is sticky (<see cref="CachedState.Source"/> shadows
+    /// <see cref="Source"/> on every later read), so without this key a variant flip repaints the pre-flip
+    /// ink forever. No dictionary subscription — sealed dictionaries never pulse (CD16).
+    /// </summary>
+    private readonly record struct ParseFreshness(int ResourceVersion, ThemeVariant? Variant);
+
     private CachedState? _cachedState;
+    private ParseFreshness _parseFreshness;
     private UIApplication? _subscribedApp;
 
     static RichTextPresenter()
@@ -357,6 +369,17 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     private RichText? ResolveSource()
     {
         RichText? text;
+
+        // A cached parse is only good for the resources/variant it was resolved against (§11.6): drop it
+        // when either moves, so the next read re-parses `Source` and re-resolves its [brush=…] spans.
+        var freshness = new ParseFreshness(ResourceServices.GetResourceVersion(this),
+                                           UIApplication.Current?.ActualThemeVariant);
+
+        if (_parseFreshness != freshness)
+        {
+            _parseFreshness = freshness;
+            _cachedState = null;
+        }
 
         var source = _cachedState?.Source ?? Source;
 

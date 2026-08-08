@@ -1088,6 +1088,12 @@ internal static class ControlThemes
         return border;
     });
 
+    // Foreground is deliberately NOT pinned here (unlike Button/Label/StatusBarItem): an Icon is CONTENT, and
+    // the doc contract is that it takes its host's ink by INHERITANCE. A pin sits at BindingPriority.Style,
+    // which beats Inherited, so an icon inside a focused/pressed control would keep the resting TextBrush
+    // while the face reverse-videos around it — TextBrush ink on a TextBrush fill, an invisible glyph. The
+    // theme-flip staleness a pin would have papered over is fixed at its real source instead: the Icon's
+    // cached EffectiveIconBrush (see Icon.OnApplicationResourcesChanged).
     private static Style IconTheme()
         => new Style { Key = "Theme.Icon" }
           .Set(Control.TemplateProperty, IconTemplate());

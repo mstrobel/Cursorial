@@ -77,6 +77,7 @@ public abstract class TextElement
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineBrushProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, StrikethroughProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, OverlineProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, InverseProperty);
@@ -416,7 +417,7 @@ public abstract class TextElement
     internal static readonly UIProperty[] AllAxisProperties =
     [
         TextWeightProperty, TextStyleProperty, UnderlineProperty, StrikethroughProperty,
-        OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty,
+        OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty, UnderlineBrushProperty
     ];
 
     /// <summary>

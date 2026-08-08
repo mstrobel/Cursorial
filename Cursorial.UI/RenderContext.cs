@@ -159,7 +159,7 @@ public sealed class RenderContext
     /// (The <see cref="IBrush"/> overloads below still default to <see langword="true"/> — an
     /// inconsistency older than this overload, preserved rather than silently changed.)
     /// </remarks>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true)
         => Inner.FillOpaque(region, style, overwrite);
 
     /// <inheritdoc cref="FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
@@ -167,11 +167,11 @@ public sealed class RenderContext
     /// <param name="style">The per-cell delta every occluder cell takes.</param>
     /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes.</param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>false</c>.</param>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = true)
         => Inner.FillOpaque(region, style, brushBounds, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
-    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
+    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
         => Inner.FillOpaque(region, color, attributes, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>

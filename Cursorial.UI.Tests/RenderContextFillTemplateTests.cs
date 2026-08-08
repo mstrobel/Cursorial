@@ -4,7 +4,6 @@
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -70,14 +69,15 @@ public sealed class RenderContextFillTemplateTests
     /// the ink.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_DefaultsToNotOverwriting_SoTheGlyphUnderneathSurvives()
+    public void FillOpaque_Template_HonorsNoOverwrite_SoTheGlyphUnderneathSurvives()
     {
         using var host = Shown(ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
                            new StyleDeltaTemplate { Background = Brushes.Transparent }
-                               .Applying(TextAttributes.Inverse));
+                               .Applying(TextAttributes.Inverse),
+                           overwrite: false);
         });
 
         Assert.Equal("X", host.GetCell(0, 0).Grapheme);
@@ -89,12 +89,12 @@ public sealed class RenderContextFillTemplateTests
     /// <c>TextPresenter</c> actually makes — behaves identically, which is what "the wrappers are
     /// unchanged" has to mean at this boundary.</summary>
     [Fact]
-    public void FillOpaque_ColorOverload_KeepsItsNarrowerDefault()
+    public void FillOpaque_ColorOverload_HonorsNoOverwrite()
     {
         using var host = Shown(ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.FillOpaque(new Rect(0, 0, 2, 1), Colors.Transparent, TextAttributes.Inverse);
+            ctx.FillOpaque(new Rect(0, 0, 2, 1), Colors.Transparent, TextAttributes.Inverse, overwrite: false);
         });
 
         Assert.Equal("X", host.GetCell(0, 0).Grapheme);

@@ -542,7 +542,8 @@ public sealed class TextPresenter : UIElement
             // bare Inverse here silently stripped Bold / Italic / … from every cell the face inked.
             context.FillOpaque(new Rect(startColumn, localRow, endColumn - startColumn, lineRows),
                                Color.Transparent,
-                               (baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse);
+                               (baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse,
+                               overwrite: false);
         }
 
         // Selection: tint the selected span in place — graphemes untouched. Clamped to the
@@ -788,9 +789,9 @@ public sealed class TextPresenter : UIElement
             if (backdrop != baseStyle)
             {
                 if (backdrop.Background is { IsDefault: false } bg)
-                    context.FillOpaque(rect, bg, backdrop.Attributes);
+                    context.FillOpaque(rect, bg, backdrop.Attributes, overwrite: true);
                 else
-                    context.FillOpaque(rect, Color.Default, backdrop.Attributes);
+                    context.FillOpaque(rect, Color.Default, backdrop.Attributes, overwrite: true);
             }
 
             var pieceRun = new FormattedTextRun(runText, backdrop, null) { Source = source };

@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
@@ -125,6 +124,9 @@ public class TextBlock : UIElement
     
     /// <inheritdoc cref="UnderlineProperty"/>
     public UnderlineStyle? Underline { get => GetValue(UnderlineProperty); set => SetValue(UnderlineProperty, value); }
+    
+    /// <inheritdoc cref="UnderlineBrushProperty"/>
+    public IBrush? UnderlineBrush { get => GetValue(UnderlineBrushProperty); set => SetValue(UnderlineBrushProperty, value); }
     
     /// <inheritdoc cref="StrikethroughProperty"/>
     public bool Strikethrough { get => GetValue(StrikethroughProperty); set => SetValue(StrikethroughProperty, value); }

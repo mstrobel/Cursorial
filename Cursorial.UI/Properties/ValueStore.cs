@@ -504,9 +504,27 @@ internal sealed class ValueStore
     /// <summary>
     /// The resolution fallback below the Style slot: the owner's inherited walk-up result with
     /// <paramref name="lane"/> = <see cref="BindingPriority.Inherited"/> when a contributing
-    /// ancestor exists, else the metadata default at <see cref="BindingPriority.Default"/>.
+    /// ancestor exists, else the Default tier at <see cref="BindingPriority.Default"/>.
     /// Inherited reads return the ancestor's effective value and skip re-coercion (M190/M242).
     /// </summary>
+    /// <remarks>
+    /// This is the old-value/new-value baseline for every transition into and out of the two
+    /// storeless tiers, so it must answer <b>what a read would answer</b> — which for a
+    /// <see cref="PropertyMetadata{T}.DefaultResourceKey"/> property is the themed value
+    /// <see cref="UIObject.ResolveDefaultValue{T}"/> resolves, not the raw
+    /// <see cref="PropertyMetadata{T}.DefaultValue"/> underneath it. Answering it raw made a write
+    /// of the raw default (a <c>SetValue(p, null)</c> on the thirty <c>IBrush?</c> registrations, a
+    /// binding pushing a null source) compare equal to the value it was replacing: the transition
+    /// looked like a no-op and returned early with the entry already mutated, so the effective value
+    /// went themed-brush → null with no notification and no <c>AffectsRender</c>.
+    /// <para>
+    /// Resolution is a READ — it materialises no entry, which is the whole point of the tier.
+    /// It costs a <c>TryFindResource</c> chain walk, but only for the ~30 keyed properties and only
+    /// at a tier boundary: every caller guards on a lane being <see cref="BindingPriority.Unset"/>
+    /// (the first contribution to a bare property, or the retraction of the last one), never on the
+    /// per-write or per-animation-frame path.
+    /// </para>
+    /// </remarks>
     internal T GetUnsetFallback<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, out BindingPriority lane)
     {
         if (property.Inherits && Owner.FindInheritedEntry(property.Id, out _) is EffectiveValue<T> inherited)
@@ -516,7 +534,7 @@ internal sealed class ValueStore
         }
 
         lane = BindingPriority.Default;
-        return metadata.DefaultValue;
+        return Owner.ResolveDefaultValue(property, metadata);
     }
 
     /// <summary>Removes the M118 SetCurrentValue graft from the local slot — a producer (StyleTrigger /

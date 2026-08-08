@@ -207,8 +207,9 @@ public class DrawTextLineBreakTests
     public void Brush_NegativeAnchor_SamplesContractEquivalently()
     {
         // The same text drawn (A) at row 0 un-pushed and (B) at local row −1 under a +1 translate
-        // lands on the same scene rows with identical bounds-relative sample positions — the
-        // SampleBounds zero-origin shift must color them identically.
+        // lands on the same scene rows with identical bounds-relative sample positions — the brush
+        // reads the (negative) bounds origin only as a subtrahend, so it must color them identically.
+        // BrushNegativeOriginEquivalenceTests pins that property for every brush kind.
         var brush = new LinearGradientBrush([new(0.0, Black), new(1.0, White)],
                                             RelativePoint.TopLeft, RelativePoint.BottomLeft);
 
@@ -227,9 +228,10 @@ public class DrawTextLineBreakTests
     }
 
     [Fact]
-    public void HugeLineCount_PastTheRectCap_NoThrow()
+    public void HugeLineCount_NoThrow()
     {
-        // 70,001 lines exceeds the ushort Rect cap (65,535); SampleBounds clamps defensively.
+        // 70,001 lines: the measure pass builds a brush-bounds Rect that tall, which Rect carries fine
+        // (it is int-backed, MaxExtent = int.MaxValue) — the run still measures and paints normally.
         var text = string.Concat(Enumerable.Repeat("x\n", 70_000));
         Size size = default;
         var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, 0, text, White));

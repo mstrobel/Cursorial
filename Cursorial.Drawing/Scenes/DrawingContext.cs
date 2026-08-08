@@ -908,9 +908,9 @@ public sealed class DrawingContext
 
         // Measure pass: the brush bounds are the full multi-line extent (widest sanitized line ×
         // line count) anchored at the start cell, sampled in local coordinates — a gradient flows
-        // down the lines instead of restarting per line. The signed SampleBounds carrier (not the
-        // ushort-backed Rect) keeps a negative anchor — or an extent past the Rect cap — from
-        // throwing: it shifts/clamps contract-equivalently at sample time (design doc §13.1).
+        // down the lines instead of restarting per line. The anchor may be negative (a scrolled run
+        // starting above/left of the origin); Rect carries a signed origin, and brushes read it only
+        // as a subtrahend, so that samples exactly as the shifted-to-zero equivalent (design doc §13.1).
         int widest = 0, lineCount = 0;
         var measure = text;
         bool moreLines = true;
@@ -920,13 +920,13 @@ public sealed class DrawingContext
             widest = Math.Max(widest, SanitizedLineWidth(line));
             lineCount++;
         }
-        var bounds = new SampleBounds(column, row, widest, lineCount);
+        var bounds = new Rect(column, row, widest, lineCount);
 
         // The common case — a solid colour, or none — cannot vary by cell, and the VALUE form is what
         // makes that readable: fold it once here rather than resolving two brushes at every cluster.
         // Sampled at the run's own anchor against its own bounds, so a hand-written uniform brush is
         // never handed a degenerate rect it has to tolerate.
-        CellStyle? uniform = style.IsUniform ? bounds.Resolve(style, column, row).ApplyTo(baseStyle) : null;
+        CellStyle? uniform = style.IsUniform ? style.Resolve(column, row, in bounds).ApplyTo(baseStyle) : null;
 
         int maxAdvance = 0;
         int currentRow = row;
@@ -946,7 +946,7 @@ public sealed class DrawingContext
     // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
     // `uniform` is the pre-folded style when the template cannot vary by cell; null means resolve per cluster.
     private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, in StyleDeltaTemplate template,
-                             in CellStyle baseStyle, in CellStyle? uniform, in SampleBounds bounds, bool transformed)
+                             in CellStyle baseStyle, in CellStyle? uniform, in Rect bounds, bool transformed)
     {
         if (line.IsEmpty) return 0;
         if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
@@ -981,7 +981,7 @@ public sealed class DrawingContext
             if (transformed)
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
-                var style = uniform ?? bounds.Resolve(template, column, row).ApplyTo(baseStyle);
+                var style = uniform ?? template.Resolve(column, row, in bounds).ApplyTo(baseStyle);
                 EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
                 column += width;
             }
@@ -990,7 +990,7 @@ public sealed class DrawingContext
                 if (column < 0) { column += width; continue; }  // left-edge clip (negative start; the run still advances)
                 if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
 
-                var style = uniform ?? bounds.Resolve(template, column, row).ApplyTo(baseStyle);
+                var style = uniform ?? template.Resolve(column, row, in bounds).ApplyTo(baseStyle);
                 column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
             }
         }
@@ -1484,10 +1484,10 @@ public sealed class DrawingContext
     public FigureScope BeginFigure(in Rect bounds)
     {
         var s = CurrentState;
-        return BeginFigureCore(SampleBounds.From(bounds, s.Dx, s.Dy));
+        return BeginFigureCore(bounds.Translate(s.Dx, s.Dy));
     }
 
-    private FigureScope BeginFigureCore(SampleBounds? bounds)
+    private FigureScope BeginFigureCore(Rect? bounds)
     {
         if (_openFigureId >= 0)
             throw new InvalidOperationException("Figures do not nest; end the current figure before beginning another.");
@@ -1759,7 +1759,7 @@ public sealed class DrawingContext
         // owning record's brush colors it.
         Color color = merged is { Count: > 1 }
                           ? BlendStrokeColors(merged, column, row)
-                          : record.Bounds.Sample(record.Brush, column, row);
+                          : record.Brush.ColorAt(column, row, record.Bounds);
         EmitDecorationCell(column, row, BoxGlyphs.Resolve(arms, record.Decoration, record.GlyphSet),
                            color, record.Attributes, record.Overwrite);
     }
@@ -1768,15 +1768,15 @@ public sealed class DrawingContext
     // sRGB via the running mean Color.Lerp gives.
     private static Color BlendStrokeColors(IReadOnlyList<StrokeRecord> merged, int column, int row)
     {
-        var color = merged[0].Bounds.Sample(merged[0].Brush, column, row);
+        var color = merged[0].Brush.ColorAt(column, row, merged[0].Bounds);
         for (int i = 1; i < merged.Count; i++)
-            color = Color.Lerp(color, merged[i].Bounds.Sample(merged[i].Brush, column, row), 1.0 / (i + 1));
+            color = Color.Lerp(color, merged[i].Brush.ColorAt(column, row, merged[i].Bounds), 1.0 / (i + 1));
         return color;
     }
 
     private void EmitBrailleCell(int column, int row, byte dots, BrailleRecord record) =>
         EmitDecorationCell(column, row, BrailleGlyphs.Glyph(dots, record.GlyphSet),
-                           record.Bounds.Sample(record.Brush, column, row), record.Attributes, record.Overwrite);
+                           record.Brush.ColorAt(column, row, record.Bounds), record.Attributes, record.Overwrite);
 
     // The shared emit tail for every deferred layer: text-beats-decoration eviction, then write the
     // (already-sampled) color through Set with a transparent background.
@@ -1815,7 +1815,7 @@ public sealed class DrawingContext
         return _strokes.AddRecord(new StrokeRecord
         {
             Brush = pen.ResolveBrush(),
-            Bounds = SampleBounds.From(bounds, s.Dx, s.Dy),
+            Bounds = bounds.Translate(s.Dx, s.Dy),
             Decoration = new StrokeDecoration(pen.Corners, pen.Dash, pen.EndCap),
             GlyphSet = pen.GlyphSet,
             Attributes = pen.Attributes,
@@ -1895,7 +1895,7 @@ public sealed class DrawingContext
         return _braille.AddRecord(new BrailleRecord
         {
             Brush = pen.ResolveBrush(),
-            Bounds = SampleBounds.From(bounds, s.Dx, s.Dy),
+            Bounds = bounds.Translate(s.Dx, s.Dy),
             Attributes = pen.Attributes,
             GlyphSet = pen.GlyphSet,
             Overwrite = overwrite,

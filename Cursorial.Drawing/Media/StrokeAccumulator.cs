@@ -1,3 +1,5 @@
+using Cursorial.Rendering;
+
 namespace Cursorial.Drawing.Media;
 
 /// <summary>
@@ -33,7 +35,7 @@ internal sealed class StrokeAccumulator
     private int _currentFigureId;               // 0 = implicit root
     private int _nextFigureId = 1;
     private int _openFigureFirstRecord = -1;     // index of the open figure's first record, or -1
-    private SampleBounds? _figureExplicitBounds;
+    private Rect? _figureExplicitBounds;
 
     public StrokeAccumulator(int columns, int rows)
     {
@@ -52,7 +54,7 @@ internal sealed class StrokeAccumulator
     }
 
     /// <summary>Open a figure; returns its id token. <paramref name="explicitBounds"/> null = auto-union.</summary>
-    public int BeginFigure(SampleBounds? explicitBounds)
+    public int BeginFigure(Rect? explicitBounds)
     {
         _currentFigureId = _nextFigureId++;
         _openFigureFirstRecord = _records.Count;
@@ -84,7 +86,7 @@ internal sealed class StrokeAccumulator
         if (start >= _records.Count)
             return;   // empty figure — nothing drawn
 
-        SampleBounds bounds;
+        Rect bounds;
         if (_figureExplicitBounds is { } explicitBounds)
         {
             bounds = explicitBounds;
@@ -93,7 +95,7 @@ internal sealed class StrokeAccumulator
         {
             bounds = _records[start].Bounds;
             for (int i = start + 1; i < _records.Count; i++)
-                bounds = bounds.Union(_records[i].Bounds);
+                bounds = Union(bounds, _records[i].Bounds);
         }
 
         for (int i = start; i < _records.Count; i++)
@@ -196,6 +198,23 @@ internal sealed class StrokeAccumulator
 
             emit(idx % _columns, idx / _columns, _arms[idx], _records[recordId - 1], merged);
         }
+    }
+
+    /// <summary>
+    /// The smallest rectangle containing both <paramref name="a"/> and <paramref name="b"/> — the figure
+    /// back-patch union. Deliberately a straight min/max over the four edges, with no empty-rect special
+    /// case: a figure's stroke rects are always real shapes, and an empty-aware union would be a different
+    /// (more opinionated) operation than the one this call site wants. Local rather than a
+    /// <see cref="Rect"/> member for exactly that reason — the general-purpose spelling would have to pick
+    /// a side on <see cref="Rect.Empty"/>.
+    /// </summary>
+    private static Rect Union(Rect a, Rect b)
+    {
+        int column = Math.Min(a.Column, b.Column);
+        int row = Math.Min(a.Row, b.Row);
+        int columnEnd = Math.Max(a.ColumnEnd, b.ColumnEnd);
+        int rowEnd = Math.Max(a.RowEnd, b.RowEnd);
+        return new Rect(column, row, columnEnd - column, rowEnd - row);
     }
 
     /// <summary>Pack a single direction's weight into an arm-code byte (centralizes the weight+1 offset).</summary>

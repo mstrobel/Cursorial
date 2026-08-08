@@ -1,3 +1,4 @@
+using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
@@ -16,8 +17,14 @@ internal struct StrokeRecord
     /// <summary>The resolved brush (never null — a null pen brush became <see cref="Brushes.Default"/>).</summary>
     public IBrush Brush;
 
-    /// <summary>The brush sampling bounds in scene coordinates (per-call, or figure union/explicit after back-patch).</summary>
-    public SampleBounds Bounds;
+    /// <summary>
+    /// The brush sampling bounds in scene coordinates (per-call, or figure union/explicit after back-patch).
+    /// The origin is <em>signed</em>: a negative ambient translate (scrolled content) legitimately places a
+    /// record's sampling rect partly above/left of the scene, and <see cref="IBrush.ColorAt"/> reads the
+    /// origin only as a subtrahend, so a negative one samples exactly as the shifted-to-zero equivalent
+    /// (pinned by <c>BrushNegativeOriginEquivalenceTests</c>).
+    /// </summary>
+    public Rect Bounds;
 
     /// <summary>Topology-independent decoration (corners / dash / cap).</summary>
     public StrokeDecoration Decoration;

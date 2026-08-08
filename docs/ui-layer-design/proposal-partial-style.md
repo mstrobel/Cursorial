@@ -1383,12 +1383,11 @@ Three things this had to settle:
    different GRAPHEME, not merely a different sentinel. Pinned by
    `SpaceOverContent_TransparentRescuesTheGlyph_WhereNoOpinionOverwritesIt`.
 2. **The sampling rect did not move.** `DrawText` samples against the full multi-line extent (widest
-   sanitized line × line count) anchored at the start cell, carried in the signed `SampleBounds` rather than
-   the `ushort`-backed `Rect` so a negative anchor shifts contract-equivalently instead of throwing. That
-   carrier grew a `Resolve(template, column, row)` that applies the same shift to every brush channel at
-   once — one rect for foreground and background alike, because a text run's background covers precisely
-   the cells its glyphs do. `DrawFaceLine`'s per-WORD brush bounds are a separate pre-existing quirk and
-   were left alone.
+   sanitized line × line count) anchored at the start cell, carried in a `Rect` whose origin may be negative
+   (`Rect` is `int`-backed, so a negative anchor passes through to the brush verbatim and samples
+   contract-equivalently). It resolves through `StyleDeltaTemplate.Resolve(column, row, in bounds)` — one
+   rect for foreground and background alike, because a text run's background covers precisely the cells its
+   glyphs do. `DrawFaceLine`'s per-WORD brush bounds are a separate pre-existing quirk and were left alone.
 3. **`IsUniform` became readable here too.** A solid template — the overwhelming majority — folds once for
    the whole run instead of sampling two brushes at every cluster. Verified by mutation: hoisting
    unconditionally fails four gradient tests across both overloads.

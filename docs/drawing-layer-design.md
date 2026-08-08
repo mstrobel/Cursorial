@@ -765,9 +765,10 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
     **record** time: stroke arms / braille dots are translated into scene coordinates and clipped as
     they deposit, so junctions form in final scene coords (strokes of one figure recorded under
     *different* translates still merge where they actually cross), and a clipped line runs to the
-    viewport edge with its arm intact. Record sampling bounds are signed (`SampleBounds`), normalized
-    back to the `IBrush.ColorAt` bounds-relative contract at flush — local-frame sampling equivalence
-    holds, so a translated stroke's gradient is byte-identical to the untranslated one. Explicit
+    viewport edge with its arm intact. Record sampling bounds are a signed-origin `Rect` handed straight
+    to `IBrush.ColorAt` at flush — brushes read the origin only as a subtrahend, so local-frame sampling
+    equivalence holds and a translated stroke's gradient is byte-identical to the untranslated one
+    (pinned by `BrushNegativeOriginEquivalenceTests`). Explicit
     `BeginFigure(bounds)` bounds are taken in current-local coordinates. The flush pass itself never
     remaps (`FlushDeferred` clears the stack first, by design).
   - **Shadows + titled boxes / panels** — translate as units; the painted band is bounded by the clip.
@@ -852,11 +853,10 @@ contract per tier; the changes landed together (user-pinned decisions, restated 
   that start left of column 0 are skipped (not painted) while the run still advances through them
   — unlike the right edge, which stops the line (so the advance counts local columns from the
   possibly-negative start). Under a push, negative local coordinates flow through the
-  translate/clip map as v1 did for non-text draws. Brush sampling rides the internal signed
-  `SampleBounds` carrier (the deferred-stroke one): a negative anchor shifts both the rect and the
-  sample point to a zero origin — contract-equivalent under bounds-relative sampling — and an
-  extent past the ushort `Rect` cap (65,535 lines/columns) clamps defensively (the gradient
-  parameter compresses) instead of throwing.
+  translate/clip map as v1 did for non-text draws. Brush sampling rides an ordinary `Rect`, whose
+  origin is signed and whose extents run to `int.MaxValue`: a negative anchor passes through to
+  `IBrush.ColorAt` verbatim and samples exactly as the shifted-to-zero equivalent would, because
+  brushes read the origin only as a subtrahend (`column − bounds.Column`).
 - **Sanitization**: `\t` is substituted with **one space** + a DEBUG diagnostic; all other C0/C1
   controls (including DEL and the C1 range U+0080–U+009F) are **skipped** (zero columns) + a DEBUG
   diagnostic. Sanitization is width-coherent: the measured brush extent applies the same rules.

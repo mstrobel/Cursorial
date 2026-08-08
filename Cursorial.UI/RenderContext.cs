@@ -137,6 +137,10 @@ public sealed class RenderContext
     public void Blit(CellBufferView view, in Rect region)
         => Inner.Blit(view, region);
 
+    /// <inheritdoc cref="DrawingContext.FillRectangle(in Rect, in StyleDeltaTemplate)"/>
+    public void FillRectangle(in Rect region, in StyleDeltaTemplate style)
+        => Inner.FillRectangle(region, style);
+
     /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
     public void FillRectangle(in Rect region, IBrush brush)
         => Inner.FillRectangle(region, brush);
@@ -144,6 +148,27 @@ public sealed class RenderContext
     /// <inheritdoc cref="FillRectangle(in Rect, IBrush)"/>
     public void FillRectangle(in Rect region, Color color)
         => Inner.FillRectangle(region, color);
+
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <remarks>
+    /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
+    /// drawing layer's <see langword="true"/> — matching the <see cref="Color"/> overload beside it, the
+    /// newest of this veneer's fills and the one an element actually reaches for. The narrower default is
+    /// load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
+    /// <see cref="CellBuffer.Set"/> rescues the ink underneath only on the non-overwriting path.
+    /// (The <see cref="IBrush"/> overloads below still default to <see langword="true"/> — an
+    /// inconsistency older than this overload, preserved rather than silently changed.)
+    /// </remarks>
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+        => Inner.FillOpaque(region, style, overwrite);
+
+    /// <inheritdoc cref="FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <param name="region">The rectangle to fill, in element-local coordinates.</param>
+    /// <param name="style">The per-cell delta every occluder cell takes.</param>
+    /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes.</param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>false</c>.</param>
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+        => Inner.FillOpaque(region, style, brushBounds, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
     public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
@@ -156,6 +181,14 @@ public sealed class RenderContext
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
     public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
         => Inner.FillOpaque(region, brush, brushBounds, attributes, overwrite);
+
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>
+    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+        => Inner.PaintRectangle(region, style, overwrite);
+
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in StyleDeltaTemplate, in Rect, bool)"/>
+    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+        => Inner.PaintRectangle(region, style, brushBounds, overwrite);
 
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, Color, TextAttributes, bool)"/>
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)

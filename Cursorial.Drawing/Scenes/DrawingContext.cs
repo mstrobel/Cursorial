@@ -198,28 +198,86 @@ public sealed class DrawingContext
         _surface.Set(sc, sr, grapheme, in style);
     }
 
-    /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
-    public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
-        => FillRectangleCore(region, brush: null, color, brushBounds: region, durable: false, attributes,
-                             overwrite: true);
-
     /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
-    /// sampled per cell with <paramref name="region"/> as the brush bounds. Each cell is painted
-    /// background-only (no glyph), so on composite the fill tints the target background and leaves any
-    /// glyph beneath showing through — the scene's transparency model.
+    /// Fill <paramref name="region"/>'s backgrounds by resolving <paramref name="style"/> per cell. Each
+    /// cell is painted background-only (no glyph), so on composite the fill tints the target background
+    /// and leaves any glyph beneath showing through — the scene's transparency model.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Base plus delta</b>, the shape
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/> and
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+    /// already take — with the base fixed rather than passed. A fill OWNS every cell it writes and no
+    /// caller holds a ground state for it, so the ground is <see cref="CellStyle.Default"/> and
+    /// <paramref name="style"/> says everything the fill wants it to become: the background a lone brush
+    /// used to carry, plus the foreground, attributes, underline, hyperlink and blending mode that had
+    /// nowhere to travel but a flag word — or nowhere at all.
+    /// </para>
+    /// <para>
+    /// An ABSENT <see cref="StyleDeltaTemplate.Background"/> is <see cref="Color.Default"/> here, not
+    /// <see cref="Color.Transparent"/> — it falls through to a ground that already carries
+    /// <c>Default</c>, so it agrees with <c>FillOpaque(…, Color.Default, …)</c> rather than with
+    /// <c>DrawText</c>'s brush overload. The two are not interchangeable on the non-overwriting path:
+    /// <see cref="CellBuffer.Set"/> rescues a glyph only under a NON-opaque background, and
+    /// <c>Default</c> is opaque.
+    /// </para>
+    /// <para>
+    /// The primitive paints exactly what it is handed — <b>no attribute is masked here</b>. An allowlist
+    /// deciding which attributes may spread onto cells the caller did not ink belongs to the policy that
+    /// owns that question (<c>TextPresenter.FillAttributes</c>); masking here would remove the escape
+    /// hatch such a ruling depends on.
+    /// </para>
+    /// <para>
+    /// The <see cref="Color"/> and <see cref="IBrush"/> overloads of all three fill families are thin
+    /// wrappers over this shape: their brush becomes <see cref="StyleDeltaTemplate.Background"/> and
+    /// their <c>attributes</c> word is folded on PER AXIS (see <c>Imposing</c>) — Bold / Faint impose a
+    /// weight, Italic a posture, and only the axis-free flags union. A word carrying both weights is
+    /// unrenderable and resolves to Bold rather than to the pair.
+    /// </para>
+    /// <para>
     /// Writes via the raw indexer rather than <see cref="CellBuffer.Set"/> so a translucent sampled
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
+    /// </para>
     /// </remarks>
-    public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default) 
+    public void FillRectangle(in Rect region, in StyleDeltaTemplate style)
+        => FillRectangleCore(region, in style, region, durable: false, overwrite: true);
+
+    /// <summary>
+    /// As <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, but the brushes are sampled
+    /// against <paramref name="brushBounds"/> — which may be larger than the painted
+    /// <paramref name="region"/> — so a gradient spans the full bounds while only the region's cells are
+    /// painted. Used by area-fill charts that paint one column at a time yet want the gradient to flow
+    /// across the whole chart, not restart per column.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="brushBounds"/> governs EVERY brush channel, not the background alone. A rectangle
+    /// fill's cells are uniform — its background covers precisely the cells its ink does — so it has ONE
+    /// extent, and what this parameter states is not a second extent but a REFRAMING of the only one.
+    /// There is exactly one such declaration per call, so letting it govern the background alone would
+    /// invent a frame for the other channels that the caller never stated and cannot control. (The
+    /// four-argument <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect, in Rect)"/> split belongs
+    /// to operations whose fill box is larger than their ink; a rectangle fill is not one.)
+    /// </remarks>
+    public void FillRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds)
+        => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite: true);
+
+    /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
+    public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
+        => FillRectangle(region, AsFill(new SolidColorBrush(color), attributes));
+
+    /// <summary>
+    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
+    /// sampled per cell with <paramref name="region"/> as the brush bounds — the one-brush convenience
+    /// form of <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, for the common case where
+    /// the only thing that varies per cell is the background colour.
+    /// </summary>
+    public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default)
     {
         ArgumentNullException.ThrowIfNull(brush);
 
-        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: false, overwrite: true,
-                          attributes: attributes);
+        FillRectangle(region, AsFill(brush, attributes));
     }
 
     /// <summary>
@@ -231,7 +289,7 @@ public sealed class DrawingContext
     public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, color: default, brushBounds: brushBounds, durable: false, overwrite: true);
+        FillRectangle(region, AsFill(brush, default), brushBounds);
     }
 
     /// <summary>
@@ -260,7 +318,7 @@ public sealed class DrawingContext
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
     public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
-        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: true, attributes, overwrite);
+        => FillOpaque(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
     /// <summary>
     /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
@@ -290,7 +348,7 @@ public sealed class DrawingContext
     public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, color: default, brushBounds: region, durable: true, attributes, overwrite);
+        FillOpaque(region, AsFill(brush, attributes), overwrite);
     }
 
     /// <summary>
@@ -322,8 +380,52 @@ public sealed class DrawingContext
     public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, color: default, brushBounds: brushBounds, durable: true, attributes, overwrite);
+        FillOpaque(region, AsFill(brush, attributes), brushBounds, overwrite);
     }
+
+    /// <summary>
+    /// Fill <paramref name="region"/> as <b>space-bearing</b> cells, resolving <paramref name="style"/>
+    /// per cell, so the fill <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em>
+    /// prevents it from being overwritten by background-only methods like
+    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/> or
+    /// <see cref="PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>, which allow lower glyphs to
+    /// show through — either at the compositor level or within the same scene, respectively. Use it for
+    /// opaque panels, modals, and menus drawn over content. A translucent sample is preserved (the alpha
+    /// rides to the compositor for a frosted-panel effect), but the glyph beneath is still replaced.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
+    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
+    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
+    /// background so the border sits on the panel rather than punching a transparent hole.
+    /// </para>
+    /// <para>
+    /// This family is the one whose cells COMPOSITE their attributes — a space-bearing cell replaces the
+    /// destination's foreground, attributes and underline, so e.g. <see cref="TextAttributes.Inverse"/>
+    /// reverse-videos the whole filled region even where the sampled background is <c>Default</c>.
+    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>'s transparent tint cannot do this: its
+    /// background-only cells drop the attribute on composite.
+    /// </para>
+    /// <para>
+    /// The base-plus-delta shape, what an ABSENT <see cref="StyleDeltaTemplate.Background"/> means, and
+    /// why no attribute is masked here are all as documented on
+    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every occluder cell takes.</param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true)
+        => FillRectangleCore(region, in style, region, durable: true, overwrite);
+
+    /// <inheritdoc cref="FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every occluder cell takes.</param>
+    /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes; may be larger or smaller than <paramref name="region"/>.</param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = true)
+        => FillRectangleCore(region, in style, brushBounds, durable: true, overwrite);
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds with <paramref name="color"/>. Each cell is painted background-only
@@ -339,7 +441,7 @@ public sealed class DrawingContext
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
-        => FillRectangleCore(region, brush: null, color: color, brushBounds: region, durable: false, attributes, overwrite);
+        => PaintRectangle(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient), sampled per cell
@@ -358,7 +460,7 @@ public sealed class DrawingContext
     public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, default, region, durable: false, attributes, overwrite);
+        PaintRectangle(region, AsFill(brush, attributes), overwrite);
     }
 
     /// <summary>
@@ -379,12 +481,75 @@ public sealed class DrawingContext
     public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
-        FillRectangleCore(region, brush, default, brushBounds, durable: false, attributes, overwrite);
+        PaintRectangle(region, AsFill(brush, attributes), brushBounds, overwrite);
     }
 
-    private void FillRectangleCore(in Rect region, IBrush? brush, Color color, in Rect brushBounds, bool durable,
-                                   TextAttributes attributes = default, bool overwrite = false)
+    /// <summary>
+    /// Fill <paramref name="region"/>'s backgrounds by resolving <paramref name="style"/> per cell. Each
+    /// cell is painted background-only (no glyph). The fill tints the target background <em>within the
+    /// scene</em>, and <paramref name="overwrite"/> governs whether the existing glyph is left showing
+    /// through when painting with less than full opacity.
+    /// </summary>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every filled cell takes.</param>
+    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, which intends for blending to
+    /// be applied by the compositor across scenes, this method performs blending <em>intra-scene</em> —
+    /// it writes through <see cref="CellBuffer.Set"/>, which is also where the whitespace rescue lives
+    /// that leaves a same-scene glyph standing.
+    /// </para>
+    /// <para>
+    /// The base-plus-delta shape, what an ABSENT <see cref="StyleDeltaTemplate.Background"/> means, and
+    /// why no attribute is masked here are all as documented on
+    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>.
+    /// </para>
+    /// </remarks>
+    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+        => FillRectangleCore(region, in style, region, durable: false, overwrite);
+
+    /// <inheritdoc cref="PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
+    /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every filled cell takes.</param>
+    /// <param name="brushBounds">The sampling rectangle for <paramref name="style"/>'s brushes, when distinct from <paramref name="region"/>.</param>
+    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
+    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+        => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite);
+
+    /// <summary>
+    /// The one fill loop: resolve <paramref name="style"/> at each cell of <paramref name="region"/> over
+    /// <see cref="CellStyle.Default"/> and write the result, as a space-bearing occluder
+    /// (<paramref name="durable"/>) or a background-only tint.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every brush channel samples against ONE rect, <paramref name="brushBounds"/> — the single-argument
+    /// <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect)"/> form, not the four-argument one. A
+    /// rectangle fill's cells are uniform: its background covers precisely the cells its (space) ink does,
+    /// so it has one extent, and the four-argument split — background against the fill box, foreground
+    /// against the ink inside it — has nothing here to distinguish. What <paramref name="brushBounds"/>
+    /// states is not a second extent but a REFRAMING of the only one: the caller declares the coordinate
+    /// frame the fill's gradient spans (an area chart painting one column of a whole-chart ramp), and
+    /// there is exactly one such declaration per call, so letting it govern the background alone would
+    /// invent a frame for the other channels that the caller never stated and cannot control.
+    /// </para>
+    /// <para>
+    /// A <see cref="StyleDeltaTemplate.IsUniform"/> template — a solid colour, or none, which is nearly
+    /// every fill — resolves ONCE for the whole rectangle instead of per cell. That is what keeps the
+    /// hottest primitive in the framework from paying a per-cell resolve for a value it already knows;
+    /// the colour path it replaced sampled nothing at all per cell.
+    /// </para>
+    /// </remarks>
+    private void FillRectangleCore(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool durable,
+                                   bool overwrite = false)
     {
+        // Sampled at the region's own anchor against the stated bounds, so a hand-written uniform brush is
+        // never handed a coordinate outside the frame it was told to expect.
+        Cell? uniform = style.IsUniform
+                            ? CellFor(style.Resolve(region.Column, region.Row, brushBounds), durable)
+                            : null;
+
         if (_stateStack.Count != 0)
         {
             // Transformed path: sample the brush in local coordinates, write at the translated scene cell.
@@ -400,8 +565,7 @@ public sealed class DrawingContext
             for (int row = lRowStart; row < lRowEnd; row++)
             for (int col = lColStart; col < lColEnd; col++)
             {
-                var c = brush?.ColorAt(col, row, brushBounds) ?? color;
-                var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
+                var cell = uniform ?? CellFor(style.Resolve(col, row, brushBounds), durable);
 
                 if (overwrite)
                 {
@@ -424,8 +588,7 @@ public sealed class DrawingContext
         for (int row = rowStart; row < rowEnd; row++)
         for (int col = colStart; col < colEnd; col++)
         {
-            var c = brush?.ColorAt(col, row, brushBounds) ?? color;
-            var cell = durable ? DurableCell(c, attributes) : WeakCell(c, attributes);
+            var cell = uniform ?? CellFor(style.Resolve(col, row, brushBounds), durable);
 
             if (overwrite)
                 _surface[col, row] = cell;
@@ -434,11 +597,28 @@ public sealed class DrawingContext
         }
     }
 
-    private static Cell DurableCell(Color color, TextAttributes attributes = default)
-        => new(CellBuffer.DurableEmptyGrapheme, CellKind.Single, CellStyle.Default.WithBackground(color).WithAttributes(attributes));
+    /// <summary>
+    /// One filled cell: <paramref name="resolved"/> applied to the ground every fill resolves against.
+    /// <paramref name="durable"/> selects the family's cell KIND — a space-bearing occluder versus a
+    /// background-only tint the layer beneath shows through.
+    /// </summary>
+    private static Cell CellFor(in PartialStyle resolved, bool durable)
+        => new(durable ? CellBuffer.DurableEmptyGrapheme : null, CellKind.Single, resolved.ApplyTo(CellStyle.Default));
 
-    private static Cell WeakCell(Color color, TextAttributes attributes = default)
-        => new(null, CellKind.Single, CellStyle.Default.WithBackground(color).WithAttributes(attributes));
+    /// <summary>
+    /// The one-brush-plus-flag-word form as a template — what the <see cref="Color"/> and
+    /// <see cref="IBrush"/> fill overloads mean, in the type the primitive now takes.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="attributes"/> is a flag WORD, and it is folded through the per-AXIS API rather
+    /// than unioned in wholesale — the same fold, for the same reason, as the base-attribute leg of
+    /// <see cref="CreateBrushResolver"/>. A naive <see cref="StyleDeltaTemplate.Applying"/> would THROW
+    /// on a real path: <see cref="PartialStyle.Require"/> rejects Bold / Faint / Italic / Underline
+    /// because they own axes, and <c>TextPresenter</c>'s band fill hands this primitive a word whose
+    /// allowlist admits the first three.
+    /// </remarks>
+    private static StyleDeltaTemplate AsFill(IBrush background, TextAttributes attributes)
+        => Imposing(new StyleDeltaTemplate { Background = background }, attributes);
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -1011,55 +1191,86 @@ public sealed class DrawingContext
                    }
 
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,
-                   // per AXIS (default none = a no-op for every pre-existing caller). When the base carries the
-                   // Underline presence bit with a non-Single shape, the shape rides along (the widened
-                   // seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot author shapes
-                   // today, so the base shape never overwrites authored run state.
-                   if (baseAttributes == default)
-                       return new BrushedTextStyle(delta, bounds);
+                   // per AXIS (default none = a no-op for every pre-existing caller). The shape handed to
+                   // the fold is the RUN's own, which is what the Underline bit re-states.
+                   delta = Imposing(delta, baseAttributes, ctx.BaseStyle.UnderlineStyle);
 
-                   // `baseAttributes` is a flag WORD, but it is folded through the per-AXIS API rather than
-                   // unioned in wholesale. Weight is why. Bold and Faint share the SGR 22 reset, so a cell
-                   // carrying both is not "two attributes" — it is a state the encoder cannot spell: reaching
-                   // it emits ESC[1m from a Faint predecessor and ESC[2m from a Bold one, and the terminal
-                   // keeps whichever arrived last. (`PartialStyle.Weight` reports Bold for it either way, so
-                   // the accessor and the frame disagree in silence.) An inherited Bold therefore IMPOSES a
-                   // weight, clearing the run's own Faint, rather than unioning into something unrenderable.
-                   if ((baseAttributes & TextAttributes.Bold) != 0)
-                       // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot
-                       // produce one, but a caller that ORs its own flags onto the composed word can. Bold
-                       // wins: the choice is arbitrary, being FIXED is not, since the alternative is a cell
-                       // whose appearance depends on what was painted before it.
-                       delta = delta.Weighing(TextWeight.Bold);
-                   else if ((baseAttributes & TextAttributes.Faint) != 0)
-                       delta = delta.Weighing(TextWeight.Faint);
-
-                   // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it
-                   // are the same operation, and the axis-typed form is the one that says which axis it is.
-                   if ((baseAttributes & TextAttributes.Italic) != 0)
-                       delta = delta.Posturing(TextStyle.Italic);
-
-                   // The genuine booleans keep unioning: no reset is shared, so a run's Overline survives an
-                   // inherited Strikethrough. `Setting` is the union for flags that have no axis of their own.
-                   var booleans = baseAttributes & PartialStyle.Booleans;
-                   if (booleans != default)
-                       delta = delta.Applying(booleans);
-
-                   // Underline's axis has no "on, and no further opinion" form — the flag travels with a
-                   // SHAPE, which implies it once resolved. Re-stating the run's own shape is that form: the
-                   // underline arrives and the shape is left exactly where it was, which is what the flag-word
-                   // union did. The rider below then overrides the shape when the element states one.
-                   if ((baseAttributes & TextAttributes.Underline) != 0)
-                       delta = delta with { UnderlineShape = ctx.BaseStyle.UnderlineStyle };
-
-                   // A shape implies the Underline flag once resolved, and the guard only lets the shape
-                   // through when the element already carries that flag — so the two agree and the rider adds
-                   // a shape rather than an underline.
+                   // When the base carries the Underline presence bit with a non-Single shape, the shape rides
+                   // along (the widened seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot
+                   // author shapes today, so the base shape never overwrites authored run state. A shape
+                   // implies the Underline flag once resolved, and the guard only lets the shape through when
+                   // the element already carries that flag — so the two agree and the rider adds a shape
+                   // rather than an underline.
                    if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
                        delta = delta with { UnderlineShape = baseUnderlineShape };
 
                    return new BrushedTextStyle(delta, bounds);
                };
+    }
+
+    /// <summary>
+    /// Fold a flag WORD onto <paramref name="template"/> <b>per axis</b> — one implementation, shared by
+    /// the element-attribute leg of <see cref="CreateBrushResolver"/> and by the fill primitives'
+    /// colour-plus-attributes overloads.
+    /// </summary>
+    /// <param name="template">The delta to impose the word on.</param>
+    /// <param name="attributes">The flag word. <see langword="default"/> is the identity.</param>
+    /// <param name="underlineShape">
+    /// The shape the Underline bit carries — the destination's own, re-stated, since the flag has no
+    /// "on, and no further opinion" form of its own.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Unioning the word in wholesale is not merely inconvenient, it is unavailable:
+    /// <see cref="StyleDeltaTemplate.Applying"/> routes through <c>PartialStyle.Require</c>, which THROWS
+    /// for Bold / Faint / Italic / Underline because each owns an axis. The unguarded sibling
+    /// (<c>WithAdded</c>) was deleted deliberately — it existed to do the forbidden thing, and the state
+    /// it bought is not renderable.
+    /// </para>
+    /// <para>
+    /// Weight is why. Bold and Faint share the SGR 22 reset, so a cell carrying both is not "two
+    /// attributes" — it is a state the encoder cannot spell: reaching it emits ESC[1m from a Faint
+    /// predecessor and ESC[2m from a Bold one, and the terminal keeps whichever arrived last.
+    /// (<c>PartialStyle.Weight</c> reports Bold for it either way, so the accessor and the frame disagree
+    /// in silence.) An imposed Bold therefore CLEARS the Faint underneath rather than unioning into
+    /// something unrenderable.
+    /// </para>
+    /// </remarks>
+    private static StyleDeltaTemplate Imposing(in StyleDeltaTemplate template, TextAttributes attributes,
+                                               UnderlineStyle underlineShape = default)
+    {
+        if (attributes == default) return template;
+
+        var delta = template;
+
+        if ((attributes & TextAttributes.Bold) != 0)
+            // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot produce
+            // one, but a caller that ORs its own flags onto the composed word can. Bold wins: the choice
+            // is arbitrary, being FIXED is not, since the alternative is a cell whose appearance depends
+            // on what was painted before it.
+            delta = delta.Weighing(TextWeight.Bold);
+        else if ((attributes & TextAttributes.Faint) != 0)
+            delta = delta.Weighing(TextWeight.Faint);
+
+        // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it are the
+        // same operation, and the axis-typed form is the one that says which axis it is.
+        if ((attributes & TextAttributes.Italic) != 0)
+            delta = delta.Posturing(TextStyle.Italic);
+
+        // The genuine booleans keep unioning: no reset is shared, so an existing Overline survives an
+        // imposed Strikethrough. `Applying` is the union for flags that have no axis of their own.
+        var booleans = attributes & PartialStyle.Booleans;
+        if (booleans != default)
+            delta = delta.Applying(booleans);
+
+        // Underline's axis has no "on, and no further opinion" form — the flag travels with a SHAPE,
+        // which implies it once resolved. Re-stating a shape is that form: the underline arrives and the
+        // shape is left exactly where it was, which is what the flag-word union did. A shape the template
+        // already states wins, since that is an opinion the word does not have.
+        if ((attributes & TextAttributes.Underline) != 0)
+            delta = delta with { UnderlineShape = delta.UnderlineShape ?? underlineShape };
+
+        return delta;
     }
 
     /// <summary>

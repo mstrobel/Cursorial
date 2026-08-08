@@ -790,6 +790,14 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   vs background-only `FillRectangle`. A bordered opaque panel = `FillOpaque` + `DrawBox(overwrite: true)`
   (an overwriting stroke over an opaque fill keeps the fill background under the glyph). Alpha-preserving
   raw write with wide-orphan cleanup.
+- **All three fill families take a `StyleDeltaTemplate`**, resolved per cell over `CellStyle.Default` —
+  the ground a fill owns, fixed rather than passed, since no caller holds one. The `Color` / `IBrush`
+  overloads stay as thin wrappers; their `attributes` word is folded on PER AXIS (Bold/Faint impose a
+  weight, Italic a posture, the axis-free flags union), because `PartialStyle.Require` rejects the
+  axis-owning flags outright. `brushBounds` reframes **every** brush channel, not the background alone:
+  a fill's cells are uniform, so it has one extent, and the four-argument `Resolve` split belongs to
+  operations whose fill box is larger than their ink. A `IsUniform` template folds once per rectangle.
+  No attribute mask lives in the primitive — that is the policy's job (`TextPresenter.FillAttributes`).
 - **Titled boxes / panels** (`DrawTitledBox` / `DrawPanel` + `PanelTitle` / `TitlePosition`) — a one-call
   group box with a label on the top edge. All four edges deposit under **one** stroke record (like
   `DrawBox`), so corners are JunctionMode-independent and the gradient samples the full rect; the title

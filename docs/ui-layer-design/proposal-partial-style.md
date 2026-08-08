@@ -1051,6 +1051,12 @@ their own:
   question there turned out to be *which attributes may spread onto cells nobody inked*, which is what
   `FillAttributes` answers.
 
+  > **Still true of the CALL SITE** after §11.9. `FillOpaque` now takes a `StyleDeltaTemplate`, but this
+  > site keeps using the colour-plus-word wrapper, because a solid transparent fill plus a flag word is
+  > exactly what two arguments already say. What §11.9 changed underneath it is that the word is folded
+  > per AXIS rather than written into a `CellStyle` wholesale — which it had to be, since `FillAttributes`
+  > admits Bold, Faint and Italic and those cannot travel through `Applying`.
+
 **The third has landed too, and the argument that decided it is worth keeping.** This entry recorded
 `ResolveLineBaseStyle` as an OPEN QUESTION and leaned against migrating: it does not modify anybody's
 cells, it establishes the line's GROUND STATE — the style every run and every fill on that line is then
@@ -1401,6 +1407,68 @@ multi-line, placeholder): zero diff.
 
 `ResolveLineBaseValue` SURVIVES for the face lane and the sized-run lane, whose primitives still take a
 resolved `CellStyle`. Retiring it entirely waits on `DrawGlyphText`'s caller-side shape, not on this slice.
+
+### 11.9 The fill primitives: `FillRectangle` / `FillOpaque` / `PaintRectangle` take a template — ✅ MIGRATED
+
+The other half of §11.8, and the one the presenter's band fill needed:
+
+```csharp
+// before: one brush and a flag WORD, side by side, with no room for anything else
+public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true);
+
+// after: the delta, resolved per cell over the ground the fill owns
+public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true);
+```
+
+The base is **fixed, not passed**, which is where this diverges from `DrawText`. A draw's caller holds a
+resolved `CellStyle` for the run — the layout system built one — so handing it in is honest. A fill's
+caller holds nothing: the ground has always been `CellStyle.Default`, and a template is a total delta
+over it, so a `baseStyle` parameter would add surface without adding a single thing anybody could say.
+
+The `Color` / `IBrush` overloads are KEPT for §11.8's reason (about sixty solid-colour call sites), and
+all nine keep their **exact** defaults — including the two that disagree, `DrawingContext.FillOpaque`'s
+`overwrite: true` against `RenderContext`'s `false`. That narrower veneer default is what lets the band
+fill below paint over a glyph face without erasing it, so it is load-bearing rather than incidental; the
+new template overload at `RenderContext` matches it, and the `IBrush` overloads' `true` is left alone as
+an inconsistency older than this slice.
+
+Four things this had to settle:
+
+1. **The attribute WORD carries axis-owning flags, and `Applying` rejects them.** `PartialStyle.Require`
+   throws for Bold / Faint / Italic / Underline, and `TextPresenter`'s band fill hands the primitive
+   `(baseStyle.Attributes & FillAttributes) | Inverse` where the allowlist admits the first three — so the
+   naive one-line fold throws on a real path, not a hypothetical one. The wrappers fold per AXIS through
+   the same `Imposing` helper the element-attribute leg of `CreateBrushResolver` now shares (it was the
+   only other place doing this translation, and it was doing it inline). `WithAdded` stays deleted: the
+   fold never constructs `Bold | Faint`, it imposes Bold.
+2. **No mask lives in the primitive.** `FillAttributes` remains `TextPresenter`'s, in the policy that owns
+   the question. The primitive paints exactly what it is handed — an author who passes `Blink` asked for
+   it — and masking here would remove the escape hatch that ruling depends on.
+3. **`brushBounds` reframes every channel**, so the single-argument `Resolve` is the right one. Not
+   `DrawText`'s reason (a run's background covers its glyphs' cells) but a stronger one: a rectangle
+   fill's cells are UNIFORM, so it has one extent, and the four-argument split — background against the
+   fill box, foreground against the ink inside it — has nothing here to distinguish. `brushBounds` is not
+   a second extent; it is a reframing of the only one, and there is exactly one such declaration per call,
+   so letting it govern the background alone would invent a frame for the other channels that the caller
+   never stated and cannot control. Pinned by
+   `Template_BrushBounds_GovernEveryChannel_NotJustTheBackground`, which reads 32 where the four-argument
+   form reads 64.
+4. **An absent `Background` is `Color.Default` here, NOT `Transparent`** — the opposite of §11.8's
+   finding, and for a reason that falls straight out of the fixed ground: the base a fill resolves
+   against already carries `Default`, so absence and `Color.Default` are the same colour and the template
+   agrees with `FillOpaque(…, Color.Default, …)` rather than with `DrawText`'s brush overload. It matters
+   for the same reason it mattered there: `Color.Default` is OPAQUE to `CellBuffer.Set`, so on the
+   non-overwriting path it does not rescue the glyph underneath where `Transparent` does.
+
+`IsUniform` pays here more than anywhere — a solid fill is the hottest primitive in the framework, and the
+colour path it replaced sampled nothing at all per cell, so without the hoist this would have been a
+regression rather than a wash. Verified by mutation: hoisting unconditionally fails six gradient tests.
+
+**`TextPresenter`'s band fill call site is unchanged**, which is the point of keeping the wrappers. What
+changed is that the word it hands over is now folded through the axis API instead of being written into a
+`CellStyle` wholesale, and that its two existing pins
+(`BandFill_KeepsTheAllowedAttributes_OnInkedCells`, `BandFill_SpreadsOnlyTheAllowedAttributes_ToGapCells`)
+are what catch the naive fold — both throw under it.
 
 ## 12. What the type has to prove
 

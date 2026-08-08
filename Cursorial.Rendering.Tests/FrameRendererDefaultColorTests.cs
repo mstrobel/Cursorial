@@ -71,19 +71,7 @@ public class FrameRendererDefaultColorTests
     /// brackets between DECSC (<c>ESC 7</c>) and DECRC (<c>ESC 8</c>). Only fragments save the cursor,
     /// so this isolates the fragment's backdrop SGR from the cell pass that precedes it.
     /// </summary>
-    private static string FragmentEmission(string output)
-    {
-        // Composed rather than written as an escape: C#'s \x is variable-length and would swallow the
-        // trailing digit of "ESC 7" into the character code.
-        string decsc = (char) 0x1B + "7";
-        string decrc = (char) 0x1B + "8";
-
-        int start = output.IndexOf(decsc, StringComparison.Ordinal);
-        Assert.True(start >= 0, "Expected a bracketed fragment emission (DECSC) in the output.");
-        int end = output.IndexOf(decrc, start, StringComparison.Ordinal);
-        Assert.True(end > start, "Expected the fragment emission to be closed by DECRC.");
-        return output[start..end];
-    }
+    private static string FragmentEmission(string output) => FragmentEmissionSlicer.Single(output);
 
     // ---- Exactness: an unpainted cell emits the default code, not an explicit color ----------
 

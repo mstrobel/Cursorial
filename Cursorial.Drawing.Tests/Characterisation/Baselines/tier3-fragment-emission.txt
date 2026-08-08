@@ -1,0 +1,255 @@
+# TIER 3 — SIZED TEXT / FRAGMENT EMISSION
+#
+# MIGRATION SCAFFOLDING — a characterisation baseline, not a specification. Regenerate with
+# CURSORIAL_TEXT_CHARACTERISATION_REGENERATE=1 and review the diff.
+#
+# The VT bytes. Sized text rides an OSC 66 fragment and is never painted into cells, so the
+# only verifiable artefact is what we emit: the DECSC…DECRC bracket per fragment, captured at
+# truecolor and Ansi256. The backdrop SGR is captured alongside the payload — it is the anchor
+# cell's style, and the historically fragile part.
+# Only the corpus cases that register a fragment (TextCase.EmitsFragments) appear below.
+# corpus: 73 cases
+
+== sized-block-scale2 ==
+desc: SizedTextBlock at scale 2. Cells show the fallback face; the fragment is tier 3's.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Title"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;Title<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Title"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;Title<ESC>\
+
+== sized-block-scale3-centered ==
+desc: Scale 3, centred — the anchor column the fragment is emitted at moves with alignment.
+tier: Truecolor
+  registered: 1
+    anchor=(7,0) SizedTextFragment size=9x3 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=3 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Big"
+  emissions: 1
+    [0] cup=(row=0,col=7)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;8H<ESC>[0m<ESC>]66;s=3;Big<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(7,0) SizedTextFragment size=9x3 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=3 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Big"
+  emissions: 1
+    [0] cup=(row=0,col=7)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;8H<ESC>[0m<ESC>]66;s=3;Big<ESC>\
+
+== sized-block-styled ==
+desc: Sized text carrying an explicit fg + bg + attributes. That style becomes the OSC 66 backdrop SGR — historically the fragile part.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=6x2 supported=yes anchorStyle{fg=#ffb000 bg=#400000 at=Bold ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#ffb000 bg=#400000 at=Bold ul=Single uc=. hl=.
+      line[0] "Hot"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 38;2;255;176;0;48;2;64;0;0;1
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;2;255;176;0;48;2;64;0;0;1m<ESC>]66;s=2;Hot<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=6x2 supported=yes anchorStyle{fg=#ffb000 bg=#400000 at=Bold ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#ffb000 bg=#400000 at=Bold ul=Single uc=. hl=.
+      line[0] "Hot"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 38;5;214;48;5;52;1
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;5;214;48;5;52;1m<ESC>]66;s=2;Hot<ESC>\
+
+== sized-block-fractional ==
+desc: A footprint-identity fractional sizing (s=1:n=1:d=2) still emits OSC 66 — it must not be optimised into the cell walk.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=4x1 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=1 width=0 n=1 d=2 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "half"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;n=1:d=2;half<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=4x1 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=1 width=0 n=1 d=2 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "half"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;n=1:d=2;half<ESC>\
+
+== sized-block-multiline ==
+desc: Author line breaks inside block text: one OSC 66 sequence per line, with explicit CUP between them.
+tier: Truecolor
+  registered: 2
+    anchor=(0,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "ab"
+    anchor=(0,2) SizedTextFragment size=6x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "cde"
+  emissions: 2
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;ab<ESC>\
+    [1] cup=(row=2,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[3;1H<ESC>[0m<ESC>]66;s=2;cde<ESC>\
+tier: Ansi256
+  registered: 2
+    anchor=(0,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "ab"
+    anchor=(0,2) SizedTextFragment size=6x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "cde"
+  emissions: 2
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;ab<ESC>\
+    [1] cup=(row=2,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[3;1H<ESC>[0m<ESC>]66;s=2;cde<ESC>\
+
+== sized-block-alignment-keys ==
+desc: Non-default vertical/horizontal alignment keys in the OSC 66 metadata block.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=2x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Center h=Right
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "v"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2:v=2:h=1;v<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=2x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Center h=Right
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "v"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2:v=2:h=1;v<ESC>\
+
+== sized-inline-run-mixed ==
+desc: A sized RUN inline with plain text — sized and cell text sharing one line band.
+tier: Truecolor
+  registered: 1
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "UP"
+  emissions: 1
+    [0] cup=(row=0,col=3)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>]66;s=2;UP<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "UP"
+  emissions: 1
+    [0] cup=(row=0,col=3)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>]66;s=2;UP<ESC>\
+
+== sized-over-painted-background ==
+desc: Sized text whose anchor cell carries a panel background. FrameRenderer hands the fragment the anchor cell's style, so the backdrop SGR must name that colour rather than the terminal default — the seam commit 2137e58b closed.
+tier: Truecolor
+  registered: 1
+    anchor=(0,1) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=. bg=#003060 at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=#003060 at=. ul=Single uc=. hl=.
+      line[0] "Panel"
+  emissions: 1
+    [0] cup=(row=1,col=0)
+      sgr: 0;48;2;0;48;96
+      bytes: <ESC>7<ESC>[2;1H<ESC>[0;48;2;0;48;96m<ESC>]66;s=2;Panel<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,1) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=. bg=#003060 at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=#003060 at=. ul=Single uc=. hl=.
+      line[0] "Panel"
+  emissions: 1
+    [0] cup=(row=1,col=0)
+      sgr: 0;48;5;23
+      bytes: <ESC>7<ESC>[2;1H<ESC>[0;48;5;23m<ESC>]66;s=2;Panel<ESC>\
+
+== sized-brushed-block-scope ==
+desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#70008f bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#70008f bg=. at=. ul=Single uc=. hl=.
+      line[0] "Grad"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 38;2;112;0;143;49
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;2;112;0;143;49m<ESC>]66;s=2;Grad<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#70008f bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#70008f bg=. at=. ul=Single uc=. hl=.
+      line[0] "Grad"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 38;5;54;49
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;5;54;49m<ESC>]66;s=2;Grad<ESC>\
+
+== sized-explicit-figlet-fallback ==
+desc: An explicit fallback face pins which arm a non-supporting terminal takes.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Fb"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;Fb<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=. bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=. bg=. at=. ul=Single uc=. hl=.
+      line[0] "Fb"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;Fb<ESC>\

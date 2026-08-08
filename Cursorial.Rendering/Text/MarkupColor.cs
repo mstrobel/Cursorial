@@ -96,10 +96,15 @@ public static class MarkupColor
         brush = null;
 
         if (TryParseCore(value, out var color, out error) is false) return false;
-        
-        if (color is { Kind: ColorKind.Palette, PaletteIndex: var index })
-            color = index < 16 ? Color.FromPalette(index) : ColorPalette.Ansi256[index];
-        
+
+        brush = color switch
+                {
+                    { Kind: ColorKind.Rgb } => new SolidColorBrush(color),
+                    { Kind: ColorKind.Palette, PaletteIndex: var i and < 16 } => SolidColorBrush.FromPalette(i),
+                    { Kind: ColorKind.Palette } => BrushPalette.Ansi256[color.PaletteIndex],
+                    _ => Brushes.Default
+                };
+
         return true;
     }
 

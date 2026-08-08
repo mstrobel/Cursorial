@@ -50,17 +50,8 @@ public static class BrushMarkup
 
         if (colon <= 0)
         {
-            if (MarkupColor.TryParse(value, out var c))
+            if (MarkupColor.TryParseBrush(value, out var brush))
             {
-                var brush =
-                    c.Kind switch
-                    {
-                        ColorKind.Palette when c.PaletteIndex < 16 => SolidColorBrush.FromPalette(c.PaletteIndex),
-                        ColorKind.Palette                          => BrushPalette.Ansi256[c.PaletteIndex],
-                        ColorKind.Rgb                              => new SolidColorBrush(c),
-                        _                                          => Brushes.Default
-                    };
-
                 brushed = new BrushedStyle(brush);
                 return true;
             }

@@ -1094,10 +1094,28 @@ public sealed class FrameRenderer
         CursorWriter.WriteSavePosition(output);
         CursorWriter.WriteMoveTo(output, col, row);
 
+        // The anchor cell's style before capability adaptation. The default-color substitution decides
+        // on the unadapted color and applies the replacement to the adapted one — see
+        // SubstituteTerminalDefaultColors for why the decision cannot be made on the quantized form.
+        var source = existingStyle;
+
         existingStyle = AdaptStyle(existingStyle, col, row);
-        
-        SgrEncoder.WriteAbsolute(output, in existingStyle);
-        
+
+        // The backdrop gets the same substitution the cell pass applies, or a fragment anchored over
+        // unpainted background paints the quantized approximation of the terminal's default while every
+        // cell around it now shows the terminal's true default — a seam at any depth below truecolor.
+        // It cooperates with WriteAbsolute rather than duplicating it: the leading SGR 0 already puts
+        // the terminal at its own default fg/bg, which is exactly why WriteAbsolute skips a channel
+        // holding Color.Default.
+        //
+        // The delta below keeps the UNSUBSTITUTED style as its starting point, deliberately. The two
+        // differ only in a channel the terminal is already displaying its default in, so the delta's
+        // "unchanged" branch leaves that default standing — which is the substitution propagating to
+        // the anchor style, not a state-tracking slip. Substituting the delta's origin instead would
+        // make an anchor style that IS the derived default compare unequal and re-emit the very
+        // approximation this removes.
+        SgrEncoder.WriteAbsolute(output, SubstituteTerminalDefaultColors(existingStyle, source));
+
         var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle) ?? entry.AnchorStyle;
 
         if (anchorStyle is { Background.IsTransparent: true })

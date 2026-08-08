@@ -685,6 +685,15 @@ public sealed class TextPresenter : UIElement
             // ResolveLineBaseValue sample them at a fixed point. Transparent lets whatever the field's
             // chrome painted show through under the glyph; Default is NoColor's "say nothing".
             Background = noColor ? Brushes.Default : Brushes.Transparent,
+
+            // UNCONDITIONALLY, unlike the shape below. A colour and a presence are two different
+            // opinions: "whatever underline is drawn, draw it in this" is what a theme wants (error
+            // underlines are red) without asserting that everything is underlined, and gating the
+            // colour on the flag would make it unsayable. The asymmetry is the stack's, not this
+            // method's — PartialStyle.WithUnderlineColor states it, and
+            // PartialStyleTests.WithUnderlineColor_DoesNotForceAnUnderline pins it. Read at BASE
+            // priority, the same access StyleDeltaTemplate.FromElement uses, so the two agree.
+            UnderlineColor = this.GetBaseValue(TextElement.UnderlineBrushProperty),
         };
 
         // The attribute WORD is folded per AXIS rather than unioned in wholesale, for the reason

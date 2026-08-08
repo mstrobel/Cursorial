@@ -64,6 +64,10 @@ public sealed class TextPresenterLineBaseTests
     private static readonly Color Solid = Color.FromRgb(30, 200, 90);
     private static readonly Color Selection = Color.FromRgb(180, 40, 200);
 
+    /// <summary>The underline INK — distinct from <see cref="Solid"/> (the foreground) so a cell
+    /// carrying it can only have got it from the underline brush the fixture handed in.</summary>
+    private static readonly Color UnderlineInk = Color.FromRgb(220, 60, 20);
+
     // ───────────────────────────── fixtures ─────────────────────────────
 
     private static (UIHeadlessHost Host, TextBox Box) Shown(string text, IBrush? foreground,
@@ -132,6 +136,26 @@ public sealed class TextPresenterLineBaseTests
     {
         var origin = Presenter(box).TranslateToWindow(0, 0);
         return host.GetCell(origin.Column + column, origin.Row + row);
+    }
+
+    /// <summary>
+    /// Puts an underline BRUSH on the presenter and re-renders. It goes on the PRESENTER rather than
+    /// the box because <see cref="TextElement.UnderlineBrushProperty"/> is not one of the eight
+    /// <c>AllAxisProperties</c> the <c>TextBox</c> template forwards — a value set on the box never
+    /// reaches the part that paints the line. <see cref="UIElement.InvalidateVisual"/> is explicit for
+    /// the neighbouring reason: the property carries no <c>AffectsRender</c> registration, so setting
+    /// it schedules no repaint of its own.
+    /// </summary>
+    private static void SetUnderlineBrush(UIHeadlessHost host, TextBox box, IBrush brush)
+    {
+        var presenter = Presenter(box);
+        TextElement.SetUnderlineBrush(presenter, brush);
+        presenter.InvalidateVisual();
+        host.RunUntilIdle();
+
+        // Reachability: nothing beat the value this fixture set, so the cells below are underlined
+        // by the brush handed in — or by nothing.
+        Assert.Same(brush, TextElement.GetUnderlineBrush(presenter));
     }
 
     private static string Graphemes(UIHeadlessHost host, TextBox box, int row, int count)
@@ -445,6 +469,87 @@ public sealed class TextPresenterLineBaseTests
             Assert.True(style.Attributes.HasFlag(TextAttributes.Underline), $"column {column}: {style.Attributes}");
             Assert.True(style.Attributes.HasFlag(TextAttributes.Strikethrough), $"column {column}: {style.Attributes}");
             Assert.Equal(UnderlineStyle.Curly, style.UnderlineStyle);
+        }
+    }
+
+    /// <summary>
+    /// ...and so does the underline's COLOUR. The shape and the colour are two channels of one
+    /// decoration and they travel separately — the shape as an enum on the template, the colour as a
+    /// BRUSH — so a base that carries the first is no evidence at all that it carries the second.
+    /// Here it must: an element stating <c>TextElement.UnderlineBrush</c> underlines in that colour.
+    /// </summary>
+    [Fact]
+    public void PlainLane_LineBaseUnderlineBrush_ColoursTheUnderline()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid),
+                                b => TextElement.SetUnderline(b, UnderlineStyle.Curly));
+        using var _ = host;
+
+        SetUnderlineBrush(host, box, new SolidColorBrush(UnderlineInk));
+
+        Assert.True(Presenter(box).EditingSource.PaintsAsCells);
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        for (var column = 0; column < PlainText.Length; column++)
+        {
+            var style = At(host, box, column, 0).Style;
+            Assert.True(style.Attributes.HasFlag(TextAttributes.Underline), $"column {column}: {style.Attributes}");
+            Assert.Equal(UnderlineStyle.Curly, style.UnderlineStyle);
+            Assert.Equal(UnderlineInk, style.UnderlineColor);
+        }
+    }
+
+    /// <summary>
+    /// ...and it does NOT drag an underline along with it. The asymmetry is deliberate and stated at
+    /// the bottom of the stack by <c>PartialStyleTests.WithUnderlineColor_DoesNotForceAnUnderline</c>:
+    /// a colour says "whatever underline is drawn, draw it in this", which a theme wants (error
+    /// underlines are red) without asserting that everything is underlined. The base states the colour
+    /// UNCONDITIONALLY — unlike the shape, which is gated on the flag — so this is the assertion that
+    /// keeps the two apart.
+    /// </summary>
+    [Fact]
+    public void PlainLane_LineBaseUnderlineBrush_DoesNotForceAnUnderline()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid));
+        using var _ = host;
+
+        SetUnderlineBrush(host, box, new SolidColorBrush(UnderlineInk));
+
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        // Reachability, the other way round: the fold really did NOT deliver the flag, so a cell that
+        // carries it got it from the colour.
+        Assert.False(TextElement.ComposeAttributes(Presenter(box)).Flags.HasFlag(TextAttributes.Underline));
+
+        for (var column = 0; column < PlainText.Length; column++)
+        {
+            var style = At(host, box, column, 0).Style;
+            Assert.False(style.Attributes.HasFlag(TextAttributes.Underline), $"column {column}: {style.Attributes}");
+        }
+    }
+
+    /// <summary>
+    /// The SHAPE path stands where it was: an underlined base with no brush of its own states no
+    /// colour, and the cells keep the terminal's default rather than acquiring one. The discriminator
+    /// against a fix that reached for a foreground brush, or a theme default, when the element stated
+    /// nothing.
+    /// </summary>
+    [Fact]
+    public void PlainLane_UnderlineWithoutABrush_StatesNoColour()
+    {
+        var (host, box) = Shown(PlainText, new SolidColorBrush(Solid),
+                                b => TextElement.SetUnderline(b, UnderlineStyle.Curly));
+        using var _ = host;
+
+        Assert.Null(TextElement.GetUnderlineBrush(Presenter(box)));
+        Assert.Equal(PlainText, Graphemes(host, box, 0, PlainText.Length));
+
+        for (var column = 0; column < PlainText.Length; column++)
+        {
+            var style = At(host, box, column, 0).Style;
+            Assert.True(style.Attributes.HasFlag(TextAttributes.Underline), $"column {column}: {style.Attributes}");
+            Assert.Equal(UnderlineStyle.Curly, style.UnderlineStyle);
+            Assert.True(style.UnderlineColor.IsDefault, $"column {column}: {style.UnderlineColor}");
         }
     }
 

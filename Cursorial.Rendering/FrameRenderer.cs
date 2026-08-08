@@ -25,7 +25,8 @@ namespace Cursorial.Rendering;
 /// </para>
 /// <list type="number">
 /// <item><description>
-/// (Full redraw only) <see cref="ScreenWriter.WriteClearScreen"/> + SGR reset.
+/// (Full redraw only) SGR reset + <see cref="ScreenWriter.WriteClearScreen"/>, in that order —
+/// the erase paints the terminal's current background, so the reset has to land first.
 /// </description></item>
 /// <item><description>
 /// For each cell that differs from the corresponding cell in the previous frame: a cursor
@@ -212,8 +213,14 @@ public sealed class FrameRenderer
                 }
             }
 
-            ScreenWriter.WriteClearScreen(output);
+            // The reset goes BEFORE the erase, not after. ED (CSI 2 J) erases to the terminal's CURRENT
+            // background — the same rule the end-of-frame reset below exists to contain — so clearing
+            // first would fill the screen with whatever SGR state we inherited: the shell's on the very
+            // first frame, or the last cell's colour on a ForceFullRedraw. Resetting first makes the
+            // erase land on the terminal's own default, which is what the freshly-zeroed front buffer
+            // below is asserting the screen now holds (see Adapt).
             SgrEncoder.WriteReset(output);
+            ScreenWriter.WriteClearScreen(output);
 
             CursorWriter.WriteMoveTo(output, 0, 0);
             _currentStyle = CellStyle.Default;
@@ -678,8 +685,14 @@ public sealed class FrameRenderer
 
         // Shift the front buffer to reflect the scroll. The newly-uncovered rows become blank
         // on the terminal (per SU/SD semantics) — we initialize the corresponding front cells
-        // to default so the cell diff sees back != front and repaints with whatever the
-        // caller has there.
+        // to default so the cell diff repaints them with whatever the caller has there.
+        //
+        // SU/SD fill those rows with the terminal's CURRENT background, and because Adapt now stores
+        // the emitted form, a zeroed front cell asserts they hold the terminal's own default — so that
+        // fill has to land under a reset SGR state. It does: Render's end-of-frame reset leaves every
+        // incremental frame starting at CellStyle.Default, and nothing between there and here touches
+        // SGR (scroll detection never runs on a full redraw). The unpainted tail of a newly-uncovered
+        // row then costs nothing, which on a log-shaped screen is most of the row.
         var front = _frontCells!;
         if (scrollUp)
         {
@@ -752,6 +765,11 @@ public sealed class FrameRenderer
     /// </summary>
     /// <remarks>
     /// <para>
+    /// Two callers, and the rule has to be identical for both: <see cref="Adapt"/> (whose result is what
+    /// the cell pass emits <em>and</em> what the front buffer stores) and the fragment backdrop in
+    /// <see cref="EmitFragmentBytes"/>.
+    /// </para>
+    /// <para>
     /// <see cref="CellBuffer.DefaultStyle"/> promotes the terminal's reported default fg/bg to a
     /// concrete color so blank cells can alpha-blend, and the frame compositor bases itself on that
     /// blank — so an <em>unpainted</em> cell arrives here carrying a real color rather than
@@ -786,19 +804,16 @@ public sealed class FrameRenderer
         return style;
     }
 
-    // Emit the SGR delta needed to move from the current style to <paramref name="target"/>, which is
-    // the capability-adapted style; <paramref name="source"/> is the same style before adaptation and
-    // decides the default-color substitution (see SubstituteTerminalDefaultColors).
-    private void SyncStyle(IBufferWriter<byte> output, in CellStyle target, in CellStyle source)
+    // Emit the SGR delta needed to move from the current style to <paramref name="target"/>, which has
+    // already been through Adapt — capability quantization AND the default-color substitution — so it
+    // IS the emitted form. _currentStyle therefore tracks the state the TERMINAL is in rather than what
+    // the caller asked for; recording the request instead would leave every subsequent delta computed
+    // against a state the terminal is not in.
+    private void SyncStyle(IBufferWriter<byte> output, in CellStyle target)
     {
-        // _currentStyle tracks the state the TERMINAL is in, which is what the substitution emitted —
-        // not what the caller asked for. Recording the request instead would leave every subsequent
-        // delta computed against a state the terminal is not in.
-        var emitted = SubstituteTerminalDefaultColors(target, source);
-
-        if (emitted == _currentStyle) return;
-        SgrEncoder.WriteDelta(output, _currentStyle, emitted);
-        _currentStyle = emitted;
+        if (target == _currentStyle) return;
+        SgrEncoder.WriteDelta(output, _currentStyle, target);
+        _currentStyle = target;
     }
 
     private void EmitDiff(CellBuffer back, IBufferWriter<byte> output)
@@ -922,14 +937,14 @@ public sealed class FrameRenderer
 
                     SyncCursor(output, r, c + 1);
                     SyncHyperlink(output, neighbor.Style.Hyperlink);
-                    SyncStyle(output, neighbor.Style, neighborIntended.Style);
+                    SyncStyle(output, neighbor.Style);
                     WriteGraphemeUtf8(output, neighbor);
                     _frontCells![frontIdx + 1] = neighbor;
                     _touchedCells![frontIdx + 1] = true;
 
                     SyncCursor(output, r, c);
                     SyncHyperlink(output, cell.Style.Hyperlink);
-                    SyncStyle(output, cell.Style, intended.Style);
+                    SyncStyle(output, cell.Style);
                     WriteGraphemeUtf8(output, cell);
                     _frontCells![frontIdx] = cell;
                     _touchedCells![frontIdx] = true;
@@ -943,7 +958,7 @@ public sealed class FrameRenderer
 
                 SyncCursor(output, r, c);
                 SyncHyperlink(output, cell.Style.Hyperlink);
-                SyncStyle(output, cell.Style, intended.Style);
+                SyncStyle(output, cell.Style);
 
                 if (wideDefense)
                 {
@@ -1172,13 +1187,34 @@ public sealed class FrameRenderer
         _cursorCol = -1;
     }
 
+    /// <summary>
+    /// The cell the renderer will actually put on the wire: quantized for the terminal's colour depth,
+    /// then with any colour still equal to the terminal's own reported default replaced by
+    /// <see cref="Color.Default"/> — the form SGR 39 / 49 emit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The front buffer stores <em>this</em>, deliberately — the emitted form, not the intended one.
+    /// <see cref="CellBuffer.DefaultStyle"/> promotes the terminal's reported default fg/bg to a concrete
+    /// colour so blank cells can alpha-blend, so an UNPAINTED cell arrives here as a null grapheme
+    /// carrying real colours. Normalising them away collapses it to <c>default(Cell)</c>, which is
+    /// precisely what a freshly-allocated front buffer holds — so it drops out of the frame diff
+    /// altogether instead of costing a cursor move plus a space. On a mostly-empty screen that is most
+    /// of the frame.
+    /// </para>
+    /// <para>
+    /// What makes the claim true is the full redraw's ordering: <c>SGR 0</c> precedes <c>CSI 2 J</c>, so
+    /// the erase leaves the terminal's own default behind and a zeroed front cell is an accurate
+    /// statement about the screen. Reverse them and a screen cleared under an inherited background
+    /// would never be repainted.
+    /// </para>
+    /// </remarks>
     private Cell Adapt(in Cell cell, int column, int row)
     {
-        if (_quantizer is null) return cell;
-        // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full
-        // depth / for non-RGB). Off → the plain position-independent quantize.
-        var quantized = AdaptStyle(cell.Style, column, row);
-        return quantized == cell.Style ? cell : cell with { Style = quantized };
+        // The substitution decides on the UNADAPTED colour and applies to the adapted one — see
+        // SubstituteTerminalDefaultColors for why it cannot be decided on the quantized form.
+        var style = SubstituteTerminalDefaultColors(AdaptStyle(cell.Style, column, row), cell.Style);
+        return style == cell.Style ? cell : cell with { Style = style };
     }
 
     private CellStyle AdaptStyle(in CellStyle style, int column, int row)

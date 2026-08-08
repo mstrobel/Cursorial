@@ -109,16 +109,26 @@ public class FrameRendererDefaultColorTests
     [Fact]
     public void Truecolor_ReturnToTheBlank_EmitsThe39And49Codes()
     {
+        // A return to the blank is only a WRITE on an incremental frame. On the full redraw the blank
+        // already equals the screen the leading SGR 0 + CSI 2 J produced, so it emits nothing at all
+        // (that is the whole subject of FrameRendererBlankDiffTests). Frame 2 repaints cell 1 and
+        // unpaints cell 2, so the encoder genuinely has to travel from an explicit colour back.
         var caps = Caps();
         var renderer = new FrameRenderer(caps.Output);
         var buffer = new CellBuffer(3, 1, caps);
-        buffer.Set(1, 0, "x", CellStyle.Default
-                                       .WithForeground(Color.FromRgb(255, 0, 0))
-                                       .WithBackground(Color.FromRgb(0, 0, 255)));
+        var painted = CellStyle.Default
+                               .WithForeground(Color.FromRgb(255, 0, 0))
+                               .WithBackground(Color.FromRgb(0, 0, 255));
 
+        buffer.Set(1, 0, "a", painted);
+        buffer.Set(2, 0, "b", painted);
+        Assert.Equal(["0", "38;2;255;0;0;48;2;0;0;255", "0"], Sgr(Render(renderer, buffer)));
+
+        buffer.Set(1, 0, "A", painted);                                // re-emits, re-establishing the colour
+        buffer[2, 0] = Cell.Blank with { Style = buffer.DefaultStyle }; // and back to the blank beside it
         var output = Render(renderer, buffer);
 
-        Assert.Equal(["0", "38;2;255;0;0;48;2;0;0;255", "39;49", "0"], Sgr(output));
+        Assert.Equal(["38;2;255;0;0;48;2;0;0;255", "39;49", "0"], Sgr(output));
         Assert.DoesNotContain("48;2;30;30;46", output);      // never the derived default, explicitly
         Assert.DoesNotContain("38;2;205;214;244", output);
     }
@@ -131,10 +141,16 @@ public class FrameRendererDefaultColorTests
         var caps = Caps(ColorDepth.Ansi256);
         var renderer = new FrameRenderer(caps.Output);
         var buffer = new CellBuffer(3, 1, caps);
-        buffer.Set(1, 0, "x", CellStyle.Default
-                                       .WithForeground(Color.FromRgb(255, 0, 0))
-                                       .WithBackground(Color.FromRgb(0, 0, 255)));
+        var painted = CellStyle.Default
+                               .WithForeground(Color.FromRgb(255, 0, 0))
+                               .WithBackground(Color.FromRgb(0, 0, 255));
 
+        buffer.Set(1, 0, "a", painted);
+        buffer.Set(2, 0, "b", painted);
+        Render(renderer, buffer);
+
+        buffer.Set(1, 0, "A", painted);
+        buffer[2, 0] = Cell.Blank with { Style = buffer.DefaultStyle };
         var output = Render(renderer, buffer);
 
         byte quantizedDefaultBg = StyleQuantizer.NearestPaletteIndex(30, 30, 46);
@@ -164,10 +180,11 @@ public class FrameRendererDefaultColorTests
 
         var output = Render(renderer, buffer);
 
+        // Cell 2 is the blank, which on a full redraw emits nothing — so the frame ends on the
+        // half-substituted style and only the end-of-frame reset follows.
         Assert.Equal(["0",
                       "38;2;255;0;0;48;2;0;0;255",
                       "39;48;2;0;128;0",   // fg → default code, bg still explicit
-                      "49",                // and back to the blank — the fg never left the default
                       "0"],
                      Sgr(output));
     }
@@ -181,18 +198,33 @@ public class FrameRendererDefaultColorTests
         var renderer = new FrameRenderer(caps.Output);
         var buffer = new CellBuffer(4, 1, caps);
 
+        var blue = CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255));
+
         // cell 0: the blank. cell 1: explicit. cell 2: the blank again. cell 3: explicit again.
-        buffer.Set(1, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)));
-        buffer.Set(3, 0, "y", CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)));
+        buffer.Set(1, 0, "x", blue);
+        buffer.Set(3, 0, "y", blue);
 
-        var output = Render(renderer, buffer);
+        // On the full redraw the two blanks emit nothing — they equal the cleared screen — so cell 3
+        // finds the terminal still on blue and needs no SGR of its own.
+        Assert.Equal(["0", "48;2;0;0;255", "0"], Sgr(Render(renderer, buffer)));
 
-        Assert.Equal(["0",
-                      "48;2;0;0;255",   // blank → explicit
+        // Now make the round trip real, within one frame: cell 1 repaints (re-establishing blue) and
+        // cell 2 goes back to the blank beside it, then cell 3 has to re-establish blue AGAIN. Every
+        // step of that is a delta against what was EMITTED, not what was requested.
+        buffer.Set(1, 0, "X", blue);
+        buffer.Set(2, 0, "z", blue);
+        buffer.Set(3, 0, "Y", blue);
+        Assert.Equal(["48;2;0;0;255", "0"], Sgr(Render(renderer, buffer)));
+
+        buffer[2, 0] = Cell.Blank with { Style = buffer.DefaultStyle };
+        buffer.Set(1, 0, "x", blue);
+        buffer.Set(3, 0, "y", blue);
+
+        Assert.Equal(["48;2;0;0;255",   // blank → explicit
                       "49",             // explicit → blank (fg never left the default)
                       "48;2;0;0;255",   // blank → explicit again
                       "0"],
-                     Sgr(output));
+                     Sgr(Render(renderer, buffer)));
     }
 
     [Fact]
@@ -219,7 +251,9 @@ public class FrameRendererDefaultColorTests
         var output = Render(renderer, buffer);
         byte index = StyleQuantizer.NearestPaletteIndex(1, 1, 1);
 
-        Assert.Equal(["0", $"48;5;{index}", "49", "0"], Sgr(output));
+        // The trailing blank emits nothing on a full redraw; what matters is that cell 1 named its own
+        // palette entry rather than being swallowed by the substitution.
+        Assert.Equal(["0", $"48;5;{index}", "0"], Sgr(output));
     }
 
     // ---- The substitution keys off the TERMINAL's default, not the buffer's declared blank ----

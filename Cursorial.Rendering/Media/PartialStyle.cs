@@ -172,19 +172,24 @@ public readonly record struct PartialStyle
 
     /// <summary>Impose a weight — forces Bold ON and Faint OFF, or vice versa, or both off for Normal.
     /// The shared SGR 22 reset is why one mask covers both.</summary>
-    public static PartialStyle Weighted(TextWeight w) => new()
-    {
-        Clear = WeightMask,
-        Xor   = w switch { TextWeight.Bold => TextAttributes.Bold,
-                           TextWeight.Faint => TextAttributes.Faint,
-                           _ => 0 },
-    };
+    public static PartialStyle Weighted(TextWeight w)
+        => new()
+           {
+               Clear = WeightMask,
+               Xor = w switch
+                     {
+                         TextWeight.Bold  => TextAttributes.Bold,
+                         TextWeight.Faint => TextAttributes.Faint,
+                         _                => 0
+                     }
+           };
 
-    public static PartialStyle Postured(TextStyle p) => new()
-    {
-        Clear = TextAttributes.Italic,
-        Xor   = p is TextStyle.Italic ? TextAttributes.Italic : 0,
-    };
+    public static PartialStyle Postured(TextStyle p)
+        => new()
+           {
+               Clear = TextAttributes.Italic,
+               Xor = p is TextStyle.Italic ? TextAttributes.Italic : 0
+           };
 
     /// <summary>Force <paramref name="flags"/> ON. Must be within <see cref="Booleans"/>.</summary>
     public static PartialStyle WithApplied(TextAttributes flags) =>

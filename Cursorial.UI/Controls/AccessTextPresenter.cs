@@ -158,19 +158,11 @@ public sealed class AccessTextPresenter : UIElement
 
         // The effective TextElement attributes ride the content text, so a NoColor reverse-video state
         // (Inverse) carries onto the glyph cells too — matching the Border fill, for a uniform reversed face
-        // (the caps-nocolor theme layer). None by default ⇒ no change for ordinary content.
-        var resolved = TextElement.ComposeAttributes(this);
-        var baseTextStyle = new CellStyle().WithAttributes(resolved.Flags);
-        // The underline SHAPE rides the base style when present (audit fix — Q2 no-silent-drops on the
-        // DrawText path, not just the formatted-text seam); Single is the CellStyle default (a no-op).
-        if ((resolved.Flags & TextAttributes.Underline) != 0)
-            baseTextStyle = baseTextStyle.WithUnderlineStyle(resolved.UnderlineShape);
+        // (the caps-nocolor theme layer). None by default ⇒ no change for ordinary content. The underline
+        // SHAPE rides the base style when present.
+        var styleTemplate = StyleDeltaTemplate.FromElement(this);
 
-        var foreground = Foreground;
-        if (foreground is {} brush)
-            context.DrawText(0, 0, labelText, brush, baseStyle: baseTextStyle);
-        else
-            context.DrawText(0, 0, labelText, Color.Default, baseStyle: baseTextStyle);
+        context.DrawText(0, 0, labelText, in styleTemplate);
 
         // The cue: underline the KeyIndex grapheme when AccessKeyManager.ShowUnderline is set on us.
         // The theme's ':access-keys AccessTextPresenter' rule flips ShowUnderline on EVERY presenter
@@ -188,7 +180,7 @@ public sealed class AccessTextPresenter : UIElement
         // everything else inherited from the label's own style — which is exactly a PartialStyle. It is
         // built once here and applied to `baseTextStyle` at the paint below, rather than being folded
         // into a hand-assembled flag word.
-        var cue = default(PartialStyle);
+        var cue = styleTemplate;
 
         var hasKeyUnderline = KeyUnderline is not null;
         var keyUnderlineStyle = KeyUnderline ?? UnderlineStyle.Single;
@@ -216,38 +208,19 @@ public sealed class AccessTextPresenter : UIElement
             cue = cue.Weighing(KeyWeight);
 
         var indicatorBrush = IndicatorBrush ?? Foreground;
+        var textBounds = new Rect(0, 0, GraphemeWidth.StringWidth(labelText), 1);
 
         // The underline rides the cue when the key states one, and also when the LABEL is underlined —
         // in which case the cue still owns the shape and the indicator colour over its own grapheme.
         // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
         // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
-        if (hasKeyUnderline || (resolved.Flags & TextAttributes.Underline) != 0)
-        {
-            cue = cue with { UnderlineShape = keyUnderlineStyle };
-
-            if (indicatorBrush is not null)
-            {
-                // Sample the brush against the TEXT's own box — origin at the first character of the
-                // first line — not against `Bounds`, which is parent-relative. `column` is
-                // element-local: it indexes the same space `DrawText(0, 0, labelText, …)` painted
-                // into. Pairing it with a parent-relative rect drove a gradient's parameter negative
-                // for any element not at its parent's origin, clamping every cue to the brush's
-                // head. Solid brushes ignore `bounds`, which is why it went unnoticed.
-                var textBounds = new Rect(0, 0, GraphemeWidth.StringWidth(labelText), 1);
-
-                cue = cue with { UnderlineColor = indicatorBrush.ColorAt(column, 0, textBounds) };
-            }
-        }
+        if (hasKeyUnderline || styleTemplate.AppliedAttributes.HasFlag(TextAttributes.Underline))
+            cue = cue.Underlining(keyUnderlineStyle, indicatorBrush);
 
         if (indicatorBrush is not null && hasKeyUnderline is false)
-            foreground = indicatorBrush; // if no distinguishing cue, paint the entire marker
+            cue = cue.WithForeground(indicatorBrush); // if no distinguishing cue, paint the entire marker
 
-        var style = cue.ApplyTo(baseTextStyle);
-
-        if (foreground is {} fg)
-            context.DrawText(column, 0, cluster, fg, baseStyle: style);
-        else
-            context.DrawText(column, 0, cluster, Color.Default, baseStyle: style);
+        context.DrawText(column, 0, cluster, cue, textBounds);
     }
 
     // Returns the display column and the grapheme cluster string at the given cluster index.

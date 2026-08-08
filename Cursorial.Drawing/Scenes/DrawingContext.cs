@@ -264,6 +264,7 @@ public sealed class DrawingContext
         => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite: true);
 
     /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
         => FillRectangle(region, AsFill(new SolidColorBrush(color), attributes));
 
@@ -273,6 +274,7 @@ public sealed class DrawingContext
     /// form of <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, for the common case where
     /// the only thing that varies per cell is the background colour.
     /// </summary>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -286,6 +288,7 @@ public sealed class DrawingContext
     /// gradient spans the full bounds while only the region's cells are painted. Used by area-fill charts that
     /// paint one column at a time yet want the gradient to flow across the whole chart, not restart per column.
     /// </summary>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -317,6 +320,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
         => FillOpaque(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
@@ -345,6 +349,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -377,6 +382,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -440,6 +446,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, Color, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
         => PaintRectangle(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
@@ -457,6 +464,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -478,6 +486,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, IBrush, in Rect)"/>, which intends for blending to be applied
     /// by the compositor across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -544,7 +553,7 @@ public sealed class DrawingContext
     private void FillRectangleCore(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool durable,
                                    bool overwrite = false)
     {
-        // Sampled at the region's own anchor against the stated bounds, so a hand-written uniform brush is
+        // Sampled at the region's own anchor against the stated bounds, so a handwritten uniform brush is
         // never handed a coordinate outside the frame it was told to expect.
         Cell? uniform = style.IsUniform
                             ? CellFor(style.Resolve(region.Column, region.Row, brushBounds), durable)
@@ -824,6 +833,7 @@ public sealed class DrawingContext
     /// <paramref name="background"/> is <see cref="Brushes.Transparent"/> when omitted — NOT "no
     /// opinion". See the brush overload.
     /// </remarks>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          Color foreground, Color? background = null, in CellStyle baseStyle = default)
         => DrawText(column, row, text, new SolidColorBrush(foreground),
@@ -843,6 +853,7 @@ public sealed class DrawingContext
     /// background to survive is asking for the template overload, where <see langword="null"/>
     /// means exactly that.
     /// </remarks>
+    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
     {
@@ -903,6 +914,18 @@ public sealed class DrawingContext
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          in StyleDeltaTemplate style, in CellStyle baseStyle = default)
     {
+        return DrawText(column, row, text, style, Rect.Empty, baseStyle);
+    }
+
+    /// <inheritdoc cref="DrawText(int,int,ReadOnlySpan{char},in StyleDeltaTemplate,in CellStyle)"/>
+    /// <remarks>
+    /// <paramref name="sampleBounds"/> may be provided to override the sampling rectangle used by
+    /// <paramref name="style"/>-provided brushes . To sample against the bounds of the entire text block,
+    /// simply pass <c>default</c> or <see cref="Rect.Empty"/>.
+    /// </remarks>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         in StyleDeltaTemplate style, in Rect sampleBounds, in CellStyle baseStyle = default)
+    {
         if (text.IsEmpty) return Size.Empty;
         bool transformed = _stateStack.Count != 0;
 
@@ -920,11 +943,12 @@ public sealed class DrawingContext
             widest = Math.Max(widest, SanitizedLineWidth(line));
             lineCount++;
         }
-        var bounds = new Rect(column, row, widest, lineCount);
+
+        var bounds = sampleBounds.IsEmpty ? new Rect(column, row, widest, lineCount) : sampleBounds;
 
         // The common case — a solid colour, or none — cannot vary by cell, and the VALUE form is what
         // makes that readable: fold it once here rather than resolving two brushes at every cluster.
-        // Sampled at the run's own anchor against its own bounds, so a hand-written uniform brush is
+        // Sampled at the run's own anchor against its own bounds, so a handwritten uniform brush is
         // never handed a degenerate rect it has to tolerate.
         CellStyle? uniform = style.IsUniform ? style.Resolve(column, row, in bounds).ApplyTo(baseStyle) : null;
 

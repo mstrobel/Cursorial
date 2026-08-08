@@ -80,8 +80,15 @@ public static class Extensions
                 t = t.Underlining(underlineShape); // Underline is not in BooleanAttributes, so set separately.
 
             var resolvedAttributes = TextElement.ComposeAttributes(element);
-
             var booleans = TextAttributes.None;
+
+            if (resolvedAttributes.Flags.HasFlag(TextAttributes.Bold))
+                t = t.Weighing(TextWeight.Bold);
+            else if (resolvedAttributes.Flags.HasFlag(TextAttributes.Faint))
+                t = t.Weighing(TextWeight.Faint);
+
+            if (resolvedAttributes.Flags.HasFlag(TextAttributes.Italic))
+                t = t.Posturing(TextStyle.Italic);
 
             foreach (var attribute in BooleanAttributes)
             {

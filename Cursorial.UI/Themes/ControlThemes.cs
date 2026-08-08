@@ -2711,10 +2711,12 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     private static void DrawAt(RenderContext context, int column, string text, IBrush? brush, TextAttributes attributes)
     {
         var style = new CellStyle().WithAttributes(attributes);
-        if (brush is { })
-            context.DrawText(column, 0, text, brush, baseStyle: style);
-        else
-            context.DrawText(column, 0, text, Colors.Default, baseStyle: style);
+        var styleTemplate = StyleDeltaTemplate.Identity.Composed(PartialStyle.From(style));
+
+        if (brush != null)
+            styleTemplate = styleTemplate.WithForeground(brush);
+
+        context.DrawText(column, 0, text, styleTemplate);
     }
 
     // The mark color for the checked / indeterminate states (a ThemeKeys brush resource resolved through

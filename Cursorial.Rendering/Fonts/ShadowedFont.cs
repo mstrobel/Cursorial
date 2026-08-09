@@ -58,7 +58,7 @@ public sealed class ShadowedFont : IGlyphFont
     /// <param name="inner">The underlying font that lays down the glyph cells.</param>
     /// <param name="offset">Shadow displacement in cells. Pass <c>default</c> for (1, 1) — one cell right, one cell down.</param>
     /// <param name="shadowStyle">
-    /// The delta the shadow pass lays over the glyph's own style. Channels it states are the shadow's;
+    /// The style the shadow pass lays over the glyph's own style. Channels it states are the shadow's;
     /// channels it omits are the glyph's, which is how a shadow keeps the run's underline shape and
     /// attributes without restating them. Its <see cref="PartialStyle.Mode"/>, if any, is the mode the
     /// shadow composites under.
@@ -91,7 +91,7 @@ public sealed class ShadowedFont : IGlyphFont
     /// <summary>Shadow displacement in cells. The shadow paints at <c>(row + offset.Rows, column + offset.Columns)</c>.</summary>
     public (int Columns, int Rows) Offset { get; }
 
-    /// <summary>The delta the shadow pass lays over the glyph's style.</summary>
+    /// <summary>The style the shadow pass lays over the glyph's style.</summary>
     public PartialStyle ShadowStyle { get; }
 
     /// <summary>
@@ -161,14 +161,14 @@ public sealed class ShadowedFont : IGlyphFont
     /// <summary>
     /// The face's own compatibility policy, still applied — a shadow may not INVERSE (it would light up
     /// the cells it is supposed to darken) and may not OVERLINE (the rule would run above the glyph it is
-    /// cast from). As a delta this forces both off over whatever base the shadow lands on, which covers
+    /// cast from). As a style this forces both off over whatever base the shadow lands on, which covers
     /// the caller's flags and the glyph's in one act; the paint used to mask a hand-built union instead.
     /// </summary>
     private static PartialStyle EnsureCompatibleShadowStyle(in PartialStyle shadow)
         => shadow.Then(PartialStyle.WithRemoved(ForbiddenShadowAttributes));
 
     /// <summary>
-    /// The delta a whole-<see cref="CellStyle"/> shadow means. Deliberately NOT
+    /// The style a whole-<see cref="CellStyle"/> shadow means. Deliberately NOT
     /// <see cref="PartialStyle.From"/>: that states every channel, and the three this drops are exactly the
     /// ones the old whole-style shadow could not help stating and its consumer then had to undo.
     /// </summary>
@@ -192,7 +192,7 @@ public sealed class ShadowedFont : IGlyphFont
         Hyperlink      = style.Hyperlink.IsEmpty ? null : style.Hyperlink,
 
         // The attribute word of a shadow style means "these IN ADDITION to the glyph's", which is the
-        // union the paint used to spell by hand. `Clear = Xor = w` is that union in the delta's encoding
+        // union the paint used to spell by hand. `Clear = Xor = w` is that union in the style's encoding
         // — `(b & ~w) ^ w == b | w` — and it is why this cannot route through `Applying`, whose per-axis
         // guard would also impose the axes the word says nothing about.
         Clear          = style.Attributes,
@@ -223,25 +223,25 @@ public sealed class ShadowedFont : IGlyphFont
 
         var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
 
-        return PaintCore(buffer, column, row, text, default, delta: null, bounds: default, ink);
+        return PaintCore(buffer, column, row, text, default, style: null, bounds: default, ink);
     }
 
     /// <inheritdoc/>
     /// <remarks>
     /// The base style reaches BOTH passes. It used to reach neither — this overload had no base to pass, so
     /// <see cref="PaintCore"/> got <c>default</c> and the shadow derived its underline shape from it, while
-    /// the glyph pass got whatever the caller's callback chose to restate. A delta plus a base makes the two
+    /// the glyph pass got whatever the caller's callback chose to restate. A style plus a base makes the two
     /// passes agree by construction.
     /// </remarks>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
+                      in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, baseStyle, delta, bounds, ink: null);
+        return PaintCore(buffer, column, row, text, legacyBaseStyle, baseStyle, bounds, ink: null);
     }
 
-    // Exactly one of `delta` and `ink` is non-null; `style` is the base the FORMER folds onto.
-    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                           in StyleDeltaTemplate? delta, in Rect bounds, in PartialStyle? ink)
+    // Exactly one of `style` and `ink` is non-null; `style` is the base the FORMER folds onto.
+    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle,
+                           in BrushedStyle? style, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -256,16 +256,18 @@ public sealed class ShadowedFont : IGlyphFont
 
         try
         {
-            // The shadow is a single pass, so it resolves the template ONCE — at the anchor, like the
-            // interface's own default template overload — and folds it onto the caller's base. The flat
-            // path has no base of its own, so the shadow is derived from the channels the delta STATES,
+            // The shadow is a single pass, so it resolves the style ONCE — at the anchor, like the
+            // interface's own default style overload — and folds it onto the caller's base. The flat
+            // path has no base of its own, so the shadow is derived from the channels the style STATES,
             // over the ground style; the channels it declines to state are, by definition, ones the
             // caller had no shadow-worthy opinion about either.
-            var baseStyle = ink is { } i    ? i.ApplyTo(CellStyle.Default)
-                          : delta is null   ? style
-                                            : delta.Value.Resolve(column, row, bounds).ApplyTo(style);
+            var baseStyle = ink is {} i
+                                ? i.ApplyTo(CellStyle.Default)
+                                : style is null
+                                    ? legacyBaseStyle
+                                    : style.Value.Resolve(column, row, bounds).ApplyTo(legacyBaseStyle);
 
-            // TWO operations, deliberately not one. The delta DESCRIBES the shadow — the channels it states
+            // TWO operations, deliberately not one. The style DESCRIBES the shadow — the channels it states
             // are the shadow's, the ones it omits (the underline shape, every attribute axis outside its own
             // word) are the glyph's, which is what retired the pair of hand-patches that used to copy those
             // two back off the base a channel at a time before this line could run.
@@ -275,7 +277,7 @@ public sealed class ShadowedFont : IGlyphFont
             // is physically behind it, and on a terminal cell that is the BACKGROUND. Foreground-over-
             // background is the whole arithmetic of a shadow; foreground-over-foreground would be a tint.
             //
-            // The delta's Mode is not ApplyTo's to consume for the same reason — it says how the shadow meets
+            // The style's Mode is not ApplyTo's to consume for the same reason — it says how the shadow meets
             // the backdrop, which is the BUFFER's blend (pushed above), not a per-channel replace. So the
             // description is applied flat, and the mode is already on its way to the cells.
             var effectiveShadowStyle = (ShadowStyle with { Mode = null }).ApplyTo(baseStyle)
@@ -293,7 +295,7 @@ public sealed class ShadowedFont : IGlyphFont
 
         var painted = ink is { } inkDelta
                           ? Inner.Paint(buffer, column, row, text, in inkDelta)
-                          : Inner.Paint(buffer, column, row, text, in style, delta!.Value, in bounds);
+                          : Inner.Paint(buffer, column, row, text, in legacyBaseStyle, style!.Value, in bounds);
 
         if (painted.IsEmpty)
             return Size.Empty;

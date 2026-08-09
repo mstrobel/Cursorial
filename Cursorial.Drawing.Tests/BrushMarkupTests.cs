@@ -42,9 +42,9 @@ public class BrushMarkupTests
     [Fact]
     public void RegistryBrush_ResolvesByName()
     {
-        var registry = new Dictionary<string, BrushedStyle>(StringComparer.OrdinalIgnoreCase)
+        var registry = new Dictionary<string, ScopedBrush>(StringComparer.OrdinalIgnoreCase)
         {
-            ["solidred"] = new BrushedStyle(new SolidColorBrush(Color.FromRgb(255, 0, 0))),
+            ["solidred"] = new ScopedBrush(new SolidColorBrush(Color.FromRgb(255, 0, 0))),
         };
         var ft = Format("[brush=solidred]X[/brush]", BrushMarkup.Options(registry: registry), width: 8);
         var b = DrawHarness.Render(8, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), OutputCapabilities.None));

@@ -373,12 +373,12 @@ public sealed class TextPresenter : UIElement
                     muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
                 }
 
-                // An unresolvable muted brush is ABSENCE, and the template says so directly — the
+                // An unresolvable muted brush is ABSENCE, and the style says so directly — the
                 // base's (default) foreground stands, which is what the Brushes.Default fallback
                 // this replaced was spelling the long way round. The background is stated for the
                 // same reason the cell lane states it: transparent, so the field's chrome shows.
                 context.DrawText(0, 0, placeholder,
-                                 new StyleDeltaTemplate { Foreground = muted, Background = Brushes.Transparent },
+                                 new BrushedStyle { Foreground = muted, Background = Brushes.Transparent },
                                  baseStyle);
             }
 
@@ -448,7 +448,7 @@ public sealed class TextPresenter : UIElement
         }
     }
 
-    private void RenderSingleLine(RenderContext context, string text, int viewport, in StyleDeltaTemplate lineBase,
+    private void RenderSingleLine(RenderContext context, string text, int viewport, in BrushedStyle lineBase,
                                   bool noColor, IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
     {
         var layout = GraphemeLayout.Build(text, EditingMetrics);
@@ -481,7 +481,7 @@ public sealed class TextPresenter : UIElement
     /// </summary>
     private void DrawFaceLine(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text,
                               int from, int to, int selFrom, int selTo, int localRow,
-                              in StyleDeltaTemplate lineBase, bool noColor, IBrush? selectionBrush, bool inverse,
+                              in BrushedStyle lineBase, bool noColor, IBrush? selectionBrush, bool inverse,
                               GlyphSource source)
     {
         if (to <= from)
@@ -648,7 +648,7 @@ public sealed class TextPresenter : UIElement
 
     /// <summary>
     /// A visual line's GROUND STATE: the style every run, fill and tint on that line is then a delta
-    /// against. A <see cref="StyleDeltaTemplate"/> rather than a <see cref="CellStyle"/> for one
+    /// against. A <see cref="BrushedStyle"/> rather than a <see cref="CellStyle"/> for one
     /// reason — <b>capability</b>.
     /// </summary>
     /// <remarks>
@@ -666,7 +666,7 @@ public sealed class TextPresenter : UIElement
     /// brush?" at the end of it. One carrier ends both.
     /// </para>
     /// </remarks>
-    private StyleDeltaTemplate ResolveLineBaseStyle(bool noColor)
+    private BrushedStyle ResolveLineBaseStyle(bool noColor)
     {
         var attr = TextElement.ComposeAttributes(this);
 
@@ -677,24 +677,24 @@ public sealed class TextPresenter : UIElement
         // is and the base carries it. Verbatim from the value form this replaced.
         var flags = noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse;
 
-        var template = new StyleDeltaTemplate
-        {
-            Foreground = ResolveForegroundBrush(),
+        var style = new BrushedStyle
+                    {
+                        Foreground = ResolveForegroundBrush(),
 
-            // Sentinels, not authored fills, and both position-independent — which is what lets
-            // ResolveLineBaseValue sample them at a fixed point. Transparent lets whatever the field's
-            // chrome painted show through under the glyph; Default is NoColor's "say nothing".
-            Background = noColor ? Brushes.Default : Brushes.Transparent,
+                        // Sentinels, not authored fills, and both position-independent — which is what lets
+                        // ResolveLineBaseValue sample them at a fixed point. Transparent lets whatever the field's
+                        // chrome painted show through under the glyph; Default is NoColor's "say nothing".
+                        Background = noColor ? Brushes.Default : Brushes.Transparent,
 
-            // UNCONDITIONALLY, unlike the shape below. A colour and a presence are two different
-            // opinions: "whatever underline is drawn, draw it in this" is what a theme wants (error
-            // underlines are red) without asserting that everything is underlined, and gating the
-            // colour on the flag would make it unsayable. The asymmetry is the stack's, not this
-            // method's — PartialStyle.WithUnderlineColor states it, and
-            // PartialStyleTests.WithUnderlineColor_DoesNotForceAnUnderline pins it. Read at BASE
-            // priority, the same access StyleDeltaTemplate.FromElement uses, so the two agree.
-            UnderlineColor = this.GetBaseValue(TextElement.UnderlineBrushProperty),
-        };
+                        // UNCONDITIONALLY, unlike the shape below. A colour and a presence are two different
+                        // opinions: "whatever underline is drawn, draw it in this" is what a theme wants (error
+                        // underlines are red) without asserting that everything is underlined, and gating the
+                        // colour on the flag would make it unsayable. The asymmetry is the stack's, not this
+                        // method's — PartialStyle.WithUnderlineColor states it, and
+                        // PartialStyleTests.WithUnderlineColor_DoesNotForceAnUnderline pins it. Read at BASE
+                        // priority, the same access BrushedStyle.FromElement uses, so the two agree.
+                        UnderlineColor = this.GetBaseValue(TextElement.UnderlineBrushProperty),
+                    };
 
         // The attribute WORD is folded per AXIS rather than unioned in wholesale, for the reason
         // DrawingContext.CreateBrushResolver gives at length: Bold and Faint share the SGR 22 reset,
@@ -702,24 +702,24 @@ public sealed class TextPresenter : UIElement
         // guard rejects the axis-owning flags outright, which is the type refusing to let this be
         // written the short way.
         if ((flags & TextAttributes.Bold) != 0)
-            template = template.Weighing(TextWeight.Bold);
+            style = style.Weighing(TextWeight.Bold);
         else if ((flags & TextAttributes.Faint) != 0)
-            template = template.Weighing(TextWeight.Faint);
+            style = style.Weighing(TextWeight.Faint);
 
         if ((flags & TextAttributes.Italic) != 0)
-            template = template.Posturing(TextStyle.Italic);
+            style = style.Posturing(TextStyle.Italic);
 
         var booleans = flags & PartialStyle.Booleans;
         if (booleans != default)
-            template = template.Applying(booleans);
+            style = style.Applying(booleans);
 
         // A shape implies the flag (PartialStyle.ApplyTo derives it structurally), so stating the
         // shape is the whole of "underline, in this style" — and stating it only when the fold
         // delivered the flag is what keeps the two from disagreeing.
         if ((flags & TextAttributes.Underline) != 0)
-            template = template with { UnderlineShape = attr.UnderlineShape };
+            style = style with { UnderlineShape = attr.UnderlineShape };
 
-        return template;
+        return style;
     }
 
     /// <summary>
@@ -735,18 +735,18 @@ public sealed class TextPresenter : UIElement
     /// need the real bounds threaded in here — and the fact that these primitives take one
     /// background <em>colour</em>, not a brush, is what would surface it.
     /// <para>
-    /// The CELL lane no longer calls this: <c>DrawText</c> takes the template whole, so the base
+    /// The CELL lane no longer calls this: <c>DrawText</c> takes the style whole, so the base
     /// travels to the primitive un-resolved and the primitive samples it. That is the unpack this
     /// method used to exist for, and it is gone from the lane that paints most of the text.
     /// </para>
     /// </remarks>
-    private static CellStyle ResolveLineBaseValue(in StyleDeltaTemplate lineBase)
+    private static CellStyle ResolveLineBaseValue(in BrushedStyle lineBase)
         => (lineBase with { Foreground = null }).Resolve(0, 0, default).ApplyTo(CellStyle.Default);
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the
     // line's per-cluster columns and lineStart is the line's model offset (0 for single-line).
     private void DrawLineRun(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text, int from, int to,
-                             int localRow, in StyleDeltaTemplate lineBase, bool selected, bool noColor,
+                             int localRow, in BrushedStyle lineBase, bool selected, bool noColor,
                              IBrush? selectionBrush, bool inverse)
     {
         if (to <= from)
@@ -824,7 +824,7 @@ public sealed class TextPresenter : UIElement
         var runBase = inverse ? CellStyle.Default.AddAttributes(TextAttributes.Inverse) : CellStyle.Default;
 
         // DrawText's background contract, now STATED rather than inherited. The primitive's brush
-        // overload substitutes Transparent for an omitted background; its template overload reads a
+        // overload substitutes Transparent for an omitted background; its BrushedStyle overload reads a
         // null background as "no opinion" and lets the base's through. The cell lane wants the
         // former — transparent is what lets the field's chrome show under the glyph — so it says so,
         // and does not depend on which overload it happens to reach.
@@ -838,7 +838,7 @@ public sealed class TextPresenter : UIElement
 
             // Composed folds the selection's ATTRIBUTE half (the Inverse clear-or-toggle) onto the
             // base's. Its resolved Background is read as a DECISION, not as a value — the brush
-            // itself goes into the template, so a gradient selection colours per cell exactly as the
+            // itself goes into the style, so a gradient selection colours per cell exactly as the
             // base's foreground does, which a resolved colour could never do.
             run = run.Composed(selection);
 

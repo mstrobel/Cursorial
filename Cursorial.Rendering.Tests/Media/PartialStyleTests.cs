@@ -214,7 +214,7 @@ public class PartialStyleTests
     /// </summary>
     /// <remarks>
     /// Reflection, not a hand-written list, because the failure mode is a member ADDED later. And it
-    /// covers <see cref="StyleDeltaTemplate"/> too: the template's fluent methods delegate to
+    /// covers <see cref="BrushedStyle"/> too: the template's fluent methods delegate to
     /// <see cref="PartialStyle"/>'s, so a hole in either is a hole in both.
     /// </remarks>
     [Fact]
@@ -230,7 +230,7 @@ public class PartialStyleTests
         var accepted = new List<string>();
         var probed = new HashSet<string>();
 
-        foreach (var type in new[] { typeof(PartialStyle), typeof(StyleDeltaTemplate) })
+        foreach (var type in new[] { typeof(PartialStyle), typeof(BrushedStyle) })
         foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance))
         {
             var parameters = method.GetParameters();
@@ -259,9 +259,9 @@ public class PartialStyleTests
                         {
                             "PartialStyle.WithApplied", "PartialStyle.WithRemoved", "PartialStyle.WithToggled",
                             "PartialStyle.Applying", "PartialStyle.Removing", "PartialStyle.Toggling",
-                            "PartialStyle.Ignoring", "StyleDeltaTemplate.Applying", "StyleDeltaTemplate.Removing",
-                            "StyleDeltaTemplate.Toggling", "StyleDeltaTemplate.Ignoring", "StyleDeltaTemplate.Keeping",
-                            "StyleDeltaTemplate.Dropping"
+                            "PartialStyle.Ignoring", "BrushedStyle.Applying", "BrushedStyle.Removing",
+                            "BrushedStyle.Toggling", "BrushedStyle.Ignoring", "BrushedStyle.Keeping",
+                            "BrushedStyle.Dropping"
                         },
                         probed);
         Assert.True(accepted.Count == 0,

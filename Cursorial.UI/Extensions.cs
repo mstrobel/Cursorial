@@ -56,19 +56,19 @@ public static class Extensions
               .Where(t => PartialStyle.Booleans.HasFlag(t))
               .ToArray();
 
-    extension(StyleDeltaTemplate)
+    extension(BrushedStyle)
     {
         /// <summary>
-        /// Derives a <see cref="StyleDeltaTemplate"/> from a UI element by reconciling its decomposed text and
+        /// Derives a <see cref="BrushedStyle"/> from a UI element by reconciling its decomposed text and
         /// brush properties. Values are read at <see cref="UIObject.GetBaseValue">base priority</see> — inherited
         /// included, animated excluded. A theme-resolved default (e.g., <see cref="TextElement.ForegroundProperty"/>)
         /// counts as a stated opinion, so compose this before any delta that should override it.
         /// </summary>
-        public static StyleDeltaTemplate FromElement(UIElement element)
+        public static BrushedStyle FromElement(UIElement element)
         {
             ArgumentNullException.ThrowIfNull(element);
 
-            var t = new StyleDeltaTemplate
+            var t = new BrushedStyle
                     {
                         Foreground = element.GetBaseValue(TextElement.ForegroundProperty),
                         Background = element.GetBaseValue(Panel.BackgroundProperty),

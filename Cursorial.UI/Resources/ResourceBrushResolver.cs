@@ -65,7 +65,7 @@ public static class ResourceBrushResolver
         return value =>
                {
                    // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
-                   if (inline(value) is BrushedStyle { Foreground: {} f } brushedStyle)
+                   if (inline(value) is ScopedBrush { Foreground: {} f } brushedStyle)
                    {
                        if (f is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i } } &&
                            MarkupColor.IsThemePaletteIndex(i) &&
@@ -80,7 +80,7 @@ public static class ResourceBrushResolver
 
                    // 2. A bare resource name resolved through the element's chain to an IBrush.
                    if (innerLookup(value) is IBrush brush)
-                       return new BrushedStyle(brush);
+                       return new ScopedBrush(brush);
 
                    return null; // unknown — the parser raises "Unrecognized brush"
                };

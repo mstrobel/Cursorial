@@ -193,12 +193,12 @@ public class ShadowedFontTests
     /// of every mode and would hide the mode entirely), and the buffer's own backdrop then has to be a real
     /// colour for the mode's blend to be an RGB-on-RGB one.
     /// </remarks>
-    private static CellBuffer ShadowBoard(ShadowedFont face, CellStyle baseStyle)
+    private static CellBuffer ShadowBoard(ShadowedFont face, CellStyle legacyBaseStyle)
     {
         var buffer = new CellBuffer(4, 2);
         buffer.Fill(Cell.Blank with { Style = CellStyle.Default.WithBackground(Teal) });
 
-        face.Paint(buffer, 0, 0, "ab", baseStyle, default, new Rect(0, 0, 4, 2));
+        face.Paint(buffer, 0, 0, "ab", legacyBaseStyle, default, new Rect(0, 0, 4, 2));
 
         return buffer;
     }

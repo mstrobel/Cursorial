@@ -2716,7 +2716,7 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     private static void DrawAt(RenderContext context, int column, string text, IBrush? brush, TextAttributes attributes)
     {
         var style = new CellStyle().WithAttributes(attributes);
-        var styleTemplate = StyleDeltaTemplate.Identity.Composed(PartialStyle.From(style));
+        var styleTemplate = BrushedStyle.Identity.Composed(PartialStyle.From(style));
 
         if (brush != null)
             styleTemplate = styleTemplate.WithForeground(brush);

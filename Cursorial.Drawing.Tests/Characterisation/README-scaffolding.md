@@ -5,7 +5,7 @@
 ## Why it exists
 
 `FormattedTextRun` currently carries a resolved `CellStyle`. The plan is for runs to carry a
-`StyleDeltaTemplate` plus a sampling frame instead, so the UI layer stops naming the back-buffer
+`BrushedStyle` plus a sampling frame instead, so the UI layer stops naming the back-buffer
 format. That migration touches `FormattedText`, `TextFormatter`, `RichText` and every text path, and
 it is supposed to be **purely structural**: not one glyph moves, not one output byte changes.
 

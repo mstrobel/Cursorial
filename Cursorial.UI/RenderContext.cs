@@ -137,21 +137,21 @@ public sealed class RenderContext
     public void Blit(CellBufferView view, in Rect region)
         => Inner.Blit(view, region);
 
-    /// <inheritdoc cref="DrawingContext.FillRectangle(in Rect, in StyleDeltaTemplate)"/>
-    public void FillRectangle(in Rect region, in StyleDeltaTemplate style)
+    /// <inheritdoc cref="DrawingContext.FillRectangle(in Rect, in BrushedStyle)"/>
+    public void FillRectangle(in Rect region, in BrushedStyle style)
         => Inner.FillRectangle(region, style);
 
     /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, IBrush brush)
         => Inner.FillRectangle(region, brush);
 
     /// <inheritdoc cref="FillRectangle(in Rect, IBrush)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, Color color)
         => Inner.FillRectangle(region, color);
 
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// <remarks>
     /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
     /// drawing layer's <see langword="true"/> — matching the <see cref="Color"/> overload beside it, the
@@ -161,52 +161,52 @@ public sealed class RenderContext
     /// (The <see cref="IBrush"/> overloads below still default to <see langword="true"/> — an
     /// inconsistency older than this overload, preserved rather than silently changed.)
     /// </remarks>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true)
+    public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)
         => Inner.FillOpaque(region, style, overwrite);
 
-    /// <inheritdoc cref="FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <inheritdoc cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// <param name="region">The rectangle to fill, in element-local coordinates.</param>
     /// <param name="style">The per-cell delta every occluder cell takes.</param>
     /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes.</param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>false</c>.</param>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = true)
+    public void FillOpaque(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = true)
         => Inner.FillOpaque(region, style, brushBounds, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
         => Inner.FillOpaque(region, color, attributes, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
         => Inner.FillOpaque(region, brush, attributes, overwrite);
 
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
         => Inner.FillOpaque(region, brush, brushBounds, attributes, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>
-    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, bool)"/>
+    public void PaintRectangle(in Rect region, in BrushedStyle style, bool overwrite = false)
         => Inner.PaintRectangle(region, style, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in StyleDeltaTemplate, in Rect, bool)"/>
-    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, in Rect, bool)"/>
+    public void PaintRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = false)
         => Inner.PaintRectangle(region, style, brushBounds, overwrite);
 
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, Color, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
         => Inner.PaintRectangle(region, color, attributes, overwrite);
 
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
         => Inner.PaintRectangle(region, brush, region, attributes, overwrite);
 
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
         => Inner.PaintRectangle(region, brush, brushBounds, attributes, overwrite);
 
@@ -221,45 +221,45 @@ public sealed class RenderContext
     /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
     /// <remarks>
-    /// <paramref name="style"/> is a per-cell DELTA over <paramref name="baseStyle"/> — attributes,
+    /// <paramref name="baseStyle"/> is a per-cell DELTA over <paramref name="legacyBaseStyle"/> — attributes,
     /// underline, hyperlink and blending mode included, not just the two colour channels the brush
     /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the base's survives);
     /// on the brush overload an omitted background is <see cref="Brushes.Transparent"/>. See
-    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/>.
+    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>.
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in StyleDeltaTemplate style, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, style, baseStyle);
+                         in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default)
+        => Inner.DrawText(column, row, text, baseStyle, legacyBaseStyle);
 
-    /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in Rect, in CellStyle)"/>
+    /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect, in CellStyle)"/>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in StyleDeltaTemplate style, in Rect sampleBounds, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, style, sampleBounds, baseStyle);
+                         in BrushedStyle baseStyle, in Rect sampleBounds, in CellStyle legacyBaseStyle = default)
+        => Inner.DrawText(column, row, text, baseStyle, sampleBounds, legacyBaseStyle);
 
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/>
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
     /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, which
-    /// overwrites <paramref name="baseStyle"/>'s background rather than deferring to it.</remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    /// overwrites <paramref name="legacyBaseStyle"/>'s background rather than deferring to it.</remarks>
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
+                         IBrush foreground, IBrush? background, in CellStyle legacyBaseStyle = default)
+        => Inner.DrawText(column, row, text, foreground, background, legacyBaseStyle);
 
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/>
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
     /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>.</remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          IBrush foreground, IBrush? background = null)
         => Inner.DrawText(column, row, text,
-                          new StyleDeltaTemplate
+                          new BrushedStyle
                           {
                               Foreground = foreground,
                               Background = background ?? Brushes.Transparent
                           });
 
     /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
+                         Color foreground, Color? background = null, in CellStyle legacyBaseStyle = default)
+        => Inner.DrawText(column, row, text, foreground, background, legacyBaseStyle);
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>
     /// <remarks>
@@ -334,7 +334,7 @@ public sealed class RenderContext
         // backdrop, and the brush goes to the face unsampled instead of being wrapped in a closure the face
         // had to invoke blind.
         Inner.DrawGlyphText(face, column, row, text, style,
-                            new StyleDeltaTemplate { Foreground = foreground }, brushBounds);
+                            new BrushedStyle { Foreground = foreground }, brushBounds);
     }
 
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>

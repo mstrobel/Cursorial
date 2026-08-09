@@ -78,7 +78,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         int inlineWidth = Math.Min(width, 46);   // narrow so the run wraps several times
         var inlineFt = _formatter.Format(_inlineDoc, inlineWidth, maxRows: null, Capabilities.Output);
         int inlineHeight = Math.Max(1, Math.Min(inlineFt.Size.Rows, ctx.Bounds.Rows - inlineTop - 2));
-        // Per-run overload (no document brush) — only the run's own inline BrushedStyle applies.
+        // Per-run overload (no document brush) — only the run's own inline ScopedBrush applies.
         ctx.DrawFormattedText(inlineFt, new Rect(2, inlineTop + 1, inlineWidth, inlineHeight), Capabilities.Output);
     }
 
@@ -87,7 +87,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         // One run, one Inline-scoped left→right gradient (green→orange). Because inline scope samples the run's
         // full reading-order strip, the color a glyph gets depends only on its position WITHIN the run — so the
         // sweep continues smoothly onto each wrapped line instead of restarting green at the left edge.
-        var brush = new BrushedStyle(new LinearGradientBrush(
+        var brush = new ScopedBrush(new LinearGradientBrush(
             Color.FromHex("#a6e22e"), Color.FromHex("#fd971f"),
             startPoint: RelativePoint.Left, endPoint: RelativePoint.Right));   // Inline is the default scope
         return new RichTextBuilder()

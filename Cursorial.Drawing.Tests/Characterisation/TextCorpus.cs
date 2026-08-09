@@ -3,7 +3,7 @@
 //
 // The corpus of rich-text documents the characterisation harness pins. Delete together with the rest of
 // Cursorial.Drawing.Tests/Characterisation once the FormattedTextRun style-carrier migration (resolved
-// CellStyle -> StyleDeltaTemplate + sampling frame) has landed and its own tests cover the behaviour.
+// CellStyle -> BrushedStyle + sampling frame) has landed and its own tests cover the behaviour.
 // ---------------------------------------------------------------------------------------------------
 
 using System.Collections.Immutable;
@@ -63,7 +63,7 @@ internal sealed record TextCase
 
     /// <summary>
     /// Build a brush resolver even without a <see cref="DocumentBrush"/> — the per-run
-    /// <see cref="BrushedStyle"/> cases need the Drawing resolver installed to read their run tags.
+    /// <see cref="ScopedBrush"/> cases need the Drawing resolver installed to read their run tags.
     /// </summary>
     public bool Brushed { get; init; }
 
@@ -478,7 +478,7 @@ internal static class TextCorpus
             Description = "A per-run Inline-scoped gradient laid out WITHOUT a wrap. Paired with the wrapped "
                         + "case below: the same grapheme must take the same colour in both.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("aaaa bbbb cccc", new BrushedStyle(LeftToRight()))
+                                    .BrushedRun("aaaa bbbb cccc", new ScopedBrush(LeftToRight()))
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 3, Brushed = true
         },
@@ -490,7 +490,7 @@ internal static class TextCorpus
                         + "reading-order strip rather than restarting per line-piece. This is the property "
                         + "most likely to break silently under a carrier migration.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("aaaa bbbb cccc", new BrushedStyle(LeftToRight()))
+                                    .BrushedRun("aaaa bbbb cccc", new ScopedBrush(LeftToRight()))
                                     .Build(),
             Columns = 9, PaintColumns = 12, PaintRows = 4, Brushed = true
         },
@@ -500,7 +500,7 @@ internal static class TextCorpus
             Description = "Wrap invariance with wide glyphs — the logical-offset accounting and the painter's "
                         + "cursor advance must stay in step across the break.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("字字字 字字字", new BrushedStyle(LeftToRight()))
+                                    .BrushedRun("字字字 字字字", new ScopedBrush(LeftToRight()))
                                     .Build(),
             Columns = 7, PaintColumns = 10, PaintRows = 4, Brushed = true
         },
@@ -511,7 +511,7 @@ internal static class TextCorpus
                         + "position within the block decides its colour.",
             Document = static () => new RichTextBuilder()
                                     .Run("xxxxxxxxxx")
-                                    .BrushedRun("AB", new BrushedStyle(LeftToRight(), DeclarationScope.Block))
+                                    .BrushedRun("AB", new ScopedBrush(LeftToRight(), DeclarationScope.Block))
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 3, Brushed = true
         },
@@ -521,7 +521,7 @@ internal static class TextCorpus
             Description = "DeclarationScope.Document samples the whole painted bounds, which is wider than the block.",
             Document = static () => new RichTextBuilder()
                                     .Run("xxxxxxxxxx")
-                                    .BrushedRun("AB", new BrushedStyle(LeftToRight(), DeclarationScope.Document))
+                                    .BrushedRun("AB", new ScopedBrush(LeftToRight(), DeclarationScope.Document))
                                     .Build(),
             Columns = 14, PaintColumns = 24, PaintRows = 3, Brushed = true
         },
@@ -531,7 +531,7 @@ internal static class TextCorpus
             Description = "A run's own brush beats the document brush; untagged runs keep the document's.",
             Document = static () => new RichTextBuilder()
                                     .Run("gg ")
-                                    .BrushedRun("RR", new BrushedStyle(new SolidColorBrush(Red)))
+                                    .BrushedRun("RR", new ScopedBrush(new SolidColorBrush(Red)))
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 3,
             DocumentBrush = new SolidColorBrush(Teal), Brushed = true

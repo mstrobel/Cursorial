@@ -148,15 +148,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
     /// <summary>
     /// Resolve one cell's style: the optional brush resolver's delta, sampled at
-    /// (<paramref name="column"/>, <paramref name="row"/>) and folded onto <paramref name="baseStyle"/>.
+    /// (<paramref name="column"/>, <paramref name="row"/>) and folded onto <paramref name="legacyBaseStyle"/>.
     /// Used by the single-Style elements (rule / figlet / sized / content), which carry no per-run tag — so the
     /// run rect equals the block and the tag is null.
     /// </summary>
-    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle baseStyle, int column, int row, in Rect block)
-        => resolver is null ? baseStyle : Brushed(resolver, baseStyle, column, row, block).ApplyTo(column, row, baseStyle);
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block)
+        => resolver is null ? legacyBaseStyle : Brushed(resolver, legacyBaseStyle, column, row, block).ApplyTo(column, row, legacyBaseStyle);
 
     /// <summary>
-    /// The same query, stopping one step earlier — for the FIGlet arm, which hands the unsampled TEMPLATE to
+    /// The same query, stopping one step earlier — for the FIGlet arm, which hands the unsampled STYLE to
     /// the face so a multi-cell glyph can sample per cell rather than per character.
     /// </summary>
     /// <remarks>
@@ -164,8 +164,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// an inline-scoped brush over a one-wide strip resolves at offset 0, which is what the previous per-cell
     /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
     /// </remarks>
-    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle baseStyle, int column, int row, in Rect block)
-        => resolver(new BrushedTextContext(baseStyle, block, new Rect(column, row, 1, 1), tag: null));
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block)
+        => resolver(new BrushedTextContext(legacyBaseStyle, block, new Rect(column, row, 1, 1), tag: null));
 
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
                                        OutputCapabilities capabilities, BrushedTextResolver? resolver)
@@ -244,11 +244,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             }
                             else
                             {
-                                // The template goes to the face UNSAMPLED: one FIGlet character covers many
+                                // The style goes to the face UNSAMPLED: one FIGlet character covers many
                                 // cells, so the face is the only thing that knows which cells exist to sample.
                                 var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style,
-                                           brushed.Delta, brushed.Bounds);
+                                           brushed.Style, brushed.Bounds);
                             }
                         }
                         else
@@ -285,12 +285,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
                         // ONE resolver call per run: which brush wins, at what scope, and which inherited
                         // attributes merge are all run-level facts. Only the sampling is per cell, and the
-                        // template does that itself — hoisted entirely when it cannot vary.
+                        // style does that itself — hoisted entirely when it cannot vary.
                         var brushed = resolver is null
                                           ? BrushedTextStyle.None
                                           : resolver(new BrushedTextContext(text.Style, blockRect, inlineScope, text.Tag));
 
-                        var uniformStyle = brushed.Delta.IsUniform
+                        var uniformStyle = brushed.Style.IsUniform
                                                ? brushed.ApplyTo(cursor, runRow, text.Style)
                                                : default;
 
@@ -311,10 +311,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             int width = GraphemeWidth.ClusterWidth(grapheme);
                             if (width < 1) width = 1;
 
-                            // The run's delta, resolved for THIS cell and folded onto the run's own style —
+                            // The run's style, resolved for THIS cell and folded onto the run's own style —
                             // so a brush that owns only a foreground leaves the rest alone. Width is
                             // grapheme-driven, so a substituted style is layout-safe.
-                            var style = brushed.Delta.IsUniform
+                            var style = brushed.Style.IsUniform
                                             ? uniformStyle
                                             : brushed.ApplyTo(cursor, runRow, text.Style);
 

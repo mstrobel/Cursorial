@@ -21,18 +21,18 @@ public class DrawingContextTintTests
     private static readonly Color White = Color.FromRgb(255, 255, 255);
 
     /// <summary>
-    /// Paints <paramref name="baseStyle"/>-styled "X"s over the whole scene, then runs
+    /// Paints <paramref name="legacyBaseStyle"/>-styled "X"s over the whole scene, then runs
     /// <paramref name="tint"/> and hands back the scene's OWN cells — the surface TintCells writes,
     /// read without a compositing pass in between to reinterpret them.
     /// </summary>
-    private static Scene Tinted(int columns, int rows, CellStyle baseStyle, Action<DrawingContext> tint)
+    private static Scene Tinted(int columns, int rows, CellStyle legacyBaseStyle, Action<DrawingContext> tint)
     {
         var scene = Scene.Create(columns, rows);
         scene.Draw(context =>
         {
             for (int row = 0; row < rows; row++)
             for (int column = 0; column < columns; column++)
-                context.Set(column, row, "X", baseStyle);
+                context.Set(column, row, "X", legacyBaseStyle);
 
             tint(context);
         });

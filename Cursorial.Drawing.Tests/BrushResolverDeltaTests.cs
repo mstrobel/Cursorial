@@ -12,7 +12,7 @@ namespace Cursorial.Tests.Drawing;
 
 /// <summary>
 /// <see cref="DrawingContext.CreateBrushResolver"/> runs once per RUN and returns a
-/// <see cref="StyleDeltaTemplate"/> paired with the rect its brushes sample against — a DELTA over the style
+/// <see cref="BrushedStyle"/> paired with the rect its brushes sample against — a DELTA over the style
 /// the formatter already resolved, with the brush still unsampled. Each leg owns exactly the channels it has
 /// an opinion about, so "this run keeps what it had" is the identity rather than a copy of the base, and the
 /// element-attribute leg is visibly a SET rather than a replace.
@@ -38,8 +38,8 @@ public class BrushResolverDeltaTests
                  .WithUnderlineColor(Green)
                  .WithHyperlink("https://example.invalid");
 
-    private static BrushedTextContext Context(in CellStyle baseStyle, object? tag = null) =>
-        new(baseStyle, Block, Inline, tag);
+    private static BrushedTextContext Context(in CellStyle legacyBaseStyle, object? tag = null) =>
+        new(legacyBaseStyle, Block, Inline, tag);
 
     // ───────────────────────────── the three colour legs ─────────────────────────────
 
@@ -54,8 +54,8 @@ public class BrushResolverDeltaTests
         var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red,
                                                           Doc, baseAttributes: default, UnderlineStyle.Single);
 
-        Assert.True(resolver(Context(Rich(Red))).Delta.IsIdentity);
-        Assert.True(resolver(Context(CellStyle.Default)).Delta.IsIdentity);
+        Assert.True(resolver(Context(Rich(Red))).Style.IsIdentity);
+        Assert.True(resolver(Context(CellStyle.Default)).Style.IsIdentity);
     }
 
     /// <summary>
@@ -68,7 +68,7 @@ public class BrushResolverDeltaTests
         var resolver = DrawingContext.CreateBrushResolver(new SolidColorBrush(Green), documentForeground: Red,
                                                           Doc, baseAttributes: default, UnderlineStyle.Single);
 
-        Assert.True(resolver(Context(Rich(Blue))).Delta.IsIdentity);
+        Assert.True(resolver(Context(Rich(Blue))).Style.IsIdentity);
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class BrushResolverDeltaTests
         Assert.Equal(Block, brushed.Bounds);
     }
 
-    /// <summary>A run declaring its own <c>BrushedStyle</c> wins over the document brush, and is likewise
+    /// <summary>A run declaring its own <c>ScopedBrush</c> wins over the document brush, and is likewise
     /// foreground-only.</summary>
     [Fact]
     public void RunBrush_WinsOverTheDocumentBrushAndIsForegroundOnly()
@@ -108,7 +108,7 @@ public class BrushResolverDeltaTests
         var resolver = DrawingContext.CreateBrushResolver(new SolidColorBrush(Green), documentForeground: Red,
                                                           Doc, baseAttributes: default, UnderlineStyle.Single);
 
-        var delta = resolver(Context(Rich(Color.Default), new BrushedStyle(new SolidColorBrush(Blue))))
+        var delta = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue))))
                         .Resolve(column: 2, row: 1);
 
         Assert.Equal(Blue, delta.Foreground);
@@ -130,7 +130,7 @@ public class BrushResolverDeltaTests
         var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red,
                                                           Doc, baseAttributes: default, UnderlineStyle.Single);
 
-        var brushed = resolver(Context(Rich(Color.Default), new BrushedStyle(new SolidColorBrush(Blue), scope)));
+        var brushed = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue), scope)));
 
         Assert.Equal(scope switch
                      {
@@ -157,13 +157,13 @@ public class BrushResolverDeltaTests
 
         var brushed = resolver(Context(Rich(Red)));
 
-        Assert.Equal(TextAttributes.Bold | TextAttributes.Inverse, brushed.Delta.AppliedAttributes);
-        Assert.Equal(default, brushed.Delta.ToggledAttributes);
+        Assert.Equal(TextAttributes.Bold | TextAttributes.Inverse, brushed.Style.AppliedAttributes);
+        Assert.Equal(default, brushed.Style.ToggledAttributes);
 
         // Bold arrives as a WEIGHT, and a weight is exclusive: Faint is forced off in the same breath.
         // That is the only thing the delta unsets, and it is visible in the intent triple rather than
         // hidden in the mask.
-        Assert.Equal(TextAttributes.Faint, brushed.Delta.RemovedAttributes);
+        Assert.Equal(TextAttributes.Faint, brushed.Style.RemovedAttributes);
 
         // The run's own Italic and Strikethrough are untouched; the element's two arrive on top.
         var applied = brushed.ApplyTo(2, 1, Rich(Red));

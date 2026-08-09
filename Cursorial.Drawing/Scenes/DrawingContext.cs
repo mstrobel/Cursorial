@@ -206,8 +206,8 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// <b>Base plus delta</b>, the shape
-    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in StyleDeltaTemplate, in CellStyle)"/> and
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/> and
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
     /// already take — with the base fixed rather than passed. A fill OWNS every cell it writes and no
     /// caller holds a ground state for it, so the ground is <see cref="CellStyle.Default"/> and
     /// <paramref name="style"/> says everything the fill wants it to become: the background a lone brush
@@ -215,7 +215,7 @@ public sealed class DrawingContext
     /// nowhere to travel but a flag word — or nowhere at all.
     /// </para>
     /// <para>
-    /// An ABSENT <see cref="StyleDeltaTemplate.Background"/> is <see cref="Color.Default"/> here, not
+    /// An ABSENT <see cref="BrushedStyle.Background"/> is <see cref="Color.Default"/> here, not
     /// <see cref="Color.Transparent"/> — it falls through to a ground that already carries
     /// <c>Default</c>, so it agrees with <c>FillOpaque(…, Color.Default, …)</c> rather than with
     /// <c>DrawText</c>'s brush overload. The two are not interchangeable on the non-overwriting path:
@@ -230,7 +230,7 @@ public sealed class DrawingContext
     /// </para>
     /// <para>
     /// The <see cref="Color"/> and <see cref="IBrush"/> overloads of all three fill families are thin
-    /// wrappers over this shape: their brush becomes <see cref="StyleDeltaTemplate.Background"/> and
+    /// wrappers over this shape: their brush becomes <see cref="BrushedStyle.Background"/> and
     /// their <c>attributes</c> word is folded on PER AXIS (see <c>Imposing</c>) — Bold / Faint impose a
     /// weight, Italic a posture, and only the axis-free flags union. A word carrying both weights is
     /// unrenderable and resolves to Bold rather than to the pair.
@@ -241,11 +241,11 @@ public sealed class DrawingContext
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </para>
     /// </remarks>
-    public void FillRectangle(in Rect region, in StyleDeltaTemplate style)
+    public void FillRectangle(in Rect region, in BrushedStyle style)
         => FillRectangleCore(region, in style, region, durable: false, overwrite: true);
 
     /// <summary>
-    /// As <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, but the brushes are sampled
+    /// As <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, but the brushes are sampled
     /// against <paramref name="brushBounds"/> — which may be larger than the painted
     /// <paramref name="region"/> — so a gradient spans the full bounds while only the region's cells are
     /// painted. Used by area-fill charts that paint one column at a time yet want the gradient to flow
@@ -257,24 +257,24 @@ public sealed class DrawingContext
     /// extent, and what this parameter states is not a second extent but a REFRAMING of the only one.
     /// There is exactly one such declaration per call, so letting it govern the background alone would
     /// invent a frame for the other channels that the caller never stated and cannot control. (The
-    /// four-argument <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect, in Rect)"/> split belongs
+    /// four-argument <see cref="BrushedStyle.Resolve(int, int, in Rect, in Rect)"/> split belongs
     /// to operations whose fill box is larger than their ink; a rectangle fill is not one.)
     /// </remarks>
-    public void FillRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds)
+    public void FillRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds)
         => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite: true);
 
     /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
         => FillRectangle(region, AsFill(new SolidColorBrush(color), attributes));
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
     /// sampled per cell with <paramref name="region"/> as the brush bounds — the one-brush convenience
-    /// form of <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, for the common case where
+    /// form of <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, for the common case where
     /// the only thing that varies per cell is the background colour.
     /// </summary>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -288,7 +288,7 @@ public sealed class DrawingContext
     /// gradient spans the full bounds while only the region's cells are painted. Used by area-fill charts that
     /// paint one column at a time yet want the gradient to flow across the whole chart, not restart per column.
     /// </summary>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -320,7 +320,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
         => FillOpaque(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
@@ -349,7 +349,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -382,7 +382,7 @@ public sealed class DrawingContext
     /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
     /// </param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -393,8 +393,8 @@ public sealed class DrawingContext
     /// Fill <paramref name="region"/> as <b>space-bearing</b> cells, resolving <paramref name="style"/>
     /// per cell, so the fill <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em>
     /// prevents it from being overwritten by background-only methods like
-    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/> or
-    /// <see cref="PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>, which allow lower glyphs to
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/> or
+    /// <see cref="PaintRectangle(in Rect, in BrushedStyle, bool)"/>, which allow lower glyphs to
     /// show through — either at the compositor level or within the same scene, respectively. Use it for
     /// opaque panels, modals, and menus drawn over content. A translucent sample is preserved (the alpha
     /// rides to the compositor for a frosted-panel effect), but the glyph beneath is still replaced.
@@ -410,27 +410,27 @@ public sealed class DrawingContext
     /// This family is the one whose cells COMPOSITE their attributes — a space-bearing cell replaces the
     /// destination's foreground, attributes and underline, so e.g. <see cref="TextAttributes.Inverse"/>
     /// reverse-videos the whole filled region even where the sampled background is <c>Default</c>.
-    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>'s transparent tint cannot do this: its
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>'s transparent tint cannot do this: its
     /// background-only cells drop the attribute on composite.
     /// </para>
     /// <para>
-    /// The base-plus-delta shape, what an ABSENT <see cref="StyleDeltaTemplate.Background"/> means, and
+    /// The base-plus-delta shape, what an ABSENT <see cref="BrushedStyle.Background"/> means, and
     /// why no attribute is masked here are all as documented on
-    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>.
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>.
     /// </para>
     /// </remarks>
     /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
     /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every occluder cell takes.</param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true)
+    public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)
         => FillRectangleCore(region, in style, region, durable: true, overwrite);
 
-    /// <inheritdoc cref="FillOpaque(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <inheritdoc cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
     /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every occluder cell takes.</param>
     /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes; may be larger or smaller than <paramref name="region"/>.</param>
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    public void FillOpaque(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = true)
+    public void FillOpaque(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = true)
         => FillRectangleCore(region, in style, brushBounds, durable: true, overwrite);
 
     /// <summary>
@@ -446,7 +446,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, Color, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
         => PaintRectangle(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
 
@@ -464,7 +464,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, which intends for blending to be applied by the compositor
     /// across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -486,7 +486,7 @@ public sealed class DrawingContext
     /// Unlike <see cref="FillRectangle(in Rect, IBrush, in Rect)"/>, which intends for blending to be applied
     /// by the compositor across scenes, this method performs blending <em>intra-scene</em>. 
     /// </remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
     {
         ArgumentNullException.ThrowIfNull(brush);
@@ -504,26 +504,26 @@ public sealed class DrawingContext
     /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
     /// <remarks>
     /// <para>
-    /// Unlike <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>, which intends for blending to
+    /// Unlike <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, which intends for blending to
     /// be applied by the compositor across scenes, this method performs blending <em>intra-scene</em> —
     /// it writes through <see cref="CellBuffer.Set"/>, which is also where the whitespace rescue lives
     /// that leaves a same-scene glyph standing.
     /// </para>
     /// <para>
-    /// The base-plus-delta shape, what an ABSENT <see cref="StyleDeltaTemplate.Background"/> means, and
+    /// The base-plus-delta shape, what an ABSENT <see cref="BrushedStyle.Background"/> means, and
     /// why no attribute is masked here are all as documented on
-    /// <see cref="FillRectangle(in Rect, in StyleDeltaTemplate)"/>.
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>.
     /// </para>
     /// </remarks>
-    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, bool overwrite = false)
+    public void PaintRectangle(in Rect region, in BrushedStyle style, bool overwrite = false)
         => FillRectangleCore(region, in style, region, durable: false, overwrite);
 
-    /// <inheritdoc cref="PaintRectangle(in Rect, in StyleDeltaTemplate, bool)"/>
+    /// <inheritdoc cref="PaintRectangle(in Rect, in BrushedStyle, bool)"/>
     /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
     /// <param name="style">The per-cell delta over <see cref="CellStyle.Default"/> that every filled cell takes.</param>
     /// <param name="brushBounds">The sampling rectangle for <paramref name="style"/>'s brushes, when distinct from <paramref name="region"/>.</param>
     /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
-    public void PaintRectangle(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool overwrite = false)
+    public void PaintRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = false)
         => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite);
 
     /// <summary>
@@ -534,7 +534,7 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// Every brush channel samples against ONE rect, <paramref name="brushBounds"/> — the single-argument
-    /// <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect)"/> form, not the four-argument one. A
+    /// <see cref="BrushedStyle.Resolve(int, int, in Rect)"/> form, not the four-argument one. A
     /// rectangle fill's cells are uniform: its background covers precisely the cells its (space) ink does,
     /// so it has one extent, and the four-argument split — background against the fill box, foreground
     /// against the ink inside it — has nothing here to distinguish. What <paramref name="brushBounds"/>
@@ -544,13 +544,13 @@ public sealed class DrawingContext
     /// invent a frame for the other channels that the caller never stated and cannot control.
     /// </para>
     /// <para>
-    /// A <see cref="StyleDeltaTemplate.IsUniform"/> template — a solid colour, or none, which is nearly
+    /// A <see cref="BrushedStyle.IsUniform"/> style — a solid colour, or none, which is nearly
     /// every fill — resolves ONCE for the whole rectangle instead of per cell. That is what keeps the
     /// hottest primitive in the framework from paying a per-cell resolve for a value it already knows;
     /// the colour path it replaced sampled nothing at all per cell.
     /// </para>
     /// </remarks>
-    private void FillRectangleCore(in Rect region, in StyleDeltaTemplate style, in Rect brushBounds, bool durable,
+    private void FillRectangleCore(in Rect region, in BrushedStyle style, in Rect brushBounds, bool durable,
                                    bool overwrite = false)
     {
         // Sampled at the region's own anchor against the stated bounds, so a handwritten uniform brush is
@@ -615,19 +615,19 @@ public sealed class DrawingContext
         => new(durable ? CellBuffer.DurableEmptyGrapheme : null, CellKind.Single, resolved.ApplyTo(CellStyle.Default));
 
     /// <summary>
-    /// The one-brush-plus-flag-word form as a template — what the <see cref="Color"/> and
+    /// The one-brush-plus-flag-word form as a style — what the <see cref="Color"/> and
     /// <see cref="IBrush"/> fill overloads mean, in the type the primitive now takes.
     /// </summary>
     /// <remarks>
     /// <paramref name="attributes"/> is a flag WORD, and it is folded through the per-AXIS API rather
     /// than unioned in wholesale — the same fold, for the same reason, as the base-attribute leg of
-    /// <see cref="CreateBrushResolver"/>. A naive <see cref="StyleDeltaTemplate.Applying"/> would THROW
+    /// <see cref="CreateBrushResolver"/>. A naive <see cref="BrushedStyle.Applying"/> would THROW
     /// on a real path: <see cref="PartialStyle.Require"/> rejects Bold / Faint / Italic / Underline
     /// because they own axes, and <c>TextPresenter</c>'s band fill hands this primitive a word whose
     /// allowlist admits the first three.
     /// </remarks>
-    private static StyleDeltaTemplate AsFill(IBrush background, TextAttributes attributes)
-        => Imposing(new StyleDeltaTemplate { Background = background }, attributes);
+    private static BrushedStyle AsFill(IBrush background, TextAttributes attributes)
+        => Imposing(new BrushedStyle { Background = background }, attributes);
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -828,45 +828,45 @@ public sealed class DrawingContext
         return best == int.MaxValue ? -1 : best;
     }
 
-    /// <summary>Draw text (multi-line capable, see the template overload) with a solid foreground (and optional background) color.</summary>
+    /// <summary>Draw text (multi-line capable, see the BrushedStyle overload) with a solid foreground (and optional background) color.</summary>
     /// <remarks>
     /// <paramref name="background"/> is <see cref="Brushes.Transparent"/> when omitted — NOT "no
     /// opinion". See the brush overload.
     /// </remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in CellStyle baseStyle = default)
+                         Color foreground, Color? background = null, in CellStyle legacyBaseStyle = default)
         => DrawText(column, row, text, new SolidColorBrush(foreground),
-                    background is { } bg ? new SolidColorBrush(bg) : null, baseStyle);
+                    background is { } bg ? new SolidColorBrush(bg) : null, legacyBaseStyle);
 
     /// <summary>
     /// Draw <paramref name="text"/> with <paramref name="foreground"/> (and optional
     /// <paramref name="background"/>) sampled per cell — the two-brush convenience form of the
-    /// template overload, for the common case where the only thing that varies per cell is colour.
+    /// style overload, for the common case where the only thing that varies per cell is colour.
     /// </summary>
     /// <remarks>
     /// <b>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, not
     /// absence.</b> That is this overload's historical contract and it is preserved verbatim: the
     /// glyph cell's background is OVERWRITTEN with transparent, which lets a prior fill (or the
     /// composite target) show through and, crucially, does NOT leave
-    /// <paramref name="baseStyle"/>'s own background standing. A caller that wants the base's
-    /// background to survive is asking for the template overload, where <see langword="null"/>
+    /// <paramref name="legacyBaseStyle"/>'s own background standing. A caller that wants the base's
+    /// background to survive is asking for the BrushedStyle overload, where <see langword="null"/>
     /// means exactly that.
     /// </remarks>
-    [Obsolete("Use the StyleDeltaTemplate overload instead.", DiagnosticId = "CUR0001")]
+    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
+                         IBrush foreground, IBrush? background = null, in CellStyle legacyBaseStyle = default)
     {
         ArgumentNullException.ThrowIfNull(foreground);
 
         return DrawText(column, row, text,
-                        new StyleDeltaTemplate { Foreground = foreground, Background = background ?? Brushes.Transparent },
-                        baseStyle);
+                        new BrushedStyle { Foreground = foreground, Background = background ?? Brushes.Transparent },
+                        legacyBaseStyle);
     }
 
     /// <summary>
     /// Draw <paramref name="text"/> starting at <paramref name="column"/>, <paramref name="row"/>,
-    /// resolving <paramref name="style"/> per cell over <paramref name="baseStyle"/> — so a gradient
+    /// resolving <paramref name="baseStyle"/> per cell over <paramref name="legacyBaseStyle"/> — so a gradient
     /// brush colors the text continuously, glyph by glyph. Grapheme-aware (wide
     /// clusters occupy two cells). <c>\r\n</c>, <c>\n</c>, and <c>\r</c> are line breaks: each
     /// subsequent line continues at the original start <paramref name="column"/> one row down; empty
@@ -887,20 +887,20 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// <b>Base style plus delta</b>, the shape
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
     /// already takes, and for the same reason: a draw OWNS the cells it inks, so a whole
     /// <see cref="CellStyle"/> is a legitimate ground state, while the delta says what varies per
     /// cell — including the channels a brush pair had nowhere to put. Attributes, the underline
     /// shape and colour, a hyperlink and a blending mode all ride in
-    /// <paramref name="style"/> now; a channel it declines to state falls through to
-    /// <paramref name="baseStyle"/> untouched. In particular <c>Background = null</c> is <b>no
+    /// <paramref name="baseStyle"/> now; a channel it declines to state falls through to
+    /// <paramref name="legacyBaseStyle"/> untouched. In particular <c>Background = null</c> is <b>no
     /// opinion</b> — the base's background reaches the cell — which is NOT what an omitted
     /// background means on the brush overload.
     /// </para>
     /// <para>
     /// Both brush channels sample against one rect (the run's extent): a text run's background
     /// covers precisely the cells its glyphs do, so its fill bounds and content bounds coincide.
-    /// A <see cref="StyleDeltaTemplate.IsUniform"/> template resolves ONCE for the whole run
+    /// A <see cref="BrushedStyle.IsUniform"/> style resolves ONCE for the whole run
     /// instead of per cell — the readability a pair of opaque brushes could not offer.
     /// </para>
     /// <para>
@@ -912,19 +912,19 @@ public sealed class DrawingContext
     /// </para>
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in StyleDeltaTemplate style, in CellStyle baseStyle = default)
+                         in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default)
     {
-        return DrawText(column, row, text, style, Rect.Empty, baseStyle);
+        return DrawText(column, row, text, baseStyle, Rect.Empty, legacyBaseStyle);
     }
 
-    /// <inheritdoc cref="DrawText(int,int,ReadOnlySpan{char},in StyleDeltaTemplate,in CellStyle)"/>
+    /// <inheritdoc cref="DrawText(int,int,ReadOnlySpan{char},in BrushedStyle,in CellStyle)"/>
     /// <remarks>
     /// <paramref name="sampleBounds"/> may be provided to override the sampling rectangle used by
-    /// <paramref name="style"/>-provided brushes . To sample against the bounds of the entire text block,
+    /// <paramref name="baseStyle"/>-provided brushes . To sample against the bounds of the entire text block,
     /// simply pass <c>default</c> or <see cref="Rect.Empty"/>.
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in StyleDeltaTemplate style, in Rect sampleBounds, in CellStyle baseStyle = default)
+                         in BrushedStyle baseStyle, in Rect sampleBounds, in CellStyle legacyBaseStyle = default)
     {
         if (text.IsEmpty) return Size.Empty;
         bool transformed = _stateStack.Count != 0;
@@ -950,7 +950,7 @@ public sealed class DrawingContext
         // makes that readable: fold it once here rather than resolving two brushes at every cluster.
         // Sampled at the run's own anchor against its own bounds, so a handwritten uniform brush is
         // never handed a degenerate rect it has to tolerate.
-        CellStyle? uniform = style.IsUniform ? style.Resolve(column, row, in bounds).ApplyTo(baseStyle) : null;
+        CellStyle? uniform = baseStyle.IsUniform ? baseStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle) : null;
 
         int maxAdvance = 0;
         int currentRow = row;
@@ -960,7 +960,7 @@ public sealed class DrawingContext
         {
             var line = NextLine(ref remaining, out moreLines);
             maxAdvance = Math.Max(maxAdvance,
-                                  DrawTextLine(column, currentRow, line, in style, in baseStyle, in uniform, in bounds, transformed));
+                                  DrawTextLine(column, currentRow, line, in baseStyle, in legacyBaseStyle, in uniform, in bounds, transformed));
             currentRow++;
         }
 
@@ -968,9 +968,9 @@ public sealed class DrawingContext
     }
 
     // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
-    // `uniform` is the pre-folded style when the template cannot vary by cell; null means resolve per cluster.
-    private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, in StyleDeltaTemplate template,
-                             in CellStyle baseStyle, in CellStyle? uniform, in Rect bounds, bool transformed)
+    // `uniform` is the pre-folded style when the style cannot vary by cell; null means resolve per cluster.
+    private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, in BrushedStyle brushedStyle,
+                             in CellStyle legacyBaseStyle, in CellStyle? uniform, in Rect bounds, bool transformed)
     {
         if (line.IsEmpty) return 0;
         if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
@@ -1005,7 +1005,7 @@ public sealed class DrawingContext
             if (transformed)
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
-                var style = uniform ?? template.Resolve(column, row, in bounds).ApplyTo(baseStyle);
+                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle);
                 EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
                 column += width;
             }
@@ -1014,7 +1014,7 @@ public sealed class DrawingContext
                 if (column < 0) { column += width; continue; }  // left-edge clip (negative start; the run still advances)
                 if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
 
-                var style = uniform ?? template.Resolve(column, row, in bounds).ApplyTo(baseStyle);
+                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle);
                 column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
             }
         }
@@ -1083,7 +1083,7 @@ public sealed class DrawingContext
     /// that differs from the document default) <b>wins</b> over the brush. So a document that sets a default
     /// text color still receives the gradient, while individually-colored runs keep their color.
     /// <paramref name="capabilities"/> drives protocol selection for embedded content; pass the session's
-    /// negotiated capabilities. (Per-run <c>BrushedStyle</c> and inline 1-D wrap-invariant sampling arrive in a
+    /// negotiated capabilities. (Per-run <c>ScopedBrush</c> and inline 1-D wrap-invariant sampling arrive in a
     /// later slice; this is the single document/block brush.)
     /// </para>
     /// <para>
@@ -1177,17 +1177,17 @@ public sealed class DrawingContext
         // ReSharper disable once RedundantLambdaParameterType
         return (in BrushedTextContext ctx) =>
                {
-                   StyleDeltaTemplate delta = default;
+                   BrushedStyle style = default;
                    Rect bounds = default;
 
                    // A run that declares its own brush wins, at its declaration scope.
-                   if (ctx.Tag is BrushedStyle bs)
+                   if (ctx.Tag is ScopedBrush bs)
                    {
                        // Inline → the wrap-invariant 1-D reading-order strip, so the gradient flows
                        // continuously across a wrap instead of restarting per line-piece. Block / Document →
                        // the 2-D laid-out box. The painter pre-computed the strip as a rebased rect, so the
                        // choice is which RECT to hand back rather than which coordinate convention to sample in.
-                       delta = new StyleDeltaTemplate { Foreground = bs.Foreground };
+                       style = new BrushedStyle { Foreground = bs.Foreground };
                        bounds = bs.Scope switch
                                 {
                                     DeclarationScope.Inline   => ctx.InlineScope,
@@ -1209,7 +1209,7 @@ public sealed class DrawingContext
                        var fg = ctx.BaseStyle.Foreground;
                        if (fg.IsDefault || fg == documentForeground)
                        {
-                           delta = new StyleDeltaTemplate { Foreground = documentBrush };
+                           style = new BrushedStyle { Foreground = documentBrush };
                            bounds = ctx.Block;
                        }
                    }
@@ -1217,7 +1217,7 @@ public sealed class DrawingContext
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,
                    // per AXIS (default none = a no-op for every pre-existing caller). The shape handed to
                    // the fold is the RUN's own, which is what the Underline bit re-states.
-                   delta = Imposing(delta, baseAttributes, ctx.BaseStyle.UnderlineStyle);
+                   style = Imposing(style, baseAttributes, ctx.BaseStyle.UnderlineStyle);
 
                    // When the base carries the Underline presence bit with a non-Single shape, the shape rides
                    // along (the widened seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot
@@ -1226,18 +1226,18 @@ public sealed class DrawingContext
                    // the element already carries that flag — so the two agree and the rider adds a shape
                    // rather than an underline.
                    if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
-                       delta = delta with { UnderlineShape = baseUnderlineShape };
+                       style = style with { UnderlineShape = baseUnderlineShape };
 
-                   return new BrushedTextStyle(delta, bounds);
+                   return new BrushedTextStyle(style, bounds);
                };
     }
 
     /// <summary>
-    /// Fold a flag WORD onto <paramref name="template"/> <b>per axis</b> — one implementation, shared by
+    /// Fold a flag WORD onto <paramref name="style"/> <b>per axis</b> — one implementation, shared by
     /// the element-attribute leg of <see cref="CreateBrushResolver"/> and by the fill primitives'
     /// colour-plus-attributes overloads.
     /// </summary>
-    /// <param name="template">The delta to impose the word on.</param>
+    /// <param name="style">The delta to impose the word on.</param>
     /// <param name="attributes">The flag word. <see langword="default"/> is the identity.</param>
     /// <param name="underlineShape">
     /// The shape the Underline bit carries — the destination's own, re-stated, since the flag has no
@@ -1246,7 +1246,7 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// Unioning the word in wholesale is not merely inconvenient, it is unavailable:
-    /// <see cref="StyleDeltaTemplate.Applying"/> routes through <c>PartialStyle.Require</c>, which THROWS
+    /// <see cref="BrushedStyle.Applying"/> routes through <c>PartialStyle.Require</c>, which THROWS
     /// for Bold / Faint / Italic / Underline because each owns an axis. The unguarded sibling
     /// (<c>WithAdded</c>) was deleted deliberately — it existed to do the forbidden thing, and the state
     /// it bought is not renderable.
@@ -1260,41 +1260,41 @@ public sealed class DrawingContext
     /// something unrenderable.
     /// </para>
     /// </remarks>
-    private static StyleDeltaTemplate Imposing(in StyleDeltaTemplate template, TextAttributes attributes,
-                                               UnderlineStyle underlineShape = default)
+    private static BrushedStyle Imposing(in BrushedStyle style, TextAttributes attributes,
+                                         UnderlineStyle underlineShape = default)
     {
-        if (attributes == default) return template;
+        if (attributes == default) return style;
 
-        var delta = template;
+        var newStyle = style;
 
         if ((attributes & TextAttributes.Bold) != 0)
             // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot produce
             // one, but a caller that ORs its own flags onto the composed word can. Bold wins: the choice
             // is arbitrary, being FIXED is not, since the alternative is a cell whose appearance depends
             // on what was painted before it.
-            delta = delta.Weighing(TextWeight.Bold);
+            newStyle = newStyle.Weighing(TextWeight.Bold);
         else if ((attributes & TextAttributes.Faint) != 0)
-            delta = delta.Weighing(TextWeight.Faint);
+            newStyle = newStyle.Weighing(TextWeight.Faint);
 
         // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it are the
         // same operation, and the axis-typed form is the one that says which axis it is.
         if ((attributes & TextAttributes.Italic) != 0)
-            delta = delta.Posturing(TextStyle.Italic);
+            newStyle = newStyle.Posturing(TextStyle.Italic);
 
         // The genuine booleans keep unioning: no reset is shared, so an existing Overline survives an
         // imposed Strikethrough. `Applying` is the union for flags that have no axis of their own.
         var booleans = attributes & PartialStyle.Booleans;
         if (booleans != default)
-            delta = delta.Applying(booleans);
+            newStyle = newStyle.Applying(booleans);
 
         // Underline's axis has no "on, and no further opinion" form — the flag travels with a SHAPE,
         // which implies it once resolved. Re-stating a shape is that form: the underline arrives and the
-        // shape is left exactly where it was, which is what the flag-word union did. A shape the template
-        // already states wins, since that is an opinion the word does not have.
+        // shape is left exactly where it was, which is what the flag-word union did. A shape the brushed
+        // style already states wins, since that is an opinion the word does not have.
         if ((attributes & TextAttributes.Underline) != 0)
-            delta = delta with { UnderlineShape = delta.UnderlineShape ?? underlineShape };
+            newStyle = newStyle with { UnderlineShape = newStyle.UnderlineShape ?? underlineShape };
 
-        return delta;
+        return newStyle;
     }
 
     /// <summary>
@@ -1355,22 +1355,22 @@ public sealed class DrawingContext
 
     /// <inheritdoc cref="DrawGlyphText(IGlyphFont, int, int, string, in PartialStyle)"/>
     /// <remarks>
-    /// <paramref name="delta"/> is a per-cell DELTA against <paramref name="style"/>, its brushes sampled
+    /// <paramref name="brushedStyle"/> is a per-cell DELTA against <paramref name="style"/>, its brushes sampled
     /// against <paramref name="brushBounds"/>, so a position-dependent source (a gradient) states only the
     /// channel it owns and the rest of the style carries through. Both extra parameters are required for the
     /// reasons
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
-    /// gives: a delta with no base has nothing to fall through to, and a brush's coordinate space is the scope
+    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
+    /// gives: a brushed style with no base has nothing to fall through to, and a brush's coordinate space is the scope
     /// it was declared at, not the cells this call happens to paint.
     /// </remarks>
     public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in CellStyle style,
-                              in StyleDeltaTemplate delta, in Rect brushBounds)
+                              in BrushedStyle brushedStyle, in Rect brushBounds)
     {
         ArgumentNullException.ThrowIfNull(face);
         ArgumentNullException.ThrowIfNull(text);
 
         var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        face.Paint(surface, column, row, text, style, delta, brushBounds);
+        face.Paint(surface, column, row, text, style, brushedStyle, brushBounds);
     }
 
     /// <summary>

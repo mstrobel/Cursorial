@@ -98,7 +98,7 @@ public class BrushNegativeOriginEquivalenceTests
     }
 
     /// <summary>
-    /// The same invariant through <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect)"/> — the
+    /// The same invariant through <see cref="BrushedStyle.Resolve(int, int, in Rect)"/> — the
     /// whole-template path a deferred text run takes, resolving three brush channels at once.
     /// </summary>
     [Fact]
@@ -106,7 +106,7 @@ public class BrushNegativeOriginEquivalenceTests
     {
         foreach ((string name, var brush) in EveryBrushKind())
         {
-            var template = new StyleDeltaTemplate { Foreground = brush, Background = brush, UnderlineColor = brush };
+            var template = new BrushedStyle { Foreground = brush, Background = brush, UnderlineColor = brush };
             var signed = new Rect(-3, -2, 5, 4);
             var shifted = new Rect(0, 0, signed.Columns, signed.Rows);
 

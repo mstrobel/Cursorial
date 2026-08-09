@@ -3,7 +3,7 @@
 //
 // Approval-test plumbing for the text-pipeline characterisation harness. Delete together with the rest
 // of Cursorial.Drawing.Tests/Characterisation once the FormattedTextRun style-carrier migration
-// (resolved CellStyle -> StyleDeltaTemplate + sampling frame) has landed and its own tests cover the
+// (resolved CellStyle -> BrushedStyle + sampling frame) has landed and its own tests cover the
 // behaviour. A characterisation harness that outlives its migration is a maintenance tax.
 // ---------------------------------------------------------------------------------------------------
 

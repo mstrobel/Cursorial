@@ -94,25 +94,25 @@ public interface IGlyphFont
     Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style);
 
     /// <summary>
-    /// Paint <paramref name="text"/> with <paramref name="baseStyle"/>, adjusted per painted cell by
-    /// <paramref name="delta"/> resolved against <paramref name="bounds"/> — so a caller can color the glyphs
+    /// Paint <paramref name="text"/> with <paramref name="legacyBaseStyle"/>, adjusted per painted cell by
+    /// <paramref name="baseStyle"/> resolved against <paramref name="bounds"/> — so a caller can color the glyphs
     /// with a position-dependent source (a gradient across a headline) without pre-resolving it. The default
     /// resolves once at the anchor and paints a single folded style; fonts that render cell-by-cell (e.g.
     /// <see cref="FigletFont"/>) override this to resolve each painted cell.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why a template and not a callback.</b> This overload used to take a <c>GlyphStyleProvider</c>
+    /// <b>Why a style and not a callback.</b> This overload used to take a <c>GlyphStyleProvider</c>
     /// delegate, which existed only because <see cref="IBrush"/> lived in the drawing layer and
     /// <c>Cursorial.Rendering</c> could not name it — so the caller wrapped brush sampling in a closure and
     /// the font sampled blind. <see cref="IBrush"/> is in Rendering now, and
-    /// <see cref="StyleDeltaTemplate.Resolve(int,int,in Rect,in Rect)"/> IS that callback's signature plus
+    /// <see cref="BrushedStyle.Resolve(int,int,in Rect,in Rect)"/> IS that callback's signature plus
     /// the content and fill bounds it was closing over. Passing the value form also makes
-    /// <see cref="StyleDeltaTemplate.IsUniform"/> readable, which a callback could never expose: the common
+    /// <see cref="BrushedStyle.IsUniform"/> readable, which a callback could never expose: the common
     /// case (a solid color, or no color at all) resolves once instead of once per cell.
     /// </para>
     /// <para>
-    /// <b>The base style is REQUIRED, not defaulted.</b> A <see cref="StyleDeltaTemplate"/> is a delta, so
+    /// <b>The base style is REQUIRED, not defaulted.</b> A <see cref="BrushedStyle"/> is a brushedStyle, so
     /// without a base there is nothing for the channels it declines to state to fall through to — the font
     /// would silently paint them from <c>default</c>, which is the loss this signature exists to prevent.
     /// </para>
@@ -126,21 +126,21 @@ public interface IGlyphFont
     /// </para>
     /// <para>
     /// Implementations fold with <see cref="PartialStyle.ApplyTo"/> and must resolve PER SAMPLE unless
-    /// <see cref="StyleDeltaTemplate.IsUniform"/> says the answer cannot vary.
+    /// <see cref="BrushedStyle.IsUniform"/> says the answer cannot vary.
     /// </para>
     /// <para>
     /// The default folds to a whole <see cref="CellStyle"/> and hands it to the flat overload, which
-    /// takes a delta — so this is where the two vocabularies meet, and the meeting costs one bit. A
+    /// takes a brushedStyle — so this is where the two vocabularies meet, and the meeting costs one bit. A
     /// whole style cannot say "no opinion about the background", so the adapter reads the only signal
     /// it has and says so out loud: a <see cref="Cursorial.Media.Color.Default"/> background stamps, anything else
     /// boxes. A caller that needs the distinction states it, by calling the flat overload with a
-    /// delta of its own.
+    /// brushedStyle of its own.
     /// </para>
     /// </remarks>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle baseStyle,
-               in StyleDeltaTemplate delta, in Rect bounds)
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle,
+               in BrushedStyle baseStyle, in Rect bounds)
     {
-        var folded = delta.Resolve(column, row, bounds).ApplyTo(baseStyle);
+        var folded = baseStyle.Resolve(column, row, bounds).ApplyTo(legacyBaseStyle);
 
         return Paint(buffer, column, row, text,
                      folded.Background.IsDefault ? PartialStyle.FromInk(folded) : PartialStyle.From(folded));

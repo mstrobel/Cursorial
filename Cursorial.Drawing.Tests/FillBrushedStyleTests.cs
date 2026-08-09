@@ -8,7 +8,7 @@ using Cursorial.Text;
 namespace Cursorial.Tests.Drawing;
 
 /// <summary>
-/// The rectangle-fill primitives take a <see cref="StyleDeltaTemplate"/>, completing what
+/// The rectangle-fill primitives take a <see cref="BrushedStyle"/>, completing what
 /// <c>DrawText</c> started: the single brush and the flag WORD that used to travel side by side now
 /// ride one value, and the channels neither could carry — a foreground, an underline, a hyperlink, a
 /// blending mode — arrive with them.
@@ -22,7 +22,7 @@ namespace Cursorial.Tests.Drawing;
 /// only true across layers.
 /// </para>
 /// </summary>
-public class FillTemplateTests
+public class FillBrushedStyleTests
 {
     private static readonly Color Teal = Color.FromRgb(0, 128, 128);
     private static readonly Color Slate = Color.FromRgb(50, 60, 70);
@@ -50,10 +50,10 @@ public class FillTemplateTests
     /// the scene stays glyph-transparent and a lower layer shows through on composite.
     /// </summary>
     [Fact]
-    public void FillRectangle_Template_StillWritesBackgroundOnlyCells()
+    public void FillRectangle_BrushedStyle_StillWritesBackgroundOnlyCells()
     {
         using var scene = Painted(2, 1, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 1),
-                                                                 new StyleDeltaTemplate { Background = Solid(Teal) }));
+                                                                 new BrushedStyle { Background = Solid(Teal) }));
 
         Assert.Null(scene.GetCell(0, 0).Grapheme);
         Assert.Null(scene.GetCell(1, 0).Grapheme);
@@ -66,10 +66,10 @@ public class FillTemplateTests
     /// grapheme — which is the whole of its occluding contract.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_StillWritesSpaceBearingCells()
+    public void FillOpaque_BrushedStyle_StillWritesSpaceBearingCells()
     {
         using var scene = Painted(2, 1, ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                                                              new StyleDeltaTemplate { Background = Solid(Teal) }));
+                                                              new BrushedStyle { Background = Solid(Teal) }));
 
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, scene.GetCell(0, 0).Grapheme);
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, scene.GetCell(1, 0).Grapheme);
@@ -83,9 +83,9 @@ public class FillTemplateTests
     /// <c>overwrite</c> switch to decline), <c>PaintRectangle</c> leaves it standing at its default.
     /// </summary>
     [Fact]
-    public void PaintRectangle_Template_LeavesASameSceneGlyphStanding_WhereFillRectangleObliteratesIt()
+    public void PaintRectangle_BrushedStyle_LeavesASameSceneGlyphStanding_WhereFillRectangleObliteratesIt()
     {
-        var tint = new StyleDeltaTemplate { Background = Brushes.Transparent };
+        var tint = new BrushedStyle { Background = Brushes.Transparent };
 
         using var painted = Painted(2, 1, ctx =>
         {
@@ -109,9 +109,9 @@ public class FillTemplateTests
     /// only the primitive differs.
     /// </summary>
     [Fact]
-    public void Template_FillRectangleLetsALowerGlyphThrough_WhereFillOpaqueOccludesIt()
+    public void BrushedStyle_FillRectangleLetsALowerGlyphThrough_WhereFillOpaqueOccludesIt()
     {
-        var tint = new StyleDeltaTemplate { Background = Solid(Frosted) };
+        var tint = new BrushedStyle { Background = Solid(Frosted) };
 
         var through = DrawHarness.RenderLayers(2, 1, null,
                                                lower => lower.DrawText(0, 0, "X", Brushes.White),
@@ -129,7 +129,7 @@ public class FillTemplateTests
 
     /// <summary>
     /// <b>THE trap.</b> <see cref="PartialStyle.WithApplied"/> — and therefore
-    /// <see cref="StyleDeltaTemplate.Applying"/> — REJECTS <see cref="TextAttributes.Bold"/>,
+    /// <see cref="BrushedStyle.Applying"/> — REJECTS <see cref="TextAttributes.Bold"/>,
     /// <c>Faint</c>, <c>Italic</c> and <c>Underline</c>: they have their own axes. And this exact word
     /// is what <c>TextPresenter</c>'s band fill hands the primitive
     /// (<c>baseStyle.Attributes &amp; FillAttributes | Inverse</c>, where the allowlist includes Bold,
@@ -198,9 +198,9 @@ public class FillTemplateTests
     /// axis-typed members rather than as a flag word.
     /// </summary>
     [Fact]
-    public void Template_CarryingAxisFlags_ReachesTheFilledCells()
+    public void BrushedStyle_CarryingAxisFlags_ReachesTheFilledCells()
     {
-        var template = new StyleDeltaTemplate { Background = Solid(Teal) }
+        var template = new BrushedStyle { Background = Solid(Teal) }
                        .Weighing(TextWeight.Bold)
                        .Posturing(TextStyle.Italic)
                        .Applying(TextAttributes.Inverse);
@@ -237,10 +237,10 @@ public class FillTemplateTests
     /// compositor honours — a fill could not colour it before at all.
     /// </summary>
     [Fact]
-    public void Template_ForegroundUnderlineAndHyperlink_ReachTheFilledCells()
+    public void BrushedStyle_ForegroundUnderlineAndHyperlink_ReachTheFilledCells()
     {
         var link = new Hyperlink("https://example.invalid/");
-        var template = new StyleDeltaTemplate
+        var template = new BrushedStyle
                        {
                            Background = Solid(Teal),
                            Foreground = Solid(Slate),
@@ -265,12 +265,12 @@ public class FillTemplateTests
     /// obliterates a same-scene glyph. Preserved verbatim through the template overload.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_DefaultsToOverwriting_AtTheDrawingContext()
+    public void FillOpaque_BrushedStyle_DefaultsToOverwriting_AtTheDrawingContext()
     {
         using var scene = Painted(2, 1, ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.FillOpaque(new Rect(0, 0, 2, 1), new StyleDeltaTemplate { Background = Brushes.Transparent });
+            ctx.FillOpaque(new Rect(0, 0, 2, 1), new BrushedStyle { Background = Brushes.Transparent });
         });
 
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, scene.GetCell(0, 0).Grapheme);
@@ -283,13 +283,13 @@ public class FillTemplateTests
     /// top of it.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_OverwriteFalse_StillRescuesTheGlyphUnderneath()
+    public void FillOpaque_BrushedStyle_OverwriteFalse_StillRescuesTheGlyphUnderneath()
     {
         using var scene = Painted(2, 1, ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                           new StyleDeltaTemplate { Background = Brushes.Transparent }
+                           new BrushedStyle { Background = Brushes.Transparent }
                                .Applying(TextAttributes.Inverse),
                            overwrite: false);
         });
@@ -321,11 +321,11 @@ public class FillTemplateTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void Template_AbsentBackground_IsColorDefault_NotTransparent()
+    public void BrushedStyle_AbsentBackground_IsColorDefault_NotTransparent()
     {
         using var stored = Painted(1, 1,
                                    ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1),
-                                                         new StyleDeltaTemplate().Applying(TextAttributes.Inverse)));
+                                                         new BrushedStyle().Applying(TextAttributes.Inverse)));
 
         Assert.True(stored.GetCell(0, 0).Style.Background.IsDefault,
                     $"an absent background resolved to {stored.GetCell(0, 0).Style.Background}");
@@ -333,7 +333,7 @@ public class FillTemplateTests
         using var absent = Painted(2, 1, ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.FillOpaque(new Rect(0, 0, 2, 1), new StyleDeltaTemplate().Applying(TextAttributes.Inverse),
+            ctx.FillOpaque(new Rect(0, 0, 2, 1), new BrushedStyle().Applying(TextAttributes.Inverse),
                            overwrite: false);
         });
 
@@ -341,7 +341,7 @@ public class FillTemplateTests
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                           new StyleDeltaTemplate { Background = Brushes.Transparent }.Applying(TextAttributes.Inverse),
+                           new BrushedStyle { Background = Brushes.Transparent }.Applying(TextAttributes.Inverse),
                            overwrite: false);
         });
 
@@ -354,9 +354,9 @@ public class FillTemplateTests
     /// preserved through the template overload.
     /// </summary>
     [Fact]
-    public void PaintRectangle_Template_DefaultsToNotOverwriting()
+    public void PaintRectangle_BrushedStyle_DefaultsToNotOverwriting()
     {
-        var tint = new StyleDeltaTemplate { Background = Brushes.Transparent };
+        var tint = new BrushedStyle { Background = Brushes.Transparent };
 
         using var byDefault = Painted(2, 1, ctx =>
         {
@@ -381,10 +381,10 @@ public class FillTemplateTests
     /// is its own sampling rect, cell by cell.
     /// </summary>
     [Fact]
-    public void Template_GradientBackground_RampsAcrossTheFilledRegion()
+    public void BrushedStyle_GradientBackground_RampsAcrossTheFilledRegion()
     {
         using var scene = Painted(4, 1, ctx => ctx.FillRectangle(new Rect(0, 0, 4, 1),
-                                                                 new StyleDeltaTemplate { Background = Ramp() }));
+                                                                 new BrushedStyle { Background = Ramp() }));
 
         var reds = Enumerable.Range(0, 4).Select(c => (int) scene.GetCell(c, 0).Style.Background.Red).ToArray();
 
@@ -397,10 +397,10 @@ public class FillTemplateTests
     /// across the whole chart.
     /// </summary>
     [Fact]
-    public void Template_BrushBounds_StillSampleAgainstTheStatedRect()
+    public void BrushedStyle_BrushBounds_StillSampleAgainstTheStatedRect()
     {
         using var scene = Painted(4, 1, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 1),
-                                                                 new StyleDeltaTemplate { Background = Ramp() },
+                                                                 new BrushedStyle { Background = Ramp() },
                                                                  new Rect(0, 0, 4, 1)));
 
         // The head of a FOUR-wide ramp, not of a two-wide one (which would read 64 / 191).
@@ -410,7 +410,7 @@ public class FillTemplateTests
 
     /// <summary>
     /// ...and it governs EVERY brush channel, not just the background — the single-rect
-    /// <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect)"/> form, not the four-argument one. A
+    /// <see cref="BrushedStyle.Resolve(int, int, in Rect)"/> form, not the four-argument one. A
     /// fill's cells are uniform: its background covers precisely the cells its (space) ink does, so
     /// there is one extent, and <c>brushBounds</c> reframes the whole style rather than the background
     /// alone. The four-argument form's split belongs to operations whose fill box is larger than their
@@ -422,10 +422,10 @@ public class FillTemplateTests
     /// channels would disagree on a cell whose colours the caller stated with one brush.
     /// </remarks>
     [Fact]
-    public void Template_BrushBounds_GovernEveryChannel_NotJustTheBackground()
+    public void BrushedStyle_BrushBounds_GovernEveryChannel_NotJustTheBackground()
     {
         using var scene = Painted(4, 1, ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                                                              new StyleDeltaTemplate { Background = Ramp(), Foreground = Ramp() },
+                                                              new BrushedStyle { Background = Ramp(), Foreground = Ramp() },
                                                               new Rect(0, 0, 4, 1)));
 
         Assert.Equal(32, scene.GetCell(0, 0).Style.Background.Red);
@@ -470,12 +470,12 @@ public class FillTemplateTests
     /// writes at the translated scene cell, exactly as the single brush was sampled before.
     /// </summary>
     [Fact]
-    public void Template_UnderATranslate_SamplesLocallyAndWritesTranslated()
+    public void BrushedStyle_UnderATranslate_SamplesLocallyAndWritesTranslated()
     {
         using var scene = Painted(6, 1, ctx =>
         {
             using (ctx.PushTranslate(2, 0))
-                ctx.FillRectangle(new Rect(0, 0, 4, 1), new StyleDeltaTemplate { Background = Ramp() });
+                ctx.FillRectangle(new Rect(0, 0, 4, 1), new BrushedStyle { Background = Ramp() });
         });
 
         // A scene's unpainted blank is TRANSPARENT (it contributes nothing when composited onwards),

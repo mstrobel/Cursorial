@@ -12,7 +12,7 @@ namespace Cursorial.Rendering.Text;
 /// <remarks>
 /// It used to be per-CELL, carrying the cell's column/row and its logical offset within the inline scope,
 /// because the resolver had to return a fully sampled colour. It now returns a
-/// <see cref="StyleDeltaTemplate"/> — the brush itself, unsampled — so sampling moved to the painter (and,
+/// <see cref="BrushedStyle"/> — the brush itself, unsampled — so sampling moved to the painter (and,
 /// for a glyph face, into the font), and every per-cell member became the painter's own arithmetic. What
 /// remains is genuinely per-run: which brush applies, and in which of the two coordinate spaces.
 /// </remarks>
@@ -50,7 +50,7 @@ public readonly struct BrushedTextContext(CellStyle baseStyle, Rect block, Rect 
     public Rect InlineScope { get; } = inlineScope;
 
     /// <summary>
-    /// The run's opaque <see cref="FormattedTextRun.Tag"/> (e.g. a Drawing <c>BrushedStyle</c>), or null. A
+    /// The run's opaque <see cref="FormattedTextRun.Tag"/> (e.g. a Drawing <c>ScopedBrush</c>), or null. A
     /// resolver keys per-run brush selection off this.
     /// </summary>
     public object? Tag { get; } = tag;
@@ -61,16 +61,16 @@ public readonly struct BrushedTextContext(CellStyle baseStyle, Rect block, Rect 
 /// value because neither half means anything alone: the same gradient over a run's own strip and over the
 /// enclosing block are different pictures.
 /// </summary>
-/// <param name="Delta">What the brushed document does to the run's style — <c>default</c> for "nothing".</param>
-/// <param name="Bounds">The rect <paramref name="Delta"/>'s brushes are sampled against.</param>
-public readonly record struct BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bounds)
+/// <param name="Style">What the brushed document does to the run's style — <c>default</c> for "nothing".</param>
+/// <param name="Bounds">The rect <paramref name="Style"/>'s brushes are sampled against.</param>
+public readonly record struct BrushedTextStyle(BrushedStyle Style, Rect Bounds)
 {
     /// <summary>The identity: no channel claimed, so the run paints exactly as it was formatted.</summary>
     public static BrushedTextStyle None => default;
 
-    /// <summary>Resolve the delta for one cell — <see cref="StyleDeltaTemplate.Resolve(int,int,in Rect)"/>
+    /// <summary>Resolve the delta for one cell — <see cref="BrushedStyle.Resolve(int,int,in Rect)"/>
     /// against <see cref="Bounds"/>, so no caller has to keep the two halves paired by hand.</summary>
-    public PartialStyle Resolve(int column, int row) => Delta.Resolve(column, row, Bounds);
+    public PartialStyle Resolve(int column, int row) => Style.Resolve(column, row, Bounds);
 
     /// <summary>Resolve for one cell and fold onto <paramref name="baseStyle"/>.</summary>
     public CellStyle ApplyTo(int column, int row, in CellStyle baseStyle) => Resolve(column, row).ApplyTo(baseStyle);
@@ -79,12 +79,12 @@ public readonly record struct BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bo
 /// <summary>
 /// Chooses the style delta for one painted RUN. A higher layer supplies it to
 /// <see cref="FormattedText.Paint"/> to brush-color formatted text; the painter calls it once per run and
-/// resolves the returned template per cell. Cell width is grapheme-driven, so a substituted style never
+/// resolves the returned style per cell. Cell width is grapheme-driven, so a substituted style never
 /// shifts the layout.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Returning a <see cref="StyleDeltaTemplate"/> rather than a whole <see cref="CellStyle"/> is what lets a
+/// Returning a <see cref="BrushedStyle"/> rather than a whole <see cref="CellStyle"/> is what lets a
 /// resolver state only the channels it owns. A brush owns a foreground; before the change it had to hand back
 /// a reconstruction of <see cref="BrushedTextContext.BaseStyle"/> with that one channel swapped, so every
 /// channel it forgot was silently reset and "this run keeps what it had" cost a full copy per cell instead of
@@ -93,9 +93,9 @@ public readonly record struct BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bo
 /// <para>
 /// Returning it UNSAMPLED is what moved the call from per-cell to per-run. Everything the resolver decides —
 /// which brush wins, at what scope, whether the run's foreground was inherited, which inherited attributes
-/// merge in — is a property of the run; only the sampling was per cell, and the template does that itself.
+/// merge in — is a property of the run; only the sampling was per cell, and the style does that itself.
 /// It also lets a glyph face receive the brush rather than a blind callback, so a face that paints a
-/// multi-cell glyph per character can sample per CELL (the FIGlet gradient) while a uniform template is
+/// multi-cell glyph per character can sample per CELL (the FIGlet gradient) while a uniform style is
 /// resolved once for the whole run.
 /// </para>
 /// </remarks>

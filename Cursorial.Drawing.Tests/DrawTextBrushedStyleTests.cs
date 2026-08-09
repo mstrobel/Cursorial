@@ -7,17 +7,17 @@ using Cursorial.Text;
 namespace Cursorial.Tests.Drawing;
 
 /// <summary>
-/// <c>DrawText</c> takes a <see cref="StyleDeltaTemplate"/>: the brushes that used to travel BESIDE a
+/// <c>DrawText</c> takes a <see cref="BrushedStyle"/>: the brushes that used to travel BESIDE a
 /// <see cref="CellStyle"/> now ride inside one value, the same shape
-/// <see cref="Cursorial.Rendering.Fonts.IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in StyleDeltaTemplate, in Rect)"/>
+/// <see cref="Cursorial.Rendering.Fonts.IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
 /// already took — base style plus per-cell delta.
 /// <para>
 /// Every assertion reads real cells off a composited frame. The two channels the migration could
-/// silently move are pinned here: the meaning of an ABSENT background (§<see cref="Template_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives"/>)
-/// and the RECT the brushes sample against (§<see cref="Template_Background_SamplesTheFullMultiLineExtent_LikeTheForeground"/>).
+/// silently move are pinned here: the meaning of an ABSENT background (§<see cref="BrushedStyle_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives"/>)
+/// and the RECT the brushes sample against (§<see cref="BrushedStyle_Background_SamplesTheFullMultiLineExtent_LikeTheForeground"/>).
 /// </para>
 /// </summary>
-public class DrawTextTemplateTests
+public class DrawTextBrushedStyleTests
 {
     private static readonly Color Black = Color.FromRgb(0, 0, 0);
     private static readonly Color Slate = Color.FromRgb(50, 60, 70);
@@ -29,16 +29,16 @@ public class DrawTextTemplateTests
     // ───────────── the capability that must survive the signature change ─────────────
 
     /// <summary>
-    /// A gradient foreground still ramps PER COLUMN through the template overload — and lands on
+    /// A gradient foreground still ramps PER COLUMN through the style overload — and lands on
     /// exactly the values the brush overload produces, which is the whole of "the sampling rect did
     /// not move" for the single-line case (see <c>DrawingContextGradientTests.DrawText_SamplesForegroundGradientPerGlyph</c>,
     /// whose numbers these are).
     /// </summary>
     [Fact]
-    public void Template_GradientForeground_RampsPerColumn()
+    public void BrushedStyle_GradientForeground_RampsPerColumn()
     {
         var buffer = DrawHarness.Render(2, 1,
-                                        ctx => ctx.DrawText(0, 0, "AB", new StyleDeltaTemplate { Foreground = Ramp() }));
+                                        ctx => ctx.DrawText(0, 0, "AB", new BrushedStyle { Foreground = Ramp() }));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
         Assert.Equal("B", buffer[1, 0].Grapheme);
@@ -50,17 +50,17 @@ public class DrawTextTemplateTests
 
     /// <summary>
     /// On a TEMPLATE, <see langword="null"/> is NO OPINION — so the base style's background reaches the
-    /// cell untouched. This is the one semantic the template overload deliberately does NOT inherit from
+    /// cell untouched. This is the one semantic the style overload deliberately does NOT inherit from
     /// the brush overload, whose <c>null</c> has always meant <see cref="Brushes.Transparent"/>.
     /// </summary>
     [Fact]
-    public void Template_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives()
+    public void BrushedStyle_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives()
     {
         var baseStyle = CellStyle.Default.WithBackground(Slate);
 
         var buffer = DrawHarness.Render(2, 1,
                                         ctx => ctx.DrawText(0, 0, "A",
-                                                            new StyleDeltaTemplate { Foreground = Brushes.White },
+                                                            new BrushedStyle { Foreground = Brushes.White },
                                                             baseStyle));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
@@ -119,7 +119,7 @@ public class DrawTextTemplateTests
         var noOpinion = DrawHarness.Render(2, 1, ctx =>
         {
             ctx.DrawText(0, 0, "A", Brushes.White);
-            ctx.DrawText(0, 0, " ", new StyleDeltaTemplate { Foreground = Brushes.White });   // template: absent ⇒ no opinion
+            ctx.DrawText(0, 0, " ", new BrushedStyle { Foreground = Brushes.White });   // style: absent ⇒ no opinion
         });
 
         Assert.Equal("A", transparent[0, 0].Grapheme);         // transparent let the glyph underneath survive
@@ -129,19 +129,19 @@ public class DrawTextTemplateTests
     // ───────────── the channels a brush pair could never carry ─────────────
 
     /// <summary>
-    /// The template's ATTRIBUTE and UNDERLINE channels reach the painted cells — the payload that had no
+    /// The style's ATTRIBUTE and UNDERLINE channels reach the painted cells — the payload that had no
     /// argument to travel in when the primitive took two brushes and a whole style, and the reason a
     /// caller had to pre-fold them into <c>baseStyle</c> instead of stating them per operation.
     /// </summary>
     [Fact]
-    public void Template_AttributesAndUnderline_ReachThePaintedCells()
+    public void BrushedStyle_AttributesAndUnderline_ReachThePaintedCells()
     {
-        var template = new StyleDeltaTemplate { Foreground = Brushes.White }
+        var brushedStyle = new BrushedStyle { Foreground = Brushes.White }
                        .Weighing(TextWeight.Bold)
                        .Applying(TextAttributes.Blink)
                        .Underlining(UnderlineStyle.Curly, Brushes.Red);
 
-        var buffer = DrawHarness.Render(2, 1, ctx => ctx.DrawText(0, 0, "A", template));
+        var buffer = DrawHarness.Render(2, 1, ctx => ctx.DrawText(0, 0, "A", brushedStyle));
 
         var style = buffer[0, 0].Style;
 
@@ -154,18 +154,18 @@ public class DrawTextTemplateTests
     }
 
     /// <summary>
-    /// The template is a DELTA: a channel it declines to state falls through to the base style rather
-    /// than being reset. The discriminator is an attribute the base carries and the template never
+    /// The style is a DELTA: a channel it declines to state falls through to the base style rather
+    /// than being reset. The discriminator is an attribute the base carries and the style never
     /// mentions.
     /// </summary>
     [Fact]
-    public void Template_LeavesTheBaseStylesOwnAttributesAlone()
+    public void BrushedStyle_LeavesTheBaseStylesOwnAttributesAlone()
     {
         var baseStyle = CellStyle.Default.AddAttributes(TextAttributes.Italic);
 
         var buffer = DrawHarness.Render(2, 1,
                                         ctx => ctx.DrawText(0, 0, "A",
-                                                            new StyleDeltaTemplate { Foreground = Brushes.White }
+                                                            new BrushedStyle { Foreground = Brushes.White }
                                                                 .Applying(TextAttributes.Blink),
                                                             baseStyle));
 
@@ -179,18 +179,18 @@ public class DrawTextTemplateTests
     /// <summary>
     /// Both brush channels sample against the SAME rect — the full multi-line extent (widest line ×
     /// line count) anchored at the start cell — which is what the brush overload has always done and
-    /// what <see cref="StyleDeltaTemplate.Resolve(int, int, in Rect)"/>'s single-rect form means.
+    /// what <see cref="BrushedStyle.Resolve(int, int, in Rect)"/>'s single-rect form means.
     /// <para>
     /// The discriminator is the SHORT second line: column 0 of a one-column line would sit at the
     /// ramp's midpoint if the rect were per line, and at its head if the rect is the run's extent.
     /// </para>
     /// </summary>
     [Fact]
-    public void Template_Background_SamplesTheFullMultiLineExtent_LikeTheForeground()
+    public void BrushedStyle_Background_SamplesTheFullMultiLineExtent_LikeTheForeground()
     {
         var buffer = DrawHarness.Render(6, 2,
                                         ctx => ctx.DrawText(0, 0, "ABCD\nX",
-                                                            new StyleDeltaTemplate { Foreground = Ramp(), Background = Ramp() }));
+                                                            new BrushedStyle { Foreground = Ramp(), Background = Ramp() }));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
         Assert.Equal("X", buffer[0, 1].Grapheme);

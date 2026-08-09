@@ -125,6 +125,7 @@
                               HorizontalAlignment="Center">
                 <ImagePresenter.PlaceholderContent>
                   <RichTextPresenter Source="{Binding WelcomeText}"
+                                     HorizontalAlignment="Center"
                                      TextAlignment="Center"
                                      TextElement.TextStyle="Italic">
                     <TextElement.Foreground>

@@ -187,7 +187,7 @@ has **no single colour to bake into a channel** — the very call `TintCells` al
 Keep `PartialStyle` free of geometry and put sampling in a resolve step:
 
 ```csharp
-public readonly struct StyleDeltaTemplate      // holds IBrush? per colour channel
+public readonly struct BrushedStyle      // holds IBrush? per colour channel
 {
     public PartialStyle Resolve(int column, int row, in Rect bounds);
 }
@@ -305,7 +305,7 @@ One item to verify rather than assume at implementation time:
 property typed `IBrush` assigned from a string in markup (`Foreground="Red"`) resolves its type
 converter by CLR type. That path should get an explicit test, not an assumption.
 
-`StyleDeltaTemplate` can then also live in Rendering, holding `IBrush?` per channel directly. The
+`BrushedStyle` can then also live in Rendering, holding `IBrush?` per channel directly. The
 §5b fast path still applies — all-solid brushes make `Resolve` loop-invariant, so it resolves ONCE
 and only genuinely position-varying brushes pay per-cell work.
 
@@ -313,7 +313,7 @@ and only genuinely position-varying brushes pay per-cell work.
 
 > **Superseded in part.** Both delegates did convert, but `GlyphStyleProvider` was RETIRED rather than
 > re-typed: once `IBrush` moved into `Cursorial.Rendering`, the callback's whole reason for existing was
-> gone and `StyleDeltaTemplate.Resolve` turned out to BE its signature. `BrushedTextResolver` survives and
+> gone and `BrushedStyle.Resolve` turned out to BE its signature. `BrushedTextResolver` survives and
 > now returns a template, once per run. §11.7 records what actually landed.
 
 
@@ -342,7 +342,7 @@ Layering, once converted:
 
 | form | shape | when |
 |---|---|---|
-| `StyleDeltaTemplate` (§5b) | declarative, brush per channel, no closure | the common case |
+| `BrushedStyle` (§5b) | declarative, brush per channel, no closure | the common case |
 | the two delegates → `PartialStyle` | arbitrary logic, now channel-explicit | the extensibility hook |
 
 **This is also the concrete case behind §2's `ref struct` rejection.** The residual risk identified
@@ -440,7 +440,7 @@ Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapab
 Implementors are `Icon`, `Image`, `ScaledText`. **`ScaledText` needed brush-based styling, could not
 express it through the flat `Style` parameter, and grew a separate `public BrushedTextResolver?
 BrushResolver { get; set; }` property.** That pair — a flat style plus a side-channel per-cell
-colour source — *is* a `StyleDeltaTemplate`, hand-rolled and split across two places. Taking a
+colour source — *is* a `BrushedStyle`, hand-rolled and split across two places. Taking a
 template as the parameter retires the property and gives `Icon` and `Image` the capability for free.
 
 ### Two scopes, and they must not be conflated
@@ -448,7 +448,7 @@ template as the parameter retires the property and gives `Icon` and `Image` the 
 | scope | carrier | meaning |
 |---|---|---|
 | element / subtree | `UIElement.BlendingMode` → `CompositeParameters.Mode` | how a whole surface composites onto its parent |
-| single operation | `StyleDeltaTemplate.Mode` | how one fill/tint/paint's colours combine with the cells it touches |
+| single operation | `BrushedStyle.Mode` | how one fill/tint/paint's colours combine with the cells it touches |
 
 Both are legitimate — the same way opacity exists on both an element and a brush — but they need
 names that do not imply setting one affects the other.
@@ -559,7 +559,7 @@ already contain machinery this type should reuse or replace rather than duplicat
 | type | assembly | namespace |
 |---|---|---|
 | `PartialStyle`, `StyleChannels` | `Cursorial.Rendering` | **`Cursorial.Rendering.Media`** |
-| `StyleDeltaTemplate` | `Cursorial.Rendering` | **`Cursorial.Rendering.Media`** |
+| `BrushedStyle` | `Cursorial.Rendering` | **`Cursorial.Rendering.Media`** |
 | `CellStyle` (unchanged) | `Cursorial.Core` | `Cursorial.Output` |
 
 The split between `CellStyle` and `PartialStyle` is the state/operation line, which is the
@@ -570,7 +570,7 @@ they are different kinds of thing.
 
 Everything else follows:
 
-- **`StyleDeltaTemplate` was pinned to Rendering anyway** — it needs `IBrush` and `Rect`, neither
+- **`BrushedStyle` was pinned to Rendering anyway** — it needs `IBrush` and `Rect`, neither
   visible to Core. Putting the value form beside it keeps the pair in one place.
 - **The namespace is already mapped.** `Cursorial.Rendering` declares
   `[assembly: XmlnsDefinition(..., "Cursorial.Rendering.Media")]` and is in `XamlSchemaContext`'s
@@ -583,14 +583,14 @@ Everything else follows:
   and now the vocabulary to express them.
 
 Note this supersedes the earlier reasoning in §5c, which put `PartialStyle` in `Cursorial.Rendering`
-and `StyleDeltaTemplate` in `Cursorial.Drawing` on the assumption that a brush-carrying type could
+and `BrushedStyle` in `Cursorial.Drawing` on the assumption that a brush-carrying type could
 not descend. `IBrush` has since moved to `Cursorial.Rendering.Media`, which removes that constraint
 and lets both live together.
 
 ## 10. The types
 
 > **IMPLEMENTED (2026-08-06)** on `feature/styling-redesign`:
-> `Cursorial.Rendering/Media/PartialStyle.cs`, `StyleDeltaTemplate.cs`, with the laws of §12 pinned
+> `Cursorial.Rendering/Media/PartialStyle.cs`, `BrushedStyle.cs`, with the laws of §12 pinned
 > in `Cursorial.Rendering.Tests/Media/PartialStyleTests.cs` (610 cases).
 >
 > **The code is the specification now.** What follows is kept for the REASONING — why the shape is
@@ -910,7 +910,7 @@ rather than merely convenient:
 
 > `a.Then(b).ApplyTo(s)` ≡ `b.ApplyTo(a.ApplyTo(s))`, for every `a`, `b`, `s`.
 
-### 10.3 `StyleDeltaTemplate`
+### 10.3 `BrushedStyle`
 
 The same shape with `IBrush` where `PartialStyle` has `Color` — the unresolved form, for callers
 that paint over a region and need per-cell colour.
@@ -920,7 +920,7 @@ that paint over a region and need per-cell colour.
 /// A <see cref="PartialStyle"/> whose colour channels are BRUSHES, resolved per cell. The form an
 /// operation is authored in; <see cref="Resolve"/> produces the value form for a given cell.
 /// </summary>
-public readonly record struct StyleDeltaTemplate
+public readonly record struct BrushedStyle
 {
     public IBrush?    Foreground     { get; init; }
     public IBrush?    Background     { get; init; }
@@ -1024,7 +1024,7 @@ sufficient and more predictable than a per-cell flip.
 ### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites) — ✅ MIGRATED
 
 ```csharp
-// :573   baseStyle.Attributes ^ TextAttributes.Inverse                         ✅ MIGRATED
+// :573   legacyBaseStyle.Attributes ^ TextAttributes.Inverse                         ✅ MIGRATED
 PartialStyle.Toggle(TextAttributes.Inverse)
 
 // :541   .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse)
@@ -1045,13 +1045,13 @@ their own:
 - The `^ Inverse` toggle is now `ResolveSelectionStyle`'s `PartialStyle.WithToggled(TextAttributes.Inverse)`,
   the fall-through leg beside `WithBackground(colour).Clearing(Inverse)` (§11.1).
 - The band pre-fill no longer fakes a delta through `CellStyle.Default`: it is
-  `context.FillOpaque(rect, Color.Transparent, (baseStyle.Attributes & FillAttributes) | Inverse)`,
+  `context.FillOpaque(rect, Color.Transparent, (legacyBaseStyle.Attributes & FillAttributes) | Inverse)`,
   which states the attribute word directly and masks it through an allowlist. Not a `PartialStyle`, and
   deliberately so — it is an opaque fill, an operation that OWNS the cells it writes, and the interesting
   question there turned out to be *which attributes may spread onto cells nobody inked*, which is what
   `FillAttributes` answers.
 
-  > **Still true of the CALL SITE** after §11.9. `FillOpaque` now takes a `StyleDeltaTemplate`, but this
+  > **Still true of the CALL SITE** after §11.9. `FillOpaque` now takes a `BrushedStyle`, but this
   > site keeps using the colour-plus-word wrapper, because a solid transparent fill plus a flag word is
   > exactly what two arguments already say. What §11.9 changed underneath it is that the word is folded
   > per AXIS rather than written into a `CellStyle` wholesale — which it had to be, since `FillAttributes`
@@ -1073,7 +1073,7 @@ What the value form actually cost was a PARALLEL PARAMETER. The element's foregr
 in the base, so it travelled beside it — `IBrush? foreground` threaded through `RenderSingleLine`,
 `DrawFaceLine`, `DrawLineRun` and the presenter's private `DrawText`, with every signature between the
 resolve and the paint carrying both halves of one thing. `ResolveLineBaseStyle` now returns a
-`StyleDeltaTemplate` with the brush in it, resolved ONCE per render pass and handed down as a single
+`BrushedStyle` with the brush in it, resolved ONCE per render pass and handed down as a single
 carrier; three signatures shed the second parameter, and the base stopped being resolved once per lane
 (the two-lane divergence that produced three separate invisible-selection defects in this file is now
 structurally unavailable, not merely watched for).
@@ -1220,7 +1220,7 @@ The `ComposeAttributes`-shaped path: a channel is present iff the element actual
 property system already knows.
 
 ```csharp
-public static StyleDeltaTemplate FromElement(UIElement e) => new()
+public static BrushedStyle FromElement(UIElement e) => new()
 {
     Foreground     = IsSet(e, TextElement.ForegroundProperty)     ? TextElement.GetForeground(e)     : null,
     Background     = IsSet(e, TextElement.BackgroundProperty)     ? TextElement.GetBackground(e)     : null,
@@ -1262,9 +1262,9 @@ artefact of a constraint that no longer holds:
 public delegate CellStyle GlyphStyleProvider(int column, int row);
 Size Paint(…, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider);
 
-// after: the value form. StyleDeltaTemplate.Resolve IS that signature, plus the sampling bounds the
+// after: the value form. BrushedStyle.Resolve IS that signature, plus the sampling bounds the
 // closure was capturing, plus IsUniform
-Size Paint(…, ReadOnlySpan<char> text, in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds);
+Size Paint(…, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds);
 ```
 
 Three things follow from passing the value instead of a closure over it:
@@ -1285,12 +1285,12 @@ Three things follow from passing the value instead of a closure over it:
 **`BrushedTextResolver` moved from per-CELL to per-RUN.** Everything it decides — which brush wins, at what
 scope, whether the run's foreground was inherited, which inherited attributes merge in — is a property of
 the run; only the sampling was per cell, and a template samples itself. It now returns
-`BrushedTextStyle(StyleDeltaTemplate Delta, Rect Bounds)`:
+`BrushedTextStyle(BrushedStyle Style, Rect Bounds)`:
 
 ```csharp
-// the run declares its own brush:      new StyleDeltaTemplate { Foreground = bs.Foreground }, at its scope
+// the run declares its own brush:      new BrushedStyle { Foreground = bs.Foreground }, at its scope
 // no document brush:                   the IDENTITY — where it used to rebuild ctx.BaseStyle to say "no change"
-// document brush, foreground inherited: new StyleDeltaTemplate { Foreground = documentBrush }, over the block
+// document brush, foreground inherited: new BrushedStyle { Foreground = documentBrush }, over the block
 // document brush, foreground its own:   the IDENTITY again
 ```
 
@@ -1302,12 +1302,12 @@ Three things this migration had to be careful about, each now pinned by a test:
 1. **`AddAttributes` is an OR, and the per-axis factories cannot express one.** `Weighted(Bold)` forces
    Faint OFF — they share the SGR 22 reset — so decomposing the inherited-attribute leg into axes would
    strip a run's own Faint under an inherited Bold. This needed a new factory, `PartialStyle.WithAdded`
-   (and `StyleDeltaTemplate.Adding`): the flag-word union, the only one that accepts the axis-owning flags.
+   (and `BrushedStyle.Adding`): the flag-word union, the only one that accepts the axis-owning flags.
    It is not a hole in `WithSet`'s guard — that guard catches routing an axis through the boolean
    factories by ACCIDENT, and here the union is the intent. Verified by mutation: making it a replace
    fails three tests, including `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag`.
 
-   > **Retracted.** `PartialStyle.WithAdded`, `PartialStyle.Adding` and `StyleDeltaTemplate.Adding` have
+   > **Retracted.** `PartialStyle.WithAdded`, `PartialStyle.Adding` and `BrushedStyle.Adding` have
    > since been REMOVED; the paragraph above is kept only so the reversal is legible. It concedes its own
    > defeat in the phrase "strip a run's own Faint": the union's one distinguishing capability is reaching
    > `Bold | Faint`, and that is not a state the wire has. The encoder emits `ESC[1m` to reach it from a
@@ -1355,13 +1355,13 @@ BRUSH and only `null` means absent.
 Same shape as §11.3/§11.7, same reasoning, one layer up:
 
 ```csharp
-// before: two brushes travelling beside a whole style — the pair StyleDeltaTemplate carries in one value
+// before: two brushes travelling beside a whole style — the pair BrushedStyle carries in one value
 public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                     IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default);
+                     IBrush foreground, IBrush? background = null, in CellStyle legacyBaseStyle = default);
 
 // after: base + delta, as IGlyphFont.Paint already took
 public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                     in StyleDeltaTemplate style, in CellStyle baseStyle = default);
+                     in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default);
 ```
 
 Base style PLUS delta rather than a bare delta, for §11.3's reason: a draw OWNS the cells it inks, so a
@@ -1376,7 +1376,7 @@ convenience overloads is that the simple case is not made to pay for the general
 Three things this had to settle:
 
 1. **An omitted background means DIFFERENT things at the two entry points, and that is the design, not a
-   leak.** On the brush overload it stays `Brushes.Transparent`, which OVERWRITES `baseStyle`'s background;
+   leak.** On the brush overload it stays `Brushes.Transparent`, which OVERWRITES `legacyBaseStyle`'s background;
    on the template it is absence, so the base's background survives. The two are not interchangeable at the
    cell: `CellBuffer.Set` rescues the grapheme under a whitespace write whose background is not opaque, and
    `Color.Transparent` qualifies where `Color.Default` does not — so drawing a space with each lands a
@@ -1385,7 +1385,7 @@ Three things this had to settle:
 2. **The sampling rect did not move.** `DrawText` samples against the full multi-line extent (widest
    sanitized line × line count) anchored at the start cell, carried in a `Rect` whose origin may be negative
    (`Rect` is `int`-backed, so a negative anchor passes through to the brush verbatim and samples
-   contract-equivalently). It resolves through `StyleDeltaTemplate.Resolve(column, row, in bounds)` — one
+   contract-equivalently). It resolves through `BrushedStyle.Resolve(column, row, in bounds)` — one
    rect for foreground and background alike, because a text run's background covers precisely the cells its
    glyphs do. `DrawFaceLine`'s per-WORD brush bounds are a separate pre-existing quirk and were left alone.
 3. **`IsUniform` became readable here too.** A solid template — the overwhelming majority — folds once for
@@ -1416,13 +1416,13 @@ The other half of §11.8, and the one the presenter's band fill needed:
 public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true);
 
 // after: the delta, resolved per cell over the ground the fill owns
-public void FillOpaque(in Rect region, in StyleDeltaTemplate style, bool overwrite = true);
+public void FillOpaque(in Rect region, in BrushedStyle baseStyle, bool overwrite = true);
 ```
 
 The base is **fixed, not passed**, which is where this diverges from `DrawText`. A draw's caller holds a
 resolved `CellStyle` for the run — the layout system built one — so handing it in is honest. A fill's
 caller holds nothing: the ground has always been `CellStyle.Default`, and a template is a total delta
-over it, so a `baseStyle` parameter would add surface without adding a single thing anybody could say.
+over it, so a `legacyBaseStyle` parameter would add surface without adding a single thing anybody could say.
 
 The `Color` / `IBrush` overloads are KEPT for §11.8's reason (about sixty solid-colour call sites), and
 all nine keep their **exact** defaults — including the two that disagree, `DrawingContext.FillOpaque`'s
@@ -1435,7 +1435,7 @@ Four things this had to settle:
 
 1. **The attribute WORD carries axis-owning flags, and `Applying` rejects them.** `PartialStyle.Require`
    throws for Bold / Faint / Italic / Underline, and `TextPresenter`'s band fill hands the primitive
-   `(baseStyle.Attributes & FillAttributes) | Inverse` where the allowlist admits the first three — so the
+   `(legacyBaseStyle.Attributes & FillAttributes) | Inverse` where the allowlist admits the first three — so the
    naive one-line fold throws on a real path, not a hypothetical one. The wrappers fold per AXIS through
    the same `Imposing` helper the element-attribute leg of `CreateBrushResolver` now shares (it was the
    only other place doing this translation, and it was doing it inline). `WithAdded` stays deleted: the

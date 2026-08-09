@@ -3,7 +3,7 @@
 //
 // A characterisation ("golden master") harness pinning the CURRENT behaviour of Cursorial's text
 // pipeline, captured before the FormattedTextRun style-carrier migration: runs today carry a resolved
-// CellStyle, and are to carry a StyleDeltaTemplate plus a sampling frame instead, so the UI layer stops
+// CellStyle, and are to carry a BrushedStyle plus a sampling frame instead, so the UI layer stops
 // naming the back-buffer format. That migration is supposed to be PURELY STRUCTURAL — not one glyph
 // moves, not one output byte changes — and these baselines are what makes "supposed to" verifiable.
 //

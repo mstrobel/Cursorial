@@ -12,7 +12,7 @@ using Cursorial.UI.Hosting.Headless;
 namespace Cursorial.Tests.UI;
 
 /// <summary>
-/// <see cref="RenderContext"/>'s rectangle fills take a <see cref="StyleDeltaTemplate"/> too — and
+/// <see cref="RenderContext"/>'s rectangle fills take a <see cref="BrushedStyle"/> too — and
 /// the veneer's own DEFAULTS are the thing to pin. <c>FillOpaque</c> narrows
 /// <see cref="Cursorial.Drawing.DrawingContext"/>'s <c>overwrite: true</c> to <c>false</c> at this
 /// boundary, and that narrower default is load-bearing: it is what lets
@@ -22,7 +22,7 @@ namespace Cursorial.Tests.UI;
 /// Every assertion reads the RENDERED frame.
 /// </para>
 /// </summary>
-public sealed class RenderContextFillTemplateTests
+public sealed class RenderContextFillBrushedStyleTests
 {
     private static readonly Color Teal = Color.FromRgb(0, 128, 128);
 
@@ -50,10 +50,10 @@ public sealed class RenderContextFillTemplateTests
     /// attribute channels a <see cref="Color"/> plus a flag word could carry only between them.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_PaintsThroughTheVeneer()
+    public void FillOpaque_BrushedStyle_PaintsThroughTheVeneer()
     {
         using var host = Shown(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                                                     new StyleDeltaTemplate { Background = new SolidColorBrush(Teal) }
+                                                     new BrushedStyle { Background = new SolidColorBrush(Teal) }
                                                          .Applying(TextAttributes.Inverse)));
 
         Assert.Equal(Teal, host.GetCell(0, 0).Style.Background);
@@ -68,13 +68,13 @@ public sealed class RenderContextFillTemplateTests
     /// the ink.
     /// </summary>
     [Fact]
-    public void FillOpaque_Template_HonorsNoOverwrite_SoTheGlyphUnderneathSurvives()
+    public void FillOpaque_BrushedStyle_HonorsNoOverwrite_SoTheGlyphUnderneathSurvives()
     {
         using var host = Shown(ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
-                           new StyleDeltaTemplate { Background = Brushes.Transparent }
+                           new BrushedStyle { Background = Brushes.Transparent }
                                .Applying(TextAttributes.Inverse),
                            overwrite: false);
         });
@@ -121,12 +121,12 @@ public sealed class RenderContextFillTemplateTests
     /// so the cell the compositor produces keeps whatever grapheme was beneath it.
     /// </summary>
     [Fact]
-    public void FillRectangle_Template_StaysBackgroundOnly()
+    public void FillRectangle_BrushedStyle_StaysBackgroundOnly()
     {
         using var host = Shown(ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.FillRectangle(new Rect(0, 0, 2, 1), new StyleDeltaTemplate { Background = new SolidColorBrush(Teal) });
+            ctx.FillRectangle(new Rect(0, 0, 2, 1), new BrushedStyle { Background = new SolidColorBrush(Teal) });
         });
 
         // The raw write cleared the glyph WITHIN the scene (FillRectangle has no overwrite switch),
@@ -138,12 +138,12 @@ public sealed class RenderContextFillTemplateTests
     /// <summary><c>PaintRectangle</c> keeps its own <c>overwrite: false</c> default through the
     /// template overload — the intra-scene blend, which leaves a same-scene glyph standing.</summary>
     [Fact]
-    public void PaintRectangle_Template_DefaultsToNotOverwriting()
+    public void PaintRectangle_BrushedStyle_DefaultsToNotOverwriting()
     {
         using var host = Shown(ctx =>
         {
             ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.PaintRectangle(new Rect(0, 0, 2, 1), new StyleDeltaTemplate { Background = Brushes.Transparent });
+            ctx.PaintRectangle(new Rect(0, 0, 2, 1), new BrushedStyle { Background = Brushes.Transparent });
         });
 
         Assert.Equal("X", host.GetCell(0, 0).Grapheme);

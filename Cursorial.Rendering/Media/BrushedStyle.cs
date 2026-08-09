@@ -1,19 +1,234 @@
-using Cursorial.Drawing;
+using System.Diagnostics;
+
+using Cursorial.Media;
+using Cursorial.Output;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Media;
 
 /// <summary>
-/// A brush declared on a rich-text run — its foreground <see cref="IBrush"/> and the
-/// <see cref="DeclarationScope"/> it samples against. Attach it to a run via
-/// <c>RichTextBuilder.BrushedRun(text, brushedStyle)</c>; it rides the run's opaque
-/// <c>FormattedTextRun.Tag</c> through layout, and <c>DrawingContext.DrawFormattedText</c> samples it per cell.
-/// A run's own brush wins over any document-level brush.
+/// A <see cref="PartialStyle"/> whose color channels are BRUSHES, resolved per cell. The form an
+/// operation is authored in; <see cref="Resolve(int, int, in Rect, in Rect)"/> produces the value
+/// form for a given cell.
 /// </summary>
 /// <remarks>
-/// 6a/6b carry only a foreground brush (the common case — gradient text). Background / underline brushes can
-/// join later as additive members. Default scope is <see cref="DeclarationScope.Inline"/>, so a run's gradient
-/// spans the run itself.
+/// The shapes correspond one-to-one: <see cref="IBrush"/> here where <see cref="PartialStyle"/> has
+/// <see cref="Color"/>, and <see langword="null"/> means "absent" in both. Attributes are carried in
+/// the same encoding and exposed the same way — as
+/// <see cref="AppliedAttributes"/> / <see cref="RemovedAttributes"/> / <see cref="ToggledAttributes"/>,
+/// never as the mask pair behind them.
 /// </remarks>
-/// <param name="Foreground">The brush coloring the run's glyphs.</param>
-/// <param name="Scope">The geometry the brush samples against (default: the run itself).</param>
-public readonly record struct BrushedStyle(IBrush Foreground, DeclarationScope Scope = DeclarationScope.Inline);
+public readonly record struct BrushedStyle
+{
+    public static readonly BrushedStyle Identity = default;
+
+    public IBrush?    Foreground     { get; init; }
+    public IBrush?    Background     { get; init; }
+    public IBrush?    UnderlineColor { get; init; }
+    public Hyperlink? Hyperlink      { get; init; }
+
+    /// <inheritdoc cref="PartialStyle.UnderlineShape"/>
+    public UnderlineStyle? UnderlineShape { get; init; }
+
+    public IBlendingMode? Mode { get; init; }
+
+    // Storage, not interface — see PartialStyle. Set through the fluent methods below.
+    internal TextAttributes Clear { get; init; }
+    internal TextAttributes Xor   { get; init; }
+
+    /// <summary>Attributes this style forces ON, whatever the base had.</summary>
+    public TextAttributes AppliedAttributes => Clear & Xor;
+
+    /// <summary>Attributes this style forces OFF, whatever the base had.</summary>
+    public TextAttributes RemovedAttributes => Clear & ~Xor;
+
+    /// <summary>Attributes this style INVERTS — on becomes off, off becomes on.</summary>
+    public TextAttributes ToggledAttributes => Xor & ~Clear;
+
+    /// <inheritdoc cref="PartialStyle.Weight"/>
+    public TextWeight? Weight => Resolved.Weight;
+
+    /// <inheritdoc cref="PartialStyle.Posture"/>
+    public TextStyle? Posture => Resolved.Posture;
+
+    // The attribute half of a style is brush-free, so it can be read through a resolved delta
+    // rather than duplicating the projections. Color channels resolve to null here, which the
+    // attribute projections do not consult.
+    [DebuggerHidden]
+    private PartialStyle Resolved => new() { Clear = Clear, Xor = Xor, UnderlineShape = UnderlineShape };
+
+    // ---- fluent composition: attributes only, for the reason PartialStyle gives ----
+
+    /// <summary>Copy this style while adjusting only the <see cref="Foreground"/>.</summary>
+    public BrushedStyle WithForeground(IBrush? foreground) => this with { Foreground = foreground };
+
+    /// <summary>Copy this style while adjusting only the <see cref="Background"/>.</summary>
+    public BrushedStyle WithBackground(IBrush? background) => this with { Background = background };
+
+    /// <summary>Copy this style while adjusting only the <see cref="UnderlineColor"/>.</summary>
+    public BrushedStyle WithUnderlineColor(IBrush? underlineColor) => this with { UnderlineColor = underlineColor };
+
+    /// <summary>Copy this style while adjusting only the <see cref="UnderlineShape"/>.</summary>
+    public BrushedStyle WithUnderlineShape(UnderlineStyle? shape) => this with { UnderlineShape = shape };
+
+    /// <summary>Copy this style while adjusting only the <see cref="Mode"/>.</summary>
+    public BrushedStyle WithMode(IBlendingMode? mode) => this with { Mode = mode };
+
+    /// <summary>Copy this style while adjusting only the <see cref="Hyperlink"/>.</summary>
+    public BrushedStyle WithHyperlink(Hyperlink? hyperlink) => this with { Hyperlink = hyperlink };
+
+    /// <summary>Force <paramref name="flags"/> ON in addition to whatever this style already does.</summary>
+    public BrushedStyle Applying(TextAttributes flags) => Composed(PartialStyle.WithApplied(flags));
+
+    /// <summary>Force <paramref name="flags"/> UNSET (no opinion) in addition to whatever this style already does.</summary>
+    public BrushedStyle Ignoring(TextAttributes flags) => WithFlags(Resolved.Ignoring(flags));
+
+    /// <summary>Force <paramref name="flags"/> to keep their current status while ignoring all other booleans.</summary>
+    public BrushedStyle Keeping(TextAttributes flags) => WithFlags(Resolved.Ignoring(PartialStyle.Booleans & ~PartialStyle.Require(flags)));
+
+    /// <summary>Force <paramref name="flags"/> to IGNORED (no opinion) with all others booleans keeping their current status.</summary>
+    public BrushedStyle Dropping(TextAttributes flags) => WithFlags(Resolved.Ignoring(PartialStyle.Booleans & ~PartialStyle.Require(flags)));
+
+    /// <summary>Force <paramref name="flags"/> OFF in addition to whatever this style already does.</summary>
+    public BrushedStyle Removing(TextAttributes flags) => Composed(PartialStyle.WithRemoved(flags));
+
+    /// <summary>INVERT <paramref name="flags"/> in addition to whatever this style already does.</summary>
+    public BrushedStyle Toggling(TextAttributes flags) => Composed(PartialStyle.WithToggled(flags));
+
+    /// <summary>Impose a weight in addition to whatever this style already does.</summary>
+    public BrushedStyle Weighing(TextWeight w) => Composed(PartialStyle.Weighted(w));
+
+    /// <summary>Impose a posture in addition to whatever this style already does.</summary>
+    public BrushedStyle Posturing(TextStyle p) => Composed(PartialStyle.Postured(p));
+
+    /// <summary>Add an underline in addition to whatever this delta already does.</summary>
+    public BrushedStyle Underlining(UnderlineStyle? shape = null, IBrush? color = null)
+        => Composed(PartialStyle.WithUnderline()) with
+           {
+               UnderlineShape = shape ?? UnderlineShape,
+               UnderlineColor = color ?? UnderlineColor,
+           };
+
+    /// <summary>Remove the underline in addition to whatever this style already does.</summary>
+    public BrushedStyle RemovingUnderline() =>
+        Composed(PartialStyle.WithoutUnderline()) with { UnderlineShape = null };
+    
+    /// <summary>
+    /// Composes this delta with the attributes of the provided <see cref="PartialStyle"/>.
+    /// </summary>
+    /// <remarks>
+    /// One implementation of the attribute algebra, borrowed from PartialStyle rather than repeated.
+    /// </remarks>
+    public BrushedStyle Composed(in PartialStyle op)
+    {
+        var folded = Resolved.Then(op);
+        return this with { Clear = folded.Clear, Xor = folded.Xor };
+    }
+
+    private BrushedStyle WithFlags(in PartialStyle op)
+    {
+        return this with { Clear = op.Clear, Xor = op.Xor };
+    }
+
+    /// <summary>
+    /// This delta, then <paramref name="next"/> — one delta equivalent to applying both in order.
+    /// The attribute algebra composes exactly: <c>Clear = C₁ | C₂</c>, <c>Xor = (X₁ &amp; ~C₂) ^ X₂</c>.
+    /// </summary>
+    /// <remarks>
+    /// Law: <c>a.Then(b).Resolved</c> ≡ <c>b.Resolved.ApplyTo(a.Resolved)</c>, for every <c>a</c>,
+    /// <c>b</c>, <c>s</c>.
+    /// </remarks>
+    public BrushedStyle Then(in BrushedStyle next)
+    {
+        return new BrushedStyle
+               {
+                   Foreground = next.Foreground ?? Foreground,
+                   Background = next.Background ?? Background,
+                   UnderlineColor = next.UnderlineColor ?? UnderlineColor,
+                   Hyperlink = next.Hyperlink ?? Hyperlink,
+                   // NOT strictly `next.UnderlineShape ?? UnderlineShape`. A null shape is ambiguous on its own —
+                   // it means "no opinion" for a delta that leaves the underline alone, and "definitely no shape"
+                   // for one that REMOVES it. Check for removal, and if removed, coalesce to null. Otherwise, apply
+                   // `next.UnderlineShape ?? UnderlineShape`. Makes chains like `Underlining(Curly).Underlining()`
+                   // coherent without leaving remnants on `Underlining(Curly).RemoveUnderlining()`.
+                   // ...and the fallback is only THIS style's shape when this one did not itself remove
+                   // the underline. A removal RESETS the shape, so a later shapeless add inherits that reset
+                   // value rather than the base's — falling back unconditionally would let the base's shape
+                   // survive an intermediate removal, which application-in-order does not do.
+                   UnderlineShape = RemovesUnderline(next)
+                                        ? null
+                                        : next.UnderlineShape
+                                          ?? (RemovesUnderline(this) ? default(UnderlineStyle) : UnderlineShape),
+                   Clear = Clear | next.Clear,
+                   Xor = (Xor & ~next.Clear) ^ next.Xor,
+                   Mode = next.Mode ?? Mode
+               };
+
+        bool RemovesUnderline(in BrushedStyle t) => t.RemovedAttributes.HasFlag(TextAttributes.Underline);
+    }
+
+    /// <summary>
+    /// True when every present brush is position-independent, so <see cref="Resolve(int,int,in Rect,in Rect)"/>
+    /// returns the same value for every cell and a fill loop can hoist it. The common case.
+    /// </summary>
+    public bool IsUniform =>
+        Foreground is null or { IsUniform: true } &&
+        Background is null or { IsUniform: true } &&
+        UnderlineColor is null or { IsUniform: true };
+
+    /// <summary>True when resolving this produces the identity delta, whatever the cell.</summary>
+    /// <remarks>
+    /// Equality with <c>default</c> for the same reason as <see cref="PartialStyle.IsIdentity"/>: the
+    /// generated comparison covers every field, so one added later cannot be left out.
+    /// </remarks>
+    public bool IsIdentity => this == default;
+    
+    /// <summary>
+    /// Resolves the style as it should be applied at the specified (<paramref name="column"/>,
+    /// <paramref name="row"/>) position. Brushes are sampled at that location relative to the
+    /// <paramref name="bounds"/> rectangle.
+    /// </summary>
+    /// <param name="column">The column/X-axis coordinate at which to sample brushes.</param>
+    /// <param name="row">The row/Y-axis coordinate at which to sample brushes.</param>
+    /// <param name="bounds">The bounding box defining the brush sampling region.</param>
+    /// <returns>
+    /// A partial style derived from this style with its brushes resolved at the specified
+    /// (<paramref name="column"/>, <paramref name="row"/>) position.
+    /// </returns>
+    public PartialStyle Resolve(int column, int row, in Rect bounds)
+        => Resolve(column, row, in bounds, in bounds);
+    
+    /// <summary>
+    /// Resolves the style as it should be applied at the specified (<paramref name="column"/>,
+    /// <paramref name="row"/>) position. Brushes are sampled at that location relative to the
+    /// <paramref name="fillBounds"/> or <paramref name="contentBounds"/> rectangle, depending
+    /// on whether the brush applies to the entire region (<see cref="Background"/>) or just
+    /// the content (<see cref="Foreground"/>, <see cref="UnderlineColor"/>).
+    /// </summary>
+    /// <param name="column">The column/X-axis coordinate at which to sample brushes.</param>
+    /// <param name="row">The row/Y-axis coordinate at which to sample brushes.</param>
+    /// <param name="fillBounds">The bounding box defining the background sampling region.</param>
+    /// <param name="contentBounds">The bounding box defining the foreground and underline sampling region.</param>
+    /// <returns>
+    /// A partial style derived from this style with its brushes resolved at the specified
+    /// (<paramref name="column"/>, <paramref name="row"/>) position.
+    /// </returns>
+    public PartialStyle Resolve(int column, int row, in Rect contentBounds, in Rect fillBounds)
+    {
+        // Nullability carries straight through — an absent brush resolves to an absent color — so
+        // Resolve is one object initializer with no presence bookkeeping and no branching. The
+        // underline shape needs no special case either: PartialStyle.ApplyTo derives the flag from
+        // the shape's presence, and removal is carried by the mask pair, copied verbatim.
+        return new PartialStyle
+               {
+                   Foreground     = Foreground?.ColorAt(column, row, contentBounds),
+                   Background     = Background?.ColorAt(column, row, fillBounds),
+                   UnderlineColor = UnderlineColor?.ColorAt(column, row, contentBounds),
+                   Hyperlink      = Hyperlink,
+                   UnderlineShape = UnderlineShape,
+                   Clear          = Clear,
+                   Xor            = Xor,
+                   Mode           = Mode
+               };    
+    }
+}

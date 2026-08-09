@@ -158,7 +158,7 @@ public sealed class AccessTextPresenter : UIElement
         // (Inverse) carries onto the glyph cells too — matching the Border fill, for a uniform reversed face
         // (the caps-nocolor theme layer). None by default ⇒ no change for ordinary content. The underline
         // SHAPE rides the base style when present.
-        var styleTemplate = StyleDeltaTemplate.FromElement(this);
+        var styleTemplate = BrushedStyle.FromElement(this);
 
         context.DrawText(0, 0, labelText, in styleTemplate);
 

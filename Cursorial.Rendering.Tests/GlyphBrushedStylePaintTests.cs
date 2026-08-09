@@ -10,13 +10,13 @@ using Cursorial.Text;
 namespace Cursorial.Tests.Rendering;
 
 /// <summary>
-/// <see cref="IGlyphFont"/>'s brushed paint takes a <see cref="StyleDeltaTemplate"/> and the base
+/// <see cref="IGlyphFont"/>'s brushed paint takes a <see cref="BrushedStyle"/> and the base
 /// <see cref="CellStyle"/> it folds onto, replacing the <c>GlyphStyleProvider</c> callback that existed only
 /// because <see cref="IBrush"/> used to live above this assembly. Two things follow, and both are pinned here:
 /// a delta states only the channels it owns (so a gradient can no longer wipe a run's background), and
-/// <see cref="StyleDeltaTemplate.IsUniform"/> is READABLE — a callback was opaque, so every cell had to call it.
+/// <see cref="BrushedStyle.IsUniform"/> is READABLE — a callback was opaque, so every cell had to call it.
 /// </summary>
-public class GlyphTemplatePaintTests
+public class GlyphBrushedStylePaintTests
 {
     private static readonly Color Blue = Color.FromRgb(0, 0, 255);
     private static readonly Color Green = Color.FromRgb(0, 200, 0);
@@ -58,7 +58,7 @@ public class GlyphTemplatePaintTests
     /// <summary>A 1-row FIGlet face, THREE columns per glyph with ink in every cell — so "sampled per cell"
     /// and "sampled per character" give visibly different frames.</summary>
     private static FigletFont WideFace() =>
-        new("template-tests", '$', 1, FigletLayoutMode.None,
+        new("brushed-style-tests", '$', 1, FigletLayoutMode.None,
             new Dictionary<uint, FigletGlyph>
             {
                 ['A'] = new('A', ["###"], '$'),
@@ -68,7 +68,7 @@ public class GlyphTemplatePaintTests
     // ───────────────────────────── the fold: base + delta ─────────────────────────────
 
     [Fact]
-    public void Monospace_IdentityTemplatePaintsTheBaseVerbatim()
+    public void Monospace_IdentityBrushedStylePaintsTheBaseVerbatim()
     {
         var buffer = new CellBuffer(4, 1);
         MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich, default, Wide);
@@ -83,21 +83,21 @@ public class GlyphTemplatePaintTests
     /// forgot was silently reset.
     /// </summary>
     [Fact]
-    public void Monospace_ForegroundOnlyTemplateKeepsEveryOtherChannel()
+    public void Monospace_ForegroundOnlyBrushedStyleKeepsEveryOtherChannel()
     {
         var buffer = new CellBuffer(4, 1);
         MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich,
-                                    new StyleDeltaTemplate { Foreground = new UniformBrush(Green) }, Wide);
+                                    new BrushedStyle { Foreground = new UniformBrush(Green) }, Wide);
 
         Assert.Equal(Rich with { Foreground = Green }, buffer[0, 0].Style);
     }
 
     [Fact]
-    public void Monospace_SamplesANonUniformTemplatePerCell()
+    public void Monospace_SamplesANonUniformBrushedStylePerCell()
     {
         var buffer = new CellBuffer(4, 1);
         MonospaceFont.Default.Paint(buffer, 0, 0, "abc", Rich,
-                                    new StyleDeltaTemplate { Foreground = new ColumnRampBrush() }, Wide);
+                                    new BrushedStyle { Foreground = new ColumnRampBrush() }, Wide);
 
         Assert.Equal(0, buffer[0, 0].Style.Foreground.Red);
         Assert.Equal(1, buffer[1, 0].Style.Foreground.Red);
@@ -107,11 +107,11 @@ public class GlyphTemplatePaintTests
     /// <summary>The attribute algebra survives the seam — a delta can turn a flag OFF, which a whole-style
     /// return could only do by restating every other channel.</summary>
     [Fact]
-    public void Monospace_TemplateCanClearAnAttributeTheBaseCarries()
+    public void Monospace_BrushedStyleCanClearAnAttributeTheBaseCarries()
     {
         var buffer = new CellBuffer(4, 1);
         MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich.AddAttributes(TextAttributes.Inverse),
-                                    default(StyleDeltaTemplate).Removing(TextAttributes.Inverse), Wide);
+                                    default(BrushedStyle).Removing(TextAttributes.Inverse), Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Inverse));
         Assert.True(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Bold));   // untouched
@@ -120,37 +120,37 @@ public class GlyphTemplatePaintTests
     // ───────────────────────────── the uniform fast path ─────────────────────────────
 
     /// <summary>
-    /// The win a callback could never give: <see cref="StyleDeltaTemplate.IsUniform"/> is a readable property
+    /// The win a callback could never give: <see cref="BrushedStyle.IsUniform"/> is a readable property
     /// of the VALUE, so a solid brush is resolved once for the whole run instead of once per cell. A delegate
     /// is opaque — the font had no way to ask, so it had to call for every cell.
     /// </summary>
     [Fact]
-    public void Monospace_ResolvesAUniformTemplateOnce()
+    public void Monospace_ResolvesAUniformBrushedStyleOnce()
     {
         var brush = new UniformBrush(Green);
         var buffer = new CellBuffer(8, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new StyleDeltaTemplate { Foreground = brush }, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new BrushedStyle { Foreground = brush }, Wide);
 
         Assert.Equal(1, brush.Samples);
         Assert.Equal(Green, buffer[5, 0].Style.Foreground);   // ...and every cell still got the colour
     }
 
     [Fact]
-    public void Monospace_ResolvesANonUniformTemplatePerCell()
+    public void Monospace_ResolvesANonUniformBrushedStylePerCell()
     {
         var brush = new ColumnRampBrush();
         var buffer = new CellBuffer(8, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new StyleDeltaTemplate { Foreground = brush }, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new BrushedStyle { Foreground = brush }, Wide);
 
         Assert.Equal(6, brush.Samples);
     }
 
     [Fact]
-    public void Figlet_ResolvesAUniformTemplateOnceForTheWholeRun()
+    public void Figlet_ResolvesAUniformBrushedStyleOnceForTheWholeRun()
     {
         var brush = new UniformBrush(Green);
         var buffer = new CellBuffer(12, 1);
-        WideFace().Paint(buffer, 0, 0, "AB", Rich, new StyleDeltaTemplate { Foreground = brush }, Wide);
+        WideFace().Paint(buffer, 0, 0, "AB", Rich, new BrushedStyle { Foreground = brush }, Wide);
 
         Assert.Equal(1, brush.Samples);
         Assert.All(Enumerable.Range(0, 6), c => Assert.Equal(Green, buffer[c, 0].Style.Foreground));
@@ -159,7 +159,7 @@ public class GlyphTemplatePaintTests
     // ───────────────────────────── FIGlet: the per-cell face ─────────────────────────────
 
     /// <summary>
-    /// The reason a glyph face gets the template rather than a resolved style: one CHARACTER covers several
+    /// The reason a glyph face gets the style rather than a resolved style: one CHARACTER covers several
     /// cells, so only the face knows which cells exist to sample. A gradient must flow ACROSS a glyph, not
     /// band at its boundary.
     /// </summary>
@@ -167,7 +167,7 @@ public class GlyphTemplatePaintTests
     public void Figlet_SamplesEveryPaintedCellNotEveryCharacter()
     {
         var buffer = new CellBuffer(12, 1);
-        WideFace().Paint(buffer, 0, 0, "AB", Rich, new StyleDeltaTemplate { Foreground = new ColumnRampBrush() }, Wide);
+        WideFace().Paint(buffer, 0, 0, "AB", Rich, new BrushedStyle { Foreground = new ColumnRampBrush() }, Wide);
 
         for (int c = 0; c < 6; c++)
             Assert.Equal(c, buffer[c, 0].Style.Foreground.Red);
@@ -186,7 +186,7 @@ public class GlyphTemplatePaintTests
     {
         var buffer = new CellBuffer(6, 1);
         WideFace().Paint(buffer, 0, 0, "A", CellStyle.Default,
-                         default(StyleDeltaTemplate).Applying(TextAttributes.Strikethrough), Wide);
+                         default(BrushedStyle).Applying(TextAttributes.Strikethrough), Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Strikethrough));
     }
@@ -205,7 +205,7 @@ public class GlyphTemplatePaintTests
         var buffer = new CellBuffer(4, 1);
 
         ((IGlyphFont) face).Paint(buffer, 2, 0, "ab", Rich,
-                                  new StyleDeltaTemplate { Foreground = new UniformBrush(Green) }
+                                  new BrushedStyle { Foreground = new UniformBrush(Green) }
                                       .Applying(TextAttributes.Inverse),
                                   Wide);
 
@@ -259,7 +259,7 @@ public class GlyphTemplatePaintTests
                                  .WithUnderlineStyle(UnderlineStyle.Dashed);
 
         face.Paint(buffer, 0, 0, "ab", baseStyle,
-                   new StyleDeltaTemplate { Foreground = new UniformBrush(Green) }, Wide);
+                   new BrushedStyle { Foreground = new UniformBrush(Green) }, Wide);
 
         // (2,1) is shadow-only: the glyphs occupy (0,0)-(1,0), the shadow (1,1)-(2,1).
         Assert.Equal("b", buffer[2, 1].Grapheme);
@@ -273,7 +273,7 @@ public class GlyphTemplatePaintTests
     // ───────────────────────────── the resolver end of the chain ─────────────────────────────
 
     /// <summary>
-    /// <c>FormattedText</c> asks the resolver ONCE per run and resolves the template per cell — the two seams
+    /// <c>FormattedText</c> asks the resolver ONCE per run and resolves the style per cell — the two seams
     /// are one chain, and the reshaping is what let the font end receive a brush instead of a callback.
     /// </summary>
     [Fact]
@@ -293,7 +293,7 @@ public class GlyphTemplatePaintTests
                  (in BrushedTextContext ctx) =>
                  {
                      calls++;
-                     return new BrushedTextStyle(new StyleDeltaTemplate { Foreground = new UniformBrush(Green) }, ctx.Block);
+                     return new BrushedTextStyle(new BrushedStyle { Foreground = new UniformBrush(Green) }, ctx.Block);
                  });
 
         Assert.Equal(1, calls);
@@ -358,7 +358,7 @@ public class GlyphTemplatePaintTests
         var buffer = new CellBuffer(4, 4);
         ft.Paint(buffer, new Rect(0, 0, 4, 4), OutputCapabilities.None,
                  (in BrushedTextContext ctx) =>
-                     new BrushedTextStyle(new StyleDeltaTemplate { Foreground = new ColumnRampBrush() }, ctx.InlineScope));
+                     new BrushedTextStyle(new BrushedStyle { Foreground = new ColumnRampBrush() }, ctx.InlineScope));
 
         // Row 0 is logical offsets 0..3; row 1 continues at 5.. (the space at offset 4 is consumed by the wrap).
         Assert.Equal([0, 1, 2, 3], Enumerable.Range(0, 4).Select(c => (int) buffer[c, 0].Style.Foreground.Red));

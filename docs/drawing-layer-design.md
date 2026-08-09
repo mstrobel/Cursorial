@@ -169,7 +169,7 @@ dividing by its extent).
 - **`Brushes`** — static cache mirroring `Colors` (`Brushes.Transparent`, `Brushes.Red`, …). Since a
   `SolidColorBrush` is immutable it's safe to share; reach for these instead of allocating a fresh
   `new SolidColorBrush(Color.Xxx)`. `DrawingContext.DrawText`'s default background is
-  `Brushes.Transparent` on its `Color` / `IBrush` overloads — its `StyleDeltaTemplate` overload reads
+  `Brushes.Transparent` on its `Color` / `IBrush` overloads — its `BrushedStyle` overload reads
   an absent background as *no opinion* instead, deferring to the base style (§13.1).
 - **`GradientBrush`** (abstract base) holds the sorted stops, `GradientSpread` (Pad/Repeat/Reflect),
   and opacity, and owns the shared per-cell resolution: subclasses map a cell to a parameter `t`
@@ -500,7 +500,7 @@ routed through **every** block/run type: text + rules per cell, FIGlet / sized t
 at their center — so a glyph an image/icon **degrades to** picks up the gradient. Precedence: the brush colors
 cells that inherited the document default foreground (unset, or equal to `FormattedText.DefaultStyle`'s
 foreground); a run's own *differing* color wins — so a document that sets a default text color still receives
-the gradient. A `brushtext` demo shows it. **B done** — per-run brushes: a `BrushedStyle` (`IBrush` +
+the gradient. A `brushtext` demo shows it. **B done** — per-run brushes: a `ScopedBrush` (`IBrush` +
 `DeclarationScope` Inline/Block/Document) rides the source `TextRun`'s opaque `Tag` (propagated through
 wrap-splits onto each `FormattedTextRun`); `RichTextBuilder.BrushedRun(text, brushedStyle)` authors it;
 `DrawFormattedText` samples a run's brush at its scope (Inline = the run's piece rect / Block / Document) and it
@@ -558,7 +558,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
   `Style`, measures **color-free**. Brushes ride a separate channel: an **opaque `object? Tag`** on
   `FormattedTextRun` / `FormattedBlock`, preserved through layout/wrap (Rendering treats it opaquely — no
   `IBrush` dependency, `Style` unchanged); `TextFormatter.EmitRun` copies the tag when it splits a run.
-- Drawing boxes a **`BrushedStyle`** (fg / bg / underline `IBrush` + a `DeclarationScope`) into that tag via a
+- Drawing boxes a **`ScopedBrush`** (fg / bg / underline `IBrush` + a `DeclarationScope`) into that tag via a
   **Drawing-side authoring surface** (a `BrushedRichText` builder / attach step — the Rendering
   `RichTextBuilder` / `TextMarkup` only speak `Color`).
 - **`DrawingContext.DrawFormattedText(ft, bounds[, brush])`** reads the tag and samples per cell.
@@ -587,7 +587,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
   `TextMarkupOptions.BrushResolver` (`Func<string, object?>` — no `IBrush` type, §9 intact) and stamps the run
   `Tag` via a new `RichTextBuilder.PushTag` scope; the shared `MarkupColor` parses the color tokens. Drawing's
   `BrushMarkup.Resolver`/`Options` parse **inline** gradient syntax (`linear:`/`radial:`/`conic:` + a color list,
-  hex / palette / named) *or* look up a name in a `BrushedStyle` registry — both authoring styles, one tag.
+  hex / palette / named) *or* look up a name in a `ScopedBrush` registry — both authoring styles, one tag.
 
 ### 6b — images in scenes (fragment-passthrough)
 - **`SceneCompositor` fragment-passthrough** (the new mechanism): carry `Scene.Buffer.Fragments` through
@@ -650,7 +650,7 @@ independent plane, placement IDs, real delete). `CellBuffer` already *stores* fr
 | **3** | `StrokeAccumulator` (per-dir MAX, record-id-per-call) + `BoxGlyphs` ladder; `Pen` + `Pens` + the six stroke enums (no `BorderPen`); `DrawLine`/`DrawBox`/`DrawRectangle`; flush + text-beats-decoration eviction. | **Done** |
 | **4** | `BrailleGlyphs`/`BrailleRaster` + `BlockGlyphs`; `IChart`/`BarChart`/`Sparkline`/`ScatterChart`/`LineChart` + curve interpolation; axes/ticks/labels; multi-series line charts (single-surface — `ToLayers` cut, see §6). | **Done** |
 | **5** | `Cursorial.Animation` (mechanism) → Color lerp in Core → `BrushInterpolator` + composite-param animation in Drawing. | **Done** (5a + 5b + 5c) |
-| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `BrushedStyle`; 6b `SceneCompositor` fragment-passthrough + `DrawContent` + per-protocol clip; A inline wrap-invariant sampling. | **COMPLETE** — 6a + per-run (B) + 6b.1 images + 6b.2 clip (Sixel pixel-crop / Kitty source-rect / iTerm2 suppress) + Kitty & iTerm2 no-distortion aspect scaling (adversarially reviewed) + A inline 1-D wrap-invariant sampling, all done (see §8) |
+| **6** | Brush-aware text + images in Drawing (bridge): 6a `DrawFormattedText` + per-run `ScopedBrush`; 6b `SceneCompositor` fragment-passthrough + `DrawContent` + per-protocol clip; A inline wrap-invariant sampling. | **COMPLETE** — 6a + per-run (B) + 6b.1 images + 6b.2 clip (Sixel pixel-crop / Kitty source-rect / iTerm2 suppress) + Kitty & iTerm2 no-distortion aspect scaling (adversarially reviewed) + A inline 1-D wrap-invariant sampling, all done (see §8) |
 
 Phases 0–4 are the v1 spine (all **Done**); **Phase 5 (animation) is complete**; Phase 6 (laid-out brush text)
 remains gated. The only Core/Rendering public-surface additions beyond `Style.Transparent` are additive: 5b's
@@ -791,7 +791,7 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   vs background-only `FillRectangle`. A bordered opaque panel = `FillOpaque` + `DrawBox(overwrite: true)`
   (an overwriting stroke over an opaque fill keeps the fill background under the glyph). Alpha-preserving
   raw write with wide-orphan cleanup.
-- **All three fill families take a `StyleDeltaTemplate`**, resolved per cell over `CellStyle.Default` —
+- **All three fill families take a `BrushedStyle`**, resolved per cell over `CellStyle.Default` —
   the ground a fill owns, fixed rather than passed, since no caller holds one. The `Color` / `IBrush`
   overloads stay as thin wrappers; their `attributes` word is folded on PER AXIS (Bold/Faint impose a
   weight, Italic a posture, the axis-free flags union), because `PartialStyle.Require` rejects the
@@ -807,7 +807,7 @@ brush-blind invariant (no `IBrush` enters `Cursorial.Rendering`) and the composi
   = deferred-translucent background outside the element (compositor darkens the target); inner = draw-time
   composite-and-store-opaque against the cell's own fill (preserves the glyph). Linear falloff, per-edge.
 - **Brush-aware FIGlet headlines** — a `.Figlet` block in a formatted-text document painted with a brush
-  samples it **per rendered cell** (gradient across the big glyphs), via a `StyleDeltaTemplate` handed to the face
+  samples it **per rendered cell** (gradient across the big glyphs), via a `BrushedStyle` handed to the face
   default-interface-method on `IGlyphFont` that `FigletFont` overrides. OSC 66 sized text stays one solid
   color (protocol limit).
 - **`JunctionMode.Blend`** — an opt-in pen junction mode: where two strokes from different records cross,
@@ -883,7 +883,7 @@ today (window/OSC titles are Core's, out of scope).
 | Rendering — `RichTextBuilder` / `TextMarkup` / `TextFormatter` (`FormattedText`) | Hard breaks are **structural**: `LineBreak` inlines (`.LineBreak()`, `[br/]`) and paragraph boundaries. A literal `\n` in run text is **not** a break — the formatter deliberately treats it as a word character (wrap whitespace excludes `\r`/`\n`; markup preserves source whitespace) and it reaches `Set` as a junk cell | Expanded to `TabWidth` spaces (a `SpaceAtom` — wrappable like a space) | junk cell | Pre-existing; verified + recorded (hardening candidate if it bites; tab cell corrected post-audit — the formatter expands, it does not store) |
 | Rendering — FIGlet (`FigletFont.Measure/Paint`) | Single-line; any codepoint without a glyph — including `\n` — falls back to the **space glyph** | space glyph | space glyph | Pre-existing; recorded |
 | Rendering — `ScaledText` (OSC 66 content) | Text passes unsanitized to the protocol fragment or the fallback `IGlyphFont`; single-line by usage | as above | as above | Pre-existing; recorded |
-| Drawing — `DrawingContext.DrawText` (Color + IBrush + StyleDeltaTemplate) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
+| Drawing — `DrawingContext.DrawText` (Color + IBrush + BrushedStyle) | **Multi-line** (§13.1) | One space + DEBUG diagnostic | Skipped + DEBUG diagnostic | **Changed this batch** |
 | Drawing — `PanelTitle` (`DrawTitledBox`/`DrawPanel`) | **First line only** (§13.2); the title then rides `DrawText`'s tab/control rules | space | skipped | **Changed this batch** |
 | Drawing — charts (`Axes` labels, `BarChart` value/category labels) | Labels ride `DrawText`, so an embedded break now continues one row down at the start column; labels are single-line by convention and numeric formatting never produces breaks | space | skipped | Inherited; recorded |
 | UI — `RenderContext.DrawText` | Thin veneer over Drawing's: multi-line + `Size` return (element-local) | space | skipped | **Changed this batch** |

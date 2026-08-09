@@ -87,25 +87,25 @@ public sealed class MonospaceFont : IGlyphFont
         // away: "the background reached the box" must not depend on which face is under the call.
         var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
 
-        return PaintCore(buffer, column, row, text, default, delta: null, bounds: default, ink);
+        return PaintCore(buffer, column, row, text, default, style: null, bounds: default, ink);
     }
 
     /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
+                      in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds)
     {
-        // A uniform template resolves to the same value everywhere, so fold it once here and take the flat
+        // A uniform BrushedStyle resolves to the same value everywhere, so fold it once here and take the flat
         // path — one cluster loop with no per-cell resolve, identical to painting a plain style.
-        return delta.IsUniform
-                   ? PaintCore(buffer, column, row, text, delta.Resolve(column, row, bounds).ApplyTo(baseStyle),
-                               delta: null, bounds: default, ink: null)
-                   : PaintCore(buffer, column, row, text, baseStyle, delta, bounds, ink: null);
+        return baseStyle.IsUniform
+                   ? PaintCore(buffer, column, row, text, baseStyle.Resolve(column, row, bounds).ApplyTo(legacyBaseStyle),
+                               style: null, bounds: default, ink: null)
+                   : PaintCore(buffer, column, row, text, legacyBaseStyle, baseStyle, bounds, ink: null);
     }
 
-    // Exactly one of `delta` and `ink` is non-null, and `style` is the base the FORMER folds onto: the
-    // template overload carries its own base, while the flat one is a delta over the cells themselves.
-    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                                  in StyleDeltaTemplate? delta, in Rect bounds, in PartialStyle? ink)
+    // Exactly one of `style` and `ink` is non-null, and `legacyBaseStyle` is the base the FORMER folds onto: the
+    // BrushedStyle overload carries its own base, while the flat one is a PartialStyle over the cells themselves.
+    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle,
+                                  in BrushedStyle? style, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -144,14 +144,14 @@ public sealed class MonospaceFont : IGlyphFont
                 // CellBuffer.Set takes a string; materialize the cluster once per call.
                 // For most graphemes this is 1–4 chars — short enough that an alternative
                 // span-based Set is a future micro-optimization.
-                // Resolved per cluster, not once up front: a non-uniform template is position-dependent, so
-                // hoisting the resolve out of the loop would paint one cell's answer across the whole run.
+                // Resolved per cluster, not once up front: a non-uniform BrushedStyle is position-dependent,
+                // so hoisting the resolve out of the loop would paint one cell's answer across the whole run.
                 // (The uniform case never reaches here — the overload above folds it and passes null.)
                 // The flat path folds over the CELL, which is what makes an absent channel mean "leave it":
                 // the cluster keeps the colour, attribute or hyperlink the caller declined to state.
                 var clusterStyle = ink is { } d  ? GlyphPaint.Over(buffer, col, row, d)
-                                 : delta is null ? style
-                                                 : delta.Value.Resolve(col, row, bounds).ApplyTo(style);
+                                 : style is null ? legacyBaseStyle
+                                                 : style.Value.Resolve(col, row, bounds).ApplyTo(legacyBaseStyle);
                 int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
 
                 // The one case where the surface knows better than the layout: a wide glyph at the

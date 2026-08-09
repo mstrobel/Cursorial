@@ -111,7 +111,7 @@ public sealed record GlyphSource(IGlyphFont? Font, TextSizing Sizing)
 - **Selection highlight**: cell-level styling. For scaled runs the fragment must split at
   selection boundaries so the selected sub-range emits with the selection style — the emission
   already splits at byte caps, so boundary splitting is the same machinery with different cut
-  points. For FIGlet, the face paints cell-by-cell (a `StyleDeltaTemplate` it resolves per cell), so selection is a
+  points. For FIGlet, the face paints cell-by-cell (a `BrushedStyle` it resolves per cell), so selection is a
   per-cell style provider — the gradient hook, reused.
 - **Caret**: the hardware caret is one cell; it anchors at the leading cell of the caret
   cluster, **bottom row** of the line band (that anchor also keeps IME/accessibility tracking

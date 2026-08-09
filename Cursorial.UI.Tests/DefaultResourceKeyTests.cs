@@ -196,7 +196,7 @@ public class DefaultResourceKeyTests
 
         protected override void Render(RenderContext context)
             => context.FillOpaque(new Rect(0, 0, 2, 1),
-                                  new StyleDeltaTemplate { Background = GetValue(FillProperty) ?? NullBrush });
+                                  new BrushedStyle { Background = GetValue(FillProperty) ?? NullBrush });
     }
 
     private sealed class BrushRecorder : IValueObserver<IBrush?>

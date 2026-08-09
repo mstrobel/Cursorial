@@ -220,41 +220,41 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <summary>
-    /// Paint <paramref name="baseStyle"/> adjusted per painted cell by <paramref name="delta"/> resolved
+    /// Paint <paramref name="legacyBaseStyle"/> adjusted per painted cell by <paramref name="baseStyle"/> resolved
     /// against <paramref name="bounds"/> — so a gradient (or any position-dependent source) flows across the
-    /// rendered glyphs rather than the whole headline taking one flat color, while the channels the delta says
-    /// nothing about come from the base.
+    /// rendered glyphs rather than the whole headline taking one flat color, while the channels the brushed style
+    /// says nothing about come from the base.
     /// </summary>
     /// <remarks>
     /// This face is the reason the per-cell overload exists at all: one CHARACTER covers many cells here, so
     /// resolving once per character (let alone once per run) would band the gradient at glyph boundaries.
-    /// A uniform template cannot vary, though, so it takes the same single-style path as the flat overload —
+    /// A uniform BrushedStyle cannot vary, though, so it takes the same single-style path as the flat overload —
     /// a saving the previous callback form could not even ask about.
     /// </remarks>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      in CellStyle baseStyle, in StyleDeltaTemplate delta, in Rect bounds)
+                      in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds)
     {
-        // EnsureCompatibleStyle applies to the FOLDED style, not to the base alone: a delta is a second way
+        // EnsureCompatibleStyle applies to the FOLDED style, not to the base alone: a brushed style is a second way
         // for an attribute this face cannot render to arrive, and the face's constraint is on what it paints.
-        if (delta.IsUniform)
+        if (baseStyle.IsUniform)
         {
-            var uniform = EnsureCompatibleStyle(delta.Resolve(column, row, bounds).ApplyTo(baseStyle));
+            var uniform = EnsureCompatibleStyle(baseStyle.Resolve(column, row, bounds).ApplyTo(legacyBaseStyle));
             return PaintCore(buffer, column, row, text, (_, _, _) => uniform);
         }
 
         // `in` parameters cannot be captured; the fold needs all three at every sample.
-        var fallback = baseStyle;
-        var template = delta;
+        var fallback = legacyBaseStyle;
+        var baseStyleCopy = baseStyle;
         var box = bounds;
 
         return PaintCore(buffer, column, row, text,
-                         (c, r, _) => EnsureCompatibleStyle(template.Resolve(c, r, box).ApplyTo(fallback)));
+                         (c, r, _) => EnsureCompatibleStyle(baseStyleCopy.Resolve(c, r, box).ApplyTo(fallback)));
     }
 
-    // The resolved-style form both Paint overloads funnel into: by this point the template has been resolved
+    // The resolved-style form both Paint overloads funnel into: by this point the BrushedStyle has been resolved
     // and folded, so what flows through here is a plain per-cell CellStyle lookup. The third argument is the
     // style the cell being painted already holds — the base the flat overload's delta folds onto, and unread
-    // by the template path, whose base came from its caller.
+    // by the BrushedStyle path, whose base came from its caller.
     private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
                            Func<int, int, CellStyle, CellStyle> provider)
     {

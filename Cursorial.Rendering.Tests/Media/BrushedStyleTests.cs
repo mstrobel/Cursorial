@@ -7,11 +7,11 @@ using Cursorial.Text;
 namespace Cursorial.Tests.Rendering.Media;
 
 /// <summary>
-/// The underline rules <see cref="StyleDeltaTemplate"/> shares with <see cref="PartialStyle"/>. They are
+/// The underline rules <see cref="BrushedStyle"/> shares with <see cref="PartialStyle"/>. They are
 /// separate implementations of one algebra — the template cannot delegate, because <c>Composed</c> keeps
 /// only the mask — so the rules are pinned on both sides rather than assumed to travel.
 /// </summary>
-public class StyleDeltaTemplateTests
+public class BrushedStyleTests
 {
     private static readonly IBrush Ink = new SolidColorBrush(Color.FromRgb(200, 30, 40));
 
@@ -22,7 +22,7 @@ public class StyleDeltaTemplateTests
     [Fact]
     public void ABareUnderline_DoesNotErase_AnEarlierShape()
     {
-        var composed = default(StyleDeltaTemplate).Underlining(UnderlineStyle.Curly).Underlining();
+        var composed = default(BrushedStyle).Underlining(UnderlineStyle.Curly).Underlining();
 
         Assert.Equal(UnderlineStyle.Curly, composed.UnderlineShape);
     }
@@ -35,8 +35,8 @@ public class StyleDeltaTemplateTests
     [Fact]
     public void ABareUnderline_AfterARemoval_DoesNotResurrectTheBaseShape()
     {
-        var removeThenAdd = default(StyleDeltaTemplate).RemovingUnderline()
-                                                       .Then(default(StyleDeltaTemplate).Underlining());
+        var removeThenAdd = default(BrushedStyle).RemovingUnderline()
+                                                       .Then(default(BrushedStyle).Underlining());
 
         var applied = removeThenAdd.Resolve(0, 0, new Rect(0, 0, 1, 1))
                                    .ApplyTo(default(CellStyle) with { UnderlineStyle = UnderlineStyle.Curly });
@@ -49,7 +49,7 @@ public class StyleDeltaTemplateTests
     [Fact]
     public void ARemoval_AfterAShape_KeepsNoRemnant()
     {
-        var composed = default(StyleDeltaTemplate).Underlining(UnderlineStyle.Curly).RemovingUnderline();
+        var composed = default(BrushedStyle).Underlining(UnderlineStyle.Curly).RemovingUnderline();
 
         Assert.Null(composed.UnderlineShape);
         Assert.True(composed.RemovedAttributes.HasFlag(TextAttributes.Underline));
@@ -62,7 +62,7 @@ public class StyleDeltaTemplateTests
     [Fact]
     public void Underlining_CarriesBothItsShapeAndItsColour()
     {
-        var t = default(StyleDeltaTemplate).Underlining(UnderlineStyle.Dotted, Ink);
+        var t = default(BrushedStyle).Underlining(UnderlineStyle.Dotted, Ink);
 
         Assert.Equal(UnderlineStyle.Dotted, t.UnderlineShape);
         Assert.Same(Ink, t.UnderlineColor);

@@ -141,7 +141,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 break;
             case FormattedContentBlock content:
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
-                                      ResolveStyle(resolver, default, centerColumn, centerRow, blockRect), capabilities);
+                                      ResolveStyle(resolver, default, centerColumn, centerRow, blockRect, tag: null), capabilities);
                 break;
         }
     }
@@ -149,11 +149,18 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// <summary>
     /// Resolve one cell's style: the optional brush resolver's delta, sampled at
     /// (<paramref name="column"/>, <paramref name="row"/>) and folded onto <paramref name="legacyBaseStyle"/>.
-    /// Used by the single-Style elements (rule / figlet / sized / content), which carry no per-run tag — so the
-    /// run rect equals the block and the tag is null.
+    /// Used by the single-Style elements (rule / sized / content), which resolve one style for a whole element
+    /// rather than per grapheme; the FIGlet arm asks the same question through <see cref="Brushed"/> below.
     /// </summary>
-    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block)
-        => resolver is null ? legacyBaseStyle : Brushed(resolver, legacyBaseStyle, column, row, block).ApplyTo(column, row, legacyBaseStyle);
+    /// <remarks>
+    /// <paramref name="tag"/> is the tag of the run this style belongs to, or null where there is no run to
+    /// carry one: the sized arm passes <see cref="FormattedTextRun.Tag"/>, while the rule and the two content
+    /// arms have no run and pass null. It is required rather than defaulted because a dropped tag is invisible
+    /// at the call site — and dropping it is exactly how a run's own <c>ScopedBrush</c> stopped reaching the
+    /// resolver on the sized and FIGlet arms, leaving the document brush to colour a run that had declared one.
+    /// </remarks>
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block, object? tag)
+        => resolver is null ? legacyBaseStyle : Brushed(resolver, legacyBaseStyle, column, row, block, tag).ApplyTo(column, row, legacyBaseStyle);
 
     /// <summary>
     /// The same query, stopping one step earlier — for the FIGlet arm, which hands the unsampled STYLE to
@@ -162,10 +169,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// <remarks>
     /// These elements have no inline scope of their own, so their strip is the single cell being asked about:
     /// an inline-scoped brush over a one-wide strip resolves at offset 0, which is what the previous per-cell
-    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
+    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant. <paramref name="tag"/> is as
+    /// <see cref="ResolveStyle"/>'s — here it is the FIGlet run's <see cref="FormattedTextRun.Tag"/>.
     /// </remarks>
-    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block)
-        => resolver(new BrushedTextContext(legacyBaseStyle, block, new Rect(column, row, 1, 1), tag: null));
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block, object? tag)
+        => resolver(new BrushedTextContext(legacyBaseStyle, block, new Rect(column, row, 1, 1), tag));
 
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
                                        OutputCapabilities capabilities, BrushedTextResolver? resolver)
@@ -246,7 +254,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             {
                                 // The style goes to the face UNSAMPLED: one FIGlet character covers many
                                 // cells, so the face is the only thing that knows which cells exist to sample.
-                                var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect);
+                                var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect, glyphText.Tag);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style,
                                            brushed.Style, brushed.Bounds);
                             }
@@ -262,7 +270,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // block, one level deep.
                             var pieceRect = new Rect(cursor, runRow, pieceWidth, run.LineRows);
                             var style = ResolveStyle(resolver, glyphText.Style,
-                                                     cursor + pieceWidth / 2, runRow, blockRect);
+                                                     cursor + pieceWidth / 2, runRow, blockRect, glyphText.Tag);
                             var scaled = new ScaledText(glyphText.Text, glyphText.Source.Sizing, glyphText.Source.Font)
                                          {
                                              BrushResolver = resolver
@@ -333,7 +341,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         var contentBounds = new Rect(cursor, runRow, content.Width, 1);
                         // Inline content samples one color at its center against the block rect — so a fallback
                         // glyph (when no graphics protocol) is brush-colored; a real image ignores the style.
-                        var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, runRow, blockRect);
+                        var style = ResolveStyle(resolver, content.Style, cursor + content.Width / 2, runRow, blockRect, tag: null);
                         content.Content.Paint(buffer, contentBounds, style, capabilities);
                         cursor += content.Width;
                         break;
@@ -359,7 +367,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         int end = column + width;
         while (cursor + glyphWidth <= end)
         {
-            buffer.Set(cursor, row, rule.Glyph, ResolveStyle(resolver, rule.Style, cursor, row, ruleRect));
+            buffer.Set(cursor, row, rule.Glyph, ResolveStyle(resolver, rule.Style, cursor, row, ruleRect, tag: null));
             cursor += glyphWidth;
         }
     }

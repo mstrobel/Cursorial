@@ -278,24 +278,24 @@ tier: Ansi256
       bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[39m<ESC>]66;s=2;Title<ESC>\
 
 == sized-inline-run-tagged-brush ==
-desc: The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null, and :174 falls back to CurrentTag). The sized arm resolves through the same tag: null context as the FIGlet one, so the declared red is dropped and the document's teal is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR.
+desc: The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null, and :174 falls back to CurrentTag). The sized arm passes the run's tag into FormattedText.ResolveStyle just as the FIGlet arm does, so the declared red is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR. Authored in phase 0a while both arms hard-coded tag: null and the document's teal reached the style instead.
 tier: Truecolor
   registered: 1
-    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#008080 bg=. at=. ul=Single uc=. hl=.}
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#ff0000 bg=. at=. ul=Single uc=. hl=.}
       sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
-      style: fg=#008080 bg=. at=. ul=Single uc=. hl=.
+      style: fg=#ff0000 bg=. at=. ul=Single uc=. hl=.
       line[0] "UP"
   emissions: 1
     [0] cup=(row=0,col=3)
-      sgr: 0 | 38;2;0;128;128;49
-      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;2;0;128;128;49m<ESC>]66;s=2;UP<ESC>\
+      sgr: 0 | 38;2;255;0;0;49
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;2;255;0;0;49m<ESC>]66;s=2;UP<ESC>\
 tier: Ansi256
   registered: 1
-    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#008080 bg=. at=. ul=Single uc=. hl=.}
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#ff0000 bg=. at=. ul=Single uc=. hl=.}
       sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
-      style: fg=#008080 bg=. at=. ul=Single uc=. hl=.
+      style: fg=#ff0000 bg=. at=. ul=Single uc=. hl=.
       line[0] "UP"
   emissions: 1
     [0] cup=(row=0,col=3)
-      sgr: 0 | 38;5;30;49
-      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;5;30;49m<ESC>]66;s=2;UP<ESC>\
+      sgr: 0 | 38;5;196;49
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;5;196;49m<ESC>]66;s=2;UP<ESC>\

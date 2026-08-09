@@ -918,10 +918,11 @@ internal static class TextCorpus
             Description = "figlet-inline-run-mixed-band with a per-run ScopedBrush on the FIGlet run and a "
                         + "contrasting solid document brush underneath. brush-run-wins-over-document pins the "
                         + "tag winning on a plain run; this pins what the same construction does on the FIGlet "
-                        + "arm, which resolves through a context hard-coded to tag: null "
-                        + "(FormattedText.cs:167-168). So the run's declared red never reaches the face and the "
-                        + "document's teal colours it like any untagged run. This case is the only thing in the "
-                        + "repo that puts a tag on a GlyphSource run, which is why the drop went unseen.",
+                        + "arm, which passes the run's tag into the resolver context (FormattedText.Brushed). "
+                        + "So the run's declared red reaches the face, and the document's teal colours the "
+                        + "untagged runs around it. Authored in phase 0a while that context was hard-coded to "
+                        + "tag: null — the declared brush was dropped and the teal coloured the glyphs too, "
+                        + "which is the behaviour the phase-0b diff moved off.",
             Document = static () => new RichTextBuilder()
                                     .Run("hi ")
                                     .Run("A", new GlyphSource(FigletFonts.Mini),
@@ -936,10 +937,11 @@ internal static class TextCorpus
             Id = "sized-inline-run-tagged-brush",
             Description = "The same tag reaching the SIZED arm, authored the way the sized overload allows it — "
                         + "a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, "
-                        + "so it defaults to null, and :174 falls back to CurrentTag). The sized arm resolves "
-                        + "through the same tag: null "
-                        + "context as the FIGlet one, so the declared red is dropped and the document's teal is "
-                        + "what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR.",
+                        + "so it defaults to null, and :174 falls back to CurrentTag). The sized arm passes the "
+                        + "run's tag into FormattedText.ResolveStyle just as the FIGlet arm does, so the "
+                        + "declared red is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop "
+                        + "SGR. Authored in phase 0a while both arms hard-coded tag: null and the document's "
+                        + "teal reached the style instead.",
             Document = static () =>
             {
                 var builder = new RichTextBuilder();

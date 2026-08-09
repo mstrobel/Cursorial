@@ -29,8 +29,8 @@ public static class BrushMarkup
     public static Func<string, object?> Resolver(IReadOnlyDictionary<string, ScopedBrush>? registry = null) =>
         value =>
         {
-            if (TryParseInline(value, out var brushed)) return brushed;
             if (registry is not null && registry.TryGetValue(value, out var named)) return named;
+            if (TryParseInline(value, out var brushed)) return brushed;
             return null;
         };
 

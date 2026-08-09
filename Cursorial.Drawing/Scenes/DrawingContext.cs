@@ -407,11 +407,16 @@ public sealed class DrawingContext
     /// background so the border sits on the panel rather than punching a transparent hole.
     /// </para>
     /// <para>
-    /// This family is the one whose cells COMPOSITE their attributes — a space-bearing cell replaces the
-    /// destination's foreground, attributes and underline, so e.g. <see cref="TextAttributes.Inverse"/>
-    /// reverse-videos the whole filled region even where the sampled background is <c>Default</c>.
-    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>'s transparent tint cannot do this: its
-    /// background-only cells drop the attribute on composite.
+    /// A cell from this family REPLACES the destination's style on composite: it is space-bearing (NBSP),
+    /// so it reaches <c>SceneCompositor</c> carrying a glyph and takes the glyph-bearing path, which writes
+    /// the source's foreground, attributes and underline over whatever lay beneath — e.g.
+    /// <see cref="TextAttributes.Underline"/> rules the whole filled region even where the sampled
+    /// background is <c>Default</c>. <see cref="FillRectangle(in Rect, in BrushedStyle)"/>'s transparent
+    /// tint says something weaker: its background-only cells take the MERGING path, where the destination
+    /// keeps its own attributes and underline and the source contributes only what <c>SceneCompositor</c>'s
+    /// passthrough allowlist admits (Faint, Hidden and Inverse as it stands), ORed on top. So a tint cannot
+    /// carry <c>Underline</c> across a composite at all, and an <see cref="TextAttributes.Inverse"/> it does
+    /// carry joins the destination's attributes rather than standing in for them.
     /// </para>
     /// <para>
     /// The base-plus-delta shape, what an ABSENT <see cref="BrushedStyle.Background"/> means, and

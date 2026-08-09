@@ -223,14 +223,21 @@ state to fall through to."
 
 **Characterisation baselines are the harness, not collateral.**
 `TextPipelineCharacterisationTests.cs:1-21` — captured *before* this migration, which is
-"supposed to be PURELY STRUCTURAL — not one glyph moves, not one output byte changes." 12,147
-lines across 4 files. A moving baseline is the failure signal.
+"supposed to be PURELY STRUCTURAL — not one glyph moves, not one output byte changes." 13,985
+lines across 4 files, 81 corpus cases (12,147 lines / 73 cases before phase 0a appended eight).
+A moving baseline is the failure signal.
 
 **SPLIT INTO TWO COMMITS** (audit `wf_d2907f1f-091`, 5 findings survived of 33). The carrier
 migration is structural and baselines must NOT move. The scope rule (document ⇒ `docBounds`)
-legitimately moves 7 corpus cases, one of which (`sized-brushed-block-scope`) feeds tier 3 and
-so moves emitted VT bytes. Landed together, the harness cannot distinguish intent from
-regression. Carrier first with baselines frozen; scope rule second with baselines re-recorded.
+legitimately moves **10** corpus cases — measured by flipping `DrawingContext.cs:1213` to
+`docBounds` and re-recording: `brush-document-scope-horizontal`, `brush-document-scope-vertical`,
+`brush-over-document-default-foreground`, `brush-explicit-foreground-wins`,
+`brush-inline-content-fallback-glyph`, `figlet-brushed-per-cell`, `sized-brushed-block-scope` (the
+7 this document counted before phase 0a), plus `align-center-brushed-wider-than-budget`,
+`figlet-brushed-explicit-background` and `brush-fill-entire-bounds` (appended by phase 0a).
+`sized-brushed-block-scope` is still the only one of the ten that feeds tier 3 and so moves emitted
+VT bytes. Landed together, the harness cannot distinguish intent from regression. Carrier first
+with baselines frozen; scope rule second with baselines re-recorded.
 
 **Audit outcome:** the rule survives. 28 of 33 findings refuted — three lenses (levels-exist,
 other-channels, collapse-points) came back fully empty after adversarial verification. Adding a

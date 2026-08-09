@@ -8,7 +8,7 @@
 # truecolor and Ansi256. The backdrop SGR is captured alongside the payload — it is the anchor
 # cell's style, and the historically fragile part.
 # Only the corpus cases that register a fragment (TextCase.EmitsFragments) appear below.
-# corpus: 73 cases
+# corpus: 81 cases
 
 == sized-block-scale2 ==
 desc: SizedTextBlock at scale 2. Cells show the fallback face; the fragment is tier 3's.
@@ -253,3 +253,49 @@ tier: Ansi256
     [0] cup=(row=0,col=0)
       sgr: 0
       bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>]66;s=2;Fb<ESC>\
+
+== sized-transparent-document-default ==
+desc: sized-block-scale2 on CellStyle.Transparent — the same production default, carried all the way into the OSC 66 backdrop SGR, where it stops being invisible. sized-block-scale2 emits a bare reset at both tiers; this one does not, and the two tiers disagree about how. At TRUECOLOR the emission gains an explicit BLACK foreground and underline colour (the transparent channels with their alpha discarded); at ANSI256 it gains a bare 39 — a foreground RESET, not black — and no underline colour at all. The transparent BACKGROUND reaches the wire at neither tier, and the code that does that carries no comment: FrameRenderer.cs:1136-1137 silently swaps a transparent anchor background for the cell's existing one. This description is the only prose on it. Note the outcome is over-determined — WriteDelta also declines to emit anything for a transparent background (FrameRenderer.cs:741-744) — so this section pins the bytes without isolating which rule produced them.
+tier: Truecolor
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=#00000000 bg=#00000000 at=. ul=Single uc=#00000000 hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#00000000 bg=#00000000 at=. ul=Single uc=#00000000 hl=.
+      line[0] "Title"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 38;2;0;0;0;58:2::0:0:0
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;2;0;0;0;58:2::0:0:0m<ESC>]66;s=2;Title<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(0,0) SizedTextFragment size=10x2 supported=yes anchorStyle{fg=#00000000 bg=#00000000 at=. ul=Single uc=#00000000 hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#00000000 bg=#00000000 at=. ul=Single uc=#00000000 hl=.
+      line[0] "Title"
+  emissions: 1
+    [0] cup=(row=0,col=0)
+      sgr: 0 | 39
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[39m<ESC>]66;s=2;Title<ESC>\
+
+== sized-inline-run-tagged-brush ==
+desc: The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null, and :174 falls back to CurrentTag). The sized arm resolves through the same tag: null context as the FIGlet one, so the declared red is dropped and the document's teal is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR.
+tier: Truecolor
+  registered: 1
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#008080 bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#008080 bg=. at=. ul=Single uc=. hl=.
+      line[0] "UP"
+  emissions: 1
+    [0] cup=(row=0,col=3)
+      sgr: 0 | 38;2;0;128;128;49
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;2;0;128;128;49m<ESC>]66;s=2;UP<ESC>\
+tier: Ansi256
+  registered: 1
+    anchor=(3,0) SizedTextFragment size=4x2 supported=yes anchorStyle{fg=#008080 bg=. at=. ul=Single uc=. hl=.}
+      sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
+      style: fg=#008080 bg=. at=. ul=Single uc=. hl=.
+      line[0] "UP"
+  emissions: 1
+    [0] cup=(row=0,col=3)
+      sgr: 0 | 38;5;30;49
+      bytes: <ESC>7<ESC>[1;4H<ESC>[0m<ESC>[38;5;30;49m<ESC>]66;s=2;UP<ESC>\

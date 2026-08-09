@@ -6,7 +6,7 @@
 # FormattedText.ToPlainText() per corpus case, through the real paint path at
 # OutputCapabilities.None. Metadata is deliberately limited to block- and line-level geometry:
 # run-level shape is exactly what the carrier migration is allowed to change.
-# corpus: 73 cases
+# corpus: 81 cases
 
 == plain-single-line ==
 desc: One unwrapped run. The floor: if this moves, everything moved.
@@ -1098,3 +1098,127 @@ plain(bounds=0,0 12x4):
   |ab ｃｄ ef|
 plain(natural):
   |ab ｃｄ ef|
+
+== figlet-brushed-explicit-background ==
+desc: figlet-explicit-background-boxes, plus a document brush — the pair that shows the FIGlet arm's two halves disagreeing. With no resolver the painter reads the run's background sentinel and asks for a box (FormattedText.cs:240-243); with one it hands the face a BrushedStyle and never asks at all (:249-251 — and FigletFont's brushed overload, :234-252, has no GlyphPaint.Ink call, so no box is ever filled), so the glyph gaps stay unwritten and the stated background survives on the ink cells only. None of the first 73 cases combined a stated background with a brush, so the missing box was invisible. The foreground is left inherited so the brush leg is live too: this also pins per-cell gradient sampling over a run that states a background.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== figlet-transparent-document-default ==
+desc: figlet-small-block on CellStyle.Transparent instead of CellStyle.Default — which is what production actually builds (RichTextPresenter.cs:433, TextBlock.cs:293) and what none of the first 73 cases used (sized-transparent-document-default, appended alongside this one, is the other). Transparent is Rgb(0,0,0,0), NOT Default, so Background.IsDefault is false and the face takes the BOX arm (FormattedText.cs:240-243). This section does NOT pin that arm, and it is not the only case that takes it: figlet-explicit-background-boxes states an opaque Teal, so it takes BOX too, and it is the case where the arm IS observable — its gap cells carry the Teal the box filled. Here the fill is TRANSPARENT and the blank underneath is opaque, so the box composites straight back to it and the gap cells come out byte-identical to figlet-small-block's. Read the INK cells instead: what this section actually demonstrates is a transparent foreground and underline colour resolving to the backdrop rather than staying Color.Default. A stationary section is therefore NOT evidence the box arm is intact. Seeing a transparent box would take a surface whose blank is itself transparent (a Scene); nothing in the repo puts this face's box arm on one today.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== sized-transparent-document-default ==
+desc: sized-block-scale2 on CellStyle.Transparent — the same production default, carried all the way into the OSC 66 backdrop SGR, where it stops being invisible. sized-block-scale2 emits a bare reset at both tiers; this one does not, and the two tiers disagree about how. At TRUECOLOR the emission gains an explicit BLACK foreground and underline colour (the transparent channels with their alpha discarded); at ANSI256 it gains a bare 39 — a foreground RESET, not black — and no underline colour at all. The transparent BACKGROUND reaches the wire at neither tier, and the code that does that carries no comment: FrameRenderer.cs:1136-1137 silently swaps a transparent anchor background for the cell's existing one. This description is the only prose on it. Note the outcome is over-determined — WriteDelta also declines to emit anything for a transparent background (FrameRenderer.cs:741-744) — so this section pins the bytes without isolating which rule produced them.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=5x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=5x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=5 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |Title|
+  |▀▀▀▀▀|
+plain(natural):
+  |Title|
+  |▀▀▀▀▀|
+
+== align-center-brushed-wider-than-budget ==
+desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The combination makes the two anchoring computations visible at once: the block rect a brush samples against is built from the BLOCK anchor, which is Left for a paragraph (FormattedText.cs:175), while the lines are laid out at the paragraph's own Center anchor (:187). Painted 20 wide from a 12-wide budget, the sampling rect spans columns 0-11 while the glyphs sit further right, so the ramp's tail clamps.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x4 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x6):
+  |     the quick|
+  |     brown fox|
+  |     jumps over|
+  |    the lazy dog|
+plain(natural):
+  | the quick|
+  | brown fox|
+  | jumps over|
+  |the lazy dog|
+
+== figlet-inline-run-tagged-brush ==
+desc: figlet-inline-run-mixed-band with a per-run ScopedBrush on the FIGlet run and a contrasting solid document brush underneath. brush-run-wins-over-document pins the tag winning on a plain run; this pins what the same construction does on the FIGlet arm, which resolves through a context hard-coded to tag: null (FormattedText.cs:167-168). So the run's declared red never reaches the face and the document's teal colours it like any untagged run. This case is the only thing in the repo that puts a tag on a GlyphSource run, which is why the drop went unseen.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=4 trimmed=no
+plain(bounds=0,0 20x5):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+plain(natural):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+
+== sized-inline-run-tagged-brush ==
+desc: The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null, and :174 falls back to CurrentTag). The sized arm resolves through the same tag: null context as the FIGlet one, so the declared red is dropped and the document's teal is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=2 trimmed=no
+plain(bounds=0,0 20x4):
+  |   UP|
+  |go ▀▀ now|
+plain(natural):
+  |   UP|
+  |go ▀▀ now|
+
+== brush-fill-entire-bounds ==
+desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: ClearCells fills the whole box with the document's DefaultStyle, a CellStyle with no way to name a brush (FormattedText.cs:60-64), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The clear also re-centres the document vertically (:63), which is why the word lands on row 2 of 5; the block rect the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
+format: columns=14 maxRows=- fillEntireBounds=yes
+result: size=6x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 14x5):
+  |              |
+  |              |
+  |filled        |
+  |              |
+  |              |
+plain(natural):
+  |filled        |
+
+== markup-brush-run-wrapped ==
+desc: brush-run-inline-scope-wrapped's geometry reached through MARKUP instead of BrushedRun: same text, same budget, same paint rect, so the two sections are meant to be read against each other. Both wrap-invariance guards reach the brush through the BUILDER — brush-run-inline-scope-wrapped via BrushedRun, and FormattedText_InlineScopeIsWrapInvariant via a bare run plus a hand-written resolver — and [brush=…] arrives by a different route: the parser resolves the value to a ScopedBrush and pushes it as a tag SCOPE (TextMarkup.cs:294-295) rather than attaching it to one run — so a markup brush that stopped flowing across a wrap would not move any existing baseline.
+format: columns=9 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=9 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |aaaa bbbb|
+  |cccc|
+plain(natural):
+  |aaaa bbbb|
+  |cccc|

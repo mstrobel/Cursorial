@@ -31,6 +31,11 @@ public static class MarkupColor
                       };
     }
 
+    // Indices 0–15 are terminal-theme-dependent, so they stay palette-kind for
+    // ResourceBrushResolver to redirect through ThemeKeys.Ansi*. 16–255 have fixed
+    // RGB values, so they flatten and become blendable.
+    internal static bool IsThemePaletteIndex(int index) => index < 16;
+
     /// <summary>
     /// Try to parse a color token (#hex, palette index 0–255, or a named color). Case-insensitive
     /// for names; returns false (and <paramref name="color"/> = <c>default</c>) for an unrecognized token.
@@ -46,7 +51,7 @@ public static class MarkupColor
         if (TryParseCore(value, out color, out error) is false) return false;
         
         if (color is { Kind: ColorKind.Palette, PaletteIndex: var index })
-            color = index < 16 ? Color.FromPalette(index) : ColorPalette.Ansi256[index];
+            color = IsThemePaletteIndex(index) ? Color.FromPalette(index) : ColorPalette.Ansi256[index];
         
         return true;
     }
@@ -70,7 +75,7 @@ public static class MarkupColor
 
         if (NamedColors.TryGetValue(value, out var palette))
         {
-            color = palette < 16 ? Color.FromPalette(palette) : ColorPalette.Ansi256[palette];
+            color = IsThemePaletteIndex(palette) ? Color.FromPalette(palette) : ColorPalette.Ansi256[palette];
             return true;
         }
 

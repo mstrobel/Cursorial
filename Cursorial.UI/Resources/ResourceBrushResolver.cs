@@ -67,7 +67,8 @@ public static class ResourceBrushResolver
                    // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
                    if (inline(value) is BrushedStyle { Foreground: {} f } brushedStyle)
                    {
-                       if (f is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i and < 16 } } &&
+                       if (f is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i } } &&
+                           MarkupColor.IsThemePaletteIndex(i) &&
                            Ansi16ThemeKeys.TryGetValue(i, out var themeKey) &&
                            innerLookup(themeKey) is IBrush themeBrush)
                        {

@@ -44,6 +44,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Cursorial.Drawing" />
+        <InternalsVisibleTo Include="Cursorial.UI" />
     </ItemGroup>
 
     <ItemGroup>

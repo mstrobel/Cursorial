@@ -61,6 +61,7 @@
     <File Path="docs/ui-layer-design/tokyo-night-terminal-rich-editors.html" />
     <File Path="docs/ui-layer-design/tokyo-night-terminal-toolbar.html" />
     <File Path="docs/ui-layer-design/xaml-matrix.md" />
+    <File Path="docs\text-carrier-design.md" />
     <File Path="docs\ui-layer-design\aurora-fall.html" />
     <File Path="docs\ui-layer-design\bars-nav-subsystem.md" />
     <File Path="docs\ui-layer-design\dataviews-design.md" />

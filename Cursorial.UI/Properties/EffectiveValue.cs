@@ -336,8 +336,19 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
 
         // PD27: a pure SetCurrentValue graft never surfaces LocalValue — a re-coercion on the graft
         // notifies at the underlying lane, like the graft's own writes (M133b, audit fix 2026-07-12).
+        //
+        // The `Unset` arm is the SAME substitution, reached the other way (M233a, added 2026-08-09).
+        // `EffectivePriority` is read AFTER the A20 base dispatch above, which is a user callback
+        // (PD18) — no RESTING state can make it `Unset` here (`HasLocal` is this method's own guard,
+        // and an un-animated entry holding a local contribution carries `LocalValue` on both lanes),
+        // but a base observer that CLEARS from inside that dispatch lands exactly there: `ClearLocal`'s
+        // `Reevaluate` retracts the last contribution and assigns `EffectivePriority = Unset` before
+        // this line resumes. Reported raw that is the internal sentinel (`int.MaxValue`) §0.3 says is
+        // never carried on a notification — so answer the storeless tier the read now answers, the
+        // inherited walk-up else the (possibly themed) Default tier, exactly as `SetCurrentValue`'s
+        // own `Unset` arm does (M307).
         var lane = EffectivePriority;
-        if (LocalIsCurrentValueOnly)
+        if (LocalIsCurrentValueOnly || lane == BindingPriority.Unset)
             store.GetUnsetFallback(Property, metadata, out lane);
 
         store.NotifyOrDefer(this, metadata, oldValue, coerced, lane); // else the current effective lane (M233)

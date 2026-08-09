@@ -88,8 +88,17 @@ public enum BindingPriority
     Default = 300,
 
     /// <summary>
-    /// Internal sentinel ("no contribution"). Never assignable and never reported by
-    /// <c>GetValueSource</c>.
+    /// Internal sentinel ("no contribution"). Never assignable, never reported by
+    /// <c>GetValueSource</c>, and — as widened 2026-08-09 (precedence matrix §0.3 rule 1) — never
+    /// carried on a change notification either: not on
+    /// <see cref="UIPropertyChangedEventArgs.Priority"/>, not on the <c>priority</c> argument of
+    /// <see cref="IValueObserver{T}.OnPropertyChanged"/> or
+    /// <see cref="IUntypedValueObserver.OnPropertyChanged"/>. A write whose replaced lane resolves
+    /// to nothing reports the storeless tier underneath it — <see cref="Inherited"/> when an
+    /// ancestor contributes, else <see cref="Default"/> — which is what a read would answer
+    /// (matrix M118/M127 at rest, M307/M307a and M233a for the re-entrant windows). The winning-base
+    /// channel (<see cref="IValueObserver{T}.OnBaseValueChanged"/>) is not an exception to that rule:
+    /// it carries no <see cref="BindingPriority"/> at all.
     /// </summary>
     Unset = int.MaxValue
 }

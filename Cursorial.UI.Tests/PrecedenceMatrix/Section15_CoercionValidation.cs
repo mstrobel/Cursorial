@@ -167,6 +167,76 @@ public class Section15_CoercionValidation
         probe.AssertSingleNotify(250, 50, BindingPriority.LocalValue); // priority = current effective lane
     }
 
+    /// <summary>The M233a ceiling property (instance state read by <see cref="PcInh"/>'s coercer; NOT inheriting).</summary>
+    private static readonly StyledProperty<int> PmaxInh =
+        UIProperty.Register<Host, int>(UniqueName("M233aMax"), defaultValue: 100);
+
+    /// <summary>The M233a probe: an INHERITING property with an instance-state coercer (the M232 dance, inherited tier).</summary>
+    private static readonly StyledProperty<int> PcInh = UIProperty.Register<Host, int>(
+        UniqueName("M233aPc"), coerce: static (o, v) => Math.Min(v, o.GetValue(PmaxInh)), inherits: true);
+
+    /// <summary>
+    /// A winning-base observer (A20) that issues exactly ONE re-entrant <c>ClearValue</c> from its first
+    /// delivery — the M307 shape at the <c>CoerceValue</c> mouth.
+    /// </summary>
+    private sealed class ReentrantClearer(UIObject target, StyledProperty<int> property) : IValueObserver<int>
+    {
+        private bool _fired;
+
+        public List<(int OldBase, int NewBase)> BaseDeliveries { get; } = [];
+
+        public List<(int Old, int New, BindingPriority Priority)> OrdinaryDeliveries { get; } = [];
+
+        public void OnPropertyChanged(UIObject source, UIProperty p, int oldValue, int newValue, BindingPriority priority)
+            => OrdinaryDeliveries.Add((oldValue, newValue, priority));
+
+        public void OnBaseValueChanged(UIObject source, UIProperty p, int oldBase, int newBase, bool isAnimated)
+        {
+            BaseDeliveries.Add((oldBase, newBase));
+
+            if (_fired)
+                return;
+
+            _fired = true;
+            target.ClearValue(property);
+        }
+    }
+
+    /// <summary>
+    /// <b>M233a — the second sentinel leak (added 2026-08-09).</b> <c>RecoerceLocal</c> reads
+    /// <c>EffectivePriority</c> for its notification lane <em>after</em> it has already dispatched the A20
+    /// winning-base change — a user callback (PD18). No RESTING state can make that read <c>Unset</c>
+    /// (<c>HasLocal</c> is the method's own guard, and an un-animated entry with a local contribution has
+    /// both lanes at <c>LocalValue</c>), but a base observer that clears from inside the dispatch lands
+    /// exactly there: <c>ClearLocal</c>'s <c>Reevaluate</c> retracts the only contribution and assigns
+    /// <c>EffectivePriority = Unset</c>, then <c>RecoerceLocal</c> resumes and stamps the internal sentinel
+    /// (<c>int.MaxValue</c>) on its own delivery. The lane must be the storeless tier the read now answers
+    /// — <see cref="BindingPriority.Inherited"/> here, because an ancestor contributes (M307's other arm;
+    /// §0.3 rule 1 as widened, A11).
+    /// </summary>
+    [Fact] // M233a
+    public void M233a_CoerceValue_WhoseBaseObserverClears_ReportsTheStorelessTier_NeverUnset()
+    {
+        var (root, _, leaf) = Chain();
+        root.SetValue(PcInh, 42);          // the contributing ancestor (root's own ceiling is the default 100)
+        leaf.SetValue(PcInh, 250);         // ceiling 100 ⇒ leaf eff = 100, raw = 250
+        leaf.SetValue(PmaxInh, 300);       // raise the ceiling: the next Co moves the value
+        Assert.Equal(100, leaf.GetValue(PcInh));
+
+        var observer = new ReentrantClearer(leaf, PcInh);
+        using var baseSubscription = leaf.AddObserver(PcInh, observer, new ObserverOptions { IncludeBaseChanges = true });
+        using var ordinarySubscription = leaf.AddObserver(PcInh, observer); // the base subscription delivers on that channel only (M178)
+
+        leaf.CoerceValue(PcInh);
+
+        // Two ordinary deliveries: the nested retraction completes first (PD18), then RecoerceLocal
+        // resumes and announces its own re-coerced value — the delivery that used to carry `Unset`.
+        Assert.Equal(2, observer.OrdinaryDeliveries.Count);
+        Assert.Equal((100, 42, BindingPriority.Inherited), observer.OrdinaryDeliveries[0]);
+        Assert.Equal(BindingPriority.Inherited, observer.OrdinaryDeliveries[1].Priority);
+        Assert.DoesNotContain(observer.OrdinaryDeliveries, d => d.Priority == BindingPriority.Unset);
+    }
+
     [Fact]
     public void M234_CoerceValue_Untouched_IsNoOp()
     {

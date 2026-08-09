@@ -158,7 +158,9 @@ internal sealed class ValueStore
     /// without changing its source. No contribution ⇒ behaves as Local (M118); with one, the
     /// overwrite lands on the winning lane — the Animation lane's effective while animated (base
     /// untouched, M131), else the base (which the overwrite <em>becomes</em>, M121). The
-    /// notification carries the replaced lane's priority (ledger A11).
+    /// notification carries the replaced lane's priority (ledger A11) — the storeless tier's
+    /// (Inherited/Default) when no lane contributes, never the <see cref="BindingPriority.Unset"/>
+    /// sentinel, which the PD18 retraction window can otherwise expose (M307/M307a).
     /// </summary>
     public void SetCurrentValue<T>(StyledProperty<T> property, PropertyMetadata<T> metadata, T rawValue)
     {
@@ -183,7 +185,41 @@ internal sealed class ValueStore
 
         var wasCoerced = metadata.Coerce is not null && !comparer.Equals(rawValue, coerced);
         var oldValue = entry.Value;
+
+        // The lane the overwrite replaces — and, when no lane contributes, the VALUE it replaces on
+        // the base channel below. Both are the one storeless-tier fallback, so it resolves once here —
+        // the hoist `Reevaluate` makes for its own two consumers. The two guards are ONE guard:
+        // un-animated, `replacedLane` IS `entry.BasePriority`, so the fallback is populated exactly
+        // when the base channel's Unset arm needs it; animated, `replacedLane` is Animation and the
+        // whole `if (!entry.HasAnimatedValue)` block below is skipped. Hoisting the call is safe:
+        // `GetUnsetFallback` walks from `_inheritanceParent` (never this entry) and resolves a theme
+        // resource — it reads none of the `Value`/`IsCoerced`/`IsCurrentValue` slots the lines below
+        // write, and it dispatches nothing, so resolving before them rather than after is inert.
+        //
+        // `BasePriority == Unset` is not a RESTING state: the guard above sends an Unset EFFECTIVE lane
+        // to the local mouth, and an un-animated entry assigns both lanes together at every mutation
+        // site, so an Unset base implies an Unset effective. It is reachable RE-ENTRANTLY (PD18, M307).
+        // `Reevaluate` splits the pair across a user dispatch — it assigns the new BasePriority, hands
+        // the base change to observers, and only then assigns EffectivePriority — so a winning-base
+        // observer (A20) that writes from inside a total retraction lands here with the base already
+        // Unset and the effective not caught up.
+        //
+        // In that window the raw `entry.BasePriority` is the internal sentinel (int.MaxValue), which
+        // §0.3 says is carried on no notification. Reported, it is wrong in KIND: an `== Default`/`== Inherited`
+        // or a `switch` on the lane misses outright, and on an inheriting property the sentinel reads
+        // weaker than `Default(300)` where the truth is `Inherited(200)`, flipping threshold tests too (M307a).
+        // (A non-inheriting property lands back on `Default`, so a `>= Default` "untouched" probe
+        // answers the same either way — the lane was never that discriminator; PD27 makes it
+        // `Kind == Default && !IsCurrentValue`.) A `SetCurrentValue` over no contribution replaces the
+        // storeless tier it grafts over, so the lane it reports is that tier's — the inherited walk-up,
+        // else the (possibly themed) Default tier, which is what a READ would answer. The same substitution the
+        // no-contribution graft makes at the local mouth (A11, M118) and `Reevaluate` makes for its own
+        // Unset promotion (PD10). Answered raw, the base channel also reported null as the old value of
+        // a themed brush and skipped the inherited walk entirely.
         var replacedLane = entry.HasAnimatedValue ? BindingPriority.Animation : entry.BasePriority;
+        var fallbackValue = default(T)!;
+        if (replacedLane == BindingPriority.Unset)
+            fallbackValue = GetUnsetFallback(property, metadata, out replacedLane); // inherited-or-default (M96/M302)
 
         entry.Value = coerced;
         entry.IsCoerced = wasCoerced;
@@ -192,21 +228,10 @@ internal sealed class ValueStore
         if (!entry.HasAnimatedValue)
         {
             // Un-animated: the overwrite IS the base (M121) — and dies with its lane (M123) or on
-            // the lane's next re-emit (M122). The winning-base channel sees it (A20 seam).
-            //
-            // The Unset arm is a storeless-tier baseline like every other, so it must answer what a
-            // READ would answer — the inherited walk-up, else the (possibly themed) Default tier —
-            // which is exactly GetUnsetFallback (M96/M302; the bca71650 correction applied to the one
-            // Default-tier exit it did not reach). No RESTING state can take it: the guard above sends
-            // an Unset effective lane to the local mouth, and an un-animated entry has its effective
-            // and base lanes assigned together at every mutation site, so an Unset base implies an
-            // Unset effective. It IS taken re-entrantly (PD18) — a winning-base observer that writes
-            // from inside Reevaluate's retraction window, where the base is already Unset and the
-            // effective has not caught up (M307). Answered raw, that write reported null as the old
-            // base of a themed brush and skipped the inherited walk entirely.
-            var oldBaseValue = entry.BasePriority != BindingPriority.Unset
-                ? entry.BaseValue
-                : GetUnsetFallback(property, metadata, out _); // inherited-or-default (M96 shape)
+            // the lane's next re-emit (M122). The winning-base channel sees it (A20 seam). Its Unset
+            // baseline is the storeless-tier READ resolved above (the bca71650 correction applied to
+            // the one Default-tier exit it did not reach) — `Reevaluate`'s own `oldBaseValue` shape.
+            var oldBaseValue = entry.BasePriority != BindingPriority.Unset ? entry.BaseValue : fallbackValue;
             entry.BaseValue = coerced;
             entry.BaseIsCoerced = wasCoerced;
             if (entry.BasePriority == BindingPriority.LocalValue)

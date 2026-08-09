@@ -177,6 +177,19 @@ public class DefaultResourceKeyTests
             UIProperty.Register<BrushProbe, IBrush?>(
                 "Fill", new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AccentBrush });
 
+        /// <summary>
+        /// The M307a twin of <see cref="FillProperty"/>: same themed default, but INHERITING — so an
+        /// ancestor's contribution makes <c>GetUnsetFallback</c> answer at
+        /// <see cref="BindingPriority.Inherited"/> instead of <see cref="BindingPriority.Default"/>.
+        /// Attached (host <see cref="UIElement"/>) so the ancestor can be any element, the
+        /// <c>TextElement.Foreground</c> idiom M302 already uses.
+        /// </summary>
+        public static readonly AttachedProperty<IBrush?> InheritedFillProperty =
+            UIProperty.RegisterAttached<BrushProbe, UIElement, IBrush?>(
+                "InheritedFill",
+                new PropertyMetadata<IBrush?> { DefaultResourceKey = ThemeKeys.AccentBrush },
+                inherits: true);
+
         static BrushProbe() => AffectsRender<BrushProbe>(FillProperty);
 
         protected override Size MeasureOverride(Size availableSize) => availableSize;
@@ -367,16 +380,18 @@ public class DefaultResourceKeyTests
     /// first delivery — the PD18 synchronous-recursion contract exercised at the one seam where the
     /// entry is mid-update.
     /// </summary>
-    private sealed class ReentrantOverwriter(UIObject target) : IValueObserver<IBrush?>
+    private sealed class ReentrantOverwriter(UIObject target, StyledProperty<IBrush?> targetProperty) : IValueObserver<IBrush?>
     {
         private bool _fired;
 
         public List<(IBrush? Old, IBrush? New)> BaseDeliveries { get; } = [];
 
+        /// <summary>The ORDINARY (effective-value) channel, with the lane each delivery carries.</summary>
+        public List<(IBrush? Old, IBrush? New, BindingPriority Priority)> EffectiveDeliveries { get; } = [];
+
         void IValueObserver<IBrush?>.OnPropertyChanged(
             UIObject source, UIProperty property, IBrush? oldValue, IBrush? newValue, BindingPriority priority)
-        {
-        }
+            => EffectiveDeliveries.Add((oldValue, newValue, priority));
 
         void IValueObserver<IBrush?>.OnBaseValueChanged(
             UIObject source, UIProperty property, IBrush? oldBaseValue, IBrush? newBaseValue, bool isAnimated)
@@ -387,7 +402,7 @@ public class DefaultResourceKeyTests
                 return;
 
             _fired = true;
-            target.SetCurrentValue(BrushProbe.FillProperty, Overwrite);
+            target.SetCurrentValue(targetProperty, Overwrite);
         }
     }
 
@@ -401,6 +416,16 @@ public class DefaultResourceKeyTests
     /// up — so a base observer that writes (PD18) lands in exactly that branch. The baseline it reports
     /// must be the same READ every other Default-tier exit answers: the themed brush, never the raw
     /// <c>metadata.DefaultValue</c> (<see langword="null"/> here).
+    /// <para>
+    /// The lane travels with it (amended 2026-08-09). That same window feeds
+    /// <c>entry.BasePriority</c> — already <see cref="BindingPriority.Unset"/> — straight into the
+    /// EFFECTIVE channel's <c>replacedLane</c>, so the overwrite's own notification arrived stamped
+    /// with the internal sentinel §0.3 says is never reported. What it replaces is the storeless
+    /// tier it grafts over, so the lane is that tier's — <see cref="BindingPriority.Default"/> on
+    /// this (non-inheriting) fixture; the <see cref="BindingPriority.Inherited"/> arm is its own row
+    /// (M307a). Two effective deliveries fall out of one <c>CV</c>: the nested write completes first
+    /// (PD18), then the outer <c>Reevaluate</c> resumes and discards it.
+    /// </para>
     /// </summary>
     [Fact] // M307
     public void ReentrantSetCurrentValueDuringABaseRetraction_BaselinesOnTheThemedBrush()
@@ -411,9 +436,14 @@ public class DefaultResourceKeyTests
         probe.SetValue(BrushProbe.FillProperty, Marker);
         host.RunUntilIdle();
 
-        var observer = new ReentrantOverwriter(probe);
-        using var subscription = probe.AddObserver(
+        var observer = new ReentrantOverwriter(probe, BrushProbe.FillProperty);
+        using var baseSubscription = probe.AddObserver(
             BrushProbe.FillProperty, observer, new ObserverOptions { IncludeBaseChanges = true });
+
+        // A base subscription delivers on that channel ONLY, so the ordinary channel needs its own
+        // (the two dispose independently — AddObserver's contract). Same observer: one recorder for
+        // both halves of the same re-entrant write.
+        using var effectiveSubscription = probe.AddObserver(BrushProbe.FillProperty, observer);
 
         probe.ClearValue(BrushProbe.FillProperty); // retracts the only contribution ⇒ base goes Unset
         host.RunUntilIdle();
@@ -423,6 +453,80 @@ public class DefaultResourceKeyTests
         Assert.Same(themed, observer.BaseDeliveries[0].New);  // … yielding to the themed default
         Assert.Same(themed, observer.BaseDeliveries[1].Old);  // the re-entrant overwrite REPLACES the themed brush …
         Assert.Same(Overwrite, observer.BaseDeliveries[1].New);
+
+        // The EFFECTIVE channel sees BOTH halves, in PD18 order. First the re-entrant write's own
+        // delivery — the pre-retraction value in, the overwrite out — carrying a REAL lane: what the
+        // overwrite replaces is the storeless tier it grafts over, so the lane is that tier's, the same
+        // substitution the no-contribution graft makes (A11). Never the Unset sentinel (int.MaxValue),
+        // which an `== Default`/`switch` on the lane misses outright — and which, on an INHERITING
+        // property, would also read weaker than Default where the truth is Inherited(200) (M307a).
+        // Then the outer Reevaluate resumes and discards the overwrite, promoting the themed default.
+        Assert.Equal(2, observer.EffectiveDeliveries.Count);
+        Assert.Same(Marker, observer.EffectiveDeliveries[0].Old);
+        Assert.Same(Overwrite, observer.EffectiveDeliveries[0].New);
+        Assert.Equal(BindingPriority.Default, observer.EffectiveDeliveries[0].Priority);
+        Assert.Same(Overwrite, observer.EffectiveDeliveries[1].Old);
+        Assert.Same(themed, observer.EffectiveDeliveries[1].New);
+        Assert.Equal(BindingPriority.Default, observer.EffectiveDeliveries[1].Priority);
+
+        Assert.Same(themed, probe.GetValue(BrushProbe.FillProperty)); // the overwrite did not survive
+    }
+
+    /// <summary>
+    /// <b>M307a — the <see cref="BindingPriority.Inherited"/> arm of M307's substitution</b>
+    /// (added 2026-08-09). The identical seam on an INHERITING themed property whose ancestor
+    /// contributes: <c>GetUnsetFallback</c> answers the walk-up, so the corrected lane is
+    /// <c>Inherited(200)</c>, not <c>Default(300)</c>. This is the arm where the sentinel actually
+    /// changes an answer — on M307's non-inheriting fixture a <c>&gt;= Default</c> threshold probe
+    /// reads the same either way, but <c>int.MaxValue &gt;= Default</c> and <c>Inherited &gt;= Default</c>
+    /// disagree, so a consumer that ranks lanes flips. It also discriminates the fix from a naive
+    /// "always report <c>Default</c>": the ancestor's brush is what a read returns here, and the lane
+    /// must name the tier that produced it.
+    /// </summary>
+    [Fact] // M307a
+    public void ReentrantSetCurrentValueDuringABaseRetraction_ReportsTheInheritedLane_WhenAnAncestorContributes()
+    {
+        using var host = NewHost();
+        var probe = new BrushProbe();
+        var ancestor = new Decorator { Child = probe }; // a 1:1 passthrough: the probe still measures as the root does
+        host.ShowRoot(ancestor);
+        host.RunUntilIdle();
+
+        var ancestral = new SolidColorBrush(Color.FromRgb(240, 160, 20));
+        ancestor.SetValue(BrushProbe.InheritedFillProperty, ancestral);
+        host.RunUntilIdle();
+
+        // The ancestor's contribution beats the themed default (M302's shape), so the fallback the
+        // retraction lands on is the INHERITED one — value and lane alike.
+        Assert.Same(ancestral, probe.GetValue(BrushProbe.InheritedFillProperty));
+        Assert.Equal(BindingPriority.Inherited, probe.GetValueSource(BrushProbe.InheritedFillProperty).Priority);
+
+        probe.SetValue(BrushProbe.InheritedFillProperty, Marker);
+        host.RunUntilIdle();
+
+        var observer = new ReentrantOverwriter(probe, BrushProbe.InheritedFillProperty);
+        using var baseSubscription = probe.AddObserver(
+            BrushProbe.InheritedFillProperty, observer, new ObserverOptions { IncludeBaseChanges = true });
+        using var effectiveSubscription = probe.AddObserver(BrushProbe.InheritedFillProperty, observer);
+
+        probe.ClearValue(BrushProbe.InheritedFillProperty); // retracts the only contribution ⇒ base goes Unset
+        host.RunUntilIdle();
+
+        Assert.Equal(2, observer.BaseDeliveries.Count);
+        Assert.Same(Marker, observer.BaseDeliveries[0].Old);
+        Assert.Same(ancestral, observer.BaseDeliveries[0].New); // the walk-up, not the themed default
+        Assert.Same(ancestral, observer.BaseDeliveries[1].Old);
+        Assert.Same(Overwrite, observer.BaseDeliveries[1].New);
+
+        Assert.Equal(2, observer.EffectiveDeliveries.Count);
+        Assert.Same(Marker, observer.EffectiveDeliveries[0].Old);
+        Assert.Same(Overwrite, observer.EffectiveDeliveries[0].New);
+        Assert.Equal(BindingPriority.Inherited, observer.EffectiveDeliveries[0].Priority); // NOT Unset, NOT Default
+        Assert.Same(Overwrite, observer.EffectiveDeliveries[1].Old);
+        Assert.Same(ancestral, observer.EffectiveDeliveries[1].New);
+        Assert.Equal(BindingPriority.Inherited, observer.EffectiveDeliveries[1].Priority);
+
+        Assert.Same(ancestral, probe.GetValue(BrushProbe.InheritedFillProperty));
     }
 
     private static Color ForegroundOfGlyph(UIHeadlessHost host, string grapheme)

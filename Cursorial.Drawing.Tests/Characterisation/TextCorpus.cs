@@ -881,17 +881,23 @@ internal static class TextCorpus
         {
             Id = "sized-transparent-document-default",
             Description = "sized-block-scale2 on CellStyle.Transparent — the same production default, carried "
-                        + "all the way into the OSC 66 backdrop SGR, where it stops being invisible. "
-                        + "sized-block-scale2 emits a bare reset at both tiers; this one does not, and the two "
-                        + "tiers disagree about how. At TRUECOLOR the emission gains an explicit BLACK foreground "
-                        + "and underline colour (the transparent channels with their alpha discarded); at ANSI256 "
-                        + "it gains a bare 39 — a foreground RESET, not black — and no underline colour at all. "
-                        + "The transparent BACKGROUND reaches the wire at neither tier, and the code that does "
-                        + "that carries no comment: FrameRenderer.cs:1136-1137 silently swaps a transparent anchor "
-                        + "background for the cell's existing one. This description is the only prose on it. Note the "
-                        + "outcome is over-determined — WriteDelta also declines to emit anything for a "
-                        + "transparent background (FrameRenderer.cs:741-744) — so this section pins the bytes "
-                        + "without isolating which rule produced them.",
+                        + "all the way into the OSC 66 backdrop SGR, where it stops being invisible. A fragment "
+                        + "is a paint path that cannot composite transparency away — sized text is never written "
+                        + "into cells, so there is no back buffer to blend against — which is why "
+                        + "FrameRenderer.EmitFragmentBytes resolves all three colour channels itself before the "
+                        + "absolute SGR goes out, and why the three do not resolve alike. BACKGROUND takes the "
+                        + "anchor cell's own, the surface the fragment is drawn over, so a transparent one "
+                        + "reaches the wire at neither tier. FOREGROUND and UNDERLINE COLOUR have no ink "
+                        + "underneath to inherit and are reset to Color.Default, so the emission gains a bare 39 "
+                        + "— a foreground RESET — and states no underline colour, which is also what "
+                        + "StyleQuantizer produces for a transparent colour at every depth below truecolor. "
+                        + "Authored in phase 0a, when the substitution covered background only: the transparent "
+                        + "foreground and underline colour then survived quantization at TRUECOLOR and escaped "
+                        + "as an explicit BLACK (38;2;0;0;0;58:2::0:0:0) while ANSI256 emitted the 39, the two "
+                        + "tiers disagreeing about one document. Note the background outcome is over-determined "
+                        + "— WriteDelta also declines to emit anything for a transparent background "
+                        + "(FrameRenderer.cs:741-744) — so this section pins the bytes without isolating which "
+                        + "rule produced them.",
             Document = static () => new RichTextBuilder(CellStyle.Transparent)
                                     .SizedText("Title", new TextSizing(Scale: 2))
                                     .Build(),

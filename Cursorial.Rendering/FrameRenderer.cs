@@ -1133,12 +1133,66 @@ public sealed class FrameRenderer
 
         var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle) ?? entry.AnchorStyle;
 
+        // Transparency is resolved here or not at all, and the three colour channels do not resolve the
+        // same way.
+        //
+        // Cell painting composites transparency away against the back buffer (Color.Composite returns the
+        // backdrop for a transparent source), so by emission time a cell holds resolved colours. A
+        // FRAGMENT is never painted into cells — OSC 66 sized text draws over a region whose cells the
+        // renderer does not own — so it gets an absolute SGR instead, and whatever alpha survives to this
+        // point goes on the wire. Leaving it alone is not neutral: Color.Transparent is Rgb(0,0,0,0), and
+        // SgrEncoder's transparency check covers the BACKGROUND channel (WriteDelta, WriteAbsolute) while
+        // the foreground is written unconditionally, so a transparent FOREGROUND escapes as an explicit
+        // BLACK — a colour the author never wrote, and one that can render the fragment invisible on a
+        // dark terminal.
+        //
+        // BACKGROUND has a backdrop to inherit: the fragment is drawn over the anchor cell's surface, so
+        // that cell's background is what "show what is behind" means here, and taking it is the nearest
+        // thing to compositing this path can do.
+        //
+        // FOREGROUND and UNDERLINE COLOUR have no counterpart — there is no ink underneath a glyph for it
+        // to show through, so every concrete colour would be invented, including the anchor cell's own
+        // (that is one arbitrary cell's ink, and the fragment covers a whole region). Naming no colour is
+        // the honest statement: a transparent foreground asked not to be seen, and SGR 39 hands the choice
+        // to the terminal. For the underline channel Color.Default additionally means "follow the
+        // foreground" (see SubstituteTerminalDefaultColors), which is exactly where a transparent underline
+        // belongs once the foreground has stopped naming a colour.
+        //
+        // Deciding this before AdaptStyle settles a tier disagreement rather than adding a rule:
+        // StyleQuantizer maps Color.Transparent to Color.Default at every depth BELOW truecolor, so the
+        // reduced depths already emitted the bare 39 while full depth — where quantization passes the
+        // colour through untouched — emitted the black. Substituting here makes truecolor agree with them.
+        // Captured before the substitutions erase the evidence: the delta guard below has to know that a
+        // transparent channel WAS declared, since resolving one can land the style on CellStyle.Default.
+        bool resolvedTransparency = anchorStyle.Background.IsTransparent ||
+                                    anchorStyle.Foreground.IsTransparent ||
+                                    anchorStyle.UnderlineColor.IsTransparent;
+
         if (anchorStyle is { Background.IsTransparent: true })
             anchorStyle = anchorStyle.WithBackground(existingStyle.Background);
 
+        if (anchorStyle is { Foreground.IsTransparent: true })
+            anchorStyle = anchorStyle.WithForeground(Color.Default);
+
+        if (anchorStyle is { UnderlineColor.IsTransparent: true })
+            anchorStyle = anchorStyle.WithUnderlineColor(Color.Default);
+
         anchorStyle = AdaptStyle(anchorStyle, col, row);
 
-        if (anchorStyle != CellStyle.Default)
+        // A fragment that declared NO style leaves the backdrop the absolute SGR just wrote standing:
+        // AddFragment's anchorStyle defaults to CellStyle.Default, and that is an absence, not a request
+        // for the terminal's own fg/bg. Asking whether the style IS CellStyle.Default is how that absence
+        // is recognised — but only for a style the substitutions above did not touch. A DECLARED
+        // transparency can land on CellStyle.Default too (a transparent foreground resolves to
+        // Color.Default; over an anchor whose background is already Color.Default nothing fills the other
+        // channel in), and there the absence test reads a request as an absence: it skips the delta, leaves
+        // the terminal in the backdrop, and paints the fragment in the ANCHOR CELL'S INK — the inheritance
+        // the foreground rule exists to refuse. So a substitution having fired is itself proof the style was
+        // declared, and it lets the delta through.
+        //
+        // Comparing against existingStyle instead does not work: it makes the no-style case emit a delta
+        // (39;49) that erases the backdrop, which is the carve-out this guard was written for.
+        if (anchorStyle != CellStyle.Default || resolvedTransparency)
             SgrEncoder.WriteDelta(output, in existingStyle, in anchorStyle);
 
         entry.Fragment.Emit(col, row, output, caps);

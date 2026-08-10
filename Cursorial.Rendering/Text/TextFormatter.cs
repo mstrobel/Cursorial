@@ -158,12 +158,17 @@ public sealed class TextFormatter
         }
 
         // FormattedText.DefaultStyle stays a resolved value — the document-foreground comparison and the
-        // FillEntireBounds clear both consume it flat — so the document's carrier resolves at this boundary.
+        // FillEntireBounds clear both consume it flat — so the document's carrier resolves at this
+        // boundary AND rides through whole as DefaultCarrier, the rung the painter's fall-through fold
+        // composes under every run.
         var result = new FormattedText(formattedBlocks.ToImmutable(),
                                        new Size(widthUsed, totalRows),
                                        availableColumns,
                                        text.DefaultStyle.ResolveFlat(),
-                                       fillEntireBounds);
+                                       fillEntireBounds)
+                     {
+                         DefaultCarrier = text.DefaultStyle
+                     };
 
         return documentRowCapDropped && !result.HasTrimmedLines
                    ? result with { HasTrimmedLines = true }

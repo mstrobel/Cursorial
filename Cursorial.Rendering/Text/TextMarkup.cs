@@ -32,11 +32,13 @@ public sealed class TextMarkupOptions
     public IReadOnlyDictionary<string, IContent> Content { get; init; } =
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The default style applied to all text.</summary>
+    /// <summary>The document default: the style text that declares nothing itself falls through to.</summary>
     /// <remarks>
-    /// A carrier: callers with a resolved <see cref="Cursorial.Output.CellStyle"/> restate it via
-    /// <see cref="BrushedStyle.Restate"/>. The parser consumes it as a resolved value for now — its tag
-    /// vocabulary still speaks colours, not brushes — so a non-uniform default is sampled at the origin.
+    /// A carrier: callers with a resolved <see cref="Cursorial.Output.CellStyle"/> adapt it via
+    /// <see cref="BrushedStyle.FromStated"/>. It rides through to <see cref="RichText.DefaultStyle"/> —
+    /// the painter's document rung — rather than being flattened into the parsed runs, and is consumed
+    /// only by the <see cref="TextMarkup.Parse(string, TextMarkupOptions)"/> overloads that create the
+    /// builder; parsing into an existing builder keeps that builder's own default.
     /// </remarks>
     public BrushedStyle DefaultStyle { get; init; }
 
@@ -109,7 +111,7 @@ public static class TextMarkup
     {
         ArgumentNullException.ThrowIfNull(markup);
         ArgumentNullException.ThrowIfNull(options);
-        var builder = new RichTextBuilder(options.DefaultStyle.ResolveFlat(), options.DefaultTextTrimming, options.DefaultTextWrapping);
+        var builder = new RichTextBuilder(options.DefaultStyle, options.DefaultTextTrimming, options.DefaultTextWrapping);
         Parse(markup, builder, options);
         return builder.Build();
     }
@@ -243,9 +245,6 @@ public static class TextMarkup
     {
         private readonly TextMarkupLexer _lexer = new(input);
 
-        // The style tags below still compose resolved values through the builder's stack, so the options'
-        // carrier resolves once here rather than at every tag.
-        private readonly CellStyle _defaultStyle = options.DefaultStyle.ResolveFlat();
         private readonly Stack<(string Name, StyleScope Scope)> _styleStack = new();
         private bool _inExplicitParagraph;
 
@@ -280,17 +279,21 @@ public static class TextMarkup
 
         private void HandleOpen(Token token)
         {
+            // Style tags push DELTAS: each states exactly the axis its tag names — imposed per axis for
+            // the attribute tags, a stated solid for the colour tags ([fg]/[bg] keep the COLOUR
+            // vocabulary; brushes arrive via [brush]) — and the document default stops being baked into
+            // every markup run: undeclared channels fall through to it at paint.
             switch (token.Name)
             {
-                case "b": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Bold))); break;
-                case "i": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Italic))); break;
-                case "u": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Underline))); break;
-                case "s": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Strikethrough))); break;
+                case "b": Push(token.Name, builder.Push(BrushedStyle.Identity.Weighing(TextWeight.Bold))); break;
+                case "i": Push(token.Name, builder.Push(BrushedStyle.Identity.Posturing(TextStyle.Italic))); break;
+                case "u": Push(token.Name, builder.Push(BrushedStyle.Identity.Underlining())); break;
+                case "s": Push(token.Name, builder.Push(BrushedStyle.Identity.Applying(TextAttributes.Strikethrough))); break;
                 case "fg":
-                    Push(token.Name, builder.Push(_defaultStyle.WithForeground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithForeground(new SolidColorBrush(ParseColor(token.Value, token.Position)))));
                     break;
                 case "bg":
-                    Push(token.Name, builder.Push(_defaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithBackground(new SolidColorBrush(ParseColor(token.Value, token.Position)))));
                     break;
                 case "link" or "url":
                     if (string.IsNullOrEmpty(token.Value))

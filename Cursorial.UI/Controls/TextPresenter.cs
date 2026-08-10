@@ -775,9 +775,11 @@ public sealed class TextPresenter : UIElement
                     context.FillOpaque(rect, Color.Default, backdrop.Attributes, overwrite: true);
             }
 
-            // The piece's carrier restates the resolved backdrop whole — the background sentinel keeps
-            // the selection highlight boxing the face's glyphs exactly as the flat carrier did.
-            var pieceRun = new FormattedTextRun(runText, BrushedStyle.Restate(backdrop), null) { Source = source };
+            // The piece's carrier states the backdrop's STATED channels (BrushedStyle.FromStated): a
+            // selection background is stated, so the highlight keeps boxing the face's glyphs, while the
+            // backdrop's Default foreground (stripped above) stays absent — which is what lets the
+            // element's brush below colour the face.
+            var pieceRun = new FormattedTextRun(runText, BrushedStyle.FromStated(backdrop), null) { Source = source };
             var pieceLine = new FormattedLine([pieceRun], runWidth, false, rect.Rows);
             var piecePara = new FormattedParagraph([pieceLine], new Size(runWidth, rect.Rows), TextAlignment.Left, false);
             var piece = new FormattedText([piecePara], piecePara.Size, runWidth);

@@ -291,7 +291,7 @@ public class Image : FragmentContent
 
     protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
     {
-        var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = BrushedStyle.Restate(PlaceholderStyle) });
+        var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = BrushedStyle.FromStated(PlaceholderStyle) });
         var formatter = new TextFormatter { Wrap = WrapMode.WordWrap, Alignment = TextAlignment.Center };
         var formattedText = formatter.Format(richText, Math.Max(1, size.Columns), Math.Max(1, size.Rows), capabilities, fillEntireBounds: true);
         

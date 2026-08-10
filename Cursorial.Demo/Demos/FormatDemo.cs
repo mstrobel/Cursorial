@@ -207,7 +207,7 @@ internal sealed class FormatDemo : InteractiveDemo
                                                                 renderSize: new Size(2, 0))
                               };
 
-        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = BrushedStyle.Restate(defaultStyle) };
+        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = BrushedStyle.FromStated(defaultStyle) };
 
         // Title.
         builder.Figlet("Rich Text",

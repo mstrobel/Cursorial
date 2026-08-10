@@ -270,14 +270,42 @@ public readonly record struct BrushedStyle
     public static BrushedStyle FromInk(in CellStyle style) => From(style) with { Background = null };
 
     /// <summary>
-    /// The producer restatement of a resolved style: <see cref="FromInk"/> when the background is
-    /// literally <see cref="Cursorial.Media.Color.Default"/> — a <see cref="CellStyle"/>'s only spelling of "no
-    /// opinion", so the restated carrier says nothing and a glyph paint STAMPS — and <see cref="From"/> for
-    /// anything else stated, Transparent included, which BOXES. One reading of the sentinel, at the point the
-    /// whole style is given up, instead of one per consumer downstream.
+    /// The producer-boundary adapter from a resolved <see cref="CellStyle"/> to the delta it MEANS:
+    /// each channel stated iff the style states one. A colour becomes a <see cref="SolidColorBrush"/>
+    /// when it is not <see cref="Cursorial.Media.Color.Default"/> and stays ABSENT when it is; the
+    /// attribute word folds on per axis — <see cref="Imposing"/> for weight, posture and the booleans,
+    /// an outright <see cref="Underlining"/> with the style's shape for a stated underline — rather
+    /// than through <see cref="From"/>'s clear-everything mask. Whatever the result declines to
+    /// state falls through to what the paint composes underneath — the document default's rung, or the
+    /// destination cells — and an absent background still selects STAMP at a glyph paint, a stated one
+    /// (Transparent included) BOX.
     /// </summary>
-    public static BrushedStyle Restate(in CellStyle style)
-        => style.Background.IsDefault ? FromInk(style) : From(style);
+    /// <remarks>
+    /// This is where the <see cref="Cursorial.Media.Color.Default"/>-as-absent sentinel is read: once, at
+    /// the point the whole style is given up, instead of once per consumer downstream — past this
+    /// boundary absence is spelled <see langword="null"/>. Use <see cref="From"/> / <see cref="FromInk"/>
+    /// for a caller whose whole style must survive verbatim over arbitrarily-styled cells; the
+    /// hyperlink caveat is <see cref="PartialStyle.From"/>'s, unchanged.
+    /// </remarks>
+    public static BrushedStyle FromStated(in CellStyle style)
+    {
+        // One implementation of the per-axis attribute fold — Imposing's — except Underline, which the
+        // style states OUTRIGHT (flag in the masks plus its shape, as From spells it) rather than as
+        // Imposing's shape-implies-flag rider: a stated flag survives composition over a delta that
+        // removed the underline, where an implied one would die as the removal's remnant.
+        var delta = Identity.Imposing(style.Attributes & ~TextAttributes.Underline);
+
+        if ((style.Attributes & TextAttributes.Underline) != 0)
+            delta = delta.Underlining(style.UnderlineStyle);
+
+        return delta with
+               {
+                   Foreground     = style.Foreground.IsDefault     ? null : new SolidColorBrush(style.Foreground),
+                   Background     = style.Background.IsDefault     ? null : new SolidColorBrush(style.Background),
+                   UnderlineColor = style.UnderlineColor.IsDefault ? null : new SolidColorBrush(style.UnderlineColor),
+                   Hyperlink      = style.Hyperlink,
+               };
+    }
 
     /// <summary>
     /// The carrier as a resolved <see cref="CellStyle"/> over an empty base — the boundary form for

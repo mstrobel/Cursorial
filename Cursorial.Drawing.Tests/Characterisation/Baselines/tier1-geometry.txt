@@ -6,7 +6,7 @@
 # FormattedText.ToPlainText() per corpus case, through the real paint path at
 # OutputCapabilities.None. Metadata is deliberately limited to block- and line-level geometry:
 # run-level shape is exactly what the carrier migration is allowed to change.
-# corpus: 82 cases
+# corpus: 84 cases
 
 == plain-single-line ==
 desc: One unwrapped run. The floor: if this moves, everything moved.
@@ -1233,3 +1233,29 @@ plain(bounds=0,0 14x3):
   |aaaa SOLID|
 plain(natural):
   |aaaa SOLID|
+
+== brush-block-style-scope-centred ==
+desc: brush-block-style-scope with the paragraph CENTRED and the paint rect wider than the 12-column budget — the combination no earlier case has: brush-block-style-scope is Left-aligned (its SamplingRect and its ink coincide) and align-center-brushed-wider-than-budget carries a document brush, not a block one. The block rung samples the walk's SamplingRect, which is Left-forced for every paragraph, so the rect covers columns 0-11 while the centred glyphs land at columns 4-15: the ramp is visibly mis-anchored — the leftmost glyph starts 0.375 up the ramp and the last four clamp flat blue past its end. This case exists to witness the re-aim: pointing the block rung at the walk's Extent instead is 7b's, and is the surviving half of defect 1.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x1 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |    xxxxxxxxxxAB|
+plain(natural):
+  |xxxxxxxxxxAB|
+
+== figlet-inline-run-brushed-gradient ==
+desc: figlet-inline-run-tagged-brush with the run's declared brush a GRADIENT instead of a solid — both tagged-brush cases are solids, which are rect-independent, so no earlier case can see the run leg's geometry on the FIGlet arm. The declared gradient wins the run leg, but the context's inline scope there is the 1×1 cell at the piece's anchor (FormattedText.Brushed), so the colour lands without the geometry: the face samples every glyph cell against that one-cell rect, and the Mini face's 'A' inks no cell in its anchor column, so every painted cell sits right of the rect and clamps past the ramp's end — the whole glyph is the END colour, flat blue, not a sweep. The resolver-null figlet arm hands the face the PIECE rect instead, so the two paths disagree about one document; that disagreement is task #15, which 7b deliberately does not fix — this section pins the resolver path's bytes so the eventual fix has a witness.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=4 trimmed=no
+plain(bounds=0,0 20x5):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+plain(natural):
+  |     /\\|
+  |    /--\\|
+  |hi        there|

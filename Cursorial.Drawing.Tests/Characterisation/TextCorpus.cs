@@ -1016,6 +1016,51 @@ internal static class TextCorpus
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 3,
             DocumentBrush = LeftToRight()
+        },
+        new()
+        {
+            Id = "brush-block-style-scope-centred",
+            Description = "brush-block-style-scope with the paragraph CENTRED and the paint rect wider than "
+                        + "the 12-column budget — the combination no earlier case has: brush-block-style-scope "
+                        + "is Left-aligned (its SamplingRect and its ink coincide) and "
+                        + "align-center-brushed-wider-than-budget carries a document brush, not a block one. "
+                        + "The block rung samples the walk's SamplingRect, which is Left-forced for every "
+                        + "paragraph, so the rect covers columns 0-11 while the centred glyphs land at columns "
+                        + "4-15: the ramp is visibly mis-anchored — the leftmost glyph starts 0.375 up the "
+                        + "ramp and the last four clamp flat blue past its end. This case exists to witness "
+                        + "the re-aim: pointing the block rung at the walk's Extent instead is 7b's, and is "
+                        + "the surviving half of defect 1.",
+            Document = static () => new RichTextBuilder()
+                                    .Paragraph(alignment: TextAlignment.Center,
+                                               style: new BrushedStyle { Foreground = LeftToRight() })
+                                    .Run("xxxxxxxxxx")
+                                    .Run("AB")
+                                    .Build(),
+            Columns = 12, PaintColumns = 20, PaintRows = 3, Brushed = true
+        },
+        new()
+        {
+            Id = "figlet-inline-run-brushed-gradient",
+            Description = "figlet-inline-run-tagged-brush with the run's declared brush a GRADIENT instead of "
+                        + "a solid — both tagged-brush cases are solids, which are rect-independent, so no "
+                        + "earlier case can see the run leg's geometry on the FIGlet arm. The declared "
+                        + "gradient wins the run leg, but the context's inline scope there is the 1×1 cell "
+                        + "at the piece's anchor (FormattedText.Brushed), so the colour lands without the "
+                        + "geometry: the face samples every glyph cell against that one-cell rect, and the "
+                        + "Mini face's 'A' inks no cell in its anchor column, so every painted cell sits "
+                        + "right of the rect and clamps past the ramp's end — the whole glyph is the END "
+                        + "colour, flat blue, not a sweep. The resolver-null figlet arm hands the face the "
+                        + "PIECE rect instead, so the two paths disagree about one document; that "
+                        + "disagreement is task #15, which 7b deliberately does not fix — this section pins "
+                        + "the resolver path's bytes so the eventual fix has a witness.",
+            Document = static () => new RichTextBuilder()
+                                    .Run("hi ")
+                                    .Run("A", new GlyphSource(FigletFonts.Mini),
+                                         new BrushedStyle { Foreground = LeftToRight() })
+                                    .Run(" there")
+                                    .Build(),
+            Columns = 20, PaintColumns = 20, PaintRows = 5,
+            DocumentBrush = new SolidColorBrush(Teal)
         }
     ];
 

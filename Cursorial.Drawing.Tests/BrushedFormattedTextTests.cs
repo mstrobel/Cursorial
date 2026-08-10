@@ -9,9 +9,11 @@ using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Drawing;
 
-// Phase 6a.1: DrawFormattedText colors a laid-out document's text with a brush sampled per cell against
-// each BLOCK's rect (block-scoped 2-D). These pin that the gradient spans the block (across wrapped lines
-// and across width), not each line/run independently.
+// DrawFormattedText colors a laid-out document's text down the foreground ladder: the caller's brush is
+// the weakest rung, sampled per cell against the painted docBounds, and declarations in the object model
+// (run carrier, block style, document default) win wherever they speak, each at its own declaration
+// site's scope. These pin that the gradient spans the document (across wrapped lines and across blocks),
+// not each line/run independently — and that the ladder's precedence holds.
 public class BrushedFormattedTextTests
 {
     private static readonly Color Red = Color.FromRgb(255, 0, 0);
@@ -31,21 +33,25 @@ public class BrushedFormattedTextTests
     }
 
     [Fact]
-    public void VerticalGradient_SpansTheBlock_AcrossWrappedLines()
+    public void VerticalGradient_SamplesTheDocumentBounds_AcrossWrappedLines()
     {
+        // The two text rows sit at the TOP of a 4-row paint rect, so a top-to-bottom ramp over
+        // docBounds keeps both red-dominant — the discriminator against block-rect sampling, which
+        // put row 1 at the bottom of a 2-row rect and flipped it blue.
         var b = DrawHarness.Render(12, 4, ctx =>
             ctx.DrawFormattedText(Wrapped(), new Rect(0, 0, 12, 4),
                 new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Top, endPoint: RelativePoint.Bottom),
                 OutputCapabilities.None));
 
-        // 'a' is the first glyph of line 0 (top of block); 'c' the first glyph of line 1 (bottom).
+        // 'a' is the first glyph of line 0 (top of document); 'c' the first glyph of line 1.
         Assert.Equal("a", b[0, 0].Grapheme);
         Assert.Equal("c", b[0, 1].Grapheme);
 
         var top = b[0, 0].Style.Foreground;
         var bottom = b[0, 1].Style.Foreground;
         Assert.True(top.Red > top.Blue, $"top should be red-dominant, was {top}");
-        Assert.True(bottom.Blue > bottom.Red, $"bottom should be blue-dominant, was {bottom}");
+        Assert.True(bottom.Blue > top.Blue, $"row 1 samples further down the ramp than row 0: {top} vs {bottom}");
+        Assert.True(top.Red > bottom.Red, $"row 1 samples further down the ramp than row 0: {top} vs {bottom}");
     }
 
     [Fact]
@@ -111,10 +117,12 @@ public class BrushedFormattedTextTests
     }
 
     [Fact]
-    public void Brush_AppliesOverADocumentDefaultForeground()
+    public void DocumentDefaultForeground_BeatsThePreferenceBrush()
     {
-        // Regression: a document whose DefaultStyle sets a foreground must still receive the brush on its
-        // inherited text — the brush overrides the document default; only a run's OWN explicit color wins.
+        // The ladder, at its most visible: a document default that STATES a foreground is a declaration
+        // at document scope, and the object model wins wherever it speaks — the caller's brush colors
+        // only text no level declared for. The whole document therefore paints flat grey and the
+        // gradient appears nowhere.
         var gray = Color.FromRgb(180, 180, 180);
         var doc = new RichTextBuilder(CellStyle.Default.WithForeground(gray)).Run("aaaa bbbb").Build();
         var ft = new TextFormatter().Format(doc, 9);
@@ -124,11 +132,10 @@ public class BrushedFormattedTextTests
                 new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right),
                 OutputCapabilities.None));
 
-        var left = b[0, 0].Style.Foreground;
-        var right = b[8, 0].Style.Foreground;
-        Assert.NotEqual(gray, left);                       // the brush applied — NOT the document default
-        Assert.True(left.Red > left.Blue, $"left {left}");
-        Assert.True(right.Blue > right.Red, $"right {right}");
+        Assert.Equal("a", b[0, 0].Grapheme);
+        Assert.Equal("b", b[8, 0].Grapheme);
+        Assert.Equal(gray, b[0, 0].Style.Foreground);
+        Assert.Equal(gray, b[8, 0].Style.Foreground);
     }
 
     [Fact]
@@ -144,19 +151,22 @@ public class BrushedFormattedTextTests
         Assert.Equal(green, b[0, 0].Style.Foreground);   // explicit green is kept; the red brush does NOT override
     }
 
-    // ---- B (per-run ScopedBrush) ----------------------------------------------------------------
+    // ---- B (run-declared brushes) ----------------------------------------------------------------
 
     private static LinearGradientBrush LeftToRight() =>
         new(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
 
     [Fact]
-    public void PerRunBrush_InlineScope_SamplesTheRunNotTheBlock()
+    public void PerRunBrush_SamplesTheRunNotTheBlock()
     {
-        // "xxxxxxxxxxAB" on one line; "AB" carries an Inline-scoped L→R gradient. Inline scope sweeps AB's own
-        // 2-cell rect (A red, B blue); block scope would put A near the right of the block (blue). Per-run-only
-        // overload, so the leading x's stay flat.
-        var bs = new ScopedBrush(LeftToRight());   // default Inline
-        var doc = new RichTextBuilder().Run("xxxxxxxxxx").BrushedRun("AB", bs).Build();
+        // "xxxxxxxxxxAB" on one line; "AB" declares an L→R gradient on its own carrier. The declaration
+        // site is the run, so the gradient sweeps AB's own 2-cell strip (A red, B blue); block-rect
+        // sampling would put A near the right of the block (blue). No document/preference brush, so the
+        // leading x's stay flat.
+        var doc = new RichTextBuilder()
+            .Run("xxxxxxxxxx")
+            .Run("AB", new BrushedStyle { Foreground = LeftToRight() })
+            .Build();
         var ft = new TextFormatter().Format(doc, 14);
 
         var b = DrawHarness.Render(14, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), OutputCapabilities.None));
@@ -170,16 +180,23 @@ public class BrushedFormattedTextTests
     }
 
     [Fact]
-    public void PerRunBrush_BlockScope_SamplesTheWholeBlock()
+    public void BlockStyleBrush_SamplesTheWholeBlock()
     {
-        // Same layout, but Block scope: "AB" sits near the right of the ~12-wide block, so it reads blue.
-        var bs = new ScopedBrush(LeftToRight(), DeclarationScope.Block);
-        var doc = new RichTextBuilder().Run("xxxxxxxxxx").BrushedRun("AB", bs).Build();
+        // Same layout, but the gradient is declared on the PARAGRAPH's own style — the block rung. Every
+        // run that declares no foreground samples the block's 2-D rect, so "A" near the right of the
+        // ~12-wide block reads blue.
+        var doc = new RichTextBuilder()
+            .Paragraph(style: new BrushedStyle { Foreground = LeftToRight() })
+            .Run("xxxxxxxxxx")
+            .Run("AB")
+            .Build();
         var ft = new TextFormatter().Format(doc, 14);
 
         var b = DrawHarness.Render(14, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), OutputCapabilities.None));
 
+        var x = b[0, 0].Style.Foreground;
         var a = b[10, 0].Style.Foreground;
+        Assert.True(x.Red > x.Blue, $"leading x should be red (block left edge), was {x}");
         Assert.True(a.Blue > a.Red, $"A should be blue (block scope, right side), was {a}");
     }
 
@@ -187,14 +204,17 @@ public class BrushedFormattedTextTests
     public void PerRunBrush_WinsOverTheDocumentBrush()
     {
         var green = Color.FromRgb(0, 200, 0);
-        var doc = new RichTextBuilder().Run("gg ").BrushedRun("RR", new ScopedBrush(new SolidColorBrush(Red))).Build();
+        var doc = new RichTextBuilder()
+            .Run("gg ")
+            .Run("RR", new BrushedStyle { Foreground = new SolidColorBrush(Red) })
+            .Build();
         var ft = new TextFormatter().Format(doc, 14);
 
         var b = DrawHarness.Render(14, 2, ctx =>
             ctx.DrawFormattedText(ft, new Rect(0, 0, 14, 2), new SolidColorBrush(green), OutputCapabilities.None));
 
-        Assert.Equal(green, b[0, 0].Style.Foreground);   // 'g' — untagged → document brush
-        Assert.Equal(Red, b[3, 0].Style.Foreground);     // 'R' — per-run brush wins over the document brush
+        Assert.Equal(green, b[0, 0].Style.Foreground);   // 'g' — undeclared → the preference brush
+        Assert.Equal(Red, b[3, 0].Style.Foreground);     // 'R' — the run's declaration wins
     }
 
     // ---- A (inline 1-D wrap-invariant sampling) --------------------------------------------------
@@ -202,11 +222,14 @@ public class BrushedFormattedTextTests
     [Fact]
     public void PerRunBrush_InlineScope_IsWrapInvariant()
     {
-        // The same Inline-scoped run, laid out unwrapped vs wrapped, colors each grapheme identically — the
-        // gradient flows across the wrap as ONE reading-order strip, not restarting per line-piece.
-        var bs = new ScopedBrush(LeftToRight());   // Inline L→R, Red→Blue
+        // The same run-declared gradient, laid out unwrapped vs wrapped, colors each grapheme identically —
+        // the gradient flows across the wrap as ONE reading-order strip, not restarting per line-piece.
         FormattedText Build(int width) =>
-            new TextFormatter().Format(new RichTextBuilder().BrushedRun("aaaa bbbb cccc", bs).Build(), width);
+            new TextFormatter().Format(
+                new RichTextBuilder()
+                    .Run("aaaa bbbb cccc", new BrushedStyle { Foreground = LeftToRight() })
+                    .Build(),
+                width);
 
         var unwrapped = DrawHarness.Render(20, 2, ctx => ctx.DrawFormattedText(Build(20), new Rect(0, 0, 20, 2), OutputCapabilities.None));
         var wrapped = DrawHarness.Render(12, 3, ctx => ctx.DrawFormattedText(Build(9), new Rect(0, 0, 12, 3), OutputCapabilities.None));
@@ -230,9 +253,12 @@ public class BrushedFormattedTextTests
         // Pins the width hinge: the run's logical-offset accounting (GraphemeWidth) must match the painter's
         // cursor advance for WIDE glyphs (CJK 字 = 2 cells). If they drift, the strip slides past the wrap and
         // a wide glyph's wrapped color won't match its unwrapped color.
-        var bs = new ScopedBrush(LeftToRight());
         FormattedText Build(int width) =>
-            new TextFormatter().Format(new RichTextBuilder().BrushedRun("字字字 字字字", bs).Build(), width);
+            new TextFormatter().Format(
+                new RichTextBuilder()
+                    .Run("字字字 字字字", new BrushedStyle { Foreground = LeftToRight() })
+                    .Build(),
+                width);
 
         var unwrapped = DrawHarness.Render(20, 2, ctx => ctx.DrawFormattedText(Build(20), new Rect(0, 0, 20, 2), OutputCapabilities.None));
         var wrapped = DrawHarness.Render(10, 3, ctx => ctx.DrawFormattedText(Build(7), new Rect(0, 0, 10, 3), OutputCapabilities.None));

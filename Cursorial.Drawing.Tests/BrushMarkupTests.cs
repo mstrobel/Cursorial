@@ -10,8 +10,8 @@ using Cursorial.Rendering.Text;
 namespace Cursorial.Tests.Drawing;
 
 // Markup gradients: a [brush=VALUE]…[/brush] tag, resolved by BrushMarkup — inline gradient syntax
-// (linear:/radial:/conic: + a color list) or a named-brush registry. The opaque Tag channel keeps IBrush
-// out of Rendering; DrawFormattedText reads the tag and brushes the run.
+// (linear:/radial:/conic: + a color list) or a named-brush registry. The resolved IBrush is stated on the
+// wrapped runs' own carriers, so it samples each run's wrap-invariant strip like any run declaration.
 public class BrushMarkupTests
 {
     private static FormattedText Format(string markup, TextMarkupOptions options, int width = 12) =>
@@ -42,9 +42,9 @@ public class BrushMarkupTests
     [Fact]
     public void RegistryBrush_ResolvesByName()
     {
-        var registry = new Dictionary<string, ScopedBrush>(StringComparer.OrdinalIgnoreCase)
+        var registry = new Dictionary<string, IBrush>(StringComparer.OrdinalIgnoreCase)
         {
-            ["solidred"] = new ScopedBrush(new SolidColorBrush(Color.FromRgb(255, 0, 0))),
+            ["solidred"] = new SolidColorBrush(Color.FromRgb(255, 0, 0)),
         };
         var ft = Format("[brush=solidred]X[/brush]", BrushMarkup.Options(registry: registry), width: 8);
         var b = DrawHarness.Render(8, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), OutputCapabilities.None));

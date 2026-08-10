@@ -1,4 +1,3 @@
-using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Rendering.Text;
 
@@ -6,16 +5,16 @@ namespace Cursorial.Rendering.Media;
 
 /// <summary>
 /// Wires gradient brushes into <see cref="TextMarkup"/> via a <c>[brush=VALUE]…[/brush]</c> tag. Two authoring
-/// styles, one opaque tag (the §9 invariant holds — Rendering's parser never sees a brush):
+/// styles, one resolved <see cref="IBrush"/> the parser states on the wrapped runs' own carriers:
 /// <list type="bullet">
 /// <item><b>Inline</b> — <c>[brush=linear:#f92672,#66d9ef]</c> / <c>[brush=radial:red,black]</c> /
 /// <c>[brush=conic:0,4,2]</c>: a gradient kind plus a comma-separated color list (hex, palette index, or named
 /// color), evenly spaced, with the brush's default geometry. Convenient for simple gradients.</item>
 /// <item><b>Registry</b> — <c>[brush=sunset]</c>: looks the name up in a caller-supplied
-/// name→<see cref="ScopedBrush"/> map, for complex gradients (custom directions, angles, multi-stop, scope).</item>
+/// name→<see cref="IBrush"/> map, for complex gradients (custom directions, angles, multi-stop).</item>
 /// </list>
-/// The resolved <see cref="ScopedBrush"/> is <see cref="DeclarationScope.Inline"/> by default (the run's
-/// wrap-invariant 1-D strip); a registry entry may use any scope.
+/// The declaration site is the run, so the brush samples the run's wrap-invariant 1-D strip — scope is
+/// inferred, never stated.
 /// </summary>
 public static class BrushMarkup
 {
@@ -25,33 +24,33 @@ public static class BrushMarkup
     /// <paramref name="registry"/> up by name. Returns null (the parser then raises "unrecognized brush") when
     /// neither matches.
     /// </summary>
-    public static Func<string, object?> Resolver(IReadOnlyDictionary<string, ScopedBrush>? registry = null) =>
+    public static Func<string, IBrush?> Resolver(IReadOnlyDictionary<string, IBrush>? registry = null) =>
         value =>
         {
             if (registry is not null && registry.TryGetValue(value, out var named)) return named;
-            if (TryParseInline(value, out var brushed)) return brushed;
+            if (TryParseInline(value, out var brush)) return brush;
             return null;
         };
 
     /// <summary>Build <see cref="TextMarkupOptions"/> wired with the brush <see cref="Resolver"/> (inline
     /// gradients + an optional registry) plus the given default style.</summary>
     public static TextMarkupOptions Options(CellStyle defaultStyle = default,
-                                            IReadOnlyDictionary<string, ScopedBrush>? registry = null) =>
+                                            IReadOnlyDictionary<string, IBrush>? registry = null) =>
         new() { DefaultStyle = BrushedStyle.FromStated(defaultStyle), BrushResolver = Resolver(registry) };
 
-    // Parse "kind:colorA,colorB[,colorC…]" into a ScopedBrush. Returns false for a non-inline value (no
+    // Parse "kind:colorA,colorB[,colorC…]" into an IBrush. Returns false for a non-inline value (no
     // recognized kind/colon) so the resolver can fall back to the registry.
-    private static bool TryParseInline(string value, out ScopedBrush brushed)
+    private static bool TryParseInline(string value, out IBrush? brush)
     {
-        brushed = default;
+        brush = null;
 
         int colon = value.IndexOf(':');
 
         if (colon <= 0)
         {
-            if (MarkupColor.TryParseBrush(value, out var brush))
+            if (MarkupColor.TryParseBrush(value, out var solid))
             {
-                brushed = new ScopedBrush(brush);
+                brush = solid;
                 return true;
             }
 
@@ -85,7 +84,7 @@ public static class BrushMarkup
 
         if (gradient is null) return false;
 
-        brushed = new ScopedBrush(gradient); // Inline scope by default — the run's 1-D strip
+        brush = gradient;
         return true;
     }
 }

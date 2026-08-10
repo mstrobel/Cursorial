@@ -6,7 +6,7 @@
 # FormattedText.ToPlainText() per corpus case, through the real paint path at
 # OutputCapabilities.None. Metadata is deliberately limited to block- and line-level geometry:
 # run-level shape is exactly what the carrier migration is allowed to change.
-# corpus: 81 cases
+# corpus: 82 cases
 
 == plain-single-line ==
 desc: One unwrapped run. The floor: if this moves, everything moved.
@@ -615,7 +615,7 @@ plain(natural):
   |tag] \\ done|
 
 == brush-document-scope-horizontal ==
-desc: A document brush is sampled against each BLOCK's rect — the gradient spans the block across wrapped lines, and resets between blocks.
+desc: A document brush samples the painted docBounds — one continuous gradient spans both blocks; nothing resets at the block boundary.
 format: columns=12 maxRows=- fillEntireBounds=no
 result: size=12x5 provided=12 hasTrimmedLines=no blocks=2
   block[0] FormattedParagraph size=12x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
@@ -639,7 +639,7 @@ plain(natural):
   |second|
 
 == brush-document-scope-vertical ==
-desc: Top-to-bottom over wrapped lines: the block rect's height is the sampling extent.
+desc: Top-to-bottom over wrapped lines: the painted docBounds' height is the sampling extent.
 format: columns=12 maxRows=- fillEntireBounds=no
 result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=12x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
@@ -697,19 +697,19 @@ plain(natural):
   |字字字|
   |字字字|
 
-== brush-run-block-scope ==
-desc: DeclarationScope.Block: the run samples the enclosing block's 2-D rect, so its position within the block decides its colour.
+== brush-block-style-scope ==
+desc: A gradient declared on the enclosing block's own style: every run that declares no foreground samples the block's 2-D rect, so a run's position within the block decides its colour. Replaces brush-run-block-scope (a Block-scoped ScopedBrush tag on one run), a construction scope inference removed.
 format: columns=14 maxRows=- fillEntireBounds=no
 result: size=12x1 provided=14 hasTrimmedLines=no blocks=1
-  block[0] FormattedParagraph size=12x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
     line[0] columns=12 rows=1 trimmed=no
 plain(bounds=0,0 14x3):
   |xxxxxxxxxxAB|
 plain(natural):
   |xxxxxxxxxxAB|
 
-== brush-run-document-scope ==
-desc: DeclarationScope.Document samples the whole painted bounds, which is wider than the block.
+== brush-document-default-gradient ==
+desc: A gradient declared as the document default's foreground samples docBounds — the ladder's document rung observed directly. Replaces brush-run-document-scope (a Document-scoped ScopedBrush tag), a construction scope inference removed.
 format: columns=14 maxRows=- fillEntireBounds=no
 result: size=12x1 provided=14 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=12x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
@@ -730,8 +730,8 @@ plain(bounds=0,0 14x3):
 plain(natural):
   |gg RR|
 
-== brush-over-document-default-foreground ==
-desc: An INHERITED foreground is the brush's to colour; the document default must not win.
+== document-default-foreground-beats-preference-brush ==
+desc: A document default that STATES a foreground beats the caller's preference brush — the object model wins wherever it speaks; the preference colours only text no level declared for.
 format: columns=9 maxRows=- fillEntireBounds=no
 result: size=9x1 provided=9 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=9x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
@@ -1147,7 +1147,7 @@ plain(natural):
   |▀▀▀▀▀|
 
 == align-center-brushed-wider-than-budget ==
-desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The combination makes the two anchoring computations visible at once: the block rect a brush samples against is built from the BLOCK anchor, which is Left for a paragraph (FormattedText.cs:175), while the lines are laid out at the paragraph's own Center anchor (:187). Painted 20 wide from a 12-wide budget, the sampling rect spans columns 0-11 while the glyphs sit further right, so the ramp's tail clamps.
+desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The document/preference rung samples docBounds (columns 0-19), which covers the centred glyphs, so the ramp no longer clamps. The paragraph's Left-forced block SamplingRect still diverges from its lines' Center anchor, but only a block-declared brush can observe that rect now, and none is declared here; re-aiming it at the walk's Extent is 7b's.
 format: columns=12 maxRows=- fillEntireBounds=no
 result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=12x4 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=4
@@ -1222,3 +1222,14 @@ plain(bounds=0,0 12x4):
 plain(natural):
   |aaaa bbbb|
   |cccc|
+
+== brush-run-solid-equal-to-document-default ==
+desc: A run-declared SOLID equal to the document default's colour still wins at its own scope — declaration wins by policy, no value equality anywhere. Under a gradient document brush the declared solid is visibly flat; phase 6's restatement sentinel briefly inverted this, unpinned.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=10x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=10x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 14x3):
+  |aaaa SOLID|
+plain(natural):
+  |aaaa SOLID|

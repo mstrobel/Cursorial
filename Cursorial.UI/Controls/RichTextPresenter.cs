@@ -432,11 +432,18 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         var fg = Foreground ?? Brushes.Default;
         var fgColor = fg is SolidColorBrush { Color: var c } ? c : Color.Default;
 
+        // The document default declares NO foreground — the element brush rides the paint preference
+        // (RenderPrimaryContent), the ladder's rung for exactly this opinion, and colors every run no
+        // level of the document declared one for. Stating a flattened solid here instead would out-rank
+        // the preference at the document rung: same color for a solid element brush, but the wrong
+        // level speaking.
         var style = CellStyle.Transparent
-                             .WithForeground(fgColor)
+                             .WithForeground(Color.Default)
                              .WithAttributes(attributes.Flags)
                              .WithUnderlineStyle(attributes.UnderlineShape);
 
+        // The underline color has no preference rung of its own, so the flattened element color keeps
+        // riding the document default — unchanged behavior, no competition to misrank.
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
             style = style.WithUnderlineColor(fgColor);
 

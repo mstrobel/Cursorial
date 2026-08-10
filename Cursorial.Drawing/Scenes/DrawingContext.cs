@@ -1075,23 +1075,19 @@ public sealed class DrawingContext
     /// <paramref name="preference"/> — the caller's style opinion, its attribute channels built with
     /// <see cref="BrushedStyle.Imposing"/> from an element's inherited flag word — onto every painted
     /// cell. <see langword="default"/> is the identity: the document paints with its own colors
-    /// (markup spans, per-run <c>BrushedRun</c> brushes) and attributes.
+    /// (markup spans, run-declared brushes) and attributes.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The preference's <see cref="BrushedStyle.Foreground"/> is the document-wide brush, sampled against
-    /// <b>each block's rect</b> (block-scoped, 2-D — a gradient spans each block and resets between them).
-    /// Text and horizontal rules are colored per cell; FIGlet, sized text, and inline content take one
-    /// sampled color at their center (their painters take a single style) — so an image / icon that
-    /// <em>degrades to a glyph</em> picks up the gradient too. The brush colors cells that <b>inherited</b>
-    /// the document foreground — i.e., whose foreground is unset (<see cref="Color.Default"/>) or equals
-    /// the document's <see cref="FormattedText.DefaultStyle"/> foreground. A run's <em>own</em> explicit
-    /// foreground (a markup color, a content's fallback color — one that differs from the document default)
-    /// <b>wins</b> over the brush, as does a per-run brush — stated on the run's carrier, or riding a
-    /// <c>ScopedBrush</c> tag — at its declaration scope. So a
-    /// document that sets a default text color still receives the gradient, while individually-colored runs
-    /// keep their color. <paramref name="capabilities"/> drives protocol selection for embedded content;
-    /// pass the session's negotiated capabilities.
+    /// The preference's <see cref="BrushedStyle.Foreground"/> is the WEAKEST rung of the foreground ladder
+    /// — it colors only text no level of the document declared a foreground for, sampling the painted
+    /// bounds. Declarations in the object model win wherever they speak, each at the scope of its own
+    /// declaration site: a run's carrier at the run's wrap-invariant strip, a block's style at the block's
+    /// 2-D rect, the document default at the painted bounds. Text and horizontal rules are colored per
+    /// cell; FIGlet, sized text, and inline content take one sampled color at their center (their painters
+    /// take a single style) — so an image / icon that <em>degrades to a glyph</em> picks up the gradient
+    /// too. <paramref name="capabilities"/> drives protocol selection for embedded content; pass the
+    /// session's negotiated capabilities.
     /// </para>
     /// <para>
     /// The preference's attribute channels are the inherited-attribute leg — an ancestor's
@@ -1111,7 +1107,7 @@ public sealed class DrawingContext
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        var documentForeground = text.DefaultStyle.Foreground;
+        var documentForeground = text.DefaultCarrier.Foreground;
         Rect docBounds = bounds;   // can't capture an `in` parameter in the resolver closure
 
         // Under an active push the document paints through a clip-windowed, origin-re-based view: every
@@ -1152,27 +1148,30 @@ public sealed class DrawingContext
     /// folds the result onto the run's own style.
     /// </summary>
     /// <param name="preference">The caller's opinion, decomposed here into the resolver's legs. Its
-    /// <see cref="BrushedStyle.Foreground"/> is the brush applied to the document text — null is the
-    /// identity, the run keeps its colors. Its attribute channels are the element-effective attributes,
+    /// <see cref="BrushedStyle.Foreground"/> is the ladder's weakest rung — the brush for text no level
+    /// of the document declared a foreground for; null is the identity, the run keeps its colors. Its
+    /// attribute channels are the element-effective attributes,
     /// merged onto every cell PER AXIS (absent = the identity): booleans union with the run's own; weight
     /// and posture are IMPOSED, so an inherited Bold clears a run's Faint — the pair is unrenderable,
     /// sharing the SGR 22 reset. Its <see cref="BrushedStyle.UnderlineShape"/> is the element's underline
     /// shape, applied only when the preference carries an Underline opinion and the shape is not the
     /// <see cref="UnderlineStyle.Single"/> default.</param>
-    /// <param name="documentForeground">The document's default foreground. A run whose foreground equals it (or is unset) counts as having INHERITED it, and so is the brush's to color.</param>
-    /// <param name="docBounds">The sampling bounds for a document-scoped run brush.</param>
+    /// <param name="documentForeground">The document default's declared foreground brush, read off the
+    /// formatted text's carrier (<see cref="FormattedText.DefaultCarrier"/>), or null when the document
+    /// declares none. The ladder's document rung: it beats the preference and loses to a block or run
+    /// declaration, sampling <paramref name="docBounds"/>.</param>
+    /// <param name="docBounds">The sampling bounds for the document and preference rungs.</param>
     /// <returns>
     /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and returns the delta to fold
     /// onto that cell's base style.
     /// </returns>
     /// <remarks>
     /// <para>
-    /// Each leg previously built a whole <see cref="CellStyle"/> from <see cref="BrushedTextContext.BaseStyle"/>,
-    /// so the two legs that mean "no change" said it by reconstructing the base — a copy the caller then applied
-    /// on top of the value it was copied from. They are now the identity, which is both cheaper and honest: the
-    /// resolver's job is to say what the BRUSH does, and on those legs it does nothing. The base style stays on
-    /// the context because the third leg still has to READ it to decide whether the run's foreground was
-    /// inherited.
+    /// The foreground legs are a LADDER, weakest first: preference → document default → block → run, the
+    /// same precedence algebra as the UI property lanes. Declaration wins by policy — the strongest rung
+    /// that STATES a foreground supplies the brush, and no leg compares colour values: two structurally
+    /// identical brushes at different scopes are different mapping policies, so value equality has nothing
+    /// to say. Each winner samples the geometry of its own declaration site.
     /// </para>
     /// <para>
     /// And each leg previously SAMPLED its brush, which is why the resolver ran per cell. It now hands the brush
@@ -1181,14 +1180,15 @@ public sealed class DrawingContext
     /// </para>
     /// </remarks>
     public static BrushedTextResolver CreateBrushResolver(in BrushedStyle preference,
-                                                          Color documentForeground,
+                                                          IBrush? documentForeground,
                                                           Rect docBounds)
     {
         // The preference arrives pre-composed (BrushedStyle.Imposing), but the per-run merge below needs
         // the loose values back: when the Underline presence bit merges it re-states each RUN's own
         // shape — a value a delta composed before the runs are known cannot carry. Decomposed once, on
         // this side of the per-run delegate.
-        var documentBrush = preference.Foreground;
+        var documentBrush = documentForeground;
+        var preferenceBrush = preference.Foreground;
         var baseAttributes = ImposedAttributes(preference);
         var baseUnderlineShape = preference.UnderlineShape ?? UnderlineStyle.Single;
 
@@ -1198,59 +1198,41 @@ public sealed class DrawingContext
                    BrushedStyle style = default;
                    Rect bounds = default;
 
-                   // Whether the run's foreground was INHERITED — unset, or equal to the document default.
-                   // Read from the RESOLVED base: a carrier that merely restates the inherited value resolves
-                   // into it, so one comparison serves both the carrier gate and the document-brush leg.
-                   var fg = ctx.BaseStyle.Foreground;
-                   bool inheritedForeground = fg.IsDefault || fg == documentForeground;
-
-                   // A run that declares its own brush wins, at its declaration scope — the run's own carrier
-                   // FIRST, the legacy ScopedBrush tag second. A brush is a declaration when it can say
-                   // something the inherited foreground does not: a uniform brush resolving to the inherited
-                   // value is a restatement, not a claim, and falls through to the legs below. That reading is
-                   // a SENTINEL — producers restate whole styles into carriers this phase, so declaration and
-                   // restatement are indistinguishable by value here. The scope-inference phase makes
-                   // producers state only what they mean, and this exclusion goes with it.
-                   if (ctx.Style.Foreground is { } runBrush && !(runBrush.IsUniform && inheritedForeground))
+                   // The ladder, strongest declaration first. Whichever rung wins, the brush goes back
+                   // UNSAMPLED with its declaration site's rect — the painter (or a glyph face) samples it
+                   // per cell.
+                   if (ctx.Style.Foreground is { } runBrush)
                    {
                        // The declaration site is the run, so the scope is the run's wrap-invariant 1-D
                        // reading-order strip — inferred, not carried.
                        style = new BrushedStyle { Foreground = runBrush };
                        bounds = ctx.InlineScope;
                    }
-                   else if (ctx.Tag is ScopedBrush bs)
+                   else if (ctx.BlockForeground is { } blockBrush)
                    {
-                       // Inline → the wrap-invariant 1-D reading-order strip, so the gradient flows
-                       // continuously across a wrap instead of restarting per line-piece. Block / Document →
-                       // the 2-D laid-out box. The painter pre-computed the strip as a rebased rect, so the
-                       // choice is which RECT to hand back rather than which coordinate convention to sample in.
-                       style = new BrushedStyle { Foreground = bs.Foreground };
-                       bounds = bs.Scope switch
-                                {
-                                    DeclarationScope.Inline   => ctx.InlineScope,
-                                    DeclarationScope.Document => docBounds,
-                                    _                         => ctx.Block,
-                                };
-                   }
-                   else if (documentBrush is null)
-                   {
-                       // No brush anywhere: the brush leg has nothing to say. Note this is NOT the same as
-                       // "the brush sampled to Color.Default" — that is a real foreground opinion and lands
-                       // through the branches above and below, which is exactly the distinction a nullable
-                       // channel buys over `Color.Default`-as-absent.
-                   }
-                   else if (inheritedForeground)
-                   {
-                       // Otherwise the document brush colors runs that inherited the document
-                       // foreground; an explicit run color (differing from the default) wins.
-                       style = new BrushedStyle { Foreground = documentBrush };
+                       // Declared on the enclosing block: the 2-D laid-out box, so a run's position within
+                       // the block decides its colour.
+                       style = new BrushedStyle { Foreground = blockBrush };
                        bounds = ctx.Block;
+                   }
+                   else if (documentBrush is { } declared)
+                   {
+                       // Declared as the document default's foreground: the painted document bounds.
+                       style = new BrushedStyle { Foreground = declared };
+                       bounds = docBounds;
+                   }
+                   else if (preferenceBrush is { } fallback)
+                   {
+                       // No level declared a foreground: the caller's preference colors the text, over the
+                       // same bounds the document rung would have used.
+                       style = new BrushedStyle { Foreground = fallback };
+                       bounds = docBounds;
                    }
 
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,
                    // per AXIS (default none = a no-op for every pre-existing caller). The shape handed to
-                   // the fold is the RUN's own, which is what the Underline bit re-states.
-                   style = style.Imposing(baseAttributes, ctx.BaseStyle.UnderlineStyle);
+                   // the fold is the RUN's resolved own, which is what the Underline bit re-states.
+                   style = style.Imposing(baseAttributes, ctx.UnderlineShape);
 
                    // When the base carries the Underline presence bit with a non-Single shape, the shape rides
                    // along (the widened seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot

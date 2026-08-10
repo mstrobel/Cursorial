@@ -62,8 +62,9 @@ internal sealed record TextCase
     public IBrush? DocumentBrush { get; init; }
 
     /// <summary>
-    /// Build a brush resolver even without a <see cref="DocumentBrush"/> — the per-run
-    /// <see cref="ScopedBrush"/> cases need the Drawing resolver installed to read their run tags.
+    /// Build a brush resolver even without a <see cref="DocumentBrush"/> — the declaration cases
+    /// (run-carrier, block-style, document-default brushes) want the Drawing resolver installed so
+    /// the production ladder, not just the painter's fold, is what the dump exercises.
     /// </summary>
     public bool Brushed { get; init; }
 
@@ -458,8 +459,8 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-document-scope-horizontal",
-            Description = "A document brush is sampled against each BLOCK's rect — the gradient spans the block "
-                        + "across wrapped lines, and resets between blocks.",
+            Description = "A document brush samples the painted docBounds — one continuous gradient spans both "
+                        + "blocks; nothing resets at the block boundary.",
             Document = static () => new RichTextBuilder().Run(Prose).EndParagraph().Run("second").Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 7,
             DocumentBrush = LeftToRight()
@@ -467,7 +468,7 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-document-scope-vertical",
-            Description = "Top-to-bottom over wrapped lines: the block rect's height is the sampling extent.",
+            Description = "Top-to-bottom over wrapped lines: the painted docBounds' height is the sampling extent.",
             Document = static () => new RichTextBuilder().Run(Prose).Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 5,
             DocumentBrush = TopToBottom()
@@ -478,7 +479,7 @@ internal static class TextCorpus
             Description = "A per-run Inline-scoped gradient laid out WITHOUT a wrap. Paired with the wrapped "
                         + "case below: the same grapheme must take the same colour in both.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("aaaa bbbb cccc", new ScopedBrush(LeftToRight()))
+                                    .Run("aaaa bbbb cccc", new BrushedStyle { Foreground = LeftToRight() })
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 3, Brushed = true
         },
@@ -490,7 +491,7 @@ internal static class TextCorpus
                         + "reading-order strip rather than restarting per line-piece. This is the property "
                         + "most likely to break silently under a carrier migration.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("aaaa bbbb cccc", new ScopedBrush(LeftToRight()))
+                                    .Run("aaaa bbbb cccc", new BrushedStyle { Foreground = LeftToRight() })
                                     .Build(),
             Columns = 9, PaintColumns = 12, PaintRows = 4, Brushed = true
         },
@@ -500,28 +501,33 @@ internal static class TextCorpus
             Description = "Wrap invariance with wide glyphs — the logical-offset accounting and the painter's "
                         + "cursor advance must stay in step across the break.",
             Document = static () => new RichTextBuilder()
-                                    .BrushedRun("字字字 字字字", new ScopedBrush(LeftToRight()))
+                                    .Run("字字字 字字字", new BrushedStyle { Foreground = LeftToRight() })
                                     .Build(),
             Columns = 7, PaintColumns = 10, PaintRows = 4, Brushed = true
         },
         new()
         {
-            Id = "brush-run-block-scope",
-            Description = "DeclarationScope.Block: the run samples the enclosing block's 2-D rect, so its "
-                        + "position within the block decides its colour.",
+            Id = "brush-block-style-scope",
+            Description = "A gradient declared on the enclosing block's own style: every run that declares no "
+                        + "foreground samples the block's 2-D rect, so a run's position within the block "
+                        + "decides its colour. Replaces brush-run-block-scope (a Block-scoped ScopedBrush tag "
+                        + "on one run), a construction scope inference removed.",
             Document = static () => new RichTextBuilder()
+                                    .Paragraph(style: new BrushedStyle { Foreground = LeftToRight() })
                                     .Run("xxxxxxxxxx")
-                                    .BrushedRun("AB", new ScopedBrush(LeftToRight(), DeclarationScope.Block))
+                                    .Run("AB")
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 3, Brushed = true
         },
         new()
         {
-            Id = "brush-run-document-scope",
-            Description = "DeclarationScope.Document samples the whole painted bounds, which is wider than the block.",
-            Document = static () => new RichTextBuilder()
+            Id = "brush-document-default-gradient",
+            Description = "A gradient declared as the document default's foreground samples docBounds — the "
+                        + "ladder's document rung observed directly. Replaces brush-run-document-scope (a "
+                        + "Document-scoped ScopedBrush tag), a construction scope inference removed.",
+            Document = static () => new RichTextBuilder(new BrushedStyle { Foreground = LeftToRight() })
                                     .Run("xxxxxxxxxx")
-                                    .BrushedRun("AB", new ScopedBrush(LeftToRight(), DeclarationScope.Document))
+                                    .Run("AB")
                                     .Build(),
             Columns = 14, PaintColumns = 24, PaintRows = 3, Brushed = true
         },
@@ -531,15 +537,17 @@ internal static class TextCorpus
             Description = "A run's own brush beats the document brush; untagged runs keep the document's.",
             Document = static () => new RichTextBuilder()
                                     .Run("gg ")
-                                    .BrushedRun("RR", new ScopedBrush(new SolidColorBrush(Red)))
+                                    .Run("RR", new BrushedStyle { Foreground = new SolidColorBrush(Red) })
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 3,
             DocumentBrush = new SolidColorBrush(Teal), Brushed = true
         },
         new()
         {
-            Id = "brush-over-document-default-foreground",
-            Description = "An INHERITED foreground is the brush's to colour; the document default must not win.",
+            Id = "document-default-foreground-beats-preference-brush",
+            Description = "A document default that STATES a foreground beats the caller's preference brush — "
+                        + "the object model wins wherever it speaks; the preference colours only text no "
+                        + "level declared for.",
             Document = static () => new RichTextBuilder(CellStyle.Default.WithForeground(Color.FromRgb(180, 180, 180)))
                                     .Run("aaaa bbbb")
                                     .Build(),
@@ -908,12 +916,11 @@ internal static class TextCorpus
             Id = "align-center-brushed-wider-than-budget",
             Description = "align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 "
                         + "cases the align-* family carries no brush and no brushed case states an alignment, so "
-                        + "nothing combined them. The combination makes the two anchoring computations visible at "
-                        + "once: the block "
-                        + "rect a brush samples against is built from the BLOCK anchor, which is Left for a "
-                        + "paragraph (FormattedText.cs:175), while the lines are laid out at the paragraph's own "
-                        + "Center anchor (:187). Painted 20 wide from a 12-wide budget, the sampling rect spans "
-                        + "columns 0-11 while the glyphs sit further right, so the ramp's tail clamps.",
+                        + "nothing combined them. The document/preference rung samples docBounds (columns 0-19), "
+                        + "which covers the centred glyphs, so the ramp no longer clamps. The paragraph's "
+                        + "Left-forced block SamplingRect still diverges from its lines' Center anchor, but only "
+                        + "a block-declared brush can observe that rect now, and none is declared here; "
+                        + "re-aiming it at the walk's Extent is 7b's.",
             Document = static () => new RichTextBuilder().Paragraph(alignment: TextAlignment.Center).Run(Prose).Build(),
             Columns = 12, PaintColumns = 20, PaintRows = 6,
             DocumentBrush = LeftToRight()
@@ -932,7 +939,7 @@ internal static class TextCorpus
             Document = static () => new RichTextBuilder()
                                     .Run("hi ")
                                     .Run("A", new GlyphSource(FigletFonts.Mini),
-                                         tag: new ScopedBrush(new SolidColorBrush(Red)))
+                                         new BrushedStyle { Foreground = new SolidColorBrush(Red) })
                                     .Run(" there")
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 5,
@@ -952,10 +959,7 @@ internal static class TextCorpus
             {
                 var builder = new RichTextBuilder();
                 builder.Run("go ");
-
-                using (builder.PushTag(new ScopedBrush(new SolidColorBrush(Red))))
-                    builder.Run("UP", new TextSizing(Scale: 2));
-
+                builder.Run("UP", new TextSizing(Scale: 2), new BrushedStyle { Foreground = new SolidColorBrush(Red) });
                 builder.Run(" now");
                 return builder.Build();
             },
@@ -995,6 +999,23 @@ internal static class TextCorpus
             Document = static () => TextMarkup.Parse("[brush=linear:#ff0000,#0000ff]aaaa bbbb cccc[/brush]",
                                                      BrushMarkup.Options()),
             Columns = 9, PaintColumns = 12, PaintRows = 4, Brushed = true
+        },
+        new()
+        {
+            Id = "brush-run-solid-equal-to-document-default",
+            Description = "A run-declared SOLID equal to the document default's colour still wins at its own "
+                        + "scope — declaration wins by policy, no value equality anywhere. Under a gradient "
+                        + "document brush the declared solid is visibly flat; phase 6's restatement sentinel "
+                        + "briefly inverted this, unpinned.",
+            Document = static () => new RichTextBuilder(CellStyle.Default.WithForeground(Color.FromRgb(180, 180, 180)))
+                                    .Run("aaaa ")
+                                    .Run("SOLID", new BrushedStyle
+                                                  {
+                                                      Foreground = new SolidColorBrush(Color.FromRgb(180, 180, 180))
+                                                  })
+                                    .Build(),
+            Columns = 14, PaintColumns = 14, PaintRows = 3,
+            DocumentBrush = LeftToRight()
         }
     ];
 

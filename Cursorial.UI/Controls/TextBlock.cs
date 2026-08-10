@@ -287,9 +287,14 @@ public class TextBlock : UIElement
                                     TextTrimming? trimmingOverride = null,
                                     WrapMode? wrappingOverride = null)
     {
+        // The document default declares no FOREGROUND: the element brush rides the paint preference
+        // (RenderContent), which colors text no level of the document declared one for. Transparent's
+        // stated foreground would out-rank it at the document rung and paint the glyphs transparent;
+        // the transparent background and underline color stay stated (the compositing identity).
         var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
                                           defaultWrap: wrappingOverride ?? TextWrapping,
-                                          defaultStyle: Output.CellStyle.Transparent);
+                                          defaultStyle: Output.CellStyle.Transparent
+                                                              .WithForeground(Cursorial.Media.Color.Default));
 
         return BuildPlainText(this, text, builder);
     }

@@ -389,11 +389,18 @@ public sealed class FigletPresenter : DrawnContentPresenter
         var fg = Foreground ?? Brushes.Default;
         var fgColor = fg is SolidColorBrush { Color: var c } ? c : Color.Default;
 
+        // No foreground on the block style — the element brush rides the paint preference
+        // (RenderPrimaryContent), which colors the face wherever the document declares nothing. A
+        // flattened solid here would be a block-level declaration out-ranking it: same color for a
+        // solid element brush, but the wrong level speaking — and a gradient element brush now spans
+        // the painted bounds rather than restarting per line-block.
         var style = CellStyle.Transparent
-                             .WithForeground(fgColor)
+                             .WithForeground(Color.Default)
                              .WithAttributes(attributes.Flags)
                              .WithUnderlineStyle(attributes.UnderlineShape);
 
+        // The underline color has no preference rung, so the flattened element color still rides the
+        // block style — unchanged behavior, no competition to misrank.
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
             style = style.WithUnderlineColor(fgColor);
 

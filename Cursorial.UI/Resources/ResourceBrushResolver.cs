@@ -47,16 +47,16 @@ public static class ResourceBrushResolver
         => s => scope.TryFindResource(s, out var resolved) ? resolved : null;
 
     /// <summary>A brush resolver that walks the application tail.</summary>
-    public static Func<string, object?> ForApplication { get; } = CreateCore(ApplicationLookup);
+    public static Func<string, IBrush?> ForApplication { get; } = CreateCore(ApplicationLookup);
 
     /// <summary>Creates a brush resolver over <paramref name="scope"/>'s chain.</summary>
-    public static Func<string, object?> Create(UIElement scope)
+    public static Func<string, IBrush?> Create(UIElement scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
         return CreateCore(ElementLookup(scope));
     }
 
-    private static Func<string, object?> CreateCore(Func<string, object?> innerLookup)
+    private static Func<string, IBrush?> CreateCore(Func<string, object?> innerLookup)
     {
         ArgumentNullException.ThrowIfNull(innerLookup);
 
@@ -65,22 +65,22 @@ public static class ResourceBrushResolver
         return value =>
                {
                    // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
-                   if (inline(value) is ScopedBrush { Foreground: {} f } brushedStyle)
+                   if (inline(value) is { } brush)
                    {
-                       if (f is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i } } &&
+                       if (brush is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i } } &&
                            MarkupColor.IsThemePaletteIndex(i) &&
                            Ansi16ThemeKeys.TryGetValue(i, out var themeKey) &&
                            innerLookup(themeKey) is IBrush themeBrush)
                        {
-                           brushedStyle = brushedStyle with { Foreground = themeBrush };
+                           return themeBrush;
                        }
 
-                       return brushedStyle;
+                       return brush;
                    }
 
                    // 2. A bare resource name resolved through the element's chain to an IBrush.
-                   if (innerLookup(value) is IBrush brush)
-                       return new ScopedBrush(brush);
+                   if (innerLookup(value) is IBrush resource)
+                       return resource;
 
                    return null; // unknown — the parser raises "Unrecognized brush"
                };

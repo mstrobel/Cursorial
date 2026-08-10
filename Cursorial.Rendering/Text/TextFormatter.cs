@@ -157,10 +157,9 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
-        // FormattedText.DefaultStyle stays a resolved value — the document-foreground comparison and the
-        // FillEntireBounds clear both consume it flat — so the document's carrier resolves at this
-        // boundary AND rides through whole as DefaultCarrier, the rung the painter's fall-through fold
-        // composes under every run.
+        // FormattedText.DefaultStyle stays a resolved value — the FillEntireBounds clear consumes it
+        // flat — so the document's carrier resolves at this boundary AND rides through whole as
+        // DefaultCarrier, the rung the painter's fall-through fold composes under every run.
         var result = new FormattedText(formattedBlocks.ToImmutable(),
                                        new Size(widthUsed, totalRows),
                                        availableColumns,
@@ -310,7 +309,7 @@ public sealed class TextFormatter
                                    usedWidth,
                                    plainTextOnly ? TextAlignment.Left : paragraph.Alignment,
                                    trimmedLines,
-                                   paragraph.VerticalAlignment);
+                                   paragraph.VerticalAlignment) with { Style = paragraph.Style };
     }
 
     private FormattedParagraph FormatParagraphCore(List<LineDraft> lines, int? knownUsedWidth = null,
@@ -398,9 +397,9 @@ public sealed class TextFormatter
             string previousCluster = ""; // kerning context — resets wherever a painted piece boundary falls
             // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
             // source run, sharing a carrier whose total width is back-filled below (W isn't known until the
-            // run is fully emitted). A run's brush arrives on its own carrier or on its tag; either opens
-            // the accounting — a run that shows neither has no brush to keep wrap-invariant.
-            var scope = run.Tag is not null || run.Style.Foreground is not null ? new InlineRunScope() : null;
+            // run is fully emitted). A run's brush arrives on its own carrier, which opens the accounting —
+            // a run that states no foreground has no brush to keep wrap-invariant.
+            var scope = run.Style.Foreground is not null ? new InlineRunScope() : null;
             int runOffset = 0;
 
             void EmitFragment()
@@ -408,7 +407,7 @@ public sealed class TextFormatter
                 previousCluster = ""; // a new piece paints independently — no junction to smush
                 if (fragmentBuilder.Length == 0) return;
                 _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
-                                  { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource });
+                                  { LogicalStart = runOffset, Scope = scope, Source = runSource });
                 runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
@@ -477,7 +476,7 @@ public sealed class TextFormatter
                         int tabWidth = metrics.StringWidth(tabSpaces);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(tabSpaces, run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource },
                             tabWidth));
                         runOffset += tabWidth;
                         continue;
@@ -490,7 +489,7 @@ public sealed class TextFormatter
                         int spaceWidth = metrics.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource },
                             spaceWidth));
                         runOffset += spaceWidth;
                         continue;
@@ -839,7 +838,6 @@ public sealed class TextFormatter
                 // the source run. Both share the run's scope, so a char-wrapped brushed run stays continuous.
                 headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink)
                              {
-                                 Tag = text.Tag,
                                  LogicalStart = text.LogicalStart,
                                  Scope = text.Scope,
                                  Source = text.Source
@@ -851,7 +849,6 @@ public sealed class TextFormatter
             {
                 tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink)
                              {
-                                 Tag = text.Tag,
                                  LogicalStart = text.LogicalStart + headFragmentWidth,
                                  Scope = text.Scope,
                                  Source = text.Source
@@ -1182,7 +1179,8 @@ public sealed class TextFormatter
             return new FormattedParagraph(ImmutableArray<FormattedLine>.Empty, new Size(columns, 0),
                                           paragraph.Alignment, true)
                    {
-                       VerticalAlignment = paragraph.VerticalAlignment
+                       VerticalAlignment = paragraph.VerticalAlignment,
+                       Style = paragraph.Style
                    };
         }
 
@@ -1198,7 +1196,8 @@ public sealed class TextFormatter
 
         return new FormattedParagraph(kept, new Size(columns, finalRows), paragraph.Alignment, true)
                {
-                   VerticalAlignment = paragraph.VerticalAlignment
+                   VerticalAlignment = paragraph.VerticalAlignment,
+                   Style = paragraph.Style
                };
     }
 

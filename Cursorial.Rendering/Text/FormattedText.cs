@@ -26,9 +26,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// The document default's CARRIER — <see cref="RichText.DefaultStyle"/> carried through layout.
     /// The painter folds it under every run and rule carrier (the fall-through: a channel the carrier
     /// states wins over the same channel here), so text that declares nothing takes the document
-    /// default without any producer restating it. <see cref="DefaultStyle"/> is the same rung in
-    /// resolved form, for the consumers that need a value — the <see cref="FillEntireBounds"/> clear
-    /// and the resolver's document-foreground comparison.
+    /// default without any producer restating it. The rung samples the painted bounds. A brush
+    /// resolver reads <see cref="BrushedStyle.Foreground"/> off it for the ladder's document leg.
+    /// <see cref="DefaultStyle"/> is the same rung in resolved form, for the one consumer that needs
+    /// a value — the <see cref="FillEntireBounds"/> clear.
     /// </summary>
     public BrushedStyle DefaultCarrier { get; init; }
 
@@ -163,51 +164,44 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 // the columns the walk reports as its extent are one value read twice rather than two
                 // expressions that have to be kept in step. Same number either way — the walk sets a rule's
                 // PaintColumns to the rect's width precisely because that is what this painter covers.
-                PaintHorizontalRule(rule, buffer, column, row, placement.PaintColumns, resolver, documentCarrier);
+                PaintHorizontalRule(rule, buffer, column, row, placement.PaintColumns, bounds, resolver, documentCarrier);
                 break;
             case FormattedContentBlock content:
                 // No document fold here: the content carrier never had the document default baked into it
                 // by the producers, so folding the rung under it would be a new opinion rather than the
                 // restatement's replacement. Content's document rung is a later phase's question.
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
-                                      ResolveStyle(resolver, document: default, default, centerColumn, centerRow, blockRect, tag: null), capabilities);
+                                      ResolveStyle(resolver, document: default, block: default, default, centerColumn, centerRow, bounds, blockRect), capabilities);
                 break;
         }
     }
 
     /// <summary>
-    /// Resolve one cell's style: the document rung, then the run's own carrier resolved at
-    /// (<paramref name="column"/>, <paramref name="row"/>) on top (<see cref="ResolveBase"/>), then the
-    /// optional brush resolver's delta sampled there and folded on top of both.
+    /// Resolve one cell's style: the document rung, then the block rung, then the run's own carrier
+    /// resolved at (<paramref name="column"/>, <paramref name="row"/>) on top (<see cref="ResolveBase"/>),
+    /// then the optional brush resolver's delta sampled there and folded on top of all three.
     /// Used by the single-Style elements (rule / sized / content), which resolve one style for a whole element
     /// rather than per grapheme; the FIGlet arm asks the same question through <see cref="Brushed"/> below.
     /// </summary>
-    /// <remarks>
-    /// <paramref name="tag"/> is the tag of the run this style belongs to, or null where there is no run to
-    /// carry one: the sized arm passes <see cref="FormattedTextRun.Tag"/>, while the rule and the two content
-    /// arms have no run and pass null. It is required rather than defaulted because a dropped tag is invisible
-    /// at the call site — and dropping it is exactly how a run's own <c>ScopedBrush</c> stopped reaching the
-    /// resolver on the sized and FIGlet arms, leaving the document brush to colour a run that had declared one.
-    /// </remarks>
-    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in BrushedStyle document, in BrushedStyle style, int column, int row, in Rect block, object? tag)
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in BrushedStyle document, in BrushedStyle block, in BrushedStyle style, int column, int row, in Rect docRect, in Rect blockRect)
     {
-        var resolved = ResolveBase(document, style, column, row, block, new Rect(column, row, 1, 1));
-        return resolver is null ? resolved : Brushed(resolver, style, resolved, column, row, block, tag).ApplyTo(column, row, resolved);
+        var resolved = ResolveBase(document, block, style, column, row, docRect, blockRect, new Rect(column, row, 1, 1));
+        return resolver is null
+                   ? resolved
+                   : Brushed(resolver, style, resolved, column, row, blockRect, block.Foreground).ApplyTo(column, row, resolved);
     }
 
     /// <summary>
-    /// The fall-through fold, resolved for one cell: the document rung sampled at its own rect, the
-    /// carrier at its own, composed as VALUE deltas (<see cref="PartialStyle.Then"/>) over
-    /// <see cref="CellStyle.Default"/>. Flattening the carriers first (<see cref="BrushedStyle.Then"/>)
-    /// would re-aim every rung's brushes at one rect, which is why the rungs resolve before they compose.
+    /// The fall-through fold, resolved for one cell: the document rung sampled at the painted bounds,
+    /// the block rung at the block rect, the carrier at its own strip — composed as VALUE deltas
+    /// (<see cref="PartialStyle.Then"/>) over <see cref="CellStyle.Default"/>. Flattening the carriers
+    /// first (<see cref="BrushedStyle.Then"/>) would re-aim every rung's brushes at one rect, which is
+    /// why the rungs resolve before they compose. Scope is inferred from the declaration site: each
+    /// rung samples the geometry of the thing it was declared on.
     /// </summary>
-    /// <remarks>
-    /// The document rung samples the block rect here, matching the resolver's document/preference leg in
-    /// this phase; the rect is unobservable for a uniform document carrier, which is what
-    /// <see cref="BrushedStyle.FromStated"/> produces (solid brushes throughout).
-    /// </remarks>
-    private static CellStyle ResolveBase(in BrushedStyle document, in BrushedStyle carrier, int column, int row, in Rect documentRect, in Rect carrierRect)
+    private static CellStyle ResolveBase(in BrushedStyle document, in BrushedStyle block, in BrushedStyle carrier, int column, int row, in Rect documentRect, in Rect blockRect, in Rect carrierRect)
         => document.Resolve(column, row, documentRect)
+                   .Then(block.Resolve(column, row, blockRect))
                    .Then(carrier.Resolve(column, row, carrierRect))
                    .ApplyTo(CellStyle.Default);
 
@@ -244,11 +238,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// <remarks>
     /// These elements have no inline scope of their own, so their strip is the single cell being asked about:
     /// an inline-scoped brush over a one-wide strip resolves at offset 0, which is what the previous per-cell
-    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant. <paramref name="tag"/> is as
-    /// <see cref="ResolveStyle"/>'s — here it is the FIGlet run's <see cref="FormattedTextRun.Tag"/>.
+    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
     /// </remarks>
-    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in BrushedStyle style, in CellStyle resolvedBase, int column, int row, in Rect block, object? tag)
-        => resolver(new BrushedTextContext(resolvedBase, style, block, new Rect(column, row, 1, 1), tag));
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in BrushedStyle style, in CellStyle resolvedBase, int column, int row, in Rect block, IBrush? blockForeground)
+        => resolver(new BrushedTextContext(style, blockForeground, block, new Rect(column, row, 1, 1), resolvedBase.UnderlineStyle));
 
     /// <summary>Paints one paragraph's line bands, top-down, from a placement the walk produced.</summary>
     /// <remarks>
@@ -270,6 +263,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         // glyph is worse than a missing line, and matches the block painters' whole-band rule.
         int bandRow = row;
         int rowsLeft = maxRows;
+
+        // The paragraph's own declarations — the ladder's block rung. It folds between the document
+        // rung and every run's carrier, sampling the block rect (the declaration site's geometry).
+        var blockStyle = paragraph.Style;
 
         foreach (var line in paragraph.Lines)
         {
@@ -321,13 +318,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // figlet block, which is itself a font-sourced run: infinite
                             // recursion by construction.
                             //
-                            // The document rung folds UNDER the piece's carrier on both arms, resolved at
-                            // its own rect FIRST (a value delta, per ResolveBase's rule) so the fold cannot
-                            // re-aim the document's brushes at the piece's box. Unlike the buffer.Set arms,
-                            // a face FOLDS its delta onto the destination cells — so the whole fold rides
-                            // over InkBase: the piece's ink is owned, and a channel no rung states resolves
-                            // to the terminal default rather than to whatever the board underneath held.
-                            var documentDelta = documentCarrier.Resolve(cursor, runRow, blockRect);
+                            // The document and block rungs fold UNDER the piece's carrier on both arms,
+                            // each resolved at its own rect FIRST (a value delta, per ResolveBase's rule) so
+                            // the fold cannot re-aim their brushes at the piece's box. Unlike the buffer.Set
+                            // arms, a face FOLDS its delta onto the destination cells — so the whole fold
+                            // rides over InkBase: the piece's ink is owned, and a channel no rung states
+                            // resolves to the terminal default rather than to whatever the board underneath
+                            // held.
+                            var documentDelta = documentCarrier.Resolve(cursor, runRow, bounds)
+                                                              .Then(blockStyle.Resolve(cursor, runRow, blockRect));
                             var pieceCarrier = InkBase.Then(AsBrushed(documentDelta)).Then(glyphText.Style);
 
                             if (resolver is null)
@@ -352,7 +351,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                 // left to fall through to the cells — it rides UNDER the resolver's delta,
                                 // and the document rung and ink base ride under both.
                                 var resolvedBase = documentDelta.Then(glyphText.Style.Resolve(cursor, runRow, new Rect(cursor, runRow, 1, 1))).ApplyTo(CellStyle.Default);
-                                var brushed = Brushed(resolver, glyphText.Style, resolvedBase, cursor, runRow, blockRect, glyphText.Tag);
+                                var brushed = Brushed(resolver, glyphText.Style, resolvedBase, cursor, runRow, blockRect, blockStyle.Foreground);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text,
                                            pieceCarrier.Then(brushed.Style), brushed.Bounds);
                             }
@@ -367,8 +366,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // out in the direct font arm above via the placeholder's figlet
                             // block, one level deep.
                             var pieceRect = new Rect(cursor, runRow, pieceWidth, run.LineRows);
-                            var style = ResolveStyle(resolver, documentCarrier, glyphText.Style,
-                                                     cursor + pieceWidth / 2, runRow, blockRect, glyphText.Tag);
+                            var style = ResolveStyle(resolver, documentCarrier, blockStyle, glyphText.Style,
+                                                     cursor + pieceWidth / 2, runRow, bounds, blockRect);
                             var scaled = new ScaledText(glyphText.Text, glyphText.Source.Sizing, glyphText.Source.Font)
                                          {
                                              BrushResolver = resolver
@@ -389,23 +388,22 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         int scopeWidth = text.Scope?.TotalWidth ?? Math.Max(1, text.CellWidth);
                         var inlineScope = new Rect(cursor - text.LogicalStart, runRow, Math.Max(1, scopeWidth), 1);
 
-                        // The run's carrier resolves against its own strip, over the document rung resolved
-                        // at ITS rect — the fall-through fold (ResolveBase); a composition that cannot vary
-                        // by cell resolves once for the run. The resolved form is what the resolver's
-                        // inherited-foreground comparison reads, and the base the delta folds onto.
+                        // The run's carrier resolves against its own strip, over the block and document
+                        // rungs resolved at THEIR rects — the fall-through fold (ResolveBase); a
+                        // composition that cannot vary by cell resolves once for the run.
                         var carrier = text.Style;
-                        var runBase = ResolveBase(documentCarrier, carrier, cursor, runRow, blockRect, inlineScope);
+                        var runBase = ResolveBase(documentCarrier, blockStyle, carrier, cursor, runRow, bounds, blockRect, inlineScope);
 
-                        // ONE resolver call per run: which brush wins, at what scope, and which inherited
-                        // attributes merge are all run-level facts. Only the sampling is per cell, and the
-                        // style does that itself — hoisted entirely when it cannot vary. The context's
-                        // Style stays the run's OWN carrier: the fold never turns inherited channels into
-                        // declarations.
+                        // ONE resolver call per run: which declaration wins, at what scope, and which
+                        // inherited attributes merge are all run-level facts. Only the sampling is per
+                        // cell, and the style does that itself — hoisted entirely when it cannot vary. The
+                        // context's Style stays the run's OWN carrier: the fold never turns inherited
+                        // channels into declarations.
                         var brushed = resolver is null
                                           ? BrushedTextStyle.None
-                                          : resolver(new BrushedTextContext(runBase, carrier, blockRect, inlineScope, text.Tag));
+                                          : resolver(new BrushedTextContext(carrier, blockStyle.Foreground, blockRect, inlineScope, runBase.UnderlineStyle));
 
-                        bool baseUniform = documentCarrier.IsUniform && carrier.IsUniform;
+                        bool baseUniform = documentCarrier.IsUniform && blockStyle.IsUniform && carrier.IsUniform;
                         bool uniform = baseUniform && brushed.Style.IsUniform;
                         var uniformStyle = uniform
                                                ? brushed.ApplyTo(cursor, runRow, runBase)
@@ -436,7 +434,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                             : brushed.ApplyTo(cursor, runRow,
                                                               baseUniform
                                                                   ? runBase
-                                                                  : ResolveBase(documentCarrier, carrier, cursor, runRow, blockRect, inlineScope));
+                                                                  : ResolveBase(documentCarrier, blockStyle, carrier, cursor, runRow, bounds, blockRect, inlineScope));
 
                             // The one case where the surface knows better: a wide glyph at the window's
                             // right edge degrades to a blank single, and the next grapheme belongs in the
@@ -451,11 +449,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     case FormattedContentRun content:
                     {
                         var contentBounds = new Rect(cursor, runRow, content.Width, 1);
-                        // Inline content samples one color at its center against the block rect — so a fallback
-                        // glyph (when no graphics protocol) is brush-colored; a real image ignores the style.
+                        // Inline content samples one color at its center — so a fallback glyph (when no
+                        // graphics protocol) is brush-colored; a real image ignores the style.
                         // No document fold: the content carrier never had the document default baked into it
                         // by the producers (see the block-content arm).
-                        var style = ResolveStyle(resolver, document: default, content.Style, cursor + content.Width / 2, runRow, blockRect, tag: null);
+                        var style = ResolveStyle(resolver, document: default, block: default, content.Style, cursor + content.Width / 2, runRow, bounds, blockRect);
                         content.Content.Paint(buffer, contentBounds, style, capabilities);
                         cursor += content.Width;
                         break;
@@ -470,7 +468,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintHorizontalRule(
-        FormattedHorizontalRule rule, in CellBufferView buffer, int column, int row, int width,
+        FormattedHorizontalRule rule, in CellBufferView buffer, int column, int row, int width, in Rect bounds,
         BrushedTextResolver? resolver, in BrushedStyle documentCarrier)
     {
         int glyphWidth = GraphemeWidth.StringWidth(rule.Glyph);
@@ -481,7 +479,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         int end = column + width;
         while (cursor + glyphWidth <= end)
         {
-            buffer.Set(cursor, row, rule.Glyph, ResolveStyle(resolver, documentCarrier, rule.Style, cursor, row, ruleRect, tag: null));
+            buffer.Set(cursor, row, rule.Glyph, ResolveStyle(resolver, documentCarrier, block: default, rule.Style, cursor, row, bounds, ruleRect));
             cursor += glyphWidth;
         }
     }
@@ -612,6 +610,14 @@ public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Siz
     /// <see cref="TextParagraph.VerticalAlignment"/>.</summary>
     public VerticalTextAlignment VerticalAlignment { get; init; }
 
+    /// <summary>
+    /// The paragraph's own declarations — <see cref="TextParagraph.Style"/> carried through layout.
+    /// The ladder's block rung: the painter folds it between the document rung and every run's
+    /// carrier, sampling the block's rect, so a block-declared gradient spans the block and a run's
+    /// position within it decides the colour. The identity for a paragraph that declares nothing.
+    /// </summary>
+    public BrushedStyle Style { get; init; }
+
     private static bool AnyTrimmedLines(ImmutableArray<FormattedLine> lines)
     {
         foreach (var line in lines)
@@ -726,14 +732,6 @@ public sealed record FormattedTextRun : FormattedRun
     public override int LineBaseline => Source.Metrics.Baseline;
 
     /// <summary>
-    /// Opaque metadata carried over from the source <see cref="TextRun.Tag"/> (preserved across wrap-splits).
-    /// Rendering never interprets it. An inline-scoped brush travels in <see cref="Style"/> rather than here;
-    /// the tag remains the channel a higher layer (Drawing) reads for block/document-scoped run brushes. Null
-    /// for ordinary runs.
-    /// </summary>
-    public object? Tag { get; init; }
-
-    /// <summary>
     /// The cumulative logical (column) offset of this piece's first grapheme within its source inline run.
     /// A higher layer (Drawing) uses it for wrap-invariant 1-D brush sampling, so a grapheme's color is
     /// independent of where the run wrapped. 0 for the first piece / standalone runs. Brush-agnostic geometry.
@@ -744,8 +742,8 @@ public sealed record FormattedTextRun : FormattedRun
     /// Shared metrics for the source inline run this piece was split from — carries the run's total logical
     /// width, back-filled by the tokenizer once the whole run is emitted (W isn't known until then). All
     /// wrapped pieces of one run reference the same instance. Internal: Drawing reads the width via
-    /// <c>BrushedTextContext.InlineScope</c>, not this carrier. Null for runs that neither carry a tag nor
-    /// state a foreground brush.
+    /// <c>BrushedTextContext.InlineScope</c>, not this carrier. Null for runs that state no foreground
+    /// brush.
     /// </summary>
     internal InlineRunScope? Scope { get; init; }
 

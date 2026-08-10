@@ -42,9 +42,11 @@ public class FigletGradientTests
     [Fact]
     public void Figlet_WithGradientBrush_FlowsColorAcrossGlyphs()
     {
+        // The preference samples the painted docBounds, so the paint rect is tightened to the document's
+        // own width — the ramp then spans exactly the ink it colors.
         var ft = FigletDoc("HI", width: 40);
         var gradient = new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
-        var b = DrawHarness.Render(40, 10, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 40, 10), gradient, OutputCapabilities.None));
+        var b = DrawHarness.Render(40, 10, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, ft.Size.Columns, 10), gradient, OutputCapabilities.None));
 
         var (left, right, leftCol, rightCol) = InkExtremes(b);
         Assert.True(rightCol > leftCol, "the FIGlet spans multiple columns");

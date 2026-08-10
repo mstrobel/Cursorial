@@ -7,10 +7,11 @@ using Cursorial.Rendering.Text;
 
 // ReSharper disable CheckNamespace
 
-// Phase-6 showcase: brush-aware rich text, two panels. (1) A BLOCK-scoped 2-D gradient sampled per cell against
-// each block's rect — one sweep flows across and down a whole wrapped paragraph. (2) An INLINE-scoped 1-D gradient
-// on a single wrapping run — sampled as one reading-order strip, so the color continues across the wrap instead of
-// restarting per line (wrap-invariant). Event-driven (static): re-formats + repaints only on resize.
+// Brushed rich text, two panels. (1) A document-wide 2-D gradient sampled per cell against the painted
+// bounds — one sweep flows across and down the whole document, rules included. (2) A run-declared 1-D
+// gradient on a single wrapping run — sampled as one reading-order strip, so the color continues across
+// the wrap instead of restarting per line (wrap-invariant). Event-driven (static): re-formats + repaints
+// only on resize.
 internal sealed class BrushedTextDemo : InteractiveDemo
 {
     public override string Name => "brushtext";
@@ -54,12 +55,13 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         var label = Color.FromRgb(150, 160, 200);
         int width = Math.Max(20, Math.Min(78, ctx.Bounds.Columns - 4));
 
-        // --- Panel 1: block-scoped 2-D — one gradient flows across AND down the whole document ---
-        ctx.DrawText(2, 0, "Block-scoped 2-D — one gradient flows across and down the whole document:", label);
+        // --- Panel 1: document-wide 2-D — one gradient flows across AND down the whole document ---
+        ctx.DrawText(2, 0, "Document-wide 2-D — one gradient flows across and down the whole document:", label);
         var ft = _formatter.Format(_doc, width, maxRows: null, Capabilities.Output);
 
-        // Diagonal gradient sampled against each block's rect: text and the rule are colored per cell, so the
-        // sweep flows across and down each block; the explicitly-colored word survives (explicit fg wins).
+        // Diagonal gradient sampled against the painted bounds: text and the rule are colored per cell, so
+        // one sweep flows across and down the whole document; the explicitly-colored word survives (a run's
+        // own declaration wins).
         var diagonal = new LinearGradientBrush(
             Color.FromHex("#f92572"), Color.FromHex("#66d9ef"),
             startPoint: RelativePoint.TopLeft, endPoint: RelativePoint.BottomRight);
@@ -74,27 +76,28 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         if (inlineTop >= ctx.Bounds.Rows - 1) return;   // terminal too short for the second panel
 
         ctx.DrawText(2, inlineTop,
-            "Inline-scoped 1-D — one gradient is a single reading-order strip; the color continues across the wrap:", label);
+            "Run-declared 1-D — one gradient is a single reading-order strip; the color continues across the wrap:", label);
         int inlineWidth = Math.Min(width, 46);   // narrow so the run wraps several times
         var inlineFt = _formatter.Format(_inlineDoc, inlineWidth, maxRows: null, Capabilities.Output);
         int inlineHeight = Math.Max(1, Math.Min(inlineFt.Size.Rows, ctx.Bounds.Rows - inlineTop - 2));
-        // Per-run overload (no document brush) — only the run's own inline ScopedBrush applies.
+        // No preference brush — only the run's own declared gradient applies.
         ctx.DrawFormattedText(inlineFt, new Rect(2, inlineTop + 1, inlineWidth, inlineHeight), Capabilities.Output);
     }
 
     private static RichText BuildInlineDocument()
     {
-        // One run, one Inline-scoped left→right gradient (green→orange). Because inline scope samples the run's
-        // full reading-order strip, the color a glyph gets depends only on its position WITHIN the run — so the
-        // sweep continues smoothly onto each wrapped line instead of restarting green at the left edge.
-        var brush = new ScopedBrush(new LinearGradientBrush(
+        // One run declaring one left→right gradient (green→orange) on its own carrier. The declaration site
+        // is the run, so the brush samples the run's full reading-order strip: the color a glyph gets
+        // depends only on its position WITHIN the run — the sweep continues smoothly onto each wrapped line
+        // instead of restarting green at the left edge.
+        var brush = new LinearGradientBrush(
             Color.FromHex("#a6e22e"), Color.FromHex("#fd971f"),
-            startPoint: RelativePoint.Left, endPoint: RelativePoint.Right));   // Inline is the default scope
+            startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
         return new RichTextBuilder()
-            .BrushedRun(
+            .Run(
                 "This single run carries one inline gradient — watch its color flow smoothly past each wrap " +
                 "instead of restarting at green on every new line. That continuity is wrap-invariant 1-D sampling.",
-                brush)
+                new BrushedStyle { Foreground = brush })
             .Build();
     }
 
@@ -106,7 +109,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         TextMarkup.Parse(
             "Cursorial's TextFormatter lays out wrapped, aligned rich text into cell-grid lines. In the " +
             "Drawing layer, DrawFormattedText colors that laid-out document with an IBrush sampled per cell " +
-            "against each block's rectangle — so a single gradient flows across and down a whole paragraph, " +
+            "against the painted bounds — so a single gradient flows across and down the whole document, " +
             "wrapping along with the text rather than restarting on every line.",
             builder, opts);
         builder.EndParagraph();

@@ -8,7 +8,7 @@
 # truecolor and Ansi256. The backdrop SGR is captured alongside the payload — it is the anchor
 # cell's style, and the historically fragile part.
 # Only the corpus cases that register a fragment (TextCase.EmitsFragments) appear below.
-# corpus: 81 cases
+# corpus: 82 cases
 
 == sized-block-scale2 ==
 desc: SizedTextBlock at scale 2. Cells show the fallback face; the fragment is tier 3's.
@@ -212,24 +212,24 @@ tier: Ansi256
 desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
 tier: Truecolor
   registered: 1
-    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#70008f bg=. at=. ul=Single uc=. hl=.}
+    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#cf0030 bg=. at=. ul=Single uc=. hl=.}
       sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
-      style: fg=#70008f bg=. at=. ul=Single uc=. hl=.
+      style: fg=#cf0030 bg=. at=. ul=Single uc=. hl=.
       line[0] "Grad"
   emissions: 1
     [0] cup=(row=0,col=0)
-      sgr: 0 | 38;2;112;0;143;49
-      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;2;112;0;143;49m<ESC>]66;s=2;Grad<ESC>\
+      sgr: 0 | 38;2;207;0;48;49
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;2;207;0;48;49m<ESC>]66;s=2;Grad<ESC>\
 tier: Ansi256
   registered: 1
-    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#70008f bg=. at=. ul=Single uc=. hl=.}
+    anchor=(0,0) SizedTextFragment size=8x2 supported=yes anchorStyle{fg=#cf0030 bg=. at=. ul=Single uc=. hl=.}
       sizing: scale=2 width=0 n=0 d=0 v=Top h=Left
-      style: fg=#70008f bg=. at=. ul=Single uc=. hl=.
+      style: fg=#cf0030 bg=. at=. ul=Single uc=. hl=.
       line[0] "Grad"
   emissions: 1
     [0] cup=(row=0,col=0)
-      sgr: 0 | 38;5;54;49
-      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;5;54;49m<ESC>]66;s=2;Grad<ESC>\
+      sgr: 0 | 38;5;161;49
+      bytes: <ESC>7<ESC>[1;1H<ESC>[0m<ESC>[38;5;161;49m<ESC>]66;s=2;Grad<ESC>\
 
 == sized-explicit-figlet-fallback ==
 desc: An explicit fallback face pins which arm a non-supporting terminal takes.

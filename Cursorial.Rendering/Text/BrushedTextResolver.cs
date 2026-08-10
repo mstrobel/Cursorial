@@ -1,47 +1,41 @@
 using Cursorial.Output;
 using Cursorial.Rendering.Media;
+using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
 /// Per-RUN context handed to a <see cref="BrushedTextResolver"/> while <see cref="FormattedText.Paint"/> walks
-/// a document. It carries <b>no brush</b> — a higher layer (e.g. <c>Cursorial.Drawing</c>) supplies the
-/// resolver and owns any brush math; this provides only what the resolver needs to CHOOSE one: the run's flat
-/// style and tag, plus the two candidate sampling boxes the painter has already worked out.
+/// a document. It carries <b>no brush of the resolver's own</b> — a higher layer (e.g. <c>Cursorial.Drawing</c>)
+/// supplies the resolver and owns any brush math; this provides only what the resolver needs to CHOOSE one:
+/// the run's own carrier, the enclosing block's declared foreground, and the two candidate sampling boxes the
+/// painter has already worked out.
 /// </summary>
 /// <remarks>
 /// It used to be per-CELL, carrying the cell's column/row and its logical offset within the inline scope,
 /// because the resolver had to return a fully sampled colour. It now returns a
 /// <see cref="BrushedStyle"/> — the brush itself, unsampled — so sampling moved to the painter (and,
 /// for a glyph face, into the font), and every per-cell member became the painter's own arithmetic. What
-/// remains is genuinely per-run: which brush applies, and in which of the two coordinate spaces.
+/// remains is genuinely per-run: which declaration wins, and in which coordinate space it samples.
 /// </remarks>
-public readonly struct BrushedTextContext(CellStyle baseStyle, BrushedStyle style, Rect block, Rect inlineScope, object? tag)
+public readonly struct BrushedTextContext(BrushedStyle style, IBrush? blockForeground, Rect block, Rect inlineScope, UnderlineStyle underlineShape)
 {
-    /// <summary>
-    /// The run's RESOLVED style — <see cref="Style"/> resolved against the run's own strip, what the painter
-    /// will apply the resolved delta TO. A resolver READS it to decide what to say (a document brush colors
-    /// only runs whose foreground was inherited, which is a question about this value); it does not have to
-    /// return it.
-    /// </summary>
-    /// <remarks>
-    /// It stayed on the context when <see cref="BrushedTextResolver"/> stopped returning a
-    /// <see cref="CellStyle"/>, because the two roles are separate: the base was both the INPUT to that
-    /// decision and the carrier a whole-<see cref="CellStyle"/> return had to reconstruct, and only the
-    /// second one went away. Now that the run itself carries a <see cref="BrushedStyle"/>, this is derived
-    /// (the painter resolves the carrier once per run) rather than stored on the run.
-    /// </remarks>
-    public CellStyle BaseStyle { get; } = baseStyle;
-
     /// <summary>
     /// The run's own <see cref="BrushedStyle"/> carrier, unresolved. The channels it STATES are the run's own
     /// declarations — a resolver reads its <see cref="BrushedStyle.Foreground"/> first when deciding which
-    /// brush wins, before any tag and before the document brush. Scope is inferred from the declaration site:
-    /// a brush stated on the run samples <see cref="InlineScope"/>.
+    /// brush wins. Scope is inferred from the declaration site: a brush stated on the run samples
+    /// <see cref="InlineScope"/>.
     /// </summary>
     public BrushedStyle Style { get; } = style;
 
-    /// <summary>The enclosing block's rect — the 2-D sampling bounds for a block/document-scoped brush.</summary>
+    /// <summary>
+    /// The enclosing block's declared foreground brush, or null when the block states none. The block rung of
+    /// the ladder: it loses to a run's own declaration and beats the document default and the caller's
+    /// preference. A block declaration samples <see cref="Block"/>.
+    /// </summary>
+    public IBrush? BlockForeground { get; } = blockForeground;
+
+    /// <summary>The enclosing block's rect — the 2-D sampling bounds for a block-declared brush.</summary>
     public Rect Block { get; } = block;
 
     /// <summary>
@@ -60,12 +54,12 @@ public readonly struct BrushedTextContext(CellStyle baseStyle, BrushedStyle styl
     public Rect InlineScope { get; } = inlineScope;
 
     /// <summary>
-    /// The run's opaque <see cref="FormattedTextRun.Tag"/>, or null. The legacy channel for a per-run
-    /// <c>ScopedBrush</c>: an inline-scoped one is translated into <see cref="Style"/> before it gets here,
-    /// so a resolver consults this AFTER the carrier — for the block/document-scoped declarations the
-    /// carrier has no scope channel to hold.
+    /// The run's RESOLVED underline shape — what the painter's fall-through fold produced for this run,
+    /// whichever rung stated it. The element-attribute leg re-states it when the Underline presence bit
+    /// merges (the flag has no "on, and no further opinion" form of its own — see
+    /// <see cref="BrushedStyle.Imposing"/>), so an imposed underline never clobbers a run's authored shape.
     /// </summary>
-    public object? Tag { get; } = tag;
+    public UnderlineStyle UnderlineShape { get; } = underlineShape;
 }
 
 /// <summary>
@@ -98,14 +92,14 @@ public readonly record struct BrushedTextStyle(BrushedStyle Style, Rect Bounds)
 /// <para>
 /// Returning a <see cref="BrushedStyle"/> rather than a whole <see cref="CellStyle"/> is what lets a
 /// resolver state only the channels it owns. A brush owns a foreground; before the change it had to hand back
-/// a reconstruction of <see cref="BrushedTextContext.BaseStyle"/> with that one channel swapped, so every
+/// a reconstruction of the run's resolved style with that one channel swapped, so every
 /// channel it forgot was silently reset and "this run keeps what it had" cost a full copy per cell instead of
 /// being the identity.
 /// </para>
 /// <para>
 /// Returning it UNSAMPLED is what moved the call from per-cell to per-run. Everything the resolver decides —
-/// which brush wins, at what scope, whether the run's foreground was inherited, which inherited attributes
-/// merge in — is a property of the run; only the sampling was per cell, and the style does that itself.
+/// which declaration wins, at what scope, which inherited attributes merge in — is a property of the run;
+/// only the sampling was per cell, and the style does that itself.
 /// It also lets a glyph face receive the brush rather than a blind callback, so a face that paints a
 /// multi-cell glyph per character can sample per CELL (the FIGlet gradient) while a uniform style is
 /// resolved once for the whole run.

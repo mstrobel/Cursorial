@@ -6,7 +6,7 @@
 # Every cell of the painted CellBuffer: kind, grapheme, foreground, background, attributes,
 # underline shape, underline colour, OSC 8 anchor. Text sizing is OFF at this tier, so sized
 # text paints its FALLBACK arm into cells; the fragment arm is tier 3.
-# corpus: 81 cases
+# corpus: 82 cases
 
 == plain-single-line ==
 desc: One unwrapped run. The floor: if this moves, everything moved.
@@ -2528,7 +2528,7 @@ paint: bounds=0,0 16x6 returned=0,0 16x6 fragments=0
   r05 c15 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
 == brush-document-scope-horizontal ==
-desc: A document brush is sampled against each BLOCK's rect — the gradient spans the block across wrapped lines, and resets between blocks.
+desc: A document brush samples the painted docBounds — one continuous gradient spans both blocks; nothing resets at the block boundary.
 paint: bounds=0,0 12x7 returned=0,0 12x5 fragments=0
   r00 c00 S  "t" fg=#f4000b bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c01 S  "h" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -2578,12 +2578,12 @@ paint: bounds=0,0 12x7 returned=0,0 12x5 fragments=0
   r03 c09 S  "d" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c10 S  "o" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c11 S  "g" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c00 S  "s" fg=#ea0015 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c01 S  "e" fg=#bf0040 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c02 S  "c" fg=#95006a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c03 S  "o" fg=#6a0095 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c04 S  "n" fg=#4000bf bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r04 c05 S  "d" fg=#1500ea bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c00 S  "s" fg=#f4000b bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c01 S  "e" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c02 S  "c" fg=#ca0035 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c03 S  "o" fg=#b5004a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c04 S  "n" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r04 c05 S  "d" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -2616,56 +2616,56 @@ paint: bounds=0,0 12x7 returned=0,0 12x5 fragments=0
   r06 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
 == brush-document-scope-vertical ==
-desc: Top-to-bottom over wrapped lines: the block rect's height is the sampling extent.
+desc: Top-to-bottom over wrapped lines: the painted docBounds' height is the sampling extent.
 paint: bounds=0,0 12x5 returned=0,0 12x4 fragments=0
-  r00 c00 S  "t" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "h" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "e" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  " " fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "q" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "u" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "i" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "c" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  "k" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "t" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "h" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "e" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  " " fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  "q" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "u" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "i" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "c" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "k" fg=#e6001a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c00 S  "b" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c01 S  "r" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c02 S  "o" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c03 S  "w" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c04 S  "n" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c05 S  " " fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c06 S  "f" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c07 S  "o" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c08 S  "x" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c00 S  "b" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c01 S  "r" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c02 S  "o" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c03 S  "w" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c04 S  "n" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c05 S  " " fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c06 S  "f" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c07 S  "o" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c08 S  "x" fg=#b2004c bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c00 S  "j" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c01 S  "u" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c02 S  "m" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c03 S  "p" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c04 S  "s" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c05 S  " " fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c06 S  "o" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c07 S  "v" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c08 S  "e" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c09 S  "r" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c00 S  "j" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c01 S  "u" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c02 S  "m" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c03 S  "p" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c04 S  "s" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c05 S  " " fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c06 S  "o" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c07 S  "v" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c08 S  "e" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c09 S  "r" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c00 S  "t" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c01 S  "h" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c02 S  "e" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c03 S  " " fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c04 S  "l" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c05 S  "a" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c06 S  "z" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c07 S  "y" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c08 S  " " fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c09 S  "d" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c10 S  "o" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c11 S  "g" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c00 S  "t" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c01 S  "h" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c02 S  "e" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c03 S  " " fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c04 S  "l" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c05 S  "a" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c06 S  "z" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c07 S  "y" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c08 S  " " fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c09 S  "d" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c10 S  "o" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c11 S  "g" fg=#4c00b2 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r04 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -2839,19 +2839,19 @@ paint: bounds=0,0 10x4 returned=0,0 6x2 fragments=0
   r03 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
-== brush-run-block-scope ==
-desc: DeclarationScope.Block: the run samples the enclosing block's 2-D rect, so its position within the block decides its colour.
+== brush-block-style-scope ==
+desc: A gradient declared on the enclosing block's own style: every run that declares no foreground samples the block's 2-D rect, so a run's position within the block decides its colour. Replaces brush-run-block-scope (a Block-scoped ScopedBrush tag on one run), a construction scope inference removed.
 paint: bounds=0,0 14x3 returned=0,0 12x1 fragments=0
-  r00 c00 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c09 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "x" fg=#f4000b bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "x" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "x" fg=#ca0035 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "x" fg=#b5004a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  "x" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "x" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "x" fg=#75008a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "x" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "x" fg=#4a00b5 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c09 S  "x" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  "A" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c11 S  "B" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -2885,19 +2885,19 @@ paint: bounds=0,0 14x3 returned=0,0 12x1 fragments=0
   r02 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c13 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
-== brush-run-document-scope ==
-desc: DeclarationScope.Document samples the whole painted bounds, which is wider than the block.
+== brush-document-default-gradient ==
+desc: A gradient declared as the document default's foreground samples docBounds — the ladder's document rung observed directly. Replaces brush-run-document-scope (a Document-scoped ScopedBrush tag), a construction scope inference removed.
 paint: bounds=0,0 24x3 returned=0,0 12x1 fragments=0
-  r00 c00 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c09 S  "x" fg=. bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "x" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "x" fg=#ef0010 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "x" fg=#e4001b bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "x" fg=#da0025 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  "x" fg=#cf0030 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "x" fg=#c5003a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "x" fg=#ba0045 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "x" fg=#af0050 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "x" fg=#a5005a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c09 S  "x" fg=#9a0065 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  "A" fg=#8f0070 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c11 S  "B" fg=#85007a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3007,18 +3007,18 @@ paint: bounds=0,0 14x3 returned=0,0 5x1 fragments=0
   r02 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c13 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
-== brush-over-document-default-foreground ==
-desc: An INHERITED foreground is the brush's to colour; the document default must not win.
+== document-default-foreground-beats-preference-brush ==
+desc: A document default that STATES a foreground beats the caller's preference brush — the object model wins wherever it speaks; the preference colours only text no level declared for.
 paint: bounds=0,0 12x4 returned=0,0 9x1 fragments=0
-  r00 c00 S  "a" fg=#f1000e bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "a" fg=#d4002a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "a" fg=#b80047 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "a" fg=#9c0063 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  " " fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "b" fg=#63009c bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "b" fg=#4700b8 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "b" fg=#2a00d4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  "b" fg=#0e00f1 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  " " fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "b" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "b" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "b" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "b" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3062,16 +3062,16 @@ paint: bounds=0,0 12x4 returned=0,0 9x1 fragments=0
 == brush-explicit-foreground-wins ==
 desc: A run's OWN explicit foreground beats the brush — the inheritance test the resolver reads BaseStyle for.
 paint: bounds=0,0 20x3 returned=0,0 18x1 fragments=0
-  r00 c00 S  "i" fg=#f80007 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "n" fg=#ea0015 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "h" fg=#dc0023 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "e" fg=#cd0032 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "r" fg=#bf0040 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "i" fg=#b1004e bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "t" fg=#a3005c bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "e" fg=#95006a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  "d" fg=#870078 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c09 S  " " fg=#780087 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "i" fg=#f90006 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "n" fg=#ec0013 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "h" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "e" fg=#d2002d bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  "r" fg=#c60039 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "i" fg=#b90046 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "t" fg=#ac0053 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "e" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "d" fg=#93006c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c09 S  " " fg=#860079 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  "e" fg=#ffb000 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c11 S  "x" fg=#ffb000 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c12 S  "p" fg=#ffb000 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3226,12 +3226,12 @@ paint: bounds=0,0 20x3 returned=0,0 12x1 fragments=0
 == brush-inline-content-fallback-glyph ==
 desc: Inline content samples one colour at its centre, so an image/icon degrading to a glyph still picks up the brush.
 paint: bounds=0,0 12x3 returned=0,0 6x1 fragments=0
-  r00 c00 S  "a" fg=#ea0015 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "b" fg=#bf0040 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  " " fg=#95006a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "█" fg=#4000bf bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c04 S  "█" fg=#4000bf bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "█" fg=#4000bf bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "a" fg=#f4000b bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "b" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  " " fg=#ca0035 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "█" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  "█" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "█" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3884,12 +3884,12 @@ desc: The FIGlet arm hands the UNSAMPLED template to the face so a multi-cell gl
 paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r00 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "_" fg=#b80047 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "_" fg=#e4001b bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "_" fg=#63009c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "_" fg=#c5003a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "_" fg=#2a00d4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "_" fg=#af0050 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3907,14 +3907,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r00 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c01 S  "|" fg=#d4002a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c01 S  "|" fg=#ef0010 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c03 S  "|" fg=#9c0063 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c04 S  "|" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c03 S  "|" fg=#da0025 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c04 S  "|" fg=#cf0030 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c06 S  "(" fg=#4700b8 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c07 S  "_" fg=#2a00d4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c08 S  ")" fg=#0e00f1 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c06 S  "(" fg=#ba0045 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c07 S  "_" fg=#af0050 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c08 S  ")" fg=#a5005a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3931,14 +3931,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r01 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c01 S  "|" fg=#d4002a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c01 S  "|" fg=#ef0010 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c03 S  "_" fg=#9c0063 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c04 S  "_" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c03 S  "_" fg=#da0025 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c04 S  "_" fg=#cf0030 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c06 S  "|" fg=#4700b8 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c06 S  "|" fg=#ba0045 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c08 S  "|" fg=#0e00f1 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c08 S  "|" fg=#a5005a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -3955,14 +3955,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r02 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c01 S  "|" fg=#d4002a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c02 S  "_" fg=#b80047 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c03 S  "|" fg=#9c0063 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c04 S  "|" fg=#800080 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c05 S  "_" fg=#63009c bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c06 S  "|" fg=#4700b8 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c07 S  "_" fg=#2a00d4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c08 S  "|" fg=#0e00f1 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c01 S  "|" fg=#ef0010 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c02 S  "_" fg=#e4001b bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c03 S  "|" fg=#da0025 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c04 S  "|" fg=#cf0030 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c05 S  "_" fg=#c5003a bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c06 S  "|" fg=#ba0045 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c07 S  "_" fg=#af0050 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c08 S  "|" fg=#a5005a bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -4978,10 +4978,10 @@ paint: bounds=0,0 24x4 returned=0,0 24x4 fragments=0
 == sized-brushed-block-scope ==
 desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
 paint: bounds=0,0 24x4 returned=0,0 4x2 fragments=0
-  r00 c00 S  "G" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c01 S  "r" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "a" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c03 S  "d" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c00 S  "G" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "r" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "a" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "d" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5002,10 +5002,10 @@ paint: bounds=0,0 24x4 returned=0,0 4x2 fragments=0
   r00 c21 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c00 S  "▀" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c01 S  "▀" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c02 S  "▀" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c03 S  "▀" fg=#df0020 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c00 S  "▀" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c01 S  "▀" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c02 S  "▀" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c03 S  "▀" fg=#fa0005 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5400,12 +5400,12 @@ desc: figlet-explicit-background-boxes, plus a document brush — the pair that 
 paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r00 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c02 S  "_" fg=#b80047 bg=#008080 at=. ul=Single uc=. hl=.
+  r00 c02 S  "_" fg=#e4001b bg=#008080 at=. ul=Single uc=. hl=.
   r00 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "_" fg=#63009c bg=#008080 at=. ul=Single uc=. hl=.
+  r00 c05 S  "_" fg=#c5003a bg=#008080 at=. ul=Single uc=. hl=.
   r00 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "_" fg=#2a00d4 bg=#008080 at=. ul=Single uc=. hl=.
+  r00 c07 S  "_" fg=#af0050 bg=#008080 at=. ul=Single uc=. hl=.
   r00 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5423,14 +5423,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r00 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c01 S  "|" fg=#d4002a bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c01 S  "|" fg=#ef0010 bg=#008080 at=. ul=Single uc=. hl=.
   r01 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c03 S  "|" fg=#9c0063 bg=#008080 at=. ul=Single uc=. hl=.
-  r01 c04 S  "|" fg=#800080 bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c03 S  "|" fg=#da0025 bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c04 S  "|" fg=#cf0030 bg=#008080 at=. ul=Single uc=. hl=.
   r01 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c06 S  "(" fg=#4700b8 bg=#008080 at=. ul=Single uc=. hl=.
-  r01 c07 S  "_" fg=#2a00d4 bg=#008080 at=. ul=Single uc=. hl=.
-  r01 c08 S  ")" fg=#0e00f1 bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c06 S  "(" fg=#ba0045 bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c07 S  "_" fg=#af0050 bg=#008080 at=. ul=Single uc=. hl=.
+  r01 c08 S  ")" fg=#a5005a bg=#008080 at=. ul=Single uc=. hl=.
   r01 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5447,14 +5447,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r01 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c01 S  "|" fg=#d4002a bg=#008080 at=. ul=Single uc=. hl=.
+  r02 c01 S  "|" fg=#ef0010 bg=#008080 at=. ul=Single uc=. hl=.
   r02 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c03 S  "_" fg=#9c0063 bg=#008080 at=. ul=Single uc=. hl=.
-  r02 c04 S  "_" fg=#800080 bg=#008080 at=. ul=Single uc=. hl=.
+  r02 c03 S  "_" fg=#da0025 bg=#008080 at=. ul=Single uc=. hl=.
+  r02 c04 S  "_" fg=#cf0030 bg=#008080 at=. ul=Single uc=. hl=.
   r02 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c06 S  "|" fg=#4700b8 bg=#008080 at=. ul=Single uc=. hl=.
+  r02 c06 S  "|" fg=#ba0045 bg=#008080 at=. ul=Single uc=. hl=.
   r02 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c08 S  "|" fg=#0e00f1 bg=#008080 at=. ul=Single uc=. hl=.
+  r02 c08 S  "|" fg=#a5005a bg=#008080 at=. ul=Single uc=. hl=.
   r02 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5471,14 +5471,14 @@ paint: bounds=0,0 24x6 returned=0,0 9x5 fragments=0
   r02 c22 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c01 S  "|" fg=#d4002a bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c02 S  "_" fg=#b80047 bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c03 S  "|" fg=#9c0063 bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c04 S  "|" fg=#800080 bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c05 S  "_" fg=#63009c bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c06 S  "|" fg=#4700b8 bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c07 S  "_" fg=#2a00d4 bg=#008080 at=. ul=Single uc=. hl=.
-  r03 c08 S  "|" fg=#0e00f1 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c01 S  "|" fg=#ef0010 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c02 S  "_" fg=#e4001b bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c03 S  "|" fg=#da0025 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c04 S  "|" fg=#cf0030 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c05 S  "_" fg=#c5003a bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c06 S  "|" fg=#ba0045 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c07 S  "_" fg=#af0050 bg=#008080 at=. ul=Single uc=. hl=.
+  r03 c08 S  "|" fg=#a5005a bg=#008080 at=. ul=Single uc=. hl=.
   r03 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5792,22 +5792,22 @@ paint: bounds=0,0 24x4 returned=0,0 5x2 fragments=0
   r03 c23 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
 == align-center-brushed-wider-than-budget ==
-desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The combination makes the two anchoring computations visible at once: the block rect a brush samples against is built from the BLOCK anchor, which is Left for a paragraph (FormattedText.cs:175), while the lines are laid out at the paragraph's own Center anchor (:187). Painted 20 wide from a 12-wide budget, the sampling rect spans columns 0-11 while the glyphs sit further right, so the ramp's tail clamps.
+desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The document/preference rung samples docBounds (columns 0-19), which covers the centred glyphs, so the ramp no longer clamps. The paragraph's Left-forced block SamplingRect still diverges from its lines' Center anchor, but only a block-declared brush can observe that rect now, and none is declared here; re-aiming it at the walk's Extent is 7b's.
 paint: bounds=0,0 20x6 returned=0,0 12x4 fragments=0
   r00 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c05 S  "t" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c06 S  "h" fg=#75008a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c07 S  "e" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c08 S  " " fg=#4a00b5 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c09 S  "q" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c10 S  "u" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c11 S  "i" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c12 S  "c" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r00 c13 S  "k" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "t" fg=#b90046 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "h" fg=#ac0053 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "e" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  " " fg=#93006c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c09 S  "q" fg=#860079 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c10 S  "u" fg=#790086 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c11 S  "i" fg=#6c0093 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c12 S  "c" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c13 S  "k" fg=#5300ac bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c14 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c15 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r00 c16 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5819,15 +5819,15 @@ paint: bounds=0,0 20x6 returned=0,0 12x4 fragments=0
   r01 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c05 S  "b" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c06 S  "r" fg=#75008a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c07 S  "o" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c08 S  "w" fg=#4a00b5 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c09 S  "n" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c10 S  " " fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c11 S  "f" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c12 S  "o" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r01 c13 S  "x" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c05 S  "b" fg=#b90046 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c06 S  "r" fg=#ac0053 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c07 S  "o" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c08 S  "w" fg=#93006c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c09 S  "n" fg=#860079 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c10 S  " " fg=#790086 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c11 S  "f" fg=#6c0093 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c12 S  "o" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c13 S  "x" fg=#5300ac bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c14 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c15 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r01 c16 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5839,16 +5839,16 @@ paint: bounds=0,0 20x6 returned=0,0 12x4 fragments=0
   r02 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c05 S  "j" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c06 S  "u" fg=#75008a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c07 S  "m" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c08 S  "p" fg=#4a00b5 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c09 S  "s" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c10 S  " " fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c11 S  "o" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c12 S  "v" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c13 S  "e" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r02 c14 S  "r" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c05 S  "j" fg=#b90046 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c06 S  "u" fg=#ac0053 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c07 S  "m" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c08 S  "p" fg=#93006c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c09 S  "s" fg=#860079 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c10 S  " " fg=#790086 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c11 S  "o" fg=#6c0093 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c12 S  "v" fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c13 S  "e" fg=#5300ac bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c14 S  "r" fg=#4600b9 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c15 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c16 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r02 c17 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -5858,18 +5858,18 @@ paint: bounds=0,0 20x6 returned=0,0 12x4 fragments=0
   r03 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c04 S  "t" fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c05 S  "h" fg=#8a0075 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c06 S  "e" fg=#75008a bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c07 S  " " fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c08 S  "l" fg=#4a00b5 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c09 S  "a" fg=#3500ca bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c10 S  "z" fg=#2000df bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c11 S  "y" fg=#0b00f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c12 S  " " fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c13 S  "d" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c14 S  "o" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
-  r03 c15 S  "g" fg=#0000ff bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c04 S  "t" fg=#c60039 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c05 S  "h" fg=#b90046 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c06 S  "e" fg=#ac0053 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c07 S  " " fg=#9f0060 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c08 S  "l" fg=#93006c bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c09 S  "a" fg=#860079 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c10 S  "z" fg=#790086 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c11 S  "y" fg=#6c0093 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c12 S  " " fg=#60009f bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c13 S  "d" fg=#5300ac bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c14 S  "o" fg=#4600b9 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r03 c15 S  "g" fg=#3900c6 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c16 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c17 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c18 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
@@ -6134,12 +6134,12 @@ paint: bounds=0,0 14x5 returned=0,0 14x5 fragments=0
   r01 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c00 S  "f" fg=#ea0015 bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c01 S  "i" fg=#bf0040 bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c02 S  "l" fg=#95006a bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c03 S  "l" fg=#6a0095 bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c04 S  "e" fg=#4000bf bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c05 S  "d" fg=#1500ea bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c00 S  "f" fg=#f60009 bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c01 S  "i" fg=#e4001b bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c02 S  "l" fg=#d1002e bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c03 S  "l" fg=#bf0040 bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c04 S  "e" fg=#ad0052 bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c05 S  "d" fg=#9b0064 bg=#002000 at=. ul=Single uc=. hl=.
   r02 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r02 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r02 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
@@ -6228,3 +6228,49 @@ paint: bounds=0,0 12x4 returned=0,0 9x2 fragments=0
   r03 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
   r03 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+
+== brush-run-solid-equal-to-document-default ==
+desc: A run-declared SOLID equal to the document default's colour still wins at its own scope — declaration wins by policy, no value equality anywhere. Under a gradient document brush the declared solid is visibly flat; phase 6's restatement sentinel briefly inverted this, unpinned.
+paint: bounds=0,0 14x3 returned=0,0 10x1 fragments=0
+  r00 c00 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c01 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c02 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c03 S  "a" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c04 S  " " fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c05 S  "S" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c06 S  "O" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c07 S  "L" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c08 S  "I" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c09 S  "D" fg=#b4b4b4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r00 c13 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r01 c13 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c00 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c01 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c02 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c03 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c04 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c05 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c06 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c07 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c08 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c09 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c10 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c11 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c12 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
+  r02 c13 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.

@@ -55,6 +55,14 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
     public int? MaxLines { get; init; }
 
     /// <summary>
+    /// The paragraph's own style declarations — the ladder's block rung. Channels stated here beat
+    /// the document default and the caller's preference, and lose to a run's own carrier; a
+    /// block-declared foreground brush samples the block's 2-D rect, so a run's position within the
+    /// block decides its colour. The identity (the default) declares nothing.
+    /// </summary>
+    public BrushedStyle Style { get; init; }
+
+    /// <summary>
     /// Where shorter runs sit within a taller line band (proposal-glyph-runs): when a line mixes
     /// glyph sources of different heights, each run aligns within the band by this rule. Default
     /// <see cref="VerticalTextAlignment.Bottom"/> — bottom-of-cell is what OSC 66 defaults to, and

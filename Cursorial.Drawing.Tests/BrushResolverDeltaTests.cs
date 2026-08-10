@@ -13,9 +13,12 @@ namespace Cursorial.Tests.Drawing;
 /// <summary>
 /// <see cref="DrawingContext.CreateBrushResolver"/> runs once per RUN and returns a
 /// <see cref="BrushedStyle"/> paired with the rect its brushes sample against — a DELTA over the style
-/// the formatter already resolved, with the brush still unsampled. Each leg owns exactly the channels it has
-/// an opinion about, so "this run keeps what it had" is the identity rather than a copy of the base, and the
-/// element-attribute leg is visibly a SET rather than a replace.
+/// the formatter already resolved, with the brush still unsampled. The foreground legs are a LADDER,
+/// weakest first (preference → document default → block → run): the strongest rung that STATES a
+/// foreground wins, at the scope of its own declaration site, and no leg compares colour values. Each
+/// leg owns exactly the channels it has an opinion about, so "this run keeps what it had" is the
+/// identity rather than a copy of the base, and the element-attribute leg is visibly a SET rather than
+/// a replace.
 /// </summary>
 public class BrushResolverDeltaTests
 {
@@ -38,49 +41,40 @@ public class BrushResolverDeltaTests
                  .WithUnderlineColor(Green)
                  .WithHyperlink("https://example.invalid");
 
-    // The carrier defaults to the identity: these tests exercise the tag / document / attribute legs, and
-    // an identity carrier states no brush for the carrier-first leg to read.
-    private static BrushedTextContext Context(in CellStyle baseStyle, object? tag = null, in BrushedStyle style = default) =>
-        new(baseStyle, style, Block, Inline, tag);
+    // The context carries the run's own carrier and the block's declared foreground — the two ladder
+    // rungs the painter reads off the document — plus the run's RESOLVED underline shape, which the
+    // attribute leg re-states when the Underline presence bit merges. `run` stands in for the style
+    // the formatter resolved; only its underline shape reaches the resolver.
+    private static BrushedTextContext Context(in CellStyle run, in BrushedStyle style = default, IBrush? blockForeground = null) =>
+        new(style, blockForeground, Block, Inline, run.UnderlineStyle);
 
-    // ───────────────────────────── the three colour legs ─────────────────────────────
+    // ───────────────────────────── the foreground ladder ─────────────────────────────
 
-    /// <summary>
-    /// The leg that used to be the clearest evidence the return type was wrong: with no document brush the
-    /// resolver reconstructed <c>ctx.BaseStyle</c> in full in order to mean "no change". It is now the
-    /// identity, which composes and can be short-circuited.
-    /// </summary>
+    /// <summary>No rung states a foreground anywhere: the brush half of the delta is the identity,
+    /// whatever the resolved base looks like — the base is not a declaration.</summary>
     [Fact]
-    public void NoDocumentBrush_IsTheIdentityDelta()
+    public void NoForegroundDeclaredAnywhere_IsTheIdentityDelta()
     {
-        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
+        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: null, Doc);
 
         Assert.True(resolver(Context(Rich(Red))).Style.IsIdentity);
         Assert.True(resolver(Context(CellStyle.Default)).Style.IsIdentity);
     }
 
     /// <summary>
-    /// A run whose foreground is its OWN (neither unset nor the document default) out-votes the document
-    /// brush — and, as a delta, says nothing at all rather than restating the run's style.
+    /// The preference is the WEAKEST rung: it colors a run only when no level of the document declared
+    /// a foreground — and then it owns nothing but the foreground, sampled against the document bounds.
+    /// The resolved base's own (inherited) colour is not a declaration and never blocks it.
     /// </summary>
-    [Fact]
-    public void DocumentBrush_IsTheIdentityDeltaForANonInheritedForeground()
-    {
-        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
-                                                          documentForeground: Red, Doc);
-
-        Assert.True(resolver(Context(Rich(Blue))).Style.IsIdentity);
-    }
-
     [Theory]
-    [InlineData(false)]  // foreground unset — Color.Default, the "inherited" sentinel
-    [InlineData(true)]   // foreground explicitly equal to the document default
-    public void DocumentBrush_ColorsAnInheritedForegroundAndNothingElse(bool explicitDocumentColor)
+    [InlineData(false)]  // resolved base carries no foreground of its own
+    [InlineData(true)]   // resolved base carries an inherited, non-default foreground
+    public void PreferenceBrush_ColorsAnUndeclaredForegroundAndNothingElse(bool nonDefaultBase)
     {
         var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
-        var baseStyle = explicitDocumentColor ? Rich(Red) : Rich(Color.Default);
+        var baseStyle = nonDefaultBase ? Rich(Red) : Rich(Color.Default);
         var brushed = resolver(Context(baseStyle));
         var delta = brushed.Resolve(column: 2, row: 1);
 
@@ -97,48 +91,74 @@ public class BrushResolverDeltaTests
 
         Assert.Equal(baseStyle with { Foreground = Green }, delta.ApplyTo(baseStyle));
 
-        // The document brush samples against the enclosing BLOCK.
+        // The preference samples against the DOCUMENT bounds — the rung it stands in for.
+        Assert.Equal(Doc, brushed.Bounds);
+    }
+
+    /// <summary>A document default that states a foreground beats the preference, sampling the document
+    /// bounds — the ladder's document rung.</summary>
+    [Fact]
+    public void DocumentForeground_BeatsThePreference_AtTheDocumentBounds()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
+                                                          documentForeground: new SolidColorBrush(Blue), Doc);
+
+        var brushed = resolver(Context(Rich(Color.Default)));
+        var delta = brushed.Resolve(column: 2, row: 1);
+
+        Assert.Equal(Blue, delta.Foreground);
+        Assert.Equal(Doc, brushed.Bounds);
+    }
+
+    /// <summary>A block-declared foreground beats the document default and the preference, sampling the
+    /// block's 2-D rect — the ladder's block rung.</summary>
+    [Fact]
+    public void BlockForeground_BeatsTheDocumentAndPreference_AtTheBlockRect()
+    {
+        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
+                                                          documentForeground: new SolidColorBrush(Red), Doc);
+
+        var brushed = resolver(Context(Rich(Color.Default), blockForeground: new SolidColorBrush(Blue)));
+        var delta = brushed.Resolve(column: 2, row: 1);
+
+        Assert.Equal(Blue, delta.Foreground);
         Assert.Equal(Block, brushed.Bounds);
     }
 
-    /// <summary>A run declaring its own <c>ScopedBrush</c> wins over the document brush, and is likewise
-    /// foreground-only.</summary>
+    /// <summary>A run's own carrier out-votes every lower rung, samples the run's wrap-invariant
+    /// reading-order strip, and is likewise foreground-only.</summary>
     [Fact]
-    public void RunBrush_WinsOverTheDocumentBrushAndIsForegroundOnly()
+    public void CarrierForeground_WinsOverEveryLowerRung_AtTheInlineStrip()
     {
         var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: new SolidColorBrush(Red), Doc);
 
-        var delta = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue))))
-                        .Resolve(column: 2, row: 1);
+        var brushed = resolver(Context(Rich(Color.Default),
+                                       new BrushedStyle { Foreground = new SolidColorBrush(Blue) },
+                                       blockForeground: new SolidColorBrush(Green)));
+        var delta = brushed.Resolve(column: 2, row: 1);
 
         Assert.Equal(Blue, delta.Foreground);
         Assert.Null(delta.Background);
         Assert.Equal(default, delta.AppliedAttributes);
+        Assert.Equal(Inline, brushed.Bounds);
     }
 
     /// <summary>
-    /// The scope distinction survived the move from "sample here" to "sample against this rect": inline gets
-    /// the run's wrap-invariant reading-order strip, block the laid-out box, document the whole document.
-    /// Flattening these to one rect would silently restart every inline gradient at each line break.
+    /// Declaration wins by POLICY, not by value: a run-declared solid equal in colour to the document
+    /// default's still wins at its own scope. Phase 6's restatement sentinel read this as a restatement
+    /// and let the lower rungs colour the run; the ladder has no value comparison anywhere.
     /// </summary>
-    [Theory]
-    [InlineData(DeclarationScope.Inline)]
-    [InlineData(DeclarationScope.Block)]
-    [InlineData(DeclarationScope.Document)]
-    public void RunBrush_SamplesAgainstItsDeclarationScope(DeclarationScope scope)
+    [Fact]
+    public void CarrierSolid_EqualToTheDocumentDefaultsColour_StillWinsAtItsOwnScope()
     {
-        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
+        var resolver = DrawingContext.CreateBrushResolver(default,
+                                                          documentForeground: new SolidColorBrush(Red), Doc);
 
-        var brushed = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue), scope)));
+        var brushed = resolver(Context(Rich(Red), new BrushedStyle { Foreground = new SolidColorBrush(Red) }));
 
-        Assert.Equal(scope switch
-                     {
-                         DeclarationScope.Inline   => Inline,
-                         DeclarationScope.Document => Doc,
-                         _                         => Block,
-                     },
-                     brushed.Bounds);
+        Assert.Equal(Red, brushed.Resolve(column: 2, row: 1).Foreground);
+        Assert.Equal(Inline, brushed.Bounds);
     }
 
     // ───────────────────────────── the base-attribute leg ─────────────────────────────
@@ -153,7 +173,7 @@ public class BrushResolverDeltaTests
     {
         var resolver = DrawingContext.CreateBrushResolver(
             BrushedStyle.Identity.Imposing(TextAttributes.Bold | TextAttributes.Inverse),
-            documentForeground: Red, Doc);
+            documentForeground: null, Doc);
 
         var brushed = resolver(Context(Rich(Red)));
 
@@ -183,7 +203,7 @@ public class BrushResolverDeltaTests
     public void BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint()
     {
         var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Bold),
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Faint);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -196,7 +216,7 @@ public class BrushResolverDeltaTests
     public void BaseAttributes_Faint_ImposesTheWeight_ClearingTheRunsBold()
     {
         var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Faint),
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Bold);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -215,7 +235,7 @@ public class BrushResolverDeltaTests
     {
         var resolver = DrawingContext.CreateBrushResolver(
             BrushedStyle.Identity.Imposing(TextAttributes.Bold | TextAttributes.Faint),
-            documentForeground: Red, Doc);
+            documentForeground: null, Doc);
 
         foreach (var run in new[] { CellStyle.Default,
                                     CellStyle.Default.WithAttributes(TextAttributes.Bold),
@@ -232,7 +252,7 @@ public class BrushResolverDeltaTests
     public void BaseAttributes_BooleanFlags_StillUnionWithTheRunsOwn()
     {
         var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Strikethrough),
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Overline);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -248,7 +268,7 @@ public class BrushResolverDeltaTests
     public void BaseAttributes_Italic_FoldsExactlyAsAUnionWould()
     {
         var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Italic),
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
         foreach (var run in new[] { CellStyle.Default,
                                     CellStyle.Default.WithAttributes(TextAttributes.Italic),
@@ -301,7 +321,7 @@ public class BrushResolverDeltaTests
     [Fact]
     public void NoBaseAttributes_LeavesTheAttributeChannelsUntouched()
     {
-        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
+        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: null, Doc);
 
         Assert.Equal(Rich(Red), resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red)));
     }
@@ -320,7 +340,7 @@ public class BrushResolverDeltaTests
     public void UnderlineShapeRider(TextAttributes baseAttributes, UnderlineStyle baseShape, UnderlineStyle expected)
     {
         var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(baseAttributes, baseShape),
-                                                          documentForeground: Red, Doc);
+                                                          documentForeground: null, Doc);
 
         // Rich() carries UnderlineStyle.Curly, so "the rider did not fire" is visible as the run's own shape.
         Assert.Equal(expected, resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red)).UnderlineStyle);
@@ -335,7 +355,7 @@ public class BrushResolverDeltaTests
     {
         var resolver = DrawingContext.CreateBrushResolver(
             BrushedStyle.Identity.Imposing(TextAttributes.Underline, UnderlineStyle.Dotted),
-            documentForeground: Red, Doc);
+            documentForeground: null, Doc);
 
         var applied = resolver(Context(CellStyle.Default)).ApplyTo(2, 1, CellStyle.Default);
 
@@ -355,7 +375,7 @@ public class BrushResolverDeltaTests
     {
         var resolver = DrawingContext.CreateBrushResolver(
             BrushedStyle.Identity.Imposing(TextAttributes.Underline, baseShape),
-            documentForeground: Red, Doc);
+            documentForeground: null, Doc);
 
         // Rich() carries Curly WITHOUT the Underline flag, so the shape is inert until the flag arrives.
         var applied = resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red));
@@ -370,7 +390,8 @@ public class BrushResolverDeltaTests
     /// The resolver and the glyph face are ONE chain: <c>FormattedText</c> hands the face the template the
     /// resolver returned, unsampled, so a face that paints many cells per character samples per CELL. Pinned
     /// through the public painting API rather than the seam, because the adapter between them is where a
-    /// half-migration would lose either the base or the per-cell sampling.
+    /// half-migration would lose either the base or the per-cell sampling. The paint rect is tightened to
+    /// the document's own width so the ramp spans the ink it colors.
     /// </summary>
     [Fact]
     public void FigletFace_SamplesTheBrushPerCellAndKeepsTheRunsOtherChannels()
@@ -380,7 +401,7 @@ public class BrushResolverDeltaTests
         var ft = new TextFormatter().Format(doc, 40, maxRows: null, OutputCapabilities.None);
 
         var gradient = new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
-        var b = DrawHarness.Render(40, 10, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 40, 10), gradient,
+        var b = DrawHarness.Render(40, 10, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, ft.Size.Columns, 10), gradient,
                                                                         OutputCapabilities.None));
 
         (int Column, int Row)? first = null, last = null;

@@ -371,27 +371,29 @@ public class GlyphBrushedStylePaintTests
     }
 
     /// <summary>
-    /// The resolver still READS the base style — that is how a brush decides whether a run's foreground was
-    /// inherited — it merely stops returning it. The context member is load-bearing.
+    /// The resolver sees the run's OWN carrier — the declarations the ladder's run rung reads — plus the
+    /// resolved underline shape the attribute leg re-states. It never sees a resolved base style: the
+    /// fold's output is not a declaration, which is what keeps value equality out of the ladder.
     /// </summary>
     [Fact]
-    public void FormattedText_ResolverStillSeesTheRunsBaseStyle()
+    public void FormattedText_ResolverSeesTheRunsOwnCarrier()
     {
         var ft = new TextFormatter().Format(new RichTextBuilder().Run("ab", Rich).Build(), 10);
 
-        var seen = new List<CellStyle>();
+        var seen = new List<(BrushedStyle Style, UnderlineStyle Shape)>();
         var buffer = new CellBuffer(10, 2);
         ft.Paint(buffer, new Rect(0, 0, 10, 2), OutputCapabilities.None,
                  (in BrushedTextContext ctx) =>
                  {
-                     seen.Add(ctx.BaseStyle);
+                     seen.Add((ctx.Style, ctx.UnderlineShape));
                      return BrushedTextStyle.None;
                  });
 
-        // The resolver was the identity, so the painted cell IS the base it was handed.
         Assert.NotEmpty(seen);
-        Assert.All(seen, s => Assert.Equal(buffer[0, 0].Style, s));
-        Assert.Equal(Blue, seen[0].Background);   // ...and it is the run's real style, not a blank
+        // The carrier states what Rich declared: its background, as a stated channel.
+        Assert.All(seen, s => Assert.Equal(Blue, Assert.IsType<SolidColorBrush>(s.Style.Background).Color));
+        // And the resolved shape is the run's own — Rich states Curly.
+        Assert.All(seen, s => Assert.Equal(UnderlineStyle.Curly, s.Shape));
     }
 
     /// <summary>

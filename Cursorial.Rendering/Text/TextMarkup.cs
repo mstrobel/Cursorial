@@ -43,13 +43,13 @@ public sealed class TextMarkupOptions
     public BrushedStyle DefaultStyle { get; init; }
 
     /// <summary>
-    /// Resolves a <c>[brush=VALUE]</c> markup value to an <b>opaque tag</b> attached to the runs it wraps — the
-    /// tag a higher layer reads to brush-color them (see <see cref="FormattedTextRun.Tag"/>). The resolver
-    /// returns <see cref="object"/>, so this parser stays brush-agnostic (no <c>IBrush</c> dependency); the
-    /// Drawing layer supplies a resolver that parses inline gradient syntax or looks up a named brush. Returns
-    /// null to reject the value. Null (the default) means <c>[brush]</c> is unsupported and raises a parse error.
+    /// Resolves a <c>[brush=VALUE]</c> markup value to the <see cref="IBrush"/> the wrapped runs state as
+    /// their own foreground — a style-stack layer, exactly like <c>[fg=…]</c> with a brush instead of a
+    /// colour, sampling each run's wrap-invariant strip. <see cref="BrushMarkup.Resolver"/> supplies the
+    /// stock implementation (inline gradient grammar + an optional named registry). Returns null to reject
+    /// the value. Null (the default) means <c>[brush]</c> is unsupported and raises a parse error.
     /// </summary>
-    public Func<string, object?>? BrushResolver { get; init; }
+    public Func<string, IBrush?>? BrushResolver { get; init; }
 
     public WrapMode? DefaultTextWrapping { get; init; }
 
@@ -304,7 +304,7 @@ public static class TextMarkup
                     Push(token.Name, builder.PushMap(ResolveGlyphMap(token.Value, token.Position)));
                     break;
                 case "brush":
-                    Push(token.Name, builder.PushTag(ResolveBrush(token.Value, token.Position)));
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithForeground(ResolveBrush(token.Value, token.Position))));
                     break;
                 case "p":
                     OpenParagraph(token);
@@ -487,9 +487,8 @@ public static class TextMarkup
                                     $"smallcaps (smcap), superscript (super), subscript (sub).")
                };
 
-        // Resolve a [brush=VALUE] tag to an opaque tag via the caller-supplied resolver. Kept brush-agnostic:
-        // the parser never sees a brush type — it just attaches whatever object the resolver returns.
-        private object ResolveBrush(string value, int position)
+        // Resolve a [brush=VALUE] tag to the IBrush the wrapped runs state, via the caller-supplied resolver.
+        private IBrush ResolveBrush(string value, int position)
         {
             if (string.IsNullOrEmpty(value))
                 throw Error(position, "[brush] requires a value: [brush=name] or [brush=linear:colorA,colorB].");
@@ -498,7 +497,7 @@ public static class TextMarkup
             if (resolver is not null)
                 return resolver(value) ?? throw Error(position, $"Unrecognized brush '{value}'.");
 
-            throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (the Drawing layer wires one up).");
+            throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (BrushMarkup.Resolver is the stock one).");
         }
 
         // ---- Color parsing ----
@@ -510,13 +509,6 @@ public static class TextMarkup
             return MarkupColor.TryParse(raw, out var color)
                        ? color
                        : throw Error(position, $"Unrecognized color '{raw}'. Use a name, palette index 0–255, or #hex.");
-        }
-
-        private static IBrush? TryParseBrush(string raw)
-        {
-            if (string.IsNullOrEmpty(raw)) return null;
-            MarkupColor.TryParseBrush(raw, out var brush);
-            return brush;
         }
 
         private static FormatException Error(int position, string message) =>

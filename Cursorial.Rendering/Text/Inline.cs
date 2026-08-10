@@ -33,21 +33,12 @@ public abstract record Inline;
 /// closing once at the end of the original run causes the link target to be lost on the second
 /// line.
 /// </para>
-/// <para>
-/// <c>Tag</c> is opaque per-run metadata, preserved through layout (including wrap-splits) onto every
-/// <see cref="FormattedTextRun"/> derived from this run. Rendering treats it as an opaque passenger.
-/// It predates <see cref="Style"/> carrying brushes: a higher layer used it to attach a brush to the run
-/// while <c>IBrush</c> was unreachable from this assembly. An inline-scoped brush now travels in the
-/// carrier itself (<c>RichTextBuilder</c> translates a tagged <c>ScopedBrush</c> on the way in); the tag
-/// remains the channel for block/document-scoped declarations. Null for ordinary runs.
-/// </para>
 /// </remarks>
 public sealed record TextRun(
     string Text,
     BrushedStyle Style = default,
     IGlyphMap? Map = null,
-    string? Hyperlink = null,
-    object? Tag = null) : Inline
+    string? Hyperlink = null) : Inline
 {
     /// <summary>
     /// The run's glyph source (proposal-glyph-runs): how its clusters measure and paint.

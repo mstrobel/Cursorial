@@ -64,13 +64,23 @@ ramp:
 
 (Arithmetic off the source — NOT yet proven by a rendered frame. Prove before citing.)
 
-**Derivation:** the anchor arithmetic the paint loop already runs, hoisted — per block, anchor by
-its EFFECTIVE alignment with width `block.Size.Columns`, accumulate rows with margins, union.
-`FormattedText.Paint` already computes this at `:92-94` but returns it after the fact. Must be
-EXTRACTED and consumed by the paint loop, not duplicated — a second implementation of block
-anchoring is exactly how `:175` and `:187` came to disagree. The union is not the widest block:
-mixed alignment spans from the left block's start to the right block's end. Worth exposing
-publicly ("where will this land in these bounds").
+**Derivation: DONE in phase 2** (`refactor/extract-anchor-arithmetic`). The arithmetic now lives in
+`Cursorial.Rendering/Text/FormattedBlockWalker.cs` — a struct enumerator the paint loop drives,
+owning the anchors, margin collapse, the row budget, `FillEntireBounds` re-centring, and
+`PaintedColumns`. Each `FormattedBlockPlacement` carries BOTH answers: `SamplingRect` (today's
+divergent one, Left-forced for paragraphs) and `Extent` (anchored by the block's real alignment).
+`FormattedText.ComputeExtent(in Rect)` exposes the union; `Rect.Union` was added for it, with an
+empty operand as the identity — `Rect.Empty` sits at the origin, so a naive accumulator would come
+back stretched to `(0,0)`.
+
+`ComputeExtent` is deliberately UNCONSUMED until 7b, and covered by
+`FormattedTextExtentTests` — which checks it against a painted buffer's ink bounding box rather
+than re-derived arithmetic, so drift between walk and painter moves real ink.
+
+Phase 2 also found the arithmetic was computed THREE times, not twice: `PaintBlock` built a rect
+byte-identical to the one `PaintParagraph` rebuilt, discarded for every paragraph and read only by
+the content-block arm. And `PaintParagraph` never used the block anchor for placement — its sole
+reader was the sampling rect, which is the defect stated structurally rather than numerically.
 
 **`FillEntireBounds` is NOT a special case** (corrected — I claimed twice that it makes
 `docBounds == bounds`; it does not). Per Mike it exists for rendering rich text directly into a
@@ -255,12 +265,18 @@ obstacle: `IBrush` is same-assembly, the namespace is already imported in `Rende
    `tag: null`. Latent bug today; under the rule it erases the stated/silent distinction exactly
    where the rule depends on it.
 
-## Defects found while designing (unproven — observation only)
+## Defects found while designing
 
-1. **Mis-anchored block rect.** `FormattedText.cs:175` builds `blockRect` from the *block*
-   anchor (Left for paragraphs, `:101`) while lines anchor with the paragraph's real alignment
-   (`:187`). Centered text in a wider box: gradient samples columns 0-10 while line 1 occupies
-   4-14. Reaches the most-travelled brush path via `ctx.Block` at `DrawingContext.cs:1213`.
+1. **Mis-anchored block rect — PROVEN, phase 0a; still live, fixed in 7b.** The paragraph's
+   sampling rect is anchored Left (`FormattedText.cs:101` forces it) while its lines anchor with
+   the paragraph's real alignment. Corpus case `align-center-brushed-wider-than-budget` shows it:
+   line 0 starts at column 5 and the ramp clamps to `#0000ff` at columns 12-13, because the
+   sampling rect ends at 11. Reaches the most-travelled brush path via `ctx.Block` at
+   `DrawingContext.cs:1213`. Since phase 2 both answers are carried side by side on
+   `FormattedBlockPlacement` (`SamplingRect` vs `Extent`); 7b switches the consumer over.
+   NOTE for 7b: that corpus case's own description cites the pre-phase-2 line numbers and the rect
+   is no longer built in `PaintParagraph` at all. Descriptions are fixture bytes, so it can only be
+   corrected in a phase that re-records the baselines — 7b is that phase.
 2. **Two rects both called "document."** `:1194` uses `docBounds` for
    `DeclarationScope.Document`; `:1213` uses `ctx.Block` for the document brush. The ladder says
    `:1194` is right.

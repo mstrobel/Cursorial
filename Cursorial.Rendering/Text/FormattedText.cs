@@ -42,6 +42,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// the document anchors flush to the bounds). Content is clipped to the rect; returns the
     /// rectangle actually painted.
     /// </summary>
+    /// <remarks>
+    /// The geometry — margin stacking, the row budget, <see cref="FillEntireBounds"/> re-centring, per-block
+    /// anchoring — belongs to <see cref="FormattedBlockWalker"/>. This method decides only what to DRAW at
+    /// each placement the walk hands it, and reads the walk's terminal state for the rect it returns.
+    /// </remarks>
     public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities,
                       BrushedTextResolver? resolver = null)
     {
@@ -49,49 +54,51 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
         if (buffer.IsEmpty) return bounds.WithSize(Size.Empty);
 
-        int row = bounds.Row;
-        int rowsAvailable = bounds.Rows;
-        bool first = true;
-        int paintedWidth = 0;
-        Margins lastBlockMargins = Margins.Zero;
-
         var fillEntireBounds = FillEntireBounds;
 
         if (fillEntireBounds/* && DefaultStyle.Background.IsDefault is false*/)
-        {
             buffer.ClearCells(bounds, DefaultStyle);
-            row = bounds.Row + (bounds.Rows - Size.Rows) / 2;
-        }
 
-        foreach (var block in Blocks)
-        {
-            if (rowsAvailable <= 0) break;
+        var walker = new FormattedBlockWalker(this, bounds);
 
-            int marginTop = first ? 0 : Math.Max(block.Margin.Top, lastBlockMargins.Bottom);
-            row += marginTop;
-            rowsAvailable -= marginTop;
-            if (rowsAvailable <= 0) break;
-
-            int blockHeight = Math.Min(block.Size.Rows, rowsAvailable);
-            if (blockHeight > 0)
-            {
-                int anchorColumn = ComputeAnchorColumn(bounds, block);
-                PaintBlock(block, buffer, anchorColumn, row, blockHeight, bounds, capabilities, resolver);
-                paintedWidth = Math.Max(paintedWidth, block.Size.Columns);
-            }
-
-            row += blockHeight;
-            rowsAvailable -= blockHeight;
-            first = false;
-            lastBlockMargins = block.Margin;
-        }
+        while (walker.MoveNext())
+            PaintBlock(walker.Current, buffer, bounds, capabilities, resolver);
 
         if (fillEntireBounds)
             return bounds;
 
         return new Rect(bounds.Column, bounds.Row,
-                        Math.Min(paintedWidth, bounds.Columns),
-                        row - bounds.Row);
+                        Math.Min(walker.PaintedColumns, bounds.Columns),
+                        walker.Row - bounds.Row);
+    }
+
+    /// <summary>
+    /// The document's EXTENT inside <paramref name="bounds"/>: the smallest rect containing every block's
+    /// cells, once each block has been anchored by its own <see cref="FormattedBlock.Alignment"/> and the
+    /// stack has taken margins and any <see cref="FillEntireBounds"/> re-centring into account. Answers
+    /// "where will this land in these bounds" without painting.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not the widest block placed at the document's origin: a left-aligned block above a right-aligned one
+    /// spans from the left block's start to the right block's end, and neither block's own rect covers that.
+    /// Within one paragraph it does collapse to the widest line's rect, because all of a paragraph's lines
+    /// share one alignment and the widest line's extent then contains the narrower ones.
+    /// </para>
+    /// <para>
+    /// Anchored at <paramref name="bounds"/> with a zero size when nothing places — an empty document, or a
+    /// rect with no rows for it.
+    /// </para>
+    /// </remarks>
+    public Rect ComputeExtent(in Rect bounds)
+    {
+        var walker = new FormattedBlockWalker(this, bounds);
+        var extent = Rect.Empty;
+
+        while (walker.MoveNext())
+            extent = extent.Union(walker.Current.Extent);
+
+        return extent.IsEmpty ? bounds.WithSize(Size.Empty) : extent;
     }
 
     internal static int ComputeAnchorColumn(in Rect bounds, FormattedBlock block)
@@ -120,24 +127,33 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     private static void PaintBlock(
-        FormattedBlock block, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
+        in FormattedBlockPlacement placement, in CellBufferView buffer, in Rect bounds,
         OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
-        // The block's 2-D rect — the sampling bounds for a block/document-scoped brush. Text and rules sample
-        // the resolver per cell; single-Style elements (figlet, sized text, block content) sample one color at
-        // the block's center and hand it to their own painter (so a glyph an image/icon degrades to picks up
-        // the brush — the fallback-glyph gradient). Clamped to ≥1 so a degenerate block can't throw.
-        var blockRect = new Rect(column, row, Math.Max(1, block.Size.Columns), Math.Max(1, maxRows));
+        var block = placement.Block;
+        int column = placement.Column;
+        int row = placement.Row;
+        int maxRows = placement.Rows;
+
+        // The block's 2-D rect — the sampling bounds for a block/document-scoped brush, from the walk. Text
+        // and rules sample the resolver per cell; single-Style elements (figlet, sized text, block content)
+        // sample one color at the block's center and hand it to their own painter (so a glyph an image/icon
+        // degrades to picks up the brush — the fallback-glyph gradient).
+        var blockRect = placement.SamplingRect;
         int centerColumn = column + block.Size.Columns / 2;
         int centerRow = row + maxRows / 2;
 
         switch (block)
         {
             case FormattedParagraph paragraph:
-                PaintParagraph(paragraph, buffer, column, row, maxRows, bounds, capabilities, resolver);
+                PaintParagraph(paragraph, buffer, row, maxRows, blockRect, bounds, capabilities, resolver);
                 break;
             case FormattedHorizontalRule rule:
-                PaintHorizontalRule(rule, buffer, column, row, bounds.Columns, resolver);
+                // The width comes from the placement, not from `bounds`, so the columns the rule DRAWS and
+                // the columns the walk reports as its extent are one value read twice rather than two
+                // expressions that have to be kept in step. Same number either way — the walk sets a rule's
+                // PaintColumns to the rect's width precisely because that is what this painter covers.
+                PaintHorizontalRule(rule, buffer, column, row, placement.PaintColumns, resolver);
                 break;
             case FormattedContentBlock content:
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
@@ -175,13 +191,20 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block, object? tag)
         => resolver(new BrushedTextContext(legacyBaseStyle, block, new Rect(column, row, 1, 1), tag));
 
-    private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int column, int row, int maxRows, in Rect bounds,
+    /// <summary>Paints one paragraph's line bands, top-down, from a placement the walk produced.</summary>
+    /// <remarks>
+    /// <c>blockRect</c> is the paragraph's sampling rect for a block/document-scoped brush (6a.1), taken from
+    /// the walk rather than rebuilt here. There is no block anchor COLUMN parameter: the loop below anchors
+    /// every line for itself, against <paramref name="bounds"/> at the paragraph's own
+    /// <see cref="FormattedParagraph.Alignment"/> and the LINE's width, so the block anchor reached this method
+    /// to position that rect. <c>blockRect</c> is anchored LEFT even where the paragraph is centred or
+    /// right-aligned; that answer and the un-diverged one are the walk's <c>SamplingRect</c> and
+    /// <c>Extent</c>, meant to be told apart there rather than reconciled here.
+    /// </remarks>
+    private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int row, int maxRows,
+                                       in Rect blockRect, in Rect bounds,
                                        OutputCapabilities capabilities, BrushedTextResolver? resolver)
     {
-        // The block's 2-D rect — the sampling bounds for a block/document-scoped brush (6a.1). Built once
-        // per paragraph; clamped to ≥1 so a degenerate (zero-width/height) paragraph can't throw.
-        var blockRect = new Rect(column, row, Math.Max(1, paragraph.Size.Columns), Math.Max(1, Math.Min(paragraph.Size.Rows, maxRows)));
-
         // Lines are BANDS (line.Rows tall — the max of the line's runs' LineRows); bands stack.
         // A band that doesn't fully fit the row budget is clipped whole — a half-painted sized
         // glyph is worse than a missing line, and matches the block painters' whole-band rule.

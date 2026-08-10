@@ -9,8 +9,8 @@ namespace Cursorial.Rendering.Text;
 /// </summary>
 /// <param name="Block">The block this placement is for.</param>
 /// <param name="Column">
-/// The anchor column the PAINTER uses — see <see cref="SamplingRect"/> for why this is not always
-/// where the block's cells end up.
+/// The anchor column the PAINTER uses — Left-forced for a paragraph, whose painter anchors every line
+/// for itself at the paragraph's own alignment; see <see cref="Extent"/> for where the cells land.
 /// </param>
 /// <param name="Row">The block's top row, after inter-block margins and any
 /// <see cref="FormattedText.FillEntireBounds"/> re-centring.</param>
@@ -24,28 +24,22 @@ namespace Cursorial.Rendering.Text;
 /// <see cref="FormattedBlockWalker.PaintedColumns"/>, which stays on <c>Size.Columns</c> because it feeds
 /// the rect <see cref="FormattedText.Paint"/> returns.
 /// </param>
-/// <param name="SamplingRect">
-/// The rect a block- or document-scoped brush samples against. Anchored at <see cref="Column"/> and
-/// clamped to at least 1×1 so a degenerate block cannot throw. Two things about it are worth knowing
-/// before it is reused:
-/// <list type="bullet">
-/// <item>for a paragraph it is anchored LEFT regardless of the paragraph's alignment (see
-/// <see cref="FormattedText.ComputeAnchorColumn(in Rect, FormattedBlock)"/>), while the paragraph painter
-/// lays its lines out at the paragraph's OWN alignment — so for a centred or right-aligned paragraph
-/// inside a wider rect this rect does not cover the cells it is sampled for. That divergence is
-/// reproduced here deliberately: the corpus case <c>align-center-brushed-wider-than-budget</c> pins it,
-/// and correcting it is a separate change from moving the arithmetic.</item>
-/// <item>it is <c>Size.Columns</c> wide for a rule as well, while
-/// <see cref="FormattedText.PaintHorizontalRule"/> builds the rect its own gradient spans from
-/// <see cref="PaintColumns"/> — the two agree only when the rect's width is the budget the rule was
-/// formatted against.</item>
-/// </list>
-/// <see cref="Extent"/> is the un-diverged answer to both.
-/// </param>
 /// <param name="Extent">
 /// Where the block's cells land: anchored by the block's own <see cref="FormattedBlock.Alignment"/>,
 /// <see cref="PaintColumns"/> wide (floored at 0, not at 1 — a zero-width block yields an empty rect, which
 /// <see cref="Rect.Union"/> treats as the identity) and <see cref="Rows"/> tall.
+/// <para>
+/// This is the rect a block-scoped brush samples against, and per-block it is what
+/// <see cref="FormattedText.ComputeExtent"/> unions for the document rung. It replaced a second rect this
+/// walk used to carry (<c>SamplingRect</c>): anchored at <see cref="Column"/> — Left-forced for every
+/// paragraph while the paragraph painter lays its lines out at the paragraph's OWN alignment — so for a
+/// centred or right-aligned paragraph inside a wider rect the sampled rect did not cover the cells it was
+/// sampled for. The corpus case <c>brush-block-style-scope-centred</c> pinned that mis-anchoring before the
+/// re-aim and witnesses the correction. The old rect was also clamped to ≥1×1 where this one floors at 0;
+/// nothing needed the clamp back: a zero-width paragraph paints no runs and a zero-width content block's
+/// single sample rides the gradient's own zero-span guard, so a degenerate extent cannot reach a resolver
+/// call.
+/// </para>
 /// <para>
 /// The height is what the painter is BUDGETED, which is not always what it inks. A paragraph clips a band
 /// WHOLE when the band is taller than the rows left (<see cref="FormattedText.PaintParagraph"/>'s band loop
@@ -71,7 +65,6 @@ internal readonly record struct FormattedBlockPlacement(
     int Row,
     int Rows,
     int PaintColumns,
-    Rect SamplingRect,
     Rect Extent);
 
 /// <summary>
@@ -175,11 +168,11 @@ internal struct FormattedBlockWalker
                     _row,
                     rows,
                     paintColumns,
-                    new Rect(column, _row, Math.Max(1, block.Size.Columns), Math.Max(1, rows)),
                     // Floored at 0, not 1: a zero-width block has no extent to contribute, and Size does not
                     // enforce its own "non-negative" documentation — a negative width reaches here from an
-                    // IContent that mis-measures, and Rect's ctor would throw on it. The sampling rect's
-                    // Math.Max(1, …) absorbed that before this walk existed; the extent must not un-absorb it.
+                    // IContent that mis-measures, and Rect's ctor would throw on it. The old sampling rect's
+                    // Math.Max(1, …) absorbed that before this walk existed; the extent must not un-absorb it
+                    // (see the Extent doc for why no consumer needs the 1×1 clamp back).
                     new Rect(inkColumn, _row, Math.Max(0, paintColumns), rows));
 
                 _paintedColumns = Math.Max(_paintedColumns, block.Size.Columns);

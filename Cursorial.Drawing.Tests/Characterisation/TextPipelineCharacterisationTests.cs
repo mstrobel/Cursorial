@@ -215,7 +215,7 @@ public class TextPipelineCharacterisationTests
                ? DrawingContext.CreateBrushResolver(
                      new BrushedStyle { Foreground = textCase.DocumentBrush }
                          .Imposing(textCase.BaseAttributes, textCase.BaseUnderlineShape),
-                     formatted.DefaultCarrier.Foreground, bounds)
+                     formatted, bounds)
                : null;
 
     // ---- Tier 1 dump -------------------------------------------------------------------------------

@@ -35,7 +35,10 @@ public readonly struct BrushedTextContext(BrushedStyle style, IBrush? blockForeg
     /// </summary>
     public IBrush? BlockForeground { get; } = blockForeground;
 
-    /// <summary>The enclosing block's rect — the 2-D sampling bounds for a block-declared brush.</summary>
+    /// <summary>The enclosing block's rect — the 2-D sampling bounds for a block-declared brush. This is
+    /// the walk's ink-anchored EXTENT: where the block's cells land under the block's own alignment, so a
+    /// block gradient ramps across the glyphs rather than across a copy of the box pinned to the paint
+    /// rect's left edge.</summary>
     public Rect Block { get; } = block;
 
     /// <summary>

@@ -459,8 +459,12 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-document-scope-horizontal",
-            Description = "A document brush samples the painted docBounds — one continuous gradient spans both "
-                        + "blocks; nothing resets at the block boundary.",
+            Description = "A document brush samples ONE continuous rect — the document's derived extent — so "
+                        + "one gradient spans both blocks and nothing resets at the block boundary. The cells "
+                        + "here cannot tell the extent from the old painted-docBounds rect: the prose fills "
+                        + "the 12-column budget, so the two rects differ only in height and origin-matching "
+                        + "width, and a horizontal brush never samples the row axis. The desc names the "
+                        + "extent because the contract does; the freeze is axis-coincidence, not identity.",
             Document = static () => new RichTextBuilder().Run(Prose).EndParagraph().Run("second").Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 7,
             DocumentBrush = LeftToRight()
@@ -468,7 +472,8 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-document-scope-vertical",
-            Description = "Top-to-bottom over wrapped lines: the painted docBounds' height is the sampling extent.",
+            Description = "Top-to-bottom over wrapped lines: the derived document extent's height — the four "
+                        + "rows the text inks, not the paint rect's five — is what the ramp spans.",
             Document = static () => new RichTextBuilder().Run(Prose).Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 5,
             DocumentBrush = TopToBottom()
@@ -522,8 +527,12 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-document-default-gradient",
-            Description = "A gradient declared as the document default's foreground samples docBounds — the "
-                        + "ladder's document rung observed directly. Replaces brush-run-document-scope (a "
+            Description = "A gradient declared as the document default's foreground samples the document's "
+                        + "derived extent — the ladder's document rung observed directly: the 12-wide text in "
+                        + "the 24-wide budget ramps across its own 12 columns, and the section's bytes are the "
+                        + "byte-twin of brush-block-style-scope's ramp (for a single Left block the document "
+                        + "rung's rect and the block rung's rect coincide; the two sections differ only in "
+                        + "which rung declared the brush). Replaces brush-run-document-scope (a "
                         + "Document-scoped ScopedBrush tag), a construction scope inference removed.",
             Document = static () => new RichTextBuilder(new BrushedStyle { Foreground = LeftToRight() })
                                     .Run("xxxxxxxxxx")
@@ -557,8 +566,8 @@ internal static class TextCorpus
         new()
         {
             Id = "brush-explicit-foreground-wins",
-            Description = "A run's OWN explicit foreground beats the brush — the inheritance test the resolver "
-                        + "reads BaseStyle for.",
+            Description = "A run's OWN explicit foreground beats the brush — a stated CellStyle channel is a "
+                        + "declaration at run scope, and the ladder colours only text no level declared for.",
             Document = static () => new RichTextBuilder()
                                     .Run("inherited ")
                                     .Run("explicit", CellStyle.Default.WithForeground(Amber))
@@ -847,10 +856,11 @@ internal static class TextCorpus
         {
             Id = "figlet-brushed-explicit-background",
             Description = "figlet-explicit-background-boxes, plus a document brush — the pair that shows the "
-                        + "FIGlet arm's two halves disagreeing. With no resolver the painter reads the run's "
-                        + "background sentinel and asks for a box (FormattedText.cs:240-243); with one it hands "
-                        + "the face a BrushedStyle and never asks at all (:249-251 — and FigletFont's brushed "
-                        + "overload, :234-252, has no GlyphPaint.Ink call, so no box is ever filled), so the "
+                        + "FIGlet arm's two halves disagreeing. With no resolver the painter sees the stated "
+                        + "background and asks for a box (the arm's resolver-null path in "
+                        + "FormattedText.PaintParagraph); with one it hands the face a BrushedStyle and never "
+                        + "asks at all (the resolver path — FigletFont's brushed overload has no GlyphPaint.Ink "
+                        + "call, so no box is ever filled), so the "
                         + "glyph gaps stay unwritten and the stated background survives on the ink cells only. "
                         + "None of the first 73 cases combined a stated background with a brush, so the missing "
                         + "box was invisible. The foreground is left inherited so the "
@@ -916,11 +926,12 @@ internal static class TextCorpus
             Id = "align-center-brushed-wider-than-budget",
             Description = "align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 "
                         + "cases the align-* family carries no brush and no brushed case states an alignment, so "
-                        + "nothing combined them. The document/preference rung samples docBounds (columns 0-19), "
-                        + "which covers the centred glyphs, so the ramp no longer clamps. The paragraph's "
-                        + "Left-forced block SamplingRect still diverges from its lines' Center anchor, but only "
-                        + "a block-declared brush can observe that rect now, and none is declared here; "
-                        + "re-aiming it at the walk's Extent is 7b's.",
+                        + "nothing combined them. The document/preference rung samples the derived extent — "
+                        + "(4,0,12,4), the block's REAL Center anchor in the 20-column rect — so the ramp spans "
+                        + "exactly the centred ink, columns 4-15: defect 1's family finally sampling where the "
+                        + "glyphs land. The Left-forced block SamplingRect this desc once deferred to is gone; "
+                        + "the walk carries only the ink-anchored Extent, and the block rung samples it "
+                        + "(witnessed by brush-block-style-scope-centred).",
             Document = static () => new RichTextBuilder().Paragraph(alignment: TextAlignment.Center).Run(Prose).Build(),
             Columns = 12, PaintColumns = 20, PaintRows = 6,
             DocumentBrush = LeftToRight()
@@ -975,9 +986,9 @@ internal static class TextCorpus
                         + "DefaultStyle, a CellStyle with no way to name a brush (FormattedText.cs:60-64), and "
                         + "the document then paints its own extent brushed. The surround is therefore flat while "
                         + "the text ramps. The clear also re-centres the document vertically (:63), which is why "
-                        + "the word lands on row 2 of 5; the block rect the brush samples against moves down with "
-                        + "it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row "
-                        + "is not pinned by this section.",
+                        + "the word lands on row 2 of 5; the derived extent the brush samples against moves down "
+                        + "with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved "
+                        + "row is not pinned by this section.",
             Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 32, 0)))
                                     .Run("filled")
                                     .Build(),
@@ -1022,14 +1033,14 @@ internal static class TextCorpus
             Id = "brush-block-style-scope-centred",
             Description = "brush-block-style-scope with the paragraph CENTRED and the paint rect wider than "
                         + "the 12-column budget — the combination no earlier case has: brush-block-style-scope "
-                        + "is Left-aligned (its SamplingRect and its ink coincide) and "
+                        + "is Left-aligned (its old SamplingRect and its ink coincided) and "
                         + "align-center-brushed-wider-than-budget carries a document brush, not a block one. "
-                        + "The block rung samples the walk's SamplingRect, which is Left-forced for every "
-                        + "paragraph, so the rect covers columns 0-11 while the centred glyphs land at columns "
-                        + "4-15: the ramp is visibly mis-anchored — the leftmost glyph starts 0.375 up the "
-                        + "ramp and the last four clamp flat blue past its end. This case exists to witness "
-                        + "the re-aim: pointing the block rung at the walk's Extent instead is 7b's, and is "
-                        + "the surviving half of defect 1.",
+                        + "The block rung samples the walk's ink-anchored Extent, (4,0,12,1), so the ramp "
+                        + "spans exactly the centred glyphs at columns 4-15 — the re-aim this case was "
+                        + "appended to witness. As recorded one commit earlier it pinned the pre-re-aim "
+                        + "bytes: the Left-forced SamplingRect covered columns 0-11, the leftmost glyph "
+                        + "started 0.375 up the ramp and the last four clamped flat blue past its end. That "
+                        + "rect is deleted; this section is the surviving half of defect 1, closed.",
             Document = static () => new RichTextBuilder()
                                     .Paragraph(alignment: TextAlignment.Center,
                                                style: new BrushedStyle { Foreground = LeftToRight() })

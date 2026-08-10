@@ -11,17 +11,21 @@ namespace Cursorial.Tests.Rendering.Text;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The extent has NO production consumer yet — it exists so the brush ladder can sample the rect the
-/// document actually occupies instead of the element box it was handed (docs/text-carrier-design.md).
-/// Until that lands no rendered frame moves when the extent is wrong, so most of these check it against
-/// a PAINTED buffer rather than against re-derived arithmetic: if the walk and the painter ever drift,
-/// the ink moves and the assertion fails.
+/// The extent is what the brush ladder samples (docs/text-carrier-design.md): both the document and
+/// preference rungs ramp across <see cref="FormattedText.ComputeExtent"/>, the painter's own fold uses
+/// the same rect for the document rung, and the block rung samples the walk's per-block
+/// <c>Extent</c> — the rect the declaration's cells actually occupy, not the element box the paint was
+/// handed. A wrong extent now moves rendered frames, and most of these still check it against a PAINTED
+/// buffer rather than against re-derived arithmetic: if the walk and the painter ever drift, the ink
+/// moves and the assertion fails.
 /// </para>
 /// <para>
-/// The extent is deliberately NOT the rect a block-scoped brush samples today. That rect is anchored
-/// LEFT for every paragraph while the paragraph's lines anchor at the paragraph's own alignment, and
-/// <see cref="Extent_CentredParagraph_DisagreesWithTheRectABrushSamples"/> pins the disagreement so that
-/// correcting it later is visible as a change in behaviour rather than as a change in structure.
+/// It was not always the sampled rect: the walk used to carry a second, Left-forced <c>SamplingRect</c>
+/// beside it (every paragraph's rect anchored at the rect's left edge while the paragraph's lines anchor
+/// at the paragraph's own alignment), and a test here pinned the disagreement so that correcting it would
+/// read as a change in behaviour. It did: the block rung's re-aim is pinned behaviourally in
+/// Cursorial.Drawing.Tests (<c>BlockStyleBrush_CentredParagraph_SamplesTheInk</c>) and by the corpus case
+/// <c>brush-block-style-scope-centred</c>; what remains here is the walker-level half that stayed true.
 /// </para>
 /// </remarks>
 public class FormattedTextExtentTests
@@ -85,17 +89,18 @@ public class FormattedTextExtentTests
     }
 
     [Fact]
-    public void Extent_CentredParagraph_DisagreesWithTheRectABrushSamples()
+    public void Extent_CentredParagraph_IsWhereTheGlyphsLand()
     {
-        // The defect this phase moves without fixing. Both answers come out of one walk now, so they can
-        // be compared side by side; the sampling rect is the one a block/document-scoped brush is handed.
+        // The walker-level half of the old divergence pin. The walk used to yield a Left-forced
+        // SamplingRect ((0,0,3,1) here) beside this rect; that rect is deleted and a block-scoped brush
+        // samples THIS one. The behavioural half — a block-declared gradient ramping across the centred
+        // ink — lives in Cursorial.Drawing.Tests (BlockStyleBrush_CentredParagraph_SamplesTheInk).
         var text = Format(OneParagraph("abc", TextAlignment.Center), 11);
         var bounds = new Rect(0, 0, 11, 1);
 
         var walker = new FormattedBlockWalker(text, bounds);
         Assert.True(walker.MoveNext());
 
-        Assert.Equal(new Rect(0, 0, 3, 1), walker.Current.SamplingRect);   // left-anchored: wrong
         Assert.Equal(new Rect(4, 0, 3, 1), walker.Current.Extent);         // where the glyphs land
         Assert.Equal(walker.Current.Extent, PaintedInk(text, bounds));
     }

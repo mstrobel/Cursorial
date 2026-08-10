@@ -10,10 +10,12 @@ using Cursorial.Rendering.Text;
 namespace Cursorial.Tests.Drawing;
 
 // DrawFormattedText colors a laid-out document's text down the foreground ladder: the caller's brush is
-// the weakest rung, sampled per cell against the painted docBounds, and declarations in the object model
-// (run carrier, block style, document default) win wherever they speak, each at its own declaration
-// site's scope. These pin that the gradient spans the document (across wrapped lines and across blocks),
-// not each line/run independently — and that the ladder's precedence holds.
+// the weakest rung, sampled per cell against the document's DERIVED EXTENT — where the document lands in
+// the paint rect, not the rect itself — and declarations in the object model (run carrier, block style,
+// document default) win wherever they speak, each at its own declaration site's scope: the run's
+// wrap-invariant strip, the block's ink-anchored extent, the document's extent. These pin that the
+// gradient spans the document's ink (across wrapped lines and across blocks), not each line/run
+// independently, not the element box — and that the ladder's precedence holds.
 public class BrushedFormattedTextTests
 {
     private static readonly Color Red = Color.FromRgb(255, 0, 0);
@@ -33,11 +35,12 @@ public class BrushedFormattedTextTests
     }
 
     [Fact]
-    public void VerticalGradient_SamplesTheDocumentBounds_AcrossWrappedLines()
+    public void VerticalGradient_SamplesTheDerivedExtent_AcrossWrappedLines()
     {
-        // The two text rows sit at the TOP of a 4-row paint rect, so a top-to-bottom ramp over
-        // docBounds keeps both red-dominant — the discriminator against block-rect sampling, which
-        // put row 1 at the bottom of a 2-row rect and flipped it blue.
+        // The two text rows sit at the TOP of a 4-row paint rect. The ramp runs over the document's
+        // DERIVED EXTENT — (0,0,9,2), the two inked rows — not the 4-row paint rect: row 1 samples
+        // t=0.75 (blue-dominant). `bottom.Blue > bottom.Red` is the discriminator against paint-rect
+        // sampling, which put row 1 at t=0.375 and kept it red-dominant.
         var b = DrawHarness.Render(12, 4, ctx =>
             ctx.DrawFormattedText(Wrapped(), new Rect(0, 0, 12, 4),
                 new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Top, endPoint: RelativePoint.Bottom),
@@ -50,6 +53,7 @@ public class BrushedFormattedTextTests
         var top = b[0, 0].Style.Foreground;
         var bottom = b[0, 1].Style.Foreground;
         Assert.True(top.Red > top.Blue, $"top should be red-dominant, was {top}");
+        Assert.True(bottom.Blue > bottom.Red, $"bottom row samples the extent's lower half (t=0.75), was {bottom}");
         Assert.True(bottom.Blue > top.Blue, $"row 1 samples further down the ramp than row 0: {top} vs {bottom}");
         Assert.True(top.Red > bottom.Red, $"row 1 samples further down the ramp than row 0: {top} vs {bottom}");
     }
@@ -198,6 +202,33 @@ public class BrushedFormattedTextTests
         var a = b[10, 0].Style.Foreground;
         Assert.True(x.Red > x.Blue, $"leading x should be red (block left edge), was {x}");
         Assert.True(a.Blue > a.Red, $"A should be blue (block scope, right side), was {a}");
+    }
+
+    [Fact]
+    public void BlockStyleBrush_CentredParagraph_SamplesTheInk()
+    {
+        // The defect-1 behavioural pin the walker-level divergence test promised: a block-declared
+        // gradient on a CENTRED paragraph samples the ink. "abcd" centres at columns 4-7 of a 12-wide
+        // rect; the block rung samples the walk's ink-anchored Extent (4,0,4,1), so 'a' reads the ramp's
+        // start (t=0.125, Red 223) and 'd' its end. The deleted Left-forced sampling rect (0,0,4,1)
+        // would have put every glyph PAST the ramp — 'a' flat end-colour blue, nowhere red — so the
+        // first assertion is the one that catches a regression to box-anchored sampling.
+        var doc = new RichTextBuilder()
+            .Paragraph(alignment: TextAlignment.Center, style: new BrushedStyle { Foreground = LeftToRight() })
+            .Run("abcd")
+            .Build();
+        var ft = new TextFormatter().Format(doc, 12);
+
+        var b = DrawHarness.Render(12, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 2), OutputCapabilities.None));
+
+        Assert.Equal("a", b[4, 0].Grapheme);
+        Assert.Equal("d", b[7, 0].Grapheme);
+
+        var left = b[4, 0].Style.Foreground;
+        var right = b[7, 0].Style.Foreground;
+        Assert.True(left.Red > left.Blue, $"leftmost ink should be red-dominant (ramp start), was {left}");
+        Assert.True(left.Red > 200, $"leftmost ink samples the ramp's START, not its midpoint or end, was {left}");
+        Assert.True(right.Blue > right.Red, $"rightmost ink should be blue-dominant (ramp end), was {right}");
     }
 
     [Fact]

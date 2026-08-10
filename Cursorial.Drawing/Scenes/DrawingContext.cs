@@ -1080,14 +1080,16 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// The preference's <see cref="BrushedStyle.Foreground"/> is the WEAKEST rung of the foreground ladder
-    /// — it colors only text no level of the document declared a foreground for, sampling the painted
-    /// bounds. Declarations in the object model win wherever they speak, each at the scope of its own
-    /// declaration site: a run's carrier at the run's wrap-invariant strip, a block's style at the block's
-    /// 2-D rect, the document default at the painted bounds. Text and horizontal rules are colored per
-    /// cell; FIGlet, sized text, and inline content take one sampled color at their center (their painters
-    /// take a single style) — so an image / icon that <em>degrades to a glyph</em> picks up the gradient
-    /// too. <paramref name="capabilities"/> drives protocol selection for embedded content; pass the
-    /// session's negotiated capabilities.
+    /// — it colors only text no level of the document declared a foreground for, sampling the document's
+    /// derived extent. Declarations in the object model win wherever they speak, each at the scope of its
+    /// own declaration site: a run's carrier at the run's wrap-invariant strip, a block's style at the
+    /// block's ink-anchored extent, the document default at the document's derived extent. Every rung
+    /// samples where its declaration's cells LAND, not the box the paint was handed — an element box wider
+    /// than its text ramps a gradient across the text, not the box. Text and horizontal rules are colored
+    /// per cell; FIGlet, sized text, and inline content take one sampled color at their center (their
+    /// painters take a single style) — so an image / icon that <em>degrades to a glyph</em> picks up the
+    /// gradient too. <paramref name="capabilities"/> drives protocol selection for embedded content; pass
+    /// the session's negotiated capabilities.
     /// </para>
     /// <para>
     /// The preference's attribute channels are the inherited-attribute leg — an ancestor's
@@ -1107,9 +1109,6 @@ public sealed class DrawingContext
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        var documentForeground = text.DefaultCarrier.Foreground;
-        Rect docBounds = bounds;   // can't capture an `in` parameter in the resolver closure
-
         // Under an active push the document paints through a clip-windowed, origin-re-based view: every
         // cell write is translated + clipped (a negative translate clips the scrolled-off top/left), while
         // the painter — and the brush resolver below — keeps working in current-local coordinates, so
@@ -1123,7 +1122,7 @@ public sealed class DrawingContext
             MappedSurface(),
             bounds,
             capabilities,
-            resolver: CreateBrushResolver(preference, documentForeground, docBounds));
+            resolver: CreateBrushResolver(preference, text, bounds));
 
         if (transformed)
             CropNewFragmentsToClip(clip, fragmentsBefore);
@@ -1145,7 +1144,11 @@ public sealed class DrawingContext
     /// Creates a brush resolver: the per-cell style DELTA a brushed document imposes on whatever style the
     /// formatter already resolved for that cell. Each leg owns exactly the channels it has an opinion about —
     /// a brush owns a foreground, the element-attribute leg owns the flags it inherits — and the painter
-    /// folds the result onto the run's own style.
+    /// folds the result onto the run's own style. The document rung's two facts are DERIVED from
+    /// <paramref name="text"/> rather than passed: its brush is read off the document's own carrier
+    /// (<see cref="FormattedText.DefaultCarrier"/>), and its sampling rect is the document's derived extent
+    /// (<see cref="FormattedText.ComputeExtent"/>) — so no caller can hand the paint rect back in as the
+    /// rect the document ramps across.
     /// </summary>
     /// <param name="preference">The caller's opinion, decomposed here into the resolver's legs. Its
     /// <see cref="BrushedStyle.Foreground"/> is the ladder's weakest rung — the brush for text no level
@@ -1156,11 +1159,13 @@ public sealed class DrawingContext
     /// sharing the SGR 22 reset. Its <see cref="BrushedStyle.UnderlineShape"/> is the element's underline
     /// shape, applied only when the preference carries an Underline opinion and the shape is not the
     /// <see cref="UnderlineStyle.Single"/> default.</param>
-    /// <param name="documentForeground">The document default's declared foreground brush, read off the
-    /// formatted text's carrier (<see cref="FormattedText.DefaultCarrier"/>), or null when the document
-    /// declares none. The ladder's document rung: it beats the preference and loses to a block or run
-    /// declaration, sampling <paramref name="docBounds"/>.</param>
-    /// <param name="docBounds">The sampling bounds for the document and preference rungs.</param>
+    /// <param name="text">The formatted document the resolver will color. Supplies the ladder's document
+    /// rung — the declared foreground off its carrier, or null when the document declares none (the rung
+    /// beats the preference and loses to a block or run declaration) — and, with
+    /// <paramref name="bounds"/>, the extent both the document and preference rungs sample.</param>
+    /// <param name="bounds">The rect the document will be painted into. Not itself a sampling rect: the
+    /// document and preference rungs sample <c>text.ComputeExtent(bounds)</c> — where the document lands
+    /// in it.</param>
     /// <returns>
     /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and returns the delta to fold
     /// onto that cell's base style.
@@ -1178,16 +1183,31 @@ public sealed class DrawingContext
     /// back unsampled, paired with the rect to sample it against — so the whole delegate runs once per run, and
     /// a glyph face receives the brush rather than a callback it must invoke blind for every cell.
     /// </para>
+    /// <para>
+    /// The document extent is captured by the CLOSURE rather than carried in the per-run context, and that
+    /// is load-bearing for nested paints: <c>ScaledText</c> hands this same resolver to its inner
+    /// placeholder document's paint, and a context-carried rect — supplied by whichever painter is
+    /// currently running — would re-aim the OUTER document's brush at the INNER placeholder document's
+    /// extent. Closure capture keeps the outer declaration sampling the outer document's geometry, which
+    /// is the scope-inference rule: a rung samples the thing it was declared on.
+    /// </para>
     /// </remarks>
     public static BrushedTextResolver CreateBrushResolver(in BrushedStyle preference,
-                                                          IBrush? documentForeground,
-                                                          Rect docBounds)
+                                                          FormattedText text,
+                                                          in Rect bounds)
     {
+        ArgumentNullException.ThrowIfNull(text);
+
+        // The document rung, derived once on this side of the per-run delegate; the closure captures the
+        // extent (an `in` parameter could not be captured, and the derivation belongs here anyway — see
+        // the remarks on nested paints).
+        var documentBrush = text.DefaultCarrier.Foreground;
+        var documentExtent = text.ComputeExtent(bounds);
+
         // The preference arrives pre-composed (BrushedStyle.Imposing), but the per-run merge below needs
         // the loose values back: when the Underline presence bit merges it re-states each RUN's own
         // shape — a value a delta composed before the runs are known cannot carry. Decomposed once, on
         // this side of the per-run delegate.
-        var documentBrush = documentForeground;
         var preferenceBrush = preference.Foreground;
         var baseAttributes = ImposedAttributes(preference);
         var baseUnderlineShape = preference.UnderlineShape ?? UnderlineStyle.Single;
@@ -1196,7 +1216,7 @@ public sealed class DrawingContext
         return (in BrushedTextContext ctx) =>
                {
                    BrushedStyle style = default;
-                   Rect bounds = default;
+                   Rect sampleRect = default;
 
                    // The ladder, strongest declaration first. Whichever rung wins, the brush goes back
                    // UNSAMPLED with its declaration site's rect — the painter (or a glyph face) samples it
@@ -1206,27 +1226,28 @@ public sealed class DrawingContext
                        // The declaration site is the run, so the scope is the run's wrap-invariant 1-D
                        // reading-order strip — inferred, not carried.
                        style = new BrushedStyle { Foreground = runBrush };
-                       bounds = ctx.InlineScope;
+                       sampleRect = ctx.InlineScope;
                    }
                    else if (ctx.BlockForeground is { } blockBrush)
                    {
                        // Declared on the enclosing block: the 2-D laid-out box, so a run's position within
                        // the block decides its colour.
                        style = new BrushedStyle { Foreground = blockBrush };
-                       bounds = ctx.Block;
+                       sampleRect = ctx.Block;
                    }
                    else if (documentBrush is { } declared)
                    {
-                       // Declared as the document default's foreground: the painted document bounds.
+                       // Declared as the document default's foreground: the document's derived extent —
+                       // where the document lands, not the box it was painted into.
                        style = new BrushedStyle { Foreground = declared };
-                       bounds = docBounds;
+                       sampleRect = documentExtent;
                    }
                    else if (preferenceBrush is { } fallback)
                    {
                        // No level declared a foreground: the caller's preference colors the text, over the
-                       // same bounds the document rung would have used.
+                       // same extent the document rung would have used.
                        style = new BrushedStyle { Foreground = fallback };
-                       bounds = docBounds;
+                       sampleRect = documentExtent;
                    }
 
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,
@@ -1243,7 +1264,7 @@ public sealed class DrawingContext
                    if (baseUnderlineShape != UnderlineStyle.Single && (baseAttributes & TextAttributes.Underline) != 0)
                        style = style with { UnderlineShape = baseUnderlineShape };
 
-                   return new BrushedTextStyle(style, bounds);
+                   return new BrushedTextStyle(style, sampleRect);
                };
     }
 

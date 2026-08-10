@@ -219,7 +219,7 @@ internal sealed class RenderDemo : InteractiveDemo
                     var bg = stripes[(x * stripes.Length) / barWidth];
 
                     buf.Set(1 + x, row + 1 + dy,
-                            " ", new(Color.Default, bg, default, default, default));
+                            " ", new CellStyle(Color.Default, bg, default, default, default));
                 }
             }
 

@@ -172,7 +172,7 @@ public sealed class DrawingContext
     /// <summary>
     /// Scalar write: place <paramref name="grapheme"/> at <paramref name="column"/>,
     /// <paramref name="row"/> with the given <paramref name="style"/>. The style's colors are
-    /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set"/>'s rules); the
+    /// stored as-is (intra-scene composition follows <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>'s rules); the
     /// scene's source colors are later composited onto a target by <see cref="SceneCompositor"/>.
     /// </summary>
     public void Set(int column, int row, string? grapheme, in CellStyle style)
@@ -219,7 +219,7 @@ public sealed class DrawingContext
     /// <see cref="Color.Transparent"/> — it falls through to a ground that already carries
     /// <c>Default</c>, so it agrees with <c>FillOpaque(…, Color.Default, …)</c> rather than with
     /// <c>DrawText</c>'s brush overload. The two are not interchangeable on the non-overwriting path:
-    /// <see cref="CellBuffer.Set"/> rescues a glyph only under a NON-opaque background, and
+    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> rescues a glyph only under a NON-opaque background, and
     /// <c>Default</c> is opaque.
     /// </para>
     /// <para>
@@ -236,7 +236,7 @@ public sealed class DrawingContext
     /// unrenderable and resolves to Bold rather than to the pair.
     /// </para>
     /// <para>
-    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set"/> so a translucent sampled
+    /// Writes via the raw indexer rather than <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> so a translucent sampled
     /// color is stored <em>verbatim</em> (its alpha preserved for the compositor to blend). Going
     /// through <c>Set</c> would consume the alpha by pre-compositing over the transparent backdrop.
     /// </para>
@@ -511,7 +511,7 @@ public sealed class DrawingContext
     /// <para>
     /// Unlike <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, which intends for blending to
     /// be applied by the compositor across scenes, this method performs blending <em>intra-scene</em> —
-    /// it writes through <see cref="CellBuffer.Set"/>, which is also where the whitespace rescue lives
+    /// it writes through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>, which is also where the whitespace rescue lives
     /// that leaves a same-scene glyph standing.
     /// </para>
     /// <para>
@@ -909,7 +909,7 @@ public sealed class DrawingContext
     /// instead of per cell — the readability a pair of opaque brushes could not offer.
     /// </para>
     /// <para>
-    /// Glyphs are written through <see cref="CellBuffer.Set"/>, which composites against the
+    /// Glyphs are written through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>, which composites against the
     /// transparent scene backdrop and stores opaque — so per-cell <em>translucent</em> foreground /
     /// background alpha is consumed here, not preserved for the compositor. For scene-level
     /// translucency use a composite opacity instead. A transparent background correctly lets a prior

@@ -17,7 +17,7 @@ namespace Cursorial.Tests.Drawing;
 /// survives compositing are different questions, and the three families differ precisely in the cell
 /// they write: <c>FillRectangle</c> writes background-only cells (no glyph, so a lower layer's shows
 /// through), <c>FillOpaque</c> writes space-bearing cells that OCCLUDE, and <c>PaintRectangle</c>
-/// writes background-only cells through <see cref="CellBuffer.Set"/> so the blend and the whitespace
+/// writes background-only cells through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> so the blend and the whitespace
 /// rescue happen INSIDE the scene. The composited assertions are reserved for the claims that are
 /// only true across layers.
 /// </para>
@@ -78,7 +78,7 @@ public class FillBrushedStyleTests
 
     /// <summary>
     /// <c>PaintRectangle</c> is the third thing: background-only like <c>FillRectangle</c>, but routed
-    /// through <see cref="CellBuffer.Set"/> so it blends and rescues INSIDE the scene. The
+    /// through <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> so it blends and rescues INSIDE the scene. The
     /// discriminator is a same-scene glyph — <c>FillRectangle</c> obliterates it (a raw write it has no
     /// <c>overwrite</c> switch to decline), <c>PaintRectangle</c> leaves it standing at its default.
     /// </summary>
@@ -279,7 +279,7 @@ public class FillBrushedStyleTests
     /// <summary>
     /// ...and <c>overwrite: false</c> still rescues the glyph underneath, carrying the fill's own
     /// attributes onto the cell. This is <c>TextPresenter</c>'s band-fill shape exactly: a transparent
-    /// background so <see cref="CellBuffer.Set"/> restores the FIGlet ink, and the attributes riding on
+    /// background so <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> restores the FIGlet ink, and the attributes riding on
     /// top of it.
     /// </summary>
     [Fact]
@@ -303,7 +303,7 @@ public class FillBrushedStyleTests
     /// An ABSENT background on a fill template is <see cref="Color.Default"/>, not
     /// <see cref="Color.Transparent"/> — because the ground a fill resolves against is
     /// <see cref="CellStyle.Default"/>, whose background already IS <c>Default</c>. The distinction is
-    /// not nominal: <c>Default</c> is OPAQUE to <see cref="CellBuffer.Set"/> and <c>Transparent</c> is
+    /// not nominal: <c>Default</c> is OPAQUE to <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> and <c>Transparent</c> is
     /// not, so the two land different GRAPHEMES on the rescue path.
     /// </summary>
     /// <remarks>

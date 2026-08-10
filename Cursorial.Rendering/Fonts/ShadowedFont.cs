@@ -15,7 +15,7 @@ namespace Cursorial.Rendering.Fonts;
 /// <remarks>
 /// <para>
 /// <b>Compositing.</b> The shadow goes down first; its style flows through the cell buffer's
-/// active blending mode like any other <see cref="CellBuffer.Set"/> call. Then the foreground
+/// active blending mode like any other <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> call. Then the foreground
 /// glyph is painted over the same region with its own style. Overlapping cells (where the
 /// shadow and foreground both light up) get the foreground style; cells touched only by the
 /// shadow keep the shadow style. The most common configuration is a low-alpha or dark-tone

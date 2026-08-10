@@ -492,7 +492,7 @@ public class IntermediateSurfaceEquivalenceTests
 
     /// <summary>
     /// <b>RESIDUAL DIVERGENCE — not cell reclassification, and not closed by the replacing-blank marker.</b>
-    /// <see cref="CellBuffer.Set"/> resolves the style it stores against the destination cell
+    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> resolves the style it stores against the destination cell
     /// (<c>Style.BlendOver</c>): an underline color that is not <see cref="Color.Default"/> composites over the
     /// destination's <i>background</i>, one that is inherits the destination's underline color. A wide pair is
     /// the only write the compositor makes through <c>Set</c>, so a wide glyph's underline color is resolved

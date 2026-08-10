@@ -255,8 +255,7 @@ public class DecoratedFont : IGlyphFont
         for (int i = 0, n = size.Columns; i < n; i += offset)
         {
             int decorationRow = above ? row : row + 1;
-            buffer.Set(column + i, decorationRow, _decoration,
-                       GlyphPaint.Over(buffer, column + i, decorationRow, decoratorStyle));
+            buffer.Set(column + i, decorationRow, _decoration, decoratorStyle);
         }
 
         return size with { Rows = size.Rows + 1 };

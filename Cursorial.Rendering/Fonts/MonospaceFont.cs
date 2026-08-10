@@ -16,7 +16,7 @@ namespace Cursorial.Rendering.Fonts;
 /// Grapheme segmentation uses <see cref="StringInfo.GetTextElementEnumerator(string)"/>, so
 /// emoji clusters, CJK, accented Latin, and ZWJ sequences are all treated as single visual
 /// units. Wide-cell handling is the buffer's responsibility — this font just calls
-/// <see cref="CellBuffer.Set"/> per cluster and reads back the advance.
+/// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> per cluster and reads back the advance.
 /// </remarks>
 public sealed class MonospaceFont : IGlyphFont
 {
@@ -147,12 +147,15 @@ public sealed class MonospaceFont : IGlyphFont
                 // Resolved per cluster, not once up front: a non-uniform BrushedStyle is position-dependent,
                 // so hoisting the resolve out of the loop would paint one cell's answer across the whole run.
                 // (The uniform case never reaches here — the overload above folds it and passes null.)
-                // The flat path folds over the CELL, which is what makes an absent channel mean "leave it":
-                // the cluster keeps the colour, attribute or hyperlink the caller declined to state.
-                var clusterStyle = ink is { } d  ? GlyphPaint.Over(buffer, col, row, d)
-                                 : style is null ? legacyBaseStyle
-                                                 : style.Value.Resolve(col, row, bounds).ApplyTo(legacyBaseStyle);
-                int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
+                // The flat path goes through the DELTA overload, which folds over the CELL — that is what
+                // makes an absent channel mean "leave it": the cluster keeps the colour, attribute or
+                // hyperlink the caller declined to state.
+                int written = ink is { } d
+                                  ? buffer.Set(col, row, cluster.ToString(), d)
+                                  : buffer.Set(col, row, cluster.ToString(),
+                                               style is null
+                                                   ? legacyBaseStyle
+                                                   : style.Value.Resolve(col, row, bounds).ApplyTo(legacyBaseStyle));
 
                 // The one case where the surface knows better than the layout: a wide glyph at the
                 // window's right edge degrades to a blank single, freeing the column it did not take.

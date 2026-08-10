@@ -1,17 +1,17 @@
-using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Fonts;
 
 /// <summary>
-/// The two halves of a delta-driven glyph paint that every face does identically: settling
-/// stamp-versus-box, and folding the delta onto the cell it is about to write.
+/// The part of a delta-driven glyph paint that every face does identically: settling
+/// stamp-versus-box.
 /// </summary>
 /// <remarks>
 /// Shared rather than repeated because the four faces have four separate paint paths — one of them
 /// (<see cref="ShadowedFont"/>) paints twice — and "does a background fill the gaps?" must not have
-/// four answers.
+/// four answers. The other half — folding the delta onto the cell about to be written — moved into
+/// the write itself (<see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/>), next to the
+/// blend rule it is paired with.
 /// </remarks>
 internal static class GlyphPaint
 {
@@ -35,34 +35,6 @@ internal static class GlyphPaint
         return style with { Background = null };
     }
 
-    /// <summary>
-    /// Fold <paramref name="style"/> onto the cell at (<paramref name="column"/>,
-    /// <paramref name="row"/>) — the style to hand <see cref="CellBufferView.Set"/> for a cell this
-    /// paint is about to ink.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The base is the cell's own style, which is what makes an absent channel mean "leave it": the
-    /// grapheme lands carrying whatever colour, attribute or link the caller declined to state.
-    /// </para>
-    /// <para>
-    /// An absent BACKGROUND is spelled <see cref="Color.Default"/> rather than read back off the cell,
-    /// because that is already <see cref="CellBuffer.Set"/>'s own word for "leave the background
-    /// alone" — its blend keeps the backdrop verbatim for <see cref="Color.Default"/> instead of
-    /// compositing. Handing it the cell's actual colour would say the same thing under the default
-    /// blending mode and something else entirely under any other, which is the difference between a
-    /// stamp and a stamp that darkens what it lands on.
-    /// </para>
-    /// </remarks>
-    public static CellStyle Over(in CellBufferView buffer, int column, int row, in PartialStyle style)
-        => Over(buffer.Read(column, row).Style, style);
-
-    /// <inheritdoc cref="Over(in CellBufferView, int, int, in PartialStyle)"/>
-    /// <remarks>The form for a face that has already read the cell for reasons of its own —
-    /// <see cref="FigletFont"/> looks the same cell up to decide smushing.</remarks>
-    public static CellStyle Over(in CellStyle backdrop, in PartialStyle style)
-        => style.ApplyTo(backdrop with { Background = Color.Default });
-
     // The gap half of box mode. Background and blending ONLY: the ink's attributes are deliberately
     // not spread across cells the face never inked, because the ones that are visible on a blank —
     // Underline, Strikethrough, Overline — would rule a line clean across a multi-row glyph box.
@@ -82,8 +54,9 @@ internal static class GlyphPaint
         {
             // A null grapheme through Set, not a raw cell write: Set is the blending-aware path fonts
             // are required to use, and it is also the one that keeps wide-pair hygiene when the box
-            // lands on half of a wide cell.
-            buffer.Set(c, r, null, Over(buffer, c, r, fill));
+            // lands on half of a wide cell. The DELTA overload, so the fold onto the cell underneath
+            // happens inside the write rather than being restated per face.
+            buffer.Set(c, r, null, fill);
         }
     }
 }

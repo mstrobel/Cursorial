@@ -568,14 +568,14 @@ public abstract record FormattedRun
 /// <summary>
 /// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
 /// hyperlink target. The painter walks graphemes and writes cells through
-/// <see cref="CellBufferView.Set"/>.
+/// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
 /// </summary>
 public sealed record FormattedTextRun : FormattedRun
 {
     /// <summary>
     /// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
     /// hyperlink target. The painter walks graphemes and writes cells through
-    /// <see cref="CellBufferView.Set"/>.
+    /// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
     /// </summary>
     [SetsRequiredMembers]
     public FormattedTextRun(string Text, CellStyle Style, string? Hyperlink = null)

@@ -2,6 +2,7 @@ using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering;
@@ -70,9 +71,47 @@ internal interface ICellSurface
     /// <summary>Place a single grapheme cluster, handling wide-cell width. Returns columns occupied.</summary>
     int Set(int column, int row, string? grapheme, in CellStyle style);
 
+    /// <summary>
+    /// Place a single grapheme cluster styled by a DELTA over the <b>destination cell</b>. Returns
+    /// columns occupied.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Declining a channel is not a guarantee that the channel survives.</b> A declined channel is
+    /// folded back into the style as the cell's own value, and the write's ordinary blend then runs
+    /// over the whole style — so a channel nobody stated can still be rewritten by that blend, by the
+    /// blending mode, or by <see cref="CellBuffer"/>'s whitespace-rescue branch. Treat the delta as
+    /// "what this write ASKS FOR", not as a mask over the cell.
+    /// </para>
+    /// <para>
+    /// The one channel with an unconditional guarantee is the <b>background</b>: declining it folds to
+    /// <see cref="Color.Default"/>, which the blend short-circuits to the backdrop rather than
+    /// compositing. That is a mechanism, not a coincidence, and it is the reason a delta cannot ask
+    /// for the terminal's own default background — the same value means "say nothing" here.
+    /// </para>
+    /// <para>
+    /// The exact per-channel behaviour is a function of the channel, the blending mode, whether the
+    /// cell's own value is opaque, whether the grapheme is whitespace, and what the neighbouring cell
+    /// holds. It is pinned exhaustively by <c>CellBufferDeltaWriteTests</c> rather than restated here:
+    /// three attempts to write it as prose were each wrong in a different direction, and a doc comment
+    /// that is confidently wrong costs more than one that defers.
+    /// </para>
+    /// </remarks>
+    int Set(int column, int row, string? grapheme, in PartialStyle style);
+
     /// <summary>Lay out a string's grapheme clusters across a single row, stopping at the first
     /// C0/C1 control character. Returns columns written.</summary>
     int Write(int column, int row, ReadOnlySpan<char> text, in CellStyle style);
+
+    /// <summary>
+    /// As <see cref="Write(int, int, ReadOnlySpan{char}, in CellStyle)"/>, with the delta folded onto
+    /// each destination cell in turn. Returns columns written.
+    /// </summary>
+    /// <remarks>
+    /// Every cluster goes through <see cref="Set(int, int, string?, in PartialStyle)"/>, so the
+    /// qualification on what a declined channel keeps applies here per cell — see its remarks.
+    /// </remarks>
+    int Write(int column, int row, ReadOnlySpan<char> text, in PartialStyle style);
 
     /// <summary>Fill every cell with <paramref name="cell"/>, applying the active blending mode.</summary>
     void Fill(in Cell cell);

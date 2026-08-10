@@ -214,9 +214,12 @@ public sealed class FigletFont : IGlyphFont
 
         // Compatibility applies to the FOLDED style, per cell: the delta is one way for an attribute this
         // face cannot render to arrive and the cell underneath is another, and the face's constraint is on
-        // what it paints, not on what it was told.
+        // what it paints, not on what it was told. That is why this face folds by hand instead of handing
+        // the delta to Set — there is an adjustment BETWEEN the fold and the write, and the adjustment has
+        // to see the cell's contribution. It folds through the write's own primitive, though, so the rule
+        // about what an absent background means stays in one place.
         return PaintCore(buffer, column, row, text,
-                         (_, _, backdrop) => EnsureCompatibleStyle(GlyphPaint.Over(backdrop, ink)));
+                         (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, ink)));
     }
 
     /// <summary>

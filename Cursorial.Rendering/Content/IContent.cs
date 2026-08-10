@@ -6,7 +6,7 @@ namespace Cursorial.Rendering.Content;
 /// <summary>
 /// The unifying abstraction for renderable content. An <see cref="IContent"/> decides at paint
 /// time whether to flow through the cell-grid path (<see cref="Fonts.IGlyphFont"/> writes
-/// cells via <see cref="CellBuffer.Set"/>) or the out-of-band path
+/// cells via <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>) or the out-of-band path
 /// (<see cref="Fragments.IBufferFragment"/> attached to the buffer for the renderer to emit as
 /// a protocol payload). Capability-aware fallback also lives here — a single <c>IContent</c>
 /// can try OSC 66, fall back to a Figlet font, then a Braille font, then a placeholder, and
@@ -77,7 +77,8 @@ public interface IContent
     /// </summary>
     /// <param name="buffer">Target cell buffer.</param>
     /// <param name="bounds">Allocated rectangle in buffer-cell coordinates.</param>
-    /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop; fonts pass it to <see cref="CellBuffer.Set"/>.</param>
+    /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop;
+    /// fonts pass it to <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
     Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities);
 }

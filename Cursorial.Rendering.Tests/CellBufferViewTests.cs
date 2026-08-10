@@ -106,7 +106,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        view.Set(3, 2, "A", default);
+        view.Set(3, 2, "A", CellStyle.Default);
 
         Assert.Equal("A", buf[7, 5].Grapheme);
     }
@@ -120,16 +120,16 @@ public class CellBufferViewTests
         var view = buf.View(4, 3, 5, 5);
 
         // Past the right edge of the view.
-        int written = view.Set(5, 0, "X", default);
+        int written = view.Set(5, 0, "X", CellStyle.Default);
         Assert.Equal(0, written);
         Assert.Null(buf[9, 3].Grapheme);
 
         // Past the bottom edge.
-        written = view.Set(0, 5, "Y", default);
+        written = view.Set(0, 5, "Y", CellStyle.Default);
         Assert.Equal(0, written);
 
         // Negative.
-        written = view.Set(0, -1, "Z", default);
+        written = view.Set(0, -1, "Z", CellStyle.Default);
         Assert.Equal(0, written);
     }
 
@@ -165,7 +165,7 @@ public class CellBufferViewTests
 
         // Place a wide glyph at the last cell of the view (column 9 in view, 14 in buffer).
         // No room for the right half within the view — should degrade.
-        int written = view.Set(9, 0, "あ", default); // East-Asian wide
+        int written = view.Set(9, 0, "あ", CellStyle.Default); // East-Asian wide
         Assert.Equal(1, written);
 
         // The wide glyph wasn't placed; the buffer cell at column 14 is a blank single, not a
@@ -182,7 +182,7 @@ public class CellBufferViewTests
         var view = buf.View(5, 0, 10, 1);
 
         // Place at view column 8 — there's room for both halves (columns 8 and 9 = buffer 13, 14).
-        int written = view.Set(8, 0, "あ", default);
+        int written = view.Set(8, 0, "あ", CellStyle.Default);
         Assert.Equal(2, written);
 
         Assert.Equal(CellKind.WideLeft, buf[13, 0].Kind);
@@ -203,7 +203,7 @@ public class CellBufferViewTests
         Assert.Equal(5, inner.Columns);
         Assert.Equal(5, inner.Rows);
 
-        inner.Set(0, 0, "Z", default);
+        inner.Set(0, 0, "Z", CellStyle.Default);
         Assert.Equal("Z", buf[4, 3].Grapheme);
     }
 
@@ -230,7 +230,7 @@ public class CellBufferViewTests
         Assert.True(inner.IsEmpty);
 
         // No-op for writes — doesn't reach the buffer.
-        Assert.Equal(0, inner.Set(0, 0, "X", default));
+        Assert.Equal(0, inner.Set(0, 0, "X", CellStyle.Default));
     }
 
     // ---- Fill / Clear scoped to view ----
@@ -524,8 +524,8 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 10);
         var view = buf.View(4, 3, 5, 5);
 
-        Assert.Equal(0, view.Write(5, 0, "X", default));   // past the right edge of the view
-        Assert.Equal(0, view.Write(0, 5, "X", default));   // past the bottom edge
+        Assert.Equal(0, view.Write(5, 0, "X", CellStyle.Default));   // past the right edge of the view
+        Assert.Equal(0, view.Write(0, 5, "X", CellStyle.Default));   // past the bottom edge
     }
 
     [Fact]
@@ -651,10 +651,10 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 6);
         var view = buf.View(2, 1, 4, 2).WithOrigin(5, 4);   // window (2,1,4,2); local (0,0) ↦ backing (5,4)
 
-        Assert.Equal(1, view.Set(0, -2, "A", default));     // backing (5,2) — inside the window
+        Assert.Equal(1, view.Set(0, -2, "A", CellStyle.Default));     // backing (5,2) — inside the window
         Assert.Equal("A", buf[5, 2].Grapheme);
 
-        Assert.Equal(0, view.Set(0, 0, "B", default));      // backing (5,4) — below the window → dropped
+        Assert.Equal(0, view.Set(0, 0, "B", CellStyle.Default));      // backing (5,4) — below the window → dropped
         Assert.True(string.IsNullOrEmpty(buf[5, 4].Grapheme));
 
         Assert.True(view.Contains(0, -2));
@@ -669,8 +669,8 @@ public class CellBufferViewTests
         var buf = new CellBuffer(8, 4);
         var view = buf.AsView().WithOrigin(0, -2);
 
-        Assert.Equal(0, view.Set(0, 0, "X", default));      // backing row −2 → dropped
-        Assert.Equal(1, view.Set(0, 2, "Y", default));      // backing row 0
+        Assert.Equal(0, view.Set(0, 0, "X", CellStyle.Default));      // backing row −2 → dropped
+        Assert.Equal(1, view.Set(0, 2, "Y", CellStyle.Default));      // backing row 0
         Assert.Equal("Y", buf[0, 0].Grapheme);
     }
 
@@ -680,7 +680,7 @@ public class CellBufferViewTests
         var buf = new CellBuffer(10, 3);
         var view = buf.View(0, 0, 4, 3).WithOrigin(1, 0);   // window cols [0,4); local c ↦ backing c+1
 
-        Assert.Equal(1, view.Set(2, 0, "中", default));      // backing (3,0): right half would leave the window
+        Assert.Equal(1, view.Set(2, 0, "中", CellStyle.Default));      // backing (3,0): right half would leave the window
         Assert.True(string.IsNullOrEmpty(buf[3, 0].Grapheme));
         Assert.Equal(CellKind.Single, buf[3, 0].Kind);
     }

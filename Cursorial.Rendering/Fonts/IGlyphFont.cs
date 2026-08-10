@@ -11,7 +11,7 @@ namespace Cursorial.Rendering.Fonts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Fonts operate exclusively through the cell-grid model — they call <see cref="CellBuffer.Set"/>
+/// Fonts operate exclusively through the cell-grid model — they call <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>
 /// (or write through the indexer) and otherwise know nothing about escape sequences, terminal
 /// protocols, or capabilities. That keeps the abstraction simple and lets the rendering layer
 /// reuse wide-cell handling, the blending stack, diff rendering, and capability-aware
@@ -86,7 +86,7 @@ public interface IGlyphFont
     /// </para>
     /// <para>
     /// Fonts must respect the buffer's active blending mode by routing all cell writes through
-    /// <see cref="CellBuffer.Set"/> rather than the raw indexer. Coordinates beyond the buffer's
+    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> rather than the raw indexer. Coordinates beyond the buffer's
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
     /// </para>

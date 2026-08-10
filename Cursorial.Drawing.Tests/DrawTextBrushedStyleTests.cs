@@ -47,9 +47,11 @@ public class DrawTextBrushedStyleTests
     // ───────────── trap 1: what an ABSENT background means, at each entry point ─────────────
 
     /// <summary>
-    /// On a TEMPLATE, <see langword="null"/> is NO OPINION — so the base style's background reaches the
-    /// cell untouched. This is the one semantic the style overload deliberately does NOT inherit from
-    /// the brush overload, whose <c>null</c> has always meant <see cref="Brushes.Transparent"/>.
+    /// On a TEMPLATE, <see langword="null"/> is NO OPINION — so a base restated UNDER the delta
+    /// (<see cref="BrushedStyle.FromStated"/> + <see cref="BrushedStyle.Then"/>, the purge's
+    /// spelling of the old base-style parameter) keeps its background when the delta declines to
+    /// state one. This is the one semantic the style form deliberately does NOT inherit from the
+    /// retired brush pair, whose <c>null</c> always meant <see cref="Brushes.Transparent"/>.
     /// </summary>
     [Fact]
     public void BrushedStyle_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives()
@@ -58,8 +60,8 @@ public class DrawTextBrushedStyleTests
 
         var buffer = DrawHarness.Render(2, 1,
                                         ctx => ctx.DrawText(0, 0, "A",
-                                                            new BrushedStyle { Foreground = Brushes.White },
-                                                            baseStyle));
+                                                            BrushedStyle.FromStated(baseStyle)
+                                                                .Then(new BrushedStyle { Foreground = Brushes.White })));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
         Assert.Equal(Slate, buffer[0, 0].Style.Background);         // the base's own background, stated by nobody else
@@ -67,32 +69,36 @@ public class DrawTextBrushedStyleTests
     }
 
     /// <summary>
-    /// The BRUSH overload keeps its historical meaning verbatim: an omitted background is
-    /// <see cref="Brushes.Transparent"/>, which OVERWRITES the base style's background and lets the
-    /// backdrop through. Not merely "it did not throw" — the base here carries a loud background that
-    /// must NOT appear.
+    /// The retired brush pair's contract, restated (<see cref="DrawHarness.Ink(IBrush, IBrush?)"/>):
+    /// an omitted background is a STATED <see cref="Brushes.Transparent"/>, which OVERWRITES the
+    /// under-restated base's background and lets the backdrop through. Not merely "it did not
+    /// throw" — the base here carries a loud background that must NOT appear.
     /// </summary>
     [Fact]
-    public void BrushOverload_OmittedBackground_StillOverwritesTheBaseWithTransparent()
+    public void InkForm_OmittedBackground_StillOverwritesTheBaseWithTransparent()
     {
         var baseStyle = CellStyle.Default.WithBackground(Slate);
 
         var buffer = DrawHarness.Render(2, 1,
-                                        ctx => ctx.DrawText(0, 0, "A", Brushes.White, background: null, baseStyle));
+                                        ctx => ctx.DrawText(0, 0, "A",
+                                                            BrushedStyle.FromStated(baseStyle)
+                                                                .Then(DrawHarness.Ink(Brushes.White))));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
         Assert.Equal(Black, buffer[0, 0].Style.Background);         // the compositor's base, NOT Slate
         Assert.NotEqual(Slate, buffer[0, 0].Style.Background);
     }
 
-    /// <inheritdoc cref="BrushOverload_OmittedBackground_StillOverwritesTheBaseWithTransparent"/>
+    /// <inheritdoc cref="InkForm_OmittedBackground_StillOverwritesTheBaseWithTransparent"/>
     [Fact]
-    public void ColorOverload_OmittedBackground_StillOverwritesTheBaseWithTransparent()
+    public void InkForm_Color_OmittedBackground_StillOverwritesTheBaseWithTransparent()
     {
         var baseStyle = CellStyle.Default.WithBackground(Slate);
 
         var buffer = DrawHarness.Render(2, 1,
-                                        ctx => ctx.DrawText(0, 0, "A", Colors.White, background: null, baseStyle));
+                                        ctx => ctx.DrawText(0, 0, "A",
+                                                            BrushedStyle.FromStated(baseStyle)
+                                                                .Then(DrawHarness.Ink(Colors.White))));
 
         Assert.Equal("A", buffer[0, 0].Grapheme);
         Assert.Equal(Black, buffer[0, 0].Style.Background);
@@ -110,13 +116,13 @@ public class DrawTextBrushedStyleTests
     {
         var transparent = DrawHarness.Render(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "A", Brushes.White);
-            ctx.DrawText(0, 0, " ", Brushes.White);            // brush overload: omitted background ⇒ Transparent
+            ctx.DrawText(0, 0, "A", DrawHarness.Ink(Brushes.White));
+            ctx.DrawText(0, 0, " ", DrawHarness.Ink(Brushes.White));            // Ink: omitted background ⇒ STATED Transparent
         });
 
         var noOpinion = DrawHarness.Render(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "A", Brushes.White);
+            ctx.DrawText(0, 0, "A", DrawHarness.Ink(Brushes.White));
             ctx.DrawText(0, 0, " ", new BrushedStyle { Foreground = Brushes.White });   // style: absent ⇒ no opinion
         });
 
@@ -152,9 +158,9 @@ public class DrawTextBrushedStyleTests
     }
 
     /// <summary>
-    /// The style is a DELTA: a channel it declines to state falls through to the base style rather
-    /// than being reset. The discriminator is an attribute the base carries and the style never
-    /// mentions.
+    /// The style is a DELTA: a channel it declines to state falls through to the base restated
+    /// under it rather than being reset. The discriminator is an attribute the base carries and
+    /// the delta never mentions.
     /// </summary>
     [Fact]
     public void BrushedStyle_LeavesTheBaseStylesOwnAttributesAlone()
@@ -163,9 +169,9 @@ public class DrawTextBrushedStyleTests
 
         var buffer = DrawHarness.Render(2, 1,
                                         ctx => ctx.DrawText(0, 0, "A",
-                                                            new BrushedStyle { Foreground = Brushes.White }
-                                                                .Applying(TextAttributes.Blink),
-                                                            baseStyle));
+                                                            BrushedStyle.FromStated(baseStyle)
+                                                                .Then(new BrushedStyle { Foreground = Brushes.White }
+                                                                          .Applying(TextAttributes.Blink))));
 
         var style = buffer[0, 0].Style;
         Assert.True(style.Attributes.HasFlag(TextAttributes.Italic), $"the base's Italic was dropped: {style.Attributes}");

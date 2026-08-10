@@ -156,7 +156,7 @@ internal sealed class DrawingDemo : InteractiveDemo
                 const string title = " Cursorial.Drawing — gradients - scenes - opacity - z-order - clip - cached raster ";
                 var clipped = title.Length < cols ? title : (cols > 1 ? title[..(cols - 1)] : "");
                 var titleFg = new LinearGradientBrush([new(0.0, Color.FromRgb(120, 220, 232)), new(1.0, Color.FromRgb(196, 150, 255))]);
-                ctx.DrawText(0, 0, clipped, titleFg, new SolidColorBrush(barColor));
+                ctx.DrawText(0, 0, clipped, DemoSupport.Ink(titleFg, new SolidColorBrush(barColor)));
 
                 // Aspect-correction showcase: two radial gradients over square-in-CELLS regions (which are tall
                 // on screen). The left uses no correction → a vertical ellipse; the right is aspect-corrected →
@@ -165,7 +165,7 @@ internal sealed class DrawingDemo : InteractiveDemo
                 if (rows >= sw + 3 && cols >= 2 * sw + 6)
                 {
                     int top = rows - sw - 1;
-                    ctx.DrawText(1, top - 1, "radial:  ellipse (raw)    circle (aspect-corrected) →", Color.FromRgb(150, 160, 200));
+                    ctx.DrawText(1, top - 1, "radial:  ellipse (raw)    circle (aspect-corrected) →", DemoSupport.Ink(Color.FromRgb(150, 160, 200)));
                     var deep = Color.FromRgb(16, 18, 30);
                     ctx.FillRectangle(new Rect(1, top, sw, sw), new RadialGradientBrush(Color.FromRgb(120, 220, 232), deep));
                     ctx.FillRectangle(new Rect(sw + 4, top, sw, sw),

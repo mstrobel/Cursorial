@@ -5,6 +5,7 @@ using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.UI;
 
@@ -15,6 +16,22 @@ using Cursorial.UI;
 // the migrated IDemo classes can call them. Pure utility — no per-demo state.
 internal static class DemoSupport
 {
+    /// <summary>
+    /// The retired two-argument <c>DrawText</c> forms, restated: solid <paramref name="foreground"/>
+    /// ink over a STATED background — <see cref="Brushes.Transparent"/> when omitted, which was those
+    /// forms' contract verbatim (transparent OVERWRITES the cell's background; it is not absence).
+    /// </summary>
+    public static BrushedStyle Ink(Color foreground, Color? background = null) =>
+        new()
+        {
+            Foreground = new SolidColorBrush(foreground),
+            Background = background is {} bg ? new SolidColorBrush(bg) : Brushes.Transparent,
+        };
+
+    /// <inheritdoc cref="Ink(Color, Color?)"/>
+    public static BrushedStyle Ink(IBrush foreground, IBrush? background = null) =>
+        new() { Foreground = foreground, Background = background ?? Brushes.Transparent };
+
     public static async Task<(TerminalSession session,
                               CellBuffer buffer,
                               FrameRenderer renderer,

@@ -199,11 +199,11 @@ public class BrushNegativeOriginEquivalenceTests
         var brush = new LinearGradientBrush([new(0.0, Black), new(0.5, Red), new(1.0, White)],
                                             RelativePoint.TopLeft, RelativePoint.BottomRight);
 
-        var reference = DrawHarness.Render(6, 6, ctx => ctx.DrawText(0, 0, "abc\ndef\nghi", brush));
+        var reference = DrawHarness.Render(6, 6, ctx => ctx.DrawText(0, 0, "abc\ndef\nghi", DrawHarness.Ink(brush)));
         var scrolled = DrawHarness.Render(6, 6, ctx =>
         {
             using (ctx.PushTranslate(2, 3))
-                ctx.DrawText(-2, -3, "abc\ndef\nghi", brush);   // bounds = local (−2, −3, 3, 3)
+                ctx.DrawText(-2, -3, "abc\ndef\nghi", DrawHarness.Ink(brush));   // bounds = local (−2, −3, 3, 3)
         });
 
         for (int row = 0; row < 3; row++)

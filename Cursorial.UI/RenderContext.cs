@@ -227,12 +227,12 @@ public sealed class RenderContext
     /// resolves to its default); on the brush overload an omitted background is
     /// <see cref="Brushes.Transparent"/>. A caller holding a whole <see cref="CellStyle"/> ground
     /// state restates it UNDER the delta — <c>BrushedStyle.FromStated(base).Then(delta)</c>. See
-    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>.
+    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>.
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text, in BrushedStyle baseStyle)
         => Inner.DrawText(column, row, text, baseStyle);
 
-    /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect, in CellStyle)"/>
+    /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect)"/>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          in BrushedStyle baseStyle, in Rect sampleBounds)
         => Inner.DrawText(column, row, text, baseStyle, sampleBounds);

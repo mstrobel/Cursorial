@@ -128,7 +128,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(8, 2, ctx =>
         {
             using (ctx.PushClip(new Rect(0, 0, 3, 2)))   // clip columns [0,3)
-                ctx.DrawText(0, 0, "中中", White);        // two wide glyphs; the second straddles the clip edge
+                ctx.DrawText(0, 0, "中中", DrawHarness.Ink(White));        // two wide glyphs; the second straddles the clip edge
         });
         Assert.Equal("中", b[0, 0].Grapheme);
         Assert.Equal(CellKind.WideContinuation, b[1, 0].Kind);

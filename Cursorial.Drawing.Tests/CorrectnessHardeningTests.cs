@@ -33,7 +33,7 @@ public class CorrectnessHardeningTests
         compositor.Composite(layers, buffer.AsView());        // frame 1: full-target union
 
         scene.Invalidate();
-        scene.Draw(ctx => ctx.DrawText(4, 0, "中", Green));   // frame 2: WideLeft at col 4, continuation at col 5
+        scene.Draw(ctx => ctx.DrawText(4, 0, "中", DrawHarness.Ink(Green)));   // frame 2: WideLeft at col 4, continuation at col 5
         compositor.Composite(layers, buffer.AsView());        // incremental: union = clipped footprint [0,5)
 
         Assert.NotEqual(CellKind.WideLeft, buffer[4, 0].Kind);          // degraded, not a spilling wide glyph

@@ -65,18 +65,18 @@ internal sealed class ImageClipDemo : InteractiveDemo
         var heading = Color.FromRgb(200, 210, 255);
         var label = Color.FromRgb(150, 160, 200);
 
-        ctx.DrawText(2, 0, "An image straddling a scene clip — its right half is past the clip edge:", heading);
-        ctx.DrawText(2, 1, "Sixel re-crops pixels; Kitty re-places with a source rectangle; iTerm2 can't, so it suppresses.", label);
+        ctx.DrawText(2, 0, "An image straddling a scene clip — its right half is past the clip edge:", DemoSupport.Ink(heading));
+        ctx.DrawText(2, 1, "Sixel re-crops pixels; Kitty re-places with a source rectangle; iTerm2 can't, so it suppresses.", DemoSupport.Ink(label));
 
         if (_tooSmall)
         {
-            ctx.DrawText(2, 3, "(Terminal too small — widen it.)", label);
+            ctx.DrawText(2, 3, "(Terminal too small — widen it.)", DemoSupport.Ink(label));
             return;
         }
 
         // The clip edge, marked so the crop reads as a clip, not a glitch.
         ctx.DrawLine(_clipColumns, 3, _clipColumns, Math.Min(Buffer.Rows - 1, 15), Color.FromRgb(110, 120, 150));
-        ctx.DrawText(Math.Max(0, _clipColumns - 9), 16, "← clip edge", label);
+        ctx.DrawText(Math.Max(0, _clipColumns - 9), 16, "← clip edge", DemoSupport.Ink(label));
     }
 
     protected override void RenderFrame(long frame)

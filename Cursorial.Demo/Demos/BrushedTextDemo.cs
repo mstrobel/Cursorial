@@ -56,7 +56,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         int width = Math.Max(20, Math.Min(78, ctx.Bounds.Columns - 4));
 
         // --- Panel 1: document-wide 2-D — one gradient flows across AND down the whole document ---
-        ctx.DrawText(2, 0, "Document-wide 2-D — one gradient flows across and down the whole document:", label);
+        ctx.DrawText(2, 0, "Document-wide 2-D — one gradient flows across and down the whole document:", DemoSupport.Ink(label));
         var ft = _formatter.Format(_doc, width, maxRows: null, Capabilities.Output);
 
         // Diagonal gradient sampled against the painted bounds: text and the rule are colored per cell, so
@@ -76,7 +76,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
         if (inlineTop >= ctx.Bounds.Rows - 1) return;   // terminal too short for the second panel
 
         ctx.DrawText(2, inlineTop,
-            "Run-declared 1-D — one gradient is a single reading-order strip; the color continues across the wrap:", label);
+            "Run-declared 1-D — one gradient is a single reading-order strip; the color continues across the wrap:", DemoSupport.Ink(label));
         int inlineWidth = Math.Min(width, 46);   // narrow so the run wraps several times
         var inlineFt = _formatter.Format(_inlineDoc, inlineWidth, maxRows: null, Capabilities.Output);
         int inlineHeight = Math.Max(1, Math.Min(inlineFt.Size.Rows, ctx.Bounds.Rows - inlineTop - 2));

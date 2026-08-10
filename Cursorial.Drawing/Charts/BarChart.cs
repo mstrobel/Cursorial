@@ -205,7 +205,11 @@ public sealed class BarChart : IChart
             string text = TruncateToWidth(Categories[b] ?? "", barThickness);                  // truncate to the lane
             int offset = Math.Max(0, (barThickness - GraphemeWidth.StringWidth(text)) / 2);     // center within the lane
             int col = area.Column + laneStart + offset;
-            context.DrawText(col, labelRow, text, LabelColor, Colors.Transparent);   // per-cell clipped by the context
+            context.DrawText(col, labelRow, text, new BrushedStyle
+                                                  {
+                                                      Foreground = new SolidColorBrush(LabelColor),
+                                                      Background = Brushes.Transparent,
+                                                  });   // per-cell clipped by the context
         }
     }
 

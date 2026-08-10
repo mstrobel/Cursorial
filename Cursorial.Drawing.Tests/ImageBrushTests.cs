@@ -107,7 +107,7 @@ public class ImageBrushTests
         // A wide (CJK) cluster: the WideLeft cell samples the brush; the continuation follows it.
         var brush = new ImageBrush(new DecodedImage(1, 1, [10, 200, 30, 255]), Stretch.Fill,
                                    BrushInterpolation.NearestNeighbor);
-        var b = DrawHarness.Render(4, 1, ctx => ctx.DrawText(0, 0, "中a", brush));
+        var b = DrawHarness.Render(4, 1, ctx => ctx.DrawText(0, 0, "中a", DrawHarness.Ink(brush)));
         Assert.Equal("中", b[0, 0].Grapheme);
         Assert.Equal(CellKind.WideLeft, b[0, 0].Kind);
         Assert.Equal(CellKind.WideContinuation, b[1, 0].Kind);

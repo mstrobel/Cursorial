@@ -51,7 +51,7 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
         // modal still has real content to occlude.
         const string phrase = "cursorial ui primitives  ";
         for (int r = top; r < h; r++)
-            ctx.DrawText(0, r, Repeat(phrase, w), dim);
+            ctx.DrawText(0, r, Repeat(phrase, w), DemoSupport.Ink(dim));
 
         // Gradient FIGlet headline — a block font (AnsiShadow), brushed per cell so the magenta→cyan sweep
         // flows vividly across the solid glyphs.
@@ -77,8 +77,8 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
             ctx.DrawPanel(panel, Color.FromRgb(120, 200, 160), new SolidColorBrush(Color.FromRgb(30, 34, 46)),
                           new PanelTitle("Panel").WithColor(Color.FromRgb(200, 210, 255)));
             ctx.DrawInnerShadow(panel, ShadowGeometry.Inner(radius: 1, strength: 0.4), Color.FromRgb(0, 0, 0));
-            ctx.DrawText(4, top + 2, "drop + inner", Color.FromRgb(190, 200, 220));
-            ctx.DrawText(4, top + 3, "shadow, title", Color.FromRgb(190, 200, 220));
+            ctx.DrawText(4, top + 2, "drop + inner", DemoSupport.Ink(Color.FromRgb(190, 200, 220)));
+            ctx.DrawText(4, top + 3, "shadow, title", DemoSupport.Ink(Color.FromRgb(190, 200, 220)));
         }
 
         // Opaque modal: occludes the dotted background, with its own shadow and an overwriting border.
@@ -88,8 +88,8 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
             ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 1, strength: 0.75, edges), Color.FromRgb(0, 0, 0));
             ctx.FillOpaque(modal, Color.FromRgba(45, 40, 70, 63));
             ctx.DrawBox(modal, new Pen(Color.FromRgb(185, 120, 200)) { Weight = StrokeWeight.Light, Corners = CornerStyle.Rounded }, overwrite: true);
-            ctx.DrawText(28, top + 2, "opaque modal", Color.FromRgb(235, 225, 245));
-            ctx.DrawText(28, top + 3, "hides text", Color.FromRgb(200, 190, 220));
+            ctx.DrawText(28, top + 2, "opaque modal", DemoSupport.Ink(Color.FromRgb(235, 225, 245)));
+            ctx.DrawText(28, top + 3, "hides text", DemoSupport.Ink(Color.FromRgb(200, 190, 220)));
         }
     }
 

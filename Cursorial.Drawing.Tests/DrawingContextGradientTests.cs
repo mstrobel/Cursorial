@@ -50,7 +50,7 @@ public class DrawingContextGradientTests
     public void DrawText_SamplesForegroundGradientPerGlyph()
     {
         var scene = Scene.Create(2, 1);
-        scene.Draw(ctx => ctx.DrawText(0, 0, "AB", new LinearGradientBrush(BlackToWhite)));
+        scene.Draw(ctx => ctx.DrawText(0, 0, "AB", DrawHarness.Ink(new LinearGradientBrush(BlackToWhite))));
 
         var buffer = Composite(scene, 2, 1);
 
@@ -65,7 +65,7 @@ public class DrawingContextGradientTests
     public void DrawText_DefaultBackground_IsTransparent_BaseShowsThrough()
     {
         var scene = Scene.Create(2, 1);
-        scene.Draw(ctx => ctx.DrawText(0, 0, "x", Color.FromRgb(255, 255, 0)));   // solid yellow fg, default bg
+        scene.Draw(ctx => ctx.DrawText(0, 0, "x", DrawHarness.Ink(Color.FromRgb(255, 255, 0))));   // solid yellow fg, default bg
 
         var buffer = Composite(scene, 2, 1);
 
@@ -85,7 +85,7 @@ public class DrawingContextGradientTests
         scene.Draw(ctx =>
         {
             ctx.FillRectangle(scene.Bounds, fill);
-            ctx.DrawText(0, 0, "A", Color.FromRgb(255, 255, 255));
+            ctx.DrawText(0, 0, "A", DrawHarness.Ink(Color.FromRgb(255, 255, 255)));
         });
 
         var buffer = Composite(scene, 2, 1);
@@ -100,7 +100,7 @@ public class DrawingContextGradientTests
     {
         var scene = Scene.Create(6, 1);
         var advanced = Size.Empty;
-        scene.Draw(ctx => advanced = ctx.DrawText(0, 0, "中a", Color.FromRgb(255, 255, 255)));
+        scene.Draw(ctx => advanced = ctx.DrawText(0, 0, "中a", DrawHarness.Ink(Color.FromRgb(255, 255, 255))));
 
         Assert.Equal(new Size(3, 1), advanced);   // wide CJK (2) + 'a' (1), one line
 

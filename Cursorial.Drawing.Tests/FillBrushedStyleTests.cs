@@ -89,13 +89,13 @@ public class FillBrushedStyleTests
 
         using var painted = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.PaintRectangle(new Rect(0, 0, 2, 1), tint);
         });
 
         using var filled = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.FillRectangle(new Rect(0, 0, 2, 1), tint);
         });
 
@@ -114,11 +114,11 @@ public class FillBrushedStyleTests
         var tint = new BrushedStyle { Background = Solid(Frosted) };
 
         var through = DrawHarness.RenderLayers(2, 1, null,
-                                               lower => lower.DrawText(0, 0, "X", Brushes.White),
+                                               lower => lower.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White)),
                                                upper => upper.FillRectangle(new Rect(0, 0, 2, 1), tint));
 
         var hidden = DrawHarness.RenderLayers(2, 1, null,
-                                              lower => lower.DrawText(0, 0, "X", Brushes.White),
+                                              lower => lower.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White)),
                                               upper => upper.FillOpaque(new Rect(0, 0, 2, 1), tint));
 
         Assert.Equal("X", through[0, 0].Grapheme);
@@ -269,7 +269,7 @@ public class FillBrushedStyleTests
     {
         using var scene = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.FillOpaque(new Rect(0, 0, 2, 1), new BrushedStyle { Background = Brushes.Transparent });
         });
 
@@ -287,7 +287,7 @@ public class FillBrushedStyleTests
     {
         using var scene = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
                            new BrushedStyle { Background = Brushes.Transparent }
                                .Applying(TextAttributes.Inverse),
@@ -332,14 +332,14 @@ public class FillBrushedStyleTests
 
         using var absent = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.FillOpaque(new Rect(0, 0, 2, 1), new BrushedStyle().Applying(TextAttributes.Inverse),
                            overwrite: false);
         });
 
         using var transparent = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.FillOpaque(new Rect(0, 0, 2, 1),
                            new BrushedStyle { Background = Brushes.Transparent }.Applying(TextAttributes.Inverse),
                            overwrite: false);
@@ -360,13 +360,13 @@ public class FillBrushedStyleTests
 
         using var byDefault = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.PaintRectangle(new Rect(0, 0, 2, 1), tint);
         });
 
         using var overwriting = Painted(2, 1, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Brushes.White);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Brushes.White));
             ctx.PaintRectangle(new Rect(0, 0, 2, 1), tint, overwrite: true);
         });
 

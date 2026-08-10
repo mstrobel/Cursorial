@@ -18,8 +18,8 @@ namespace Cursorial.Drawing;
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
 /// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="CellStyle"/> before
 /// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush
-/// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (solid or gradient), single-line brush
-/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>, and
+/// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (solid or gradient), a styled
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>, and
 /// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
 /// <see cref="DrawBox(in Rect, in Pen, bool)"/> / <see cref="DrawRectangle(in Rect, in Pen, IBrush?, bool)"/>.
 /// <see cref="Color"/> overloads wrap a <see cref="SolidColorBrush"/> / <see cref="Pen"/> for the
@@ -27,7 +27,7 @@ namespace Cursorial.Drawing;
 /// </summary>
 /// <remarks>
 /// <see cref="Set"/> / <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> /
-/// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
+/// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
 /// flush once after the draw delegate returns — last, so existing glyphs (text) survive a box edge
@@ -70,7 +70,7 @@ public sealed class DrawingContext
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
     /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
-    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>), the document/content
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>,
     /// <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
@@ -206,7 +206,7 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// <b>Base plus delta</b>, the shape
-    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
     /// already takes — with the base fixed rather than passed. A fill OWNS every cell it writes and no
     /// caller holds a ground state for it, so the ground is <see cref="CellStyle.Default"/> and
     /// <paramref name="style"/> says everything the fill wants it to become: the background a lone brush
@@ -832,45 +832,9 @@ public sealed class DrawingContext
         return best == int.MaxValue ? -1 : best;
     }
 
-    /// <summary>Draw text (multi-line capable, see the BrushedStyle overload) with a solid foreground (and optional background) color.</summary>
-    /// <remarks>
-    /// <paramref name="background"/> is <see cref="Brushes.Transparent"/> when omitted — NOT "no
-    /// opinion". See the brush overload.
-    /// </remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in CellStyle legacyBaseStyle = default)
-        => DrawText(column, row, text, new SolidColorBrush(foreground),
-                    background is { } bg ? new SolidColorBrush(bg) : null, legacyBaseStyle);
-
-    /// <summary>
-    /// Draw <paramref name="text"/> with <paramref name="foreground"/> (and optional
-    /// <paramref name="background"/>) sampled per cell — the two-brush convenience form of the
-    /// style overload, for the common case where the only thing that varies per cell is colour.
-    /// </summary>
-    /// <remarks>
-    /// <b>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, not
-    /// absence.</b> That is this overload's historical contract and it is preserved verbatim: the
-    /// glyph cell's background is OVERWRITTEN with transparent, which lets a prior fill (or the
-    /// composite target) show through and, crucially, does NOT leave
-    /// <paramref name="legacyBaseStyle"/>'s own background standing. A caller that wants the base's
-    /// background to survive is asking for the BrushedStyle overload, where <see langword="null"/>
-    /// means exactly that.
-    /// </remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in CellStyle legacyBaseStyle = default)
-    {
-        ArgumentNullException.ThrowIfNull(foreground);
-
-        return DrawText(column, row, text,
-                        new BrushedStyle { Foreground = foreground, Background = background ?? Brushes.Transparent },
-                        legacyBaseStyle);
-    }
-
     /// <summary>
     /// Draw <paramref name="text"/> starting at <paramref name="column"/>, <paramref name="row"/>,
-    /// resolving <paramref name="baseStyle"/> per cell over <paramref name="legacyBaseStyle"/> — so a gradient
+    /// resolving <paramref name="baseStyle"/> per cell — so a gradient
     /// brush colors the text continuously, glyph by glyph. Grapheme-aware (wide
     /// clusters occupy two cells). <c>\r\n</c>, <c>\n</c>, and <c>\r</c> are line breaks: each
     /// subsequent line continues at the original start <paramref name="column"/> one row down; empty
@@ -890,14 +854,14 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Base style plus delta</b>: a draw OWNS the cells it inks, so a whole
-    /// <see cref="CellStyle"/> is a legitimate ground state, while the delta says what varies per
-    /// cell — including the channels a brush pair had nowhere to put. Attributes, the underline
-    /// shape and colour, a hyperlink and a blending mode all ride in
-    /// <paramref name="baseStyle"/> now; a channel it declines to state falls through to
-    /// <paramref name="legacyBaseStyle"/> untouched. In particular <c>Background = null</c> is <b>no
-    /// opinion</b> — the base's background reaches the cell — which is NOT what an omitted
-    /// background means on the brush overload.
+    /// <b>The delta is the whole statement</b>: a draw OWNS the cells it inks, and
+    /// <paramref name="baseStyle"/> says what varies per cell — attributes, the underline shape
+    /// and colour, a hyperlink and a blending mode included. A channel it declines to state
+    /// resolves to its default (the <see cref="CellStyle.Default"/> ground state). In particular
+    /// <c>Background = null</c> is <b>no opinion</b> — the Default background reaches the cell —
+    /// where a stated <see cref="Brushes.Transparent"/> OVERWRITES it and lets a prior fill (or
+    /// the composite target) show through. A caller holding a whole <see cref="CellStyle"/> ground
+    /// state restates it UNDER the delta: <c>BrushedStyle.FromStated(base).Then(delta)</c>.
     /// </para>
     /// <para>
     /// Both brush channels sample against one rect (the run's extent): a text run's background
@@ -913,20 +877,19 @@ public sealed class DrawingContext
     /// fill (or the composite target) show through under the glyph.
     /// </para>
     /// </remarks>
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default)
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text, in BrushedStyle baseStyle)
     {
-        return DrawText(column, row, text, baseStyle, Rect.Empty, legacyBaseStyle);
+        return DrawText(column, row, text, baseStyle, Rect.Empty);
     }
 
-    /// <inheritdoc cref="DrawText(int,int,ReadOnlySpan{char},in BrushedStyle,in CellStyle)"/>
+    /// <inheritdoc cref="DrawText(int,int,ReadOnlySpan{char},in BrushedStyle)"/>
     /// <remarks>
     /// <paramref name="sampleBounds"/> may be provided to override the sampling rectangle used by
     /// <paramref name="baseStyle"/>-provided brushes . To sample against the bounds of the entire text block,
     /// simply pass <c>default</c> or <see cref="Rect.Empty"/>.
     /// </remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in BrushedStyle baseStyle, in Rect sampleBounds, in CellStyle legacyBaseStyle = default)
+                         in BrushedStyle baseStyle, in Rect sampleBounds)
     {
         if (text.IsEmpty) return Size.Empty;
         bool transformed = _stateStack.Count != 0;
@@ -952,7 +915,7 @@ public sealed class DrawingContext
         // makes that readable: fold it once here rather than resolving two brushes at every cluster.
         // Sampled at the run's own anchor against its own bounds, so a handwritten uniform brush is
         // never handed a degenerate rect it has to tolerate.
-        CellStyle? uniform = baseStyle.IsUniform ? baseStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle) : null;
+        CellStyle? uniform = baseStyle.IsUniform ? baseStyle.Resolve(column, row, in bounds).ApplyTo(CellStyle.Default) : null;
 
         int maxAdvance = 0;
         int currentRow = row;
@@ -962,7 +925,7 @@ public sealed class DrawingContext
         {
             var line = NextLine(ref remaining, out moreLines);
             maxAdvance = Math.Max(maxAdvance,
-                                  DrawTextLine(column, currentRow, line, in baseStyle, in legacyBaseStyle, in uniform, in bounds, transformed));
+                                  DrawTextLine(column, currentRow, line, in baseStyle, in uniform, in bounds, transformed));
             currentRow++;
         }
 
@@ -972,7 +935,7 @@ public sealed class DrawingContext
     // Draw one (break-free) line of text; returns the columns advanced under the single-line contract.
     // `uniform` is the pre-folded style when the style cannot vary by cell; null means resolve per cluster.
     private int DrawTextLine(int column, int row, ReadOnlySpan<char> line, in BrushedStyle brushedStyle,
-                             in CellStyle legacyBaseStyle, in CellStyle? uniform, in Rect bounds, bool transformed)
+                             in CellStyle? uniform, in Rect bounds, bool transformed)
     {
         if (line.IsEmpty) return 0;
         if (!transformed && (uint) row >= (uint) _surface.Rows) return 0;   // surface-row guard (no transform; covers negative rows)
@@ -1007,7 +970,7 @@ public sealed class DrawingContext
             if (transformed)
             {
                 // Translate + clip per cluster (the run advances in local columns regardless of clipping).
-                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle);
+                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(CellStyle.Default);
                 EmitMapped(column, row, substitute ?? cluster.ToString(), in style);
                 column += width;
             }
@@ -1016,7 +979,7 @@ public sealed class DrawingContext
                 if (column < 0) { column += width; continue; }  // left-edge clip (negative start; the run still advances)
                 if (column + width > _surface.Columns) break;   // right-edge clip (stops the line)
 
-                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(legacyBaseStyle);
+                var style = uniform ?? brushedStyle.Resolve(column, row, in bounds).ApplyTo(CellStyle.Default);
                 column += _surface.Set(column, row, substitute ?? cluster.ToString(), style);
             }
         }
@@ -1734,7 +1697,13 @@ public sealed class DrawingContext
         }
 
         var titleBrush = title.Brush ?? pen.ResolveBrush();
-        DrawText(gapStart + 1, top, text, titleBrush, background: null, CellStyle.Default.WithAttributes(title.Attributes));
+
+        // The title's attribute word rides UNDER the ink (FromStated folds it on per axis; the
+        // stated Transparent background keeps the retired brush-pair contract — the rule's own
+        // cells show through around the glyphs).
+        DrawText(gapStart + 1, top, text,
+                 BrushedStyle.FromStated(CellStyle.Default.WithAttributes(title.Attributes))
+                     with { Foreground = titleBrush, Background = Brushes.Transparent });
     }
 
     // Grapheme-aware truncation to at most maxWidth display columns; returns the kept prefix and

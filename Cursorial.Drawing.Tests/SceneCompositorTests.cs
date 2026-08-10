@@ -461,13 +461,13 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var a = Scene.Create(12, 2);
-        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", DrawHarness.Ink(Red)));
 
         var b = Scene.Create(4, 2);
         b.Draw(ctx =>
         {
-            ctx.DrawText(0, 0, "xxxx", Red);
-            ctx.DrawText(0, 1, "xxxx", Red);
+            ctx.DrawText(0, 0, "xxxx", DrawHarness.Ink(Red));
+            ctx.DrawText(0, 1, "xxxx", DrawHarness.Ink(Red));
         });
 
         Assert.True(compositor.Composite(
@@ -490,7 +490,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var a = Scene.Create(12, 2);
-        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", DrawHarness.Ink(Red)));
 
         var b = Scene.Create(4, 2);
         Fill(b, new SolidColorBrush(Red));
@@ -521,7 +521,7 @@ public class SceneCompositorTests
         // [0,6) makes the WideLeft the last visible cell — its continuation column belongs to
         // the neighbor layer.
         var scrolled = Scene.Create(10, 2);
-        scrolled.Draw(ctx => ctx.DrawText(7, 0, "中", Red));
+        scrolled.Draw(ctx => ctx.DrawText(7, 0, "中", DrawHarness.Ink(Red)));
 
         var neighbor = Scene.Create(3, 2);
         Fill(neighbor, new SolidColorBrush(Red));
@@ -559,9 +559,9 @@ public class SceneCompositorTests
         var content = Scene.Create(12, 2);
         content.Draw(ctx =>
         {
-            ctx.DrawText(1, 0, "✅", Red);   // emoji pair at (1,2)
-            ctx.DrawText(5, 0, "中", Red);   // CJK pair at (5,6)
-            ctx.DrawText(8, 0, "x", Red);    // plain text at 8
+            ctx.DrawText(1, 0, "✅", DrawHarness.Ink(Red));   // emoji pair at (1,2)
+            ctx.DrawText(5, 0, "中", DrawHarness.Ink(Red));   // CJK pair at (5,6)
+            ctx.DrawText(8, 0, "x", DrawHarness.Ink(Red));    // plain text at 8
         });
 
         var cover = Scene.Create(12, 2);
@@ -593,8 +593,8 @@ public class SceneCompositorTests
         var content = Scene.Create(10, 1);
         content.Draw(ctx =>
         {
-            ctx.DrawText(2, 0, "✅", Red);
-            ctx.DrawText(6, 0, "ab", Red);
+            ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Red));
+            ctx.DrawText(6, 0, "ab", DrawHarness.Ink(Red));
         });
 
         var chrome = Scene.Create(10, 1);
@@ -617,7 +617,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(8, 1);
-        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Red));
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Red)));
 
         var passThrough = Scene.Create(8, 1);
         Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0))); // fully transparent
@@ -643,8 +643,8 @@ public class SceneCompositorTests
         var content = Scene.Create(12, 1);
         content.Draw(ctx =>
         {
-            ctx.DrawText(1, 0, "✅", Red);
-            ctx.DrawText(5, 0, "ab", Red);
+            ctx.DrawText(1, 0, "✅", DrawHarness.Ink(Red));
+            ctx.DrawText(5, 0, "ab", DrawHarness.Ink(Red));
         });
 
         var menu = Scene.Create(12, 1);
@@ -669,7 +669,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(12, 2);
-        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", DrawHarness.Ink(Red))); // pair at (4,5)
 
         var cover = Scene.Create(4, 2);
         Fill(cover, new SolidColorBrush(Red)); // opaque, footprint starts at the continuation column
@@ -696,7 +696,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(12, 2);
-        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", DrawHarness.Ink(Red))); // pair at (4,5)
 
         var cover = Scene.Create(5, 2);
         Fill(cover, new SolidColorBrush(Red)); // opaque, footprint columns 0..4 — covers ONLY the WideLeft
@@ -722,7 +722,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(8, 1);
-        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Color.FromRgba(0, 0, 0, 0))); // transparent fg
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Color.FromRgba(0, 0, 0, 0)))); // transparent fg
 
         var passThrough = Scene.Create(8, 1);
         Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0)));
@@ -747,7 +747,7 @@ public class SceneCompositorTests
         band.Draw(ctx =>
         {
             for (int r = 0; r < 6; r++)
-                ctx.DrawText(2, r, "中文", Red);
+                ctx.DrawText(2, r, "中文", DrawHarness.Ink(Red));
         });
 
         var layers = new[] { new SceneLayer(band, new CompositeParameters(offsetRow: 0, clip: new Rect(0, 0, 10, 3))) };

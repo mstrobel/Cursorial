@@ -178,11 +178,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 PaintHorizontalRule(rule, buffer, column, row, placement.PaintColumns, documentRect, resolver, documentCarrier);
                 break;
             case FormattedContentBlock content:
-                // No document fold here: the content carrier never had the document default baked into it
-                // by the producers, so folding the rung under it would be a new opinion rather than the
-                // restatement's replacement. Content's document rung is a later phase's question.
+                // The document rung folds under content now (the content-rung ruling this phase
+                // settles): the sized, FIGlet and rule arms all fold it already, and the resolver's
+                // generic ladder was giving content the rung's declared BRUSH while the fold withheld
+                // its VALUES — one declaration, two answers depending on whether a resolver happened
+                // to be installed. The content still takes ONE style sampled at its centre; the
+                // sampled VALUE is restated as the carrier the content lane speaks (FromStated), so
+                // the sample point stays this caller's.
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
-                                      ResolveStyle(resolver, document: default, block: default, default, centerColumn, centerRow, documentRect, blockRect), capabilities);
+                                      BrushedStyle.FromStated(ResolveStyle(resolver, documentCarrier, block: default, default, centerColumn, centerRow, documentRect, blockRect)), capabilities);
                 break;
         }
     }
@@ -378,13 +382,18 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // out in the direct font arm above via the placeholder's figlet
                             // block, one level deep.
                             var pieceRect = new Rect(cursor, runRow, pieceWidth, run.LineRows);
+                            // The single-style arm keeps its centre sample — one colour for the whole
+                            // piece, which is what reaches the OSC 66 backdrop SGR — and restates the
+                            // sampled VALUE as the content lane's carrier (FromStated: stated channels
+                            // become the delta, Default-valued ones stay absent, so ScaledText's
+                            // figlet bake keeps the same stamp/box answer the CellStyle hand-off had).
                             var style = ResolveStyle(resolver, documentCarrier, blockStyle, glyphText.Style,
                                                      cursor + pieceWidth / 2, runRow, documentRect, blockRect);
                             var scaled = new ScaledText(glyphText.Text, glyphText.Source.Sizing, glyphText.Source.Font)
                                          {
                                              BrushResolver = resolver
                                          };
-                            scaled.Paint(buffer, pieceRect, style, capabilities);
+                            scaled.Paint(buffer, pieceRect, BrushedStyle.FromStated(style), capabilities);
                         }
 
                         cursor += pieceWidth;
@@ -462,11 +471,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     {
                         var contentBounds = new Rect(cursor, runRow, content.Width, 1);
                         // Inline content samples one color at its center — so a fallback glyph (when no
-                        // graphics protocol) is brush-colored; a real image ignores the style.
-                        // No document fold: the content carrier never had the document default baked into it
-                        // by the producers (see the block-content arm).
-                        var style = ResolveStyle(resolver, document: default, block: default, content.Style, cursor + content.Width / 2, runRow, documentRect, blockRect);
-                        content.Content.Paint(buffer, contentBounds, style, capabilities);
+                        // graphics protocol) is brush-colored; a real image ignores the style. The
+                        // document rung folds under the content's carrier (the content-rung ruling —
+                        // see the block-content arm); the paragraph's block rung deliberately does
+                        // not yet, which is the recorded follow-on. The centre-sampled VALUE is
+                        // restated as the lane's carrier (FromStated) so the sample point stays here.
+                        var style = ResolveStyle(resolver, documentCarrier, block: default, content.Style, cursor + content.Width / 2, runRow, documentRect, blockRect);
+                        content.Content.Paint(buffer, contentBounds, BrushedStyle.FromStated(style), capabilities);
                         cursor += content.Width;
                         break;
                     }
@@ -594,7 +605,13 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     Size IContent.Measure(Size availableSpace, OutputCapabilities capabilities)
         => Size.ClampTo(availableSpace);
 
-    Rect IContent.Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+    // The style is IGNORED, deliberately — under the CellStyle signature and under the delta
+    // alike. An embedded document paints its own runs over its own document rung; folding the
+    // caller's delta in as an outer preference here would be new behaviour on a route whose
+    // callers (FragmentContent's base placeholder hand-off) rely on the drop today, and
+    // ScaledText bypasses this route precisely because the drop exists. A preference-carrying
+    // embedded paint is Paint(buffer, bounds, capabilities, resolver)'s job.
+    Rect IContent.Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         => Paint(buffer, bounds, capabilities);
 }
 

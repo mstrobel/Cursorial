@@ -9,6 +9,7 @@ using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -756,7 +757,7 @@ public class FragmentPassthroughTests
 
         scene.Invalidate();
         var highlighted = CellStyle.Default.WithBackground(Color.FromRgb(10, 20, 30));
-        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), content, caps, highlighted));
+        scene.Draw(ctx => ctx.DrawContent(new Rect(0, 0, 4, 2), content, caps, BrushedStyle.FromStated(highlighted)));
 
         var second = FirstFragment(scene);
         Assert.NotSame(first, second);
@@ -843,9 +844,11 @@ public class FragmentPassthroughTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            // The anchor style is a value seam — resolve the delta at the fragment's anchor.
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment,
+                               style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
             var size = fragment.GetSize();
             return new Rect(bounds.Column, bounds.Row, size.Columns, size.Rows);
         }

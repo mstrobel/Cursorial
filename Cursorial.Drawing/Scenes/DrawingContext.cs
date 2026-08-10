@@ -1409,11 +1409,13 @@ public sealed class DrawingContext
 
     /// <summary>
     /// <inheritdoc cref="DrawContent(in Rect, IContent, OutputCapabilities)"/> The
-    /// <paramref name="style"/> flows to <see cref="IContent.Paint"/> — for protocol-backed
-    /// content (sized text) it is the SGR backdrop, which is how a selection background rides an
-    /// OSC 66 emission (proposal-glyph-runs Phase 2).
+    /// <paramref name="style"/> delta flows to <see cref="IContent.Paint"/> — for protocol-backed
+    /// content (sized text) it resolves at the fragment's anchor into the SGR backdrop, which is
+    /// how a selection background rides an OSC 66 emission (proposal-glyph-runs Phase 2). A caller
+    /// holding a resolved <see cref="CellStyle"/> restates it
+    /// (<see cref="BrushedStyle.FromStated"/>).
     /// </summary>
-    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities, in CellStyle style)
+    public void DrawContent(in Rect bounds, IContent content, OutputCapabilities capabilities, in BrushedStyle style)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(capabilities);

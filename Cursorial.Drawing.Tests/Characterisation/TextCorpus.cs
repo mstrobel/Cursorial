@@ -1085,10 +1085,14 @@ internal static class TextCorpus
         public Size Measure(Size availableSpace, OutputCapabilities capabilities)
             => new(Math.Min(width, Math.Max(1, availableSpace.Columns)), 1);
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
+            // The delta resolves per painted cell over its bounds — the painter hands content ONE
+            // centre-sampled value restated as a uniform carrier, so this reproduces that value
+            // on every cell exactly as the CellStyle hand-off did.
             for (int i = 0; i < Math.Min(width, bounds.Columns); i++)
-                buffer.Set(bounds.Column + i, bounds.Row, glyph, style);
+                buffer.Set(bounds.Column + i, bounds.Row, glyph,
+                           style.Resolve(bounds.Column + i, bounds.Row, bounds).ApplyTo(CellStyle.Default));
 
             return new Rect(bounds.Column, bounds.Row, Math.Min(width, bounds.Columns), 1);
         }

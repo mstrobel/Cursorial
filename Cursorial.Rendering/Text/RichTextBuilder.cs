@@ -335,12 +335,26 @@ public sealed class RichTextBuilder
         in CellStyle style = default,
         TextAlignment? alignment = null,
         Margins margin = default)
+        => Figlet(text, face, BrushedStyle.FromStated(style), alignment, margin);
+
+    /// <summary>
+    /// Append a <see cref="FigletBlock"/> whose carrier is stated directly — the brushed sibling of
+    /// the <see cref="CellStyle"/> form, mirroring the brushed <c>Run</c> overloads: a gradient (or
+    /// any non-uniform brush) rides the block to the FIGlet paint arm's per-cell sampling instead of
+    /// being flattened at the boundary. The style is required — passing
+    /// <see cref="BrushedStyle.Identity"/> spells "no declaration" explicitly.
+    /// </summary>
+    public RichTextBuilder Figlet(
+        string text, IGlyphFont face,
+        in BrushedStyle style,
+        TextAlignment? alignment = null,
+        Margins margin = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(face);
         FlushOpenParagraph();
 
-        _blocks.Add(new FigletBlock(text, face, BrushedStyle.FromStated(style)) { Alignment = alignment, Margin = margin });
+        _blocks.Add(new FigletBlock(text, face, style) { Alignment = alignment, Margin = margin });
 
         return this;
     }

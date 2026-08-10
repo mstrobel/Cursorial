@@ -237,7 +237,7 @@ public class MultiBlockFormatterTests
 
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => _size;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
             PaintCalled = true;
             LastPaintBounds = bounds;

@@ -307,9 +307,10 @@ public class BrushedFormattedTextTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => new(1, 1);
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
-            buffer.Set(bounds.Column, bounds.Row, glyph, style);
+            buffer.Set(bounds.Column, bounds.Row, glyph,
+                       style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
             return new Rect(bounds.Column, bounds.Row, 1, 1);
         }
     }

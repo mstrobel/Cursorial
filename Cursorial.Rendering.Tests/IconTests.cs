@@ -132,7 +132,7 @@ public class IconTests
                    {
                        Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true, ITerm2InlineImages: false),
                    };
-        icon.Paint(buffer, 0, 0, CellStyle.Default, caps);
+        icon.Paint(buffer, 0, 0, default, caps);
 
         Assert.Single(buffer.Fragments);
         Assert.IsType<KittyImageFragment>(buffer.Fragments[(0, 0)].Fragment);
@@ -148,7 +148,7 @@ public class IconTests
                             renderSize: renderSize);
         var buffer = new CellBuffer(10, 3);
 
-        icon.Paint(buffer, new Rect(0, 0, renderSize), CellStyle.Default, OutputCapabilities.None);
+        icon.Paint(buffer, new Rect(0, 0, renderSize), default, OutputCapabilities.None);
 
         Assert.Empty(buffer.Fragments);
         // The fallback "X" should appear somewhere in the painted region.
@@ -169,7 +169,7 @@ public class IconTests
         var buffer = new CellBuffer(10, 3);
 
         icon.Paint(buffer, new Rect(0, 0, renderSize),
-                   CellStyle.Default, OutputCapabilities.None with
+                   default, OutputCapabilities.None with
                                   {
                                       Graphics = new GraphicsCapabilities(Sixel: false, KittyGraphics: true,
                                                                           ITerm2InlineImages: false),

@@ -6,6 +6,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -273,7 +274,7 @@ internal sealed class RenderDemo : InteractiveDemo
         // Reuse a single ScaledText instance across frames — Phase 6.8's fragment diff uses
         // reference equality on the underlying IBufferFragment, so a stable instance lets the
         // renderer skip re-emission when the title and sizing haven't changed.
-        _title.Paint(buf, new Rect(1, 2, desiredSize), style: sizedTitleStyle, capabilities: outputCaps);
+        _title.Paint(buf, new Rect(1, 2, desiredSize), style: BrushedStyle.FromStated(sizedTitleStyle), capabilities: outputCaps);
 
         var iconMargin = new Margins(2, 1);
 
@@ -281,7 +282,7 @@ internal sealed class RenderDemo : InteractiveDemo
 
         _icon.Paint(buf,
                     buf.Bounds.LayoutContent(Anchor.BottomRight, desiredSize, iconMargin),
-                    in style,
+                    BrushedStyle.FromStated(style),
                     outputCaps);
 
         const int iconY = 5;
@@ -303,7 +304,7 @@ internal sealed class RenderDemo : InteractiveDemo
             buf.Set(x, iconY, " ", iconStyle);
             buf.Set(x + 1, iconY, " ", iconStyle);
             icon.Measure(icon.RenderSize, outputCaps);
-            icon.Paint(buf, column: x, row: iconY, style: iconStyle, capabilities: outputCaps);
+            icon.Paint(buf, column: x, row: iconY, style: BrushedStyle.FromStated(iconStyle), capabilities: outputCaps);
             buf.Set(x, iconY + 2, icon.FallbackGlyph, iconStyle);
 
             if (i == 0)

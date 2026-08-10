@@ -563,7 +563,7 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => availableSpace;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
             for (int r = bounds.Row; r < bounds.RowEnd; r++)
             for (int c = bounds.Column; c < bounds.ColumnEnd; c++)
@@ -577,9 +577,11 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            // The anchor style is a value seam — resolve the delta at the fragment's anchor.
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment,
+                               style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
             var size = fragment.GetSize();
             return new Rect(bounds.Column, bounds.Row, size.Columns, size.Rows);
         }

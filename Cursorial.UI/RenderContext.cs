@@ -285,19 +285,15 @@ public sealed class RenderContext
         Inner.DrawContent(bounds, content, _capabilities);
     }
 
-    /// <summary>Paints embedded content with an explicit <paramref name="style"/> — the SGR backdrop for
-    /// protocol-backed content (a selection background riding an OSC 66 emission).</summary>
+    /// <summary>Paints embedded content with an explicit <paramref name="style"/> delta — for
+    /// protocol-backed content it resolves at the fragment's anchor into the SGR backdrop (a
+    /// selection background riding an OSC 66 emission).</summary>
     /// <remarks>
-    /// Obsolete because of the <b>carrier</b>, not the operation: a whole
-    /// <see cref="Cursorial.Output.CellStyle"/> is the shape the text-pipeline migration retires, and this is
-    /// the UI layer naming the back-buffer format that <c>RenderContext</c> exists to stop naming. It still
-    /// works and still forwards to <c>DrawingContext.DrawContent(in Rect, IContent, OutputCapabilities, in
-    /// CellStyle)</c>, which is a later phase's problem; it is marked now so nothing new binds to it. It has
-    /// no callers in this repository.
+    /// The replacement the retired <see cref="Cursorial.Output.CellStyle"/> overload's obsoletion
+    /// promised: the carrier is the delta the text pipeline speaks, and the UI layer stops naming
+    /// the back-buffer format here.
     /// </remarks>
-    [Obsolete("The CellStyle backdrop is the carrier this migration retires; a BrushedStyle overload will replace it.",
-              DiagnosticId = "CUR0001")]
-    public void DrawContent(in Rect bounds, IContent content, in Cursorial.Output.CellStyle style)
+    public void DrawContent(in Rect bounds, IContent content, in BrushedStyle style)
     {
         Inner.DrawContent(bounds, content, _capabilities, style);
     }

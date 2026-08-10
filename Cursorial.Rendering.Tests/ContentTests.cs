@@ -24,7 +24,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2));
         var buffer = new CellBuffer(40, 6);
 
-        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, WithTextSizing());
+        var painted = content.Paint(buffer, 0, 0, default, WithTextSizing());
 
         Assert.NotEmpty(buffer.Fragments);
         Assert.IsType<SizedTextFragment>(buffer.Fragments[(0, 0)].Fragment);
@@ -38,7 +38,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2));
         var buffer = new CellBuffer(80, 8);
 
-        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, default, OutputCapabilities.None);
 
         // No fragment should have been attached — fallback paints cells directly.
         Assert.Empty(buffer.Fragments);
@@ -68,7 +68,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 5));
         var buffer = new CellBuffer(80, 8);
 
-        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, default, OutputCapabilities.None);
 
         // No fragment should have been attached — fallback paints cells directly.
         Assert.Empty(buffer.Fragments);
@@ -101,7 +101,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi");
         var buffer = new CellBuffer(10, 2);
 
-        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, WithTextSizing());
+        var painted = content.Paint(buffer, 0, 0, default, WithTextSizing());
 
         Assert.Empty(buffer.Fragments);
         Assert.Equal(new Size(2, 1), painted.Size);
@@ -116,7 +116,7 @@ public class ScaledTextTests
         var content = new ScaledText("Hi", new TextSizing(Scale: 2), FigletFonts.Mini);
         var buffer = new CellBuffer(40, 8);
 
-        var painted = content.Paint(buffer, 0, 0, CellStyle.Default, OutputCapabilities.None);
+        var painted = content.Paint(buffer, 0, 0, default, OutputCapabilities.None);
 
         Assert.Empty(buffer.Fragments);
         Assert.Equal(FigletFonts.Mini.Height, painted.Rows);

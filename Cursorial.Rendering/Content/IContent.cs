@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Content;
 
@@ -30,14 +31,14 @@ public static class ContentExtensions
     /// Paint <paramref name="content"/> with an implicit bounds rectangle running from
     /// <c>(column, row)</c> to the buffer's far edge — the simple "paint here, use whatever
     /// space is left" call. For layout-aware sizing the
-    /// <see cref="IContent.Paint(in CellBufferView, in Rect, in CellStyle, OutputCapabilities)"/>
+    /// <see cref="IContent.Paint(in CellBufferView, in Rect, in BrushedStyle, OutputCapabilities)"/>
     /// overload should be called directly with an explicit <see cref="Rect"/>.
     /// </summary>
     public static Rect Paint(this IContent content,
                              in CellBufferView buffer,
                              int column,
                              int row,
-                             in CellStyle style,
+                             in BrushedStyle style,
                              OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -77,8 +78,14 @@ public interface IContent
     /// </summary>
     /// <param name="buffer">Target cell buffer.</param>
     /// <param name="bounds">Allocated rectangle in buffer-cell coordinates.</param>
-    /// <param name="style">Style applied to the rendered content. Fragments use this as their SGR backdrop;
-    /// fonts pass it to <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>.</param>
+    /// <param name="style">The caller's style POLICY for the rendered content — a delta whose
+    /// unstated channels fall through to whatever the content composes underneath. The delta's
+    /// brushes sample <paramref name="bounds"/> (this seam carries no separate brush rect — a
+    /// caller whose brush belongs to a wider scope resolves at its own seam and restates the
+    /// value, <see cref="BrushedStyle.FromStated"/>). Where the content needs one VALUE — a
+    /// fragment's SGR backdrop, an anchor style — it resolves at the anchor; a delta that is not
+    /// <see cref="BrushedStyle.IsUniform"/> has no single resolved value there and content that
+    /// caches on the resolved style rebuilds unconditionally.</param>
     /// <param name="capabilities">Realized terminal capabilities — drives which rendering path the content chooses.</param>
-    Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities);
+    Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities);
 }

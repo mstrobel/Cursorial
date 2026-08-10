@@ -206,9 +206,8 @@ public sealed class DrawingContext
     /// <remarks>
     /// <para>
     /// <b>Base plus delta</b>, the shape
-    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/> and
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
-    /// already take — with the base fixed rather than passed. A fill OWNS every cell it writes and no
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
+    /// already takes — with the base fixed rather than passed. A fill OWNS every cell it writes and no
     /// caller holds a ground state for it, so the ground is <see cref="CellStyle.Default"/> and
     /// <paramref name="style"/> says everything the fill wants it to become: the background a lone brush
     /// used to carry, plus the foreground, attributes, underline, hyperlink and blending mode that had
@@ -891,9 +890,7 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Base style plus delta</b>, the shape
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
-    /// already takes, and for the same reason: a draw OWNS the cells it inks, so a whole
+    /// <b>Base style plus delta</b>: a draw OWNS the cells it inks, so a whole
     /// <see cref="CellStyle"/> is a legitimate ground state, while the delta says what varies per
     /// cell — including the channels a brush pair had nowhere to put. Attributes, the underline
     /// shape and colour, a hyperlink and a blending mode all ride in
@@ -1362,11 +1359,13 @@ public sealed class DrawingContext
     /// <remarks>
     /// <paramref name="brushedStyle"/> is a per-cell DELTA against <paramref name="style"/>, its brushes sampled
     /// against <paramref name="brushBounds"/>, so a position-dependent source (a gradient) states only the
-    /// channel it owns and the rest of the style carries through. Both extra parameters are required for the
-    /// reasons
-    /// <see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
-    /// gives: a brushed style with no base has nothing to fall through to, and a brush's coordinate space is the scope
-    /// it was declared at, not the cells this call happens to paint.
+    /// channel it owns and the rest of the style carries through. The font lane's unstated channels fall
+    /// through to the destination cells
+    /// (<see cref="IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect)"/>),
+    /// so this primitive restates <paramref name="style"/> under the delta to keep its own contract: the
+    /// channels the delta declines to state come from the base, not from whatever the cells hold. The bounds
+    /// are required because a brush's coordinate space is the scope it was declared at, not the cells this
+    /// call happens to paint.
     /// </remarks>
     public void DrawGlyphText(IGlyphFont face, int column, int row, string text, in CellStyle style,
                               in BrushedStyle brushedStyle, in Rect brushBounds)
@@ -1374,8 +1373,12 @@ public sealed class DrawingContext
         ArgumentNullException.ThrowIfNull(face);
         ArgumentNullException.ThrowIfNull(text);
 
+        // The base's background arrives through the sentinel a whole CellStyle is stuck with:
+        // Color.Default is its word for "no opinion", so it stamps, and anything else boxes.
+        var restated = style.Background.IsDefault ? BrushedStyle.FromInk(style) : BrushedStyle.From(style);
+
         var surface = _stateStack.Count == 0 ? _surface : MappedSurface();
-        face.Paint(surface, column, row, text, style, brushedStyle, brushBounds);
+        face.Paint(surface, column, row, text, restated.Then(brushedStyle), brushBounds);
     }
 
     /// <summary>

@@ -277,9 +277,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             {
                                 // The style goes to the face UNSAMPLED: one FIGlet character covers many
                                 // cells, so the face is the only thing that knows which cells exist to sample.
+                                // The run's whole style is authored over arbitrary cell content, so it cannot
+                                // be left to fall through to the cells — it is restated UNDER the resolver's
+                                // delta, its background read through the same sentinel as the arm above.
                                 var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect, glyphText.Tag);
-                                face.Paint(buffer, cursor, runRow, glyphText.Text, glyphText.Style,
-                                           brushed.Style, brushed.Bounds);
+                                var restated = glyphText.Style.Background.IsDefault
+                                                   ? BrushedStyle.FromInk(glyphText.Style)
+                                                   : BrushedStyle.From(glyphText.Style);
+                                face.Paint(buffer, cursor, runRow, glyphText.Text,
+                                           restated.Then(brushed.Style), brushed.Bounds);
                             }
                         }
                         else

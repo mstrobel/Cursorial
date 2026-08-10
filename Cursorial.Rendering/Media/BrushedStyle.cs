@@ -168,6 +168,43 @@ public readonly record struct BrushedStyle
     }
 
     /// <summary>
+    /// The brushed form of <see cref="PartialStyle.From"/>: EVERY channel stated, the colours as solid
+    /// brushes — so resolving the result at any cell reproduces <paramref name="style"/> whole, and a
+    /// stated background selects BOX mode at a glyph paint. The adapter for a caller holding a whole
+    /// <see cref="CellStyle"/> base that must survive a paint whose unstated channels fall through to the
+    /// destination cells: restate the base under the delta, <c>BrushedStyle.From(base).Then(delta)</c>.
+    /// Use <see cref="FromInk"/> for the stamp.
+    /// </summary>
+    /// <remarks>
+    /// The hyperlink caveat is <see cref="PartialStyle.From"/>'s, unchanged: a null
+    /// <see cref="CellStyle.Hyperlink"/> is indistinguishable from "no opinion", so the result never
+    /// REMOVES a link the destination cell carries.
+    /// </remarks>
+    public static BrushedStyle From(in CellStyle style)
+    {
+        // One implementation of the attribute and underline-shape encoding — the flat adapter's — read
+        // back out of the delta rather than restated here.
+        var delta = PartialStyle.From(style);
+
+        return new BrushedStyle
+               {
+                   Foreground     = new SolidColorBrush(style.Foreground),
+                   Background     = new SolidColorBrush(style.Background),
+                   UnderlineColor = new SolidColorBrush(style.UnderlineColor),
+                   Hyperlink      = style.Hyperlink,
+                   UnderlineShape = delta.UnderlineShape,
+                   Clear          = delta.Clear,
+                   Xor            = delta.Xor,
+               };
+    }
+
+    /// <summary>
+    /// <see cref="From"/> minus the background: the INK of <paramref name="style"/> and no opinion
+    /// about the surrounding cells, which selects STAMP mode at a glyph paint.
+    /// </summary>
+    public static BrushedStyle FromInk(in CellStyle style) => From(style) with { Background = null };
+
+    /// <summary>
     /// True when every present brush is position-independent, so <see cref="Resolve(int,int,in Rect,in Rect)"/>
     /// returns the same value for every cell and a fill loop can hoist it. The common case.
     /// </summary>

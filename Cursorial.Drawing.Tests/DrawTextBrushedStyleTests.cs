@@ -8,9 +8,7 @@ namespace Cursorial.Tests.Drawing;
 
 /// <summary>
 /// <c>DrawText</c> takes a <see cref="BrushedStyle"/>: the brushes that used to travel BESIDE a
-/// <see cref="CellStyle"/> now ride inside one value, the same shape
-/// <see cref="Cursorial.Rendering.Fonts.IGlyphFont.Paint(in CellBufferView, int, int, ReadOnlySpan{char}, in CellStyle, in BrushedStyle, in Rect)"/>
-/// already took — base style plus per-cell delta.
+/// <see cref="CellStyle"/> now ride inside one value — base style plus per-cell delta.
 /// <para>
 /// Every assertion reads real cells off a composited frame. The two channels the migration could
 /// silently move are pinned here: the meaning of an ABSENT background (§<see cref="BrushedStyle_AbsentBackground_IsNoOpinion_SoTheBaseStylesBackgroundSurvives"/>)

@@ -10,10 +10,11 @@ using Cursorial.Text;
 namespace Cursorial.Tests.Rendering;
 
 /// <summary>
-/// <see cref="IGlyphFont"/>'s brushed paint takes a <see cref="BrushedStyle"/> and the base
-/// <see cref="CellStyle"/> it folds onto, replacing the <c>GlyphStyleProvider</c> callback that existed only
-/// because <see cref="IBrush"/> used to live above this assembly. Two things follow, and both are pinned here:
-/// a delta states only the channels it owns (so a gradient can no longer wipe a run's background), and
+/// <see cref="IGlyphFont"/>'s brushed paint takes a <see cref="BrushedStyle"/>, replacing the
+/// <c>GlyphStyleProvider</c> callback that existed only because <see cref="IBrush"/> used to live above this
+/// assembly. Two things follow, and both are pinned here: a delta states only the channels it owns — the
+/// rest fall through to the destination cells, and a caller with a whole-style base restates it under the
+/// delta via <see cref="BrushedStyle.From"/> / <see cref="BrushedStyle.FromInk"/> — and
 /// <see cref="BrushedStyle.IsUniform"/> is READABLE — a callback was opaque, so every cell had to call it.
 /// </summary>
 public class GlyphBrushedStylePaintTests
@@ -68,10 +69,10 @@ public class GlyphBrushedStylePaintTests
     // ───────────────────────────── the fold: base + delta ─────────────────────────────
 
     [Fact]
-    public void Monospace_IdentityBrushedStylePaintsTheBaseVerbatim()
+    public void Monospace_RestatedBaseAlonePaintsTheBaseVerbatim()
     {
         var buffer = new CellBuffer(4, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich, default, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "ab", BrushedStyle.From(Rich), Wide);
 
         Assert.Equal(Rich, buffer[0, 0].Style);
         Assert.Equal(Rich, buffer[1, 0].Style);
@@ -80,13 +81,30 @@ public class GlyphBrushedStylePaintTests
     /// <summary>
     /// The operation the old signature could not express: state ONE channel and leave the rest. A
     /// <c>CellStyle</c>-returning provider had to rebuild the base to avoid wiping it — and any channel it
-    /// forgot was silently reset.
+    /// forgot was silently reset. The base rides UNDER the delta now, restated via
+    /// <see cref="BrushedStyle.From"/> + <see cref="BrushedStyle.Then"/>.
     /// </summary>
     [Fact]
     public void Monospace_ForegroundOnlyBrushedStyleKeepsEveryOtherChannel()
     {
         var buffer = new CellBuffer(4, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich,
+        MonospaceFont.Default.Paint(buffer, 0, 0, "ab",
+                                    BrushedStyle.From(Rich)
+                                                .Then(new BrushedStyle { Foreground = new UniformBrush(Green) }),
+                                    Wide);
+
+        Assert.Equal(Rich with { Foreground = Green }, buffer[0, 0].Style);
+    }
+
+    /// <summary>A channel the delta declines to state falls through to the DESTINATION CELL — the
+    /// contract a base parameter used to intercept.</summary>
+    [Fact]
+    public void Monospace_UnstatedChannelsFallThroughToTheCellsUnderneath()
+    {
+        var buffer = new CellBuffer(4, 1);
+        buffer.Fill(Cell.Blank with { Style = Rich });
+
+        MonospaceFont.Default.Paint(buffer, 0, 0, "ab",
                                     new BrushedStyle { Foreground = new UniformBrush(Green) }, Wide);
 
         Assert.Equal(Rich with { Foreground = Green }, buffer[0, 0].Style);
@@ -96,8 +114,9 @@ public class GlyphBrushedStylePaintTests
     public void Monospace_SamplesANonUniformBrushedStylePerCell()
     {
         var buffer = new CellBuffer(4, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "abc", Rich,
-                                    new BrushedStyle { Foreground = new ColumnRampBrush() }, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "abc",
+                                    BrushedStyle.From(Rich).Then(new BrushedStyle { Foreground = new ColumnRampBrush() }),
+                                    Wide);
 
         Assert.Equal(0, buffer[0, 0].Style.Foreground.Red);
         Assert.Equal(1, buffer[1, 0].Style.Foreground.Red);
@@ -110,8 +129,10 @@ public class GlyphBrushedStylePaintTests
     public void Monospace_BrushedStyleCanClearAnAttributeTheBaseCarries()
     {
         var buffer = new CellBuffer(4, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "ab", Rich.AddAttributes(TextAttributes.Inverse),
-                                    default(BrushedStyle).Removing(TextAttributes.Inverse), Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "ab",
+                                    BrushedStyle.From(Rich.AddAttributes(TextAttributes.Inverse))
+                                                .Then(default(BrushedStyle).Removing(TextAttributes.Inverse)),
+                                    Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Inverse));
         Assert.True(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Bold));   // untouched
@@ -129,7 +150,8 @@ public class GlyphBrushedStylePaintTests
     {
         var brush = new UniformBrush(Green);
         var buffer = new CellBuffer(8, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new BrushedStyle { Foreground = brush }, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef",
+                                    BrushedStyle.From(Rich).Then(new BrushedStyle { Foreground = brush }), Wide);
 
         Assert.Equal(1, brush.Samples);
         Assert.Equal(Green, buffer[5, 0].Style.Foreground);   // ...and every cell still got the colour
@@ -140,7 +162,8 @@ public class GlyphBrushedStylePaintTests
     {
         var brush = new ColumnRampBrush();
         var buffer = new CellBuffer(8, 1);
-        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef", Rich, new BrushedStyle { Foreground = brush }, Wide);
+        MonospaceFont.Default.Paint(buffer, 0, 0, "abcdef",
+                                    BrushedStyle.From(Rich).Then(new BrushedStyle { Foreground = brush }), Wide);
 
         Assert.Equal(6, brush.Samples);
     }
@@ -150,7 +173,8 @@ public class GlyphBrushedStylePaintTests
     {
         var brush = new UniformBrush(Green);
         var buffer = new CellBuffer(12, 1);
-        WideFace().Paint(buffer, 0, 0, "AB", Rich, new BrushedStyle { Foreground = brush }, Wide);
+        WideFace().Paint(buffer, 0, 0, "AB",
+                         BrushedStyle.From(Rich).Then(new BrushedStyle { Foreground = brush }), Wide);
 
         Assert.Equal(1, brush.Samples);
         Assert.All(Enumerable.Range(0, 6), c => Assert.Equal(Green, buffer[c, 0].Style.Foreground));
@@ -167,25 +191,27 @@ public class GlyphBrushedStylePaintTests
     public void Figlet_SamplesEveryPaintedCellNotEveryCharacter()
     {
         var buffer = new CellBuffer(12, 1);
-        WideFace().Paint(buffer, 0, 0, "AB", Rich, new BrushedStyle { Foreground = new ColumnRampBrush() }, Wide);
+        WideFace().Paint(buffer, 0, 0, "AB",
+                         BrushedStyle.From(Rich).Then(new BrushedStyle { Foreground = new ColumnRampBrush() }),
+                         Wide);
 
         for (int c = 0; c < 6; c++)
             Assert.Equal(c, buffer[c, 0].Style.Foreground.Red);
 
-        // The base's own channels survive — the delta said "foreground" and nothing else.
+        // The restated base's own channels survive — the delta said "foreground" and nothing else.
         Assert.Equal(Blue, buffer[0, 0].Style.Background);
         Assert.Equal(UnderlineStyle.Curly, buffer[0, 0].Style.UnderlineStyle);
     }
 
     /// <summary>
-    /// <see cref="IGlyphFont.EnsureCompatibleStyle"/> applies to the FOLDED style, not to the base alone: a
-    /// delta is a second way for an attribute this face cannot render to arrive.
+    /// <see cref="IGlyphFont.EnsureCompatibleStyle"/> applies to the FOLDED style, not to the delta alone: the
+    /// cell underneath is a second way for an attribute this face cannot render to arrive.
     /// </summary>
     [Fact]
     public void Figlet_StripsForbiddenAttributesFromTheFoldedStyle()
     {
         var buffer = new CellBuffer(6, 1);
-        WideFace().Paint(buffer, 0, 0, "A", CellStyle.Default,
+        WideFace().Paint(buffer, 0, 0, "A",
                          default(BrushedStyle).Applying(TextAttributes.Strikethrough), Wide);
 
         Assert.False(buffer[0, 0].Style.Attributes.HasFlag(TextAttributes.Strikethrough));
@@ -194,32 +220,57 @@ public class GlyphBrushedStylePaintTests
     // ───────────────────────────── the interface default ─────────────────────────────
 
     /// <summary>
-    /// A face that does not override the brushed overload resolves ONCE at the anchor and paints one folded
-    /// style — the documented default. It needs the base for the fold and the bounds for the resolve, which
-    /// is why both joined the signature rather than being smuggled inside a closure.
+    /// A face that does not override the brushed overload resolves ONCE at the anchor and forwards the
+    /// resolved delta to the flat overload — the documented default. It needs the bounds for the resolve,
+    /// which is why they joined the signature rather than being smuggled inside a closure.
     /// </summary>
     [Fact]
-    public void DefaultOverload_ResolvesOnceAtTheAnchorAndFoldsOntoTheBase()
+    public void DefaultOverload_ResolvesOnceAtTheAnchorAndForwardsTheDelta()
     {
         var face = new RecordingFace();
         var buffer = new CellBuffer(4, 1);
 
-        ((IGlyphFont) face).Paint(buffer, 2, 0, "ab", Rich,
-                                  new BrushedStyle { Foreground = new UniformBrush(Green) }
-                                      .Applying(TextAttributes.Inverse),
+        ((IGlyphFont) face).Paint(buffer, 2, 0, "ab",
+                                  BrushedStyle.From(Rich)
+                                      .Then(new BrushedStyle { Foreground = new UniformBrush(Green) }
+                                                .Applying(TextAttributes.Inverse)),
                                   Wide);
 
         Assert.Equal([(2, 0)], face.Anchors);
 
-        // The flat overload takes a DELTA now, and the default's adapter states every channel of the
-        // folded style — so folding it back onto the ground style must reproduce that style exactly.
-        // A channel the adapter dropped shows up here as one gone default.
+        // The delta reaches the flat overload unchanged — nothing is folded away and nothing is guessed —
+        // so folding it onto the ground style must reproduce the restated base plus the overlay exactly.
+        // A channel the default dropped shows up here as one gone default.
         Assert.Equal(Rich with
                      {
                          Foreground = Green,
                          Attributes = Rich.Attributes | TextAttributes.Inverse,
                      },
                      face.Painted.ApplyTo(CellStyle.Default));
+    }
+
+    /// <summary>
+    /// The default's STAMP side: a channel the delta declines to state is still absent when it reaches the
+    /// flat overload — not silently completed from <see cref="CellStyle.Default"/>. Absence is invisible to
+    /// a fully-stated probe (folding a completed delta over Default reproduces it), so this test folds the
+    /// forwarded delta over a NON-default ground and reads what survived.
+    /// </summary>
+    [Fact]
+    public void DefaultOverload_KeepsAnUnstatedChannelUnstated()
+    {
+        var face = new RecordingFace();
+        var buffer = new CellBuffer(4, 1);
+
+        ((IGlyphFont) face).Paint(buffer, 0, 0, "ab",
+                                  new BrushedStyle { Foreground = new UniformBrush(Green) }, Wide);
+
+        var survived = face.Painted.ApplyTo(Rich);
+
+        Assert.Equal(Green, survived.Foreground);
+        Assert.Equal(Rich.Background, survived.Background);           // absent: the ground's, not Default
+        Assert.Equal(Rich.Attributes, survived.Attributes);
+        Assert.Equal(Rich.UnderlineColor, survived.UnderlineColor);
+        Assert.Equal(Rich.Hyperlink, survived.Hyperlink);
     }
 
     private sealed class RecordingFace : IGlyphFont
@@ -242,13 +293,12 @@ public class GlyphBrushedStylePaintTests
     // ───────────────────────────── decorators ─────────────────────────────
 
     /// <summary>
-    /// The brushed overload used to have no base style at all — <see cref="ShadowedFont"/> passed
-    /// <c>default</c> — so the shadow pass lost every channel the callback did not restate. The underline
-    /// SHAPE is the visible one: <c>EnsureCompatibleShadowStyle</c> keeps the flag but the shape came from
-    /// the discarded base.
+    /// The brushed overload's style reaches the shadow pass, not just the glyph pass — under the callback
+    /// form the shadow lost every channel the callback did not restate. The underline SHAPE is the visible
+    /// one: <c>EnsureCompatibleShadowStyle</c> keeps the flag but the shape rides the style.
     /// </summary>
     [Fact]
-    public void Shadowed_ShadowPassSeesTheBaseStyle()
+    public void Shadowed_ShadowPassSeesTheRestatedBase()
     {
         var face = new ShadowedFont(MonospaceFont.Default, (1, 1),
                                     CellStyle.Default.WithForeground(Color.FromRgb(60, 60, 60))
@@ -258,14 +308,15 @@ public class GlyphBrushedStylePaintTests
         var baseStyle = CellStyle.Default.WithAttributes(TextAttributes.Underline)
                                  .WithUnderlineStyle(UnderlineStyle.Dashed);
 
-        face.Paint(buffer, 0, 0, "ab", baseStyle,
-                   new BrushedStyle { Foreground = new UniformBrush(Green) }, Wide);
+        face.Paint(buffer, 0, 0, "ab",
+                   BrushedStyle.FromInk(baseStyle).Then(new BrushedStyle { Foreground = new UniformBrush(Green) }),
+                   Wide);
 
         // (2,1) is shadow-only: the glyphs occupy (0,0)-(1,0), the shadow (1,1)-(2,1).
         Assert.Equal("b", buffer[2, 1].Grapheme);
         Assert.Equal(UnderlineStyle.Dashed, buffer[2, 1].Style.UnderlineStyle);
 
-        // ...and the glyph pass still gets the delta folded onto that same base.
+        // ...and the glyph pass still gets the delta over that same restated base.
         Assert.Equal(Green, buffer[0, 0].Style.Foreground);
         Assert.Equal(UnderlineStyle.Dashed, buffer[0, 0].Style.UnderlineStyle);
     }

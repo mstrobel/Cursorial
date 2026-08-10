@@ -223,24 +223,23 @@ public sealed class ShadowedFont : IGlyphFont
 
         var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
 
-        return PaintCore(buffer, column, row, text, default, style: null, bounds: default, ink);
+        return PaintCore(buffer, column, row, text, style: null, bounds: default, ink);
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// The base style reaches BOTH passes. It used to reach neither — this overload had no base to pass, so
-    /// <see cref="PaintCore"/> got <c>default</c> and the shadow derived its underline shape from it, while
-    /// the glyph pass got whatever the caller's callback chose to restate. A style plus a base makes the two
-    /// passes agree by construction.
+    /// The style reaches BOTH passes. It used to reach only one — the shadow pass derived its underline
+    /// shape from whatever base it had, while the glyph pass got whatever the caller's callback chose to
+    /// restate. One style feeding both makes the two passes agree by construction.
     /// </remarks>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds)
+                      in BrushedStyle baseStyle, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, legacyBaseStyle, baseStyle, bounds, ink: null);
+        return PaintCore(buffer, column, row, text, baseStyle, bounds, ink: null);
     }
 
-    // Exactly one of `style` and `ink` is non-null; `style` is the base the FORMER folds onto.
-    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle,
+    // Exactly one of `style` and `ink` is non-null.
+    private Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
                            in BrushedStyle? style, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
@@ -257,15 +256,13 @@ public sealed class ShadowedFont : IGlyphFont
         try
         {
             // The shadow is a single pass, so it resolves the style ONCE — at the anchor, like the
-            // interface's own default style overload — and folds it onto the caller's base. The flat
-            // path has no base of its own, so the shadow is derived from the channels the style STATES,
-            // over the ground style; the channels it declines to state are, by definition, ones the
-            // caller had no shadow-worthy opinion about either.
+            // interface's own default style overload. Neither path carries a base of its own, so the
+            // shadow is derived from the channels the style STATES, over the ground style; the channels
+            // it declines to state are, by definition, ones the caller had no shadow-worthy opinion
+            // about either.
             var baseStyle = ink is {} i
                                 ? i.ApplyTo(CellStyle.Default)
-                                : style is null
-                                    ? legacyBaseStyle
-                                    : style.Value.Resolve(column, row, bounds).ApplyTo(legacyBaseStyle);
+                                : style!.Value.Resolve(column, row, bounds).ApplyTo(CellStyle.Default);
 
             // TWO operations, deliberately not one. The style DESCRIBES the shadow — the channels it states
             // are the shadow's, the ones it omits (the underline shape, every attribute axis outside its own
@@ -295,7 +292,7 @@ public sealed class ShadowedFont : IGlyphFont
 
         var painted = ink is { } inkDelta
                           ? Inner.Paint(buffer, column, row, text, in inkDelta)
-                          : Inner.Paint(buffer, column, row, text, in legacyBaseStyle, style!.Value, in bounds);
+                          : Inner.Paint(buffer, column, row, text, style!.Value, in bounds);
 
         if (painted.IsEmpty)
             return Size.Empty;

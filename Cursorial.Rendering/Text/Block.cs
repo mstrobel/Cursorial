@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 
-using Cursorial.Output;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -106,7 +106,7 @@ public enum VerticalTextAlignment
 /// Common box-drawing styles are exposed as static factories; supply any single-cell grapheme
 /// for custom rules.
 /// </summary>
-public sealed record HorizontalRule(string Glyph, CellStyle Style = default) : Block
+public sealed record HorizontalRule(string Glyph, BrushedStyle Style = default) : Block
 {
     public static Margins DefaultMargins { get; } = new(0, 1);
 
@@ -131,7 +131,7 @@ public sealed record HorizontalRule(string Glyph, CellStyle Style = default) : B
 /// determines the block's footprint; the formatter centers / left-anchors / right-anchors it
 /// within the column budget per <see cref="Block.Alignment"/> and clips on overflow.
 /// </summary>
-public sealed record FigletBlock(string Text, IGlyphFont Face, CellStyle Style = default) : Block;
+public sealed record FigletBlock(string Text, IGlyphFont Face, BrushedStyle Style = default) : Block;
 
 /// <summary>
 /// Kitty OSC 66 sized-text headline. The formatter computes the cell footprint from the
@@ -139,7 +139,7 @@ public sealed record FigletBlock(string Text, IGlyphFont Face, CellStyle Style =
 /// <see cref="Fallback"/> (typically a FIGlet face derived from the <see cref="TextSizing"/>
 /// scale, the same way <c>ScaledText</c> handles it).
 /// </summary>
-public sealed record SizedTextBlock(string Text, TextSizing Sizing, CellStyle Style = default) : Block
+public sealed record SizedTextBlock(string Text, TextSizing Sizing, BrushedStyle Style = default) : Block
 {
     /// <summary>FIGlet face used when the terminal doesn't honor OSC 66.</summary>
     public IGlyphFont? Fallback { get; init; }

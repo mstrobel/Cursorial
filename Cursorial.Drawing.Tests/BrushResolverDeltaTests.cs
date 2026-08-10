@@ -38,8 +38,10 @@ public class BrushResolverDeltaTests
                  .WithUnderlineColor(Green)
                  .WithHyperlink("https://example.invalid");
 
-    private static BrushedTextContext Context(in CellStyle legacyBaseStyle, object? tag = null) =>
-        new(legacyBaseStyle, Block, Inline, tag);
+    // The carrier defaults to the identity: these tests exercise the tag / document / attribute legs, and
+    // an identity carrier states no brush for the carrier-first leg to read.
+    private static BrushedTextContext Context(in CellStyle baseStyle, object? tag = null, in BrushedStyle style = default) =>
+        new(baseStyle, style, Block, Inline, tag);
 
     // ───────────────────────────── the three colour legs ─────────────────────────────
 

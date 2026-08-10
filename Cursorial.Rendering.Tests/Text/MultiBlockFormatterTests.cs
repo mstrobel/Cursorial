@@ -4,6 +4,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Rendering.Text;
@@ -34,7 +35,7 @@ public class MultiBlockFormatterTests
         var rule = (FormattedHorizontalRule) ft.Blocks[0];
 
         Assert.Equal("═", rule.Glyph);
-        Assert.Equal(255, rule.Style.Foreground.Red);
+        Assert.Equal(255, rule.Style.ResolveFlat().Foreground.Red);
         Assert.Equal(TextAlignment.Center, rule.Alignment);
     }
 

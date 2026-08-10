@@ -163,8 +163,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     }
 
     /// <summary>
-    /// Resolve one cell's style: the optional brush resolver's delta, sampled at
-    /// (<paramref name="column"/>, <paramref name="row"/>) and folded onto <paramref name="legacyBaseStyle"/>.
+    /// Resolve one cell's style: the run's own carrier resolved at (<paramref name="column"/>,
+    /// <paramref name="row"/>), then the optional brush resolver's delta sampled there and folded on top.
     /// Used by the single-Style elements (rule / sized / content), which resolve one style for a whole element
     /// rather than per grapheme; the FIGlet arm asks the same question through <see cref="Brushed"/> below.
     /// </summary>
@@ -175,8 +175,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// at the call site — and dropping it is exactly how a run's own <c>ScopedBrush</c> stopped reaching the
     /// resolver on the sized and FIGlet arms, leaving the document brush to colour a run that had declared one.
     /// </remarks>
-    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block, object? tag)
-        => resolver is null ? legacyBaseStyle : Brushed(resolver, legacyBaseStyle, column, row, block, tag).ApplyTo(column, row, legacyBaseStyle);
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in BrushedStyle style, int column, int row, in Rect block, object? tag)
+    {
+        var resolved = style.Resolve(column, row, new Rect(column, row, 1, 1)).ApplyTo(CellStyle.Default);
+        return resolver is null ? resolved : Brushed(resolver, style, resolved, column, row, block, tag).ApplyTo(column, row, resolved);
+    }
 
     /// <summary>
     /// The same query, stopping one step earlier — for the FIGlet arm, which hands the unsampled STYLE to
@@ -188,8 +191,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant. <paramref name="tag"/> is as
     /// <see cref="ResolveStyle"/>'s — here it is the FIGlet run's <see cref="FormattedTextRun.Tag"/>.
     /// </remarks>
-    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in CellStyle legacyBaseStyle, int column, int row, in Rect block, object? tag)
-        => resolver(new BrushedTextContext(legacyBaseStyle, block, new Rect(column, row, 1, 1), tag));
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in BrushedStyle style, in CellStyle resolvedBase, int column, int row, in Rect block, object? tag)
+        => resolver(new BrushedTextContext(resolvedBase, style, block, new Rect(column, row, 1, 1), tag));
 
     /// <summary>Paints one paragraph's line bands, top-down, from a placement the walk produced.</summary>
     /// <remarks>
@@ -262,30 +265,28 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // recursion by construction.
                             if (resolver is null)
                             {
-                                // A run carries a whole CellStyle, so its background arrives through the very
-                                // sentinel the delta retires, and the run has no other way to say which it
-                                // meant. Read it out loud, here, once: a stated background is the run's own
-                                // and BOXES the glyphs, while Color.Default is "nothing to say" and the face
-                                // STAMPS — a FIGlet run showing whatever the block sits on through the holes
-                                // in its glyphs, which is what it did before there was a way to ask.
-                                face.Paint(buffer, cursor, runRow, glyphText.Text,
-                                           glyphText.Style.Background.IsDefault
-                                               ? PartialStyle.FromInk(glyphText.Style)
-                                               : PartialStyle.From(glyphText.Style));
+                                // The carrier already answers stamp-vs-box by its background's PRESENCE — the
+                                // producer read the sentinel when it restated the style, so no arm re-derives
+                                // it here. A carrier that cannot vary resolves once and takes the flat
+                                // overload, whose box arm fills the glyph gaps; one that can (a run-declared
+                                // gradient) goes to the face unsampled with the piece as its box.
+                                if (glyphText.Style.IsUniform)
+                                    face.Paint(buffer, cursor, runRow, glyphText.Text,
+                                               glyphText.Style.Resolve(cursor, runRow, new Rect(cursor, runRow, pieceWidth, run.LineRows)));
+                                else
+                                    face.Paint(buffer, cursor, runRow, glyphText.Text,
+                                               glyphText.Style, new Rect(cursor, runRow, pieceWidth, run.LineRows));
                             }
                             else
                             {
                                 // The style goes to the face UNSAMPLED: one FIGlet character covers many
                                 // cells, so the face is the only thing that knows which cells exist to sample.
-                                // The run's whole style is authored over arbitrary cell content, so it cannot
-                                // be left to fall through to the cells — it is restated UNDER the resolver's
-                                // delta, its background read through the same sentinel as the arm above.
-                                var brushed = Brushed(resolver, glyphText.Style, cursor, runRow, blockRect, glyphText.Tag);
-                                var restated = glyphText.Style.Background.IsDefault
-                                                   ? BrushedStyle.FromInk(glyphText.Style)
-                                                   : BrushedStyle.From(glyphText.Style);
+                                // The run's carrier is authored over arbitrary cell content, so it cannot be
+                                // left to fall through to the cells — it rides UNDER the resolver's delta.
+                                var resolvedBase = glyphText.Style.Resolve(cursor, runRow, new Rect(cursor, runRow, 1, 1)).ApplyTo(CellStyle.Default);
+                                var brushed = Brushed(resolver, glyphText.Style, resolvedBase, cursor, runRow, blockRect, glyphText.Tag);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text,
-                                           restated.Then(brushed.Style), brushed.Bounds);
+                                           glyphText.Style.Then(brushed.Style), brushed.Bounds);
                             }
                         }
                         else
@@ -320,15 +321,22 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         int scopeWidth = text.Scope?.TotalWidth ?? Math.Max(1, text.CellWidth);
                         var inlineScope = new Rect(cursor - text.LogicalStart, runRow, Math.Max(1, scopeWidth), 1);
 
+                        // The run's carrier resolves against its own strip; a carrier that cannot vary by
+                        // cell resolves once for the run. The resolved form is what the resolver's
+                        // inherited-foreground comparison reads, and the base the delta folds onto.
+                        var carrier = text.Style;
+                        var runBase = carrier.Resolve(cursor, runRow, inlineScope).ApplyTo(CellStyle.Default);
+
                         // ONE resolver call per run: which brush wins, at what scope, and which inherited
                         // attributes merge are all run-level facts. Only the sampling is per cell, and the
                         // style does that itself — hoisted entirely when it cannot vary.
                         var brushed = resolver is null
                                           ? BrushedTextStyle.None
-                                          : resolver(new BrushedTextContext(text.Style, blockRect, inlineScope, text.Tag));
+                                          : resolver(new BrushedTextContext(runBase, carrier, blockRect, inlineScope, text.Tag));
 
-                        var uniformStyle = brushed.Style.IsUniform
-                                               ? brushed.ApplyTo(cursor, runRow, text.Style)
+                        bool uniform = carrier.IsUniform && brushed.Style.IsUniform;
+                        var uniformStyle = uniform
+                                               ? brushed.ApplyTo(cursor, runRow, runBase)
                                                : default;
 
                         var enumerator = text.Text.GetGraphemeEnumerator();
@@ -348,12 +356,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             int width = GraphemeWidth.ClusterWidth(grapheme);
                             if (width < 1) width = 1;
 
-                            // The run's style, resolved for THIS cell and folded onto the run's own style —
-                            // so a brush that owns only a foreground leaves the rest alone. Width is
-                            // grapheme-driven, so a substituted style is layout-safe.
-                            var style = brushed.Style.IsUniform
+                            // The resolver's delta, resolved for THIS cell and folded onto the run's own
+                            // resolved carrier — so a brush that owns only a foreground leaves the rest
+                            // alone. Width is grapheme-driven, so a substituted style is layout-safe.
+                            var style = uniform
                                             ? uniformStyle
-                                            : brushed.ApplyTo(cursor, runRow, text.Style);
+                                            : brushed.ApplyTo(cursor, runRow,
+                                                              carrier.IsUniform
+                                                                  ? runBase
+                                                                  : carrier.Resolve(cursor, runRow, inlineScope).ApplyTo(CellStyle.Default));
 
                             // The one case where the surface knows better: a wide glyph at the window's
                             // right edge degrades to a blank single, and the next grapheme belongs in the
@@ -545,7 +556,7 @@ public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Siz
 /// when the rule is narrower than the available column budget (rare for HRs but supported).
 /// </summary>
 public sealed record FormattedHorizontalRule(
-    string Glyph, CellStyle Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
+    string Glyph, BrushedStyle Style, TextAlignment Alignment, Size Size) : FormattedBlock(Size, Alignment, false);
 
 /// <summary>
 /// A formatted block-level <see cref="IContent"/> embedding. The painter delegates to
@@ -595,33 +606,35 @@ public abstract record FormattedRun
 }
 
 /// <summary>
-/// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
-/// hyperlink target. The painter walks graphemes and writes cells through
+/// A text run — final visible text (post-glyph-map), a <see cref="BrushedStyle"/> carrier, and an
+/// optional OSC&#x202F;8 hyperlink target. The painter resolves the carrier per cell, walks
+/// graphemes, and writes cells through
 /// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
 /// </summary>
 public sealed record FormattedTextRun : FormattedRun
 {
     /// <summary>
-    /// A text run — final visible text (post-glyph-map), an SGR style, and an optional OSC&#x202F;8
-    /// hyperlink target. The painter walks graphemes and writes cells through
+    /// A text run — final visible text (post-glyph-map), a <see cref="BrushedStyle"/> carrier, and an
+    /// optional OSC&#x202F;8 hyperlink target. The painter resolves the carrier per cell, walks
+    /// graphemes, and writes cells through
     /// <see cref="CellBufferView.Set(int, int, string?, in CellStyle)"/>.
     /// </summary>
     [SetsRequiredMembers]
-    public FormattedTextRun(string Text, CellStyle Style, string? Hyperlink = null)
+    public FormattedTextRun(string Text, BrushedStyle Style, string? Hyperlink = null)
     {
         this.Text = Text;
         this.Style = Style;
         this.Hyperlink = Hyperlink;
-        
+
         if (this.Hyperlink is {} link)
-            this.Style = this.Style.WithHyperlink(link);
+            this.Style = this.Style.WithHyperlink(new Hyperlink(link));
     }
 
     /// <inheritdoc/>
     public override int CellWidth => Source.Metrics.StringWidth(Text);
 
     public required string Text { get; init; }
-    public required CellStyle Style { get; init; }
+    public required BrushedStyle Style { get; init; }
 
     public string? Hyperlink { get; init; }
 
@@ -640,8 +653,9 @@ public sealed record FormattedTextRun : FormattedRun
 
     /// <summary>
     /// Opaque metadata carried over from the source <see cref="TextRun.Tag"/> (preserved across wrap-splits).
-    /// Rendering never interprets it; a higher layer (Drawing) reads it to brush-color the run. Null for
-    /// ordinary runs.
+    /// Rendering never interprets it. An inline-scoped brush travels in <see cref="Style"/> rather than here;
+    /// the tag remains the channel a higher layer (Drawing) reads for block/document-scoped run brushes. Null
+    /// for ordinary runs.
     /// </summary>
     public object? Tag { get; init; }
 
@@ -656,11 +670,12 @@ public sealed record FormattedTextRun : FormattedRun
     /// Shared metrics for the source inline run this piece was split from — carries the run's total logical
     /// width, back-filled by the tokenizer once the whole run is emitted (W isn't known until then). All
     /// wrapped pieces of one run reference the same instance. Internal: Drawing reads the width via
-    /// <c>BrushedTextContext.ScopeWidth</c>, not this carrier. Null for runs without a brush tag.
+    /// <c>BrushedTextContext.InlineScope</c>, not this carrier. Null for runs that neither carry a tag nor
+    /// state a foreground brush.
     /// </summary>
     internal InlineRunScope? Scope { get; init; }
 
-    public void Deconstruct(out string text, out CellStyle style, out string? hyperlink)
+    public void Deconstruct(out string text, out BrushedStyle style, out string? hyperlink)
     {
         text = Text;
         style = Style;
@@ -684,7 +699,7 @@ internal sealed class InlineRunScope
 /// <see cref="IContent.Paint"/> with a rect of (<see cref="Width"/>, 1) anchored at the run's
 /// cell position, with the captured <see cref="Style"/> as backdrop.
 /// </summary>
-public sealed record FormattedContentRun(IContent Content, int Width, CellStyle Style = default) : FormattedRun
+public sealed record FormattedContentRun(IContent Content, int Width, BrushedStyle Style = default) : FormattedRun
 {
     /// <inheritdoc/>
     public override int CellWidth => Width;

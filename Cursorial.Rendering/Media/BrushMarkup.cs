@@ -37,7 +37,7 @@ public static class BrushMarkup
     /// gradients + an optional registry) plus the given default style.</summary>
     public static TextMarkupOptions Options(CellStyle defaultStyle = default,
                                             IReadOnlyDictionary<string, ScopedBrush>? registry = null) =>
-        new() { DefaultStyle = defaultStyle, BrushResolver = Resolver(registry) };
+        new() { DefaultStyle = BrushedStyle.Restate(defaultStyle), BrushResolver = Resolver(registry) };
 
     // Parse "kind:colorA,colorB[,colorC…]" into a ScopedBrush. Returns false for a non-inline value (no
     // recognized kind/colon) so the resolver can fall back to the registry.

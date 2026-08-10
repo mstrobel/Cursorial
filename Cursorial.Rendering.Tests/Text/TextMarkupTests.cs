@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -32,7 +33,7 @@ public class TextMarkupTests
         var run = FirstRun(rt);
 
         Assert.Equal("hello", run.Text);
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
@@ -41,8 +42,8 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[b][i]both[/i][/b]");
         var run = FirstRun(rt);
 
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Italic));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Italic));
     }
 
     [Fact]
@@ -51,8 +52,8 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[fg=red]text[/fg]");
         var run = FirstRun(rt);
 
-        Assert.Equal(ColorKind.Palette, run.Style.Foreground.Kind);
-        Assert.Equal(1, run.Style.Foreground.PaletteIndex);
+        Assert.Equal(ColorKind.Palette, run.Style.ResolveFlat().Foreground.Kind);
+        Assert.Equal(1, run.Style.ResolveFlat().Foreground.PaletteIndex);
     }
 
     [Fact]
@@ -61,7 +62,7 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[fg=42]text[/fg]");
         var run = FirstRun(rt);
 
-        Assert.Equal(ColorPalette.Ansi256[42], run.Style.Foreground);
+        Assert.Equal(ColorPalette.Ansi256[42], run.Style.ResolveFlat().Foreground);
     }
 
     [Fact]
@@ -70,10 +71,10 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[fg=#f00]text[/fg]");
         var run = FirstRun(rt);
 
-        Assert.Equal(ColorKind.Rgb, run.Style.Foreground.Kind);
-        Assert.Equal(255, run.Style.Foreground.Red);
-        Assert.Equal(0, run.Style.Foreground.Green);
-        Assert.Equal(0, run.Style.Foreground.Blue);
+        Assert.Equal(ColorKind.Rgb, run.Style.ResolveFlat().Foreground.Kind);
+        Assert.Equal(255, run.Style.ResolveFlat().Foreground.Red);
+        Assert.Equal(0, run.Style.ResolveFlat().Foreground.Green);
+        Assert.Equal(0, run.Style.ResolveFlat().Foreground.Blue);
     }
 
     [Fact]
@@ -82,9 +83,9 @@ public class TextMarkupTests
         var rt = TextMarkup.Parse("[fg=#1a2b3c]text[/fg]");
         var run = FirstRun(rt);
 
-        Assert.Equal(0x1A, run.Style.Foreground.Red);
-        Assert.Equal(0x2B, run.Style.Foreground.Green);
-        Assert.Equal(0x3C, run.Style.Foreground.Blue);
+        Assert.Equal(0x1A, run.Style.ResolveFlat().Foreground.Red);
+        Assert.Equal(0x2B, run.Style.ResolveFlat().Foreground.Green);
+        Assert.Equal(0x3C, run.Style.ResolveFlat().Foreground.Blue);
     }
 
     [Fact]
@@ -92,7 +93,7 @@ public class TextMarkupTests
     {
         var rt = TextMarkup.Parse("[bg=blue]text[/bg]");
         var run = FirstRun(rt);
-        Assert.Equal(4, run.Style.Background.PaletteIndex);
+        Assert.Equal(4, run.Style.ResolveFlat().Background.PaletteIndex);
     }
 
     [Fact]
@@ -308,7 +309,7 @@ public class TextMarkupTests
         var allText = string.Concat(textRuns.Select(r => r.Text));
 
         Assert.Equal("Hello world", allText);
-        Assert.Contains(textRuns, r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.Contains(textRuns, r => r.Style.Foreground.PaletteIndex == 1);
+        Assert.Contains(textRuns, r => r.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.Contains(textRuns, r => r.Style.ResolveFlat().Foreground.PaletteIndex == 1);
     }
 }

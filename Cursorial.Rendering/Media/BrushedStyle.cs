@@ -270,6 +270,25 @@ public readonly record struct BrushedStyle
     public static BrushedStyle FromInk(in CellStyle style) => From(style) with { Background = null };
 
     /// <summary>
+    /// The producer restatement of a resolved style: <see cref="FromInk"/> when the background is
+    /// literally <see cref="Cursorial.Media.Color.Default"/> — a <see cref="CellStyle"/>'s only spelling of "no
+    /// opinion", so the restated carrier says nothing and a glyph paint STAMPS — and <see cref="From"/> for
+    /// anything else stated, Transparent included, which BOXES. One reading of the sentinel, at the point the
+    /// whole style is given up, instead of one per consumer downstream.
+    /// </summary>
+    public static BrushedStyle Restate(in CellStyle style)
+        => style.Background.IsDefault ? FromInk(style) : From(style);
+
+    /// <summary>
+    /// The carrier as a resolved <see cref="CellStyle"/> over an empty base — the boundary form for
+    /// resolved-value consumers (the CACHE KEY census, the document-foreground comparison). Exact for a
+    /// uniform carrier; a non-uniform one is sampled at its bounds' origin, which is the only answer a
+    /// caller with no cell in hand can get.
+    /// </summary>
+    internal CellStyle ResolveFlat()
+        => Resolve(0, 0, new Rect(0, 0, 1, 1)).ApplyTo(CellStyle.Default);
+
+    /// <summary>
     /// True when every present brush is position-independent, so <see cref="Resolve(int,int,in Rect,in Rect)"/>
     /// returns the same value for every cell and a fill loop can hoist it. The common case.
     /// </summary>

@@ -5,9 +5,10 @@ using Cursorial.Rendering.Text;
 namespace Cursorial.Rendering.Media;
 
 /// <summary>
-/// Drawing-side authoring sugar for brush-bearing rich text: declare a brush on a run while keeping
-/// <see cref="IBrush"/> out of Rendering's <c>Style</c>. The brush rides the run's opaque tag through layout
-/// and is sampled at paint time by <c>DrawingContext.DrawFormattedText</c>.
+/// Authoring sugar for brush-bearing rich text: declare a brush on a run. An inline-scoped brush lands in
+/// the run's own <see cref="Cursorial.Rendering.Text.TextRun.Style"/> carrier; block / document scopes ride
+/// the run's opaque tag through layout. Either way it is sampled at paint time by
+/// <c>DrawingContext.DrawFormattedText</c>.
 /// </summary>
 public static class BrushedTextExtensions
 {

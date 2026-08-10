@@ -7,6 +7,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -206,7 +207,7 @@ internal sealed class FormatDemo : InteractiveDemo
                                                                 renderSize: new Size(2, 0))
                               };
 
-        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = defaultStyle };
+        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = BrushedStyle.Restate(defaultStyle) };
 
         // Title.
         builder.Figlet("Rich Text",

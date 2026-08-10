@@ -16,20 +16,30 @@ namespace Cursorial.Rendering.Text;
 /// for a glyph face, into the font), and every per-cell member became the painter's own arithmetic. What
 /// remains is genuinely per-run: which brush applies, and in which of the two coordinate spaces.
 /// </remarks>
-public readonly struct BrushedTextContext(CellStyle baseStyle, Rect block, Rect inlineScope, object? tag)
+public readonly struct BrushedTextContext(CellStyle baseStyle, BrushedStyle style, Rect block, Rect inlineScope, object? tag)
 {
     /// <summary>
-    /// The run's flat style — what the painter will apply the resolved delta TO. A resolver READS it to
-    /// decide what to say (a document brush colors only runs whose foreground was inherited, which is a
-    /// question about this value); it does not have to return it.
+    /// The run's RESOLVED style — <see cref="Style"/> resolved against the run's own strip, what the painter
+    /// will apply the resolved delta TO. A resolver READS it to decide what to say (a document brush colors
+    /// only runs whose foreground was inherited, which is a question about this value); it does not have to
+    /// return it.
     /// </summary>
     /// <remarks>
     /// It stayed on the context when <see cref="BrushedTextResolver"/> stopped returning a
     /// <see cref="CellStyle"/>, because the two roles are separate: the base was both the INPUT to that
     /// decision and the carrier a whole-<see cref="CellStyle"/> return had to reconstruct, and only the
-    /// second one went away.
+    /// second one went away. Now that the run itself carries a <see cref="BrushedStyle"/>, this is derived
+    /// (the painter resolves the carrier once per run) rather than stored on the run.
     /// </remarks>
     public CellStyle BaseStyle { get; } = baseStyle;
+
+    /// <summary>
+    /// The run's own <see cref="BrushedStyle"/> carrier, unresolved. The channels it STATES are the run's own
+    /// declarations — a resolver reads its <see cref="BrushedStyle.Foreground"/> first when deciding which
+    /// brush wins, before any tag and before the document brush. Scope is inferred from the declaration site:
+    /// a brush stated on the run samples <see cref="InlineScope"/>.
+    /// </summary>
+    public BrushedStyle Style { get; } = style;
 
     /// <summary>The enclosing block's rect — the 2-D sampling bounds for a block/document-scoped brush.</summary>
     public Rect Block { get; } = block;
@@ -50,8 +60,10 @@ public readonly struct BrushedTextContext(CellStyle baseStyle, Rect block, Rect 
     public Rect InlineScope { get; } = inlineScope;
 
     /// <summary>
-    /// The run's opaque <see cref="FormattedTextRun.Tag"/> (e.g. a Drawing <c>ScopedBrush</c>), or null. A
-    /// resolver keys per-run brush selection off this.
+    /// The run's opaque <see cref="FormattedTextRun.Tag"/>, or null. The legacy channel for a per-run
+    /// <c>ScopedBrush</c>: an inline-scoped one is translated into <see cref="Style"/> before it gets here,
+    /// so a resolver consults this AFTER the carrier — for the block/document-scoped declarations the
+    /// carrier has no scope channel to hold.
     /// </summary>
     public object? Tag { get; } = tag;
 }

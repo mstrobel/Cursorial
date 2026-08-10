@@ -4,6 +4,7 @@ using System.Text;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -156,10 +157,12 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
+        // FormattedText.DefaultStyle stays a resolved value — the document-foreground comparison and the
+        // FillEntireBounds clear both consume it flat — so the document's carrier resolves at this boundary.
         var result = new FormattedText(formattedBlocks.ToImmutable(),
                                        new Size(widthUsed, totalRows),
                                        availableColumns,
-                                       text.DefaultStyle,
+                                       text.DefaultStyle.ResolveFlat(),
                                        fillEntireBounds);
 
         return documentRowCapDropped && !result.HasTrimmedLines
@@ -224,7 +227,7 @@ public sealed class TextFormatter
     }
 
     private List<LineDraft> PlainTextToLines(int availableColumns, OutputCapabilities capabilities, string blockText,
-                                             GlyphSource? source = null, CellStyle style = default)
+                                             GlyphSource? source = null, BrushedStyle style = default)
     {
         // Author-supplied line breaks are honored as hard breaks. The paragraph lane keeps its
         // documented contract (LineBreak inlines are the channel; a literal '\n' in a TextRun is
@@ -390,8 +393,9 @@ public sealed class TextFormatter
             string previousCluster = ""; // kerning context — resets wherever a painted piece boundary falls
             // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
             // source run, sharing a carrier whose total width is back-filled below (W isn't known until the
-            // run is fully emitted). Only when the run carries a brush tag — untagged runs skip the accounting.
-            var scope = run.Tag is not null ? new InlineRunScope() : null;
+            // run is fully emitted). A run's brush arrives on its own carrier or on its tag; either opens
+            // the accounting — a run that shows neither has no brush to keep wrap-invariant.
+            var scope = run.Tag is not null || run.Style.Foreground is not null ? new InlineRunScope() : null;
             int runOffset = 0;
 
             void EmitFragment()
@@ -983,7 +987,7 @@ public sealed class TextFormatter
         /// against a zero-descent face (ansi-shadow, 7/7) the baseline row IS the bottom row.
         /// </para>
         /// </remarks>
-        public FormattedTextRun ToRun(in CellStyle style) => new(Text, style, null)
+        public FormattedTextRun ToRun(in BrushedStyle style) => new(Text, style, null)
                                                          {
                                                              Source = Source,
                                                              VerticalAlignment = MixedSource
@@ -1284,7 +1288,7 @@ public sealed class TextFormatter
     }
 
     private readonly record struct SoftBreakPoint(
-        int FragmentIndex, int WidthBefore, CellStyle Style, string? Hyperlink, GlyphSource Source);
+        int FragmentIndex, int WidthBefore, BrushedStyle Style, string? Hyperlink, GlyphSource Source);
 
     /// <summary>
     /// Mutable line buffer used during layout. Converts to an immutable

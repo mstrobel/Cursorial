@@ -33,7 +33,12 @@ public sealed class TextMarkupOptions
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The default style applied to all text.</summary>
-    public CellStyle DefaultStyle { get; init; }
+    /// <remarks>
+    /// A carrier: callers with a resolved <see cref="Cursorial.Output.CellStyle"/> restate it via
+    /// <see cref="BrushedStyle.Restate"/>. The parser consumes it as a resolved value for now — its tag
+    /// vocabulary still speaks colours, not brushes — so a non-uniform default is sampled at the origin.
+    /// </remarks>
+    public BrushedStyle DefaultStyle { get; init; }
 
     /// <summary>
     /// Resolves a <c>[brush=VALUE]</c> markup value to an <b>opaque tag</b> attached to the runs it wraps — the
@@ -104,7 +109,7 @@ public static class TextMarkup
     {
         ArgumentNullException.ThrowIfNull(markup);
         ArgumentNullException.ThrowIfNull(options);
-        var builder = new RichTextBuilder(options.DefaultStyle, options.DefaultTextTrimming, options.DefaultTextWrapping);
+        var builder = new RichTextBuilder(options.DefaultStyle.ResolveFlat(), options.DefaultTextTrimming, options.DefaultTextWrapping);
         Parse(markup, builder, options);
         return builder.Build();
     }
@@ -237,6 +242,10 @@ public static class TextMarkup
     private sealed class TextMarkupParser(string input, RichTextBuilder builder, TextMarkupOptions options)
     {
         private readonly TextMarkupLexer _lexer = new(input);
+
+        // The style tags below still compose resolved values through the builder's stack, so the options'
+        // carrier resolves once here rather than at every tag.
+        private readonly CellStyle _defaultStyle = options.DefaultStyle.ResolveFlat();
         private readonly Stack<(string Name, StyleScope Scope)> _styleStack = new();
         private bool _inExplicitParagraph;
 
@@ -273,15 +282,15 @@ public static class TextMarkup
         {
             switch (token.Name)
             {
-                case "b": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Bold))); break;
-                case "i": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Italic))); break;
-                case "u": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Underline))); break;
-                case "s": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Strikethrough))); break;
+                case "b": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Bold))); break;
+                case "i": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Italic))); break;
+                case "u": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Underline))); break;
+                case "s": Push(token.Name, builder.Push(_defaultStyle.WithAttributes(TextAttributes.Strikethrough))); break;
                 case "fg":
-                    Push(token.Name, builder.Push(options.DefaultStyle.WithForeground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(_defaultStyle.WithForeground(ParseColor(token.Value, token.Position))));
                     break;
                 case "bg":
-                    Push(token.Name, builder.Push(options.DefaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(_defaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
                     break;
                 case "link" or "url":
                     if (string.IsNullOrEmpty(token.Value))

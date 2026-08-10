@@ -1087,7 +1087,8 @@ public sealed class DrawingContext
     /// the document foreground — i.e., whose foreground is unset (<see cref="Color.Default"/>) or equals
     /// the document's <see cref="FormattedText.DefaultStyle"/> foreground. A run's <em>own</em> explicit
     /// foreground (a markup color, a content's fallback color — one that differs from the document default)
-    /// <b>wins</b> over the brush, as does a per-run <c>ScopedBrush</c> at its declaration scope. So a
+    /// <b>wins</b> over the brush, as does a per-run brush — stated on the run's carrier, or riding a
+    /// <c>ScopedBrush</c> tag — at its declaration scope. So a
     /// document that sets a default text color still receives the gradient, while individually-colored runs
     /// keep their color. <paramref name="capabilities"/> drives protocol selection for embedded content;
     /// pass the session's negotiated capabilities.
@@ -1197,8 +1198,27 @@ public sealed class DrawingContext
                    BrushedStyle style = default;
                    Rect bounds = default;
 
-                   // A run that declares its own brush wins, at its declaration scope.
-                   if (ctx.Tag is ScopedBrush bs)
+                   // Whether the run's foreground was INHERITED — unset, or equal to the document default.
+                   // Read from the RESOLVED base: a carrier that merely restates the inherited value resolves
+                   // into it, so one comparison serves both the carrier gate and the document-brush leg.
+                   var fg = ctx.BaseStyle.Foreground;
+                   bool inheritedForeground = fg.IsDefault || fg == documentForeground;
+
+                   // A run that declares its own brush wins, at its declaration scope — the run's own carrier
+                   // FIRST, the legacy ScopedBrush tag second. A brush is a declaration when it can say
+                   // something the inherited foreground does not: a uniform brush resolving to the inherited
+                   // value is a restatement, not a claim, and falls through to the legs below. That reading is
+                   // a SENTINEL — producers restate whole styles into carriers this phase, so declaration and
+                   // restatement are indistinguishable by value here. The scope-inference phase makes
+                   // producers state only what they mean, and this exclusion goes with it.
+                   if (ctx.Style.Foreground is { } runBrush && !(runBrush.IsUniform && inheritedForeground))
+                   {
+                       // The declaration site is the run, so the scope is the run's wrap-invariant 1-D
+                       // reading-order strip — inferred, not carried.
+                       style = new BrushedStyle { Foreground = runBrush };
+                       bounds = ctx.InlineScope;
+                   }
+                   else if (ctx.Tag is ScopedBrush bs)
                    {
                        // Inline → the wrap-invariant 1-D reading-order strip, so the gradient flows
                        // continuously across a wrap instead of restarting per line-piece. Block / Document →
@@ -1219,16 +1239,12 @@ public sealed class DrawingContext
                        // through the branches above and below, which is exactly the distinction a nullable
                        // channel buys over `Color.Default`-as-absent.
                    }
-                   else
+                   else if (inheritedForeground)
                    {
                        // Otherwise the document brush colors runs that inherited the document
                        // foreground; an explicit run color (differing from the default) wins.
-                       var fg = ctx.BaseStyle.Foreground;
-                       if (fg.IsDefault || fg == documentForeground)
-                       {
-                           style = new BrushedStyle { Foreground = documentBrush };
-                           bounds = ctx.Block;
-                       }
+                       style = new BrushedStyle { Foreground = documentBrush };
+                       bounds = ctx.Block;
                    }
 
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,

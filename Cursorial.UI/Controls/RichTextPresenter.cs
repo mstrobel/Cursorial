@@ -448,7 +448,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
                          new TextMarkupOptions
                          {
                              BrushResolver = ResourceBrushResolver.Create(this),
-                             DefaultStyle = style
+                             DefaultStyle = BrushedStyle.Restate(style)
                          });
 
         return rtb.Build();

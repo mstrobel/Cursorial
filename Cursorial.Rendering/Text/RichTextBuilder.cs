@@ -1,8 +1,10 @@
 using System.Collections.Immutable;
 
+using Cursorial.Drawing;
 using Cursorial.Output;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -128,8 +130,10 @@ public sealed class RichTextBuilder
 
     /// <summary>
     /// Push an opaque <paramref name="tag"/> onto the tag stack. Subsequent <see cref="Run(string)"/> calls
-    /// inherit it (preserved through layout onto every derived <see cref="FormattedTextRun"/>); a higher layer
-    /// (Drawing) reads it to brush-color the runs, e.g. for a <c>[brush=…]</c> markup tag. Dispose to pop.
+    /// inherit it. An inline-scoped <see cref="ScopedBrush"/> is translated into each run's own
+    /// <see cref="TextRun.Style"/> carrier; any other tag is preserved through layout onto every derived
+    /// <see cref="FormattedTextRun"/> for a higher layer to read — e.g. a block/document-scoped
+    /// <c>[brush=…]</c> markup tag. Dispose to pop.
     /// </summary>
     public StyleScope PushTag(object? tag)
     {
@@ -152,9 +156,10 @@ public sealed class RichTextBuilder
     }
 
     /// <summary>
-    /// Append a text run with an explicit style and an opaque <paramref name="tag"/> — preserved through
-    /// layout onto every derived <see cref="FormattedTextRun"/>. A higher layer (Drawing) uses it to attach a
-    /// brush to the run; Rendering never interprets it.
+    /// Append a text run with an explicit style and an opaque <paramref name="tag"/>. An inline-scoped
+    /// <see cref="ScopedBrush"/> translates into the run's own <see cref="TextRun.Style"/> carrier; any
+    /// other tag is preserved through layout onto every derived <see cref="FormattedTextRun"/> for a higher
+    /// layer to read.
     /// </summary>
     public RichTextBuilder Run(string text, in CellStyle style, object? tag)
     {
@@ -171,7 +176,22 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag ?? CurrentTag)
+
+        // The run's carrier is the resolved style restated whole (BrushedStyle.Restate — the background
+        // sentinel decides stamp vs box downstream). An INLINE-scoped ScopedBrush tag translates into the
+        // carrier here — the declaration site IS the run, so its scope is implied and the tag has nothing
+        // left to say. Block/document scopes keep riding the tag: the carrier has no scope channel, and
+        // widening it is a later phase's decision.
+        var carrier = BrushedStyle.Restate(DefaultStyle(style));
+        var effectiveTag = tag ?? CurrentTag;
+
+        if (effectiveTag is ScopedBrush { Scope: DeclarationScope.Inline } inlineBrush)
+        {
+            carrier = carrier.WithForeground(inlineBrush.Foreground);
+            effectiveTag = null;
+        }
+
+        AppendInline(new TextRun(text, carrier, CurrentMap, CurrentHyperlink, effectiveTag)
                      {
                          Source = source ?? _defaultGlyphSource
                      });
@@ -202,7 +222,7 @@ public sealed class RichTextBuilder
 
         var effectiveStyle = DefaultStyle(style);
         var resolvedStyle = effectiveStyle == default ? CurrentStyle : CurrentStyle.Compose(in effectiveStyle);
-        AppendInline(new TextRun(text, resolvedStyle, CurrentMap, uri));
+        AppendInline(new TextRun(text, BrushedStyle.Restate(resolvedStyle), CurrentMap, uri));
         return this;
     }
 
@@ -259,7 +279,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(glyph);
         FlushOpenParagraph();
 
-        _blocks.Add(new HorizontalRule(glyph, DefaultStyle(style))
+        _blocks.Add(new HorizontalRule(glyph, BrushedStyle.Restate(DefaultStyle(style)))
                     {
                         Alignment = alignment,
                         Margin = margin ?? Text.HorizontalRule.DefaultMargins
@@ -277,9 +297,11 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(standardRule);
         FlushOpenParagraph();
-        
-        if (DefaultStyle(standardRule.Style) is {} ds && ds != default)
-            standardRule = standardRule with { Style = ds };
+
+        // A preset rule carries no style of its own; the builder's default steps in, restated the same
+        // way a run's would be. A rule that already states something keeps it.
+        if (standardRule.Style.IsIdentity && _defaultStyle != default)
+            standardRule = standardRule with { Style = BrushedStyle.Restate(_defaultStyle) };
 
         _blocks.Add(standardRule);
 
@@ -297,7 +319,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(face);
         FlushOpenParagraph();
 
-        _blocks.Add(new FigletBlock(text, face, DefaultStyle(style)) { Alignment = alignment, Margin = margin });
+        _blocks.Add(new FigletBlock(text, face, BrushedStyle.Restate(DefaultStyle(style))) { Alignment = alignment, Margin = margin });
 
         return this;
     }
@@ -313,7 +335,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(text);
         FlushOpenParagraph();
 
-        _blocks.Add(new SizedTextBlock(text, sizing, DefaultStyle(style))
+        _blocks.Add(new SizedTextBlock(text, sizing, BrushedStyle.Restate(DefaultStyle(style)))
                     {
                         Fallback = fallback,
                         Alignment = alignment,
@@ -339,7 +361,7 @@ public sealed class RichTextBuilder
     public RichText Build()
     {
         FlushOpenParagraph();
-        return new RichText(_blocks.ToImmutable()) { DefaultStyle = _defaultStyle };
+        return new RichText(_blocks.ToImmutable()) { DefaultStyle = BrushedStyle.Restate(_defaultStyle) };
     }
 
     // ---- Internals ----

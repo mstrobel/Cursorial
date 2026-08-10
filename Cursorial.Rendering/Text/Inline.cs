@@ -1,5 +1,5 @@
-using Cursorial.Output;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Text;
 
@@ -19,8 +19,9 @@ namespace Cursorial.Rendering.Text;
 public abstract record Inline;
 
 /// <summary>
-/// A styled text run — the atomic unit of paragraph content. Carries the raw text, an SGR
-/// <see cref="Style"/>, an optional <see cref="IGlyphMap"/> for per-grapheme substitution
+/// A styled text run — the atomic unit of paragraph content. Carries the raw text, a
+/// <see cref="BrushedStyle"/> carrier (channels the run states; anything it declines to state is
+/// inherited), an optional <see cref="IGlyphMap"/> for per-grapheme substitution
 /// (Fullwidth, SmallCaps, custom icon set, …), and an optional OSC&#x202F;8 hyperlink target
 /// that the renderer wraps around the run's visible cells.
 /// </summary>
@@ -34,14 +35,16 @@ public abstract record Inline;
 /// </para>
 /// <para>
 /// <c>Tag</c> is opaque per-run metadata, preserved through layout (including wrap-splits) onto every
-/// <see cref="FormattedTextRun"/> derived from this run. Rendering treats it as an opaque passenger; a higher
-/// layer (e.g. <c>Cursorial.Drawing</c>) uses it to attach a brush to the run without <c>IBrush</c> entering
-/// <see cref="Style"/>. Null for ordinary runs.
+/// <see cref="FormattedTextRun"/> derived from this run. Rendering treats it as an opaque passenger.
+/// It predates <see cref="Style"/> carrying brushes: a higher layer used it to attach a brush to the run
+/// while <c>IBrush</c> was unreachable from this assembly. An inline-scoped brush now travels in the
+/// carrier itself (<c>RichTextBuilder</c> translates a tagged <c>ScopedBrush</c> on the way in); the tag
+/// remains the channel for block/document-scoped declarations. Null for ordinary runs.
 /// </para>
 /// </remarks>
 public sealed record TextRun(
     string Text,
-    CellStyle Style = default,
+    BrushedStyle Style = default,
     IGlyphMap? Map = null,
     string? Hyperlink = null,
     object? Tag = null) : Inline

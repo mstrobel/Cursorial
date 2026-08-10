@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -81,7 +82,7 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
@@ -95,8 +96,8 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var inlines = ((TextParagraph)doc.Blocks[0]).Inlines;
-        Assert.True(((TextRun)inlines[0]).Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.False(((TextRun)inlines[1]).Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(((TextRun)inlines[0]).Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.False(((TextRun)inlines[1]).Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
@@ -111,8 +112,8 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Italic));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Italic));
     }
 
     [Fact]
@@ -127,8 +128,8 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.Equal(0, run.Style.Foreground.Red);
-        Assert.Equal(255, run.Style.Foreground.Blue);
+        Assert.Equal(0, run.Style.ResolveFlat().Foreground.Red);
+        Assert.Equal(255, run.Style.ResolveFlat().Foreground.Blue);
     }
 
     [Fact]

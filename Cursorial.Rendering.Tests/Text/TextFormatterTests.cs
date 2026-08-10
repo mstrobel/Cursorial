@@ -1,5 +1,6 @@
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -344,7 +345,7 @@ public class TextFormatterTests
         var line = para.Lines[0];
 
         Assert.Contains(line.Runs.OfType<FormattedTextRun>(),
-                        r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
+                        r => r.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]

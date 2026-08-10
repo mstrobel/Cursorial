@@ -29,9 +29,9 @@ public class WelcomeViewModel : PageViewModel
 
     public string EpilogueText
         => $"[p trim=char wrap=character align=center]Based on the detected capabilities of your terminal, you may see a combination of " +
-           $"[brush={ThemeKeys.CoolBrush}]Figlet fonts[/brush] (big ascii art glyphs), " +
-           $"[brush={ThemeKeys.RedBrush}]scaled text[/brush], and/or an actual " +
-           $"[brush={ThemeKeys.SuccessBrush}]raster image[/brush] above.[br/][br/]" +
+           $"[fg={ThemeKeys.CoolBrush}]Figlet fonts[/fg] (big ascii art glyphs), " +
+           $"[fg={ThemeKeys.RedBrush}]scaled text[/fg], and/or an actual " +
+           $"[fg={ThemeKeys.SuccessBrush}]raster image[/fg] above.[br/][br/]" +
            $"Tiered, capability-based presentation is a core design pillar of Cursorial.[/p]";
 
     private static RichText MakeWelcomeText(IGlyphFont font, string text, TextSizing? sizing = null)

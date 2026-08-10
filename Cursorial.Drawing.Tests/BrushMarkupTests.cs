@@ -9,9 +9,10 @@ using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Drawing;
 
-// Markup gradients: a [brush=VALUE]…[/brush] tag, resolved by BrushMarkup — inline gradient syntax
-// (linear:/radial:/conic: + a color list) or a named-brush registry. The resolved IBrush is stated on the
-// wrapped runs' own carriers, so it samples each run's wrap-invariant strip like any run declaration.
+// Markup brushes: [fg=VALUE]/[bg=VALUE] resolve on the brush path — the options' BrushResolver first
+// (BrushMarkup.Resolver: a named registry, registry-first), then the built-in grammar (bare color tokens
+// plus linear:/radial:/conic: + a color list). The resolved IBrush is stated on the wrapped runs' own
+// carriers, so it samples each run's wrap-invariant strip like any run declaration.
 public class BrushMarkupTests
 {
     private static FormattedText Format(string markup, TextMarkupOptions options, int width = 12) =>
@@ -20,7 +21,7 @@ public class BrushMarkupTests
     [Fact]
     public void InlineLinearGradient_ColorsTheRunAcrossItsStrip()
     {
-        var ft = Format("[brush=linear:#ff0000,#0000ff]ABCD[/brush]", BrushMarkup.Options());
+        var ft = Format("[fg=linear:#ff0000,#0000ff]ABCD[/fg]", BrushMarkup.Options());
         var b = DrawHarness.Render(12, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 2), OutputCapabilities.None));
 
         var a = b[0, 0].Style.Foreground;   // strip start
@@ -33,7 +34,7 @@ public class BrushMarkupTests
     public void InlineGradient_AcceptsNamedColors()
     {
         // Named colors (palette-backed) parse and brush the run — not the default foreground.
-        var ft = Format("[brush=radial:brightcyan,magenta]Z[/brush]", BrushMarkup.Options());
+        var ft = Format("[fg=radial:brightcyan,magenta]Z[/fg]", BrushMarkup.Options());
         var b = DrawHarness.Render(8, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), OutputCapabilities.None));
         Assert.Equal("Z", b[0, 0].Grapheme);
         Assert.Equal(Color.FromPalette(14), b[0, 0].Style.Foreground);   // brightcyan, the center (offset 0) stop
@@ -46,42 +47,78 @@ public class BrushMarkupTests
         {
             ["solidred"] = new SolidColorBrush(Color.FromRgb(255, 0, 0)),
         };
-        var ft = Format("[brush=solidred]X[/brush]", BrushMarkup.Options(registry: registry), width: 8);
+        var ft = Format("[fg=solidred]X[/fg]", BrushMarkup.Options(registry: registry), width: 8);
         var b = DrawHarness.Render(8, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), OutputCapabilities.None));
         Assert.Equal(Color.FromRgb(255, 0, 0), b[0, 0].Style.Foreground);
     }
 
     [Fact]
-    public void Brush_WithoutResolver_Throws()
+    public void Registry_OverridesBuiltInColorName()
     {
-        // [brush] with no resolver (plain options) is a clear parse error, not silent.
-        Assert.Throws<FormatException>(() => TextMarkup.Parse("[brush=linear:red,blue]X[/brush]", TextMarkupOptions.Empty));
+        // Registry-first, the settled order: a registered name overrides a BUILT-IN one at exactly the
+        // width of the name — the author reaches a different `red` without redefining the ANSI brushes
+        // theme-wide. Parser-first would silently shadow this entry with palette red.
+        var registry = new Dictionary<string, IBrush>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["red"] = new SolidColorBrush(Color.FromRgb(0x12, 0x34, 0x56)),
+        };
+        var ft = Format("[fg=red]X[/fg]", BrushMarkup.Options(registry: registry), width: 8);
+        var b = DrawHarness.Render(8, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 2), OutputCapabilities.None));
+        Assert.Equal(Color.FromRgb(0x12, 0x34, 0x56), b[0, 0].Style.Foreground);
     }
 
     [Fact]
-    public void Brush_UnknownValue_Throws()
+    public void InlineGradient_ParsesWithoutResolver()
     {
-        // Not inline (no kind:) and not in the registry → rejected.
-        Assert.Throws<FormatException>(() => TextMarkup.Parse("[brush=nonexistent]X[/brush]", BrushMarkup.Options()));
+        // The inline grammar is SYNTAX, not names — it lives in the parser, so gradients need no
+        // resolver wired at all. (Before the [brush] tag retired, gradient markup without a resolver
+        // was a parse error.)
+        var ft = Format("[fg=linear:#ff0000,#0000ff]ABCD[/fg]", TextMarkupOptions.Empty);
+        var b = DrawHarness.Render(12, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 2), OutputCapabilities.None));
+
+        var a = b[0, 0].Style.Foreground;   // strip start
+        var d = b[3, 0].Style.Foreground;   // strip end
+        Assert.True(a.Red > a.Blue, $"A should be red-dominant, was {a}");
+        Assert.True(d.Blue > d.Red, $"D should be blue-dominant, was {d}");
+    }
+
+    [Fact]
+    public void Background_InlineGradient_RoutesLikeForeground()
+    {
+        // [bg] shares [fg]'s resolution path — the same grammar states a BACKGROUND brush.
+        var ft = Format("[bg=linear:#ff0000,#0000ff]ABCD[/bg]", BrushMarkup.Options());
+        var b = DrawHarness.Render(12, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 2), OutputCapabilities.None));
+
+        var a = b[0, 0].Style.Background;   // strip start
+        var d = b[3, 0].Style.Background;   // strip end
+        Assert.True(a.Red > a.Blue, $"A's background should be red-dominant, was {a}");
+        Assert.True(d.Blue > d.Red, $"D's background should be blue-dominant, was {d}");
+    }
+
+    [Fact]
+    public void Fg_UnknownValue_Throws()
+    {
+        // Not a color, not inline (no kind:) and not in the registry → rejected.
+        Assert.Throws<FormatException>(() => TextMarkup.Parse("[fg=nonexistent]X[/fg]", BrushMarkup.Options()));
     }
 
     [Fact]
     public void InlineGradient_NeedsAtLeastTwoColors()
     {
-        Assert.Throws<FormatException>(() => TextMarkup.Parse("[brush=linear:#ff0000]X[/brush]", BrushMarkup.Options()));
+        Assert.Throws<FormatException>(() => TextMarkup.Parse("[fg=linear:#ff0000]X[/fg]", BrushMarkup.Options()));
     }
 
     [Fact]
-    public void Brush_NestedInsideFg_PopsCorrectly()
+    public void GradientFg_NestedInsideSolidFg_PopsCorrectly()
     {
-        // [fg=red]a[brush=…]b[/brush]c[/fg]: the brush wraps only "b" (and overrides the fg there); "a" and "c"
-        // keep fg=red, confirming the tag scope pops cleanly when interleaved with a style tag.
-        var ft = Format("[fg=red]a[brush=linear:#ff0000,#0000ff]b[/brush]c[/fg]", BrushMarkup.Options());
+        // [fg=red]a[fg=…]b[/fg]c[/fg]: the gradient wraps only "b" (and overrides the outer fg there);
+        // "a" and "c" keep fg=red, confirming the tag scope pops cleanly when nested in its own tag name.
+        var ft = Format("[fg=red]a[fg=linear:#ff0000,#0000ff]b[/fg]c[/fg]", BrushMarkup.Options());
         var b = DrawHarness.Render(12, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 2), OutputCapabilities.None));
         Assert.Equal("a", b[0, 0].Grapheme);
         Assert.Equal("c", b[2, 0].Grapheme);
         Assert.Equal(Color.FromPalette(1), b[0, 0].Style.Foreground);    // 'a' — fg=red
-        Assert.Equal(Color.FromPalette(1), b[2, 0].Style.Foreground);    // 'c' — fg=red still applies after [/brush]
+        Assert.Equal(Color.FromPalette(1), b[2, 0].Style.Foreground);    // 'c' — fg=red still applies after the inner [/fg]
         Assert.NotEqual(Color.FromPalette(1), b[1, 0].Style.Foreground); // 'b' — brushed (overrides fg=red)
     }
 

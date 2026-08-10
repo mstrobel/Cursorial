@@ -266,10 +266,10 @@ internal sealed class FileDialogView
         _completion.Provider = _completionProvider;
         _completion.FooterContent = new TextBlock
                                     {
-                                        Markup = $"[brush={ThemeKeys.TextDimBrush}]⇥[/brush] complete  " +
-                                                 $"[brush={ThemeKeys.TextDimBrush}]↑↓[/brush] select  " +
-                                                 $"[brush={ThemeKeys.TextDimBrush}]⏎[/brush] open  " +
-                                                 $"[brush={ThemeKeys.TextDimBrush}]⎋[/brush] cancel",
+                                        Markup = $"[fg={ThemeKeys.TextDimBrush}]⇥[/fg] complete  " +
+                                                 $"[fg={ThemeKeys.TextDimBrush}]↑↓[/fg] select  " +
+                                                 $"[fg={ThemeKeys.TextDimBrush}]⏎[/fg] open  " +
+                                                 $"[fg={ThemeKeys.TextDimBrush}]⎋[/fg] cancel",
                                         TextWrapping = WrapMode.NoWrap,
                                         TextTrimming = TextTrimming.CharacterEllipsis
                                     };

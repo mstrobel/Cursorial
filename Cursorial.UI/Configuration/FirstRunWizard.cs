@@ -273,8 +273,8 @@ public sealed class FirstRunWizard : Window
 
         var global = new TextBlock
                      {
-                         Markup = $"All Cursorial apps:[br/][brush {ThemeKeys.TextDimBrush}]" +
-                                  $" · " + _model.Options.GlobalFilePath + "[/brush]",
+                         Markup = $"All Cursorial apps:[br/][fg={ThemeKeys.TextDimBrush}]" +
+                                  $" · " + _model.Options.GlobalFilePath + "[/fg]",
                          TextWrapping = WrapMode.WordWrap
                      };
         global.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
@@ -282,8 +282,8 @@ public sealed class FirstRunWizard : Window
 
         var app = new TextBlock
         {
-            Markup = $"This app only:[br/][brush {ThemeKeys.TextDimBrush}]" +
-                     $" · " + _model.Options.ApplicationFilePath + "[/brush]",
+            Markup = $"This app only:[br/][fg={ThemeKeys.TextDimBrush}]" +
+                     $" · " + _model.Options.ApplicationFilePath + "[/fg]",
             TextWrapping = WrapMode.WordWrap,
             Margin = new Margins(0, 0, 0, 1)
         };

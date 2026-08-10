@@ -9,7 +9,7 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The leaf text element (design doc §12.7): renders <see cref="Text"/> (never access-key-folded) or
-/// <see cref="Markup"/> (BBCode incl. <c>[brush=…]</c> via the S7 chain; wins over <see cref="Text"/>),
+/// <see cref="Markup"/> (BBCode incl. <c>[fg=…]</c>/<c>[bg=…]</c> brush values via the S7 chain; wins over <see cref="Text"/>),
 /// element-local through <see cref="RenderContext"/>. <see cref="Foreground"/> inherits via
 /// <see cref="TextElement"/>. The <c>FormattedText</c> layout is cached keyed by
 /// <c>(text/markup identity, width, caps, resource version, ActualThemeVariant)</c> — variant flips
@@ -257,7 +257,7 @@ public class TextBlock : UIElement
 
         if (Markup is {} markup)
         {
-            // Markup wins over Text (doc §12.7); [brush=…] resolves via the S7 chain.
+            // Markup wins over Text (doc §12.7); [fg=…]/[bg=…] brush values resolve via the S7 chain.
             var options = new TextMarkupOptions
                           {
                               BrushResolver = ResourceBrushResolver.Create(this),

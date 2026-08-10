@@ -11,7 +11,7 @@ namespace Cursorial.UI;
 
 /// <summary>
 /// Bridges the resource chain into text markup (design doc §11.9): produces a
-/// <see cref="TextMarkupOptions.BrushResolver"/> over an element's chain so <c>[brush=Theme.AccentBrush]</c>
+/// <see cref="TextMarkupOptions.BrushResolver"/> over an element's chain so <c>[fg=Theme.AccentBrush]</c>
 /// markup and <c>{DynamicResource Theme.AccentBrush}</c> resolve identically (one brush namespace).
 /// Inline gradient grammar (<c>linear:…</c>) resolves via <see cref="BrushMarkup"/>; a bare name
 /// resolves as a resource key through the element's chain to an <see cref="IBrush"/>. Resolution is

@@ -602,10 +602,10 @@ internal static class ControlThemes
     /// <summary>The drop-down's key hints. ASCII-only, like every other popup footer: the arrow glyphs are
     /// ambiguous-width and would mis-measure on the terminals the renderer's width defense exists for.</summary>
     private const string BreadcrumbDropDownFooter = //"^v move   type to filter   Enter open   Esc dismiss" +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]↑↓[/brush]  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]type[/brush] to filter  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]⏎[/brush] open  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]⎋[/brush] cancel";
+                                                    $"[fg={ThemeKeys.TextDimBrush}]↑↓[/fg]  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]type[/fg] to filter  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]⏎[/fg] open  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]⎋[/fg] cancel";
 
     // A breadcrumb trail: [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill — it is a
     // trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real

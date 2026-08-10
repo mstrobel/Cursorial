@@ -190,7 +190,7 @@
             <TabItem Header="Content-_Assisted Scrolling">
               <DockPanel>
                 <Border DockPanel.Dock="Top" Margin="0,0,0,1">
-                  <TextBlock Markup="When [brush=Theme.TextDimBrush]ScrollViewer[/brush] content implements the [brush=Theme.TextDimBrush]IScrollContentHost[/brush] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
+                  <TextBlock Markup="When [fg=Theme.TextDimBrush]ScrollViewer[/fg] content implements the [fg=Theme.TextDimBrush]IScrollContentHost[/fg] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
                 </Border>
                 <ScrollViewer HorizontalScrollBarVisibility="Visible"
                               VerticalScrollBarVisibility="Visible">

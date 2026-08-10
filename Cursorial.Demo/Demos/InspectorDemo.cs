@@ -1024,8 +1024,8 @@ internal sealed class InspectorDemo : IDemo
                            {
                                Header = new TextBlock
                                         {
-                                            Markup = $"[brush {ThemeKeys.RedBrush}][b]{property.Name} " +
-                                                     $"Error:[/b]{ex.GetType().Name}[/brush]"
+                                            Markup = $"[fg={ThemeKeys.RedBrush}][b]{property.Name} " +
+                                                     $"Error:[/b]{ex.GetType().Name}[/fg]"
                                         },
                            };
                 }
@@ -1184,11 +1184,11 @@ internal sealed class InspectorDemo : IDemo
 
             var header = hasName
                              ? isSimple
-                                   ? $"[b][brush {brush}]{Sanitize(name)}:[/brush][/b] {FormatValue(value)}"
-                                   : $"[b][brush {brush}]{Sanitize(name)}" +
+                                   ? $"[b][fg={brush}]{Sanitize(name)}:[/fg][/b] {FormatValue(value)}"
+                                   : $"[b][fg={brush}]{Sanitize(name)}" +
                                      (inlineValue is not null 
-                                          ? $":[/brush][/b] [brush {ThemeKeys.TextBrush}]{FormatValue(inlineValue)}[/brush]"
-                                          : "[/brush][/b]")
+                                          ? $":[/fg][/b] [fg={ThemeKeys.TextBrush}]{FormatValue(inlineValue)}[/fg]"
+                                          : "[/fg][/b]")
                              : FormatValue(value);
 
             var item = new TreeViewItem

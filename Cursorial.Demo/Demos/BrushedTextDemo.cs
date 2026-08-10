@@ -104,7 +104,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
     private static RichText BuildDocument(in CellStyle defaultStyle)
     {
         var builder = new RichTextBuilder(defaultStyle);
-        var opts = BrushMarkup.Options(defaultStyle);   // enables [brush=…] gradient markup (inline + registry)
+        var opts = BrushMarkup.Options(BrushedStyle.FromStated(defaultStyle));   // enables [fg=…]/[bg=…] gradient markup (inline + registry)
 
         TextMarkup.Parse(
             "Cursorial's TextFormatter lays out wrapped, aligned rich text into cell-grid lines. In the " +
@@ -120,7 +120,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
             "[p align=justify]The brush colors only cells whose foreground is unset, so an [fg=brightyellow]" +
             "explicitly colored word[/fg] keeps its own color while everything around it rides the gradient. " +
             "Horizontal rules are colored cell by cell, and an image or icon that degrades to a glyph inherits " +
-            "the gradient too. A [brush=linear:#a6e22e,#fd971f]markup-authored gradient[/brush] overrides it for " +
+            "the gradient too. A [fg=linear:#a6e22e,#fd971f]markup-authored gradient[/fg] overrides it for " +
             "its own run. Narrow the terminal and the sweep re-wraps with the prose.[/p]",
             builder, opts);
 

@@ -1,17 +1,21 @@
-using Cursorial.Output;
+using System.Diagnostics.CodeAnalysis;
+
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Rendering.Media;
 
 /// <summary>
-/// Wires gradient brushes into <see cref="TextMarkup"/> via a <c>[brush=VALUE]…[/brush]</c> tag. Two authoring
-/// styles, one resolved <see cref="IBrush"/> the parser states on the wrapped runs' own carriers:
+/// The brush vocabulary behind <see cref="TextMarkup"/>'s <c>[fg=VALUE]</c> / <c>[bg=VALUE]</c> tags. Two
+/// authoring styles, one resolved <see cref="IBrush"/> the parser states on the wrapped runs' own carriers:
 /// <list type="bullet">
-/// <item><b>Inline</b> — <c>[brush=linear:#f92672,#66d9ef]</c> / <c>[brush=radial:red,black]</c> /
-/// <c>[brush=conic:0,4,2]</c>: a gradient kind plus a comma-separated color list (hex, palette index, or named
-/// color), evenly spaced, with the brush's default geometry. Convenient for simple gradients.</item>
-/// <item><b>Registry</b> — <c>[brush=sunset]</c>: looks the name up in a caller-supplied
-/// name→<see cref="IBrush"/> map, for complex gradients (custom directions, angles, multi-stop).</item>
+/// <item><b>Inline</b> — <c>[fg=linear:#f92672,#66d9ef]</c> / <c>[fg=radial:red,black]</c> /
+/// <c>[fg=conic:0,4,2]</c>: a gradient kind plus a comma-separated color list (hex, palette index, or named
+/// color), evenly spaced, with the brush's default geometry — or a bare color token, a solid. This grammar
+/// is syntax, not names: the parser owns it, no options required.</item>
+/// <item><b>Registry</b> — <c>[fg=sunset]</c>: looks the name up in a caller-supplied
+/// name→<see cref="IBrush"/> map, for complex gradients (custom directions, angles, multi-stop). Names
+/// resolve BEFORE the inline grammar, so a registered name overrides a built-in one at exactly the width
+/// of the name.</item>
 /// </list>
 /// The declaration site is the run, so the brush samples the run's wrap-invariant 1-D strip — scope is
 /// inferred, never stated.
@@ -20,9 +24,9 @@ public static class BrushMarkup
 {
 
     /// <summary>
-    /// A <see cref="TextMarkupOptions.BrushResolver"/>: parses inline gradient syntax or, failing that, looks
-    /// <paramref name="registry"/> up by name. Returns null (the parser then raises "unrecognized brush") when
-    /// neither matches.
+    /// A <see cref="TextMarkupOptions.BrushResolver"/>: looks <paramref name="registry"/> up by name first,
+    /// then parses the inline grammar. Returns null (the parser then falls through to its own built-in
+    /// grammar and, failing that, raises "unrecognized color or brush") when neither matches.
     /// </summary>
     public static Func<string, IBrush?> Resolver(IReadOnlyDictionary<string, IBrush>? registry = null) =>
         value =>
@@ -32,15 +36,17 @@ public static class BrushMarkup
             return null;
         };
 
-    /// <summary>Build <see cref="TextMarkupOptions"/> wired with the brush <see cref="Resolver"/> (inline
-    /// gradients + an optional registry) plus the given default style.</summary>
-    public static TextMarkupOptions Options(CellStyle defaultStyle = default,
+    /// <summary>Build <see cref="TextMarkupOptions"/> wired with the brush <see cref="Resolver"/> (an
+    /// optional named registry) plus the given default style. Callers holding a resolved
+    /// <see cref="Cursorial.Output.CellStyle"/> adapt it via <see cref="BrushedStyle.FromStated"/>.</summary>
+    public static TextMarkupOptions Options(BrushedStyle defaultStyle = default,
                                             IReadOnlyDictionary<string, IBrush>? registry = null) =>
-        new() { DefaultStyle = BrushedStyle.FromStated(defaultStyle), BrushResolver = Resolver(registry) };
+        new() { DefaultStyle = defaultStyle, BrushResolver = Resolver(registry) };
 
-    // Parse "kind:colorA,colorB[,colorC…]" into an IBrush. Returns false for a non-inline value (no
-    // recognized kind/colon) so the resolver can fall back to the registry.
-    private static bool TryParseInline(string value, out IBrush? brush)
+    // Parse "kind:colorA,colorB[,colorC…]" into an IBrush, or a bare color token into a solid. Returns
+    // false for a value that is neither (no recognized kind/colon, unparseable color) so the caller —
+    // TextMarkup's [fg]/[bg] fallback, or Resolver after a registry miss — can reject it.
+    internal static bool TryParseInline(string value, [NotNullWhen(true)] out IBrush? brush)
     {
         brush = null;
 

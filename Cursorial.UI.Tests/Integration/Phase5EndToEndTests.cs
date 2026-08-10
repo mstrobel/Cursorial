@@ -564,7 +564,7 @@ public sealed class Phase5EndToEndTests
     /// <see cref="ResourceServices.GetResourceVersion"/> and the <see cref="UIApplication.ActualThemeVariant"/>
     /// (CD16): the cache is the staleness firewall. Re-formatting under the SAME variant serves the
     /// cached layout (no re-resolve); once the requested theme base flips the variant, the cache key
-    /// differs, so the next format re-resolves the markup <c>[brush=…]</c> against the new variant's
+    /// differs, so the next format re-resolves the markup <c>[fg=…]</c> against the new variant's
     /// dictionary — the new ink reaches the cells, never the stale dark ink. No dictionary subscription
     /// (the sealed BuiltIn never pulses — the cache key alone catches the change).
     /// </summary>
@@ -586,7 +586,7 @@ public sealed class Phase5EndToEndTests
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         host.RunFrame();
 
-        var block = new TextBlock { Markup = "[brush=ink]Hello[/brush]", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        var block = new TextBlock { Markup = "[fg=ink]Hello[/fg]", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         host.ShowRoot(block);
         Assert.True(host.RunUntilIdle());
 
@@ -603,7 +603,7 @@ public sealed class Phase5EndToEndTests
 
         // Flip the requested base to Light: the variant changes (the variant-changed signal fires). The
         // cache key now carries the new variant, so the next format of the block re-resolves
-        // [brush=ink] against the Light dictionary — the staleness firewall holds (no dictionary
+        // [fg=ink] against the Light dictionary — the staleness firewall holds (no dictionary
         // subscription, per CD16 — the variant flip alone does not pull a re-render, the next
         // invalidation-driven format does, and it must not serve the stale dark ink).
         host.Application.RequestedThemeBase = ThemeBase.Light;
@@ -643,7 +643,7 @@ public sealed class Phase5EndToEndTests
 
         var presenter = new RichTextPresenter
                         {
-                            Source = "[brush=ink]Hello[/brush]",
+                            Source = "[fg=ink]Hello[/fg]",
                             HorizontalAlignment = HorizontalAlignment.Left,
                             VerticalAlignment = VerticalAlignment.Top
                         };

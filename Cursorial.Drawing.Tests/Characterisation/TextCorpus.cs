@@ -1007,7 +1007,7 @@ internal static class TextCorpus
                         + "the value to a ScopedBrush and pushes it as a tag SCOPE (TextMarkup.cs:294-295) rather "
                         + "than attaching it to one run — so a markup brush that stopped flowing across a wrap "
                         + "would not move any existing baseline.",
-            Document = static () => TextMarkup.Parse("[brush=linear:#ff0000,#0000ff]aaaa bbbb cccc[/brush]",
+            Document = static () => TextMarkup.Parse("[fg=linear:#ff0000,#0000ff]aaaa bbbb cccc[/fg]",
                                                      BrushMarkup.Options()),
             Columns = 9, PaintColumns = 12, PaintRows = 4, Brushed = true
         },

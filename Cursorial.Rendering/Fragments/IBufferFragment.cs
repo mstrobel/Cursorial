@@ -55,6 +55,9 @@ public interface IBufferFragment
     /// If the fragment provides its own style that should be blended over the anchor style, it may
     /// advertise it here.
     /// </summary>
+    // CACHE KEY: resolved value, never the template. Blended over the entry's AnchorStyle at
+    // emission — the point where a value is required and a policy would have nothing to sample
+    // against; the coordinates are gone by the time the renderer reads this.
     CellStyle? StyleOverride => null;
    
     /// <summary>

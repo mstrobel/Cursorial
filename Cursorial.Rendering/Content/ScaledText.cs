@@ -68,6 +68,11 @@ public sealed class ScaledText : FragmentContent
     {
         // The style is baked into the emission (the OSC 66 SGR backdrop), so a style change —
         // a selection highlight arriving or leaving — must rebuild even at an unchanged size.
+        //
+        // CACHE KEY: resolved value, never the template. When the IContent lane starts carrying
+        // a style delta, resolve at the fragment's anchor BEFORE this comparison; a template
+        // whose brushes are not IsUniform has no single resolved value and rebuilds
+        // unconditionally.
         return base.IsCachedFragmentStale(availableSpace, style, capabilities) ||
                ExistingFragment is not SizedTextFragment { Style: var existingStyle } ||
                existingStyle != style;
@@ -133,6 +138,9 @@ public sealed class ScaledText : FragmentContent
         return ft;
     }
 
+    // CACHE KEY: resolved value, never the template. Compared below to decide whether the
+    // realization is stale; same forward rule as IsCachedFragmentStale — when a delta arrives,
+    // resolve at the anchor before comparing, and !IsUniform rebuilds unconditionally.
     private CellStyle _placeholderStyle;
 
     protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)

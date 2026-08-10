@@ -77,6 +77,9 @@ public sealed class SizedTextFragment : IBufferFragment
     /// remove + add and re-emit unchanged sized text; equal content at the same anchor must
     /// diff-skip instead, exactly like <see cref="KittyImageFragment"/>'s content key.
     /// </summary>
+    // CACHE KEY: resolved value, never the template. The tuple compares by value only because
+    // every element does; a brush in Style's place would make equal-looking keys unequal per
+    // re-raster and re-transmit the emission every frame.
     public object Key => (Text, Sizing, Style);
 
     /// <inheritdoc/>

@@ -92,6 +92,11 @@ public class Icon : Control
     public static void SetIconBrush(UIElement element, IBrush? value) => element.SetValue(IconBrushProperty, value);
 
     private UIApplication? _subscribedApp; // the app whose capability/nerd-font events we're subscribed to
+
+    // Deliberately OUTSIDE the resolved-value CACHE-KEY census: IBrush has no value equality,
+    // so the != in UpdateEffectiveIconBrush is a reference comparison — and that is fine HERE
+    // because a false inequality only dispatches a spurious property change. Over-invalidation is
+    // this cache's only failure mode; the census sites gate re-emission, where it is not.
     private IBrush? _cachedEffectiveBrush;
 
     static Icon()

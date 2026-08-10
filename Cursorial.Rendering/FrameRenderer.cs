@@ -112,6 +112,10 @@ public sealed class FrameRenderer
     private Color _terminalDefaultForeground = Color.Default;
     private Color _terminalDefaultBackground = Color.Default;
 
+    // CACHE KEY: resolved value, never the template. The SGR state believed live on the
+    // terminal; SyncStyle's == against it is the sole gate on emitting SGR bytes. A policy
+    // carrier here could neither be compared (reference equality re-emits every run) nor
+    // encoded (SgrEncoder needs channel values, and the coordinates are gone by now).
     private CellStyle _currentStyle;
     private Hyperlink _currentHyperlink;
     private int _cursorRow;

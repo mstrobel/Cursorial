@@ -222,6 +222,20 @@ travels, caches key on what it resolved to.** Affected: `SizedTextFragment.Key` 
 (`:136`, `:149-153`), `FrameRenderer.FragmentsMatch` (`:1102`). Likely cheap because the
 fragment path collapses to one sample (`FormattedText.cs:263-265`) *before* the key is formed.
 
+**Phase 3 (DONE): the rule is a marked census.** `grep -rn "CACHE KEY:"` returns every
+declaration that must stay a resolved value: `Cell.Style`, `FragmentEntry.AnchorStyle`,
+`IBufferFragment.StyleOverride`, `SizedTextFragment.Key`, `FrameRenderer._currentStyle`, and the
+two `ScaledText` staleness comparisons (marked with the forward rule: resolve at the anchor
+before comparing; a `!IsUniform` template rebuilds unconditionally). `_currentStyle` was found by
+a four-lens sweep of the tree, not the plan — the plan's list stopped at the buffer boundary and
+missed that the renderer also memoizes a bare style for SGR suppression. Everything else the
+sweep surfaced (`_frontCells`, `_frontFragments`, the diff short-circuits, `_fragmentsByKey`)
+CONSUMES a marked declaration and derives its soundness from it. The deliberate outlier is
+`Icon._cachedEffectiveBrush`, marked as outside the census: reference comparison of brushes is
+fine where a false inequality only costs a spurious property-changed dispatch. Each `ScaledText`
+cache is pinned by a two-direction pincer in `ScaledTextCacheKeyTests` — a missed rebuild and a
+spurious rebuild are distinct failures, and each mutation direction kills exactly one test.
+
 **`TextBlock`'s cache key** (`:364-373`) has no style term deliberately — brush and attributes
 merge at paint. Preserved as long as resolution stays at paint. Only breaks if brushes are baked
 in at format time, which is the opposite of carrying a policy.

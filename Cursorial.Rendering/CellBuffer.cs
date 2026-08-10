@@ -1018,6 +1018,10 @@ public sealed class CellBuffer : ICellSurface
     /// anchor style the renderer uses as the SGR backdrop before invoking the fragment's emit
     /// callback.
     /// </summary>
+    // CACHE KEY: resolved value, never the template. AnchorStyle is half of fragment identity
+    // (FrameRenderer.FragmentsEqual — Key + AnchorStyle), which gates erase/re-emit across
+    // frames. A policy carrier here would compare by reference and re-transmit fragments whose
+    // resolved backdrop never changed.
     public readonly record struct FragmentEntry(IBufferFragment Fragment, CellStyle AnchorStyle);
 
     /// <summary>Internal: raw row span for renderer access. Not part of the public-API stability guarantee.</summary>

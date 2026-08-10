@@ -51,8 +51,7 @@ public class BrushResolverDeltaTests
     [Fact]
     public void NoDocumentBrush_IsTheIdentityDelta()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red,
-                                                          Doc, baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
 
         Assert.True(resolver(Context(Rich(Red))).Style.IsIdentity);
         Assert.True(resolver(Context(CellStyle.Default)).Style.IsIdentity);
@@ -65,8 +64,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void DocumentBrush_IsTheIdentityDeltaForANonInheritedForeground()
     {
-        var resolver = DrawingContext.CreateBrushResolver(new SolidColorBrush(Green), documentForeground: Red,
-                                                          Doc, baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
+                                                          documentForeground: Red, Doc);
 
         Assert.True(resolver(Context(Rich(Blue))).Style.IsIdentity);
     }
@@ -76,8 +75,8 @@ public class BrushResolverDeltaTests
     [InlineData(true)]   // foreground explicitly equal to the document default
     public void DocumentBrush_ColorsAnInheritedForegroundAndNothingElse(bool explicitDocumentColor)
     {
-        var resolver = DrawingContext.CreateBrushResolver(new SolidColorBrush(Green), documentForeground: Red,
-                                                          Doc, baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
+                                                          documentForeground: Red, Doc);
 
         var baseStyle = explicitDocumentColor ? Rich(Red) : Rich(Color.Default);
         var brushed = resolver(Context(baseStyle));
@@ -105,8 +104,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void RunBrush_WinsOverTheDocumentBrushAndIsForegroundOnly()
     {
-        var resolver = DrawingContext.CreateBrushResolver(new SolidColorBrush(Green), documentForeground: Red,
-                                                          Doc, baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(new BrushedStyle { Foreground = new SolidColorBrush(Green) },
+                                                          documentForeground: Red, Doc);
 
         var delta = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue))))
                         .Resolve(column: 2, row: 1);
@@ -127,8 +126,7 @@ public class BrushResolverDeltaTests
     [InlineData(DeclarationScope.Document)]
     public void RunBrush_SamplesAgainstItsDeclarationScope(DeclarationScope scope)
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red,
-                                                          Doc, baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
 
         var brushed = resolver(Context(Rich(Color.Default), new ScopedBrush(new SolidColorBrush(Blue), scope)));
 
@@ -151,9 +149,9 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_AreSetNotReplaced()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Bold | TextAttributes.Inverse,
-                                                          UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(
+            BrushedStyle.Identity.Imposing(TextAttributes.Bold | TextAttributes.Inverse),
+            documentForeground: Red, Doc);
 
         var brushed = resolver(Context(Rich(Red)));
 
@@ -182,8 +180,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Bold, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Bold),
+                                                          documentForeground: Red, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Faint);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -195,8 +193,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_Faint_ImposesTheWeight_ClearingTheRunsBold()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Faint, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Faint),
+                                                          documentForeground: Red, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Bold);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -213,9 +211,9 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_CarryingBothWeights_ResolveToBold()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Bold | TextAttributes.Faint,
-                                                          UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(
+            BrushedStyle.Identity.Imposing(TextAttributes.Bold | TextAttributes.Faint),
+            documentForeground: Red, Doc);
 
         foreach (var run in new[] { CellStyle.Default,
                                     CellStyle.Default.WithAttributes(TextAttributes.Bold),
@@ -231,9 +229,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_BooleanFlags_StillUnionWithTheRunsOwn()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Strikethrough,
-                                                          UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Strikethrough),
+                                                          documentForeground: Red, Doc);
 
         var run = CellStyle.Default.WithAttributes(TextAttributes.Overline);
         var applied = resolver(Context(run)).ApplyTo(2, 1, run);
@@ -248,8 +245,8 @@ public class BrushResolverDeltaTests
     [Fact]
     public void BaseAttributes_Italic_FoldsExactlyAsAUnionWould()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: TextAttributes.Italic, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(TextAttributes.Italic),
+                                                          documentForeground: Red, Doc);
 
         foreach (var run in new[] { CellStyle.Default,
                                     CellStyle.Default.WithAttributes(TextAttributes.Italic),
@@ -271,18 +268,38 @@ public class BrushResolverDeltaTests
 
         var b = DrawHarness.Render(10, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 10, 2),
                                                                        OutputCapabilities.None,
-                                                                       TextAttributes.Bold));
+                                                                       BrushedStyle.Identity.Imposing(TextAttributes.Bold)));
 
         Assert.Equal("h", b[0, 0].Grapheme);
         Assert.Equal(TextAttributes.Bold, b[0, 0].Style.Attributes);
         Assert.Equal(TextAttributes.Bold, b[1, 0].Style.Attributes);
     }
 
+    /// <summary>
+    /// End to end through the public painting API, like the weight case above: an element-inherited
+    /// Underline with a non-default shape lands on the painted cells — flag and shape both, through the
+    /// paint preference and the per-run merge behind it.
+    /// </summary>
+    [Fact]
+    public void PaintedCells_CarryTheInheritedUnderlineShape()
+    {
+        var doc = new RichTextBuilder().Run("hi").Build();
+        var ft = new TextFormatter().Format(doc, 10, maxRows: null, OutputCapabilities.None);
+
+        var b = DrawHarness.Render(10, 2, ctx => ctx.DrawFormattedText(
+                                       ft, new Rect(0, 0, 10, 2), OutputCapabilities.None,
+                                       BrushedStyle.Identity.Imposing(TextAttributes.Underline, UnderlineStyle.Dotted)));
+
+        Assert.Equal("h", b[0, 0].Grapheme);
+        Assert.True(b[0, 0].Style.Attributes.HasFlag(TextAttributes.Underline));
+        Assert.Equal(UnderlineStyle.Dotted, b[0, 0].Style.UnderlineStyle);
+        Assert.Equal(UnderlineStyle.Dotted, b[1, 0].Style.UnderlineStyle);
+    }
+
     [Fact]
     public void NoBaseAttributes_LeavesTheAttributeChannelsUntouched()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes: default, UnderlineStyle.Single);
+        var resolver = DrawingContext.CreateBrushResolver(default, documentForeground: Red, Doc);
 
         Assert.Equal(Rich(Red), resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red)));
     }
@@ -300,8 +317,8 @@ public class BrushResolverDeltaTests
     [InlineData(TextAttributes.Bold, UnderlineStyle.Dashed, UnderlineStyle.Curly)]      // no Underline bit
     public void UnderlineShapeRider(TextAttributes baseAttributes, UnderlineStyle baseShape, UnderlineStyle expected)
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          baseAttributes, baseShape);
+        var resolver = DrawingContext.CreateBrushResolver(BrushedStyle.Identity.Imposing(baseAttributes, baseShape),
+                                                          documentForeground: Red, Doc);
 
         // Rich() carries UnderlineStyle.Curly, so "the rider did not fire" is visible as the run's own shape.
         Assert.Equal(expected, resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red)).UnderlineStyle);
@@ -314,8 +331,9 @@ public class BrushResolverDeltaTests
     [Fact]
     public void UnderlineShapeRider_KeepsTheUnderlineFlagOn()
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          TextAttributes.Underline, UnderlineStyle.Dotted);
+        var resolver = DrawingContext.CreateBrushResolver(
+            BrushedStyle.Identity.Imposing(TextAttributes.Underline, UnderlineStyle.Dotted),
+            documentForeground: Red, Doc);
 
         var applied = resolver(Context(CellStyle.Default)).ApplyTo(2, 1, CellStyle.Default);
 
@@ -333,8 +351,9 @@ public class BrushResolverDeltaTests
     [InlineData(UnderlineStyle.Dotted)]   // a shape stated — the rider overrides
     public void BaseAttributes_Underline_TurnsTheFlagOnWhateverTheShape(UnderlineStyle baseShape)
     {
-        var resolver = DrawingContext.CreateBrushResolver(documentBrush: null, documentForeground: Red, Doc,
-                                                          TextAttributes.Underline, baseShape);
+        var resolver = DrawingContext.CreateBrushResolver(
+            BrushedStyle.Identity.Imposing(TextAttributes.Underline, baseShape),
+            documentForeground: Red, Doc);
 
         // Rich() carries Curly WITHOUT the Underline flag, so the shape is inert until the flag arrives.
         var applied = resolver(Context(Rich(Red))).ApplyTo(2, 1, Rich(Red));

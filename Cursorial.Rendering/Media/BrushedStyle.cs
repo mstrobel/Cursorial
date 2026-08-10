@@ -112,7 +112,72 @@ public readonly record struct BrushedStyle
     /// <summary>Remove the underline in addition to whatever this style already does.</summary>
     public BrushedStyle RemovingUnderline() =>
         Composed(PartialStyle.WithoutUnderline()) with { UnderlineShape = null };
-    
+
+    /// <summary>
+    /// Fold a flag WORD onto this style <b>per axis</b> — one implementation, shared by the fill
+    /// primitives' colour-plus-attributes overloads, the paint preference handed to
+    /// <c>DrawingContext.DrawFormattedText</c>, and the element-attribute leg of
+    /// <c>DrawingContext.CreateBrushResolver</c>.
+    /// </summary>
+    /// <param name="attributes">The flag word. <see langword="default"/> is the identity.</param>
+    /// <param name="underlineShape">
+    /// The shape the Underline bit carries — the destination's own, re-stated, since the flag has no
+    /// "on, and no further opinion" form of its own.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Unioning the word in wholesale is not merely inconvenient, it is unavailable:
+    /// <see cref="Applying"/> routes through <c>PartialStyle.Require</c>, which THROWS
+    /// for Bold / Faint / Italic / Underline because each owns an axis. The unguarded sibling
+    /// (<c>WithAdded</c>) was deleted deliberately — it existed to do the forbidden thing, and the state
+    /// it bought is not renderable.
+    /// </para>
+    /// <para>
+    /// Weight is why. Bold and Faint share the SGR 22 reset, so a cell carrying both is not "two
+    /// attributes" — it is a state the encoder cannot spell: reaching it emits ESC[1m from a Faint
+    /// predecessor and ESC[2m from a Bold one, and the terminal keeps whichever arrived last.
+    /// (<c>PartialStyle.Weight</c> reports Bold for it either way, so the accessor and the frame disagree
+    /// in silence.) An imposed Bold therefore CLEARS the Faint underneath rather than unioning into
+    /// something unrenderable.
+    /// </para>
+    /// </remarks>
+    public BrushedStyle Imposing(TextAttributes attributes, UnderlineStyle underlineShape = UnderlineStyle.Single)
+    {
+        if (attributes == default) return this;
+
+        var newStyle = this;
+
+        if ((attributes & TextAttributes.Bold) != 0)
+            // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot produce
+            // one, but a caller that ORs its own flags onto the composed word can. Bold wins: the choice
+            // is arbitrary, being FIXED is not, since the alternative is a cell whose appearance depends
+            // on what was painted before it.
+            newStyle = newStyle.Weighing(TextWeight.Bold);
+        else if ((attributes & TextAttributes.Faint) != 0)
+            newStyle = newStyle.Weighing(TextWeight.Faint);
+
+        // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it are the
+        // same operation, and the axis-typed form is the one that says which axis it is.
+        if ((attributes & TextAttributes.Italic) != 0)
+            newStyle = newStyle.Posturing(TextStyle.Italic);
+
+        // The genuine booleans keep unioning: no reset is shared, so an existing Overline survives an
+        // imposed Strikethrough. `Applying` is the union for flags that have no axis of their own.
+        var booleans = attributes & PartialStyle.Booleans;
+        if (booleans != default)
+            newStyle = newStyle.Applying(booleans);
+
+        // Underline's axis has no "on, and no further opinion" form — the flag travels with a SHAPE,
+        // which implies it once resolved. Re-stating a shape is that form: the underline arrives and the
+        // shape is left exactly where it was, which is what the flag-word union did. A shape the brushed
+        // style already states wins, since that is an opinion the word does not have.
+        if ((attributes & TextAttributes.Underline) != 0)
+            newStyle = newStyle with { UnderlineShape = newStyle.UnderlineShape ?? underlineShape };
+
+        return newStyle;
+    }
+
+
     /// <summary>
     /// Composes this delta with the attributes of the provided <see cref="PartialStyle"/>.
     /// </summary>

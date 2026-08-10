@@ -198,10 +198,9 @@ public class TextBlock : UIElement
         // AffectsRender, so a flip re-paints the cached layout without re-formatting it). The fold is
         // the single composition point (proposal-TextAttributes-decomposition §3.1).
         var resolved = TextElement.ComposeAttributes(this);
-        if (Foreground is {} brush)
-            context.DrawFormattedText(formatted, context.Bounds, brush, resolved.Flags, resolved.UnderlineShape);
-        else
-            context.DrawFormattedText(formatted, context.Bounds, resolved.Flags, resolved.UnderlineShape);
+        context.DrawFormattedText(formatted, context.Bounds,
+                                  new BrushedStyle { Foreground = Foreground }
+                                      .Imposing(resolved.Flags, resolved.UnderlineShape));
     }
 
     private FormattedText GetFormatted(int width, int? height = null)

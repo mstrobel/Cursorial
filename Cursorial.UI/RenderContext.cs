@@ -261,30 +261,22 @@ public sealed class RenderContext
                          Color foreground, Color? background = null, in CellStyle legacyBaseStyle = default)
         => Inner.DrawText(column, row, text, foreground, background, legacyBaseStyle);
 
-    /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>
-    /// <remarks>
-    /// <paramref name="brush"/> colors the cells that <b>inherited</b> the document foreground
-    /// (unset, or equal to the document's default); a run's own explicit foreground (markup color)
-    /// wins over the brush — the Drawing layer's document-brush contract. Use this overload when
-    /// the element supplies the base color (themed text over a <see cref="FormattedText"/> reused
-    /// across styles); use the two-argument overload when the document's own runs/markup carry all
-    /// the color and nothing should be imposed from outside.
-    /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
-    {
-        Inner.DrawFormattedText(text, bounds, brush, _capabilities, baseAttributes, baseUnderlineShape);
-    }
-
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     /// <remarks>
-    /// Renders with the document's <b>own</b> colors (markup spans, run styles) only. See the
-    /// brushed overload's remarks for when to supply an external brush instead. <paramref name="baseAttributes"/>
-    /// (default none) union-merges an inherited <see cref="TextAttributes"/> — an ancestor's
-    /// <c>TextElement.TextAttributes</c> — onto every painted cell at paint time.
+    /// <paramref name="preference"/> is the element-side opinion folded onto every painted cell. Its
+    /// <see cref="BrushedStyle.Foreground"/> colors the cells that <b>inherited</b> the document
+    /// foreground (unset, or equal to the document's default); a run's own explicit foreground
+    /// (markup color) wins over the brush — the Drawing layer's document-brush contract. Its
+    /// attribute channels merge an ancestor's <c>TextElement.TextAttributes</c> onto the paint per
+    /// axis — build them with <see cref="BrushedStyle.Imposing"/>, which routes each flag through
+    /// the axis that owns it. State a Foreground when the element supplies the base color (themed
+    /// text over a <see cref="FormattedText"/> reused across styles); pass
+    /// <see langword="default"/> to render with the document's <b>own</b> colors (markup spans,
+    /// run styles) and attributes, imposing nothing from outside.
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, in BrushedStyle preference = default)
     {
-        Inner.DrawFormattedText(text, bounds, _capabilities, baseAttributes, baseUnderlineShape);
+        Inner.DrawFormattedText(text, bounds, _capabilities, preference);
     }
 
     /// <summary>Paints embedded content (images, sized text) into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>

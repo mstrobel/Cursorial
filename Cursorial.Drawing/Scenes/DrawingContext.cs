@@ -71,7 +71,7 @@ public sealed class DrawingContext
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
     /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>), the document/content
-    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>,
+    /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>,
     /// <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
     /// <see cref="Pen"/> strokes and chart braille — deferred records capture the ambient translate + clip at
     /// <em>record</em> time (the draw call), not at flush, so junctions still form in final scene coordinates.
@@ -230,7 +230,7 @@ public sealed class DrawingContext
     /// <para>
     /// The <see cref="Color"/> and <see cref="IBrush"/> overloads of all three fill families are thin
     /// wrappers over this shape: their brush becomes <see cref="BrushedStyle.Background"/> and
-    /// their <c>attributes</c> word is folded on PER AXIS (see <c>Imposing</c>) — Bold / Faint impose a
+    /// their <c>attributes</c> word is folded on PER AXIS (see <see cref="BrushedStyle.Imposing"/>) — Bold / Faint impose a
     /// weight, Italic a posture, and only the axis-free flags union. A word carrying both weights is
     /// unrenderable and resolves to Bold rather than to the pair.
     /// </para>
@@ -631,7 +631,7 @@ public sealed class DrawingContext
     /// allowlist admits the first three.
     /// </remarks>
     private static BrushedStyle AsFill(IBrush background, TextAttributes attributes)
-        => Imposing(new BrushedStyle { Background = background }, attributes);
+        => new BrushedStyle { Background = background }.Imposing(attributes);
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -1071,49 +1071,41 @@ public sealed class DrawingContext
     private static bool IsC0OrC1Control(char c) => c < 0x20 || (c >= 0x7F && c <= 0x9F);
 
     /// <summary>
-    /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, coloring it with
-    /// <paramref name="brush"/> sampled against <b>each block's rect</b> (block-scoped, 2-D — a gradient spans
-    /// each block and resets between them). Text and horizontal rules are colored per cell; FIGlet, sized text,
-    /// and inline content take one sampled color at their center (their painters take a single style) — so an
-    /// image / icon that <em>degrades to a glyph</em> picks up the gradient too.
+    /// Paint a laid-out <paramref name="text"/> document at <paramref name="bounds"/>, folding
+    /// <paramref name="preference"/> — the caller's style opinion, its attribute channels built with
+    /// <see cref="BrushedStyle.Imposing"/> from an element's inherited flag word — onto every painted
+    /// cell. <see langword="default"/> is the identity: the document paints with its own colors
+    /// (markup spans, per-run <c>BrushedRun</c> brushes) and attributes.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The brush colors cells that <b>inherited</b> the document foreground — i.e., whose foreground is unset
-    /// (<see cref="Color.Default"/>) or equals the document's <see cref="FormattedText.DefaultStyle"/>
-    /// foreground. A run's <em>own</em> explicit foreground (a markup color, a content's fallback color — one
-    /// that differs from the document default) <b>wins</b> over the brush. So a document that sets a default
-    /// text color still receives the gradient, while individually-colored runs keep their color.
-    /// <paramref name="capabilities"/> drives protocol selection for embedded content; pass the session's
-    /// negotiated capabilities. (Per-run <c>ScopedBrush</c> and inline 1-D wrap-invariant sampling arrive in a
-    /// later slice; this is the single document/block brush.)
+    /// The preference's <see cref="BrushedStyle.Foreground"/> is the document-wide brush, sampled against
+    /// <b>each block's rect</b> (block-scoped, 2-D — a gradient spans each block and resets between them).
+    /// Text and horizontal rules are colored per cell; FIGlet, sized text, and inline content take one
+    /// sampled color at their center (their painters take a single style) — so an image / icon that
+    /// <em>degrades to a glyph</em> picks up the gradient too. The brush colors cells that <b>inherited</b>
+    /// the document foreground — i.e., whose foreground is unset (<see cref="Color.Default"/>) or equals
+    /// the document's <see cref="FormattedText.DefaultStyle"/> foreground. A run's <em>own</em> explicit
+    /// foreground (a markup color, a content's fallback color — one that differs from the document default)
+    /// <b>wins</b> over the brush, as does a per-run <c>ScopedBrush</c> at its declaration scope. So a
+    /// document that sets a default text color still receives the gradient, while individually-colored runs
+    /// keep their color. <paramref name="capabilities"/> drives protocol selection for embedded content;
+    /// pass the session's negotiated capabilities.
     /// </para>
     /// <para>
-    /// <paramref name="baseAttributes"/> (default none) is the inherited-attribute leg — an ancestor's
-    /// <c>TextElement.TextAttributes</c> — UNION-merged onto every painted cell's style at paint time. A run's own
-    /// attributes (e.g. markup <c>[b]</c>) compose ON TOP via OR, so an inherited <see cref="TextAttributes.Inverse"/>
-    /// or <see cref="TextAttributes.Faint"/> reaches the glyphs without re-laying-out the cached document — the flip
-    /// is honored by a re-paint, not a re-format, so it never goes stale on an attribute-only change.
+    /// The preference's attribute channels are the inherited-attribute leg — an ancestor's
+    /// <c>TextElement.TextAttributes</c> — merged onto every painted cell's style at paint time, per axis
+    /// (see <see cref="CreateBrushResolver"/>). A run's own attributes (e.g. markup <c>[b]</c>) compose
+    /// alongside, so an inherited <see cref="TextAttributes.Inverse"/> or <see cref="TextAttributes.Faint"/>
+    /// reaches the glyphs without re-laying-out the cached document — the flip is honored by a re-paint,
+    /// not a re-format, so it never goes stale on an attribute-only change.
+    /// <see cref="BrushedStyle.UnderlineShape"/> is the shape an Underline opinion carries. The paint
+    /// consults the preference's foreground, its imposed weight, posture and boolean flags, and its
+    /// underline shape; removal and toggle opinions, like the remaining channels, have no flag-word
+    /// spelling and no leg in the resolver to land on.
     /// </para>
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        DrawFormattedCore(text, bounds, capabilities, brush, baseAttributes, baseUnderlineShape);
-    }
-
-    /// <summary>
-    /// Paint <paramref name="text"/> coloring only its <b>per-run</b> brushes (declared via
-    /// <c>BrushedRun</c>) — runs without a brush keep their formatted style. Use the
-    /// <see cref="DrawFormattedText(FormattedText, in Rect, IBrush, OutputCapabilities, TextAttributes, UnderlineStyle)"/>
-    /// overload to add a document-wide brush underneath the per-run ones. <paramref name="baseAttributes"/>
-    /// (default none) union-merges an inherited <see cref="TextAttributes"/> onto every painted cell at paint
-    /// time — see the brushed overload.
-    /// </summary>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
-        => DrawFormattedCore(text, bounds, capabilities, documentBrush: null, baseAttributes, baseUnderlineShape);
-
-    private void DrawFormattedCore(FormattedText text, in Rect bounds, OutputCapabilities capabilities, IBrush? documentBrush, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, in BrushedStyle preference = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -1134,10 +1126,22 @@ public sealed class DrawingContext
             MappedSurface(),
             bounds,
             capabilities,
-            resolver: CreateBrushResolver(documentBrush, documentForeground, docBounds, baseAttributes, baseUnderlineShape));
+            resolver: CreateBrushResolver(preference, documentForeground, docBounds));
 
         if (transformed)
             CropNewFragmentsToClip(clip, fragmentsBefore);
+    }
+
+    /// <summary>
+    /// The bare-brush form: paint <paramref name="text"/> with <paramref name="brush"/> as the
+    /// document-wide foreground — a preference whose <see cref="BrushedStyle.Foreground"/> is the
+    /// brush and whose remaining channels are absent.
+    /// </summary>
+    /// <inheritdoc cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>
+    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, OutputCapabilities capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(brush);
+        DrawFormattedText(text, bounds, capabilities, new BrushedStyle { Foreground = brush });
     }
 
     /// <summary>
@@ -1146,11 +1150,16 @@ public sealed class DrawingContext
     /// a brush owns a foreground, the element-attribute leg owns the flags it inherits — and the painter
     /// folds the result onto the run's own style.
     /// </summary>
-    /// <param name="documentBrush">The brush applied to the document text. Can be null, which is the identity — the run keeps its colors.</param>
+    /// <param name="preference">The caller's opinion, decomposed here into the resolver's legs. Its
+    /// <see cref="BrushedStyle.Foreground"/> is the brush applied to the document text — null is the
+    /// identity, the run keeps its colors. Its attribute channels are the element-effective attributes,
+    /// merged onto every cell PER AXIS (absent = the identity): booleans union with the run's own; weight
+    /// and posture are IMPOSED, so an inherited Bold clears a run's Faint — the pair is unrenderable,
+    /// sharing the SGR 22 reset. Its <see cref="BrushedStyle.UnderlineShape"/> is the element's underline
+    /// shape, applied only when the preference carries an Underline opinion and the shape is not the
+    /// <see cref="UnderlineStyle.Single"/> default.</param>
     /// <param name="documentForeground">The document's default foreground. A run whose foreground equals it (or is unset) counts as having INHERITED it, and so is the brush's to color.</param>
     /// <param name="docBounds">The sampling bounds for a document-scoped run brush.</param>
-    /// <param name="baseAttributes">The element-effective attributes, merged onto every cell PER AXIS (default none = the identity). Booleans union with the run's own; weight and posture are IMPOSED, so an inherited Bold clears a run's Faint — the pair is unrenderable, sharing the SGR 22 reset.</param>
-    /// <param name="baseUnderlineShape">The element's underline shape, applied only when <paramref name="baseAttributes"/> carries the Underline presence bit and the shape is not the <see cref="UnderlineStyle.Single"/> default.</param>
     /// <returns>
     /// A <see cref="BrushedTextResolver"/> delegate that accepts a text context and returns the delta to fold
     /// onto that cell's base style.
@@ -1170,12 +1179,18 @@ public sealed class DrawingContext
     /// a glyph face receives the brush rather than a callback it must invoke blind for every cell.
     /// </para>
     /// </remarks>
-    public static BrushedTextResolver CreateBrushResolver(IBrush? documentBrush,
+    public static BrushedTextResolver CreateBrushResolver(in BrushedStyle preference,
                                                           Color documentForeground,
-                                                          Rect docBounds,
-                                                          TextAttributes baseAttributes,
-                                                          UnderlineStyle baseUnderlineShape)
+                                                          Rect docBounds)
     {
+        // The preference arrives pre-composed (BrushedStyle.Imposing), but the per-run merge below needs
+        // the loose values back: when the Underline presence bit merges it re-states each RUN's own
+        // shape — a value a delta composed before the runs are known cannot carry. Decomposed once, on
+        // this side of the per-run delegate.
+        var documentBrush = preference.Foreground;
+        var baseAttributes = ImposedAttributes(preference);
+        var baseUnderlineShape = preference.UnderlineShape ?? UnderlineStyle.Single;
+
         // ReSharper disable once RedundantLambdaParameterType
         return (in BrushedTextContext ctx) =>
                {
@@ -1219,7 +1234,7 @@ public sealed class DrawingContext
                    // The base-attribute leg: merge the element-effective attributes onto the run's own,
                    // per AXIS (default none = a no-op for every pre-existing caller). The shape handed to
                    // the fold is the RUN's own, which is what the Underline bit re-states.
-                   style = Imposing(style, baseAttributes, ctx.BaseStyle.UnderlineStyle);
+                   style = style.Imposing(baseAttributes, ctx.BaseStyle.UnderlineStyle);
 
                    // When the base carries the Underline presence bit with a non-Single shape, the shape rides
                    // along (the widened seam — proposal-TextAttributes-decomposition §3.1/Q2); a run cannot
@@ -1235,68 +1250,30 @@ public sealed class DrawingContext
     }
 
     /// <summary>
-    /// Fold a flag WORD onto <paramref name="style"/> <b>per axis</b> — one implementation, shared by
-    /// the element-attribute leg of <see cref="CreateBrushResolver"/> and by the fill primitives'
-    /// colour-plus-attributes overloads.
+    /// The flag WORD a preference's attribute channels impose — <see cref="BrushedStyle.Imposing"/> read
+    /// back out, axis by axis, so the per-run merge can hand the fold each run's own underline shape.
+    /// Weight and posture return as their flags (a malformed both-weights word resolved to Bold at the
+    /// fold, so Bold is what comes back); the applied booleans pass through; a stated underline shape, or
+    /// an applied Underline flag, returns the Underline bit. Removal and toggle opinions have no flag-word
+    /// spelling, so the merge carries none of them.
     /// </summary>
-    /// <param name="style">The delta to impose the word on.</param>
-    /// <param name="attributes">The flag word. <see langword="default"/> is the identity.</param>
-    /// <param name="underlineShape">
-    /// The shape the Underline bit carries — the destination's own, re-stated, since the flag has no
-    /// "on, and no further opinion" form of its own.
-    /// </param>
-    /// <remarks>
-    /// <para>
-    /// Unioning the word in wholesale is not merely inconvenient, it is unavailable:
-    /// <see cref="BrushedStyle.Applying"/> routes through <c>PartialStyle.Require</c>, which THROWS
-    /// for Bold / Faint / Italic / Underline because each owns an axis. The unguarded sibling
-    /// (<c>WithAdded</c>) was deleted deliberately — it existed to do the forbidden thing, and the state
-    /// it bought is not renderable.
-    /// </para>
-    /// <para>
-    /// Weight is why. Bold and Faint share the SGR 22 reset, so a cell carrying both is not "two
-    /// attributes" — it is a state the encoder cannot spell: reaching it emits ESC[1m from a Faint
-    /// predecessor and ESC[2m from a Bold one, and the terminal keeps whichever arrived last.
-    /// (<c>PartialStyle.Weight</c> reports Bold for it either way, so the accessor and the frame disagree
-    /// in silence.) An imposed Bold therefore CLEARS the Faint underneath rather than unioning into
-    /// something unrenderable.
-    /// </para>
-    /// </remarks>
-    private static BrushedStyle Imposing(in BrushedStyle style, TextAttributes attributes,
-                                         UnderlineStyle underlineShape = default)
+    private static TextAttributes ImposedAttributes(in BrushedStyle preference)
     {
-        if (attributes == default) return style;
+        var word = preference.AppliedAttributes & PartialStyle.Booleans;
 
-        var newStyle = style;
+        if (preference.Weight is TextWeight.Bold)
+            word |= TextAttributes.Bold;
+        else if (preference.Weight is TextWeight.Faint)
+            word |= TextAttributes.Faint;
 
-        if ((attributes & TextAttributes.Bold) != 0)
-            // A word carrying BOTH is already malformed — TextElement.ComposeAttributes cannot produce
-            // one, but a caller that ORs its own flags onto the composed word can. Bold wins: the choice
-            // is arbitrary, being FIXED is not, since the alternative is a cell whose appearance depends
-            // on what was painted before it.
-            newStyle = newStyle.Weighing(TextWeight.Bold);
-        else if ((attributes & TextAttributes.Faint) != 0)
-            newStyle = newStyle.Weighing(TextWeight.Faint);
+        if (preference.Posture is TextStyle.Italic)
+            word |= TextAttributes.Italic;
 
-        // Italic's axis is one-sided — nothing shares its reset — so imposing it and unioning it are the
-        // same operation, and the axis-typed form is the one that says which axis it is.
-        if ((attributes & TextAttributes.Italic) != 0)
-            newStyle = newStyle.Posturing(TextStyle.Italic);
+        if (preference.UnderlineShape is not null ||
+            (preference.AppliedAttributes & TextAttributes.Underline) != 0)
+            word |= TextAttributes.Underline;
 
-        // The genuine booleans keep unioning: no reset is shared, so an existing Overline survives an
-        // imposed Strikethrough. `Applying` is the union for flags that have no axis of their own.
-        var booleans = attributes & PartialStyle.Booleans;
-        if (booleans != default)
-            newStyle = newStyle.Applying(booleans);
-
-        // Underline's axis has no "on, and no further opinion" form — the flag travels with a SHAPE,
-        // which implies it once resolved. Re-stating a shape is that form: the underline arrives and the
-        // shape is left exactly where it was, which is what the flag-word union did. A shape the brushed
-        // style already states wins, since that is an opinion the word does not have.
-        if ((attributes & TextAttributes.Underline) != 0)
-            newStyle = newStyle with { UnderlineShape = newStyle.UnderlineShape ?? underlineShape };
-
-        return newStyle;
+        return word;
     }
 
     /// <summary>

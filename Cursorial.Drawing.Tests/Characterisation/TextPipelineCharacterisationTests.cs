@@ -32,6 +32,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Terminal;
 using Cursorial.Tests.Rendering;
@@ -204,14 +205,17 @@ public class TextPipelineCharacterisationTests
     private static Rect PaintBounds(TextCase textCase) => new(0, 0, textCase.PaintColumns, textCase.PaintRows);
 
     /// <summary>
-    /// The real Drawing-layer resolver, built exactly as <c>DrawingContext.DrawFormattedText</c> builds it —
-    /// so the brush cases exercise the production consumer of <c>BrushedTextResolver</c> rather than a
+    /// The real Drawing-layer resolver, installed exactly as <c>DrawingContext.DrawFormattedText</c> installs
+    /// it — the case's loose values folded into a paint preference the way the UI callers fold theirs — so
+    /// the brush cases exercise the production consumer of <c>BrushedTextResolver</c> rather than a
     /// test-local stand-in, without dragging a Scene and its compositor into the dump.
     /// </summary>
     private static BrushedTextResolver? Resolver(TextCase textCase, FormattedText formatted, in Rect bounds)
         => textCase.UsesResolver
-               ? DrawingContext.CreateBrushResolver(textCase.DocumentBrush, formatted.DefaultStyle.Foreground,
-                                                   bounds, textCase.BaseAttributes, textCase.BaseUnderlineShape)
+               ? DrawingContext.CreateBrushResolver(
+                     new BrushedStyle { Foreground = textCase.DocumentBrush }
+                         .Imposing(textCase.BaseAttributes, textCase.BaseUnderlineShape),
+                     formatted.DefaultStyle.Foreground, bounds)
                : null;
 
     // ---- Tier 1 dump -------------------------------------------------------------------------------

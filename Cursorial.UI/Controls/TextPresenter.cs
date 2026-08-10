@@ -697,29 +697,11 @@ public sealed class TextPresenter : UIElement
                     };
 
         // The attribute WORD is folded per AXIS rather than unioned in wholesale, for the reason
-        // DrawingContext.CreateBrushResolver gives at length: Bold and Faint share the SGR 22 reset,
-        // so `Bold | Faint` is not two attributes but a state the encoder cannot spell. Setting's
-        // guard rejects the axis-owning flags outright, which is the type refusing to let this be
-        // written the short way.
-        if ((flags & TextAttributes.Bold) != 0)
-            style = style.Weighing(TextWeight.Bold);
-        else if ((flags & TextAttributes.Faint) != 0)
-            style = style.Weighing(TextWeight.Faint);
-
-        if ((flags & TextAttributes.Italic) != 0)
-            style = style.Posturing(TextStyle.Italic);
-
-        var booleans = flags & PartialStyle.Booleans;
-        if (booleans != default)
-            style = style.Applying(booleans);
-
-        // A shape implies the flag (PartialStyle.ApplyTo derives it structurally), so stating the
-        // shape is the whole of "underline, in this style" — and stating it only when the fold
-        // delivered the flag is what keeps the two from disagreeing.
-        if ((flags & TextAttributes.Underline) != 0)
-            style = style with { UnderlineShape = attr.UnderlineShape };
-
-        return style;
+        // BrushedStyle.Imposing gives at length: Bold and Faint share the SGR 22 reset, so
+        // `Bold | Faint` is not two attributes but a state the encoder cannot spell. The word's
+        // underline shape rides the fold the same way — stated when the word delivers the flag, so
+        // the two never disagree.
+        return style.Imposing(flags, attr.UnderlineShape);
     }
 
     /// <summary>
@@ -799,11 +781,8 @@ public sealed class TextPresenter : UIElement
             var piece = new FormattedText([piecePara], piecePara.Size, runWidth);
 
             // The document carries no colour of its own, so the base's brush IS the run's foreground;
-            // with no brush the document's own (unset) colours stand, which is the two-argument form.
-            if (lineBase.Foreground is {} pieceBrush)
-                context.DrawFormattedText(piece, rect, pieceBrush);
-            else
-                context.DrawFormattedText(piece, rect);
+            // with no brush (an absent Foreground channel) the document's own (unset) colours stand.
+            context.DrawFormattedText(piece, rect, new BrushedStyle { Foreground = lineBase.Foreground });
 
             return;
         }

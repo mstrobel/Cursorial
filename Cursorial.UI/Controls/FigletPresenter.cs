@@ -11,7 +11,7 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// A primitive (design doc §12 / CD-P2L-1) that hosts content presented in a <see cref="FigletFont">figlet font</see>,
-/// painted via <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, IBrush, TextAttributes, UnderlineStyle)"/>.
+/// painted via <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>.
 /// </summary>
 public sealed class FigletPresenter : DrawnContentPresenter
 {
@@ -232,7 +232,9 @@ public sealed class FigletPresenter : DrawnContentPresenter
             var bounds = context.Bounds;
             var attributes = TextElement.ComposeAttributes(this);
 
-            context.DrawFormattedText(ft, bounds, fg, attributes.Flags, attributes.UnderlineShape);
+            context.DrawFormattedText(ft, bounds,
+                                      new BrushedStyle { Foreground = fg }
+                                          .Imposing(attributes.Flags, attributes.UnderlineShape));
         }
     }
 

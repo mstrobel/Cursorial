@@ -88,7 +88,11 @@ public class RenderTreeIntegrationTests
             Assert.Equal(new Size(5, 2), ctx.Size);
             Assert.Equal(new Rect(0, 0, 5, 2), ctx.Bounds);
             ctx.Set(0, 0, "X", default); // element-local origin
-            ctx.DrawText(1, 1, "ab", Color.FromRgb(255, 255, 255));
+            ctx.DrawText(1, 1, "ab", new BrushedStyle
+                                     {
+                                         Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                                         Background = Brushes.Transparent,
+                                     });
         };
 
         var (_, tree) = LayoutFixture.CreateRenderRoot(root);

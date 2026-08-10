@@ -259,8 +259,8 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (focusCue)
             FillInverse(context, x, cellWidth);
 
-        CellStyle captionStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse | TextAttributes.Bold) : default;
-        CellStyle glyphStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
+        var captionStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse | TextAttributes.Bold) : BrushedStyle.Identity;
+        var glyphStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse) : BrushedStyle.Identity;
 
         // Caption, truncated to leave glyph room on the right.
         string caption = entry.Column.EffectiveHeader;
@@ -282,9 +282,13 @@ public sealed class DataGridHeaderPresenter : UIElement
             bool active = owner.HasColumnFilter(entry.Column);
 
             context.DrawText(glyphX, 0, "▾",
-                             active
-                                 ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground
-                                 : FilterGlyphBrush ?? foreground, null, glyphStyle);
+                             glyphStyle with
+                             {
+                                 Foreground = active
+                                                  ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground
+                                                  : FilterGlyphBrush ?? foreground,
+                                 Background = Brushes.Transparent,
+                             });
             glyphX -= 2;
         }
 
@@ -293,13 +297,13 @@ public sealed class DataGridHeaderPresenter : UIElement
             if (ordinal > 0 && ordinal < 9)
             {
                 context.DrawText(glyphX, 0, (ordinal + 1).ToString(CultureInfo.InvariantCulture),
-                                 SortGlyphBrush ?? foreground, null, glyphStyle);
+                                 glyphStyle with { Foreground = SortGlyphBrush ?? foreground, Background = Brushes.Transparent });
 
                 glyphX -= 1;
             }
 
             context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼",
-                             SortGlyphBrush ?? foreground, null, glyphStyle);
+                             glyphStyle with { Foreground = SortGlyphBrush ?? foreground, Background = Brushes.Transparent });
         }
     }
 
@@ -314,14 +318,16 @@ public sealed class DataGridHeaderPresenter : UIElement
     }
 
     private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush,
-                                      CellStyle style = default)
+                                      in BrushedStyle style = default)
     {
         if (brush is null)
             return;
 
+        var inked = style with { Foreground = brush, Background = Brushes.Transparent };
+
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
-            context.DrawText(x, 0, text, brush, null, style);
+            context.DrawText(x, 0, text, inked);
             return;
         }
 
@@ -339,8 +345,8 @@ public sealed class DataGridHeaderPresenter : UIElement
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
 
-        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
-        context.DrawText(x + width, 0, "…", brush, null, style);
+        context.DrawText(x, 0, text.AsSpan(0, end), inked);
+        context.DrawText(x + width, 0, "…", inked);
     }
 
     /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>

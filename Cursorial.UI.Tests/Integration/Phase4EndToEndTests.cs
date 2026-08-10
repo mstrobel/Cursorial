@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
@@ -74,7 +75,11 @@ public sealed class Phase4EndToEndTests
         {
             context.FillOpaque(context.Bounds, Fill);
             if (Label is { Length: > 0 } label)
-                context.DrawText(0, 0, label, Color.FromRgb(255, 255, 255));
+                context.DrawText(0, 0, label, new BrushedStyle
+                                              {
+                                                  Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                                                  Background = Brushes.Transparent,
+                                              });
         }
     }
 

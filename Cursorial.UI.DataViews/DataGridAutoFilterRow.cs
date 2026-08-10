@@ -200,7 +200,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         int contentX = x + DataGridColumnLayout.CellPadding;
 
         var placeholderBrush = PlaceholderBrush ?? Brushes.Default;
-        CellStyle contentStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
+        var contentStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse) : BrushedStyle.Identity;
 
         if (column.FilterCellKind == FilterCellKind.DistinctPicker)
         {
@@ -213,7 +213,8 @@ public sealed class DataGridAutoFilterRow : UIElement
             DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
                         summary is not null ? TextBrush : PlaceholderBrush, contentStyle);
 
-            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", placeholderBrush, null, contentStyle);
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾",
+                             contentStyle with { Foreground = placeholderBrush, Background = Brushes.Transparent });
         }
         else if (summary is not null)
         {
@@ -224,7 +225,8 @@ public sealed class DataGridAutoFilterRow : UIElement
         }
         else
         {
-            context.DrawText(contentX, 0, "⌕", placeholderBrush, null, contentStyle); // the idle affordance
+            context.DrawText(contentX, 0, "⌕",
+                             contentStyle with { Foreground = placeholderBrush, Background = Brushes.Transparent }); // the idle affordance
         }
     }
 
@@ -246,14 +248,16 @@ public sealed class DataGridAutoFilterRow : UIElement
     }
 
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
-                                    IBrush? brush, CellStyle style = default)
+                                    IBrush? brush, in BrushedStyle style = default)
     {
         if (brush is null || text.Length == 0)
             return;
 
+        var inked = style with { Foreground = brush, Background = Brushes.Transparent };
+
         if (GraphemeWidth.StringWidth(text) <= maxWidth)
         {
-            context.DrawText(x, 0, text, brush, null, style);
+            context.DrawText(x, 0, text, inked);
             return;
         }
 
@@ -271,8 +275,8 @@ public sealed class DataGridAutoFilterRow : UIElement
             end = enumerator.ElementIndex + enumerator.Current.Length;
         }
 
-        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
-        context.DrawText(x + width, 0, "…", brush, null, style);
+        context.DrawText(x, 0, text.AsSpan(0, end), inked);
+        context.DrawText(x + width, 0, "…", inked);
     }
 
     // ── The roving editor (the §3.2 element-hosting idiom, one cell at a time — panel Q4) ────────

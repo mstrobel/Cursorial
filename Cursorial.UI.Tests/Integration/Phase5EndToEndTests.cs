@@ -91,7 +91,11 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             for (var r = 0; r < rows && r < context.Size.Rows; r++)
-                context.DrawText(0, r, glyph, Color.FromRgb(220, 220, 220));
+                context.DrawText(0, r, glyph, new BrushedStyle
+                                              {
+                                                  Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 220)),
+                                                  Background = Brushes.Transparent,
+                                              });
         }
     }
 
@@ -268,7 +272,11 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             if (Text is { Length: > 0 } t)
-                context.DrawText(0, 0, t, Color.FromRgb(255, 255, 255));
+                context.DrawText(0, 0, t, new BrushedStyle
+                                          {
+                                              Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                                              Background = Brushes.Transparent,
+                                          });
         }
     }
 
@@ -499,7 +507,12 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             for (var r = 0; r < rows && r < context.Size.Rows; r++)
-                context.DrawText(0, r, $"[{r.ToString(CultureInfo.InvariantCulture)}]", Color.FromRgb(210, 210, 210));
+                context.DrawText(0, r, $"[{r.ToString(CultureInfo.InvariantCulture)}]",
+                                 new BrushedStyle
+                                 {
+                                     Foreground = new SolidColorBrush(Color.FromRgb(210, 210, 210)),
+                                     Background = Brushes.Transparent,
+                                 });
         }
     }
 

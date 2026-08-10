@@ -377,9 +377,11 @@ public sealed class TextPresenter : UIElement
                 // base's (default) foreground stands, which is what the Brushes.Default fallback
                 // this replaced was spelling the long way round. The background is stated for the
                 // same reason the cell lane states it: transparent, so the field's chrome shows.
+                // The attribute base rides UNDER the delta (FromStated: stated channels only, so
+                // the Default colours stay absent and the composed word folds on per axis).
                 context.DrawText(0, 0, placeholder,
-                                 new BrushedStyle { Foreground = muted, Background = Brushes.Transparent },
-                                 baseStyle);
+                                 BrushedStyle.FromStated(baseStyle)
+                                             .Then(new BrushedStyle { Foreground = muted, Background = Brushes.Transparent }));
             }
 
             return;
@@ -798,13 +800,12 @@ public sealed class TextPresenter : UIElement
         // base to a value, pull the foreground brush back out, and hand the two along in parallel
         // arguments.
         //
-        // Inverse is the presenter's axis, not the base's, so it rides the BASE the delta falls
-        // through to rather than being OR-ed onto a pre-folded value. That is the same composition:
-        // the base's attribute half is `Applying`, which forces its bits ON whatever the backdrop
-        // held, so folding it over a backdrop that already carries Inverse lands exactly where
-        // OR-ing Inverse onto the fold did — including on NoColor, where the base states Inverse
-        // itself.
-        var runBase = inverse ? CellStyle.Default.AddAttributes(TextAttributes.Inverse) : CellStyle.Default;
+        // Inverse is the presenter's axis, not the base's, so it rides UNDER the delta rather than
+        // being OR-ed onto a pre-folded value. `Applying` forces the bit ON whatever the backdrop
+        // held, and composing the run OVER it (`runBase.Then(run)`) lands exactly where the old
+        // fall-through base did — the algebra gives `(Inverse & ~run.Clear) ^ run.Xor` on both
+        // routes — including on NoColor, where the base states Inverse itself.
+        var runBase = inverse ? BrushedStyle.Identity.Applying(TextAttributes.Inverse) : BrushedStyle.Identity;
 
         // DrawText's background contract, now STATED rather than inherited. The primitive's brush
         // overload substitutes Transparent for an omitted background; its BrushedStyle overload reads a
@@ -829,7 +830,7 @@ public sealed class TextPresenter : UIElement
                 run = run.WithBackground(selectionBrush);
         }
 
-        context.DrawText(localColumn, localRow, span, run, runBase);
+        context.DrawText(localColumn, localRow, span, runBase.Then(run));
     }
 
     private IBrush? ResolveBrush(string key)

@@ -273,7 +273,12 @@ internal sealed class MotionDemo : IDemo
         {
             context.FillOpaque(context.Bounds, fill);
             if (context.Size is { Columns: > 0, Rows: > 0 })
-                context.DrawText(1, context.Size.Rows / 2, label, labelColor, fill);
+                context.DrawText(1, context.Size.Rows / 2, label,
+                                 new BrushedStyle
+                                 {
+                                     Foreground = new SolidColorBrush(labelColor),
+                                     Background = new SolidColorBrush(fill),
+                                 });
         }
     }
 
@@ -303,6 +308,12 @@ internal sealed class MotionDemo : IDemo
 
         protected override Size MeasureOverride(Size availableSize) => new(GraphemeWidth.StringWidth(Text), 1);
 
-        protected override void Render(RenderContext context) => context.DrawText(0, 0, Text, _foreground, _background);
+        protected override void Render(RenderContext context)
+            => context.DrawText(0, 0, Text,
+                                new BrushedStyle
+                                {
+                                    Foreground = new SolidColorBrush(_foreground),
+                                    Background = _background is {} bg ? new SolidColorBrush(bg) : Brushes.Transparent,
+                                });
     }
 }

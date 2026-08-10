@@ -221,30 +221,23 @@ public sealed class RenderContext
     /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
     /// <remarks>
-    /// <paramref name="baseStyle"/> is a per-cell DELTA over <paramref name="legacyBaseStyle"/> — attributes,
+    /// <paramref name="baseStyle"/> is a per-cell DELTA over the draw's ground state — attributes,
     /// underline, hyperlink and blending mode included, not just the two colour channels the brush
-    /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the base's survives);
-    /// on the brush overload an omitted background is <see cref="Brushes.Transparent"/>. See
+    /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the channel
+    /// resolves to its default); on the brush overload an omitted background is
+    /// <see cref="Brushes.Transparent"/>. A caller holding a whole <see cref="CellStyle"/> ground
+    /// state restates it UNDER the delta — <c>BrushedStyle.FromStated(base).Then(delta)</c>. See
     /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>.
     /// </remarks>
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default)
-        => Inner.DrawText(column, row, text, baseStyle, legacyBaseStyle);
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text, in BrushedStyle baseStyle)
+        => Inner.DrawText(column, row, text, baseStyle);
 
     /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect, in CellStyle)"/>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         in BrushedStyle baseStyle, in Rect sampleBounds, in CellStyle legacyBaseStyle = default)
-        => Inner.DrawText(column, row, text, baseStyle, sampleBounds, legacyBaseStyle);
+                         in BrushedStyle baseStyle, in Rect sampleBounds)
+        => Inner.DrawText(column, row, text, baseStyle, sampleBounds);
 
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
-    /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>, which
-    /// overwrites <paramref name="legacyBaseStyle"/>'s background rather than deferring to it.</remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background, in CellStyle legacyBaseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, legacyBaseStyle);
-
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in CellStyle)"/>
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
     /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>.</remarks>
     public Size DrawText(int column, int row, ReadOnlySpan<char> text,
                          IBrush foreground, IBrush? background = null)
@@ -254,12 +247,6 @@ public sealed class RenderContext
                               Foreground = foreground,
                               Background = background ?? Brushes.Transparent
                           });
-
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in CellStyle legacyBaseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, legacyBaseStyle);
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     /// <remarks>

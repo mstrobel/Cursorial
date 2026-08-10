@@ -5,6 +5,7 @@
 
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -60,6 +61,10 @@ public sealed class SignedMarginIntegrationTests
     {
         Margin = margin,
         HorizontalAlignment = HorizontalAlignment.Left,
-        OnRender = (_, context) => context.DrawText(0, 0, text, Ink)
+        OnRender = (_, context) => context.DrawText(0, 0, text, new BrushedStyle
+                                                                {
+                                                                    Foreground = new SolidColorBrush(Ink),
+                                                                    Background = Brushes.Transparent,
+                                                                })
     };
 }

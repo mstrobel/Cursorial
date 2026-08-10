@@ -130,6 +130,12 @@ public sealed class GlyphPresenter : UIElement
 
         if (maxWidth > bounds.Columns || maxHeight > bounds.Rows) return;
 
+        // The per-cluster value, restated as the delta it means (BrushedStyle.FromStated): the
+        // sampled colours are stated, a Default channel stays absent and resolves to the same
+        // Default, and the composed attribute word rides the delta's axes. Hoisted here and
+        // refreshed below only when a brush genuinely samples per cell.
+        var delta = BrushedStyle.FromStated(style);
+
         var colStart = bounds.Column;
         var rowStart = bounds.Row;
 
@@ -152,12 +158,15 @@ public sealed class GlyphPresenter : UIElement
                     if (bgSample)
                         style = style with { Background = bg!.ColorAt(cEff + widthWritten, r, sampleBounds) };
 
+                    if (fgSample || bgSample)
+                        delta = BrushedStyle.FromStated(style);
+
                     var clusterWidth = GraphemeWidth.ClusterWidth(g.Current);
 
                     if (widthWritten + clusterWidth > maxWidth)
                         break;
 
-                    context.DrawText(cEff + widthWritten, rowStart + r, g.Current, style.Foreground, style.Background, style);
+                    context.DrawText(cEff + widthWritten, rowStart + r, g.Current, delta);
                     widthWritten += clusterWidth;
                 }
 

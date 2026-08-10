@@ -969,9 +969,9 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 // wears Bold to stand out (design §4).
                 int x = row.Level * 2;
                 string glyph = row.GroupCollapsed ? "▸" : "▾";
-                CellStyle groupStyle = noColor ? default(CellStyle).WithAttributes(TextAttributes.Bold) : default;
+                var groupStyle = noColor ? BrushedStyle.Identity.Imposing(TextAttributes.Bold) : BrushedStyle.Identity;
                 var groupBrush = AccentBrush ?? TextBrush ?? Brushes.Default;
-                context.DrawText(x, y, glyph, groupBrush, null, groupStyle);
+                context.DrawText(x, y, glyph, groupStyle with { Foreground = groupBrush, Background = Brushes.Transparent });
                 DrawClipped(context, x + 2, y, row.GroupCaption, int.MaxValue, TextBrush ?? Brushes.Default, groupStyle);
 
                 if (owner.GroupSummaryDisplay == GroupSummaryDisplay.InColumn && row.GroupSummaries is { Length: > 0 } groupSummaries)
@@ -1213,12 +1213,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             return;
 
         var ghost = MutedBrush;
-        var ghostStyle = CellStyle.Default;
+        var ghostStyle = BrushedStyle.Identity;
 
         if (ghost is null)
         {
             ghost = TextBrush ?? Brushes.Default;
-            ghostStyle = ghostStyle.WithAttributes(TextAttributes.Faint);
+            ghostStyle = ghostStyle.Imposing(TextAttributes.Faint);
         }
 
         var controller = owner.Controller;
@@ -1278,8 +1278,8 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
 
     /// <summary>
     /// Draws one data cell honoring its conditional-format verdict: an empty verdict rides the
-    /// resting <see cref="TextBrush"/> lane; a colored/attributed one draws through the Color
-    /// overload (the format's fg wins; Bold/Inverse/bg fold into the base <see cref="CellStyle"/> —
+    /// resting <see cref="TextBrush"/> lane; a colored/attributed one states the format's fg as the
+    /// delta's brush (Bold/Inverse fold onto the base <see cref="BrushedStyle"/> per axis —
     /// NoColor tiers keep the attribute cues, §4). Grapheme-truncated like every drawn cell.
     /// </summary>
     private void DrawFormattedCell(RenderContext context, IBrush textBrush, int x, int y, ReadOnlySpan<char> text, int maxWidth,
@@ -1298,7 +1298,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (format.IsEmpty)
         {
             DrawClipped(context, x, y, text, maxWidth, textBrush,
-                        forced == default ? default : default(CellStyle).WithAttributes(forced));
+                        forced == default ? default : BrushedStyle.Identity.Imposing(forced));
             return;
         }
 
@@ -1313,13 +1313,13 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (format.Inverse)
             attributes |= TextAttributes.Inverse;
 
-        CellStyle style = default;
+        BrushedStyle style = default;
 
         if (attributes != default)
-            style = style.WithAttributes(attributes);
+            style = style.Imposing(attributes);
 
-        // Deliberately NO WithBackground: DrawText's background parameter (transparent by default)
-        // OVERWRITES the base style's background per cell, so a style-carried background never
+        // Deliberately NO Background on the base: the draw below states Transparent outright, which
+        // OVERWRITES any carried background per cell, so a style-carried background never
         // reached the frame — the cell-wide fill in DrawDataCell is the background rendering, and
         // the transparent glyph background lets it show through under the text.
 
@@ -1349,20 +1349,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             span = text[..end];
         }
 
-        if (format.Foreground is {} foreground)
-        {
-            context.DrawText(x, y, span, foreground, null, style);
+        // The verdict's foreground lane: a format colour wins (as a solid brush); otherwise the
+        // resting brush. The stated Transparent background keeps DrawText's cell-lane contract —
+        // the cell-wide fill shows through under the glyphs.
+        var inked = style with
+                    {
+                        Foreground = format.Foreground is {} foreground ? new SolidColorBrush(foreground) : textBrush!,
+                        Background = Brushes.Transparent,
+                    };
 
-            if (truncated)
-                context.DrawText(x + width, y, "…", foreground, null, style);
-        }
-        else
-        {
-            context.DrawText(x, y, span, textBrush!, null, style);
+        context.DrawText(x, y, span, inked);
 
-            if (truncated)
-                context.DrawText(x + width, y, "…", textBrush!, null, style);
-        }
+        if (truncated)
+            context.DrawText(x + width, y, "…", inked);
     }
 
     /// <summary>
@@ -1398,10 +1397,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack
     /// inside Render — §3.2). Span-based (§9.6) — string callers convert implicitly.</summary>
     private static void DrawClipped(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
-                                    IBrush? foreground, CellStyle style = default)
+                                    IBrush? foreground, in BrushedStyle style = default)
     {
         if (text.Length == 0 || foreground is null)
             return;
+
+        var inked = style with { Foreground = foreground, Background = Brushes.Transparent };
 
         if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)
         {
@@ -1421,12 +1422,12 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 end = enumerator.ElementIndex + enumerator.Current.Length;
             }
 
-            context.DrawText(x, y, text[..end], foreground, background: null, style);
-            context.DrawText(x + width, y, "…", foreground, background: null, style);
+            context.DrawText(x, y, text[..end], inked);
+            context.DrawText(x + width, y, "…", inked);
             return;
         }
 
-        context.DrawText(x, y, text, foreground, background: null, style);
+        context.DrawText(x, y, text, inked);
     }
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────

@@ -247,36 +247,16 @@ public sealed class DataGridAutoFilterRow : UIElement
         return index < layout.FrozenCount ? entry.X : entry.X - HorizontalOffset;
     }
 
+    // Grapheme-safe truncation is the shared RenderContext.DrawTruncated walk (D10); this wrapper
+    // keeps the filter row's null-brush/empty-text skip and its transparent glyph background.
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
                                     IBrush? brush, in BrushedStyle style = default)
     {
         if (brush is null || text.Length == 0)
             return;
 
-        var inked = style with { Foreground = brush, Background = Brushes.Transparent };
-
-        if (GraphemeWidth.StringWidth(text) <= maxWidth)
-        {
-            context.DrawText(x, 0, text, inked);
-            return;
-        }
-
-        var enumerator = text.GetGraphemeEnumerator();
-        int width = 0, end = 0;
-
-        while (enumerator.MoveNext())
-        {
-            int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-            if (next > maxWidth - 1)
-                break;
-
-            width = next;
-            end = enumerator.ElementIndex + enumerator.Current.Length;
-        }
-
-        context.DrawText(x, 0, text.AsSpan(0, end), inked);
-        context.DrawText(x + width, 0, "…", inked);
+        context.DrawTruncated(x, 0, text, maxWidth,
+                              style with { Foreground = brush, Background = Brushes.Transparent });
     }
 
     // ── The roving editor (the §3.2 element-hosting idiom, one cell at a time — panel Q4) ────────

@@ -248,6 +248,65 @@ public sealed class RenderContext
                               Background = background ?? Brushes.Transparent
                           });
 
+    /// <summary>
+    /// Draws one line of text truncated to <paramref name="maxWidth"/> cells on a grapheme-cluster
+    /// boundary, appending <paramref name="ellipsis"/> when content was cut. Text that fits paints
+    /// whole with no ellipsis; text that does not keeps the longest prefix whose display width fits
+    /// in <c>maxWidth − StringWidth(ellipsis)</c> cells and paints the ellipsis immediately after
+    /// it. <paramref name="maxWidth"/> = <see cref="int.MaxValue"/> is the documented no-limit
+    /// spelling: the text paints whole without being measured at all. Returns the painted bounding
+    /// box (the text's own box when it fit; prefix + ellipsis width × 1 row when truncated).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a hot-loop primitive, not the text pipeline: one measured walk and at most two
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/> calls, no layout
+    /// object — a DataGrid repaints every visible cell through it. Wrapping, rich content, and trim
+    /// modes other than a trailing ellipsis belong to
+    /// <see cref="DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>. Line breaks are
+    /// not interpreted: the text is treated as a single line.
+    /// </para>
+    /// <para>
+    /// <paramref name="baseStyle"/> is the same per-cell delta <c>DrawText</c> takes — a caller
+    /// inking a cell over an opaque fill states <see cref="Brushes.Transparent"/> as the background
+    /// itself. The cut is by grapheme clusters against the column budget: a char-index cut reads a
+    /// display-column count as a UTF-16 length, which can split a surrogate pair or an emoji
+    /// sequence. The ellipsis is measured, not assumed one cell wide — a custom
+    /// <paramref name="ellipsis"/> (or an empty one: truncate with no indicator) reserves exactly
+    /// its own display width.
+    /// </para>
+    /// </remarks>
+    public Size DrawTruncated(int column, int row, ReadOnlySpan<char> text, int maxWidth,
+                              in BrushedStyle baseStyle, string ellipsis = TextFormatter.DefaultEllipsis)
+    {
+        if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)
+        {
+            int ellipsisWidth = GraphemeWidth.StringWidth(ellipsis);
+
+            // Keep whole grapheme clusters while they fit the post-ellipsis budget.
+            var enumerator = text.GetGraphemeEnumerator();
+            int width = 0;
+            int end = 0;
+
+            while (enumerator.MoveNext())
+            {
+                int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
+                if (next > maxWidth - ellipsisWidth)
+                    break;
+
+                width = next;
+                end = enumerator.ElementIndex + enumerator.Current.Length;
+            }
+
+            Inner.DrawText(column, row, text[..end], baseStyle);
+            Inner.DrawText(column + width, row, ellipsis, baseStyle);
+            return new Size(width + ellipsisWidth, 1);
+        }
+
+        return Inner.DrawText(column, row, text, baseStyle);
+    }
+
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     /// <remarks>
     /// <paramref name="preference"/> is the element-side opinion folded onto every painted cell. Its

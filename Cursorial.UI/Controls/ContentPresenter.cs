@@ -791,6 +791,7 @@ public sealed class ContentPresenter : UIElement
         TextBlock => TextBlock.TextProperty,
         AccessTextPresenter => AccessTextPresenter.TextProperty,
         RichTextPresenter => RichTextPresenter.SourceProperty,
+        FigletPresenter => FigletPresenter.TextProperty, // #19b: was omitted — a figlet's tip refreshed only on the next layout pass, never at set time
         _ => null
     };
 

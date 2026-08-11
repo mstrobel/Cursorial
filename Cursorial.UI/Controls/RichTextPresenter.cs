@@ -265,7 +265,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
         if (bounds.Columns is 0)
             return null;
 
-        return Cache.FormatUntrimmedPlainText(text, maxWidth);
+        // This presenter's untrimmed heritage, stated (M4): Trim=None under CharacterWrap —
+        // TextBlock and the access-text payload state CharacterEllipsis, the shared default.
+        return Cache.FormatUntrimmedPlainText(text, maxWidth, TextTrimming.None, WrapMode.CharacterWrap);
     }
 
     string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);

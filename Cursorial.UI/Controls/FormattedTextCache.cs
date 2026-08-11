@@ -1,7 +1,10 @@
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -225,6 +228,8 @@ internal sealed class FormattedTextCache
         if (document.IsEmpty)
             return FormattedText.Empty;
 
+        FullFormatCount++;
+
         var formatter = new TextFormatter
                         {
                             Alignment = alignment,
@@ -235,21 +240,180 @@ internal sealed class FormattedTextCache
         return formatter.Format(document, columns, maxRows, capabilities ?? OutputCapabilities);
     }
 
+    // ─────────────────────────────── the plain-text fast path (M2) ───────────────────────────────
+
+    /// <summary>Layouts built by <see cref="TryFormatPlainTextFast"/>. The route taken is a
+    /// behaviour-free choice (the fast path is byte-identical by construction, and
+    /// <c>FormattedTextFastPathTests</c> proves the equality cell-for-cell), so these counters exist
+    /// to make the ROUTING observable: an eligibility regression shows up as the wrong counter
+    /// moving, not as a frame difference.</summary>
+    internal int FastPathFormatCount { get; private set; }
+
+    /// <summary>Non-empty layouts built by the full RichText pipeline (<see cref="Format"/>).</summary>
+    internal int FullFormatCount { get; private set; }
+
     /// <summary>
-    /// The trimmed-content tooltip payload for the presenters whose untrimmed spelling is
-    /// <c>Trim=None</c> (RichTextPresenter/FigletPresenter — TextBlock keeps its own
-    /// CharacterEllipsis spelling; unifying THAT choice is Mike-gated M4). Deliberately UNCAPPED
-    /// rows: this payload's whole job is to reveal what the presenter's own bounds hid — capping it
-    /// at those bounds would re-hide exactly the lines the user hovered to see. Display limits
-    /// belong to the tooltip.
+    /// The plain-text fast path (maintainer ruling M2): a single line of markup-free text that fits
+    /// the requested bounds needs no <see cref="RichText"/> model — the full pipeline's output for
+    /// that subset is one paragraph holding one line of tokenizer-shaped runs, so the cache
+    /// constructs that <see cref="FormattedText"/> directly and skips RichTextBuilder,
+    /// tokenization, line packing, trimming, and alignment entirely. <b>Byte-identical by
+    /// construction</b>: the produced runs replicate the tokenizer's exact output for the eligible
+    /// subset — maximal non-space fragments split at ASCII spaces, each space its own run,
+    /// per-run cumulative <see cref="FormattedTextRun.LogicalStart"/>, the identity glyph source,
+    /// the identity carrier — so the paint walk runs over the same values either way (proven
+    /// cell-for-cell by <c>FormattedTextFastPathTests</c>' twin-buffer matrix).
     /// </summary>
-    public string? FormatUntrimmedPlainText(RichText document, int maxWidth)
+    /// <remarks>
+    /// Eligibility is CONSERVATIVE — anything doubtful returns <see langword="null"/> and the
+    /// caller takes the full pipeline unchanged:
+    /// <list type="bullet">
+    /// <item>the markup lane, a non-string source, or empty text;</item>
+    /// <item>any control character (hard breaks and tabs included), DEL/C1, a soft hyphen, or any
+    /// whitespace other than the ASCII space (the tokenizer's Unicode breaking-space set and NBSP
+    /// stay on the full path);</item>
+    /// <item>a LEADING space — the packer keeps it under <see cref="WrapMode.NoWrap"/> and drops it
+    /// under every other mode, so it is the one wrap-mode-dependent shape in the subset;</item>
+    /// <item>a host-level font or non-normal sizing (the adopters' plain lanes attach a
+    /// <see cref="GlyphSource"/> for those — such runs measure through the face);</item>
+    /// <item>text wider than the column budget — wrap and trim engage there. Access-key labels are
+    /// NOT part of this subset yet; AccessTextPresenter joins the pipeline in the next slice.</item>
+    /// </list>
+    /// <paramref name="documentDefault"/> is the adopter's document-default carrier — the exact
+    /// value its full pipeline hands <see cref="RichTextBuilder"/> — so the fast layout carries the
+    /// same document rung (<see cref="FormattedText.DefaultCarrier"/>) and resolved
+    /// <see cref="FormattedText.DefaultStyle"/>. Passing it as a parameter (rather than assuming a
+    /// host type) keeps the cache usable by any class, inside or outside a presenter hierarchy
+    /// (ruling M1 groundwork).
+    /// </remarks>
+    public FormattedText? TryFormatPlainTextFast(in LayoutRequest request, in BrushedStyle documentDefault)
+    {
+        if (request.MarkupLane || request.Source is not string text || text.Length == 0)
+            return null;
+
+        if (request.Columns <= 0 || request.MaxRows is < 1)
+            return null;
+
+        // A leading space is wrap-mode-dependent (kept under NoWrap, dropped otherwise) — decline.
+        if (text[0] == ' ')
+            return null;
+
+        foreach (var c in text)
+        {
+            // Control characters (\r/\n/\t included), DEL, C1, soft hyphens, and any whitespace
+            // other than the ASCII space take the full pipeline — conservatively, whether or not
+            // the formatter would special-case them.
+            if (c < ' ' || c is >= '\u007F' and <= '\u009F' || c == TextFormatter.SoftHyphen)
+                return null;
+
+            if (c != ' ' && char.IsWhiteSpace(c))
+                return null;
+        }
+
+        // A host-level font or sizing attaches a GlyphSource in the adopters' plain lanes
+        // (TextBlock.BuildPlainText): such runs measure and paint through the face. Declined
+        // conservatively — even where an unsupported sizing would resolve back to the identity.
+        if (TextElement.GetFont(_host) is {} font && font != MonospaceFont.Default)
+            return null;
+
+        if (!TextElement.GetSizing(_host).IsNormal)
+            return null;
+
+        // Split into the runs the tokenizer would emit: maximal non-space fragments, each ASCII
+        // space its own run, LogicalStart = the cumulative cell offset within the source run.
+        // Identity metrics (Advance == ClusterWidth, kerning-free) — the same measure the
+        // tokenizer resolves for a source-less run.
+        var metrics = GlyphSource.Default.Metrics;
+        var runs = ImmutableArray.CreateBuilder<FormattedRun>();
+
+        var width = 0;          // the line's total cell width
+        var offset = 0;         // the next run's LogicalStart
+        var fragmentStart = -1; // char index of the open fragment (-1 = none)
+        var fragmentWidth = 0;
+
+        var enumerator = text.GetGraphemeEnumerator();
+
+        while (enumerator.MoveNext())
+        {
+            var grapheme = enumerator.Current;
+
+            if (grapheme.Length == 1 && grapheme[0] == ' ')
+            {
+                if (fragmentStart >= 0)
+                {
+                    runs.Add(new FormattedTextRun(text[fragmentStart..enumerator.ElementIndex],
+                                                  BrushedStyle.Identity) { LogicalStart = offset });
+                    offset += fragmentWidth;
+                    fragmentStart = -1;
+                    fragmentWidth = 0;
+                }
+
+                var spaceWidth = metrics.ClusterWidth(grapheme);
+                width += spaceWidth;
+
+                if (width > request.Columns)
+                    return null; // does not fit — wrapping/trimming engage on the full path
+
+                runs.Add(new FormattedTextRun(" ", BrushedStyle.Identity) { LogicalStart = offset });
+                offset += spaceWidth;
+                continue;
+            }
+
+            if (fragmentStart < 0)
+                fragmentStart = enumerator.ElementIndex;
+
+            var clusterWidth = metrics.ClusterWidth(grapheme);
+            fragmentWidth += clusterWidth;
+            width += clusterWidth;
+
+            if (width > request.Columns)
+                return null;
+        }
+
+        if (fragmentStart >= 0)
+            runs.Add(new FormattedTextRun(text[fragmentStart..], BrushedStyle.Identity) { LogicalStart = offset });
+
+        // The single fitting line, exactly as FormatParagraphCore leaves it: alignment never
+        // rewrites a fitting single line (Justify collapses to Left on a paragraph's last line),
+        // so the paragraph merely RECORDS the alignment for paint-time anchoring.
+        var line = new FormattedLine(runs.ToImmutable(), width, Trimmed: false);
+
+        var paragraph = new FormattedParagraph(ImmutableArray.Create(line), new Size(width, 1),
+                                               request.Alignment, TrimmedLines: false)
+                        {
+                            VerticalAlignment = VerticalTextAlignment.Bottom
+                        };
+
+        FastPathFormatCount++;
+
+        return new FormattedText(ImmutableArray.Create<FormattedBlock>(paragraph), new Size(width, 1),
+                                 request.Columns, documentDefault.ResolveFlat())
+               {
+                   DefaultCarrier = documentDefault
+               };
+    }
+
+    /// <summary>
+    /// The trimmed-content tooltip payload. The wrap and trimming modes are STATED by the caller
+    /// (maintainer ruling M4) instead of forked per copy: the defaults are the most common
+    /// spelling — the CharacterEllipsis/CharacterWrap heritage of TextBlock and ContentPresenter's
+    /// access-text payload — while RichTextPresenter and FigletPresenter pass their
+    /// <see cref="TextTrimming.None"/> heritage explicitly. Under <see cref="WrapMode.CharacterWrap"/>
+    /// the trim mode is expected to be unobservable (nothing overflows a character-wrapped line) —
+    /// which is exactly why the difference is now an argument each site states, not a fork that can
+    /// drift. Deliberately UNCAPPED rows: this payload's whole job is to reveal what the
+    /// presenter's own bounds hid — capping it at those bounds would re-hide exactly the lines the
+    /// user hovered to see. Display limits belong to the tooltip.
+    /// </summary>
+    public string? FormatUntrimmedPlainText(RichText document, int maxWidth,
+                                            TextTrimming trim = TextTrimming.CharacterEllipsis,
+                                            WrapMode wrap = WrapMode.CharacterWrap)
     {
         var formatter = new TextFormatter
                         {
                             Alignment = TextAlignment.Left,
-                            Trim = TextTrimming.None,
-                            Wrap = WrapMode.CharacterWrap
+                            Trim = trim,
+                            Wrap = wrap
                         };
 
         return formatter.FormatPlainText(document, maxWidth, maxRows: null);

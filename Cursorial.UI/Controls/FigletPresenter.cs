@@ -80,6 +80,15 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
                                            Changed: OnLayoutAffectingPropertyChanged)
         );
 
+        // #19a: Padding is a PARSE input (rtb.Figlet(..., Padding) — the figlet blocks' stacking
+        // margins) with no cache-key term, so its freshness is push-based like Font's. Without
+        // this callback a padding change re-measured into a cache HIT and the stale parse (the
+        // old block margins) laid out forever.
+        PaddingProperty.OverrideMetadata<FigletPresenter>(
+            new PropertyMetadata<Margins>(PaddingProperty.DefaultMetadata.DefaultValue,
+                                          Changed: OnLayoutAffectingPropertyChanged)
+        );
+
         ForegroundProperty.OverrideMetadata<FigletPresenter>(
             new PropertyMetadata<IBrush?>(ForegroundProperty.DefaultMetadata.DefaultValue,
                                           Changed: OnRenderAffectingPropertyChanged)
@@ -264,7 +273,9 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
         if (BuildRichText(text) is not { IsEmpty: false } richText)
             return null;
 
-        return Cache.FormatUntrimmedPlainText(richText, maxWidth);
+        // This presenter's untrimmed heritage, stated (M4): Trim=None under CharacterWrap —
+        // TextBlock and the access-text payload state CharacterEllipsis, the shared default.
+        return Cache.FormatUntrimmedPlainText(richText, maxWidth, TextTrimming.None, WrapMode.CharacterWrap);
     }
 
     string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);

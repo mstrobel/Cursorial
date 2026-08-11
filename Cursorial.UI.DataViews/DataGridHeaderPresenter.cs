@@ -270,8 +270,14 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (direction is not null)
             glyphRoom += ordinal > 0 ? 3 : 2;
 
-        DrawTruncated(context, x + DataGridColumnLayout.CellPadding, caption,
-                      Math.Max(1, entry.Width - glyphRoom), Foreground, captionStyle);
+        // Grapheme-safe truncation is the shared RenderContext.DrawTruncated walk (D10); the
+        // null-brush skip and the transparent glyph background stay this painter's.
+        if (Foreground is {} captionBrush)
+        {
+            context.DrawTruncated(x + DataGridColumnLayout.CellPadding, 0, caption,
+                                  Math.Max(1, entry.Width - glyphRoom),
+                                  captionStyle with { Foreground = captionBrush, Background = Brushes.Transparent });
+        }
 
         // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
         int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
@@ -315,38 +321,6 @@ public sealed class DataGridHeaderPresenter : UIElement
             return;
 
         context.FillOpaque(new Rect(x, 0, width, 1), Foreground ?? Brushes.Default, TextAttributes.Inverse);
-    }
-
-    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush,
-                                      in BrushedStyle style = default)
-    {
-        if (brush is null)
-            return;
-
-        var inked = style with { Foreground = brush, Background = Brushes.Transparent };
-
-        if (GraphemeWidth.StringWidth(text) <= maxWidth)
-        {
-            context.DrawText(x, 0, text, inked);
-            return;
-        }
-
-        var enumerator = text.GetGraphemeEnumerator();
-        int width = 0, end = 0;
-
-        while (enumerator.MoveNext())
-        {
-            int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-            if (next > maxWidth - 1)
-                break;
-
-            width = next;
-            end = enumerator.ElementIndex + enumerator.Current.Length;
-        }
-
-        context.DrawText(x, 0, text.AsSpan(0, end), inked);
-        context.DrawText(x + width, 0, "…", inked);
     }
 
     /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>

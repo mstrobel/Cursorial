@@ -1323,45 +1323,17 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         // reached the frame — the cell-wide fill in DrawDataCell is the background rendering, and
         // the transparent glyph background lets it show through under the text.
 
-        // Truncate on a grapheme boundary (the DrawClipped contract), then emit through whichever
-        // foreground lane the verdict picked.
-        ReadOnlySpan<char> span = text;
-        int width = GraphemeWidth.StringWidth(text);
-        bool truncated = width > maxWidth;
-
-        if (truncated)
-        {
-            var enumerator = text.GetGraphemeEnumerator();
-            width = 0;
-            int end = 0;
-
-            while (enumerator.MoveNext())
-            {
-                int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-                if (next > maxWidth - 1)
-                    break;
-
-                width = next;
-                end = enumerator.ElementIndex + enumerator.Current.Length;
-            }
-
-            span = text[..end];
-        }
-
         // The verdict's foreground lane: a format colour wins (as a solid brush); otherwise the
         // resting brush. The stated Transparent background keeps DrawText's cell-lane contract —
-        // the cell-wide fill shows through under the glyphs.
+        // the cell-wide fill shows through under the glyphs. Grapheme-safe truncation is the
+        // shared RenderContext.DrawTruncated walk (this method's inline copy was D10's fourth).
         var inked = style with
                     {
                         Foreground = format.Foreground is {} foreground ? new SolidColorBrush(foreground) : textBrush!,
                         Background = Brushes.Transparent,
                     };
 
-        context.DrawText(x, y, span, inked);
-
-        if (truncated)
-            context.DrawText(x + width, y, "…", inked);
+        context.DrawTruncated(x, y, text, maxWidth, inked);
     }
 
     /// <summary>
@@ -1395,39 +1367,19 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
     }
 
     /// <summary>Draws text grapheme-truncated to <paramref name="maxWidth"/> (there is no clip stack
-    /// inside Render — §3.2). Span-based (§9.6) — string callers convert implicitly.</summary>
+    /// inside Render — §3.2). Span-based (§9.6) — string callers convert implicitly. The truncation
+    /// walk itself is the shared <see cref="RenderContext.DrawTruncated"/> (UNIFIED-TEXT-SCOPING D10,
+    /// one copy for every grid painter, incl. the int.MaxValue no-limit spelling the group-caption
+    /// callers pass); this wrapper keeps the rows presenter's null-foreground/empty-text skip and
+    /// its transparent glyph background (the cell-wide fill is the background rendering — §4).</summary>
     private static void DrawClipped(RenderContext context, int x, int y, ReadOnlySpan<char> text, int maxWidth,
                                     IBrush? foreground, in BrushedStyle style = default)
     {
         if (text.Length == 0 || foreground is null)
             return;
 
-        var inked = style with { Foreground = foreground, Background = Brushes.Transparent };
-
-        if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)
-        {
-            // Truncate on a grapheme boundary with an ellipsis cell.
-            var enumerator = text.GetGraphemeEnumerator();
-            int width = 0;
-            int end = 0;
-
-            while (enumerator.MoveNext())
-            {
-                int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-                if (next > maxWidth - 1)
-                    break;
-
-                width = next;
-                end = enumerator.ElementIndex + enumerator.Current.Length;
-            }
-
-            context.DrawText(x, y, text[..end], inked);
-            context.DrawText(x + width, y, "…", inked);
-            return;
-        }
-
-        context.DrawText(x, y, text, inked);
+        context.DrawTruncated(x, y, text, maxWidth,
+                              style with { Foreground = foreground, Background = Brushes.Transparent });
     }
 
     // ── In-cell editing — the sanctioned element-hosting special case (§3.2, owner mandate) ──────

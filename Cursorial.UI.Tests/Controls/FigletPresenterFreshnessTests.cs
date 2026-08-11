@@ -144,4 +144,42 @@ public sealed class FigletPresenterFreshnessTests
 
         return figlet.DesiredSize.Rows;
     }
+
+    // ───────────────────── task #19a: Padding is a parse input — push freshness ─────────────────────
+
+    /// <summary>
+    /// <c>Padding</c> rides the PARSE (<c>rtb.Figlet(..., Padding)</c> — it becomes the figlet
+    /// blocks' stacking margins), but it had neither a cache-key term nor a changed-callback on
+    /// FigletPresenter: a padding change re-measured into a cache HIT, so the stale parse (the old
+    /// block margins) laid out and painted forever. Font/Trimming/Wrapping/Text all carry the
+    /// push-based callback; Padding was the one remaining uncovered parse input.
+    /// </summary>
+    [Fact]
+    public void FigletPresenter_PaddingChange_InvalidatesTheCachedParse()
+    {
+        // Default (Stretch) alignment: the slot arranges the figlet at the full 40 rows, so the
+        // re-measure's row budget (ResolveBounds folds current Bounds) can HOLD the padded
+        // layout — a Top-aligned figlet is arranged at its old 10-row desired size and the fresh
+        // parse would be row-capped right back down, hiding the very rows under test.
+        var figlet = new FigletPresenter
+                     {
+                         Text = "A\nB" // two blocks — vertical padding shows up as inter-block rows
+                     };
+        var slot = new SlotHost(figlet) { SlotRect = new Rect(0, 0, 60, 40) };
+
+        using var host = UIHeadlessHost.Create(new UIHeadlessHostOptions
+                                               {
+                                                   InitialSize = new Size(80, 50)
+                                               });
+        host.ShowRoot(slot);
+        Assert.True(host.RunUntilIdle());
+
+        var before = figlet.DesiredSize.Rows;
+
+        figlet.Padding = new Margins(0, 2); // 2 rows of vertical margin per block ⇒ a 2-row gap
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(figlet.DesiredSize.Rows > before,
+                    $"expected the padding to add inter-block rows (before={before}, after={figlet.DesiredSize.Rows})");
+    }
 }

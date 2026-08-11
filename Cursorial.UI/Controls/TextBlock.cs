@@ -21,14 +21,26 @@ namespace Cursorial.UI.Controls;
 public class TextBlock : UIElement, ITrimmedTextSource
 {
     // Created lazily so no base-constructor property plumbing can observe a null cache.
+    // Internal (not private) so tests can observe the M2 fast-path routing counters.
     private FormattedTextCache? _cache;
 
-    private FormattedTextCache Cache
+    internal FormattedTextCache Cache
         => _cache ??= new FormattedTextCache(this, () =>
         {
             InvalidateMeasure();
             InvalidateVisual();
         });
+
+    // The plain lane's document default (BuildPlainText's spelling), in carrier form — shared
+    // between the full pipeline's RichTextBuilder and the M2 fast path so both lanes carry the
+    // SAME document rung. The document default declares no FOREGROUND: the element brush rides
+    // the paint preference (Render), which colors text no level of the document declared one
+    // for. Transparent's stated foreground would out-rank it at the document rung and paint the
+    // glyphs transparent; the transparent background and underline color stay stated (the
+    // compositing identity).
+    private static readonly BrushedStyle PlainTextDefaultCarrier =
+        BrushedStyle.FromStated(Output.CellStyle.Transparent
+                                      .WithForeground(Cursorial.Media.Color.Default));
 
     /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =
@@ -237,7 +249,11 @@ public class TextBlock : UIElement, ITrimmedTextSource
         if (Cache.TryGetLayout(in request, out var cached))
             return cached;
 
-        var formatted = Format(width, Cache.OutputCapabilities, height);
+        // M2: a single markup-free line that fits needs no RichText model — the cache constructs
+        // the layout directly, byte-identical by construction (FormattedTextFastPathTests proves it
+        // cell-for-cell against the pipeline below). Anything ineligible formats exactly as before.
+        var formatted = Cache.TryFormatPlainTextFast(in request, PlainTextDefaultCarrier)
+                        ?? Format(width, Cache.OutputCapabilities, height);
         Cache.StoreLayout(in request, formatted);
         return formatted;
     }
@@ -282,14 +298,11 @@ public class TextBlock : UIElement, ITrimmedTextSource
                                     TextTrimming? trimmingOverride = null,
                                     WrapMode? wrappingOverride = null)
     {
-        // The document default declares no FOREGROUND: the element brush rides the paint preference
-        // (RenderContent), which colors text no level of the document declared one for. Transparent's
-        // stated foreground would out-rank it at the document rung and paint the glyphs transparent;
-        // the transparent background and underline color stay stated (the compositing identity).
-        var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
-                                          defaultWrap: wrappingOverride ?? TextWrapping,
-                                          defaultStyle: Output.CellStyle.Transparent
-                                                              .WithForeground(Cursorial.Media.Color.Default));
+        // The document default is the shared PlainTextDefaultCarrier (see its comment for why it
+        // declares no foreground) — one definition for this pipeline and the M2 fast path.
+        var builder = new RichTextBuilder(PlainTextDefaultCarrier,
+                                          defaultTrimming: trimmingOverride ?? TextTrimming,
+                                          defaultWrap: wrappingOverride ?? TextWrapping);
 
         return BuildPlainText(this, text, builder);
     }

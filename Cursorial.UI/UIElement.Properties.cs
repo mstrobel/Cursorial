@@ -250,6 +250,22 @@ public abstract partial class UIElement
         DispatchEffects(args.Property.GetEffects(GetType()));
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The sub-object leg of the §5.5 dispatch: a <see cref="UIObject"/>-valued property's
+    /// <em>content</em> changed (an animated brush's phase, not the slot's reference), and
+    /// <paramref name="effects"/> already carries the lattice-clamped level — the sub-property's
+    /// declared effects through this slot's ceiling. Reduce the closed set to its generator flags
+    /// and run the ordinary flag dispatch; the value-changed channels stay silent by design (no
+    /// reference changed — re-entering, e.g., <c>Icon.UpdateEffectiveIconBrush</c> would compare
+    /// equal references and could only misfire).
+    /// </remarks>
+    protected override void OnSubObjectPropertyChanged(UIProperty property, PropertyEffects effects)
+    {
+        base.OnSubObjectPropertyChanged(property, effects); // keep the watch chain alive (a watched element is rare but legal)
+        DispatchEffects(PropertyEffectsClosure.Reduce(effects));
+    }
+
     private void DispatchEffects(PropertyEffects effects)
     {
         if ((effects & PropertyEffects.AffectsMeasure) != 0)

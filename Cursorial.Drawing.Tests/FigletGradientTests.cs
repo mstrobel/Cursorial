@@ -108,4 +108,99 @@ public class FigletGradientTests
         Assert.Equal(Red, left);
         Assert.Equal(Red, right);   // flat — every ink cell is the single block color
     }
+
+    // ---- Task #15's horizontal axis: the wrapped run-declared gradient (corpus retirement pins) ----
+
+    private static readonly Color Teal = Color.FromRgb(0, 128, 128);
+
+    /// <summary>Formats the wrapped-gradient document the corpus pinned: "A B" in Mini at an 8-column budget.</summary>
+    private static FormattedText WrappedMiniGradient() =>
+        new TextFormatter().Format(
+            new RichTextBuilder()
+                .Run("A B", new GlyphSource(FigletFonts.Mini),
+                     new BrushedStyle
+                     {
+                         Foreground = new LinearGradientBrush(Red, Blue,
+                                                              startPoint: RelativePoint.Left,
+                                                              endPoint: RelativePoint.Right)
+                     })
+                .Build(),
+            8, maxRows: null, OutputCapabilities.None);
+
+    /// <summary>
+    /// The task-#15 fix's central property, pinned: a WRAPPED figlet run with a run-declared horizontal
+    /// gradient. 'A B' in Mini at an 8-column budget wraps into two 4-row bands — 'A' (width 6, logical
+    /// 0-5) and 'B' (width 5, logical 8-12; the space, logical 6-7, is consumed by the wrap) — and the
+    /// run's strip spans its TOTAL width (13), rebased per piece (band 1 samples (0,0,13x4), band 2
+    /// (-8,4,13x4)), so the ramp CONTINUES across the wrap in reading order instead of restarting per
+    /// piece: band 2's ink picks up blue-dominant past band 1's red-dominant tail. Under piece-rect
+    /// sampling band 2 would restart near red (t=0.5/5); under the pre-fix 1×1 anchor rect both bands
+    /// were flat end-colour blue. The resolver path's half of the pair; its resolver-null twin below must
+    /// hold byte-identical ink.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (figlet-run-brushed-gradient-wrapped).</remarks>
+    [Fact]
+    public void FigletRun_WrappedHorizontalRunBrush_ContinuesTheRampAcrossTheWrap()
+    {
+        var ft = WrappedMiniGradient();
+        var bounds = new Rect(0, 0, 8, 8);
+
+        // The resolver arm, installed the production way — a solid teal document preference under the
+        // run's declared gradient, exactly as DrawFormattedText folds a caller's brush.
+        var b = new CellBuffer(8, 8);
+        ft.Paint(b.AsView(), bounds, OutputCapabilities.None,
+                 DrawingContext.CreateBrushResolver(
+                     new BrushedStyle { Foreground = new SolidColorBrush(Teal) }, ft, bounds));
+
+        // A cell at logical offset o samples t = (o + 0.5)/13 on the Red -> Blue ramp; band 2's cells sit
+        // at o = column + 8. Exact values, worked: o=1 → (226,0,29); o=5 → (147,0,108); o=9 → (69,0,186);
+        // o=12 → (10,0,245).
+        Assert.Equal("/", b[1, 2].Grapheme);                              // band 1, 'A' ink
+        Assert.Equal(Color.FromRgb(226, 0, 29), b[1, 2].Style.Foreground);
+        Assert.Equal(Color.FromRgb(147, 0, 108), b[5, 2].Style.Foreground); // band 1's red-dominant tail
+        Assert.Equal("|", b[1, 5].Grapheme);                              // band 2, 'B' ink
+        Assert.Equal(Color.FromRgb(69, 0, 186), b[1, 5].Style.Foreground);  // o = 1 + 8 — the rebased strip
+        Assert.Equal(Color.FromRgb(10, 0, 245), b[4, 5].Style.Foreground);  // o = 12, the run's last column
+
+        // The continuation itself: band 2 picks up PAST band 1's tail rather than restarting the ramp.
+        Assert.True(b[1, 5].Style.Foreground.Blue > b[5, 2].Style.Foreground.Blue,
+                    "band 2's first ink continues the ramp past band 1's tail");
+        Assert.True(b[1, 5].Style.Foreground.Blue > b[1, 5].Style.Foreground.Red,
+                    "band 2 is blue-dominant from its first column");
+    }
+
+    /// <summary>
+    /// figlet-run-brushed-gradient-wrapped with NO resolver installed — the FIGlet arm's resolver-null
+    /// path, which the task-#15 ruling changed to match (option (b)'s stated cost): the face is handed
+    /// the run's strip, not the piece rect. The ink bytes here must be IDENTICAL to the resolver case
+    /// above — the two paths agreeing about one document is the closure of the disagreement
+    /// figlet-inline-run-brushed-gradient originally pinned. Before the fix this path sampled the PIECE
+    /// rect, so band 2 restarted its ramp near red while the resolver path painted flat blue.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (figlet-run-brushed-gradient-wrapped-null-resolver).</remarks>
+    [Fact]
+    public void FigletRun_WrappedHorizontalRunBrush_PaintsIdenticalInkWithAndWithoutAResolver()
+    {
+        var ft = WrappedMiniGradient();
+        var bounds = new Rect(0, 0, 8, 8);
+
+        var resolved = new CellBuffer(8, 8);
+        ft.Paint(resolved.AsView(), bounds, OutputCapabilities.None,
+                 DrawingContext.CreateBrushResolver(
+                     new BrushedStyle { Foreground = new SolidColorBrush(Teal) }, ft, bounds));
+
+        var bare = new CellBuffer(8, 8);
+        ft.Paint(bare.AsView(), bounds, OutputCapabilities.None);   // resolver: null
+
+        int inkCells = 0;
+        for (int r = 0; r < 8; r++)
+        for (int c = 0; c < 8; c++)
+        {
+            Assert.Equal(resolved[c, r].Grapheme, bare[c, r].Grapheme);
+            Assert.Equal(resolved[c, r].Style, bare[c, r].Style);
+            if (!string.IsNullOrEmpty(resolved[c, r].Grapheme)) inkCells++;
+        }
+
+        Assert.True(inkCells > 0, "the wrapped glyph run painted ink");
+    }
 }

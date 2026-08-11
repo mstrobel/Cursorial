@@ -5,6 +5,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -162,6 +163,37 @@ public class GlyphRunTests
 
         Assert.Contains("at", output);              // the identity piece renders as cells
         Assert.Contains("\x1b]66;s=2;BIG", output); // the sized piece rides OSC 66
+    }
+
+    /// <summary>A sized block's fragment is emitted at the block's ANCHOR — so the CUP the emission
+    /// opens with moves with block alignment, not just with the piece's row.</summary>
+    [Fact]
+    public void SizedBlock_FragmentAnchor_MovesWithBlockAlignment()
+    {
+        // "Big" at scale 3 is 9 columns; centred in 24 the anchor moves to column (24 - 9) / 2 = 7.
+        var centred = new RichTextBuilder()
+                      .SizedText("Big", new TextSizing(Scale: 3), alignment: TextAlignment.Center)
+                      .Build();
+        var ft = new TextFormatter().Format(centred, 24, capabilities: CapsWithScale());
+
+        var buffer = new CellBuffer(24, ft.Size.Rows);
+        ((IContent)ft).Paint(buffer.AsView(), new Rect(0, 0, 24, ft.Size.Rows), default, CapsWithScale());
+
+        Assert.IsType<SizedTextFragment>(buffer.Fragments[(7, 0)].Fragment);
+
+        var w = new ArrayBufferWriter<byte>();
+        new FrameRenderer(CapsWithScale()).Render(buffer, w);
+        var output = Encoding.UTF8.GetString(w.WrittenSpan);
+
+        Assert.Contains("\x1b[1;8H\x1b[0m\x1b]66;s=3;Big", output);   // CUP at 1-based column 8 — moved off 1
+
+        // The Left-aligned control anchors at the origin.
+        var left = new RichTextBuilder().SizedText("Big", new TextSizing(Scale: 3)).Build();
+        var lft = new TextFormatter().Format(left, 24, capabilities: CapsWithScale());
+        var leftBuffer = new CellBuffer(24, lft.Size.Rows);
+        ((IContent)lft).Paint(leftBuffer.AsView(), new Rect(0, 0, 24, lft.Size.Rows), default, CapsWithScale());
+
+        Assert.IsType<SizedTextFragment>(leftBuffer.Fragments[(0, 0)].Fragment);
     }
 
     [Fact]

@@ -31,6 +31,23 @@ public class BrushMarkupTests
     }
 
     [Fact]
+    public void InlineLinearGradient_ContinuesAcrossAWrap()
+    {
+        // A markup-declared gradient arrives on the wrapped runs' own carriers, so it samples the run's
+        // wrap-invariant reading-order strip: "aaaa bbbb cccc" is one 14-cell run, and line 2 ("cccc",
+        // logical offsets 10-13) CONTINUES the ramp — t = (offset + 0.5)/14 — instead of restarting.
+        var ft = Format("[fg=linear:#ff0000,#0000ff]aaaa bbbb cccc[/fg]", BrushMarkup.Options(), width: 9);
+        var b = DrawHarness.Render(12, 4, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 12, 4), OutputCapabilities.None));
+
+        Assert.Equal("a", b[0, 0].Grapheme);
+        Assert.Equal("c", b[0, 1].Grapheme);
+        Assert.Equal(Color.FromRgb(246, 0, 9), b[0, 0].Style.Foreground);     // offset 0
+        Assert.Equal(Color.FromRgb(100, 0, 155), b[8, 0].Style.Foreground);   // offset 8 — line 1's tail
+        Assert.Equal(Color.FromRgb(64, 0, 191), b[0, 1].Style.Foreground);    // offset 10 — continues past it
+        Assert.Equal(Color.FromRgb(9, 0, 246), b[3, 1].Style.Foreground);     // offset 13 — the run's end
+    }
+
+    [Fact]
     public void InlineGradient_AcceptsNamedColors()
     {
         // Named colors (palette-backed) parse and brush the run — not the default foreground.

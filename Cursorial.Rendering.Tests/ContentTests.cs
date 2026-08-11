@@ -32,6 +32,33 @@ public class ScaledTextTests
         Assert.Equal(new Size(4, 2), painted.Size);
     }
 
+    /// <summary>
+    /// A footprint-identity fractional sizing (s=1:n=1:d=2) still emits OSC 66 — it must not be
+    /// optimised into the cell walk.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (sized-block-fractional): the routing half —
+    /// TextSizing.IsSupported's Numerator/Denominator clause keeps the fragment path even when the
+    /// fraction never changes the footprint. The writer's n/d bytes are pinned in TextSizingWriterTests,
+    /// the unchanged footprint in TextFormatterMetricsTests.</remarks>
+    [Fact]
+    public void Paint_FootprintIdentityFraction_StillRoutesToTheFragment()
+    {
+        var content = new ScaledText("half", new TextSizing(Scale: 1, Numerator: 1, Denominator: 2));
+        var buffer = new CellBuffer(24, 3);
+
+        var painted = content.Paint(buffer, 0, 0, default, WithTextSizing());
+
+        Assert.NotEmpty(buffer.Fragments);
+        var fragment = Assert.IsType<SizedTextFragment>(buffer.Fragments[(0, 0)].Fragment);
+        Assert.Equal(1, fragment.Sizing.Numerator);
+        Assert.Equal(2, fragment.Sizing.Denominator);
+
+        // Footprint identity: 4 clusters × 1 row, the same cells plain text would take — and the cell
+        // walk did NOT run: the anchor cell holds no glyph.
+        Assert.Equal(new Size(4, 1), painted.Size);
+        Assert.True(string.IsNullOrEmpty(buffer[0, 0].Grapheme));
+    }
+
     [Fact]
     public void Paint_WhenOsc66Unsupported_FallsBackToShadowedFont()
     {

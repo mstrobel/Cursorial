@@ -96,6 +96,23 @@ public class MultiBlockFormatterTests
         Assert.Equal(1, ft.Size.Rows);
     }
 
+    /// <summary>Adjacent block margins collapse to the MAX of bottom and top — they do not add.</summary>
+    [Fact]
+    public void Margins_AdjacentMargins_CollapseToTheMax()
+    {
+        var doc = new RichTextBuilder()
+            .Paragraph(margin: new Margins(0, 2)).Run("top block")
+            .Paragraph(margin: new Margins(0, 1)).Run("middle block")
+            .Paragraph(margin: new Margins(0, 3)).Run("bottom block")
+            .Build();
+        var ft = new TextFormatter().Format(doc, 20);
+
+        // 1 row + max(2,1)=2 + 1 row + max(1,3)=3 + 1 row = 8. Additive stacking would give 10
+        // (gaps of 3 and 4), and the first block's top margin is suppressed either way.
+        Assert.Equal(3, ft.Blocks.Length);
+        Assert.Equal(8, ft.Size.Rows);
+    }
+
     // ---- MaxRows across multi-block layouts ----
 
     [Fact]

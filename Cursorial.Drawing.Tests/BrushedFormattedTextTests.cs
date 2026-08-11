@@ -1,11 +1,16 @@
+using System.Buffers;
+using System.Text;
+
 using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.Text;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -299,6 +304,73 @@ public class BrushedFormattedTextTests
         Assert.Equal("字", unwrapped[7, 0].Grapheme);
         Assert.Equal("字", wrapped[0, 1].Grapheme);
         Assert.Equal(unwrapped[7, 0].Style.Foreground, wrapped[0, 1].Style.Foreground);
+    }
+
+    // ---- The sized arm: one centre sample, into the fragment (corpus retirement pins) ----
+
+    private static readonly Color Teal = Color.FromRgb(0, 128, 128);
+
+    private static OutputCapabilities SizingCaps() =>
+        OutputCapabilities.None with
+        {
+            Color = ColorCapabilities.None with { Depth = ColorDepth.Truecolor },
+            TextSizing = new TextSizingCapabilities(Width: true, Scale: true),
+        };
+
+    /// <summary>
+    /// A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled
+    /// colour is what reaches the OSC 66 backdrop SGR.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (sized-brushed-block-scope).</remarks>
+    [Fact]
+    public void SizedText_UnderADocumentBrush_TakesOneCentreSampledColour_IntoTheFragmentsSgr()
+    {
+        var caps = SizingCaps();
+        var doc = new RichTextBuilder().SizedText("Grad", new TextSizing(Scale: 2)).Build();
+        var ft = new TextFormatter().Format(doc, 24, maxRows: null, caps);
+        var b = DrawHarness.Render(24, 4, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 24, 4), LeftToRight(), caps));
+
+        // "Grad" at scale 2 is an 8-cell piece; the centre sample is column 4 against the document's
+        // derived 8-wide extent: t = 4.5/8 → rgb(112, 0, 143). One colour for the whole piece —
+        // not a per-cell ramp.
+        var fragment = Assert.IsType<SizedTextFragment>(b.Fragments[(0, 0)].Fragment);
+        Assert.Equal(Color.FromRgb(112, 0, 143), fragment.Style.Foreground);
+
+        // And that one colour is what the emission states for the fragment.
+        var writer = new ArrayBufferWriter<byte>();
+        new FrameRenderer(caps).Render(b, writer);
+        Assert.Contains("38;2;112;0;143", Encoding.UTF8.GetString(writer.WrittenSpan));
+    }
+
+    /// <summary>
+    /// The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag
+    /// scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null,
+    /// and :174 falls back to CurrentTag). The sized arm passes the run's tag into
+    /// FormattedText.ResolveStyle just as the FIGlet arm does, so the declared red is what reaches the
+    /// sampled style — and, at tier 3, the OSC 66 backdrop SGR. Authored in phase 0a while both arms
+    /// hard-coded tag: null and the document's teal reached the style instead.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (sized-inline-run-tagged-brush).</remarks>
+    [Fact]
+    public void SizedRun_DeclaredBrush_BeatsTheDocumentBrush_OnTheSizedArm()
+    {
+        var caps = SizingCaps();
+        var builder = new RichTextBuilder();
+        builder.Run("go ");
+        builder.Run("UP", new TextSizing(Scale: 2), new BrushedStyle { Foreground = new SolidColorBrush(Red) });
+        builder.Run(" now");
+        var ft = new TextFormatter().Format(builder.Build(), 20, maxRows: null, caps);
+
+        var b = DrawHarness.Render(20, 4, ctx =>
+            ctx.DrawFormattedText(ft, new Rect(0, 0, 20, 4), new SolidColorBrush(Teal), caps));
+
+        // The sized piece anchors after "go " at column 3; its sampled style is the run's declared red…
+        var fragment = Assert.IsType<SizedTextFragment>(b.Fragments[(3, 0)].Fragment);
+        Assert.Equal(Red, fragment.Style.Foreground);
+
+        // …while the document brush stays live on the untagged cells around it (bottom row of the band).
+        Assert.Equal("g", b[0, 1].Grapheme);
+        Assert.Equal(Teal, b[0, 1].Style.Foreground);
     }
 
     // A minimal IContent that paints a single glyph with whatever style it's given — stands in for an

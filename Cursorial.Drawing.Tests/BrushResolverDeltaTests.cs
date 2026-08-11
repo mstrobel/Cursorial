@@ -432,6 +432,42 @@ public class BrushResolverDeltaTests
     }
 
     /// <summary>
+    /// The stated-background pairing's resolver half (corpus: figlet-brushed-explicit-background): with a
+    /// resolver installed the face is handed a <see cref="BrushedStyle"/> and never asks stamp-vs-box —
+    /// no box is ever filled — so the glyph gaps stay unwritten and the stated background survives on the
+    /// ink cells only. (The resolver-null arm with a stated background BOXES; GlyphStampOrBoxTests pins
+    /// that half.)
+    /// </summary>
+    [Fact]
+    public void FigletFace_WithAStatedBackground_NeverBoxes_OnTheResolverPath()
+    {
+        var style = CellStyle.Default.WithBackground(Green);
+        var doc = new RichTextBuilder().Figlet("HI", FigletFonts.Standard, style).Build();
+        var ft = new TextFormatter().Format(doc, 40, maxRows: null, OutputCapabilities.None);
+
+        var gradient = new LinearGradientBrush(Red, Blue, startPoint: RelativePoint.Left, endPoint: RelativePoint.Right);
+        var baseBackground = Color.FromRgb(7, 7, 7);
+        var b = DrawHarness.Render(40, 10,
+                                   ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, ft.Size.Columns, 10), gradient,
+                                                                OutputCapabilities.None),
+                                   baseBackground);
+
+        int inkWithStatedBackground = 0, unwrittenGaps = 0;
+        for (int r = 0; r < ft.Size.Rows; r++)
+        for (int c = 0; c < ft.Size.Columns; c++)
+        {
+            var cell = b[c, r];
+            if (cell.Style.Background == Green) inkWithStatedBackground++;
+            if (cell.Style.Background == baseBackground) unwrittenGaps++;   // untouched by the paint
+        }
+
+        // The stated background reaches the ink; the gaps inside the glyph box keep the surface
+        // underneath — a box would have painted Green into EVERY cell of the block's box.
+        Assert.True(inkWithStatedBackground > 0, "the run's stated background survives on the ink cells");
+        Assert.True(unwrittenGaps > 0, "the glyph gaps stay unwritten on the resolver path — no box");
+    }
+
+    /// <summary>
     /// A decorating face resolves the template once at its anchor and paints its SHADOW pass with the result.
     /// Before the migration the seam carried no base style at all — the overload passed <c>default</c> — so
     /// the shadow lost every channel the callback did not restate, visibly the run's underline SHAPE.

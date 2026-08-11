@@ -36,7 +36,7 @@ public sealed class SolidColorBrush : IBrush
 
     /// <summary>
     /// Whether every sample this brush produces is opaque. Unlike the interface default — which
-    /// speaks for the <see cref="Opacity"/> knob alone, because <see cref="IBrush.ColorAt"/> is
+    /// speaks for the <see cref="Opacity"/> knob alone, because <see cref="IBrush.ColorAt(int, int, Rect)"/> is
     /// positional and the interface cannot know its colours' alpha — a solid brush knows its one
     /// colour, so the colour's own alpha folds in: a half-alpha solid reports non-opaque
     /// (the narrow fix for design doc defect 6).

@@ -63,14 +63,28 @@ public abstract class GradientBrush : IBrush
     }
 
     /// <inheritdoc/>
-    public Color ColorAt(int column, int row, Rect bounds)
+    public Color ColorAt(int column, int row, Rect bounds) => ColorAt(column, row, bounds, phase: 0.0);
+
+    /// <summary>
+    /// The phase-shifted sample (<see cref="IBrush.ColorAt(int, int, Rect, double)"/>):
+    /// <paramref name="phase"/> is added to the <em>raw</em> gradient parameter — after
+    /// <see cref="ComputeOffset"/>, before <see cref="ApplySpread"/> — so the brush's own
+    /// <see cref="Spread"/> decides what a shifted parameter means: <see cref="GradientSpread.Repeat"/>
+    /// wraps (a phase of 1.0 is one full period — the marquee/shimmer shape),
+    /// <see cref="GradientSpread.Reflect"/> ping-pongs, and the default <see cref="GradientSpread.Pad"/>
+    /// clamps (the pattern slides off and saturates at its end stop). Increasing the phase advances
+    /// the sampled parameter, so the visible pattern slides <em>toward</em> the gradient's start
+    /// point; animate the phase downward (or swap the endpoints) for motion the other way.
+    /// A zero phase reproduces <see cref="ColorAt(int, int, Rect)"/> exactly.
+    /// </summary>
+    public Color ColorAt(int column, int row, Rect bounds, double phase)
     {
         // Sample the cell center, relative to the bounds origin, in cells.
         double px = column + 0.5 - bounds.Column;
         double py = row + 0.5 - bounds.Row;
 
         double t = ComputeOffset(px, py, bounds.Columns, bounds.Rows);
-        return SampleStops(ApplySpread(t));
+        return SampleStops(ApplySpread(t + phase));
     }
 
     /// <summary>

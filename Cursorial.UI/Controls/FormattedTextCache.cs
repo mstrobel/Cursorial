@@ -78,12 +78,31 @@ internal sealed class FormattedTextCache
         WrapMode Wrap,
         TextAlignment Alignment,
         TextTrimming Trim,
+        BrushedStyle Carrier,
+        TextIndicator? Indicator,
         int ResourceVersion,
         ThemeVariant? Variant,
         OutputCapabilities? Capabilities);
 
+    /// <summary>
+    /// An access-key-style indicator as PIPELINE data (maintainer ruling M2 addendum): the
+    /// grapheme-cluster index that carries the indicator, plus the style delta it wears. On the
+    /// rich path the cluster becomes its own run wearing <paramref name="Delta"/> as its carrier
+    /// (<see cref="BuildIndicatorText"/>); the fast path composes the equivalent runs directly.
+    /// The delta composes OVER the document-default carrier — the cue algebra's order — so a
+    /// toggle (double-reverse-video) and an imposed weight behave exactly as the hand-rolled
+    /// second draw did. Brushes stated by the delta sample the mnemonic run's own strip (the
+    /// run-carrier scope rule); brushes the delta does not state fall through to the document
+    /// rung, which samples the document's extent.
+    /// </summary>
+    internal readonly record struct TextIndicator(int Cluster, BrushedStyle Delta);
+
     /// <summary>The presenter-supplied half of the layout key; the shared pull terms
-    /// (ResourceVersion/Variant/Capabilities) are appended by the cache itself.</summary>
+    /// (ResourceVersion/Variant/Capabilities) are appended by the cache itself.
+    /// <paramref name="Carrier"/> is the document-default carrier the layout is built with —
+    /// a KEY TERM for adopters whose carrier varies with element state (AccessTextPresenter's
+    /// <c>BrushedStyle.FromElement</c>); adopters with a constant carrier may leave it default.
+    /// <paramref name="Indicator"/> is the optional indicator declaration, likewise keyed.</summary>
     internal readonly record struct LayoutRequest(
         object? Source,
         bool MarkupLane,
@@ -91,7 +110,9 @@ internal sealed class FormattedTextCache
         int? MaxRows,
         WrapMode Wrap,
         TextAlignment Alignment,
-        TextTrimming Trim);
+        TextTrimming Trim,
+        BrushedStyle Carrier = default,
+        TextIndicator? Indicator = null);
 
     /// <summary>The application whose capability events this cache is subscribed to (set while the
     /// host is attached to a tree).</summary>
@@ -276,9 +297,15 @@ internal sealed class FormattedTextCache
     /// under every other mode, so it is the one wrap-mode-dependent shape in the subset;</item>
     /// <item>a host-level font or non-normal sizing (the adopters' plain lanes attach a
     /// <see cref="GlyphSource"/> for those — such runs measure through the face);</item>
-    /// <item>text wider than the column budget — wrap and trim engage there. Access-key labels are
-    /// NOT part of this subset yet; AccessTextPresenter joins the pipeline in the next slice.</item>
+    /// <item>text wider than the column budget — wrap and trim engage there.</item>
     /// </list>
+    /// An indicator declaration (<see cref="LayoutRequest.Indicator"/>) IS part of the subset (M2:
+    /// the fast path composes the access-key presenter's two draw operations): the indicator
+    /// cluster is emitted as its own run wearing the delta, replicating the tokenizer's output for
+    /// the pre / mnemonic / post three-source-run document <see cref="BuildIndicatorText"/> builds
+    /// — per-region <see cref="FormattedTextRun.LogicalStart"/> restarting at each source-run
+    /// boundary, the mnemonic piece at logical 0 of its own run. An out-of-range cluster index
+    /// formats as plain text, exactly as the rich path does.
     /// <paramref name="documentDefault"/> is the adopter's document-default carrier — the exact
     /// value its full pipeline hands <see cref="RichTextBuilder"/> — so the fast layout carries the
     /// same document rung (<see cref="FormattedText.DefaultCarrier"/>) and resolved
@@ -322,20 +349,52 @@ internal sealed class FormattedTextCache
         // Split into the runs the tokenizer would emit: maximal non-space fragments, each ASCII
         // space its own run, LogicalStart = the cumulative cell offset within the source run.
         // Identity metrics (Advance == ClusterWidth, kerning-free) — the same measure the
-        // tokenizer resolves for a source-less run.
+        // tokenizer resolves for a source-less run. An indicator splits the text into THREE
+        // source runs (pre / mnemonic / post), so the logical accounting restarts at each region
+        // boundary — exactly what the tokenizer does for BuildIndicatorText's document.
         var metrics = GlyphSource.Default.Metrics;
         var runs = ImmutableArray.CreateBuilder<FormattedRun>();
 
         var width = 0;          // the line's total cell width
-        var offset = 0;         // the next run's LogicalStart
+        var offset = 0;         // the next run's LogicalStart, within the CURRENT source region
         var fragmentStart = -1; // char index of the open fragment (-1 = none)
         var fragmentWidth = 0;
+
+        var clusterIndex = 0;
+        var indicatorCluster = request.Indicator?.Cluster ?? -1;
 
         var enumerator = text.GetGraphemeEnumerator();
 
         while (enumerator.MoveNext())
         {
             var grapheme = enumerator.Current;
+
+            if (clusterIndex++ == indicatorCluster)
+            {
+                // The indicator cluster: its own source run wearing the delta. Close the PRE
+                // region's open fragment; both the mnemonic run and the POST region restart
+                // their logical accounting at 0 (per-source-run, as the tokenizer spells it).
+                if (fragmentStart >= 0)
+                {
+                    runs.Add(new FormattedTextRun(text[fragmentStart..enumerator.ElementIndex],
+                                                  BrushedStyle.Identity) { LogicalStart = offset });
+                    fragmentStart = -1;
+                    fragmentWidth = 0;
+                }
+
+                var indicatorWidth = metrics.ClusterWidth(grapheme);
+                width += indicatorWidth;
+
+                if (width > request.Columns)
+                    return null; // does not fit — wrapping/trimming engage on the full path
+
+                runs.Add(new FormattedTextRun(grapheme.ToString(), request.Indicator!.Value.Delta)
+                         {
+                             LogicalStart = 0
+                         });
+                offset = 0;
+                continue;
+            }
 
             if (grapheme.Length == 1 && grapheme[0] == ' ')
             {
@@ -419,8 +478,92 @@ internal sealed class FormattedTextCache
         return formatter.FormatPlainText(document, maxWidth, maxRows: null);
     }
 
+    // ─────────────────────────────── the indicator document (M2) ───────────────────────────────
+
+    /// <summary>
+    /// The rich-path form of an indicator-bearing plain text (M2 addendum: the indicator is
+    /// handled by the rich text path, not only the fast one): pre / mnemonic / post runs in one
+    /// paragraph, the mnemonic cluster's run wearing <see cref="TextIndicator.Delta"/> as its
+    /// carrier. Hard line breaks fold through <see cref="HardLineBreaks"/> in each region (the
+    /// D12 contract); an absent or out-of-range cluster yields the plain document. Shared by
+    /// AccessTextPresenter's full pipeline and the fast-path equivalence tests' full lane, so the
+    /// two cannot drift.
+    /// </summary>
+    internal static RichText BuildIndicatorText(string text, in BrushedStyle documentDefault,
+                                                TextIndicator? indicator,
+                                                TextTrimming trim, WrapMode wrap)
+    {
+        var builder = new RichTextBuilder(documentDefault, defaultTrimming: trim, defaultWrap: wrap);
+
+        if (indicator is { } declared && TryGetClusterRange(text, declared.Cluster, out var start, out var length))
+        {
+            var delta = declared.Delta;
+            AppendPlainSegments(builder, text, 0, start);
+            builder.Run(text.Substring(start, length), in delta);
+            AppendPlainSegments(builder, text, start + length, text.Length - (start + length));
+        }
+        else
+        {
+            AppendPlainSegments(builder, text, 0, text.Length);
+        }
+
+        return builder.Build();
+    }
+
+    // Appends a region of plain text as Run/LineBreak sequences (the TextBlock.BuildPlainText
+    // fold, region-scoped). Breaks are emitted only BETWEEN a region's own segments — the
+    // region↔mnemonic junctions never carry one (the mnemonic cluster is never a break), so a
+    // region ending in "\n" emits its trailing break via its own empty final segment, and a
+    // region that merely continues the line emits none.
+    private static void AppendPlainSegments(RichTextBuilder builder, string text, int start, int length)
+    {
+        if (length <= 0)
+            return;
+
+        var region = text.Substring(start, length);
+        var first = true;
+
+        foreach (var range in HardLineBreaks.EnumerateLines(region))
+        {
+            if (!first)
+                builder.LineBreak();
+
+            first = false;
+
+            if (range.End.Value > range.Start.Value)
+                builder.Run(region[range]);
+        }
+    }
+
+    /// <summary>The UTF-16 range of the <paramref name="cluster"/>-th grapheme cluster of
+    /// <paramref name="text"/>, or <see langword="false"/> when the index is out of range.</summary>
+    private static bool TryGetClusterRange(string text, int cluster, out int start, out int length)
+    {
+        start = 0;
+        length = 0;
+
+        if (cluster < 0)
+            return false;
+
+        var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+        var index = 0;
+
+        while (enumerator.MoveNext())
+        {
+            if (index++ == cluster)
+            {
+                start = enumerator.ElementIndex;
+                length = ((string) enumerator.Current).Length;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private LayoutKey KeyFor(in LayoutRequest request)
         => new(request.MarkupLane, request.Columns, request.Wrap, request.Alignment, request.Trim,
+               request.Carrier, request.Indicator,
                ResourceServices.GetResourceVersion(_host),
                UIApplication.Current?.ActualThemeVariant,
                OutputCapabilities);

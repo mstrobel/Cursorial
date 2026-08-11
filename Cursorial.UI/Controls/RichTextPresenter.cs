@@ -202,8 +202,12 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
     /// <inheritdoc/>
     protected override void RenderPrimaryContent(RenderContext context)
     {
-        if (EnsureText(context.Bounds.Columns) is {} ft && TextElement.GetForeground(this) is {} fg)
+        if (EnsureText(context.Bounds.Columns) is {} ft)
         {
+            // M3: a null resolved foreground paints with Brushes.Default (the terminal-default
+            // ink) instead of skipping the draw — the default is theme-key-backed, so a null only
+            // arises when an application states one, and "text vanishes" was never the intent.
+            var fg = TextElement.GetForeground(this) ?? Brushes.Default;
             var bounds = context.Bounds;
             var attributes = TextElement.ComposeAttributes(this);
 

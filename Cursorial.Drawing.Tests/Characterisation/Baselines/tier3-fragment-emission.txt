@@ -8,7 +8,7 @@
 # truecolor and Ansi256. The backdrop SGR is captured alongside the payload — it is the anchor
 # cell's style, and the historically fragile part.
 # Only the corpus cases that register a fragment (TextCase.EmitsFragments) appear below.
-# corpus: 84 cases
+# corpus: 86 cases
 
 == sized-block-scale2 ==
 desc: SizedTextBlock at scale 2. Cells show the fallback face; the fragment is tier 3's.

@@ -1054,16 +1054,20 @@ internal static class TextCorpus
             Id = "figlet-inline-run-brushed-gradient",
             Description = "figlet-inline-run-tagged-brush with the run's declared brush a GRADIENT instead of "
                         + "a solid — both tagged-brush cases are solids, which are rect-independent, so no "
-                        + "earlier case can see the run leg's geometry on the FIGlet arm. The declared "
-                        + "gradient wins the run leg, but the context's inline scope there is the 1×1 cell "
-                        + "at the piece's anchor (FormattedText.Brushed), so the colour lands without the "
-                        + "geometry: the face samples every glyph cell against that one-cell rect, and the "
-                        + "Mini face's 'A' inks no cell in its anchor column, so every painted cell sits "
-                        + "right of the rect and clamps past the ramp's end — the whole glyph is the END "
-                        + "colour, flat blue, not a sweep. The resolver-null figlet arm hands the face the "
-                        + "PIECE rect instead, so the two paths disagree about one document; that "
-                        + "disagreement is task #15, which 7b deliberately does not fix — this section pins "
-                        + "the resolver path's bytes so the eventual fix has a witness.",
+                        + "earlier case can see the run leg's geometry on the FIGlet arm. Appended in 7b as "
+                        + "the witness for the task-#15 fix, and re-recorded when the fix landed: a "
+                        + "run-declared brush on a glyph run now samples the run's wrap-invariant "
+                        + "reading-order strip (reading-order column, band top, TOTAL run width, band "
+                        + "height — FormattedText.GlyphRunStrip), exactly as text runs do, so the declared "
+                        + "gradient wins the run leg WITH its geometry: the face samples every glyph cell "
+                        + "against the strip (3,0,6x4) and the Mini 'A' sweeps red-to-blue across its six "
+                        + "columns. As first recorded this section pinned the pre-fix bytes — the context's "
+                        + "inline scope was the 1×1 cell at the piece's anchor, every ink cell sat right of "
+                        + "that rect and clamped past the ramp's end, and the whole glyph came out the flat "
+                        + "END colour — and the resolver-null arm handed the face the PIECE rect, the two "
+                        + "paths disagreeing about one document. The strip closed that disagreement; the "
+                        + "wrapped pins appended alongside the fix witness the wrap-invariance the unwrapped "
+                        + "strip here cannot (for an unwrapped run the strip and the piece rect coincide).",
             Document = static () => new RichTextBuilder()
                                     .Run("hi ")
                                     .Run("A", new GlyphSource(FigletFonts.Mini),
@@ -1072,6 +1076,44 @@ internal static class TextCorpus
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 5,
             DocumentBrush = new SolidColorBrush(Teal)
+        },
+        new()
+        {
+            Id = "figlet-run-brushed-gradient-wrapped",
+            Description = "The task-#15 fix's central property, pinned: a WRAPPED figlet run with a "
+                        + "run-declared horizontal gradient. 'A B' in Mini at an 8-column budget wraps into "
+                        + "two 4-row bands — 'A' (width 6, logical 0-5) and 'B' (width 5, logical 8-12; the "
+                        + "space, logical 6-7, is consumed by the wrap) — and the run's strip spans its "
+                        + "TOTAL width (13), rebased per piece (band 1 samples (0,0,13x4), band 2 "
+                        + "(-8,4,13x4)), so the ramp CONTINUES across the wrap in reading order instead of "
+                        + "restarting per piece: band 2's ink picks up blue-dominant past band 1's "
+                        + "red-dominant tail. Under piece-rect sampling band 2 would restart near red "
+                        + "(t=0.5/5); under the pre-fix 1×1 anchor rect both bands were flat end-colour "
+                        + "blue. The resolver path's half of the pair; its resolver-null twin below must "
+                        + "hold byte-identical ink.",
+            Document = static () => new RichTextBuilder()
+                                    .Run("A B", new GlyphSource(FigletFonts.Mini),
+                                         new BrushedStyle { Foreground = LeftToRight() })
+                                    .Build(),
+            Columns = 8, PaintColumns = 8, PaintRows = 8,
+            DocumentBrush = new SolidColorBrush(Teal)
+        },
+        new()
+        {
+            Id = "figlet-run-brushed-gradient-wrapped-null-resolver",
+            Description = "figlet-run-brushed-gradient-wrapped with NO resolver installed — the FIGlet arm's "
+                        + "resolver-null path, which the task-#15 ruling changed to match (option (b)'s "
+                        + "stated cost): the face is handed the run's strip, not the piece rect. The ink "
+                        + "bytes here must be IDENTICAL to the resolver case above — the two paths agreeing "
+                        + "about one document is the closure of the disagreement "
+                        + "figlet-inline-run-brushed-gradient originally pinned. Before the fix this "
+                        + "path sampled the PIECE rect, so band 2 restarted its ramp near red while the "
+                        + "resolver path painted flat blue.",
+            Document = static () => new RichTextBuilder()
+                                    .Run("A B", new GlyphSource(FigletFonts.Mini),
+                                         new BrushedStyle { Foreground = LeftToRight() })
+                                    .Build(),
+            Columns = 8, PaintColumns = 8, PaintRows = 8
         }
     ];
 

@@ -54,6 +54,45 @@ public class FigletGradientTests
         Assert.True(right.Blue > right.Red, $"rightmost ink should be blue-dominant, was {right}");
     }
 
+    /// <summary>
+    /// Task #15's vertical axis: a RUN-declared vertical gradient on a figlet run samples the piece's own
+    /// BAND (the strip is reading-order column × band top × total run width × band height — mixed axes,
+    /// no brush classification). Two pins: rows of ONE glyph differ (the ramp spans the band's rows, not a
+    /// 1-row strip), and a wrapped piece REPEATS the ramp per band (band-local, not document-continuing).
+    /// </summary>
+    [Fact]
+    public void FigletRun_VerticalRunBrush_SamplesTheBandLocally_AndRepeatsPerWrappedBand()
+    {
+        // "A A" in Mini at an 8-column budget wraps into two 4-row bands, one 'A' each. Mini's 'A' inks
+        // row offsets 1 and 2 of its band; offset 1 samples t = 1.5/4 and offset 2 t = 2.5/4 on a
+        // Red -> Blue Top -> Bottom ramp: (159,0,96) and (96,0,159).
+        var doc = new RichTextBuilder()
+                  .Run("A A", new GlyphSource(FigletFonts.Mini),
+                       new BrushedStyle
+                       {
+                           Foreground = new LinearGradientBrush(Red, Blue,
+                                                                startPoint: RelativePoint.Top,
+                                                                endPoint: RelativePoint.Bottom)
+                       })
+                  .Build();
+        var ft = new TextFormatter().Format(doc, 8, maxRows: null, OutputCapabilities.None);
+        var b = DrawHarness.Render(8, 8, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 8, 8), OutputCapabilities.None));
+
+        var rowOffset1 = Color.FromRgb(159, 0, 96);   // t = 1.5/4
+        var rowOffset2 = Color.FromRgb(96, 0, 159);   // t = 2.5/4
+
+        // Band 1 (rows 0-3): the glyph's two ink rows differ — the ramp spans the band's rows. A 1-row
+        // strip would clamp both rows flat to the END colour.
+        Assert.Equal(rowOffset1, b[2, 1].Style.Foreground);
+        Assert.Equal(rowOffset2, b[2, 2].Style.Foreground);
+        Assert.NotEqual(b[2, 1].Style.Foreground, b[2, 2].Style.Foreground);
+
+        // Band 2 (rows 4-7): the wrapped piece REPEATS the ramp at its own band — band-local, per the
+        // mixed-axes ruling, not a continuation down the document.
+        Assert.Equal(rowOffset1, b[2, 5].Style.Foreground);
+        Assert.Equal(rowOffset2, b[2, 6].Style.Foreground);
+    }
+
     [Fact]
     public void Figlet_WithoutBrush_RendersFlatColor()
     {

@@ -195,15 +195,24 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// Resolve one cell's style: the document rung, then the block rung, then the run's own carrier
     /// resolved at (<paramref name="column"/>, <paramref name="row"/>) on top (<see cref="ResolveBase"/>),
     /// then the optional brush resolver's delta sampled there and folded on top of all three.
-    /// Used by the single-Style elements (rule / sized / content), which resolve one style for a whole element
-    /// rather than per grapheme; the FIGlet arm asks the same question through <see cref="Brushed"/> below.
+    /// Used by the single-Style elements (rule / content), which resolve one style for a whole element
+    /// rather than per grapheme — their carrier's strip is the single cell being asked about; the sized
+    /// arm asks through the strip overload below, and the FIGlet arm through <see cref="Brushed"/>.
     /// </summary>
     private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in BrushedStyle document, in BrushedStyle block, in BrushedStyle style, int column, int row, in Rect docRect, in Rect blockRect)
+        => ResolveStyle(resolver, document, block, style, column, row, docRect, blockRect, new Rect(column, row, 1, 1));
+
+    /// <summary>
+    /// The same query with the carrier's sampling rect stated by the caller — the sized arm hands the
+    /// run's wrap-invariant strip (task #15: a run-declared brush on a glyph run samples the run's
+    /// reading-order strip, exactly as text runs do), while the per-cell elements keep the single cell.
+    /// </summary>
+    private static CellStyle ResolveStyle(BrushedTextResolver? resolver, in BrushedStyle document, in BrushedStyle block, in BrushedStyle style, int column, int row, in Rect docRect, in Rect blockRect, in Rect carrierRect)
     {
-        var resolved = ResolveBase(document, block, style, column, row, docRect, blockRect, new Rect(column, row, 1, 1));
+        var resolved = ResolveBase(document, block, style, column, row, docRect, blockRect, carrierRect);
         return resolver is null
                    ? resolved
-                   : Brushed(resolver, style, resolved, column, row, blockRect, block.Foreground).ApplyTo(column, row, resolved);
+                   : Brushed(resolver, style, resolved, carrierRect, blockRect, block.Foreground).ApplyTo(column, row, resolved);
     }
 
     /// <summary>
@@ -252,12 +261,32 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// the face so a multi-cell glyph can sample per cell rather than per character.
     /// </summary>
     /// <remarks>
-    /// These elements have no inline scope of their own, so their strip is the single cell being asked about:
-    /// an inline-scoped brush over a one-wide strip resolves at offset 0, which is what the previous per-cell
-    /// context's <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
+    /// <paramref name="strip"/> is the run's wrap-invariant reading-order strip — the geometry a
+    /// run-declared brush samples (<see cref="BrushedTextContext.InlineScope"/>). Glyph runs pass the
+    /// strip <see cref="GlyphRunStrip"/> builds; the per-cell elements (rule / content), which have no
+    /// inline scope of their own, pass the single cell being asked about — an inline-scoped brush over a
+    /// one-wide strip resolves that cell at its midpoint, which is what the previous per-cell context's
+    /// <c>logicalColumn: 0, scopeWidth: 0</c> pair meant.
     /// </remarks>
-    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in BrushedStyle style, in CellStyle resolvedBase, int column, int row, in Rect block, IBrush? blockForeground)
-        => resolver(new BrushedTextContext(style, blockForeground, block, new Rect(column, row, 1, 1), resolvedBase.UnderlineStyle));
+    private static BrushedTextStyle Brushed(BrushedTextResolver resolver, in BrushedStyle style, in CellStyle resolvedBase, in Rect strip, in Rect block, IBrush? blockForeground)
+        => resolver(new BrushedTextContext(style, blockForeground, block, strip, resolvedBase.UnderlineStyle));
+
+    /// <summary>
+    /// A glyph-run piece's wrap-invariant reading-order strip — the text arm's <c>inlineScope</c>
+    /// construction with the piece's own BAND as the vertical axis (task #15, maintainer rulings
+    /// 2026-08-11). The horizontal coordinate is wrap-invariant: the rect starts where the source run's
+    /// logical offset 0 would sit and spans the run's TOTAL width, so a horizontal ramp continues across
+    /// a wrap instead of restarting per piece. The vertical coordinate is band-local: the rect's rows are
+    /// the piece's own band, so a vertical ramp spans the glyph's rows and REPEATS per wrapped band.
+    /// Text runs are this same shape with <c>LineRows == 1</c> — no brush classification anywhere, and a
+    /// degenerate 1-cell strip needs no special case (its one cell samples t = 0.5 by the same
+    /// per-cell arithmetic).
+    /// </summary>
+    private static Rect GlyphRunStrip(FormattedTextRun piece, int cursor, int runRow, int lineRows)
+    {
+        int scopeWidth = piece.Scope?.TotalWidth ?? Math.Max(1, piece.CellWidth);
+        return new Rect(cursor - piece.LogicalStart, runRow, Math.Max(1, scopeWidth), lineRows);
+    }
 
     /// <summary>Paints one paragraph's line bands, top-down, from a placement the walk produced.</summary>
     /// <remarks>
@@ -326,6 +355,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                     {
                         int pieceWidth = glyphText.CellWidth;
 
+                        // The run's wrap-invariant strip, glyph-run form (task #15): the sampling
+                        // geometry a run-declared brush gets on BOTH glyph arms and on both of the
+                        // FIGlet arm's paths — reading-order column, band top, total run width, band
+                        // height. For an unwrapped run it coincides with the piece rect.
+                        var strip = GlyphRunStrip(glyphText, cursor, runRow, run.LineRows);
+
                         if (glyphText.Source is { Font: { } face, Sizing.IsNormal: true })
                         {
                             // A FIGlet-sourced piece: the face paints DIRECTLY at the piece rect
@@ -351,13 +386,15 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                 // InkBase leaves it absent, so only a rung that STATES one boxes. A
                                 // composition that cannot vary resolves once and takes the flat overload,
                                 // whose box arm fills the glyph gaps; one that can (a run-declared gradient)
-                                // goes to the face unsampled with the piece as its box.
+                                // goes to the face unsampled with the run's STRIP as its geometry — the
+                                // same strip the resolver path hands over, so the two paths agree about
+                                // one document (task #15's ruling: the null arm changes to match).
                                 if (pieceCarrier.IsUniform)
                                     face.Paint(buffer, cursor, runRow, glyphText.Text,
-                                               pieceCarrier.Resolve(cursor, runRow, new Rect(cursor, runRow, pieceWidth, run.LineRows)));
+                                               pieceCarrier.Resolve(cursor, runRow, strip));
                                 else
                                     face.Paint(buffer, cursor, runRow, glyphText.Text,
-                                               pieceCarrier, new Rect(cursor, runRow, pieceWidth, run.LineRows));
+                                               pieceCarrier, strip);
                             }
                             else
                             {
@@ -365,9 +402,11 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                 // cells, so the face is the only thing that knows which cells exist to sample.
                                 // The run's carrier is authored over arbitrary cell content, so it cannot be
                                 // left to fall through to the cells — it rides UNDER the resolver's delta,
-                                // and the document rung and ink base ride under both.
-                                var resolvedBase = documentDelta.Then(glyphText.Style.Resolve(cursor, runRow, new Rect(cursor, runRow, 1, 1))).ApplyTo(CellStyle.Default);
-                                var brushed = Brushed(resolver, glyphText.Style, resolvedBase, cursor, runRow, blockRect, blockStyle.Foreground);
+                                // and the document rung and ink base ride under both. The context's inline
+                                // scope is the run's strip, so the run leg's brush gets its GEOMETRY —
+                                // wrap-invariant columns, band-local rows — not just its colour.
+                                var resolvedBase = documentDelta.Then(glyphText.Style.Resolve(cursor, runRow, strip)).ApplyTo(CellStyle.Default);
+                                var brushed = Brushed(resolver, glyphText.Style, resolvedBase, strip, blockRect, blockStyle.Foreground);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text,
                                            pieceCarrier.Then(brushed.Style), brushed.Bounds);
                             }
@@ -387,8 +426,12 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // sampled VALUE as the content lane's carrier (FromStated: stated channels
                             // become the delta, Default-valued ones stay absent, so ScaledText's
                             // figlet bake keeps the same stamp/box answer the CellStyle hand-off had).
+                            // The sample POINT is the piece's centre; the GEOMETRY a run-declared brush
+                            // resolves against is the run's strip (task #15) — the same rect the FIGlet
+                            // arm hands its face — so the one sample reads the centre cell's
+                            // wrap-invariant position on the run's own ramp.
                             var style = ResolveStyle(resolver, documentCarrier, blockStyle, glyphText.Style,
-                                                     cursor + pieceWidth / 2, runRow, documentRect, blockRect);
+                                                     cursor + pieceWidth / 2, runRow, documentRect, blockRect, strip);
                             var scaled = new ScaledText(glyphText.Text, glyphText.Source.Sizing, glyphText.Source.Font)
                                          {
                                              BrushResolver = resolver
@@ -405,9 +448,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         // offset within its source run is its column minus the column at which the run's
                         // logical offset 0 would sit, and W is the run's total width — so an inline brush
                         // samples the same 1-D strip no matter where the run wrapped, and the sampling call
-                        // takes the cell's own coordinates like every other scope.
-                        int scopeWidth = text.Scope?.TotalWidth ?? Math.Max(1, text.CellWidth);
-                        var inlineScope = new Rect(cursor - text.LogicalStart, runRow, Math.Max(1, scopeWidth), 1);
+                        // takes the cell's own coordinates like every other scope. One construction shared
+                        // with the glyph arms (GlyphRunStrip); a text run's band is 1 row, so the strip's
+                        // band-local vertical axis is the run's row — the pre-task-#15 shape, unchanged.
+                        var inlineScope = GlyphRunStrip(text, cursor, runRow, run.LineRows);
 
                         // The run's carrier resolves against its own strip, over the block and document
                         // rungs resolved at THEIR rects — the fall-through fold (ResolveBase); a

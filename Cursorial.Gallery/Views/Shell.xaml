@@ -116,6 +116,7 @@
             <StackPanel VerticalAlignment="Center"
                         Margin="8,1">
               <RichTextPresenter Source="{Binding WelcomeTextPreamble}"
+                                 HorizontalAlignment="Center"
                                  TextAlignment="Center"
                                  TextElement.TextStyle="Italic"
                                  Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}" />

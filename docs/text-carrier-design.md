@@ -212,12 +212,15 @@ Settles defect 4. Today the surround is `buffer.ClearCells(bounds, DefaultStyle)
 blank, so a background BRUSH cannot fill the region, and the surround carries `DefaultStyle`'s
 foreground and attribute word along for the ride.
 
-**The clear predates the UI layer, and its erase duty was never whole.** Scenes arrive fresh, so
-in-place erasure has no UI-layer client; and `CellBuffer.ClearCells` clears CELLS (`CellBuffer.cs:871`)
-while the fragment sidecar (`:84`) rides through untouched — `ClearFragments()` (`:684`) is a
-separate operation — so a stale fragment inside the rect survives the clear today.
-`sized-over-painted-background` is a fill corpus case that carries a fragment. What remains of the
-operation's job is stating the background opinion, which is a fill.
+**The clear predates the UI layer.** Scenes arrive fresh, so in-place erasure has no UI-layer
+client; what remains of the operation's job is stating the background opinion, which is a fill.
+CORRECTION (found at implementation, 2026-08-11): this section originally also argued the erase
+duty "was never whole" because the fragment sidecar survives `CellBuffer.ClearCells` — that is
+true of `ClearCells` but NOT of the fill path's actual call chain, which went through the view's
+clear and DID drop in-rect fragments. The argument was wrong; the conclusion stands on the
+scenes-arrive-fresh ground alone. Consequently the landed fill is also a semantic delta on that
+axis: it drops no fragments and marks nothing dirty — fill semantics, not erase semantics —
+unobservable in the corpus, stated here rather than discovered later.
 
 **SETTLED: the surround becomes a background fill sampling `bounds`**, its source read down the
 ladder like any other channel: the preference's `Background`, then the document default's — the
@@ -256,7 +259,7 @@ shape, with `durable` derived from sampled alpha instead of a caller flag. If no
 already occlude, matching today's kind is the byte-preserving choice. Let the group-compositing
 tests answer, not assertion.
 
-**QUEUED: a behavioural slice of its own, after 7b.** Bytes move even on the stated-background
+**LANDED: a behavioural slice of its own, after 7b.** Bytes move even on the stated-background
 leg — the surround loses `DefaultStyle`'s stamped side-channels (invisible on screen, visible in
 the tier-2 dumps), and possibly the cell kind — so it cannot ride a structural phase. Baselines
 re-recorded deliberately; one behavioural test per rung of the table; skip ≡ transparent pinned at

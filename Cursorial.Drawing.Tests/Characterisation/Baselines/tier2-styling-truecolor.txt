@@ -229,56 +229,56 @@ paint: bounds=0,0 16x2 returned=0,0 10x1 fragments=0
   r01 c15 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
 == document-default-style-fill-bounds ==
-desc: FillEntireBounds clears the whole rect to DefaultStyle and re-centres the document.
+desc: FillEntireBounds fills the whole rect with the document default's background (durable, owning blanks) and re-centres the document.
 paint: bounds=0,0 12x4 returned=0,0 12x4 fragments=0
-  r00 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c00 S  "f" fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c01 S  "i" fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c02 S  "l" fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c03 S  "l" fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c04 S  "e" fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r01 c05 S  "d" fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
 
 == wrap-word-w8 ==
 desc: Word wrap at a budget narrower than several words.
@@ -4878,102 +4878,102 @@ paint: bounds=0,0 20x4 returned=0,0 9x2 fragments=0
 == sized-over-painted-background ==
 desc: Sized text whose anchor cell carries a panel background. FrameRenderer hands the fragment the anchor cell's style, so the backdrop SGR must name that colour rather than the terminal default — the seam commit 2137e58b closed.
 paint: bounds=0,0 24x4 returned=0,0 24x4 fragments=0
-  r00 c00 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c01 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c02 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c03 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c04 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c05 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c06 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c07 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c08 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c09 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c10 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c11 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c12 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c13 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c14 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c15 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c16 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c17 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c18 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c19 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c20 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c21 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c22 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r00 c23 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c00 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c01 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c02 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c03 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c04 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c05 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c06 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c07 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c08 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c09 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c10 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c11 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c12 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c13 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c14 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c15 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c16 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c17 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c18 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c19 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c20 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c21 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c22 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r00 c23 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r01 c00 S  "P" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r01 c01 S  "a" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r01 c02 S  "n" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r01 c03 S  "e" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r01 c04 S  "l" fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c05 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c06 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c07 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c08 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c09 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c10 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c11 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c12 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c13 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c14 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c15 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c16 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c17 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c18 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c19 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c20 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c21 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c22 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r01 c23 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c05 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c06 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c07 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c08 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c09 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c10 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c11 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c12 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c13 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c14 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c15 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c16 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c17 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c18 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c19 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c20 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c21 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c22 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r01 c23 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r02 c00 S  "▀" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r02 c01 S  "▀" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r02 c02 S  "▀" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r02 c03 S  "▀" fg=. bg=#003060 at=. ul=Single uc=. hl=.
   r02 c04 S  "▀" fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c05 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c06 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c07 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c08 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c09 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c10 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c11 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c12 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c13 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c14 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c15 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c16 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c17 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c18 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c19 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c20 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c21 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c22 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r02 c23 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c00 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c01 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c02 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c03 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c04 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c05 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c06 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c07 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c08 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c09 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c10 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c11 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c12 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c13 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c14 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c15 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c16 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c17 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c18 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c19 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c20 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c21 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c22 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
-  r03 c23 S  <null> fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c05 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c06 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c07 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c08 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c09 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c10 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c11 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c12 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c13 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c14 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c15 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c16 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c17 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c18 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c19 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c20 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c21 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c22 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r02 c23 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c00 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c01 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c02 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c03 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c04 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c05 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c06 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c07 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c08 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c09 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c10 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c11 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c12 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c13 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c14 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c15 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c16 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c17 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c18 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c19 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c20 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c21 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c22 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
+  r03 c23 S  " " fg=. bg=#003060 at=. ul=Single uc=. hl=.
 
 == sized-brushed-block-scope ==
 desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
@@ -6104,78 +6104,78 @@ paint: bounds=0,0 20x4 returned=0,0 9x2 fragments=0
   r03 c19 S  <null> fg=#cdd6f4 bg=#1e1e2e at=. ul=Single uc=. hl=.
 
 == brush-fill-entire-bounds ==
-desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: ClearCells fills the whole box with the document's DefaultStyle, a CellStyle with no way to name a brush (FormattedText.cs:60-64), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The clear also re-centres the document vertically (:63), which is why the word lands on row 2 of 5; the derived extent the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
+desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: the surround BACKGROUND FILL samples the whole box (its source ladder reads the preference Background, absent here — the document brush is a FOREGROUND preference with no background leg — then the document default's, the solid green), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The fill also re-centres the document vertically, which is why the word lands on row 2 of 5; the derived extent the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
 paint: bounds=0,0 14x5 returned=0,0 14x5 fragments=0
-  r00 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r00 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r01 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c12 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r00 c13 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c12 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r01 c13 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
   r02 c00 S  "f" fg=#ea0015 bg=#002000 at=. ul=Single uc=. hl=.
   r02 c01 S  "i" fg=#bf0040 bg=#002000 at=. ul=Single uc=. hl=.
   r02 c02 S  "l" fg=#95006a bg=#002000 at=. ul=Single uc=. hl=.
   r02 c03 S  "l" fg=#6a0095 bg=#002000 at=. ul=Single uc=. hl=.
   r02 c04 S  "e" fg=#4000bf bg=#002000 at=. ul=Single uc=. hl=.
   r02 c05 S  "d" fg=#1500ea bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r02 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r03 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c00 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c01 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c02 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c03 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c04 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c05 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c06 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c07 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c08 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c09 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c10 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c11 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c12 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
-  r04 c13 S  <null> fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c12 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r02 c13 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c12 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r03 c13 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c00 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c01 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c02 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c03 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c04 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c05 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c06 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c07 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c08 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c09 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c10 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c11 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c12 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
+  r04 c13 S  " " fg=. bg=#002000 at=. ul=Single uc=. hl=.
 
 == markup-brush-run-wrapped ==
 desc: brush-run-inline-scope-wrapped's geometry reached through MARKUP instead of BrushedRun: same text, same budget, same paint rect, so the two sections are meant to be read against each other. Both wrap-invariance guards reach the brush through the BUILDER — brush-run-inline-scope-wrapped via BrushedRun, and FormattedText_InlineScopeIsWrapInvariant via a bare run plus a hand-written resolver — and [brush=…] arrives by a different route: the parser resolves the value to a ScopedBrush and pushes it as a tag SCOPE (TextMarkup.cs:294-295) rather than attaching it to one run — so a markup brush that stopped flowing across a wrap would not move any existing baseline.

@@ -80,6 +80,7 @@ internal sealed class FormattedTextCache
         TextTrimming Trim,
         BrushedStyle Carrier,
         TextIndicator? Indicator,
+        bool FillBounds,
         int ResourceVersion,
         ThemeVariant? Variant,
         OutputCapabilities? Capabilities);
@@ -102,7 +103,10 @@ internal sealed class FormattedTextCache
     /// <paramref name="Carrier"/> is the document-default carrier the layout is built with —
     /// a KEY TERM for adopters whose carrier varies with element state (AccessTextPresenter's
     /// <c>BrushedStyle.FromElement</c>); adopters with a constant carrier may leave it default.
-    /// <paramref name="Indicator"/> is the optional indicator declaration, likewise keyed.</summary>
+    /// <paramref name="Indicator"/> is the optional indicator declaration, likewise keyed.
+    /// <paramref name="FillBounds"/> is the adopter's <see cref="FormattedText.FillEntireBounds"/>
+    /// request (RichTextPresenter/FigletPresenter forward their property here) — a key term, and
+    /// threaded to <see cref="TextFormatter.Format"/> so the produced layout carries the flag.</summary>
     internal readonly record struct LayoutRequest(
         object? Source,
         bool MarkupLane,
@@ -112,7 +116,8 @@ internal sealed class FormattedTextCache
         TextAlignment Alignment,
         TextTrimming Trim,
         BrushedStyle Carrier = default,
-        TextIndicator? Indicator = null);
+        TextIndicator? Indicator = null,
+        bool FillBounds = false);
 
     /// <summary>The application whose capability events this cache is subscribed to (set while the
     /// host is attached to a tree).</summary>
@@ -225,7 +230,8 @@ internal sealed class FormattedTextCache
     public FormattedText FormatAndStore(in LayoutRequest request, RichText document)
     {
         var layout = Format(document, request.Columns, request.MaxRows,
-                            request.Alignment, request.Trim, request.Wrap);
+                            request.Alignment, request.Trim, request.Wrap,
+                            fillEntireBounds: request.FillBounds);
         StoreLayout(in request, layout);
         return layout;
     }
@@ -244,7 +250,8 @@ internal sealed class FormattedTextCache
     /// capabilities unless the caller states its own.</summary>
     public FormattedText Format(RichText document, int columns, int? maxRows,
                                 TextAlignment alignment, TextTrimming trim, WrapMode wrap,
-                                OutputCapabilities? capabilities = null)
+                                OutputCapabilities? capabilities = null,
+                                bool fillEntireBounds = false)
     {
         if (document.IsEmpty)
             return FormattedText.Empty;
@@ -258,7 +265,8 @@ internal sealed class FormattedTextCache
                             Wrap = wrap
                         };
 
-        return formatter.Format(document, columns, maxRows, capabilities ?? OutputCapabilities);
+        return formatter.Format(document, columns, maxRows, capabilities ?? OutputCapabilities,
+                                fillEntireBounds);
     }
 
     // ─────────────────────────────── the plain-text fast path (M2) ───────────────────────────────
@@ -316,6 +324,12 @@ internal sealed class FormattedTextCache
     public FormattedText? TryFormatPlainTextFast(in LayoutRequest request, in BrushedStyle documentDefault)
     {
         if (request.MarkupLane || request.Source is not string text || text.Length == 0)
+            return null;
+
+        // A FillBounds request produces a layout carrying FormattedText.FillEntireBounds (the
+        // surround fill + vertical re-centring at paint); the fast layout below never sets it, so
+        // decline conservatively.
+        if (request.FillBounds)
             return null;
 
         if (request.Columns <= 0 || request.MaxRows is < 1)
@@ -568,7 +582,7 @@ internal sealed class FormattedTextCache
 
     private LayoutKey KeyFor(in LayoutRequest request)
         => new(request.MarkupLane, request.Columns, request.Wrap, request.Alignment, request.Trim,
-               request.Carrier, request.Indicator,
+               request.Carrier, request.Indicator, request.FillBounds,
                ResourceServices.GetResourceVersion(_host),
                UIApplication.Current?.ActualThemeVariant,
                OutputCapabilities);

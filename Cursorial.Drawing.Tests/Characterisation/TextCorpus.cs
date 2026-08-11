@@ -156,7 +156,8 @@ internal static class TextCorpus
         new()
         {
             Id = "document-default-style-fill-bounds",
-            Description = "FillEntireBounds clears the whole rect to DefaultStyle and re-centres the document.",
+            Description = "FillEntireBounds fills the whole rect with the document default's background "
+                        + "(durable, owning blanks) and re-centres the document.",
             Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 32, 0)))
                                     .Run("filled")
                                     .Build(),
@@ -982,13 +983,14 @@ internal static class TextCorpus
             Id = "brush-fill-entire-bounds",
             Description = "FillEntireBounds with a document brush — the other two cases that set the flag "
                         + "(document-default-style-fill-bounds, sized-over-painted-background) carry no brush. "
-                        + "Two operations sharing one rect: ClearCells fills the whole box with the document's "
-                        + "DefaultStyle, a CellStyle with no way to name a brush (FormattedText.cs:60-64), and "
-                        + "the document then paints its own extent brushed. The surround is therefore flat while "
-                        + "the text ramps. The clear also re-centres the document vertically (:63), which is why "
-                        + "the word lands on row 2 of 5; the derived extent the brush samples against moves down "
-                        + "with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved "
-                        + "row is not pinned by this section.",
+                        + "Two operations sharing one rect: the surround BACKGROUND FILL samples the whole box "
+                        + "(its source ladder reads the preference Background, absent here — the document brush "
+                        + "is a FOREGROUND preference with no background leg — then the document default's, the "
+                        + "solid green), and the document then paints its own extent brushed. The surround is "
+                        + "therefore flat while the text ramps. The fill also re-centres the document vertically, "
+                        + "which is why the word lands on row 2 of 5; the derived extent the brush samples "
+                        + "against moves down with it, but this brush is HORIZONTAL, so nothing here samples "
+                        + "that axis and the moved row is not pinned by this section.",
             Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 32, 0)))
                                     .Run("filled")
                                     .Build(),

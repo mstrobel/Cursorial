@@ -157,9 +157,10 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
-        // FormattedText.DefaultStyle stays a resolved value — the FillEntireBounds clear consumes it
-        // flat — so the document's carrier resolves at this boundary AND rides through whole as
-        // DefaultCarrier, the rung the painter's fall-through fold composes under every run.
+        // FormattedText.DefaultStyle stays a resolved value for resolved-value consumers, so the
+        // document's carrier resolves at this boundary AND rides through whole as DefaultCarrier —
+        // the rung the painter's fall-through fold composes under every run, and the rung the
+        // FillEntireBounds surround fill reads its fall-through background BRUSH off.
         var result = new FormattedText(formattedBlocks.ToImmutable(),
                                        new Size(widthUsed, totalRows),
                                        availableColumns,

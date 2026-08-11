@@ -1062,9 +1062,14 @@ public sealed class DrawingContext
     /// reaches the glyphs without re-laying-out the cached document — the flip is honored by a re-paint,
     /// not a re-format, so it never goes stale on an attribute-only change.
     /// <see cref="BrushedStyle.UnderlineShape"/> is the shape an Underline opinion carries. The paint
-    /// consults the preference's foreground, its imposed weight, posture and boolean flags, and its
-    /// underline shape; removal and toggle opinions, like the remaining channels, have no flag-word
-    /// spelling and no leg in the resolver to land on.
+    /// consults the preference's foreground, its imposed weight, posture and boolean flags, its
+    /// underline shape — and, on a <see cref="FormattedText.FillEntireBounds"/> document, its
+    /// <see cref="BrushedStyle.Background"/>, which is read HERE and threaded to
+    /// <see cref="FormattedText.Paint(in CellBufferView, in Rect, OutputCapabilities, BrushedTextResolver, IBrush)"/>
+    /// as the surround fill's strongest source (falling through to the document default's), never
+    /// through the per-run resolver, whose decode drops Background deliberately. Removal and toggle
+    /// opinions, like the remaining channels, have no flag-word spelling and no leg in the resolver
+    /// to land on.
     /// </para>
     /// </remarks>
     public void DrawFormattedText(FormattedText text, in Rect bounds, OutputCapabilities capabilities, in BrushedStyle preference = default)
@@ -1081,11 +1086,15 @@ public sealed class DrawingContext
         var clip = CurrentState.Clip;
         var fragmentsBefore = transformed ? SnapshotFragments() : null;
 
+        // The preference's Background is read at THIS boundary and threaded to the paint as the
+        // surround fill's strongest source — never through the resolver below, whose decode drops
+        // Background deliberately (it has no per-run leg).
         text.Paint(
             MappedSurface(),
             bounds,
             capabilities,
-            resolver: CreateBrushResolver(preference, text, bounds));
+            resolver: CreateBrushResolver(preference, text, bounds),
+            background: preference.Background);
 
         if (transformed)
             CropNewFragmentsToClip(clip, fragmentsBefore);
@@ -1237,7 +1246,9 @@ public sealed class DrawingContext
     /// Weight and posture return as their flags (a malformed both-weights word resolved to Bold at the
     /// fold, so Bold is what comes back); the applied booleans pass through; a stated underline shape, or
     /// an applied Underline flag, returns the Underline bit. Removal and toggle opinions have no flag-word
-    /// spelling, so the merge carries none of them.
+    /// spelling, so the merge carries none of them. The preference's <see cref="BrushedStyle.Background"/>
+    /// never enters this word either — its leg is not per-run at all: <see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>
+    /// reads it once as the <see cref="FormattedText.FillEntireBounds"/> surround fill's source.
     /// </summary>
     private static TextAttributes ImposedAttributes(in BrushedStyle preference)
     {

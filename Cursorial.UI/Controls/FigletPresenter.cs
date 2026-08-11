@@ -224,7 +224,8 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
 
         var request = new FormattedTextCache.LayoutRequest(
             text, MarkupLane: false, availableColumns, maxRows,
-            TextWrapping, TextAlignment, TextTrimming);
+            TextWrapping, TextAlignment, TextTrimming,
+            FillBounds: FillEntireBounds);
 
         if (Cache.TryGetLayout(in request, out var cached))
             return cached;

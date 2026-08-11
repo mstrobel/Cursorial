@@ -29,7 +29,15 @@ public interface IBrush
     /// </summary>
     double Opacity => 1.0;
 
-    /// <summary>Whether the brush's opacity is 1.0 (opaque).</summary>'
+    /// <summary>Whether the brush is opaque.</summary>
+    /// <remarks>
+    /// The DEFAULT speaks for the <see cref="Opacity"/> knob alone: <see cref="ColorAt"/> is
+    /// positional, so the interface cannot know its colours' alpha in general — a brush whose
+    /// colours themselves carry alpha still reports opaque here (design doc defect 6). An
+    /// implementation that does know its colours (<c>SolidColorBrush</c>) overrides this to fold
+    /// them in. Per-cell decisions must test the SAMPLED colour (<see cref="Color.IsOpaque"/>),
+    /// not this bit.
+    /// </remarks>
     bool IsOpaque => Math.Abs(Opacity - 1.0) < double.Epsilon;
     
     /// <summary>

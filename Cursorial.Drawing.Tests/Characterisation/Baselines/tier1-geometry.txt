@@ -73,18 +73,18 @@ plain(natural):
   |inherit me|
 
 == document-default-style-fill-bounds ==
-desc: FillEntireBounds clears the whole rect to DefaultStyle and re-centres the document.
+desc: FillEntireBounds fills the whole rect with the document default's background (durable, owning blanks) and re-centres the document.
 format: columns=12 maxRows=- fillEntireBounds=yes
 result: size=6x1 provided=12 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
     line[0] columns=6 rows=1 trimmed=no
 plain(bounds=0,0 12x4):
-  |            |
-  |filled      |
-  |            |
-  |            |
+  |            |
+  |filled      |
+  |            |
+  |            |
 plain(natural):
-  |filled      |
+  |filled      |
 
 == wrap-word-w8 ==
 desc: Word wrap at a budget narrower than several words.
@@ -1007,13 +1007,13 @@ result: size=5x2 provided=24 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=5x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
     line[0] columns=5 rows=2 trimmed=no
 plain(bounds=0,0 24x4):
-  |                        |
-  |Panel                   |
-  |▀▀▀▀▀                   |
-  |                        |
+  |                        |
+  |Panel                   |
+  |▀▀▀▀▀                   |
+  |                        |
 plain(natural):
-  |Panel                   |
-  |▀▀▀▀▀                   |
+  |Panel                   |
+  |▀▀▀▀▀                   |
 
 == sized-brushed-block-scope ==
 desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
@@ -1195,19 +1195,19 @@ plain(natural):
   |go ▀▀ now|
 
 == brush-fill-entire-bounds ==
-desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: ClearCells fills the whole box with the document's DefaultStyle, a CellStyle with no way to name a brush (FormattedText.cs:60-64), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The clear also re-centres the document vertically (:63), which is why the word lands on row 2 of 5; the derived extent the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
+desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: the surround BACKGROUND FILL samples the whole box (its source ladder reads the preference Background, absent here — the document brush is a FOREGROUND preference with no background leg — then the document default's, the solid green), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The fill also re-centres the document vertically, which is why the word lands on row 2 of 5; the derived extent the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
 format: columns=14 maxRows=- fillEntireBounds=yes
 result: size=6x1 provided=14 hasTrimmedLines=no blocks=1
   block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
     line[0] columns=6 rows=1 trimmed=no
 plain(bounds=0,0 14x5):
-  |              |
-  |              |
-  |filled        |
-  |              |
-  |              |
+  |              |
+  |              |
+  |filled        |
+  |              |
+  |              |
 plain(natural):
-  |filled        |
+  |filled        |
 
 == markup-brush-run-wrapped ==
 desc: brush-run-inline-scope-wrapped's geometry reached through MARKUP instead of BrushedRun: same text, same budget, same paint rect, so the two sections are meant to be read against each other. Both wrap-invariance guards reach the brush through the BUILDER — brush-run-inline-scope-wrapped via BrushedRun, and FormattedText_InlineScopeIsWrapInvariant via a bare run plus a hand-written resolver — and [brush=…] arrives by a different route: the parser resolves the value to a ScopedBrush and pushes it as a tag SCOPE (TextMarkup.cs:294-295) rather than attaching it to one run — so a markup brush that stopped flowing across a wrap would not move any existing baseline.

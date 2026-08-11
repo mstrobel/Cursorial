@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Content;
@@ -29,9 +30,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// default without any producer restating it. The rung samples the document's derived extent
     /// (<see cref="ComputeExtent"/>) — where the document lands in the painted bounds, not the box it
     /// was handed. A brush resolver reads <see cref="BrushedStyle.Foreground"/> off it for the
-    /// ladder's document leg.
-    /// <see cref="DefaultStyle"/> is the same rung in resolved form, for the one consumer that needs
-    /// a value — the <see cref="FillEntireBounds"/> clear (which still clears the full bounds).
+    /// ladder's document leg, and the <see cref="FillEntireBounds"/> surround fill reads
+    /// <see cref="BrushedStyle.Background"/> off it — the fall-through rung of the fill's own
+    /// source ladder, under the caller's preference.
+    /// <see cref="DefaultStyle"/> is the same rung in resolved form, for resolved-value consumers.
     /// </summary>
     public BrushedStyle DefaultCarrier { get; init; }
 
@@ -56,12 +58,26 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// rectangle actually painted.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The geometry — margin stacking, the row budget, <see cref="FillEntireBounds"/> re-centring, per-block
     /// anchoring — belongs to <see cref="FormattedBlockWalker"/>. This method decides only what to DRAW at
     /// each placement the walk hands it, and reads the walk's terminal state for the rect it returns.
+    /// </para>
+    /// <para>
+    /// <see cref="FillEntireBounds"/> paints the surround as a BACKGROUND FILL sampling
+    /// <paramref name="bounds"/> (docs/text-carrier-design.md, "the clear becomes a background fill").
+    /// Its source reads down a ladder: <paramref name="background"/> — the caller's preference — first,
+    /// then the document default's <see cref="BrushedStyle.Background"/>; no resolvable source means the
+    /// fill contributes nothing (≡ filling <see cref="Color.Transparent"/> — the guard is channel
+    /// absence, not a flag). Blank-vs-tint derives from the SAMPLED colour per cell
+    /// (<see cref="Color.IsOpaque"/>): a transparent sample is a tint no-op, a translucent sample tints
+    /// the cell verbatim and its glyph survives for the compositor, and an opaque sample
+    /// (<see cref="Color.Default"/>/palette kinds included) blanks and owns the cell as the fill
+    /// family's durable occluder.
+    /// </para>
     /// </remarks>
     public Rect Paint(in CellBufferView buffer, in Rect bounds, OutputCapabilities capabilities,
-                      BrushedTextResolver? resolver = null)
+                      BrushedTextResolver? resolver = null, IBrush? background = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -69,8 +85,8 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
         var fillEntireBounds = FillEntireBounds;
 
-        if (fillEntireBounds/* && DefaultStyle.Background.IsDefault is false*/)
-            buffer.ClearCells(bounds, DefaultStyle);
+        if (fillEntireBounds && (background ?? DefaultCarrier.Background) is { } fill)
+            FillBackground(buffer, bounds, fill);
 
         // The fold's document rect — the rung samples where the document LANDS in the rect, not the
         // box it was handed. The gate is a pure optimisation: a uniform carrier is rect-independent,
@@ -89,6 +105,60 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
         return new Rect(bounds.Column, bounds.Row,
                         Math.Min(walker.PaintedColumns, bounds.Columns),
                         walker.Row - bounds.Row);
+    }
+
+    /// <summary>
+    /// The <see cref="FillEntireBounds"/> surround fill: <paramref name="background"/> sampled per cell
+    /// over <paramref name="bounds"/>, blank-vs-tint decided by the SAMPLED colour
+    /// (<see cref="Color.IsOpaque"/> — never the brush-level bit, which speaks for the Opacity knob
+    /// alone and cannot know a positional brush's colour alpha). A mixed-alpha brush therefore owns
+    /// where it samples opaque and tints where it samples translucent, per cell.
+    /// </summary>
+    /// <remarks>
+    /// The opaque arm writes the fill family's occluder — the DURABLE whitespace cell over the
+    /// <see cref="CellStyle.Default"/> ground (<c>FillOpaque</c>'s cell shape, with durable derived
+    /// from sampled alpha instead of a caller flag). The kind is forced by the compositor: a
+    /// non-durable styled blank takes the merging path there, and a lower layer's glyph rides into
+    /// the target cell — visibly, under a <see cref="Color.Default"/> background — so "owns the
+    /// rect" only holds at composite with the durable cell (<c>FillEntireBoundsGroupTests</c>' probe).
+    /// The tint arm writes through the raw indexer so the sample's alpha is stored VERBATIM for the
+    /// compositor to blend; the cell's glyph and its other channels ride through untouched.
+    /// </remarks>
+    private static void FillBackground(in CellBufferView buffer, in Rect bounds, IBrush background)
+    {
+        int colStart = Math.Max(bounds.Column, buffer.LocalColumnStart);
+        int rowStart = Math.Max(bounds.Row, buffer.LocalRowStart);
+        int colEnd = Math.Min(bounds.ColumnEnd, buffer.LocalColumnEnd);
+        int rowEnd = Math.Min(bounds.RowEnd, buffer.LocalRowEnd);
+        if (colStart >= colEnd || rowStart >= rowEnd) return;
+
+        // IsUniform hoists the per-cell test for the common case — one sample decides the arm for
+        // the whole rect (sampled at the rect's own anchor, like the fill primitives do).
+        bool uniform = background.IsUniform;
+        var uniformSample = uniform ? background.ColorAt(bounds.Column, bounds.Row, bounds) : default;
+
+        if (uniform && uniformSample.IsTransparent)
+            return;   // a tint no-op over every cell — observably untouched
+
+        for (int row = rowStart; row < rowEnd; row++)
+        for (int col = colStart; col < colEnd; col++)
+        {
+            var sample = uniform ? uniformSample : background.ColorAt(col, row, bounds);
+
+            if (sample.IsTransparent)
+                continue;
+
+            if (sample.IsOpaque)
+            {
+                buffer[col, row] = new Cell(CellBuffer.DurableEmptyGrapheme, CellKind.Single,
+                                            CellStyle.Default with { Background = sample });
+            }
+            else
+            {
+                var cell = buffer[col, row];
+                buffer[col, row] = cell with { Style = cell.Style.WithBackground(sample) };
+            }
+        }
     }
 
     /// <summary>

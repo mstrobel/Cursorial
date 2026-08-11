@@ -251,8 +251,8 @@ public class FormattedTextExtentTests
     [Fact]
     public void Extent_FillEntireBounds_IsVerticallyCentred()
     {
-        // FillEntireBounds clears the whole rect and centres the document's box within it; the extent has
-        // to follow the centring, or a document brush would sample rows the text does not occupy.
+        // FillEntireBounds background-fills the whole rect and centres the document's box within it; the
+        // extent has to follow the centring, or a document brush would sample rows the text does not occupy.
         var text = Format(OneParagraph("abc", TextAlignment.Center), 11, fillEntireBounds: true);
         var bounds = new Rect(0, 0, 11, 5);
 

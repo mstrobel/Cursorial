@@ -35,6 +35,15 @@ public sealed class SolidColorBrush : IBrush
     public bool IsUniform => true;
 
     /// <summary>
+    /// Whether every sample this brush produces is opaque. Unlike the interface default — which
+    /// speaks for the <see cref="Opacity"/> knob alone, because <see cref="IBrush.ColorAt"/> is
+    /// positional and the interface cannot know its colours' alpha — a solid brush knows its one
+    /// colour, so the colour's own alpha folds in: a half-alpha solid reports non-opaque
+    /// (the narrow fix for design doc defect 6).
+    /// </summary>
+    public bool IsOpaque => Color.IsOpaque && _opacity >= 1.0;
+
+    /// <summary>
     /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB
     /// only). Throws <see cref="ArgumentOutOfRangeException"/> on a non-finite value; clamps to [0, 1].
     /// </summary>

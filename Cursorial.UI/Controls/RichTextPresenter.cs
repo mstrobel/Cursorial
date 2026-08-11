@@ -61,7 +61,8 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
     // IsPrimaryContentVisible → ResolveSource before this type's constructor body could run.
     private FormattedTextCache? _cache;
 
-    private FormattedTextCache Cache
+    // Internal (not private) so tests can observe the format counters (the TextBlock precedent).
+    internal FormattedTextCache Cache
         => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static RichTextPresenter()
@@ -311,13 +312,20 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
         // level of the document declared one for. Stating a flattened solid here instead would out-rank
         // the preference at the document rung: same color for a solid element brush, but the wrong
         // level speaking.
+        //
+        // The composed ATTRIBUTES (and their underline shape) are likewise NOT baked here — they
+        // impose at paint through the preference (RenderPrimaryContent's Imposing, TextBlock's
+        // shape; maintainer ruling 2026-08-11 #4 resolving D2). The parse is sticky and the axis
+        // properties ride the global AffectsRender lane with no cache term, so a baked flag
+        // removed after the parse survived in the document default forever; imposed at paint, an
+        // attribute-only flip is honored by a repaint by construction.
         var style = CellStyle.Transparent
-                             .WithForeground(Color.Default)
-                             .WithAttributes(attributes.Flags)
-                             .WithUnderlineStyle(attributes.UnderlineShape);
+                             .WithForeground(Color.Default);
 
-        // The underline color has no preference rung of its own, so the flattened element color keeps
-        // riding the document default — unchanged behavior, no competition to misrank.
+        // The underline COLOR stays parse-side (the ruling's delegated choice; criterion:
+        // behaviour-preservation for current inputs): it has no preference rung of its own in the
+        // resolver, so the flattened element color keeps riding the document default — unchanged
+        // bytes, no competition to misrank.
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
             style = style.WithUnderlineColor(fgColor);
 

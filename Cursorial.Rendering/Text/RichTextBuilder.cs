@@ -212,6 +212,27 @@ public sealed class RichTextBuilder
         return this;
     }
 
+    /// <summary>
+    /// Append an INDICATOR run — an access-key mnemonic (or similar cue) wearing
+    /// <paramref name="style"/> as its carrier over exactly its own clusters. It formats and
+    /// paints like <see cref="Run(string, in BrushedStyle)"/>, but a trim indicator the
+    /// formatter synthesizes immediately after it does not inherit its style (maintainer ruling
+    /// 2026-08-11 #3): the ellipsis joins the nearest preceding non-indicator run instead,
+    /// falling back to the document default.
+    /// </summary>
+    public RichTextBuilder IndicatorRun(string text, in BrushedStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length == 0) return this;
+
+        AppendInline(new TextRun(text, style, CurrentMap, CurrentHyperlink)
+                     {
+                         Source = _defaultGlyphSource,
+                         Indicator = true
+                     });
+        return this;
+    }
+
     /// <summary>Append a text run at the given OSC 66 <paramref name="sizing"/> — shorthand for a
     /// <see cref="GlyphSource"/> with no fallback face.</summary>
     public RichTextBuilder Run(string text, in TextSizing sizing, in CellStyle style = default)

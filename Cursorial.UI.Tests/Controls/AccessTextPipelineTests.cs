@@ -381,15 +381,15 @@ public sealed class AccessTextPipelineTests
     // ─────────────────────────────── the trim-at-the-mnemonic edge ───────────────────────────────
 
     /// <summary>
-    /// CHARACTERIZATION of a new edge the pipeline reroute introduces: when truncation cuts
-    /// immediately after a surviving mnemonic, the synthesized ellipsis joins the LAST run's style
-    /// — the mnemonic's delta — so the ellipsis wears the cue. The old hand-rolled draw never
-    /// underlined its ellipsis; the mnemonic itself keeps its cue either way (an improvement over
-    /// the old code's "no cue at all near the cut"). Pinned so a later decision to strip the
-    /// delta from the trim indicator is a deliberate one.
+    /// Maintainer ruling 2026-08-11 (3), flipping the earlier B2 characterization: when truncation
+    /// cuts immediately after a surviving mnemonic, the synthesized ellipsis does NOT inherit the
+    /// indicator delta — "if the indicator glyph survived the trim, I see no reason why the
+    /// ellipses should inherit its style." The ellipsis is plain: the document/element style with
+    /// no indicator delta (the formatter's trim path skips indicator runs when choosing the style
+    /// the ellipsis joins). The mnemonic itself keeps its cue.
     /// </summary>
     [Fact]
-    public void AccessTextPresenter_EllipsisCutAtTheMnemonic_TheEllipsisJoinsTheCueRun()
+    public void AccessTextPresenter_EllipsisCutAtTheMnemonic_TheEllipsisStaysPlain()
     {
         var presenter = Presenter("Save", 'a', 1);
         var (host, _) = Show(presenter, columns: 3, rows: 1);
@@ -399,6 +399,26 @@ public sealed class AccessTextPipelineTests
 
         Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'S'
         Assert.True(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));  // 'a' — the cue
-        Assert.True(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline));  // '…' joins the cue run
+        Assert.False(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // '…' — plain, no cue
+    }
+
+    /// <summary>
+    /// The same ruling through the WORD-ellipsis trim path (`AppendEllipsisAtWordBoundary`): the
+    /// cut lands at the space after "Sa", so the surviving draft ends in the mnemonic run — the
+    /// appended ellipsis must stay plain there too, not join the cue.
+    /// </summary>
+    [Fact]
+    public void AccessTextPresenter_WordEllipsisCutAtTheMnemonic_TheEllipsisStaysPlain()
+    {
+        var presenter = Presenter("Sa ve", 'a', 1);
+        presenter.TextTrimming = TextTrimming.WordEllipsis;
+        var (host, _) = Show(presenter, columns: 4, rows: 1);
+        using var _1 = host;
+
+        Assert.Equal("Sa…", host.GetRowText(0).TrimEnd());
+
+        Assert.False(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // 'S'
+        Assert.True(host.GetCell(1, 0).Style.Attributes.HasFlag(TextAttributes.Underline));  // 'a' — the cue
+        Assert.False(host.GetCell(2, 0).Style.Attributes.HasFlag(TextAttributes.Underline)); // '…' — plain, no cue
     }
 }

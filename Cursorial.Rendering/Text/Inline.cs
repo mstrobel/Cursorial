@@ -47,6 +47,16 @@ public sealed record TextRun(
     /// same pipeline as plain text, at its own per-cluster cell advances.
     /// </summary>
     public Fonts.GlyphSource? Source { get; init; }
+
+    /// <summary>
+    /// Marks an INDICATOR run — an access-key mnemonic or similar cue whose <see cref="Style"/>
+    /// delta marks exactly its own clusters (maintainer ruling 2026-08-11 #3: "if the indicator
+    /// glyph survived the trim, I see no reason why the ellipses should inherit its style"). The
+    /// run formats and paints like any other, but a trim indicator the formatter synthesizes
+    /// immediately after a surviving indicator run does not inherit its style — the ellipsis
+    /// joins the nearest preceding non-indicator run, falling back to the document default.
+    /// </summary>
+    public bool Indicator { get; init; }
 }
 
 /// <summary>

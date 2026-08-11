@@ -367,5 +367,69 @@ public class TextFormatterTests
         // Each fullwidth char is 2 cells; "abc" → 6 cells.
         Assert.Equal(6, para.Lines[0].Columns);
     }
+
+    // ---- The trim ellipsis at an indicator run (maintainer ruling 2026-08-11 #3) ----
+
+    /// <summary>
+    /// A cut landing immediately after a surviving INDICATOR run (an access-key mnemonic) yields
+    /// a PLAIN ellipsis: the style join skips indicator runs and takes the nearest preceding
+    /// non-indicator run's style — "if the indicator glyph survived the trim, I see no reason why
+    /// the ellipses should inherit its style." Non-indicator styled runs keep donating their style
+    /// (the corpus' trim-ellipsis-in-a-styled-run contract is untouched).
+    /// </summary>
+    [Fact]
+    public void Trim_CharacterEllipsisCutAfterAnIndicatorRun_TakesThePrecedingRunsStyle()
+    {
+        var pre = BrushedStyle.Identity.Applying(TextAttributes.Strikethrough);
+        var cue = BrushedStyle.Identity.Underlining(UnderlineStyle.Single);
+
+        var doc = new RichTextBuilder()
+                  .Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.CharacterEllipsis)
+                  .Run("S", in pre)
+                  .IndicatorRun("a", in cue)
+                  .Run("ve")
+                  .Build();
+
+        var line = FirstParagraph(new TextFormatter { Trim = TextTrimming.CharacterEllipsis }
+                                      .Format(doc, 3)).Lines[0];
+
+        Assert.True(line.Trimmed);
+
+        var runs = line.Runs.OfType<FormattedTextRun>().ToArray();
+        Assert.Equal(new[] { "S", "a", "…" }, runs.Select(r => r.Text).ToArray());
+
+        Assert.Equal(cue, runs[1].Style);   // the surviving mnemonic keeps its cue
+        Assert.True(runs[1].Indicator);
+        Assert.Equal(pre, runs[2].Style);   // the ellipsis skips it — the preceding run's style
+        Assert.False(runs[2].Indicator);
+    }
+
+    /// <summary>The same ruling through <c>AppendEllipsisAtWordBoundary</c>: the word cut strips
+    /// the trailing space, the draft ends in the indicator run, and the appended ellipsis still
+    /// skips it for style.</summary>
+    [Fact]
+    public void Trim_WordEllipsisCutAfterAnIndicatorRun_TakesThePrecedingRunsStyle()
+    {
+        var pre = BrushedStyle.Identity.Applying(TextAttributes.Strikethrough);
+        var cue = BrushedStyle.Identity.Underlining(UnderlineStyle.Single);
+
+        var doc = new RichTextBuilder()
+                  .Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.WordEllipsis)
+                  .Run("S", in pre)
+                  .IndicatorRun("a", in cue)
+                  .Run(" ve")
+                  .Build();
+
+        var line = FirstParagraph(new TextFormatter { Trim = TextTrimming.WordEllipsis }
+                                      .Format(doc, 4)).Lines[0];
+
+        Assert.True(line.Trimmed);
+
+        var runs = line.Runs.OfType<FormattedTextRun>().ToArray();
+        Assert.Equal(new[] { "S", "a", "…" }, runs.Select(r => r.Text).ToArray());
+
+        Assert.Equal(cue, runs[1].Style);   // the surviving mnemonic keeps its cue
+        Assert.Equal(pre, runs[2].Style);   // the ellipsis skips it — the preceding run's style
+    }
 }
 

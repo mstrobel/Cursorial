@@ -390,7 +390,9 @@ internal sealed class FormattedTextCache
 
                 runs.Add(new FormattedTextRun(grapheme.ToString(), request.Indicator!.Value.Delta)
                          {
-                             LogicalStart = 0
+                             LogicalStart = 0,
+                             Indicator = true // structural parity with BuildIndicatorText's run
+                                              // (the fast path never trims, so it is inert here)
                          });
                 offset = 0;
                 continue;
@@ -497,9 +499,12 @@ internal sealed class FormattedTextCache
 
         if (indicator is { } declared && TryGetClusterRange(text, declared.Cluster, out var start, out var length))
         {
+            // IndicatorRun, not Run: the delta marks exactly the mnemonic's cluster, so a trim
+            // ellipsis cut in immediately after it stays PLAIN (ruling 2026-08-11 #3) instead of
+            // joining the cue run's style.
             var delta = declared.Delta;
             AppendPlainSegments(builder, text, 0, start);
-            builder.Run(text.Substring(start, length), in delta);
+            builder.IndicatorRun(text.Substring(start, length), in delta);
             AppendPlainSegments(builder, text, start + length, text.Length - (start + length));
         }
         else

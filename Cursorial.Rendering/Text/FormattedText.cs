@@ -812,6 +812,15 @@ public sealed record FormattedTextRun : FormattedRun
     public int LogicalStart { get; init; }
 
     /// <summary>
+    /// Whether this piece came from an INDICATOR run (<see cref="TextRun.Indicator"/> — an
+    /// access-key mnemonic or similar cue). Its <see cref="Style"/> marks exactly its own
+    /// clusters: the formatter's trim paths never let a synthesized ellipsis join an indicator
+    /// run's style (maintainer ruling 2026-08-11 #3) — the ellipsis takes the nearest preceding
+    /// non-indicator run's style instead, falling back to the document default.
+    /// </summary>
+    public bool Indicator { get; init; }
+
+    /// <summary>
     /// Shared metrics for the source inline run this piece was split from — carries the run's total logical
     /// width, back-filled by the tokenizer once the whole run is emitted (W isn't known until then). All
     /// wrapped pieces of one run reference the same instance. Internal: Drawing reads the width via

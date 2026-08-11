@@ -407,7 +407,7 @@ public sealed class TextFormatter
                 previousCluster = ""; // a new piece paints independently — no junction to smush
                 if (fragmentBuilder.Length == 0) return;
                 _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
-                                  { LogicalStart = runOffset, Scope = scope, Source = runSource });
+                                  { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator });
                 runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
@@ -476,7 +476,7 @@ public sealed class TextFormatter
                         int tabWidth = metrics.StringWidth(tabSpaces);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(tabSpaces, run.Style, run.Hyperlink)
-                                { LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator },
                             tabWidth));
                         runOffset += tabWidth;
                         continue;
@@ -489,7 +489,7 @@ public sealed class TextFormatter
                         int spaceWidth = metrics.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink)
-                                { LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator },
                             spaceWidth));
                         runOffset += spaceWidth;
                         continue;
@@ -840,7 +840,8 @@ public sealed class TextFormatter
                              {
                                  LogicalStart = text.LogicalStart,
                                  Scope = text.Scope,
-                                 Source = text.Source
+                                 Source = text.Source,
+                                 Indicator = text.Indicator
                              });
                 headWidth += headFragmentWidth;
             }
@@ -851,7 +852,8 @@ public sealed class TextFormatter
                              {
                                  LogicalStart = text.LogicalStart + headFragmentWidth,
                                  Scope = text.Scope,
-                                 Source = text.Source
+                                 Source = text.Source,
+                                 Indicator = text.Indicator
                              });
                 tailWidth += tailFragmentWidth;
             }
@@ -1010,7 +1012,7 @@ public sealed class TextFormatter
 
         if (line.Width + ellipsisWidth <= maxWidth)
         {
-            line.Append(choice.ToRun(joins?.Style ?? default), ellipsisWidth);
+            line.Append(choice.ToRun(EllipsisJoinStyle(line.Runs)), ellipsisWidth);
             return line;
         }
 
@@ -1032,7 +1034,7 @@ public sealed class TextFormatter
             clippedEllipsisWidth = clippedChoice.Width;
         }
 
-        clipped.Append(clippedChoice.ToRun(clippedJoins?.Style ?? default), clippedEllipsisWidth);
+        clipped.Append(clippedChoice.ToRun(EllipsisJoinStyle(clipped.Runs)), clippedEllipsisWidth);
         return clipped;
     }
 
@@ -1090,7 +1092,7 @@ public sealed class TextFormatter
                         if (draft.Width + joinWidth > maxWidth)
                             return AppendEllipsisCharacter(line, maxWidth);
 
-                        draft.Append(joinChoice.ToRun(joins?.Style ?? default), joinWidth);
+                        draft.Append(joinChoice.ToRun(EllipsisJoinStyle(draft.Runs)), joinWidth);
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
@@ -1110,17 +1112,35 @@ public sealed class TextFormatter
         }
 
         // Whole line fits already — append ellipsis directly.
-        line.Append(lineEndChoice.ToRun(lineEnd?.Style ?? default), ellipsisWidth);
+        line.Append(lineEndChoice.ToRun(EllipsisJoinStyle(line.Runs)), ellipsisWidth);
         return line;
     }
 
     /// <summary>The last visible text run — the one an appended ellipsis visually joins (its
-    /// style AND glyph source both carry over).</summary>
+    /// glyph source carries over; its STYLE only when it is not an indicator run — see
+    /// <see cref="EllipsisJoinStyle"/>).</summary>
     private static FormattedTextRun? LastTextRun(IReadOnlyList<FormattedRun> runs)
     {
         for (int i = runs.Count - 1; i >= 0; i--)
             if (runs[i] is FormattedTextRun text) return text;
         return null;
+    }
+
+    /// <summary>
+    /// The style an appended trim indicator inherits: the last text run's, SKIPPING indicator runs
+    /// (maintainer ruling 2026-08-11 #3 — "if the indicator glyph survived the trim, I see no
+    /// reason why the ellipses should inherit its style"). An indicator run's delta marks exactly
+    /// its own clusters, so a cut landing immediately after a surviving mnemonic yields a PLAIN
+    /// ellipsis — the nearest preceding non-indicator run's style, or the identity (the document
+    /// default at paint) when the whole surviving line is the indicator. The ellipsis still
+    /// measures and paints through the visually-joined run's SOURCE (<see cref="LastTextRun"/>);
+    /// only the style join skips.
+    /// </summary>
+    private static BrushedStyle EllipsisJoinStyle(IReadOnlyList<FormattedRun> runs)
+    {
+        for (int i = runs.Count - 1; i >= 0; i--)
+            if (runs[i] is FormattedTextRun { Indicator: false } text) return text.Style;
+        return default;
     }
 
     /// <summary>

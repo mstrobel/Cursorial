@@ -62,7 +62,8 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
     // property plumbing (ClipToBounds coercion) may run before this type's constructor body.
     private FormattedTextCache? _cache;
 
-    private FormattedTextCache Cache
+    // Internal (not private) so tests can observe the format counters (the TextBlock precedent).
+    internal FormattedTextCache Cache
         => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static FigletPresenter()
@@ -295,13 +296,20 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
         // flattened solid here would be a block-level declaration out-ranking it: same color for a
         // solid element brush, but the wrong level speaking — and a gradient element brush now spans
         // the painted bounds rather than restarting per line-block.
+        //
+        // The composed ATTRIBUTES (and their underline shape) are likewise NOT baked here — they
+        // impose at paint through the preference (RenderPrimaryContent's Imposing, TextBlock's
+        // shape; maintainer ruling 2026-08-11 #4 resolving D2). The parse is sticky and the axis
+        // properties ride the global AffectsRender lane with no cache term, so a baked flag
+        // removed after the parse survived in the block carrier forever; imposed at paint, an
+        // attribute-only flip is honored by a repaint by construction.
         var style = CellStyle.Transparent
-                             .WithForeground(Color.Default)
-                             .WithAttributes(attributes.Flags)
-                             .WithUnderlineStyle(attributes.UnderlineShape);
+                             .WithForeground(Color.Default);
 
-        // The underline color has no preference rung, so the flattened element color still rides the
-        // block style — unchanged behavior, no competition to misrank.
+        // The underline COLOR stays parse-side (the ruling's delegated choice; criterion:
+        // behaviour-preservation for current inputs): it has no preference rung in the resolver,
+        // so the flattened element color still rides the block style — unchanged bytes (it is the
+        // parse-freshness witness FigletPresenterFreshnessTests pins).
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
             style = style.WithUnderlineColor(fgColor);
 

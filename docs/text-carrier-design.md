@@ -90,7 +90,8 @@ merely centred rather than top-anchored (`FormattedText.cs:63`,
 `row = bounds.Row + (bounds.Rows - Size.Rows) / 2`) — with the surround cleared. So there are
 simply TWO OPERATIONS, each sampling the rect it covers:
 
-- `ClearCells(bounds, DefaultStyle)` owns the whole box → samples `bounds`
+- `ClearCells(bounds, DefaultStyle)` owns the whole box → samples `bounds` (the clear itself is
+  redesigned as a background fill — see "`FillEntireBounds`: the clear becomes a background fill")
 - the document paints its own extent → samples the derived extent
 
 That is the proposal's ownership rule falling out unaided, and it removes the need for both a
@@ -204,6 +205,65 @@ gives the new built-in gradients a home instead of a special case in the parser.
 `linear:…` are syntax, not names, so they stay in the parser either way — which may be the natural
 seam: names through the layered registry, syntax through the parser, nothing arbitrating.
 
+## `FillEntireBounds`: the clear becomes a background fill (Mike, 2026-08-10)
+
+Settles defect 4. Today the surround is `buffer.ClearCells(bounds, DefaultStyle)`
+(`FormattedText.cs:69-70`, presence guard commented out) — a whole `CellStyle` stamped onto every
+blank, so a background BRUSH cannot fill the region, and the surround carries `DefaultStyle`'s
+foreground and attribute word along for the ride.
+
+**The clear predates the UI layer, and its erase duty was never whole.** Scenes arrive fresh, so
+in-place erasure has no UI-layer client; and `CellBuffer.ClearCells` clears CELLS (`CellBuffer.cs:871`)
+while the fragment sidecar (`:84`) rides through untouched — `ClearFragments()` (`:684`) is a
+separate operation — so a stale fragment inside the rect survives the clear today.
+`sized-over-painted-background` is a fill corpus case that carries a fragment. What remains of the
+operation's job is stating the background opinion, which is a fill.
+
+**SETTLED: the surround becomes a background fill sampling `bounds`**, its source read down the
+ladder like any other channel: the preference's `Background`, then the document default's — the
+fall-through rung. No resolvable source ⇒ **skip**: equivalent to filling `Transparent`, which
+loses to whatever exists at composite. The guard is channel absence (`background is not null`
+after the fall-through), not a flag.
+
+**SETTLED: blank-vs-tint derives from the SAMPLED colour, per cell** — `Color.IsOpaque`
+(`Color.cs:87`, `Kind != Rgb || Alpha == 255`). For a surround cell holding a stale `("x", old style)`:
+
+| sampled background | result |
+|---|---|
+| channel absent | untouched |
+| `IsTransparent` | tint no-op — observably untouched |
+| translucent (0 < α < 255) | `("x", bg = sample stored verbatim)` — glyph survives, compositor blends |
+| `IsOpaque` (incl. `Default`/palette kinds) | blanked and owned — `("", bg = sample)` |
+
+Each rung states strictly more than the one above, and the kind-semantics do the sentinel work
+unaided: `Color.Default` is non-RGB ⇒ opaque ⇒ owns, preserving NoColor's "own the rect in
+terminal default" (`TextPresenter`'s selection-backdrop fill); `Brushes.Transparent` ⇒ tint no-op,
+agreeing with the skip. A mixed-alpha gradient owns where opaque and tints where translucent — the
+254/255 cliff is a one-cell seam inside a fade, not a whole-fill mode flip. `IsUniform` hoists the
+test for the common case.
+
+**REJECTED: brush-level `IBrush.IsOpaque` as the trigger.** It speaks for the `Opacity` knob
+(`IBrush.cs:27-33`); `ColorAt` is positional, so the interface cannot know its colours' alpha — a
+half-alpha `SolidColorBrush` reports opaque. That is defect 6; the narrow fix (a
+`SolidColorBrush` override, plus interface-doc clarification that the default speaks for `Opacity`
+alone) rides this slice.
+
+**OPEN — confirm at the compositor before wiring the opaque arm: cell KIND.** Today's clear writes
+the non-durable `Cell.Blank` (`Cell.cs:41`); the fill family's occluder is the durable whitespace
+cell (`:44-45`). If a non-durable styled blank lets a lower layer's glyph ride on the new
+background, the opaque arm needs the durable kind — the lane converges on `FillOpaque`'s cell
+shape, with `durable` derived from sampled alpha instead of a caller flag. If non-durable blanks
+already occlude, matching today's kind is the byte-preserving choice. Let the group-compositing
+tests answer, not assertion.
+
+**QUEUED: a behavioural slice of its own, after 7b.** Bytes move even on the stated-background
+leg — the surround loses `DefaultStyle`'s stamped side-channels (invisible on screen, visible in
+the tier-2 dumps), and possibly the cell kind — so it cannot ride a structural phase. Baselines
+re-recorded deliberately; one behavioural test per rung of the table; skip ≡ transparent pinned at
+the compositor. All three fill corpus cases (`document-default-style-fill-bounds`,
+`sized-over-painted-background`, `brush-fill-entire-bounds`) state a `DefaultStyle` background, so
+nothing existing pins the no-source leg — the new tests must.
+
 ## What this deletes
 
 - `StyleExtensions.Compose` (`RichTextBuilder.cs:417-432`) → `PartialStyle.Then`
@@ -296,7 +356,12 @@ obstacle: `IBrush` is same-assembly, the namespace is already imported in `Rende
    `:1194` is right.
 3. **`FigletPresenter.CachedState`** (`:59`) has no `ParseFreshness` sibling — same shape as the
    `RichTextPresenter` bug fixed in `9e199230`, apparently unfixed.
-4. **`FillEntireBounds`** clears with `DefaultStyle`, a `CellStyle` (`FormattedText.cs:60-64`),
-   so a *background* brush cannot fill that region.
+4. **`FillEntireBounds`** clears with `DefaultStyle`, a `CellStyle` (now `FormattedText.cs:69-70`),
+   so a *background* brush cannot fill that region. Design settled 2026-08-10 — see
+   "`FillEntireBounds`: the clear becomes a background fill"; queued after 7b.
 5. **`TextMarkup.TryParseBrush`** (`:503-508`) is dead — private, zero call sites, discards its
    bool. (Distinct from the live `MarkupColor.TryParseBrush`.)
+6. **`IBrush.IsOpaque`** (`IBrush.cs:27-33`) tests the `Opacity` knob alone — a half-alpha
+   `SolidColorBrush` samples translucent yet reports opaque. Structural for the interface
+   (`ColorAt` is positional, so a brush cannot know its colours' alpha in general); fixable for
+   `SolidColorBrush`, whose one colour is known. The fix rides the fill slice.

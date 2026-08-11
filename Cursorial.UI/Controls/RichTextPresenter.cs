@@ -13,7 +13,7 @@ namespace Cursorial.UI.Controls;
 /// A primitive (design doc §12 / CD-P2L-1) that hosts <see cref="RichText"/>, painted via
 /// <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>.
 /// </summary>
-public sealed class RichTextPresenter : DrawnContentPresenter
+public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSource
 {
     /// <summary>The <see cref="RichText">rich text</see> to render or <see cref="TextMarkup.Parse(string)">markup
     /// to parse</see>; (<see langword="null"/> = none ⇒ the placeholder shows).</summary>
@@ -52,27 +52,17 @@ public sealed class RichTextPresenter : DrawnContentPresenter
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<RichTextPresenter>();
 
-    private record CachedState(int AvailableColumns, RichText Source, FormattedText? Text, int? MaxRows = null)
-    {
-        /// <summary>Whether the row budget this layout was formatted under actually truncated it —
-        /// only then does a taller slot invalidate the cache (the grow-back path).</summary>
-        public bool RowCapBit => MaxRows is {} cap && Text is { Size.Rows: var rows } && rows >= cap;
-    }
+    // The shared parse/format cache (UNIFIED-TEXT-SCOPING Scope A): it owns the cache slots, the
+    // freshness key — including the (ResourceVersion, ActualThemeVariant) parse terms parsing a
+    // string Source through ResourceBrushResolver requires (resolution is static-per-parse and the
+    // parse is sticky, so without them a variant flip repaints the pre-flip ink forever — CD16) —
+    // the caps subscriptions, and the ResolveBounds arithmetic. Created LAZILY: the base
+    // DrawnContentPresenter constructor coerces ClipToBounds, which consults
+    // IsPrimaryContentVisible → ResolveSource before this type's constructor body could run.
+    private FormattedTextCache? _cache;
 
-    /// <summary>
-    /// The freshness terms a cached PARSE rides — the same <c>(resource version, ActualThemeVariant)</c>
-    /// cache-key contract <see cref="TextBlock"/> folds into its <c>FormattedText</c> key (design doc
-    /// §11.6/CD16). Parsing a <see cref="string"/> <see cref="Source"/> resolves <c>[fg=…]</c>/<c>[bg=…]</c> brush values through
-    /// <see cref="ResourceBrushResolver"/> and BAKES the resulting brushes into the <see cref="RichText"/>:
-    /// resolution is static-per-parse, and the parse is sticky (<see cref="CachedState.Source"/> shadows
-    /// <see cref="Source"/> on every later read), so without this key a variant flip repaints the pre-flip
-    /// ink forever. No dictionary subscription — sealed dictionaries never pulse (CD16).
-    /// </summary>
-    private readonly record struct ParseFreshness(int ResourceVersion, ThemeVariant? Variant);
-
-    private CachedState? _cachedState;
-    private ParseFreshness _parseFreshness;
-    private UIApplication? _subscribedApp;
+    private FormattedTextCache Cache
+        => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static RichTextPresenter()
     {
@@ -171,7 +161,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
             {
                 if (block is SizedTextBlock stb)
                 {
-                    outputCaps ??= _subscribedApp?.EffectiveCapabilities.Output ?? OutputCapabilities.None;
+                    outputCaps ??= Cache.OutputCapabilities ?? OutputCapabilities.None;
 
                     if (stb is { Fallback: null, Sizing: { IsNormal: false } sz } &&
                         sz.IsSupported(outputCaps) is false)
@@ -192,68 +182,22 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
         // Re-evaluate image-vs-placeholder when the terminal renegotiates graphics support (the measure cache would
         // otherwise leave the placeholder visibility / :placeholder stale on a caps flip — CD-P2K-1 audit).
-        if (UIApplication.Current is {} app)
-        {
-            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged;
-
-            app.CapabilityOverridesChanged +=
-                OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
-
-            _subscribedApp = app;
-        }
+        // The cache's callback routes through InvalidateContent(invalidateMeasure: true), which defeats the
+        // measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState; FB-5 forced-off images
+        // collapse to the placeholder live via the overrides subscription.
+        Cache.Attach();
     }
 
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
-        if (_subscribedApp is {} app)
-        {
-            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
-            app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
-            _subscribedApp = null;
-        }
-
+        Cache.Detach();
         base.OnDetachedFromTree(in e);
-    }
-
-    private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e)
-    {
-        InvalidateContent(
-            invalidateMeasure:
-            true); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
-    }
-
-    private void OnCapabilityOverridesChanged(object? sender, EventArgs e)
-    {
-        InvalidateContent(
-            invalidateMeasure:
-            true); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
     }
 
     /// <inheritdoc/>
     protected override Size MeasurePrimaryContent(Size availableSize)
-    {
-        var wasMarkedTrimmed = GetValueSource(TextBlock.IsTrimmedProperty) is
-                               {
-                                   Kind: ValueSourceKind.Default,
-                                   IsCurrentValue: true
-                               };
-
-        if (EnsureText(availableSize.Columns) is {} ft)
-        {
-            if (ft.HasTrimmedLines)
-                SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
-            else if (wasMarkedTrimmed)
-                ClearValue(TextBlock.IsTrimmedPropertyKey);
-
-            return ft.Size;
-        }
-
-        if (wasMarkedTrimmed)
-            ClearValue(TextBlock.IsTrimmedPropertyKey);
-
-        return Size.Empty;
-    }
+        => FormattedTextCache.MeasureAndAdvertiseTrimmed(this, EnsureText(availableSize.Columns));
 
     /// <inheritdoc/>
     protected override void RenderPrimaryContent(RenderContext context)
@@ -269,32 +213,30 @@ public sealed class RichTextPresenter : DrawnContentPresenter
         }
     }
 
-    private FormattedText? EnsureText(int? possibleColumns)
+    private FormattedText? EnsureText(int? possibleColumns, int? arrangedRows = null)
     {
         if (ResolveSource() is not { IsEmpty: false } text) return null;
 
-        var bounds = ResolveBounds(possibleColumns);
+        var bounds = Cache.ResolveBounds(possibleColumns, Source);
 
         var availableColumns = bounds.Columns;
         if (availableColumns is 0)
             return null;
 
-        if (_cachedState is { Text.Blocks.Length: > 0 } cs &&
-            ReferenceEquals(cs.Source, text) &&
-            cs.AvailableColumns == availableColumns)
-        {
-            return cs.Text;
-        }
+        // Bounds publishes AFTER ArrangeOverride runs, so the arrange-time reformat passes the
+        // fresh row budget explicitly — reading Bounds.Rows there re-formats under the OLD cap
+        // and the layout (and the IsTrimmed flag) never grows back.
+        var rows = arrangedRows ?? bounds.Rows;
+        var maxRows = rows is not (0 or LayoutMath.Unbounded) ? rows : (int?)null;
 
-        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } ? bounds.Rows : (int?)null;
+        var request = new FormattedTextCache.LayoutRequest(
+            text, MarkupLane: false, availableColumns, maxRows,
+            TextWrapping, TextAlignment, TextTrimming);
 
-        var ft = Format(text, availableColumns, null, TextTrimming, TextWrapping, maxRows: maxRows);
+        if (Cache.TryGetLayout(in request, out var cached))
+            return cached;
 
-        cs = new CachedState(availableColumns, text, ft, maxRows);
-
-        _cachedState = cs;
-
-        return cs.Text;
+        return Cache.FormatAndStore(in request, text);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -303,127 +245,53 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
         // Reformat when the slot shrank below the layout — or GREW past a row cap that actually
         // truncated it: reusing a capped layout for a taller slot is how text used to stay
-        // trimmed forever after the space it needed came back.
-        if (_cachedState is { Text.Size.Rows: var rows } cs &&
-            (rows > finalSize.Rows || (cs.RowCapBit && finalSize.Rows > cs.MaxRows)))
+        // trimmed forever after the space it needed came back. The fresh finalSize budget is
+        // passed explicitly (Bounds still holds the PREVIOUS arrange here).
+        if (Cache.NeedsRowBudgetReformat(finalSize.Rows))
         {
-            _cachedState = null;
-            result = MeasurePrimaryContent(finalSize);
+            Cache.Invalidate();
+            result = FormattedTextCache.MeasureAndAdvertiseTrimmed(
+                this, EnsureText(finalSize.Columns, finalSize.Rows));
         }
 
         return result;
     }
 
-    private FormattedText Format(RichText text,
-                                 int width,
-                                 OutputCapabilities? caps,
-                                 TextTrimming? trimmingOverride = null,
-                                 WrapMode? wrappingOverride = null,
-                                 int? maxRows = null)
-    {
-        var bounds = ResolveBounds(width);
-        if (bounds.Columns is 0)
-            return FormattedText.Empty;
-
-        var textTrimming = trimmingOverride ?? TextTrimming;
-
-        var tf = new TextFormatter
-                 {
-                     Alignment = TextAlignment,
-                     Trim = textTrimming,
-                     Wrap = wrappingOverride ?? TextFormatter.DefaultWrap
-                 };
-
-        if (text.IsEmpty)
-            return FormattedText.Empty;
-
-        var ft = tf.Format(text,
-                           width,
-                           capabilities: caps ?? _subscribedApp?.EffectiveCapabilities.Output,
-                           maxRows: maxRows);
-
-        return ft;
-    }
-
     internal string? GetUntrimmedText(int maxWidth)
     {
-        if (ResolveSource() is not {} text) return null;
+        if (ResolveSource() is not { IsEmpty: false } text) return null;
 
-        if (text.IsEmpty) return null;
-
-        var bounds = ResolveBounds(maxWidth);
+        var bounds = Cache.ResolveBounds(maxWidth, Source);
         if (bounds.Columns is 0)
             return null;
 
-        var tf = new TextFormatter
-                 {
-                     Alignment = TextAlignment.Left,
-                     Trim = TextTrimming.None,
-                     Wrap = WrapMode.CharacterWrap
-                 };
-
-        // Deliberately UNCAPPED rows: this is the trimmed-content tooltip's payload, and its whole
-        // job is to reveal what the presenter's own bounds hid — capping it at those bounds would
-        // re-hide exactly the lines the user hovered to see. Display limits belong to the tooltip.
-        return tf.FormatPlainText(text, maxWidth, maxRows: null);
+        return Cache.FormatUntrimmedPlainText(text, maxWidth);
     }
+
+    string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);
 
     private RichText? ResolveSource()
     {
+        // A cached parse is only good for the resources/variant it was resolved against (§11.6): the
+        // cache drops it when either moves, so the next read re-parses `Source` and re-resolves its
+        // [fg=…]/[bg=…] spans. The parse is sticky — the cached document shadows `Source` on every
+        // later read until a property change or freshness move drops it.
+        if (Cache.GetDocument() is { } document)
+            return document;
+
         RichText? text;
 
-        // A cached parse is only good for the resources/variant it was resolved against (§11.6): drop it
-        // when either moves, so the next read re-parses `Source` and re-resolves its [fg=…]/[bg=…] spans.
-        var freshness = new ParseFreshness(ResourceServices.GetResourceVersion(this),
-                                           UIApplication.Current?.ActualThemeVariant);
-
-        if (_parseFreshness != freshness)
-        {
-            _parseFreshness = freshness;
-            _cachedState = null;
-        }
-
-        var source = _cachedState?.Source ?? Source;
-
-        if (source is RichText { IsEmpty: false } t)
+        if (Source is RichText { IsEmpty: false } t)
             text = t;
-        else if (source is string { Length: > 0 } s)
+        else if (Source is string { Length: > 0 } s)
             text = ParseRichText(s);
         else
             text = null;
 
-        if (text is not null && _cachedState is null)
-            _cachedState = new CachedState(0, text, null);
+        if (text is not null)
+            Cache.StoreDocument(text);
 
         return text;
-    }
-
-    private Rect ResolveBounds(int? availableColumns)
-    {
-        Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
-
-        if (availableColumns is null)
-        {
-            Size? desiredSize = HasMeasureConstraint ? LastMeasureConstraint : null;
-
-            if (_cachedState is { Text: not null } cs && ReferenceEquals(cs.Source, Source))
-                availableColumns = cs.AvailableColumns;
-
-            if (desiredSize is { Columns: var desiredColumns })
-                availableColumns = availableColumns is {} c ? Math.Min(c, desiredColumns) : desiredColumns;
-
-            if (arrangeRect is { Columns: var arrangeColumns })
-                availableColumns = availableColumns is {} c ? Math.Min(c, arrangeColumns) : arrangeColumns;
-        }
-
-        var bounds = Bounds;
-        var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
-
-        return bounds with
-               {
-                   Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                   Rows = rows
-               };
     }
 
     private RichText ParseRichText(string s)
@@ -463,7 +331,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter
 
     private void InvalidateContent(bool invalidateMeasure = false)
     {
-        _cachedState = null;
+        Cache.Invalidate();
 
         if (invalidateMeasure)
             InvalidateMeasure();

@@ -643,43 +643,16 @@ public sealed class ContentPresenter : UIElement
             ClearValue(ToolTipService.TipProperty);
     }
 
+    // The trimmed-text tooltip chain speaks ITrimmedTextSource (UNIFIED-TEXT-SCOPING D8/D9): the
+    // four text presenters implement it — each keeping its own untrimmed trim spelling (M4 is
+    // Mike-gated) — so the closed four-type switch that used to live here cannot drift per type.
     private static bool AdvertisesTrimmedState([NotNullWhen(true)] UIElement? element)
-        => element is TextBlock or
-                      AccessTextPresenter or
-                      RichTextPresenter or
-                      FigletPresenter;
+        => element is ITrimmedTextSource;
 
-    private string? GetUntrimmedText(UIElement? element, int maxToolTipWidth)
-    {
-        if (element is TextBlock t)
-        {
-            if (t.IsTrimmed) return t.GetUntrimmedText(maxToolTipWidth);
-        }
-        else if (element is AccessTextPresenter { Text.Text: { Length: > 0 } text } p &&
-                 p.GetValue(TextBlock.IsTrimmedProperty) is true)
-        {
-            var rt = new RichTextBuilder(defaultTrimming: TextTrimming.CharacterEllipsis,
-                                         defaultWrap: WrapMode.CharacterWrap)
-                    .Run(text)
-                    .Build();
-
-            var tf = new TextFormatter();
-
-            var ft = tf.Format(rt, maxToolTipWidth, capabilities: UIApplication.Current?.Capabilities.Output);
-
-            return ft.ToPlainText();
-        }
-        else if (element is RichTextPresenter rtp && rtp.GetValue(TextBlock.IsTrimmedProperty))
-        {
-            return rtp.GetUntrimmedText(maxToolTipWidth);
-        }
-        else if (element is FigletPresenter fp && fp.GetValue(TextBlock.IsTrimmedProperty))
-        {
-            return fp.GetUntrimmedText(maxToolTipWidth);
-        }
-
-        return null;
-    }
+    private static string? GetUntrimmedText(UIElement? element, int maxToolTipWidth)
+        => element is ITrimmedTextSource source && element.GetValue(TextBlock.IsTrimmedProperty)
+               ? source.GetUntrimmedText(maxToolTipWidth)
+               : null;
 
     // WPF parity for BORROWED element content — a UIElement hosted here whose LOGICAL owner is a foreign control.
     // The canonical case is a TabControl: a TabItem's Content is a logical child of the TabItem, but visually it is

@@ -14,7 +14,7 @@ namespace Cursorial.UI.Controls;
 /// default <see cref="UnderlineStyle.Single"/>) when <see cref="AccessKeyManager.ShowUnderlineProperty"/>
 /// is set on it. Column math is grapheme-aware (<see cref="GraphemeWidth"/>).
 /// </summary>
-public sealed class AccessTextPresenter : UIElement
+public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
 {
     /// <summary>The access-key label (<c>AffectsMeasure | AffectsRender</c> — a same-width label swap must repaint; see <see cref="TextBlock"/>).</summary>
     public static readonly StyledProperty<AccessText> TextProperty =
@@ -119,6 +119,26 @@ public sealed class AccessTextPresenter : UIElement
         }
 
         return finalSize;
+    }
+
+    // The trimmed-content tooltip payload (moved from ContentPresenter's inline copy — the
+    // CharacterEllipsis untrimmed spelling TextBlock also uses; RTP/Figlet use Trim=None, and
+    // unifying that choice is Mike-gated M4).
+    string? ITrimmedTextSource.GetUntrimmedText(int maxWidth)
+    {
+        if (Text.Text is not { Length: > 0 } text)
+            return null;
+
+        var rt = new RichTextBuilder(defaultTrimming: TextTrimming.CharacterEllipsis,
+                                     defaultWrap: WrapMode.CharacterWrap)
+                .Run(text)
+                .Build();
+
+        var tf = new TextFormatter();
+
+        var ft = tf.Format(rt, maxWidth, capabilities: UIApplication.Current?.Capabilities.Output);
+
+        return ft.ToPlainText();
     }
 
     /// <summary>The longest prefix of <paramref name="text"/> whose display width fits in

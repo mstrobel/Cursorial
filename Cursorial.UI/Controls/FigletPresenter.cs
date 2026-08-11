@@ -13,7 +13,7 @@ namespace Cursorial.UI.Controls;
 /// A primitive (design doc §12 / CD-P2L-1) that hosts content presented in a <see cref="FigletFont">figlet font</see>,
 /// painted via <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>.
 /// </summary>
-public sealed class FigletPresenter : DrawnContentPresenter
+public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
 {
     /// <summary>The figlet text to render or <see cref="TextMarkup.Parse(string)">markup
     /// to parse</see>; (<see langword="null"/> = none ⇒ the placeholder shows).</summary>
@@ -54,17 +54,16 @@ public sealed class FigletPresenter : DrawnContentPresenter
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextElement.ForegroundProperty.AddOwner<FigletPresenter>();
 
-    private static readonly char[] LineSeparators = ['\r','\n'];
+    // The shared parse/format cache (UNIFIED-TEXT-SCOPING Scope A). Its key carries the
+    // (ResourceVersion, ActualThemeVariant) parse-freshness terms this presenter's hand-rolled
+    // CachedState LACKED (doc defect 3): the baked ResolveStyle() flattens the theme-reactive
+    // Foreground default into the parse, so a variant flip must invalidate it — pull-based,
+    // through the key (sealed dictionaries never pulse — CD16). Created LAZILY: base-constructor
+    // property plumbing (ClipToBounds coercion) may run before this type's constructor body.
+    private FormattedTextCache? _cache;
 
-    private record CachedState(int AvailableColumns, string Text, FormattedText? RealizedText, int? MaxRows = null)
-    {
-        /// <summary>Whether the row budget this layout was formatted under actually truncated it —
-        /// only then does a taller slot invalidate the cache (the grow-back path).</summary>
-        public bool RowCapBit => MaxRows is {} cap && RealizedText is { Size.Rows: var rows } && rows >= cap;
-    }
-
-    private CachedState? _cachedState;
-    private UIApplication? _subscribedApp;
+    private FormattedTextCache Cache
+        => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static FigletPresenter()
     {
@@ -161,68 +160,22 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
         // Re-evaluate image-vs-placeholder when the terminal renegotiates graphics support (the measure cache would
         // otherwise leave the placeholder visibility / :placeholder stale on a caps flip — CD-P2K-1 audit).
-        if (UIApplication.Current is {} app)
-        {
-            app.EffectiveCapabilitiesChanged += OnCapabilitiesChanged;
-
-            app.CapabilityOverridesChanged +=
-                OnCapabilityOverridesChanged; // FB-5: forced-off images collapse to the placeholder live
-
-            _subscribedApp = app;
-        }
+        // The cache's callback routes through InvalidateContent(invalidateMeasure: true), which defeats the
+        // measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState; FB-5 forced-off images
+        // collapse to the placeholder live via the overrides subscription.
+        Cache.Attach();
     }
 
     /// <inheritdoc/>
     protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
     {
-        if (_subscribedApp is {} app)
-        {
-            app.EffectiveCapabilitiesChanged -= OnCapabilitiesChanged;
-            app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
-            _subscribedApp = null;
-        }
-
+        Cache.Detach();
         base.OnDetachedFromTree(in e);
-    }
-
-    private void OnCapabilitiesChanged(object? sender, CapabilitiesChangedEventArgs e)
-    {
-        InvalidateContent(
-            invalidateMeasure:
-            true); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
-    }
-
-    private void OnCapabilityOverridesChanged(object? sender, EventArgs e)
-    {
-        InvalidateContent(
-            invalidateMeasure:
-            true); // defeats the measure-cache early-out so MeasureOverride re-runs UpdatePlaceholderState
     }
 
     /// <inheritdoc/>
     protected override Size MeasurePrimaryContent(Size availableSize)
-    {
-        var wasMarkedTrimmed = GetValueSource(TextBlock.IsTrimmedProperty) is
-                               {
-                                   Kind: ValueSourceKind.Default,
-                                   IsCurrentValue: true
-                               };
-
-        if (EnsureText(availableSize.Columns) is {} ft)
-        {
-            if (ft.HasTrimmedLines)
-                SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
-            else if (wasMarkedTrimmed)
-                ClearValue(TextBlock.IsTrimmedPropertyKey);
-
-            return ft.Size;
-        }
-
-        if (wasMarkedTrimmed)
-            ClearValue(TextBlock.IsTrimmedPropertyKey);
-
-        return Size.Empty;
-    }
+        => FormattedTextCache.MeasureAndAdvertiseTrimmed(this, EnsureText(availableSize.Columns));
 
     /// <inheritdoc/>
     protected override void RenderPrimaryContent(RenderContext context)
@@ -238,35 +191,31 @@ public sealed class FigletPresenter : DrawnContentPresenter
         }
     }
 
-    private FormattedText? EnsureText(int? possibleColumns)
+    private FormattedText? EnsureText(int? possibleColumns, int? arrangedRows = null)
     {
         if (Text is not { Length: > 0 } text)
             return null;
 
-        var bounds = ResolveBounds(possibleColumns);
+        var bounds = Cache.ResolveBounds(possibleColumns, text);
 
         var availableColumns = bounds.Columns;
         if (availableColumns is 0)
             return null;
 
-        if (_cachedState is { RealizedText.Blocks.Length: > 0 } cs &&
-            Equals(cs.Text, Text) &&
-            cs.AvailableColumns == availableColumns)
-        {
-            return cs.RealizedText;
-        }
+        // Bounds publishes AFTER ArrangeOverride runs, so the arrange-time reformat passes the
+        // fresh row budget explicitly — reading Bounds.Rows there re-formats under the OLD cap
+        // and the layout (and the IsTrimmed flag) never grows back.
+        var rows = arrangedRows ?? bounds.Rows;
+        var maxRows = rows is not (0 or LayoutMath.Unbounded) ? rows : (int?) null;
 
-        var maxRows = bounds is not { Rows: 0 or LayoutMath.Unbounded } ? bounds.Rows : (int?) null;
+        var request = new FormattedTextCache.LayoutRequest(
+            text, MarkupLane: false, availableColumns, maxRows,
+            TextWrapping, TextAlignment, TextTrimming);
 
-        var richText = BuildRichText(text);
+        if (Cache.TryGetLayout(in request, out var cached))
+            return cached;
 
-        var ft = Format(richText, availableColumns, null, TextTrimming, TextWrapping, maxRows: maxRows);
-
-        cs = new CachedState(availableColumns, text, ft, maxRows);
-
-        _cachedState = cs;
-
-        return cs.RealizedText;
+        return Cache.FormatAndStore(in request, BuildRichText(text));
     }
 
     private RichText BuildRichText(string text)
@@ -276,8 +225,11 @@ public sealed class FigletPresenter : DrawnContentPresenter
         var rtb = new RichTextBuilder();
         var style = ResolveStyle();
 
-        foreach (var line in text.Split(LineSeparators))
-            rtb.Figlet(line, font, style, TextAlignment, Padding);
+        // The shared splitter folds \r\n into ONE break (D12): a CRLF used to yield a phantom empty
+        // figlet block per break. Genuinely empty segments (a blank line, "a\n\nb") stay — one
+        // empty block per blank line is content.
+        foreach (var range in HardLineBreaks.EnumerateLines(text))
+            rtb.Figlet(text[range], font, style, TextAlignment, Padding);
 
         var richText = rtb.Build();
         return richText;
@@ -289,99 +241,33 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
         // Reformat when the slot shrank below the layout — or GREW past a row cap that actually
         // truncated it: reusing a capped layout for a taller slot is how text used to stay
-        // trimmed forever after the space it needed came back.
-        if (_cachedState is { RealizedText.Size.Rows: var rows } cs &&
-            (rows > finalSize.Rows || (cs.RowCapBit && finalSize.Rows > cs.MaxRows)))
+        // trimmed forever after the space it needed came back. The fresh finalSize budget is
+        // passed explicitly (Bounds still holds the PREVIOUS arrange here).
+        if (Cache.NeedsRowBudgetReformat(finalSize.Rows))
         {
-            _cachedState = null;
-            result = MeasurePrimaryContent(finalSize);
+            Cache.Invalidate();
+            result = FormattedTextCache.MeasureAndAdvertiseTrimmed(
+                this, EnsureText(finalSize.Columns, finalSize.Rows));
         }
 
         return result;
-    }
-
-    private FormattedText Format(RichText text,
-                                 int width,
-                                 OutputCapabilities? caps,
-                                 TextTrimming? trimmingOverride = null,
-                                 WrapMode? wrappingOverride = null,
-                                 int? maxRows = null)
-    {
-        var bounds = ResolveBounds(width);
-        if (bounds.Columns is 0)
-            return FormattedText.Empty;
-
-        var textTrimming = trimmingOverride ?? TextTrimming;
-
-        var tf = new TextFormatter
-                 {
-                     Alignment = TextAlignment,
-                     Trim = textTrimming,
-                     Wrap = wrappingOverride ?? TextFormatter.DefaultWrap
-                 };
-
-        if (text.IsEmpty)
-            return FormattedText.Empty;
-
-        var ft = tf.Format(text,
-                           width,
-                           capabilities: caps ?? _subscribedApp?.EffectiveCapabilities.Output,
-                           maxRows: maxRows);
-
-        return ft;
     }
 
     internal string? GetUntrimmedText(int maxWidth)
     {
         if (Text is not { Length: > 0 } text) return null;
 
-        var bounds = ResolveBounds(maxWidth);
+        var bounds = Cache.ResolveBounds(maxWidth, text);
         if (bounds.Columns is 0)
             return null;
 
         if (BuildRichText(text) is not { IsEmpty: false } richText)
             return null;
 
-        var tf = new TextFormatter
-                 {
-                     Alignment = TextAlignment.Left,
-                     Trim = TextTrimming.None,
-                     Wrap = WrapMode.CharacterWrap
-                 };
-
-        // Deliberately UNCAPPED rows: this is the trimmed-content tooltip's payload, and its whole
-        // job is to reveal what the presenter's own bounds hid — capping it at those bounds would
-        // re-hide exactly the lines the user hovered to see. Display limits belong to the tooltip.
-        return tf.FormatPlainText(richText, maxWidth, maxRows: null);
+        return Cache.FormatUntrimmedPlainText(richText, maxWidth);
     }
 
-    private Rect ResolveBounds(int? availableColumns)
-    {
-        Rect? arrangeRect = HasArrangeRect ? LastArrangeRect : null;
-
-        if (availableColumns is null)
-        {
-            Size? desiredSize = HasMeasureConstraint ? LastMeasureConstraint : null;
-
-            if (_cachedState is { RealizedText: not null } cs && cs.Text == Text)
-                availableColumns = cs.AvailableColumns;
-
-            if (desiredSize is { Columns: var desiredColumns })
-                availableColumns = availableColumns is {} c ? Math.Min(c, desiredColumns) : desiredColumns;
-
-            if (arrangeRect is { Columns: var arrangeColumns })
-                availableColumns = availableColumns is {} c ? Math.Min(c, arrangeColumns) : arrangeColumns;
-        }
-
-        var bounds = Bounds;
-        var rows = bounds.Rows is 0 && HasArrangeRect ? LastArrangeRect.Rows : bounds.Rows;
-
-        return bounds with
-               {
-                   Columns = Math.Min(availableColumns ?? bounds.Columns, LayoutMath.MaxExtent),
-                   Rows = rows
-               };
-    }
+    string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);
 
     private CellStyle ResolveStyle()
     {
@@ -409,7 +295,7 @@ public sealed class FigletPresenter : DrawnContentPresenter
 
     private void InvalidateContent(bool invalidateMeasure = false)
     {
-        _cachedState = null;
+        Cache.Invalidate();
 
         if (invalidateMeasure)
             InvalidateMeasure();

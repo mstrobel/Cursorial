@@ -1,4 +1,10 @@
 // ReSharper disable CheckNamespace
+
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Reflection;
+
 namespace Cursorial.UI;
 
 /// <summary>
@@ -7,6 +13,7 @@ namespace Cursorial.UI;
 /// property at track start" from "<c>From</c> set to the default value".
 /// </summary>
 /// <typeparam name="T">The wrapped value type.</typeparam>
+[TypeConverter(typeof(OptionalConverter))]
 public readonly struct Optional<T>
 {
     /// <summary>Whether a value was explicitly set.</summary>
@@ -33,4 +40,57 @@ public readonly struct Optional<T>
 
     /// <inheritdoc/>
     public override string ToString() => HasValue ? $"Optional({Value})" : "Optional.Unset";
+}
+
+public sealed class OptionalConverter : TypeConverter
+{
+    private readonly Type _targetType;
+    private readonly Type _innerType;
+    private readonly TypeConverter _innerConverter;
+    private readonly ConstructorInfo? _constructor;
+    private readonly PropertyInfo _hasValue;
+    private readonly PropertyInfo _value;
+
+    public OptionalConverter(Type targetType)
+    {
+        if (targetType.IsGenericType is false || targetType.GetGenericTypeDefinition() != typeof(Optional<>))
+            throw new ArgumentException("Target type must be an Optional<T> instantiation.", nameof(targetType));
+
+        _targetType = targetType;
+        _innerType = targetType.GetGenericArguments()[0];
+        _innerConverter = TypeDescriptor.GetConverter(_innerType);
+        _constructor = _targetType.GetConstructor([_innerType]);
+
+        _hasValue = _targetType.GetProperty(nameof(Optional<>.HasValue)) ??
+                    throw new InvalidOperationException(
+                        $"Could not resolve {nameof(Optional<>)}<{_innerType.Name}>.{nameof(Optional<>.HasValue)}");
+        
+        _value = _targetType.GetProperty(nameof(Optional<>.Value)) ??
+                    throw new InvalidOperationException(
+                        $"Could not resolve {nameof(Optional<>)}<{_innerType.Name}>.{nameof(Optional<>.Value)}");
+    }
+
+    public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType)
+    {
+        return _innerConverter.CanConvertFrom(context, sourceType);
+    }
+
+    public override object ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
+    {
+        var baseValue = _innerType.IsInstanceOfType(value) ? value : _innerConverter.ConvertFrom(context, culture, value);
+        return _constructor!.Invoke([baseValue]);
+    }
+
+    public override bool CanConvertTo(ITypeDescriptorContext? context, [NotNullWhen(true)] Type? destinationType)
+    {
+        return _innerConverter.CanConvertTo(context, destinationType);
+    }
+
+    public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType)
+    {
+        if (_targetType.IsInstanceOfType(value))
+            return _hasValue.GetValue(value) is true ? _value.GetValue(value) : null;
+
+        return GetConvertToException(value, destinationType);
+    }
 }

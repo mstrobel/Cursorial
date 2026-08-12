@@ -1612,6 +1612,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         (StyleCapabilities.Emoji, CapabilityClasses.Emoji),
         (StyleCapabilities.Unicode, CapabilityClasses.Unicode),
         (StyleCapabilities.TextSizing, CapabilityClasses.TextSizing),
+        (StyleCapabilities.Local, CapabilityClasses.Local),
+        (StyleCapabilities.Remote, CapabilityClasses.Remote),
     ];
 
     /// <summary>
@@ -1631,6 +1633,9 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                        ColorDepth.Ansi16    => StyleCapabilities.Ansi16,
                        _                    => StyleCapabilities.NoColor
                    };
+
+        if (EnvironmentReader.Instance.IsSSH() is false)
+            mask |= StyleCapabilities.Local;
 
         // Non-color axes stay sourced from the negotiated snapshot (CD14).
         if (capabilities.Input.Mouse.Motion)

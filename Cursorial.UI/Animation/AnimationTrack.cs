@@ -16,6 +16,9 @@ public abstract class AnimationTrack
     /// <summary>The named target inside the scope (null ⇒ the <see cref="Storyboard.Begin"/> scope itself); resolved via S2's template-aware <see cref="UIElement.FindName"/>.</summary>
     public string? TargetName { get; set; }
 
+    /// <summary>The explicit target; takes precedence over <see cref="TargetName"/>.</summary>
+    public UIObject? Target { get; set; }
+
     /// <summary>The animated property (required; a <see cref="StyledProperty{T}"/> of the track's <c>T</c>).</summary>
     public UIProperty? TargetProperty { get; set; }
 
@@ -142,10 +145,10 @@ public class AnimationTrack<T> : AnimationTrack
     {
         failure = null;
 
-        var target = TargetName is null ? scope : scope.FindName(TargetName) as UIElement;
+        var target = Target ?? (TargetName is null ? scope : scope.FindName(TargetName) as UIObject);
         if (target is null)
         {
-            failure = $"AnimationTrack TargetName '{TargetName}' did not resolve to a UIElement in the scope.";
+            failure = $"AnimationTrack TargetName '{TargetName}' did not resolve to a UIObject in the scope.";
             return false;
         }
 

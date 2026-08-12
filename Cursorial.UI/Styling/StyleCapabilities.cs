@@ -58,5 +58,17 @@ public enum StyleCapabilities
     Unicode = 1 << 11,
 
     /// <summary>OSC 66 text sizing support (kitty text sizing protocol).</summary>
-    TextSizing = 1 << 12
+    TextSizing = 1 << 12,
+
+    /// <summary>
+    /// Indicates, as best as the framework can determine, that an application is running locally and not through
+    /// an SSH tunnel. The inverse of <see cref="Remote"/>.
+    /// </summary>
+    Local = 1 << 13,
+
+    /// <summary>
+    /// Indicates, as best as the framework can determine, that an application is running remotely, e.g., through
+    /// an SSH tunnel. The inverse of <see cref="Local"/>.
+    /// </summary>
+    Remote = 1 << 14
 }

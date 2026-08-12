@@ -24,6 +24,8 @@ public static class CapabilityClasses
     public const string Emoji = "caps-emoji";
     public const string Unicode = "caps-unicode";
     public const string TextSizing = "caps-textsizing";
+    public const string Local = "caps-local";
+    public const string Remote = "caps-remote";
 
     /// <summary>Every stampable capability class, stamping order.</summary>
     public static IReadOnlyList<string> Names { get; } =
@@ -31,6 +33,7 @@ public static class CapabilityClasses
         Truecolor, Ansi256, Ansi16, NoColor,
         Motion, KittyKeyboard,
         Images, ImageClipping, ImageOcclusion,
-        NerdFont, Emoji, Unicode, TextSizing
+        NerdFont, Emoji, Unicode, TextSizing,
+        Local
     ];
 }

@@ -29,7 +29,8 @@ internal abstract class AnimationInstance : IAnimationCompletion
     /// <summary>Consecutive frames the (never-yet-attached) target has gone untracked (the §9.6 leak tracker).</summary>
     internal int UnattachedFrames;
 
-    /// <summary>True once the target has been seen attached — a later detach is the detach-stop path, not a leak.</summary>
+    /// <summary>True once the target has been seen participating in an attached tree (an element attached; a
+    /// sub-object watched from one) — a later detach is a detach-stop lane's job, not a leak.</summary>
     internal bool EverAttached;
 #endif
 

@@ -217,6 +217,42 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
                 _instances.RemoveAt(i);
                 removed.Owner?.OnChildRemoved(removed); // a TargetName child detaching independently of its scope
             }
+
+        // Sub-object follow-through (§9.6's sub-object lane): this element's watches survive an
+        // ordinary detach (the watch rides the property value, and detach + reattach rebuilds
+        // nothing here), but a watched sub-object whose ONLY chain to an attached tree ran through
+        // this element just left the tree with it — retire its instances (OnSubObjectDetached).
+        element.RetireOrphanedSubObjectAnimations();
+    }
+
+    /// <summary>
+    /// The sub-object detach-stop (§9.6's sub-object lane): retires + evicts every instance
+    /// (standalone or storyboard child) targeting <paramref name="subObject"/> — a non-element
+    /// <see cref="UIObject"/> (an animated brush) that stopped participating in any attached tree.
+    /// Called by the watch machinery (<see cref="UIObject"/>'s sub-object observation) when the
+    /// target's last watch chain to an attached element goes away; no <c>Completed</c>; idempotent.
+    /// </summary>
+    /// <remarks>
+    /// Retirement follows TREE PARTICIPATION, not object liveness — the storyboard lane's spirit
+    /// (groups retire when their SCOPE detaches, whatever their children target). A sub-object
+    /// participates while some watch chain from it reaches a tree-attached element; it stops
+    /// participating — and retires here — when (a) its last attached consumer DETACHES (the watch
+    /// itself survives an ordinary detach: a detached-but-alive element still references the brush
+    /// through its property, but tree participation, not the reference, is what earns frames), or
+    /// (b) its last watch is REMOVED (the slot's value replaced, or the host's store torn down).
+    /// Re-attaching a consumer does not resurrect the animation — exactly as re-attaching a
+    /// detached element does not resurrect the animations that targeted it.
+    /// </remarks>
+    internal void OnSubObjectDetached(UIObject subObject)
+    {
+        for (var i = _instances.Count - 1; i >= 0; i--)
+            if (ReferenceEquals(_instances[i].TargetObject, subObject))
+            {
+                var removed = _instances[i];
+                removed.Retire();
+                _instances.RemoveAt(i);
+                removed.Owner?.OnChildRemoved(removed); // a storyboard child whose sub-object target left the tree
+            }
     }
 
     internal void EnqueueCompleted(IAnimationCompletion completion) => _completed.Add(completion);
@@ -384,13 +420,20 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             "measure/arrange every frame forever (design doc §9.9 — prefer a composite-shaped target).");
     }
 
-    /// <summary>The §9.6 leak tracker: an animation whose target never enters the tree for many frames is a probable leak.</summary>
+    /// <summary>The §9.6 leak tracker: an animation whose target never enters the tree for many frames is a
+    /// probable leak. Per-lane notion of "in the tree": an element target is attached; a sub-object target is
+    /// watched from an attached tree (the participation <see cref="OnSubObjectDetached"/> retires on).</summary>
     private void TrackLeaks()
     {
         for (var i = 0; i < _instances.Count; i++)
         {
             var instance = _instances[i];
-            if (instance.TargetObject is UIElement { IsAttachedToTree: true })
+            var target = instance.TargetObject;
+            var participating = target is UIElement element
+                ? element.IsAttachedToTree
+                : target.IsWatchedFromAttachedTree();
+
+            if (participating)
             {
                 instance.EverAttached = true;
                 instance.UnattachedFrames = 0;
@@ -398,12 +441,15 @@ public sealed class AnimationScheduler : IAnimationFrameDriver
             }
 
             if (instance.EverAttached)
-                continue; // attached then detached ⇒ the detach-stop path owns it, not a leak
+                continue; // attached/watched then detached ⇒ the detach-stop lanes own it, not a leak
 
             if (++instance.UnattachedFrames == LeakWarnFrames)
-                AnimationDiagnostics.RaiseWarning(
-                    $"Animation on a never-attached {instance.TargetObject.GetType().Name} has run {LeakWarnFrames} " +
-                    "frames without its target entering the tree (probable leak — design doc §9.6).");
+                AnimationDiagnostics.RaiseWarning(target is UIElement
+                    ? $"Animation on a never-attached {target.GetType().Name} has run {LeakWarnFrames} " +
+                      "frames without its target entering the tree (probable leak — design doc §9.6)."
+                    : $"Animation on a never-watched {target.GetType().Name} has run {LeakWarnFrames} " +
+                      "frames without any attached element consuming it through a watched slot " +
+                      "(probable leak — design doc §9.6).");
         }
     }
 #endif

@@ -67,6 +67,51 @@ public sealed class DebugDiagnosticsTests
         Assert.Contains(warnings, m => m.Contains("never-attached", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact] // §9.6, the sub-object lane: an animation on a never-watched sub-object (a brush no
+           // element consumes) warns after the leak threshold, same as a never-attached element's
+    public void NeverWatchedSubObjectTarget_WarnsAsLeak()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
+        using var _ = host;
+        host.ShowRoot(new StackPanel());
+        host.RunUntilIdle();
+
+        var orphan = new Cursorial.UI.Media.PhaseShiftedBrush(); // constructed, never consumed by any element's brush slot
+        var warnings = CaptureWarnings(() =>
+        {
+            orphan.BeginAnimation(
+                Cursorial.UI.Media.PhaseShiftedBrush.PhaseProperty,
+                new DoubleAnimation(0.0, 1.0, Ms(100)).Loop());
+            host.RunFrames(130); // past the 120-frame leak threshold
+        });
+
+        Assert.Contains(warnings, m => m.Contains("never-watched", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact] // §9.6: a sub-object consumed by an attached element never trips the leak tracker
+    public void WatchedSubObjectTarget_NoLeakWarning()
+    {
+        var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(40, 10) });
+        using var _ = host;
+
+        var brush = new Cursorial.UI.Media.PhaseShiftedBrush();
+        var text = new TextBlock("X") { Foreground = brush };
+        var root = new StackPanel();
+        root.Children.Add(text);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        var warnings = CaptureWarnings(() =>
+        {
+            brush.BeginAnimation(
+                Cursorial.UI.Media.PhaseShiftedBrush.PhaseProperty,
+                new DoubleAnimation(0.0, 1.0, Ms(100)).Loop());
+            host.RunFrames(150);
+        });
+
+        Assert.DoesNotContain(warnings, m => m.Contains("never-watched", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact] // §9.6: an attached target never trips the leak tracker
     public void AttachedTarget_NoLeakWarning()
     {

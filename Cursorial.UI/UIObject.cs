@@ -1211,6 +1211,7 @@ public abstract class UIObject : IInheritanceNode
 
                 records.RemoveAt(i);
                 record.Target._subObjectWatchers?.Remove(record);
+                RetireSubObjectAnimationsIfOrphaned(record.Target, depth: 0); // replaced out of its last attached slot ⇒ left the tree (§9.6)
                 break;
             }
         }
@@ -1293,7 +1294,9 @@ public abstract class UIObject : IInheritanceNode
     /// <summary>
     /// The teardown leg (ledger A13's sub-object half): detaches every watch this host still
     /// holds, so a long-lived sub-object (a shared animated brush) stops referencing the
-    /// discarded element. Fires no notifications (PD13's spirit).
+    /// discarded element. Fires no notifications on this host (PD13's spirit); a target whose
+    /// last chain this was gets its animations retired, with the same one store-owned restore
+    /// notification the element detach-stop produces (§9.6).
     /// </summary>
     private void TearDownSubObjectWatches()
     {
@@ -1302,7 +1305,87 @@ public abstract class UIObject : IInheritanceNode
 
         _subObjectWatchRecords = null;
         for (var i = 0; i < records.Count; i++)
+        {
             records[i].Target._subObjectWatchers?.Remove(records[i]);
+            RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth: 0);
+        }
+    }
+
+    // ── sub-object detach-stop (§9.6's sub-object lane) ──────────────────────────────────────────
+    //
+    // A standalone animation begun directly against a non-element UIObject (an animated brush's
+    // Phase) has no element to ride the detach-stop lane on — its retirement keys on the WATCH
+    // graph instead: the target retires when its last watch chain to a tree-attached element goes
+    // away. The full semantics choice (tree participation, not object liveness) is documented at
+    // the retirement site, AnimationScheduler.OnSubObjectDetached.
+
+    /// <summary>
+    /// Caps the watch-graph walks below. Wrapper cycles (a brush hosting a wrapper that hosts it
+    /// back) are constructible property-wise; the cap keeps the walks total, and a capped chain
+    /// CLAIMS participation — never retire on a cycle.
+    /// </summary>
+    private const int MaxWatchChainDepth = 64;
+
+    /// <summary>
+    /// The sub-object analogue of <see cref="UIElement.IsAttachedToTree"/>: whether some watch
+    /// chain from this object ends at a tree-attached element — an attached element (or a wrapper
+    /// an attached element consumes, transitively) currently holds this object in a watched slot.
+    /// Detached-but-alive consumers do not count: participation is tree membership, not liveness.
+    /// </summary>
+    internal bool IsWatchedFromAttachedTree(int depth = 0)
+    {
+        if (_subObjectWatchers is not {} watchers)
+            return false;
+
+        if (depth >= MaxWatchChainDepth)
+            return true; // cycle / pathological nesting — claim participation (see MaxWatchChainDepth)
+
+        for (var i = 0; i < watchers.Count; i++)
+        {
+            var host = watchers[i].Host;
+            if (host is UIElement element ? element.IsAttachedToTree : host.IsWatchedFromAttachedTree(depth + 1))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The sub-object detach-stop follow-through (§9.6): called when an edge into the watch graph
+    /// went away — this host detached from the tree (its watches survive an ordinary detach), or
+    /// one of its watches was removed (value replaced / store torn down). Retires the standalone
+    /// animations of every watched target that no longer participates in an attached tree.
+    /// </summary>
+    internal void RetireOrphanedSubObjectAnimations()
+    {
+        if (_subObjectWatchRecords is not {} records)
+            return;
+
+        for (var i = 0; i < records.Count; i++)
+            RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth: 0);
+    }
+
+    /// <summary>
+    /// Retires every scheduler instance targeting <paramref name="target"/> when it no longer
+    /// participates in an attached tree, then descends into the targets IT hosts (a wrapped
+    /// wrapper's participation may have flowed through it). Elements never retire here — their
+    /// animations ride the element detach-stop lane (<c>AnimationScheduler.OnElementDetached</c>).
+    /// </summary>
+    private static void RetireSubObjectAnimationsIfOrphaned(UIObject target, int depth)
+    {
+        if (target is UIElement || depth >= MaxWatchChainDepth)
+            return;
+
+        if (target.IsWatchedFromAttachedTree())
+            return; // still consumed from an attached tree — keeps animating (the sharing rule)
+
+        AnimationScheduler.CurrentOrNull?.OnSubObjectDetached(target);
+
+        if (target._subObjectWatchRecords is {} records)
+        {
+            for (var i = 0; i < records.Count; i++)
+                RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth + 1);
+        }
     }
 
     [Conditional("DEBUG")]

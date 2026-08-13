@@ -100,6 +100,37 @@ public interface IXamlAttachablePropertyProvider
 }
 
 /// <summary>
+/// An OPTIONAL companion seam to <see cref="IXamlTypeMetadataProvider"/> — the exact shape of
+/// <see cref="IXamlAttachablePropertyProvider"/>: it enumerates a type's <em>own</em> settable member names —
+/// those DECLARED on the type or brought onto it via <c>AddOwner</c>, but <em>not</em> the purely-inherited
+/// members it merely receives from its base types. A completion host uses it to rank suggestions: a member the
+/// element itself introduces (band 2) is more relevant than one inherited from a distant base, so the host tags
+/// a candidate as "own" by simple set-membership against this result (the names are aligned with
+/// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/>). It is a SEPARATE interface rather than a member
+/// on <see cref="IXamlTypeMetadataProvider"/> so it stays non-breaking on netstandard2.0 — that runtime has no
+/// default interface methods (a body on an interface member is <c>CS8701</c> there), so an added interface method
+/// cannot carry an empty default and would break every existing provider. Existing providers keep working
+/// untouched; a provider that CAN answer opts in by implementing this. The runtime reflection provider
+/// (<c>ReflectionXamlMetadata</c>) implements it over reflection + the property registry; the build-time symbol
+/// provider does not (generated/AOT completion is not the host's path — the host drives the runtime reflection
+/// provider). A consumer probes for the capability (<c>provider is IXamlOwnMemberProvider om</c>) and simply
+/// treats every member as inherited when it is absent, mirroring the loader's <c>{x:Static}</c> probe.
+/// </summary>
+public interface IXamlOwnMemberProvider
+{
+    /// <summary>
+    /// The settable member names DECLARED or <c>AddOwner</c>'d on <em>exactly</em> <paramref name="targetType"/>
+    /// — never a member purely inherited from a base type. The result honours the same XAML-settable filter as
+    /// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/> (a read-only member appears in neither), so it
+    /// is a provenance subset the host can intersect with the known-member set. Empty when none apply, or when the
+    /// provider cannot map the type (e.g. a symbol backend whose <see cref="IXamlType.UnderlyingSystemType"/> is
+    /// <see langword="null"/>). Registry-backed members require their owner type to have registered; forcing that
+    /// registration is the provider's concern.
+    /// </summary>
+    string[] GetOwnMemberNames(IXamlType targetType);
+}
+
+/// <summary>
 /// The outcome of a type resolution: the resolved type, an ambiguity, or a miss.
 /// </summary>
 public readonly struct XamlTypeResolution

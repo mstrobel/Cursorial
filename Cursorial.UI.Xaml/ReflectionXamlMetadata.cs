@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider, IXamlOwnMemberProvider
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -65,15 +65,90 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         if (type.UnderlyingSystemType is not { } clrType)
             return Array.Empty<string>();
 
+        // Force static ctors (and their bases') so every inherited UIProperty registration is present before the
+        // settable filter consults the registry — mirrors BuildType; idempotent and cheap after the first run.
+        EnsureRegistered(clrType);
+
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var prop in clrType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            names.Add(prop.Name);
+            if (IsSettableMember(clrType, prop)) // read-only computed props (Bounds, IsFocused, …) are not XAML-settable
+                names.Add(prop.Name);
         foreach (var evt in clrType.GetEvents(BindingFlags.Public | BindingFlags.Instance))
-            names.Add(evt.Name);
+            names.Add(evt.Name); // events classify as (settable) event-handler members
 
         var result = new string[names.Count];
         names.CopyTo(result);
         return result;
+    }
+
+    /// <inheritdoc/>
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Own-member enumeration for completion-ranking provenance over a resolved XAML type.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Own-member enumeration for completion-ranking provenance over a resolved XAML type.")]
+    public string[] GetOwnMemberNames(IXamlType targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        // A symbol backend has no runtime type to reflect / query the registry with; return nothing (the host
+        // treats every member as inherited). The reflection provider always carries the CLR type.
+        if (targetType.UnderlyingSystemType is not { } clrType)
+            return Array.Empty<string>();
+
+        EnsureRegistered(clrType);
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+
+        // (1) Reflection members DECLARED on EXACTLY clrType (DeclaredOnly ⇒ never a purely-inherited base
+        //     member), under the same settable filter as GetKnownMemberNames.
+        foreach (var prop in clrType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            if (IsSettableMember(clrType, prop))
+                names.Add(prop.Name);
+        foreach (var evt in clrType.GetEvents(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            names.Add(evt.Name);
+
+        // (2) Registry members whose EXACT owner is clrType — declared OR AddOwner'd here. This recovers
+        //     AddOwner'd members reflection's DeclaringType misses: their CLR wrapper is often absent on the new
+        //     owner (e.g. TextElement.Foreground AddOwner'd onto Control, which declares no Foreground wrapper).
+        //     Read-only ones are excluded by the shared settable rule.
+        foreach (var property in UIPropertyRegistry.OwnMembersOf(clrType))
+            if (IsSettable(property))
+                names.Add(property.Name);
+
+        var result = new string[names.Count];
+        names.CopyTo(result);
+        return result;
+    }
+
+    // ── Settable-member classification (Cursorial's property read-only model, NOT reflection CanWrite) ──────
+
+    /// <summary>
+    /// The XAML-settable rule for a REGISTERED <see cref="UIProperty"/>, shared by both member-enumeration
+    /// paths: a property is settable iff it is not <see cref="UIProperty.IsReadOnly"/>. A read-write
+    /// <c>StyledProperty</c> stays settable through the property system (<c>SetValue</c>/XAML) even when its CLR
+    /// wrapper is get-only; a <c>RegisterReadOnly</c> styled/attached property and a setter-less
+    /// <c>RegisterDirect</c> property are read-only (their key/absent-setter is the only write surface).
+    /// </summary>
+    private static bool IsSettable(UIProperty property) => !property.IsReadOnly;
+
+    /// <summary>
+    /// The XAML-settable rule for a reflected CLR property member. The property model is authoritative: when the
+    /// member is a registered <see cref="UIProperty"/> its <see cref="UIProperty.IsReadOnly"/> flag decides
+    /// (regardless of the CLR wrapper's accessors); otherwise it is a plain CLR property, settable iff it exposes
+    /// a PUBLIC setter. Reflection <c>CanWrite</c> is deliberately NOT used — it is <see langword="true"/> for a
+    /// non-public setter (e.g. <c>UIElement.IsArrangeValid</c>'s <c>private set</c>), which is not XAML-settable.
+    /// </summary>
+    private static bool IsSettableMember(Type clrType, PropertyInfo property)
+        => UIPropertyRegistry.Find(clrType, property.Name) is { } uiProperty
+            ? IsSettable(uiProperty)
+            : property.GetSetMethod(nonPublic: false) is not null;
+
+    /// <summary>
+    /// Forces the static constructors of <paramref name="clrType"/> and its bases so every inherited /
+    /// <c>AddOwner</c>'d <see cref="UIProperty"/> registration is present before a registry lookup (a derived
+    /// type's static ctor does not run its base's). Idempotent; a no-op once the type has initialized.
+    /// </summary>
+    private static void EnsureRegistered(Type clrType)
+    {
+        for (Type? t = clrType; t is not null && t != typeof(object); t = t.BaseType)
+            RuntimeHelpers.RunClassConstructor(t.TypeHandle);
     }
 
     /// <inheritdoc/>

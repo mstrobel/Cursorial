@@ -132,6 +132,40 @@ internal static class UIPropertyRegistry
         }
     }
 
+    /// <summary>
+    /// The properties whose EXACT registration owner is <paramref name="type"/> — DECLARED on it, or brought
+    /// onto it via <c>AddOwner</c> (a styled property AddOwner'd onto a new owner, or an attached property
+    /// AddOwner'd onto an element type, which surfaces as a plain member there — e.g.
+    /// <c>TextElement.Foreground</c> onto <c>TextBlock</c>). A type's OWN attached-property DECLARATIONS stay
+    /// out (Grid.Row is a member of Grid's children, not of Grid), exactly mirroring
+    /// <see cref="PropertiesForType"/>'s rule. Registration-ordered, deduplicated. This is the registry half of
+    /// "own member" completion provenance (task #31): reflection's <c>DeclaringType</c> misses AddOwner'd
+    /// members (their CLR wrapper is often absent on the new owner), which this query recovers.
+    /// </summary>
+    internal static IReadOnlyList<UIProperty> OwnMembersOf(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        lock (Gate)
+        {
+            var own = new HashSet<UIProperty>();
+            foreach (var ((owner, _), property) in ByOwnerAndName)
+            {
+                if (owner != type)
+                    continue;
+
+                // An attached DECLARATION by this very type is not a settable member OF the type (Grid.Row
+                // is set on Grid's children); an AddOwner'd attached property (owner != its declaring owner)
+                // IS a plain member here.
+                if (property.IsAttached && property.OwnerType == owner)
+                    continue;
+
+                own.Add(property);
+            }
+
+            return [.. ById.Where(own.Contains)];
+        }
+    }
+
     /// <summary>The attached properties declared by <paramref name="ownerType"/>, registration-ordered.</summary>
     internal static IReadOnlyList<UIProperty> AttachedByOwner(Type ownerType)
     {

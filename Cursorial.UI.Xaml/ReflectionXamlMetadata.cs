@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -73,6 +73,31 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
 
         var result = new string[names.Count];
         names.CopyTo(result);
+        return result;
+    }
+
+    /// <inheritdoc/>
+    public XamlAttachableMember[] GetAttachableMembers(IXamlType targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        // A symbol backend has no runtime type to query the registry with; return nothing (the host's
+        // completion falls back gracefully). The reflection provider always carries the CLR type.
+        if (targetType.UnderlyingSystemType is not { } clrType)
+            return Array.Empty<XamlAttachableMember>();
+
+        // The registry answers "which attached properties may be set on this target" (HostType assignable
+        // from the target); we only reshape each UIProperty into the host-presentable (owner, name) form.
+        var attachable = UIPropertyRegistry.AttachableOnType(clrType);
+        if (attachable.Count == 0)
+            return Array.Empty<XamlAttachableMember>();
+
+        var result = new XamlAttachableMember[attachable.Count];
+        for (var i = 0; i < attachable.Count; i++)
+        {
+            var owner = attachable[i].OwnerType;
+            result[i] = new XamlAttachableMember(owner.Name, owner.Namespace ?? string.Empty, attachable[i].Name);
+        }
+
         return result;
     }
 

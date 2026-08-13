@@ -204,7 +204,8 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
                 continue;
 
             var owner = property.OwnerType;
-            result.Add(new XamlAttachableMember(owner.Name, owner.Namespace ?? string.Empty, property.Name));
+            result.Add(new XamlAttachableMember(
+                owner.Name, owner.Namespace ?? string.Empty, property.Name, property.TargetsChildElements));
         }
 
         return result.Count == 0 ? Array.Empty<XamlAttachableMember>() : result.ToArray();

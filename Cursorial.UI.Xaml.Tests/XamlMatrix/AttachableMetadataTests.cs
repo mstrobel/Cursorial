@@ -114,6 +114,33 @@ public sealed class AttachableMetadataTests
     }
 
     [Fact]
+    public void GetAttachableMembers_ReportsTargetsChildElements_ForChildPositioningOwners()
+    {
+        // The parent-context band lifts ONLY child-positioning attached properties. The seam carries
+        // UIProperty.TargetsChildElements so a host can tell Grid.Row (set on a Grid's child) from an attached
+        // SERVICE like NameScope (owner UIElement, attachable everywhere but never child-positioning) or a
+        // formatting default like TextElement.TextTrimming (self-usable, unmarked).
+        _ = UIControls.Grid.RowProperty;
+        _ = UIControls.Canvas.LeftProperty;
+        _ = UIControls.DockPanel.DockProperty;
+        _ = UIControls.TextElement.TextTrimmingProperty;
+        _ = Cursorial.UI.NameScope.NameScopeProperty;
+
+        var provider = (IXamlAttachablePropertyProvider) ReflectionXamlMetadata.Instance;
+        var target = ReflectionXamlMetadata.Instance.GetXamlType(typeof(UIControls.TextBlock)).ClrType;
+        var byName = provider.GetAttachableMembers(target)
+                             .ToDictionary(m => m.QualifiedName, m => m.TargetsChildElements, StringComparer.Ordinal);
+
+        // Child-positioning owners: marked, so a child inside them gets the parent-context lift.
+        Assert.True(byName["Grid.Row"]);
+        Assert.True(byName["Canvas.Left"]);
+        Assert.True(byName["DockPanel.Dock"]);
+        // Broadly-hosted service / formatting attached properties: NOT child-positioning.
+        Assert.False(byName["UIElement.NameScope"]);
+        Assert.False(byName["TextElement.TextTrimming"]);
+    }
+
+    [Fact]
     public void ProviderWithoutTheSeam_ProbeIsFalse_AndConsumerFallsBackToEmpty()
     {
         // A metadata provider that does not implement the optional seam — the netstandard2.0-safe stand-in for a

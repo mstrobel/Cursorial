@@ -33,12 +33,16 @@ public class Section09_Capabilities
     }
 
     [Fact]
-    public void S141_Ansi16Host_ExactlyTierEmojiAndUnicode()
+    public void S141_Ansi16Host_ExactlyTierEmojiUnicodeAndLocal()
     {
         using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
 
-        // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04).
-        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode"], tree.Root.Classes.ToArray());
+        // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04). caps-local is
+        // present because the Local/Remote axis derives from the PROCESS environment, not the negotiated
+        // snapshot — EnvironmentReader.Instance.IsSSH() (SSH_CONNECTION / SSH_TTY) is false for a local test
+        // run, and Local is stamped whenever it is false. caps-remote never appears: no derivation sets
+        // StyleCapabilities.Remote yet (an SSH run today stamps NEITHER axis class, it only drops caps-local).
+        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode", "caps-local"], tree.Root.Classes.ToArray());
     }
 
     [Theory]

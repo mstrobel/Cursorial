@@ -8,6 +8,7 @@ using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Themes;
 
 using UIControls = Cursorial.UI.Controls;
 
@@ -28,8 +29,12 @@ namespace Cursorial.Tests.UI.Windowing;
 /// rendering mottled: correctly veiled where a window painted an RGB background, near-solid where it did not.
 /// </para>
 /// <para>
-/// Concretely, on the headless truecolor preset (default background <c>#1E1E2E</c>) with the scrim's alpha at
-/// <c>0.55 → 140</c>: a bare cell must composite to <c>#11121D</c>, not the scrim's own <c>#080910</c>.
+/// Since the guaranteed root background (<c>RootElementHost.BackgroundProperty</c>, default resource
+/// <c>Theme.ElevationDesktop</c>), no cell of the root band is truly bare anymore: cells the app leaves
+/// unpainted carry the theme's Desktop-elevation background (<c>#080910</c> on the default dark theme), and
+/// the scrim blends against THAT — the terminal's derived default (<c>#1E1E2E</c> on the headless truecolor
+/// preset) is no longer any root cell's blend base. The two backdrop cases these tests pin are therefore
+/// "app-painted" (an explicit element background) and "app-bare" (the root's guaranteed background).
 /// </para>
 /// </remarks>
 public sealed class ObscuredOverlayBlendTests
@@ -79,24 +84,39 @@ public sealed class ObscuredOverlayBlendTests
         return (host, wm);
     }
 
+    // The guaranteed root background — Theme.ElevationDesktop resolved through the ACTIVE theme, so the pin
+    // derives from the theme dictionary rather than restating a constant the theme owns.
+    private static Color GuaranteedRootBackground(UIHeadlessHost host)
+        => ((SolidColorBrush)host.Application.RootElement!.FindResource(ThemeKeys.ElevationDesktop)!).Color;
+
     [Fact]
-    public void ModalScrim_OverABareRegion_BlendsAgainstTheTerminalDefault_NotItsOwnColorAtFullOpacity()
+    public void ModalScrim_OverAnAppBareRegion_BlendsAgainstTheRootsGuaranteedBackground_NotTheTerminalDefault()
     {
         var (host, _) = ObscuredRoot();
         using var hostScope = host;
 
+        // The root guarantees a background (Theme.ElevationDesktop — #080910 on the default dark theme), so
+        // an app-bare cell's backdrop under the scrim is the theme value, not the terminal default.
+        var guaranteed = GuaranteedRootBackground(host);
+        Assert.Equal(Color.FromRgb(0x08, 0x09, 0x10), guaranteed);
+
         var terminalDefault = host.FrameBuffer.DefaultStyle.Background;
-        Assert.Equal(ColorKind.Rgb, terminalDefault.Kind);   // the derived blank the fix depends on
+        Assert.Equal(ColorKind.Rgb, terminalDefault.Kind);   // the derived blank still exists...
         Assert.Equal(Color.FromRgb(30, 30, 46), terminalDefault);
 
         var actual = host.FrameBuffer[BareCell.Column, BareCell.Row].Style.Background;
 
-        // The blend, computed the way the compositor would if the base were the target's own blank.
-        Assert.Equal(Color.Composite(Scrim, terminalDefault, BlendingModes.Default), actual);
+        // The blend, computed against the guaranteed root background. On the default dark theme this is
+        // DEGENERATE — the scrim's own RGB (#080910) equals ElevationDesktop, so blending it over itself
+        // lands on the shared value; the proof that the scrim's alpha is honored (blended, not painted at
+        // full opacity) lives in ModalScrim_OverAPaintedRegion_StillBlendsAsItAlreadyDid, whose backdrop
+        // is distinct from the scrim.
+        Assert.Equal(Color.Composite(Scrim, guaranteed, BlendingModes.Default), actual);
+        Assert.Equal(Color.FromRgb(0x08, 0x09, 0x10), actual);
 
-        // ... which is #11121D. NOT #080910 — the scrim's own color at full opacity, i.e. alpha discarded.
-        Assert.Equal(Color.FromRgb(0x11, 0x12, 0x1D), actual);
-        Assert.NotEqual(Color.FromRgb(0x08, 0x09, 0x10), actual);
+        // ... but the terminal default is no longer the blend base: the old contract's #11121D
+        // (scrim over #1E1E2E) must NOT appear under an app-bare cell.
+        Assert.NotEqual(Color.Composite(Scrim, terminalDefault, BlendingModes.Default), actual);
     }
 
     [Fact]
@@ -112,18 +132,24 @@ public sealed class ObscuredOverlayBlendTests
     }
 
     [Fact]
-    public void NoModal_TheBareRootBand_StillReadsTheTerminalDefaultBlank()
+    public void NoModal_TheBareRootBand_ReadsTheGuaranteedThemeBackground_NotTheTerminalDefaultBlank()
     {
-        // The guard on "appearance must not change": the derived blank IS the terminal's own default promoted
-        // to RGB, so with no scrim in play an unpainted cell must read exactly the buffer's blank — the same
-        // value every cell the compositor never touched already holds.
+        // The root's guaranteed background changes what "appearance" a bare band has AT ALL: with no scrim in
+        // play, a cell the app never painted no longer shows the terminal's own default through — it reads the
+        // theme's Desktop-elevation background (RootElementHost.BackgroundProperty's default resource), which
+        // deliberately DIFFERS from the terminal default so the app controls its canvas on any terminal.
         var host = UIHeadlessHost.Create(new UIHeadlessHostOptions { InitialSize = new Size(60, 20) });
         using var hostScope = host;
 
         host.ShowRoot(new UIControls.StackPanel());
         Assert.True(host.RunUntilIdle());
 
-        Assert.Equal(host.FrameBuffer.DefaultStyle.Background,
-                     host.FrameBuffer[BareCell.Column, BareCell.Row].Style.Background);
+        var guaranteed = GuaranteedRootBackground(host);
+        Assert.Equal(Color.FromRgb(0x08, 0x09, 0x10), guaranteed); // default dark theme's ElevationDesktop
+
+        var actual = host.FrameBuffer[BareCell.Column, BareCell.Row].Style.Background;
+
+        Assert.Equal(guaranteed, actual);
+        Assert.NotEqual(host.FrameBuffer.DefaultStyle.Background, actual); // the terminal blank no longer shows through
     }
 }

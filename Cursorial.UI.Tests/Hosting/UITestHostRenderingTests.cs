@@ -5,12 +5,15 @@
 
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
+using Cursorial.UI.Themes;
 
 namespace Cursorial.Tests.UI.Hosting;
 
@@ -37,14 +40,19 @@ public sealed class UITestHostRenderingTests
         Assert.StartsWith("BBBBBB", host.GetRowText(1));
         Assert.Equal("A", host.GetCell(0, 0).Grapheme);
         Assert.Equal("B", host.GetCell(5, 1).Grapheme);
-        // A cell no probe painted carries the SURFACE's blank, which is not necessarily CellStyle.Default
-        // (what Cell.IsBlank tests): on a truecolor host the buffer's blank is the terminal's reported default
-        // fg/bg promoted to RGB by CellBuffer.DeriveDefaultStyle, and the frame compositor resets the cells it
-        // rewrites to that derived blank rather than flattening them back to Color.Default.
+        // A cell no probe painted no longer reads the bare SURFACE blank: RootElementHost guarantees a
+        // background (BackgroundProperty's default resource, Theme.ElevationDesktop), painted background-only
+        // under everything the app leaves bare. A background-only tint also folds the covered cell's
+        // FOREGROUND under itself (SceneCompositor's glyphless arm — so a translucent tint dims a covered
+        // glyph consistently), and this tint is opaque, so both color channels land on the theme value: the
+        // unpainted cell reads fg = bg = ElevationDesktop over the surface's blank (the terminal's reported
+        // defaults promoted to RGB by CellBuffer.DeriveDefaultStyle), every other channel still the blank's.
+        var desktop = ((SolidColorBrush)host.Application.RootElement!.FindResource(ThemeKeys.ElevationDesktop)!).Color;
+        Assert.Equal(Color.FromRgb(0x08, 0x09, 0x10), desktop); // the default dark theme's ElevationDesktop
         var unpainted = host.GetCell(6, 0);
         Assert.Equal(CellKind.Single, unpainted.Kind);
         Assert.True(string.IsNullOrEmpty(unpainted.Grapheme));
-        Assert.Equal(host.FrameBuffer.DefaultStyle, unpainted.Style);
+        Assert.Equal(host.FrameBuffer.DefaultStyle.WithForeground(desktop).WithBackground(desktop), unpainted.Style);
 
         // Byte assertions: the first frame emitted a non-empty delta containing the painted runs.
         var wire = System.Text.Encoding.UTF8.GetString(host.LastFrameBytes.Span);

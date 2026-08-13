@@ -189,7 +189,16 @@ public readonly struct XamlTypeResolution
 /// is expressed as plain strings (never <see cref="System.Type"/>), so a symbol backend could supply the same
 /// shape without loading the runtime type.
 /// </remarks>
-public readonly record struct XamlAttachableMember(string OwnerName, string OwnerNamespace, string PropertyName)
+/// <param name="TargetsChildElements">
+/// Whether the owner INTENDS this property to be attached on its child elements — a container reading
+/// per-child layout/config (<c>Grid.Row</c>, <c>DockPanel.Dock</c>, <c>Canvas.Left</c>, <c>Ribbon.ButtonSize</c>),
+/// mirroring <c>UIProperty.TargetsChildElements</c>. A completion host uses it to lift ONLY these to the
+/// parent-context band when the element sits inside such a container: a broadly-hosted attached SERVICE
+/// (<c>NameScope</c>, <c>ToolTipService</c>, owner <c>UIElement</c>) is attachable everywhere but is not
+/// child-positioning, so it stays out of that band. <see langword="false"/> when unreported.
+/// </param>
+public readonly record struct XamlAttachableMember(
+    string OwnerName, string OwnerNamespace, string PropertyName, bool TargetsChildElements = false)
 {
     /// <summary>The XAML-presentable qualified form — <c>Owner.Property</c> (e.g. <c>Grid.Column</c>).</summary>
     public string QualifiedName => OwnerName + "." + PropertyName;

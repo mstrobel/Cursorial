@@ -123,6 +123,17 @@ public sealed class SettableMemberMetadataTests
         Assert.DoesNotContain("DesiredSize", stack);
     }
 
+    [Fact]
+    public void KnownMembers_IncludeReadOnlyResourceDictionary_Bug1Dictionaries()
+    {
+        // Bug 1, dictionary arm: a read-only ResourceDictionary property (UIElement.Resources) is populated in
+        // place via <Owner.Resources>…</Owner.Resources>, so it is content-settable and MUST be enumerable. The
+        // loader fills it through the dictionary add-item path, which IsCollectionType (list-only, and it
+        // reports ResourceDictionary as false) does not cover — so content-settability names it explicitly.
+        var members = KnownMembers(typeof(UIControls.StackPanel));
+        Assert.Contains("Resources", members);
+    }
+
     // ── Change 2: own-member provenance for band-2 ranking ──────────────────────────────────────────
 
     [Fact]

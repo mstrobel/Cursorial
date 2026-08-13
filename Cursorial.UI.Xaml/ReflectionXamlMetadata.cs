@@ -123,21 +123,25 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
     // settable in ANY XAML form, the UNION of two disjoint ways:
     //   (a) ATTRIBUTE-settable — a settable SCALAR: a non-read-only UIProperty (regardless of its CLR
     //       wrapper's accessors), or a plain CLR property exposing a PUBLIC setter.
-    //   (b) CONTENT-settable — a read-only property whose TYPE is a COLLECTION populated in place via
-    //       property-element / content syntax (<Panel.Children>…</Panel.Children>, Style.Setters,
-    //       StackPanel.Children). The signal is IsCollectionType — the very test the loader uses to decide a
-    //       property is filled from child elements (ContentPropertyIsCollection / the collection-fill getter
-    //       in BuildMember), so a member that CAN be populated by children is enumerable.
+    //   (b) CONTENT-settable — a read-only property populated in place via property-element / content syntax:
+    //       a COLLECTION (<Panel.Children>…</Panel.Children>, Style.Setters, StackPanel.Children) OR a
+    //       ResourceDictionary (<Button.Resources>…</Button.Resources>). Both are things the loader fills from
+    //       child elements — collections through IsCollectionType (ContentPropertyIsCollection / the
+    //       collection-fill getter in BuildMember), dictionaries through the ResourceDictionary add-item path
+    //       (BuildMember's addDictionaryItem). IsCollectionType deliberately reports ResourceDictionary as
+    //       false (it routes to the dictionary populator, not the list one), so content-settability must name
+    //       it explicitly — otherwise a read-only Resources vanishes from property-element completion.
     // Read-only SCALARS (Bounds, DesiredSize, IsFocused) are settable in NEITHER form and stay excluded — the
     // #31 fix the attribute path depends on. The union is the complete "known members" set; a caller that
     // needs the attribute-vs-content split (attribute completion wants scalars only; property-element
-    // completion wants scalars + read-only collections) recovers it per-member from the resolved XamlMember's
-    // collection-ness (the designer host already type-narrows the enumeration this way).
+    // completion wants scalars + read-only collections/dictionaries) recovers it per-member from the resolved
+    // XamlMember's collection-ness (the designer host already type-narrows the enumeration this way).
 
-    /// <summary>True when <paramref name="memberType"/> is filled from child elements — the loader's
-    /// collection-population signal (<see cref="IsCollectionType"/>), so a read-only property of this type is
-    /// still CONTENT-settable via property-element / content syntax.</summary>
-    private static bool IsContentSettable(Type memberType) => IsCollectionType(memberType);
+    /// <summary>True when <paramref name="memberType"/> is filled from child elements — a collection (the
+    /// loader's <see cref="IsCollectionType"/> signal) or a <see cref="ResourceDictionary"/> — so a read-only
+    /// property of this type is still CONTENT-settable via property-element / content syntax.</summary>
+    private static bool IsContentSettable(Type memberType)
+        => IsCollectionType(memberType) || typeof(ResourceDictionary).IsAssignableFrom(memberType);
 
     /// <summary>
     /// The XAML-settable rule for a REGISTERED <see cref="UIProperty"/>, shared by both member-enumeration

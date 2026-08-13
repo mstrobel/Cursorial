@@ -115,7 +115,6 @@
           <DockPanel>
             <DockPanel.Style>
               <Style RequiresCapabilities="Local, Truecolor">
-
                 <Style.Enter>
                   <BeginStoryboard>
                     <BeginStoryboard.Storyboard>
@@ -123,7 +122,7 @@
                         <Storyboard.Children>
                           <DoubleTrack Target="{StaticResource WelcomeBrush}"
                                        TargetProperty="{x:Static PhaseShiftedBrush.PhaseProperty}"
-                                       From="0.0" To="2.0" Duration="0:0:1.5"
+                                       From="0.0" To="2.0" Duration="0:0:1"
                                        Repeat="{x:Static RepeatBehavior.Forever}" />
                         </Storyboard.Children>
                       </Storyboard>
@@ -170,7 +169,7 @@
                 </ImagePresenter.PlaceholderContent>
               </ImagePresenter>
 
-              <GlyphPresenter Glyph="&#x2571;" Fill="True" Foreground="{StaticResource WelcomeBrush}" Margin="0,1,0,0"/>
+              <GlyphPresenter Glyph="&#x2571;" Fill="True" Foreground="{StaticResource WelcomeBrush}" Margin="0,2,0,0"  />
 
               <RichTextPresenter TextAlignment="Center"
                                  Margin="0,2,0,0"

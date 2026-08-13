@@ -97,7 +97,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AmberBrush}"                     Color="#e0af68"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RedBrush}"                       Color="#f7768e"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PurpleBrush}"                    Color="#bb9af7"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"            Color="#1f2335"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"            Color="#262a40"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"         Color="#7aa2f7"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"         Color="#0d0f19"/>
       <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"                      Brush="#414868"/>
@@ -124,7 +124,7 @@
     <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
     <ResourceDictionary x:Key="Light+Ansi256">
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWell}"                  Color="#f6f6f8"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"               Color="#d2d3da"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDesktop}"               Color="#e3e4e8"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationWindow}"                Color="#f6f6f8"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationPopup}"                 Color="#f6f6f8" Opacity="0.95"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.ElevationDialog}"                Color="#f6f6f8" Opacity="0.95"/>
@@ -175,7 +175,7 @@
       <SolidColorBrush x:Key="{x:Static ThemeKeys.AmberBrush}"                     Color="#8f5e15"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.RedBrush}"                       Color="#8c4351"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.PurpleBrush}"                    Color="#5a3e8e"/>
-      <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"            Color="#e9e9ed"/>
+      <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarBackground}"            Color="#caccd3"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltBackground}"         Color="#34548a"/>
       <SolidColorBrush x:Key="{x:Static ThemeKeys.StatusBarAltForeground}"         Color="#e9e9ed"/>
       <Pen             x:Key="{x:Static ThemeKeys.BorderPen}"                      Brush="#818392"/>

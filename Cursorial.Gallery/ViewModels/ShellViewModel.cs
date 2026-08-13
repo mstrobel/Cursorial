@@ -48,7 +48,8 @@ public sealed class ShellViewModel : ViewModelBase
         _selectedPage = Pages[0];
     }
 
-    public string ThemeDescription => $"{UIApplication.Current?.ActualThemeVariant.ToString().ToLowerInvariant()}";
+    public string ThemeDescription => $"{UIApplication.Current?.ActualThemeVariant.ToString().ToLowerInvariant()}" +
+                                      (UIApplication.Current?.EnvironmentReader.IsSSH() is true ? " (remote)" : " (local)");
 
     public bool DiagnosticsOverflowed { get; private set; }
 

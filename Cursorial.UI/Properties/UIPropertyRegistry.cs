@@ -276,10 +276,12 @@ internal static class UIPropertyRegistry
 
         if (!OwnersByShortName.TryGetValue(property.Name, out var owners))
             OwnersByShortName[property.Name] = owners = [];
+
         owners.Add(ownerType);
 
         if (!OwnerTypesBySimpleName.TryGetValue(ownerType.Name, out var types))
             OwnerTypesBySimpleName[ownerType.Name] = types = [];
+
         if (!types.Contains(ownerType))
             types.Add(ownerType);
     }

@@ -64,9 +64,9 @@ public sealed class ContentPresenter : UIElement
                                                     changed: OnForwardingDetailsChanged,
                                                     defaultValue: true);
 
-    /// <inheritdoc cref="TextBlock.IsTrimmedProperty"/>
+    /// <inheritdoc cref="TextElement.IsTrimmedProperty"/>
     public static readonly StyledProperty<bool> IsTrimmedProperty =
-        TextBlock.IsTrimmedProperty.AddOwner<ContentPresenter>();
+        TextElement.IsTrimmedProperty.AddOwner<ContentPresenter>();
 
     /// <summary>Whether trimmed content should be displayed in a tool tip on this content host</summary>
     public static readonly StyledProperty<bool> ShowTrimmedContentInToolTipProperty =
@@ -583,7 +583,7 @@ public sealed class ContentPresenter : UIElement
                                    : null;
         }
 
-        if (child!.GetValue(TextBlock.IsTrimmedProperty))
+        if (child!.GetValue(TextElement.IsTrimmedProperty))
         {
             if (alreadyHasTrimmedTextTip &&
                 GetValue(ToolTipService.TipProperty) is TextBlock existingTip &&
@@ -650,7 +650,7 @@ public sealed class ContentPresenter : UIElement
         => element is ITrimmedTextSource;
 
     private static string? GetUntrimmedText(UIElement? element, int maxToolTipWidth)
-        => element is ITrimmedTextSource source && element.GetValue(TextBlock.IsTrimmedProperty)
+        => element is ITrimmedTextSource source && element.GetValue(TextElement.IsTrimmedProperty)
                ? source.GetUntrimmedText(maxToolTipWidth)
                : null;
 

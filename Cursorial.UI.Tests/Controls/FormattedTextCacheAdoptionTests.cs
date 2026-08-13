@@ -178,12 +178,12 @@ public sealed class FormattedTextCacheAdoptionTests
 
         var (host, slot) = Show(presenter, columns: 10, rows: 2);
         using var _ = host;
-        Assert.True(presenter.GetValue(TextBlock.IsTrimmedProperty)); // ~5 rows in a 2-row slot
+        Assert.True(presenter.GetValue(TextElement.IsTrimmedProperty)); // ~5 rows in a 2-row slot
 
         // Grow the slot back: the layout was capped at 2 rows (RowCapBit) — reusing it for the
         // taller slot is how text used to stay trimmed forever after the space came back.
         Resize(host, slot, columns: 10, rows: 20);
-        Assert.False(presenter.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.False(presenter.GetValue(TextElement.IsTrimmedProperty));
     }
 
     [Fact]
@@ -193,9 +193,9 @@ public sealed class FormattedTextCacheAdoptionTests
 
         var (host, slot) = Show(presenter, columns: 30, rows: 2);
         using var _ = host;
-        Assert.True(presenter.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.True(presenter.GetValue(TextElement.IsTrimmedProperty));
 
         Resize(host, slot, columns: 30, rows: 30);
-        Assert.False(presenter.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.False(presenter.GetValue(TextElement.IsTrimmedProperty));
     }
 }

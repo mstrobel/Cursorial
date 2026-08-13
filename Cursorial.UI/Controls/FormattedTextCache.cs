@@ -672,12 +672,12 @@ internal sealed class FormattedTextCache
 
     /// <summary>
     /// The measure-time <c>IsTrimmed</c> advertisement (the D9 twins): stamp
-    /// <see cref="TextBlock.IsTrimmedPropertyKey"/> when the layout trimmed, clear it when this
+    /// <see cref="TextElement.IsTrimmedPropertyKey"/> when the layout trimmed, clear it when this
     /// advertisement was the only contributor, and return the measured size.
     /// </summary>
     public static Size MeasureAndAdvertiseTrimmed(UIElement host, FormattedText? layout)
     {
-        var wasMarkedTrimmed = host.GetValueSource(TextBlock.IsTrimmedProperty) is
+        var wasMarkedTrimmed = host.GetValueSource(TextElement.IsTrimmedProperty) is
                                {
                                    Kind: ValueSourceKind.Default,
                                    IsCurrentValue: true
@@ -686,22 +686,22 @@ internal sealed class FormattedTextCache
         if (layout is not null)
         {
             if (layout.HasTrimmedLines)
-                host.SetCurrentValue(TextBlock.IsTrimmedPropertyKey, true);
+                host.SetCurrentValue(TextElement.IsTrimmedPropertyKey, true);
             else if (wasMarkedTrimmed)
-                host.ClearValue(TextBlock.IsTrimmedPropertyKey);
+                host.ClearValue(TextElement.IsTrimmedPropertyKey);
 
             return layout.Size;
         }
 
         if (wasMarkedTrimmed)
-            host.ClearValue(TextBlock.IsTrimmedPropertyKey);
+            host.ClearValue(TextElement.IsTrimmedPropertyKey);
 
         return Size.Empty;
     }
 }
 
 /// <summary>
-/// A text element that advertises trimming through <see cref="TextBlock.IsTrimmedProperty"/> and
+/// A text element that advertises trimming through <see cref="TextElement.IsTrimmedProperty"/> and
 /// can produce the untrimmed payload for the trimmed-content tooltip — the surface
 /// <see cref="ContentPresenter"/> previously reached through a hard-coded four-type switch
 /// (UNIFIED-TEXT-SCOPING D8/D9's closed set, now open).

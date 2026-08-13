@@ -82,14 +82,12 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
     // The shared parse/format cache (UNIFIED-TEXT-SCOPING M2). Created lazily so no
     // base-constructor property plumbing can observe a null cache; internal so tests can observe
     // the fast-path routing counters.
-    private FormattedTextCache? _cache;
-
     internal FormattedTextCache Cache
-        => _cache ??= new FormattedTextCache(this, () =>
-        {
-            InvalidateMeasure();
-            InvalidateVisual();
-        });
+        => field ??= new FormattedTextCache(this, () =>
+                                                  {
+                                                      InvalidateMeasure();
+                                                      InvalidateVisual();
+                                                  });
 
     /// <summary>Creates an empty presenter.</summary>
     public AccessTextPresenter()
@@ -135,7 +133,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
     {
         // Format at the arranged budget and advertise trimming from it — TextBlock's spelling.
         var formatted = GetFormatted(Math.Max(1, finalSize.Columns), Math.Max(1, finalSize.Rows));
-        SetValue(TextBlock.IsTrimmedPropertyKey, formatted.HasTrimmedLines);
+        SetValue(TextElement.IsTrimmedPropertyKey, formatted.HasTrimmedLines);
         return finalSize;
     }
 

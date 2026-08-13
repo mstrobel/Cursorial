@@ -73,7 +73,7 @@ public sealed class Section49_TrimmedTextFixes
         var (host, _) = Show(presenter, columns: 5, rows: 1);
         using var _1 = host;
 
-        Assert.True(presenter.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.True(presenter.GetValue(TextElement.IsTrimmedProperty));
         // 4-column budget after the ellipsis: two whole clusters survive, no split pair.
         Assert.StartsWith("日本…", host.GetRowText(0));
     }

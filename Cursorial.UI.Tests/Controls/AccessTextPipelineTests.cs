@@ -287,7 +287,7 @@ public sealed class AccessTextPipelineTests
         using var _1 = host;
 
         Assert.StartsWith("Documen…", host.GetRowText(0));
-        Assert.True(presenter.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.True(presenter.GetValue(TextElement.IsTrimmedProperty));
 
         // The mnemonic survives the trim and wears the cue — through the FULL pipeline.
         Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Underline));

@@ -59,11 +59,9 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
     // the caps subscriptions, and the ResolveBounds arithmetic. Created LAZILY: the base
     // DrawnContentPresenter constructor coerces ClipToBounds, which consults
     // IsPrimaryContentVisible → ResolveSource before this type's constructor body could run.
-    private FormattedTextCache? _cache;
-
     // Internal (not private) so tests can observe the format counters (the TextBlock precedent).
     internal FormattedTextCache Cache
-        => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
+        => field ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static RichTextPresenter()
     {

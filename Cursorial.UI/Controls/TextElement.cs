@@ -122,6 +122,28 @@ public abstract class TextElement
         UIProperty.RegisterAttached<TextElement, UIElement, TextTrimming>(nameof(TextTrimming),
                                                                           defaultValue: TextTrimming.CharacterEllipsis);
 
+    /// <inheritdoc cref="IsTrimmedProperty"/>
+    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+        UIProperty.RegisterAttachedReadOnly<TextElement, UIElement, bool>(nameof(TextBlock.IsTrimmed));
+
+    /// <summary>Indicates whether any of the text content had trimming applied.</summary>
+    public static readonly AttachedProperty<bool> IsTrimmedProperty =
+        (AttachedProperty<bool>)IsTrimmedPropertyKey.Property;
+
+    /// <summary>Gets a value indicating whether the text content of the given element has trimmed.</summary>
+    public static bool GetIsTrimmed(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(IsTrimmedProperty);
+    }
+
+    /// <summary>Sets a value indicating whether the text content of the given element has trimmed.</summary>
+    internal static void SetIsTrimmed(UIElement element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(IsTrimmedProperty, value);
+    }
+
     /// <summary>
     /// The OSC 66 sizing for the element's text (proposal-glyph-runs Phase 3): a non-normal
     /// sizing renders the text scaled on supporting terminals and through the bundled fallback

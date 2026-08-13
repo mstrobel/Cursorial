@@ -60,11 +60,9 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
     // Foreground default into the parse, so a variant flip must invalidate it — pull-based,
     // through the key (sealed dictionaries never pulse — CD16). Created LAZILY: base-constructor
     // property plumbing (ClipToBounds coercion) may run before this type's constructor body.
-    private FormattedTextCache? _cache;
-
     // Internal (not private) so tests can observe the format counters (the TextBlock precedent).
     internal FormattedTextCache Cache
-        => _cache ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
+        => field ??= new FormattedTextCache(this, () => InvalidateContent(invalidateMeasure: true));
 
     static FigletPresenter()
     {

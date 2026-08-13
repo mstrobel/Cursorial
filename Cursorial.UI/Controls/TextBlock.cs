@@ -22,14 +22,12 @@ public class TextBlock : UIElement, ITrimmedTextSource
 {
     // Created lazily so no base-constructor property plumbing can observe a null cache.
     // Internal (not private) so tests can observe the M2 fast-path routing counters.
-    private FormattedTextCache? _cache;
-
     internal FormattedTextCache Cache
-        => _cache ??= new FormattedTextCache(this, () =>
-        {
-            InvalidateMeasure();
-            InvalidateVisual();
-        });
+        => field ??= new FormattedTextCache(this, () =>
+                                                  {
+                                                      InvalidateMeasure();
+                                                      InvalidateVisual();
+                                                  });
 
     // The plain lane's document default (BuildPlainText's spelling), in carrier form — shared
     // between the full pipeline's RichTextBuilder and the M2 fast path so both lanes carry the
@@ -63,12 +61,13 @@ public class TextBlock : UIElement, ITrimmedTextSource
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
         TextElement.TextTrimmingProperty.AddOwner<TextBlock>();
 
-    /// <inheritdoc cref="IsTrimmedProperty"/>
-    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
-        UIProperty.RegisterReadOnly<TextBlock, bool>(nameof(IsTrimmed));
+    /// <inheritdoc cref="TextElement.IsTrimmedProperty"/>
+    public static readonly StyledProperty<bool> IsTrimmedProperty =
+        TextElement.IsTrimmedProperty.AddOwner<TextBlock>();
 
-    /// <summary>Indicates whether any of the text content had trimming applied.</summary>
-    public static readonly StyledProperty<bool> IsTrimmedProperty = IsTrimmedPropertyKey.Property;
+    /// <inheritdoc cref="TextElement.IsTrimmedPropertyKey"/>
+    protected static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+        TextElement.IsTrimmedPropertyKey;
 
     /// <summary>The text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
@@ -179,7 +178,7 @@ public class TextBlock : UIElement, ITrimmedTextSource
     public TextTrimming TextTrimming { get => GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
 
     /// <inheritdoc cref="IsTrimmedProperty"/>
-    public bool IsTrimmed { get => GetValue(IsTrimmedProperty); protected set => SetValue(IsTrimmedPropertyKey, value); }
+    public bool IsTrimmed { get => GetValue(IsTrimmedProperty); protected set => SetValue(TextElement.IsTrimmedPropertyKey, value); }
 
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }

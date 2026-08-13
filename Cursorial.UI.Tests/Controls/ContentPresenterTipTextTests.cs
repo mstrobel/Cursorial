@@ -42,7 +42,7 @@ public sealed class ContentPresenterTipTextTests
         var (host, presenter) = Show(figlet, columns: 12, rows: 2);
         using var _1 = host;
 
-        Assert.True(figlet.GetValue(TextBlock.IsTrimmedProperty)); // a figlet in 2 rows is trimmed
+        Assert.True(figlet.GetValue(TextElement.IsTrimmedProperty)); // a figlet in 2 rows is trimmed
         var tip = Assert.IsType<TextBlock>(presenter.GetValue(ToolTipService.TipProperty));
         Assert.Contains("AAAA", tip.Text);
 
@@ -63,7 +63,7 @@ public sealed class ContentPresenterTipTextTests
         var (host, presenter) = Show(rtp, columns: 8, rows: 1);
         using var _1 = host;
 
-        Assert.True(rtp.GetValue(TextBlock.IsTrimmedProperty));
+        Assert.True(rtp.GetValue(TextElement.IsTrimmedProperty));
         var tip = Assert.IsType<TextBlock>(presenter.GetValue(ToolTipService.TipProperty));
         Assert.Contains("six", tip.Text);
 

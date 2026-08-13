@@ -325,6 +325,17 @@ public sealed partial class UIApplication : IAsyncDisposable
     public IClipboardService Clipboard => _clipboardService ??= new TerminalClipboardService(this);
 
     /// <summary>
+    /// The environment reader consulted during capability derivation — specifically the locality axis
+    /// (<see cref="StyleCapabilities.Local"/>), which the caps stamp derives from
+    /// <see cref="IEnvironmentReader.IsSSH"/>. Defaults to the process-backed
+    /// <see cref="EnvironmentReader.Instance"/> singleton; an injectable seam so tests (and future
+    /// config-overlay implementations) can make locality deterministic rather than depending on the
+    /// ambient process environment. Read at each capability stamp, so injecting a reader before the root
+    /// is shown determines the stamped locality.
+    /// </summary>
+    public IEnvironmentReader EnvironmentReader { get; set; } = IEnvironmentReader.Default;
+
+    /// <summary>
     /// The root element tree rendered on the single full-screen surface — <b>the P1 stand-in for
     /// window content</b> (S4's <c>Window.Content</c> replaces it at P7). UI-thread only; setting
     /// it detaches the previous root (returning its scenes to the pool) and wires the new one

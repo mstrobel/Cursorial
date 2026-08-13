@@ -43,10 +43,10 @@ public sealed class Section07_Converters : LoaderTestBase
                      Convert(typeof(InteractionState), "Focused, PointerOver")); // a second [Flags] enum
 
         // The uncovered-bit probe sits ONE bit above the enum's highest declared flag, so this boundary
-        // TRACKS the enum: 8192 (1 << 13) was uncovered until Local (1 << 13) / Remote (1 << 14) landed and
-        // declared it. Currently Remote = 1 << 14 is the top flag, so 1 << 15 is the first uncovered bit —
-        // the next flag addition claims it and must move this probe consciously.
-        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "32768")); // 1 << 15 — uncovered bit
+        // TRACKS the enum: 8192 (1 << 13) was uncovered until Local (1 << 13) landed and declared it.
+        // Local = 1 << 13 is the top flag, so 1 << 14 is the first uncovered bit — the next flag addition
+        // claims it and must move this probe consciously.
+        Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "16384")); // 1 << 14 — uncovered bit
         Assert.Throws<XamlParseException>(() => Convert(typeof(StyleCapabilities), "Bogus")); // unknown member
         // Non-flags boundary (pre-existing Enum.TryParse behavior, unchanged): a comma list ORs — one that
         // collapses to a DEFINED member is accepted; one that ORs to an undefined value rejects.

@@ -62,13 +62,8 @@ public enum StyleCapabilities
 
     /// <summary>
     /// Indicates, as best as the framework can determine, that an application is running locally and not through
-    /// an SSH tunnel. The inverse of <see cref="Remote"/>.
+    /// an SSH tunnel. This is the sole member of the locality axis: present means the process is local, absent
+    /// means it is remote (e.g., an SSH session). The top declared flag.
     /// </summary>
-    Local = 1 << 13,
-
-    /// <summary>
-    /// Indicates, as best as the framework can determine, that an application is running remotely, e.g., through
-    /// an SSH tunnel. The inverse of <see cref="Local"/>.
-    /// </summary>
-    Remote = 1 << 14
+    Local = 1 << 13
 }

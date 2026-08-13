@@ -34,8 +34,8 @@ public class StyledProperty<T> : UIProperty
     /// </summary>
     private CachedResolution? _lastResolution;
 
-    internal StyledProperty(string name, Type ownerType, PropertyMetadata<T> metadata, bool inherits, bool isAttached, bool isReadOnly)
-        : base(name, typeof(T), ownerType, inherits, isAttached, isDirect: false, isReadOnly)
+    internal StyledProperty(string name, Type ownerType, PropertyMetadata<T> metadata, bool inherits, bool isAttached, bool isReadOnly, bool targetsChildren = false)
+        : base(name, typeof(T), ownerType, inherits, isAttached, isDirect: false, isReadOnly, targetsChildren)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         _registeredMetadata = metadata;

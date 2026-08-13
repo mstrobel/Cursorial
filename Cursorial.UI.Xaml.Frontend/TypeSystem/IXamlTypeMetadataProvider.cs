@@ -39,6 +39,15 @@ public interface IXamlTypeMetadataProvider
     /// events), for a did-you-mean suggestion on a member-not-found diagnostic (P6 review P2-16). Takes the
     /// abstract <see cref="IXamlType"/> so a symbol backend can enumerate from a Roslyn symbol. May return
     /// an empty array when the provider cannot enumerate (no suggestion is offered).
+    /// <para>
+    /// The set is the UNION of the members settable in EITHER XAML form — attribute-settable scalars AND
+    /// content-settable read-only collections populated as property elements
+    /// (<c>&lt;Panel.Children&gt;…</c>, <c>Style.Setters</c>) — so it is the complete "known members" list
+    /// for a member spelled either way. Read-only SCALARS (<c>Bounds</c>, <c>DesiredSize</c>) are settable in
+    /// neither form and are absent. A caller that must split the two (attribute completion wants scalars only;
+    /// property-element completion wants scalars + collections) recovers the distinction per-member from the
+    /// resolved <see cref="XamlMember"/>'s value type / collection-ness.
+    /// </para>
     /// </summary>
     string[] GetKnownMemberNames(IXamlType type);
 }
@@ -121,8 +130,11 @@ public interface IXamlOwnMemberProvider
     /// <summary>
     /// The settable member names DECLARED or <c>AddOwner</c>'d on <em>exactly</em> <paramref name="targetType"/>
     /// — never a member purely inherited from a base type. The result honours the same XAML-settable filter as
-    /// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/> (a read-only member appears in neither), so it
-    /// is a provenance subset the host can intersect with the known-member set. Empty when none apply, or when the
+    /// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/> (a read-only SCALAR appears in neither; a
+    /// read-only content COLLECTION appears in both), so it is a provenance subset the host can intersect with
+    /// the known-member set. A type's own attached-property declaration is an own member only when it is
+    /// self-usable — a CHILD-only attached property (<c>Grid.Row</c>) is not, though it stays attachable on
+    /// children. Empty when none apply, or when the
     /// provider cannot map the type (e.g. a symbol backend whose <see cref="IXamlType.UnderlyingSystemType"/> is
     /// <see langword="null"/>). Registry-backed members require their owner type to have registered; forcing that
     /// registration is the provider's concern.

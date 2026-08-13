@@ -21,7 +21,7 @@ public class DockPanel : Panel
     /// fires on host types whose frozen per-type tables never saw this registration (doc §5.5).
     /// </summary>
     public static readonly AttachedProperty<Dock> DockProperty =
-        UIProperty.RegisterAttached<DockPanel, UIElement, Dock>("Dock", defaultValue: Dock.Left);
+        UIProperty.RegisterAttached<DockPanel, UIElement, Dock>("Dock", defaultValue: Dock.Left, targetsChildren: true);
 
     static DockPanel()
     {

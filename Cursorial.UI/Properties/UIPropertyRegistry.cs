@@ -137,10 +137,14 @@ internal static class UIPropertyRegistry
     /// onto it via <c>AddOwner</c> (a styled property AddOwner'd onto a new owner, or an attached property
     /// AddOwner'd onto an element type, which surfaces as a plain member there — e.g.
     /// <c>TextElement.Foreground</c> onto <c>TextBlock</c>). A type's OWN attached-property DECLARATIONS stay
-    /// out (Grid.Row is a member of Grid's children, not of Grid), exactly mirroring
-    /// <see cref="PropertiesForType"/>'s rule. Registration-ordered, deduplicated. This is the registry half of
-    /// "own member" completion provenance (task #31): reflection's <c>DeclaringType</c> misses AddOwner'd
-    /// members (their CLR wrapper is often absent on the new owner), which this query recovers.
+    /// out ONLY when they are marked <see cref="UIProperty.TargetsChildElements"/> (Grid.Row is set on Grid's
+    /// children, not on a Grid) — a self-usable attached declaration that describes the owner's own instance
+    /// (<c>ScrollViewer.HorizontalScrollBarVisibility</c>) IS an own member. Registration-ordered,
+    /// deduplicated. This is the registry half of "own member" completion provenance (task #31): reflection's
+    /// <c>DeclaringType</c> misses AddOwner'd members (their CLR wrapper is often absent on the new owner),
+    /// which this query recovers. The marker governs ONLY this membership; it never affects
+    /// <see cref="AttachableOnType"/> — a marked attached property is still attachable on any host, including
+    /// an instance of the owner type nested inside its own container.
     /// </summary>
     internal static IReadOnlyList<UIProperty> OwnMembersOf(Type type)
     {
@@ -153,10 +157,12 @@ internal static class UIPropertyRegistry
                 if (owner != type)
                     continue;
 
-                // An attached DECLARATION by this very type is not a settable member OF the type (Grid.Row
-                // is set on Grid's children); an AddOwner'd attached property (owner != its declaring owner)
-                // IS a plain member here.
-                if (property.IsAttached && property.OwnerType == owner)
+                // An attached DECLARATION this very type makes for its CHILDREN is not a settable member OF
+                // the type (Grid.Row is set on Grid's children) — excluded IFF it's marked as targeting child
+                // elements. An UNMARKED attached declaration is self-usable and stays (ScrollViewer.HorizontalScrollBar-
+                // Visibility). An AddOwner'd attached property (owner != its declaring owner) is a plain
+                // member here regardless of the marker (the marker only governs the DECLARING owner).
+                if (property.IsAttached && property.OwnerType == owner && property.TargetsChildElements)
                     continue;
 
                 own.Add(property);

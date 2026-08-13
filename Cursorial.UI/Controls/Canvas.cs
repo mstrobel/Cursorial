@@ -16,19 +16,19 @@ public class Canvas : Panel
 {
     /// <summary>The child's column offset from the canvas's left edge. <c>[AffectsParentArrange]</c>; beats <see cref="RightProperty"/> (LD16).</summary>
     public static readonly AttachedProperty<int?> LeftProperty =
-        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Left");
+        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Left", targetsChildren: true);
 
     /// <summary>The child's row offset from the canvas's top edge. <c>[AffectsParentArrange]</c>; beats <see cref="BottomProperty"/> (LD16).</summary>
     public static readonly AttachedProperty<int?> TopProperty =
-        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Top");
+        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Top", targetsChildren: true);
 
     /// <summary>The child's column offset from the canvas's right edge. <c>[AffectsParentArrange]</c></summary>
     public static readonly AttachedProperty<int?> RightProperty =
-        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Right");
+        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Right", targetsChildren: true);
 
     /// <summary>The child's row offset from the canvas's bottom edge. <c>[AffectsParentArrange]</c></summary>
     public static readonly AttachedProperty<int?> BottomProperty =
-        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Bottom");
+        UIProperty.RegisterAttached<Canvas, UIElement, int?>("Bottom", targetsChildren: true);
 
     static Canvas()
     {

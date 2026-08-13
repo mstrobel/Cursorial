@@ -104,6 +104,25 @@ public sealed class SettableMemberMetadataTests
         Assert.DoesNotContain(nameof(MetadataFixture.PlainPrivateSetter), members);
     }
 
+    [Fact]
+    public void KnownMembers_IncludeReadOnlyContentCollections_Bug1()
+    {
+        // Bug 1: read-only COLLECTION/content properties are populated IN PLACE via property-element /
+        // content syntax (<Panel.Children>…</Panel.Children>, <Style.Setters>…), so they are content-settable
+        // and MUST be enumerable — unlike read-only SCALARS, which are settable in no XAML form (stay excluded).
+        var style = KnownMembers(typeof(Style));
+        Assert.Contains("Setters", style);   // SetterCollection — get-only, the [ContentProperty], filled as elements
+        Assert.Contains("Children", style);  // StyleCollection — get-only nested styles
+        Assert.Contains("Selector", style);  // a settable SCALAR (init setter) stays present — the union includes both
+
+        var stack = KnownMembers(typeof(UIControls.StackPanel));
+        Assert.Contains("Children", stack);  // UIElementCollection — get-only, the panel's content collection
+
+        // Read-only SCALARS remain excluded (the #31 invariant the attribute path depends on).
+        Assert.DoesNotContain("Bounds", stack);
+        Assert.DoesNotContain("DesiredSize", stack);
+    }
+
     // ── Change 2: own-member provenance for band-2 ranking ──────────────────────────────────────────
 
     [Fact]
@@ -159,11 +178,29 @@ public sealed class SettableMemberMetadataTests
         // own but read-only — excluded (same settable rule as Change 1)
         Assert.DoesNotContain(nameof(MetadataFixture.ReadOnlyStyled), own);
         Assert.DoesNotContain(nameof(MetadataFixture.ReadOnlyDirect), own);
-        // the fixture's OWN attached-property DECLARATION is not a settable member of the fixture itself
+        // the fixture's CHILD-ONLY attached-property DECLARATION (marked) is not an own member of the fixture
         Assert.DoesNotContain("Slot", own);
+        // the fixture's SELF-USABLE attached-property DECLARATION (unmarked) IS an own member (marker polarity)
+        Assert.Contains(nameof(MetadataFixture.SelfAttached), own);
         // plain read-only / non-public-setter members — excluded
         Assert.DoesNotContain(nameof(MetadataFixture.PlainComputed), own);
         Assert.DoesNotContain(nameof(MetadataFixture.PlainPrivateSetter), own);
+    }
+
+    [Fact]
+    public void OwnMembers_SelfUsableAttached_Included_ChildOnlyAttached_Excluded_Bug2()
+    {
+        // Bug 2: a SELF-USABLE attached property (unmarked — set on the declaring type's own instance) IS an
+        // own member. ScrollViewer.[H|V]ScrollBarVisibility configure the ScrollViewer itself.
+        var sv = OwnMembers(typeof(UIControls.ScrollViewer)).ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("HorizontalScrollBarVisibility", sv);
+        Assert.Contains("VerticalScrollBarVisibility", sv);
+
+        // ...while a CHILD-ONLY attached property (marked — set on the container's children) is NOT an own
+        // member of the container. Grid.Row/Column are set on a Grid's children, never on a Grid as its surface.
+        var grid = OwnMembers(typeof(UIControls.Grid)).ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain("Row", grid);
+        Assert.DoesNotContain("Column", grid);
     }
 
     [Fact]
@@ -216,9 +253,17 @@ public sealed class SettableMemberMetadataTests
             UIProperty.RegisterDirect<MetadataFixture, int>(nameof(ReadOnlyDirect), o => o._readOnlyDirect);
         public int ReadOnlyDirect => _readOnlyDirect;
 
-        // an attached property DECLARED by the fixture — not a settable member OF the fixture itself
+        // a CHILD-ONLY attached property DECLARED by the fixture (marked targetsChildren) — set on OTHER
+        // elements, so NOT a settable member OF the fixture itself (the Grid.Row shape).
         public static readonly AttachedProperty<int> SlotProperty =
-            UIProperty.RegisterAttached<MetadataFixture, UIElement, int>("Slot");
+            UIProperty.RegisterAttached<MetadataFixture, UIElement, int>("Slot", targetsChildren: true);
+
+        // a SELF-USABLE attached property DECLARED by the fixture (UNMARKED) — describes the fixture's own
+        // instance, so it IS an own member (the ScrollViewer.HorizontalScrollBarVisibility shape). A get/set
+        // wrapper keeps it in the known-member set too (own ⊆ known).
+        public static readonly AttachedProperty<int> SelfAttachedProperty =
+            UIProperty.RegisterAttached<MetadataFixture, UIElement, int>("SelfAttached");
+        public int SelfAttached { get => GetValue(SelfAttachedProperty); set => SetValue(SelfAttachedProperty, value); }
 
         // plain CLR members
         public int PlainSettable { get; set; }

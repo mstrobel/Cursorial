@@ -42,7 +42,7 @@ public abstract class UIProperty
 
     private protected UIProperty(
         string name, Type propertyType, Type ownerType,
-        bool inherits, bool isAttached, bool isDirect, bool isReadOnly)
+        bool inherits, bool isAttached, bool isDirect, bool isReadOnly, bool targetsChildren = false)
     {
         ValidateName(name);
         ArgumentNullException.ThrowIfNull(propertyType);
@@ -55,6 +55,7 @@ public abstract class UIProperty
         IsAttached = isAttached;
         IsDirect = isDirect;
         IsReadOnly = isReadOnly;
+        TargetsChildElements = targetsChildren;
         Id = UIPropertyRegistry.Register(this);
     }
 
@@ -99,6 +100,21 @@ public abstract class UIProperty
 
     /// <summary>Whether this is an attached property (settable on host instances other than the owner).</summary>
     public bool IsAttached { get; }
+
+    /// <summary>
+    /// Whether this attached property is INTENDED to be attached on the owner's child elements (a container
+    /// reading per-child layout/config), rather than describing the declaring <see cref="OwnerType"/>'s OWN
+    /// instance. This is a completion-RANKING signal, not a settability gate: a marked property
+    /// (<c>Grid.Row</c>, <c>DockPanel.Dock</c>, <c>Canvas.Left</c>) is excluded from its owner's own-member
+    /// set (<c>UIPropertyRegistry.OwnMembersOf</c> — the band-2 provenance) yet remains fully attachable on
+    /// any host, INCLUDING an instance of the owner type nested inside its own container (a <c>Grid</c>
+    /// inside a <c>Grid</c> still takes <c>Grid.Row</c> through the attachable path — the marker never
+    /// touches <c>AttachableOnType</c>). Unmarked (the default) means <em>self-usable</em>: the property
+    /// describes the owner's own instance (<c>ScrollViewer.HorizontalScrollBarVisibility</c>) and IS an own
+    /// member. Only meaningful when <see cref="IsAttached"/> is <see langword="true"/>; always
+    /// <see langword="false"/> for a non-attached property.
+    /// </summary>
+    public bool TargetsChildElements { get; }
 
     /// <summary>Whether this is a direct property (plain field storage, no value store participation).</summary>
     public bool IsDirect { get; }
@@ -363,14 +379,23 @@ public abstract class UIProperty
         bool inherits = false,
         Func<UIObject, T, T>? coerce = null,
         Func<T, bool>? validate = null,
-        PropertyChangedCallback<T>? changed = null)
+        PropertyChangedCallback<T>? changed = null,
+        bool targetsChildren = false)
         where THost : UIObject
-        => RegisterAttached<TOwner, THost, T>(name, new PropertyMetadata<T>(defaultValue, coerce, validate, changed), inherits);
+        => RegisterAttached<TOwner, THost, T>(name, new PropertyMetadata<T>(defaultValue, coerce, validate, changed), inherits, targetsChildren);
 
-    /// <summary>Registers an attached property with explicit registration metadata.</summary>
-    public static AttachedProperty<T> RegisterAttached<TOwner, THost, T>(string name, PropertyMetadata<T> metadata, bool inherits = false)
+    /// <summary>
+    /// Registers an attached property with explicit registration metadata. Pass
+    /// <paramref name="targetsChildren"/> <see langword="true"/> for a property intended to be attached on the
+    /// owner's child elements (a container reading per-child layout/config) rather than the declaring owner's
+    /// own intrinsic member (<c>Grid.Row</c>, <c>DockPanel.Dock</c>, <c>Canvas.Left</c>) — see
+    /// <see cref="TargetsChildElements"/>. Leave it <see langword="false"/> (the default) for a self-usable attached
+    /// property that describes the owner's own instance (<c>ScrollViewer.HorizontalScrollBarVisibility</c>).
+    /// </summary>
+    public static AttachedProperty<T> RegisterAttached<TOwner, THost, T>(
+        string name, PropertyMetadata<T> metadata, bool inherits = false, bool targetsChildren = false)
         where THost : UIObject
-        => new(name, typeof(TOwner), typeof(THost), metadata, inherits, isReadOnly: false);
+        => new(name, typeof(TOwner), typeof(THost), metadata, inherits, isReadOnly: false, targetsChildren: targetsChildren);
 
     /// <summary>
     /// Registers a structurally read-only styled property: the returned <see cref="UIPropertyKey{T}"/>
@@ -393,21 +418,25 @@ public abstract class UIProperty
         where TOwner : UIObject
         => new(new StyledProperty<T>(name, typeof(TOwner), metadata, inherits, isAttached: false, isReadOnly: true));
 
-    /// <summary>Registers a structurally read-only attached property; see <see cref="RegisterReadOnly{TOwner,T}(string,T,bool,Func{UIObject,T,T},Func{T,bool},PropertyChangedCallback{T})"/>.</summary>
+    /// <summary>Registers a structurally read-only attached property; see <see cref="RegisterReadOnly{TOwner,T}(string,T,bool,Func{UIObject,T,T},Func{T,bool},PropertyChangedCallback{T})"/>.
+    /// Pass <paramref name="targetsChildren"/> <see langword="true"/> for a property attached on the owner's children (see <see cref="TargetsChildElements"/>);
+    /// a read-only property is never an own member regardless, so the marker only keeps the raw registry query consistent.</summary>
     public static UIPropertyKey<T> RegisterAttachedReadOnly<TOwner, THost, T>(
         string name,
         T defaultValue = default!,
         bool inherits = false,
         Func<UIObject, T, T>? coerce = null,
         Func<T, bool>? validate = null,
-        PropertyChangedCallback<T>? changed = null)
+        PropertyChangedCallback<T>? changed = null,
+        bool targetsChildren = false)
         where THost : UIObject
-        => RegisterAttachedReadOnly<TOwner, THost, T>(name, new PropertyMetadata<T>(defaultValue, coerce, validate, changed), inherits);
+        => RegisterAttachedReadOnly<TOwner, THost, T>(name, new PropertyMetadata<T>(defaultValue, coerce, validate, changed), inherits, targetsChildren);
 
     /// <summary>Registers a structurally read-only attached property with explicit registration metadata.</summary>
-    public static UIPropertyKey<T> RegisterAttachedReadOnly<TOwner, THost, T>(string name, PropertyMetadata<T> metadata, bool inherits = false)
+    public static UIPropertyKey<T> RegisterAttachedReadOnly<TOwner, THost, T>(
+        string name, PropertyMetadata<T> metadata, bool inherits = false, bool targetsChildren = false)
         where THost : UIObject
-        => new(new AttachedProperty<T>(name, typeof(TOwner), typeof(THost), metadata, inherits, isReadOnly: true));
+        => new(new AttachedProperty<T>(name, typeof(TOwner), typeof(THost), metadata, inherits, isReadOnly: true, targetsChildren: targetsChildren));
 
     /// <summary>
     /// Registers a direct property: plain field storage behind getter/setter delegates — the

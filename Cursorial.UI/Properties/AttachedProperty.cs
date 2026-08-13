@@ -12,8 +12,8 @@ namespace Cursorial.UI;
 /// </summary>
 public sealed class AttachedProperty<T> : StyledProperty<T>
 {
-    internal AttachedProperty(string name, Type ownerType, Type hostType, PropertyMetadata<T> metadata, bool inherits, bool isReadOnly)
-        : base(name, ownerType, metadata, inherits, isAttached: true, isReadOnly)
+    internal AttachedProperty(string name, Type ownerType, Type hostType, PropertyMetadata<T> metadata, bool inherits, bool isReadOnly, bool targetsChildren = false)
+        : base(name, ownerType, metadata, inherits, isAttached: true, isReadOnly, targetsChildren)
     {
         ArgumentNullException.ThrowIfNull(hostType);
         HostType = hostType;

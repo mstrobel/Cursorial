@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Cursorial.Drawing;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
@@ -50,6 +51,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     // handed in per frame (S6 owns it), so the terminal's derived default is not knowable at construction.
     private SceneCompositor _compositor = new();
     private CellStyle _compositorBaseStyle;                 // the base _compositor was built with; tracks target.DefaultStyle
+    private TerminalColorDefaults _compositorDefaults;      // the effective terminal defaults _compositor substitutes; tracks target.Capabilities
     private bool _needsComposite;                           // a stack change reset the compositor → force one render so vacated cells repaint
     private OutputCapabilities _capabilities;
     private Size _viewport;
@@ -457,7 +459,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private void ResetCompositor()
     {
         var previous = _compositor;
-        _compositor = new SceneCompositor(_compositorBaseStyle);
+        _compositor = new SceneCompositor(_compositorBaseStyle, _compositorDefaults);
         // Carry the ghost-footprint set across the reset. A Cells-layer image (iTerm2/Sixel) has no protocol
         // erase, so its pixels linger on the terminal until overwritten — and when occluded by a popup it isn't
         // a registered target fragment, so a fresh compositor would have no record of it. Without this hand-off,
@@ -497,9 +499,18 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         // topology change uses (the retained per-slot state is keyed to the old base, and the fresh buffer a
         // capability renegotiation produces needs the full recomposite anyway). It settles on the first frame
         // and then changes only when the terminal's reported defaults do.
-        if (target.DefaultStyle != _compositorBaseStyle)
+        //
+        // The compositor is ALSO handed the terminal's reported defaults as concrete RGB (TerminalColorDefaults),
+        // so a Color.Default operand composites against the real default instead of taking Color.Composite's
+        // opaque-by-kind short-circuit — the translucent-scrim / faded-window / ghosted-text fixes. This is a
+        // SEAM, not a global: reported defaults flow in here (FromCapabilities), NONE when the terminal reports
+        // nothing (byte-identical to today), and a future app-declared source would plug in at this one call.
+        // It tracks the same negotiation the base style does and changes only when a renegotiation replaces both.
+        var targetDefaults = TerminalColorDefaults.FromCapabilities(target.Capabilities);
+        if (target.DefaultStyle != _compositorBaseStyle || targetDefaults != _compositorDefaults)
         {
             _compositorBaseStyle = target.DefaultStyle;
+            _compositorDefaults = targetDefaults;
             ResetCompositor();
         }
 

@@ -113,24 +113,6 @@
 
         <DataTemplate DataType="vm:WelcomeViewModel">
           <DockPanel>
-            <DockPanel.Style>
-              <Style RequiresCapabilities="Local, Truecolor">
-                <Style.Enter>
-                  <BeginStoryboard>
-                    <BeginStoryboard.Storyboard>
-                      <Storyboard>
-                        <Storyboard.Children>
-                          <DoubleTrack Target="{StaticResource WelcomeBrush}"
-                                       TargetProperty="{x:Static PhaseShiftedBrush.PhaseProperty}"
-                                       From="0.0" To="2.0" Duration="0:0:1"
-                                       Repeat="{x:Static RepeatBehavior.Forever}" />
-                        </Storyboard.Children>
-                      </Storyboard>
-                    </BeginStoryboard.Storyboard>
-                  </BeginStoryboard>
-                </Style.Enter>
-              </Style>
-            </DockPanel.Style>
             <DockPanel.Resources>
               <PhaseShiftedBrush x:Key="WelcomeBrush">
                 <PhaseShiftedBrush.Brush>
@@ -169,7 +151,38 @@
                 </ImagePresenter.PlaceholderContent>
               </ImagePresenter>
 
-              <GlyphPresenter Glyph="&#x2571;" Fill="True" Foreground="{StaticResource WelcomeBrush}" Margin="0,2,0,0"  />
+              <GlyphPresenter x:Name="GradientSweep" Glyph="&#x2571;" Fill="True" Margin="0,2,0,0">
+                <GlyphPresenter.Foreground>
+                  <PhaseShiftedBrush x:Key="WelcomeBrush">
+                    <PhaseShiftedBrush.Brush>
+                      <LinearGradientBrush StartPoint="0,0"
+                                           EndPoint="1,1"
+                                           Spread="Reflect">
+                        <GradientStop Offset="0" Color="#ff5495" />
+                        <GradientStop Offset="1" Color="#feeb84" />
+                      </LinearGradientBrush>
+                    </PhaseShiftedBrush.Brush>
+                  </PhaseShiftedBrush>
+                </GlyphPresenter.Foreground>
+                <GlyphPresenter.Style>
+                  <Style RequiresCapabilities="Local, Truecolor">
+                    <Style.Enter>
+                      <BeginStoryboard>
+                        <BeginStoryboard.Storyboard>
+                          <Storyboard>
+                            <Storyboard.Children>
+                              <DoubleTrack Target="{x:Reference GradientSweep}"
+                                           TargetPath="(GlyphPresenter.Foreground).(PhaseShiftedBrush.Phase)"
+                                           From="0.0" To="2.0" Duration="0:0:1"
+                                           Repeat="{x:Static RepeatBehavior.Forever}" />
+                            </Storyboard.Children>
+                          </Storyboard>
+                        </BeginStoryboard.Storyboard>
+                      </BeginStoryboard>
+                    </Style.Enter>
+                  </Style>
+                </GlyphPresenter.Style>
+              </GlyphPresenter>
 
               <RichTextPresenter TextAlignment="Center"
                                  Margin="0,2,0,0"

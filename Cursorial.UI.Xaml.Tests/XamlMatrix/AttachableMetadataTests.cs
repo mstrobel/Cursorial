@@ -88,6 +88,32 @@ public sealed class AttachableMetadataTests
     }
 
     [Fact]
+    public void GetAttachableMembers_ExcludesReadOnlyAttached_KeepsReadWriteAttached()
+    {
+        // TextElement declares two UIElement-wide attached properties: TextTrimming (read-write) and IsTrimmed
+        // (read-only — reported via GetValue, never assigned). Completion offers only SETTABLE members, so the
+        // seam must drop the read-only one while keeping the read-write one, even though the registry's
+        // AttachableOnType (a pure "what may be attached" query) reports BOTH. This is the interaction the
+        // IsTrimmed relocation surfaced: it is the first read-only attached property with a UIElement-wide host,
+        // so before the settable gate it would have leaked onto every element in attachable completion.
+        _ = UIControls.TextElement.TextTrimmingProperty;   // force TextElement's static ctor (registers both)
+        _ = UIControls.TextElement.IsTrimmedProperty;
+
+        var provider = (IXamlAttachablePropertyProvider) ReflectionXamlMetadata.Instance;
+        var target = ReflectionXamlMetadata.Instance.GetXamlType(typeof(UIControls.TextBlock)).ClrType;
+        var qualified = provider.GetAttachableMembers(target).Select(m => m.QualifiedName).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("TextElement.TextTrimming", qualified);    // read-write attached: offered
+        Assert.DoesNotContain("TextElement.IsTrimmed", qualified); // read-only attached: excluded
+
+        // The gate lives in the completion seam, not the registry query — AttachableOnType still reports both.
+        var registry = UIPropertyRegistry.AttachableOnType(typeof(UIControls.TextBlock))
+                                         .Select(p => $"{p.OwnerType.Name}.{p.Name}")
+                                         .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("TextElement.IsTrimmed", registry);
+    }
+
+    [Fact]
     public void ProviderWithoutTheSeam_ProbeIsFalse_AndConsumerFallsBackToEmpty()
     {
         // A metadata provider that does not implement the optional seam — the netstandard2.0-safe stand-in for a

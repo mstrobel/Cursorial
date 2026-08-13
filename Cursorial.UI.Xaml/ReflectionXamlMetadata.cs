@@ -184,19 +184,26 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
             return Array.Empty<XamlAttachableMember>();
 
         // The registry answers "which attached properties may be set on this target" (HostType assignable
-        // from the target); we only reshape each UIProperty into the host-presentable (owner, name) form.
+        // from the target) — including read-only ones like TextElement.IsTrimmed (attached on any UIElement,
+        // but reported, never assigned). Completion offers only SETTABLE members, so apply the same
+        // IsSettable gate the member paths use: a read-only attached SCALAR is dropped; a read-only attached
+        // COLLECTION (content-settable via property-element syntax) is admitted. Then reshape each survivor
+        // into the host-presentable (owner, name) form.
         var attachable = UIPropertyRegistry.AttachableOnType(clrType);
         if (attachable.Count == 0)
             return Array.Empty<XamlAttachableMember>();
 
-        var result = new XamlAttachableMember[attachable.Count];
-        for (var i = 0; i < attachable.Count; i++)
+        var result = new List<XamlAttachableMember>(attachable.Count);
+        foreach (var property in attachable)
         {
-            var owner = attachable[i].OwnerType;
-            result[i] = new XamlAttachableMember(owner.Name, owner.Namespace ?? string.Empty, attachable[i].Name);
+            if (!IsSettable(property))
+                continue;
+
+            var owner = property.OwnerType;
+            result.Add(new XamlAttachableMember(owner.Name, owner.Namespace ?? string.Empty, property.Name));
         }
 
-        return result;
+        return result.Count == 0 ? Array.Empty<XamlAttachableMember>() : result.ToArray();
     }
 
     /// <summary>The cached <see cref="XamlType"/> for a resolved CLR type (the dual-provider drift surface).</summary>

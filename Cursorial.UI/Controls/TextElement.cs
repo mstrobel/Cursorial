@@ -21,23 +21,6 @@ public readonly record struct ResolvedTextAttributes(TextAttributes Flags, Under
 {
     /// <summary>Whether the folded flags carry <see cref="TextAttributes.Inverse"/> (the Border fill's one-flag read).</summary>
     public bool Inverse => (Flags & TextAttributes.Inverse) != 0;
-
-    /// <summary>
-    /// Returns a new style based on <paramref name="style"/> with the resolved text attributes and underline style
-    /// applied. 
-    /// </summary>
-    /// <param name="style">The base style.</param>
-    /// <returns>The base style with the resolved text attributes and underline style applied.</returns>
-    public CellStyle Apply(in CellStyle style)
-    {
-        var newStyle = style with { Attributes =  Flags };
-
-        if (Flags.HasFlag(TextAttributes.Underline))
-            newStyle = newStyle with { UnderlineStyle = UnderlineShape }; // from newStyle — rebuilding from
-                                                                         // 'style' would drop the flags above
-        
-        return newStyle;
-    }
 }
 
 /// <summary>

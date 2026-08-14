@@ -461,8 +461,8 @@ public sealed class Section45_TextAttributeAxes
         Assert.True((backdrop.Value.Attributes & TextAttributes.Bold) != 0);
     }
 
-    [Fact] // TA17 — ResolvedTextAttributes.Apply: adding the underline SHAPE must not drop the flags
-    public void TA17_Apply_UnderlineShape_KeepsComposedAttributes()
+    [Fact] // TA17 — the composed underline SHAPE reaches the rendered cell without dropping the flags
+    public void TA17_ComposedUnderlineShape_SurvivesToTheRenderedCell()
     {
         var glyph = new GlyphPresenter
         {
@@ -479,13 +479,10 @@ public sealed class Section45_TextAttributeAxes
         Assert.True(host.RunUntilIdle());
 
         var resolved = TextElement.ComposeAttributes(glyph);
-        Assert.Equal(TextAttributes.Bold | TextAttributes.Underline, resolved.Flags); // the fold is fine —
+        Assert.Equal(TextAttributes.Bold | TextAttributes.Underline, resolved.Flags); // the fold carries both
 
-        var applied = resolved.Apply(CellStyle.Default);                              // — Apply is where it went
-        Assert.Equal(TextAttributes.Bold | TextAttributes.Underline, applied.Attributes);
-        Assert.Equal(UnderlineStyle.Curly, applied.UnderlineStyle);
-
-        // And end to end: GlyphPresenter's ONLY style source is that Apply call.
+        // End to end: the composed weight AND the underline SHAPE reach the rendered cell (GlyphPresenter
+        // styles through BrushedStyle.FromElement — adding the shape must not drop the flags).
         var cell = host.GetCell(0, 0);
         Assert.Equal("*", cell.Grapheme);
         Assert.Equal(TextAttributes.Bold | TextAttributes.Underline, cell.Style.Attributes);

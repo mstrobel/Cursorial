@@ -317,7 +317,7 @@ internal sealed class FormattedTextCache
     /// <paramref name="documentDefault"/> is the adopter's document-default carrier — the exact
     /// value its full pipeline hands <see cref="RichTextBuilder"/> — so the fast layout carries the
     /// same document rung (<see cref="FormattedText.DefaultCarrier"/>) and resolved
-    /// <see cref="FormattedText.DefaultStyle"/>. Passing it as a parameter (rather than assuming a
+    /// <see cref="FormattedText.DefaultCarrier"/>. Passing it as a parameter (rather than assuming a
     /// host type) keeps the cache usable by any class, inside or outside a presenter hierarchy
     /// (ruling M1 groundwork).
     /// </remarks>

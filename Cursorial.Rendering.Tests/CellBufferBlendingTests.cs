@@ -1,6 +1,7 @@
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Tests.Rendering;
@@ -128,6 +129,80 @@ public class CellBufferBlendingTests
 
         buf.Set(0, 0, "y", CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255)));
         Assert.Equal(Color.FromRgb(255, 255, 255), buf[0, 0].Style.Foreground);
+    }
+
+    // ---- Set: a Mode carried on the delta ----
+
+    [Fact]
+    public void Set_DeltaCarryingMode_ScopesItAndBlendsForegroundOverBackground()
+    {
+        var buf = new CellBuffer(3, 1);
+        // The delta analog of Set_MultiplyMode_BlendsAgainstPreviousCell: the mode rides the DELTA
+        // rather than a manual PushBlendingMode, and the overload scopes it to this one write.
+        buf.Set(0, 0, "x", CellStyle.Default.WithBackground(Color.FromRgb(128, 128, 128)));
+
+        var delta = PartialStyle.WithForeground(Color.FromRgb(128, 128, 128)) with { Mode = BlendingModes.Multiply };
+        buf.Set(0, 0, "y", delta);
+
+        // half-gray × half-gray = quarter-gray: the ink met the cell's BACKGROUND. The old ApplyTo
+        // route would have combined it with the cell's Default foreground (inert) and kept half-gray.
+        Assert.Equal(Color.FromRgb(64, 64, 64), buf[0, 0].Style.Foreground);
+        Assert.Equal("y", buf[0, 0].Grapheme);
+
+        // Scoped: the mode was pushed for this write and popped, leaving the stack clean.
+        Assert.Same(BlendingModes.Default, buf.CurrentBlendingMode);
+    }
+
+    [Fact]
+    public void Set_DeltaCarryingMode_EqualsAScopedPushOfTheModelessDelta()
+    {
+        var seed = CellStyle.Default.WithForeground(Color.FromRgb(200, 50, 100))
+                                    .WithBackground(Color.FromRgb(0, 0, 255));
+        var ink = PartialStyle.WithForeground(Color.FromRgb(255, 128, 64));
+
+        var byDelta = new CellBuffer(3, 1);
+        byDelta.Set(0, 0, "z", seed);
+        byDelta.Set(0, 0, "z", ink with { Mode = BlendingModes.Screen });
+
+        var byPush = new CellBuffer(3, 1);
+        byPush.Set(0, 0, "z", seed);
+        byPush.PushBlendingMode(BlendingModes.Screen);
+        byPush.Set(0, 0, "z", ink);
+        byPush.PopBlendingMode();
+
+        // The contract: a Mode on the delta IS a scoped ambient push of that mode around the mode-less delta.
+        Assert.Equal(byPush[0, 0], byDelta[0, 0]);
+    }
+
+    [Fact]
+    public void Set_DeltaCarryingMode_BlendsAStatedBackgroundToo()
+    {
+        var buf = new CellBuffer(3, 1);
+        buf.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(200, 200, 200)));
+
+        var delta = PartialStyle.WithBackground(Color.FromRgb(128, 128, 128)) with { Mode = BlendingModes.Multiply };
+        buf.Set(0, 0, " ", delta);
+
+        // 128 × 200 / 255 ≈ 100: the stated BACKGROUND blends against the cell's, not just the foreground —
+        // BlendOver's background arm composites it with the scoped mode, exactly as a manual PushBlendingMode
+        // would (see Set_BlendsBackground). An absent background still short-circuits to "leave it".
+        Assert.Equal((byte) 100, buf[0, 0].Style.Background.Red);
+    }
+
+    [Fact]
+    public void Set_DeltaCarryingMode_TranslucentBackground_AlphaCompositesOverAnRgbCellBackground()
+    {
+        var buf = new CellBuffer(3, 1);
+        buf.Set(0, 0, " ", CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)));   // opaque blue
+
+        // A TRANSLUCENT background over an RGB-coloured cell background: the flat fold keeps it verbatim, and
+        // BlendOver alpha-composites it against the cell (premultiplied). The stored result is opaque — alpha
+        // is consumed at composite time — but the blend is still visible in the RGB it lands on.
+        var delta = PartialStyle.WithBackground(Color.FromRgba(255, 0, 0, 128)) with { Mode = BlendingModes.SourceOver };
+        buf.Set(0, 0, " ", delta);
+
+        // red@50% over blue = (128, 0, 127), fully opaque.
+        Assert.Equal(Color.FromRgb(128, 0, 127), buf[0, 0].Style.Background);
     }
 
     // ---- Fill: blending behavior ----

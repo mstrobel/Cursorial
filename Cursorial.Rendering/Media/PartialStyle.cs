@@ -48,7 +48,7 @@ public readonly record struct PartialStyle
     /// <para>
     /// A delta rather than a whole <see cref="CellStyle"/>, and it lives here rather than beside
     /// <see cref="CellStyle.Default"/>, for two reasons that are really one. A shadow has an opinion about
-    /// three colour channels and about nothing else — a whole style would have had to state the attribute
+    /// three color channels and about nothing else — a whole style would have had to state the attribute
     /// word, the underline shape and the hyperlink as well, and its one consumer
     /// (<c>ShadowedFont</c>) had to hand-patch those channels back off the base before it could composite,
     /// because a value type cannot say "leave this one alone". Absence says it here.
@@ -62,7 +62,7 @@ public readonly record struct PartialStyle
     /// <para>
     /// <see cref="Background"/> is <see cref="Color.Transparent"/> — "a shadow never fills" — which is
     /// weaker than absence would be here: absent means the base's background flows through unchallenged,
-    /// transparent means the shadow states one and it composites away to the same thing. The stated form
+    /// transparent means the shadow states one, and it composites away to the same thing. The stated form
     /// keeps this usable as a delta over a nonempty background without also boxing it.
     /// </para>
     /// </remarks>
@@ -305,7 +305,7 @@ public readonly record struct PartialStyle
     /// </summary>
     public static PartialStyle FromInk(in CellStyle style) => From(style) with { Background = null };
 
-    /// <summary>Underline in <paramref name="shape"/>, coloured <paramref name="color"/>.</summary>
+    /// <summary>Underline in <paramref name="shape"/>, colored <paramref name="color"/>.</summary>
     public static PartialStyle WithUnderline(UnderlineStyle? shape = null, Color? color = null) =>
         new()
         {
@@ -355,11 +355,28 @@ public readonly record struct PartialStyle
 
     // ---- application ----
 
-    public CellStyle ApplyTo(in CellStyle b)
+    /// <summary>
+    /// Resolve this delta onto <paramref name="b"/>: every stated channel replaces the base's, every unstated
+    /// one leaves it. A <see cref="Mode"/> composites each stated COLOR against the base's same channel —
+    /// foreground-over-foreground, a style-level tint — when <paramref name="applyBlending"/> is set.
+    /// </summary>
+    /// <param name="b">The cell style onto which this delta shall be applied.</param>
+    /// <param name="applyBlending">
+    /// <see langword="true"/> (default): apply the <see cref="Mode"/> here, blending each stated color with
+    /// the base's same channel. <see langword="false"/>: overlay the stated channels FLAT and DEFER the blend,
+    /// so a consumer can choose to apply the mode against a real backdrop at a later stage — the way
+    /// <see cref="CellBuffer"/>'s delta write does, scoping the mode on the buffer's blend stack around a flat
+    /// fold so the ink blends over the cell's BACKGROUND rather than tinting its foreground. Either way the
+    /// returned <see cref="CellStyle"/> carries no mode, so a deferred blend is the caller's to arrange.
+    /// </param>
+    public CellStyle ApplyTo(in CellStyle b, bool applyBlending = true)
     {
         if (IsIdentity) return b;
 
-        var mode = Mode;   // a local function in a struct cannot capture `this` (CS1673)
+        // applyBlending:false carries the mode no further here — the stated channels overlay the base flat,
+        // and whoever wants the blend applies it against a real backdrop at a later stage (CS1673: a local
+        // function in a struct cannot capture `this`, so the mode is hoisted to a local either way).
+        var mode = applyBlending ? Mode : null;
 
         return b with
         {

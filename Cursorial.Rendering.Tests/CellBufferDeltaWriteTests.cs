@@ -8,9 +8,9 @@ namespace Cursorial.Tests.Rendering;
 
 /// <summary>
 /// The acceptance property for the delta write: for every (cell, delta) pair,
-/// <c>Set(c, r, g, delta)</c> is BIT-IDENTICAL to <c>Set(c, r, g, Over(buffer, c, r, delta))</c>,
-/// where <c>Over</c> is the fold the four glyph faces used to run at their own call sites before it
-/// moved inside the write.
+/// <c>Set(c, r, g, delta)</c> is BIT-IDENTICAL to <c>OverThenSet(buffer, c, r, g, delta)</c> — the fold
+/// (<c>Over</c>, run FLAT) followed by the write, with any <see cref="PartialStyle.Mode"/> on the delta
+/// scoped on the buffer's blend stack around the write rather than consumed by the fold.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -29,14 +29,40 @@ public class CellBufferDeltaWriteTests
 {
     // ---- the retired composite, restated ------------------------------------------------
 
-    // GlyphPaint.Over(in CellBufferView, int, int, in PartialStyle), verbatim: fold onto the cell's
-    // own style with the BACKGROUND spelled Color.Default, which is Set's own word for "leave the
-    // background alone".
+    // The fold onto the cell's own style with the BACKGROUND spelled Color.Default (Set's own word for
+    // "leave the background alone"), with blending DEFERRED — the delta overload now folds flat and scopes
+    // any Mode on the buffer's blend stack instead, so its ink blends over the cell's background rather than
+    // tinting its foreground. OverThenSet restores the mode as that scoped push; a mode-less delta folds
+    // identically with or without the flag.
     private static CellStyle Over(CellBuffer buffer, int column, int row, in PartialStyle style)
-        => style.ApplyTo(buffer[column, row].Style with { Background = Color.Default });
+        => style.ApplyTo(buffer[column, row].Style with { Background = Color.Default }, applyBlending: false);
 
     private static CellStyle Over(in CellBufferView view, int column, int row, in PartialStyle style)
-        => style.ApplyTo(view.Read(column, row).Style with { Background = Color.Default });
+        => style.ApplyTo(view.Read(column, row).Style with { Background = Color.Default }, applyBlending: false);
+
+    // The reference the delta overload is bit-identical to: fold flat (Over) and, if the delta carries a
+    // Mode, scope it on the blend stack around the write — exactly what CellBuffer.Set(…, PartialStyle) does.
+    private static int OverThenSet(CellBuffer buffer, int column, int row, string? grapheme, in PartialStyle delta)
+    {
+        var folded = Over(buffer, column, row, delta);
+        if (delta.Mode is not { } mode)
+            return buffer.Set(column, row, grapheme, folded);
+
+        buffer.PushBlendingMode(mode);
+        try { return buffer.Set(column, row, grapheme, folded); }
+        finally { buffer.PopBlendingMode(); }
+    }
+
+    private static int OverThenSet(CellBufferView view, int column, int row, string? grapheme, in PartialStyle delta)
+    {
+        var folded = Over(view, column, row, delta);
+        if (delta.Mode is not { } mode)
+            return view.Set(column, row, grapheme, folded);
+
+        view.PushBlendingMode(mode);
+        try { return view.Set(column, row, grapheme, folded); }
+        finally { view.PopBlendingMode(); }
+    }
 
     // ---- the matrix ---------------------------------------------------------------------
 
@@ -196,8 +222,8 @@ public class CellBufferDeltaWriteTests
         yield return ("underline off", PartialStyle.WithoutUnderline());
         yield return ("shape only", new PartialStyle { UnderlineShape = UnderlineStyle.Double });
 
-        // Blending rides on the delta and is applied by ApplyTo BEFORE the buffer's own stack blends
-        // the folded style — two composites, in that order.
+        // A Mode on the delta is scoped on the buffer's blend stack for the write (over a FLAT fold), so its
+        // ink blends foreground-over-background against the cell — one composite, at the write, not a tint.
         yield return ("multiply carrier", PartialStyle.WithBlending(BlendingModes.Multiply));
         yield return ("shadow", PartialStyle.DefaultShadow);
 
@@ -269,8 +295,7 @@ public class CellBufferDeltaWriteTests
             var viaComposite = Seeded(blank, seed, mode);
             var viaDelta = Seeded(blank, seed, mode);
 
-            int expected = viaComposite.Set(TargetColumn, TargetRow, grapheme,
-                                            Over(viaComposite, TargetColumn, TargetRow, delta));
+            int expected = OverThenSet(viaComposite, TargetColumn, TargetRow, grapheme, delta);
             int actual = viaDelta.Set(TargetColumn, TargetRow, grapheme, delta);
 
             string where = $"blank={blank.Background}, mode={mode?.GetType().Name ?? "none"}, " +
@@ -307,7 +332,7 @@ public class CellBufferDeltaWriteTests
 
             int col = TargetColumn - 1;   // the same backing cell, in view-local coordinates
 
-            int expected = viewA.Set(col, TargetRow, grapheme, Over(viewA, col, TargetRow, delta));
+            int expected = OverThenSet(viewA, col, TargetRow, grapheme, delta);
             int actual = viewB.Set(col, TargetRow, grapheme, delta);
 
             string where = $"view, blank={blank.Background}, mode={mode?.GetType().Name ?? "none"}, " +
@@ -341,7 +366,7 @@ public class CellBufferDeltaWriteTests
             var viewA = backingA.View(1, 0, 4, 3);
             var viewB = backingB.View(1, 0, 4, 3);
 
-            int expected = viewA.Set(column, row, grapheme, Over(viewA, column, row, delta));
+            int expected = OverThenSet(viewA, column, row, grapheme, delta);
             int actual = viewB.Set(column, row, grapheme, delta);
 
             Assert.Equal(expected, actual);

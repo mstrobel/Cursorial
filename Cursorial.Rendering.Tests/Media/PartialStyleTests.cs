@@ -180,6 +180,20 @@ public class PartialStyleTests
             dim.Then(PartialStyle.WithForeground(Color.FromRgb(200, 100, 50))).ApplyTo(Busy));
     }
 
+    [Fact]
+    public void ApplyTo_WithBlendingDeferred_OverlaysFlat_LeavingTheModeForALaterStage()
+    {
+        var baseStyle = CellStyle.Default.WithForeground(Color.FromRgb(128, 128, 128));
+        var delta = PartialStyle.WithForeground(Color.FromRgb(128, 128, 128)) with { Mode = BlendingModes.Multiply };
+
+        // Default: the mode composites the stated fg against the base's SAME channel — half × half = quarter.
+        Assert.Equal(Color.FromRgb(64, 64, 64), delta.ApplyTo(baseStyle).Foreground);
+
+        // Deferred: the stated fg overlays flat; the blend is left for a later stage (e.g. the buffer write,
+        // which scopes the mode on the blend stack so the ink meets the cell's background instead).
+        Assert.Equal(Color.FromRgb(128, 128, 128), delta.ApplyTo(baseStyle, applyBlending: false).Foreground);
+    }
+
     [Theory]
     [MemberData(nameof(Pairs))]
     public void AnIdentityDelta_ComposesAway(PartialStyle a, PartialStyle b)

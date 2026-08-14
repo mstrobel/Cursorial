@@ -458,6 +458,14 @@ public sealed class CellBuffer : ICellSurface
     /// which can take a declined foreground from the NEIGHBOURING cell.
     /// </para>
     /// <para>
+    /// <b>A Mode on the delta scopes the blend.</b> If the delta carries a <see cref="PartialStyle.Mode"/> it
+    /// is pushed as the <see cref="CurrentBlendingMode"/> for this one write and popped after, and the fold
+    /// runs flat (<see cref="PartialStyle.ApplyTo"/> with blending deferred). So the delta's stated colours
+    /// blend foreground-over-BACKGROUND against the cell — the ink meeting what is physically behind it — not
+    /// the foreground-over-foreground tint the fold would otherwise apply, and the mode composites exactly
+    /// ONCE. A mode-less delta takes the flat path and rides whatever mode is already on the stack.
+    /// </para>
+    /// <para>
     /// The BACKGROUND is the one channel with an unconditional guarantee, by mechanism rather than luck:
     /// the fold spells its absence <see cref="Color.Default"/> (see <see cref="FoldOntoCell"/>), and
     /// <see cref="CellStyle.BlendOver"/>'s Background arm short-circuits exactly that value to the
@@ -476,7 +484,25 @@ public sealed class CellBuffer : ICellSurface
     {
         ValidateCoordinates(column, row);
 
-        return Set(column, row, grapheme, FoldOntoCell(_cells[row * _columns + column].Style, style));
+        // A Mode on the delta is not ApplyTo's to consume. Folded through ApplyTo it would combine each
+        // stated colour with the base's SAME channel — foreground-over-foreground, a tint — but a blend
+        // meets what is physically behind the ink, which on a terminal cell is the BACKGROUND. So a delta
+        // that carries a Mode is exactly sugar for "push that mode, write the mode-less delta, pop": the
+        // fold overlays the stated channels flat, and the CellStyle write's BlendOver then applies the mode
+        // foreground-over-background against this cell. It is the by-hand dance ShadowedFont does, made
+        // intrinsic to the overload — and applied exactly once, by the blend, never doubled by the fold.
+        if (style.Mode is not { } mode)
+            return Set(column, row, grapheme, FoldOntoCell(_cells[row * _columns + column].Style, style));
+
+        PushBlendingMode(mode);
+        try
+        {
+            return Set(column, row, grapheme, FoldOntoCell(_cells[row * _columns + column].Style, style, applyBlending: false));
+        }
+        finally
+        {
+            PopBlendingMode();
+        }
     }
 
     /// <summary>
@@ -502,8 +528,8 @@ public sealed class CellBuffer : ICellSurface
     /// private <c>BlendStyle</c> overload below).
     /// </para>
     /// </remarks>
-    internal static CellStyle FoldOntoCell(in CellStyle backdrop, in PartialStyle style)
-        => style.ApplyTo(backdrop with { Background = Color.Default });
+    internal static CellStyle FoldOntoCell(in CellStyle backdrop, in PartialStyle style, bool applyBlending = true)
+        => style.ApplyTo(backdrop with { Background = Color.Default }, applyBlending);
 
     /// <summary>
     /// Write the grapheme clusters of <paramref name="text"/> across a single row starting at

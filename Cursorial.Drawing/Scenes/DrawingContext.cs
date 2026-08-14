@@ -17,16 +17,15 @@ namespace Cursorial.Drawing;
 /// <summary>
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
 /// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="CellStyle"/> before
-/// reaching a cell. It exposes a scalar <see cref="Set"/>, a brush
-/// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (solid or gradient), a styled
+/// reaching a cell. It exposes a scalar <see cref="Set"/>, a styled
+/// <see cref="FillRectangle(in Rect, in BrushedStyle)"/> (solid or gradient), a styled
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>, and
 /// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
 /// <see cref="DrawBox(in Rect, in Pen, bool)"/> / <see cref="DrawRectangle(in Rect, in Pen, IBrush?, bool)"/>.
-/// <see cref="Color"/> overloads wrap a <see cref="SolidColorBrush"/> / <see cref="Pen"/> for the
-/// common solid case.
+/// The <see cref="Color"/> draw overloads wrap a <see cref="Pen"/> for the common solid case.
 /// </summary>
 /// <remarks>
-/// <see cref="Set"/> / <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> /
+/// <see cref="Set"/> / <see cref="FillRectangle(in Rect, in BrushedStyle)"/> /
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
@@ -69,7 +68,7 @@ public sealed class DrawingContext
     /// </summary>
     /// <remarks>
     /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
-    /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>,
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>,
     /// <see cref="DrawContent(in Rect, IContent, OutputCapabilities)"/>), the shadows, the titled boxes / panels, and the <b>deferred</b>
@@ -228,9 +227,8 @@ public sealed class DrawingContext
     /// hatch such a ruling depends on.
     /// </para>
     /// <para>
-    /// The <see cref="Color"/> and <see cref="IBrush"/> overloads of all three fill families are thin
-    /// wrappers over this shape: their brush becomes <see cref="BrushedStyle.Background"/> and
-    /// their <c>attributes</c> word is folded on PER AXIS (see <see cref="BrushedStyle.Imposing"/>) — Bold / Faint impose a
+    /// A caller holding a brush and a flag WORD states the brush as <see cref="BrushedStyle.Background"/>
+    /// and folds the word on PER AXIS (see <see cref="BrushedStyle.Imposing"/>) — Bold / Faint impose a
     /// weight, Italic a posture, and only the axis-free flags union. A word carrying both weights is
     /// unrenderable and resolves to Bold rather than to the pair.
     /// </para>
@@ -261,132 +259,6 @@ public sealed class DrawingContext
     /// </remarks>
     public void FillRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds)
         => FillRectangleCore(region, in style, brushBounds, durable: false, overwrite: true);
-
-    /// <summary>Fill <paramref name="region"/>'s backgrounds with a solid <paramref name="color"/>.</summary>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillRectangle(in Rect region, Color color, TextAttributes attributes = default)
-        => FillRectangle(region, AsFill(new SolidColorBrush(color), attributes));
-
-    /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient),
-    /// sampled per cell with <paramref name="region"/> as the brush bounds — the one-brush convenience
-    /// form of <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, for the common case where
-    /// the only thing that varies per cell is the background colour.
-    /// </summary>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillRectangle(in Rect region, IBrush brush, TextAttributes attributes = default)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-
-        FillRectangle(region, AsFill(brush, attributes));
-    }
-
-    /// <summary>
-    /// As <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, but the brush is sampled against
-    /// <paramref name="brushBounds"/> — which may be larger than the painted <paramref name="region"/> — so a
-    /// gradient spans the full bounds while only the region's cells are painted. Used by area-fill charts that
-    /// paint one column at a time yet want the gradient to flow across the whole chart, not restart per column.
-    /// </summary>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillRectangle(in Rect region, IBrush brush, in Rect brushBounds)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        FillRectangle(region, AsFill(brush, default), brushBounds);
-    }
-
-    /// <summary>
-    /// Fill <paramref name="region"/> with <paramref name="color"/> as <b>space-bearing</b> cells, so the fill
-    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
-    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
-    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
-    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
-    /// for a frosted-panel effect), but the glyph beneath is still replaced.
-    /// </summary>
-    /// <remarks>
-    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
-    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
-    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
-    /// background so the border sits on the panel rather than punching a transparent hole.
-    /// </remarks>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="color">The fill color.</param>
-    /// <param name="attributes">
-    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
-    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
-    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
-    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
-    /// </param>
-    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
-        => FillOpaque(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
-
-    /// <summary>
-    /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
-    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
-    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
-    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
-    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
-    /// for a frosted-panel effect), but the glyph beneath is still replaced.
-    /// </summary>
-    /// <remarks>
-    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
-    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
-    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
-    /// background so the border sits on the panel rather than punching a transparent hole.
-    /// </remarks>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
-    /// <param name="attributes">
-    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
-    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
-    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
-    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
-    /// </param>
-    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        FillOpaque(region, AsFill(brush, attributes), overwrite);
-    }
-
-    /// <summary>
-    /// Fill <paramref name="region"/> with <paramref name="brush"/> as <b>space-bearing</b> cells, so the fill
-    /// <em>hides</em> (occludes) any glyph beneath it on a lower layer <em>and</em> prevents it from being
-    /// overwritten by background-only methods like <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> or
-    /// <see cref="PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>, which allow lower glyphs show through,
-    /// either at the compositor level or within the same scene, respectively. Use it for opaque panels, modals,
-    /// and menus drawn over content. A translucent brush sample is preserved (the alpha rides to the compositor
-    /// for a frosted-panel effect), but the glyph beneath is still replaced.
-    /// </summary>
-    /// <remarks>
-    /// To draw a <b>bordered</b> opaque panel, fill the box then draw the border with <c>overwrite: true</c>
-    /// (<c>ctx.FillOpaque(rect, color); ctx.DrawBox(rect, pen, overwrite: true);</c>): a non-overwriting stroke
-    /// yields to the fill's space cells, and an overwriting stroke over an opaque fill keeps the fill's
-    /// background so the border sits on the panel rather than punching a transparent hole.
-    /// </remarks>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
-    /// <param name="brushBounds">The sampling region for the <paramref name="brush"/>; may be larger or smaller than <paramref name="region"/>.</param>
-    /// <param name="attributes">
-    /// Text attributes applied to every occluder cell (default none). Because <c>FillOpaque</c> writes
-    /// space-bearing (opaque) cells, the attribute composites onto the screen — e.g.,
-    /// <see cref="TextAttributes.Inverse"/> reverse-videos the whole filled region even when the brush color
-    /// is <c>Default</c> (the NoColor reverse-video face). <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>'s
-    /// transparent tint cannot do this — its background-only cells drop the attribute on composite.
-    /// </param>
-    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        FillOpaque(region, AsFill(brush, attributes), brushBounds, overwrite);
-    }
 
     /// <summary>
     /// Fill <paramref name="region"/> as <b>space-bearing</b> cells, resolving <paramref name="style"/>
@@ -436,66 +308,6 @@ public sealed class DrawingContext
     /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>true</c>.</param>
     public void FillOpaque(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = true)
         => FillRectangleCore(region, in style, brushBounds, durable: true, overwrite);
-
-    /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="color"/>. Each cell is painted background-only
-    /// (no glyph). The fill tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/>
-    /// argument governs whether the existing glyph is left showing through when painting with less than full opacity.
-    /// </summary>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="color">The fill color.</param>
-    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
-    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
-    /// <remarks>
-    /// Unlike <see cref="FillRectangle(in Rect, Color, TextAttributes)"/>, which intends for blending to be applied by the compositor
-    /// across scenes, this method performs blending <em>intra-scene</em>. 
-    /// </remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
-        => PaintRectangle(region, AsFill(new SolidColorBrush(color), attributes), overwrite);
-
-    /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient), sampled per cell
-    /// with <paramref name="region"/> as the brush bounds. Each cell is painted background-only (no glyph). The fill
-    /// tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/> argument governs whether
-    /// the existing glyph is left showing through when painting with less than full opacity.
-    /// </summary>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
-    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
-    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
-    /// <remarks>
-    /// Unlike <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/>, which intends for blending to be applied by the compositor
-    /// across scenes, this method performs blending <em>intra-scene</em>. 
-    /// </remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        PaintRectangle(region, AsFill(brush, attributes), overwrite);
-    }
-
-    /// <summary>
-    /// Fill <paramref name="region"/>'s backgrounds with <paramref name="brush"/> (solid or gradient), sampled per cell
-    /// with <paramref name="region"/> as the brush bounds. Each cell is painted background-only (no glyph). The fill
-    /// tints the target background <em>within the scene</em>, and the <paramref name="overwrite"/> argument governs whether
-    /// the existing glyph is left showing through when painting with less than full opacity.
-    /// </summary>
-    /// <param name="region">The rectangle to fill, in current-local coordinates (mapped through any active translate).</param>
-    /// <param name="brush">The brush sampled per cell for the fill color (a solid brush returns one color).</param>
-    /// <param name="brushBounds">The sampling rectangle to be used for the brush, when distinct from <paramref name="region"/>.</param>
-    /// <param name="attributes">Text attributes applied to every cell (default none).</param>
-    /// <param name="overwrite">Whether an existing glyph is left showing through when painting with less than full opacity.</param>
-    /// <remarks>
-    /// Unlike <see cref="FillRectangle(in Rect, IBrush, in Rect)"/>, which intends for blending to be applied
-    /// by the compositor across scenes, this method performs blending <em>intra-scene</em>. 
-    /// </remarks>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
-    {
-        ArgumentNullException.ThrowIfNull(brush);
-        PaintRectangle(region, AsFill(brush, attributes), brushBounds, overwrite);
-    }
 
     /// <summary>
     /// Fill <paramref name="region"/>'s backgrounds by resolving <paramref name="style"/> per cell. Each
@@ -617,21 +429,6 @@ public sealed class DrawingContext
     /// </summary>
     private static Cell CellFor(in PartialStyle resolved, bool durable)
         => new(durable ? CellBuffer.DurableEmptyGrapheme : null, CellKind.Single, resolved.ApplyTo(CellStyle.Default));
-
-    /// <summary>
-    /// The one-brush-plus-flag-word form as a style — what the <see cref="Color"/> and
-    /// <see cref="IBrush"/> fill overloads mean, in the type the primitive now takes.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="attributes"/> is a flag WORD, and it is folded through the per-AXIS API rather
-    /// than unioned in wholesale — the same fold, for the same reason, as the base-attribute leg of
-    /// <see cref="CreateBrushResolver"/>. A naive <see cref="BrushedStyle.Applying"/> would THROW
-    /// on a real path: <see cref="PartialStyle.Require"/> rejects Bold / Faint / Italic / Underline
-    /// because they own axes, and <c>TextPresenter</c>'s band fill hands this primitive a word whose
-    /// allowlist admits the first three.
-    /// </remarks>
-    private static BrushedStyle AsFill(IBrush background, TextAttributes attributes)
-        => new BrushedStyle { Background = background }.Imposing(attributes);
 
     /// <summary>
     /// Paint a soft <b>drop</b> shadow cast by <paramref name="element"/> per <paramref name="geometry"/>, tinted
@@ -1620,9 +1417,9 @@ public sealed class DrawingContext
     /// <summary>
     /// Draw a complete panel — optional <paramref name="fill"/> interior, a <paramref name="pen"/> border, and
     /// an optional <paramref name="title"/> on the top edge — the one-call "group box". Equivalent to a
-    /// <see cref="FillRectangle(in Rect, IBrush, TextAttributes)"/> (background-only; lower glyphs show through on composite)
+    /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/> (background-only; lower glyphs show through on composite)
     /// followed by <see cref="DrawTitledBox(in Rect, in PanelTitle, in Pen, bool)"/>. For an <em>opaque</em>
-    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/> +
+    /// panel that hides content beneath, use <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/> +
     /// <c>DrawTitledBox</c> (overwrite: true) instead.
     /// </summary>
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)

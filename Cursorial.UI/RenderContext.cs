@@ -141,25 +141,12 @@ public sealed class RenderContext
     public void FillRectangle(in Rect region, in BrushedStyle style)
         => Inner.FillRectangle(region, style);
 
-    /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillRectangle(in Rect region, IBrush brush)
-        => Inner.FillRectangle(region, brush);
-
-    /// <inheritdoc cref="FillRectangle(in Rect, IBrush)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillRectangle(in Rect region, Color color)
-        => Inner.FillRectangle(region, color);
-
     /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// <remarks>
     /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
-    /// drawing layer's <see langword="true"/> — matching the <see cref="Color"/> overload beside it, the
-    /// newest of this veneer's fills and the one an element actually reaches for. The narrower default is
-    /// load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
+    /// drawing layer's <see langword="true"/> — the default an element actually reaches for. The narrower
+    /// default is load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
     /// <see cref="CellBuffer.Set"/> rescues the ink underneath only on the non-overwriting path.
-    /// (The <see cref="IBrush"/> overloads below still default to <see langword="true"/> — an
-    /// inconsistency older than this overload, preserved rather than silently changed.)
     /// </remarks>
     public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)
         => Inner.FillOpaque(region, style, overwrite);
@@ -172,21 +159,6 @@ public sealed class RenderContext
     public void FillOpaque(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = true)
         => Inner.FillOpaque(region, style, brushBounds, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = true)
-        => Inner.FillOpaque(region, color, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
-        => Inner.FillOpaque(region, brush, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
-        => Inner.FillOpaque(region, brush, brushBounds, attributes, overwrite);
-
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, bool)"/>
     public void PaintRectangle(in Rect region, in BrushedStyle style, bool overwrite = false)
         => Inner.PaintRectangle(region, style, overwrite);
@@ -194,21 +166,6 @@ public sealed class RenderContext
     /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, in Rect, bool)"/>
     public void PaintRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = false)
         => Inner.PaintRectangle(region, style, brushBounds, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, Color, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, color, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, brush, region, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    [Obsolete("Use the BrushedStyle overload instead.", DiagnosticId = "CUR0001")]
-    public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, brush, brushBounds, attributes, overwrite);
 
     // ───────────────────────────── text and content ─────────────────────────────
 
@@ -428,7 +385,7 @@ public sealed class RenderContext
 
     /// <summary>
     /// Fill + titled border in one call. The fill is Drawing's <b>background-only</b>
-    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
+    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// followed by <see cref="DrawTitledBox"/> with <c>overwrite: true</c> (the <c>Panel.Background</c>
     /// path does the opaque fill for you).
     /// </summary>

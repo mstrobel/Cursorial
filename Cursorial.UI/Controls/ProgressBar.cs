@@ -69,7 +69,7 @@ public class ProgressBar : RangeBase
         var height = size.Rows;
 
         if (Background is {} track)
-            context.FillOpaque(new Rect(0, 0, width, height), track, overwrite: true); // the recessed track behind the bar
+            context.FillOpaque(new Rect(0, 0, width, height), new BrushedStyle { Background = track }, overwrite: true); // the recessed track behind the bar
 
         if (Fill is not {} fill)
             return;
@@ -82,15 +82,15 @@ public class ProgressBar : RangeBase
             var blockWidth = Math.Max(1, width / 3);
             var travel = Math.Max(0, width - blockWidth);
             var x = (int)Math.Round(Math.Clamp(IndeterminatePhase, 0, 1) * travel);
-            context.FillOpaque(new Rect(x, 0, blockWidth, height), fill, 
-                               attributes, overwrite: true);
+            context.FillOpaque(new Rect(x, 0, blockWidth, height),
+                               new BrushedStyle { Background = fill }.Imposing(attributes), overwrite: true);
         }
         else
         {
             var filled = (int)Math.Round(FilledFraction * width);
             if (filled > 0)
-                context.FillOpaque(new Rect(0, 0, filled, height), fill, 
-                                   attributes, overwrite: true);
+                context.FillOpaque(new Rect(0, 0, filled, height),
+                                   new BrushedStyle { Background = fill }.Imposing(attributes), overwrite: true);
         }
     }
 

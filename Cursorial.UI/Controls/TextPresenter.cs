@@ -542,8 +542,8 @@ public sealed class TextPresenter : UIElement
             // rescues the grapheme and composites the foreground back, but NOT the attributes — so a
             // bare Inverse here silently stripped Bold / Italic / … from every cell the face inked.
             context.FillOpaque(new Rect(startColumn, localRow, endColumn - startColumn, lineRows),
-                               Color.Transparent,
-                               (baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse,
+                               new BrushedStyle { Background = new SolidColorBrush(Color.Transparent) }
+                                   .Imposing((baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse),
                                overwrite: false);
         }
 
@@ -772,9 +772,9 @@ public sealed class TextPresenter : UIElement
             if (backdrop != baseStyle)
             {
                 if (backdrop.Background is { IsDefault: false } bg)
-                    context.FillOpaque(rect, bg, backdrop.Attributes, overwrite: true);
+                    context.FillOpaque(rect, new BrushedStyle { Background = new SolidColorBrush(bg) }.Imposing(backdrop.Attributes), overwrite: true);
                 else
-                    context.FillOpaque(rect, Color.Default, backdrop.Attributes, overwrite: true);
+                    context.FillOpaque(rect, new BrushedStyle { Background = new SolidColorBrush(Color.Default) }.Imposing(backdrop.Attributes), overwrite: true);
             }
 
             // The piece's carrier states the backdrop's STATED channels (BrushedStyle.FromStated): a

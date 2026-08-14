@@ -157,9 +157,9 @@ public class Border : Decorator
         if (background is not null)
         {
             if (occludes)
-                context.FillOpaque(bounds, background, attrs, overwrite: false);
+                context.FillOpaque(bounds, new BrushedStyle { Background = background }.Imposing(attrs), overwrite: false);
             else
-                context.PaintRectangle(bounds, background, attrs, overwrite: true);
+                context.PaintRectangle(bounds, new BrushedStyle { Background = background }.Imposing(attrs), overwrite: true);
         }
 
         // The box: a titled frame is DrawTitledBox; a plain frame is DrawBox. An occluding surface

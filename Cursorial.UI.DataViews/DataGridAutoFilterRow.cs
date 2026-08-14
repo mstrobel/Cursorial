@@ -145,7 +145,7 @@ public sealed class DataGridAutoFilterRow : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
         // frozen region re-fills its background and draws its cells unshifted on top.
@@ -158,7 +158,7 @@ public sealed class DataGridAutoFilterRow : UIElement
             0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
         {
             if (Background is not null && HorizontalOffset > 0)
-                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), new BrushedStyle { Background = Background });
 
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawFilterCell(context, owner, layout, i);
@@ -187,7 +187,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         bool focusCue = noColor && i == owner.FilterCellFocusIndex;
 
         if (i == owner.FilterCellFocusIndex && WellBackground is not null && !noColor)
-            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
+            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
         else if (focusCue)
             FillInverse(context, x + DataGridColumnLayout.CellPadding, entry.Width);
 
@@ -206,7 +206,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         {
             // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
             if (summary is not null && WellBackground is not null && !noColor)
-                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
 
             string text = summary ?? "(All)";
 
@@ -219,7 +219,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         else if (summary is not null)
         {
             if (WellBackground is not null && !noColor)
-                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
 
             DrawClipped(context, contentX, summary, entry.Width, TextBrush, contentStyle);
         }
@@ -237,7 +237,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         if (width <= 0)
             return;
 
-        context.FillOpaque(new Rect(x, 0, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
+        context.FillOpaque(new Rect(x, 0, width, 1), new BrushedStyle { Background = TextBrush ?? Brushes.Default }.Imposing(TextAttributes.Inverse));
     }
 
     /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>

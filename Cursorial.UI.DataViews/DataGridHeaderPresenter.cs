@@ -153,7 +153,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         var entries = layout.Entries;
 
@@ -179,7 +179,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-1)
         {
             if (Background is not null && HorizontalOffset > 0)
-                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), new BrushedStyle { Background = Background });
 
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
@@ -218,7 +218,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
 
             if (HoverBackground is not null)
-                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
+                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), new BrushedStyle { Background = HoverBackground });
 
             context.DrawText(chipX, 0, chip,
                              groupZone
@@ -248,7 +248,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                           : i == _hoverEntry || i == owner.HeaderFocusIndex;
 
         if (tinted && HoverBackground is not null)
-            context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
+            context.FillOpaque(new Rect(x, 0, cellWidth, 1), new BrushedStyle { Background = HoverBackground });
 
         // NoColor tier: the hover tint resolves to Default (invisible), so the FOCUSED header cell
         // carries a reverse-video + bold cue instead (a solid bar laid down first; the caption/glyphs
@@ -320,7 +320,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (width <= 0)
             return;
 
-        context.FillOpaque(new Rect(x, 0, width, 1), Foreground ?? Brushes.Default, TextAttributes.Inverse);
+        context.FillOpaque(new Rect(x, 0, width, 1), new BrushedStyle { Background = Foreground ?? Brushes.Default }.Imposing(TextAttributes.Inverse));
     }
 
     /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>

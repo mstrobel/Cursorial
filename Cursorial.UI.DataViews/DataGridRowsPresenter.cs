@@ -959,7 +959,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                                                  : RowBackground;
 
             if (background is not null)
-                context.FillOpaque(new Rect(0, y, viewWidth, 1), background);
+                context.FillOpaque(new Rect(0, y, viewWidth, 1), new BrushedStyle { Background = background });
 
             if (row.IsGroup)
             {
@@ -1032,7 +1032,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 var erase = background ?? owner.Background;
 
                 if (erase is not null && HOffset > 0)
-                    context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+                    context.FillOpaque(new Rect(0, y, frozenWidth, 1), new BrushedStyle { Background = erase });
 
                 for (int c = 0; c < frozenCount && c < row.Cells.Length; c++)
                     DrawDataCell(context, row, c, view, y, focusRow, focusColumn, rowSelected, noColor);
@@ -1109,7 +1109,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             }
 
             if (cellInRange && SelectionBackground is not null && !noColor) // NoColor: the reverse-video fill below carries it
-                context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), SelectionBackground);
+                context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1), new BrushedStyle { Background = SelectionBackground });
         }
 
         // NoColor tier: the row/range/focus background fills above and below all resolve to Default
@@ -1139,14 +1139,14 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (format.Background is {} formatBackground && !rowSelected && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
-                               BrushFor(formatBackground));
+                               new BrushedStyle { Background = BrushFor(formatBackground) });
         }
 
         // The focus cell's well-fill (the mockup's focuscell).
         if (view == focusRow && c == focusColumn && FocusCellBackground is not null && !noColor)
         {
             context.FillOpaque(new Rect(drawBase, y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
-                               FocusCellBackground);
+                               new BrushedStyle { Background = FocusCellBackground });
         }
 
         ReadOnlySpan<char> text = CellText(row, c); // §9.6 — sliced from the pooled band buffer
@@ -1236,7 +1236,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
             if (viewIndex == focusRow && c == focusColumn && FocusCellBackground is not null)
             {
                 context.FillOpaque(new Rect(DrawXOf(c), y, entry.Width + 2 * DataGridColumnLayout.CellPadding, 1),
-                                   FocusCellBackground);
+                                   new BrushedStyle { Background = FocusCellBackground });
             }
 
             if (controller?.IsColumnEditable(entry.Column) != true)
@@ -1266,7 +1266,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (frozenWidth > 0)
         {
             if (owner.Background is {} erase && HOffset > 0)
-                context.FillOpaque(new Rect(0, y, frozenWidth, 1), erase);
+                context.FillOpaque(new Rect(0, y, frozenWidth, 1), new BrushedStyle { Background = erase });
 
             for (int c = 0; c < frozenCount; c++)
                 DrawGhostCell(c);
@@ -1347,7 +1347,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
         if (width <= 0)
             return;
 
-        context.FillOpaque(new Rect(x, y, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
+        context.FillOpaque(new Rect(x, y, width, 1), new BrushedStyle { Background = TextBrush ?? Brushes.Default }.Imposing(TextAttributes.Inverse));
     }
 
     /// <summary>The `█░` fill/track run after a data-bar cell's value (glyph shape carries the value in NoColor — §4).</summary>

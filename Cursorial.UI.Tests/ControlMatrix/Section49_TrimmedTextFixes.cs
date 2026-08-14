@@ -65,6 +65,58 @@ public sealed class Section49_TrimmedTextFixes
     }
 
     [Fact]
+    public void RichTextPresenter_TracksTheMeasureRowConstraint_BothWays()
+    {
+        // The RichTextPresenter (and FigletPresenter below) formatted against the STALE previous-arrange
+        // Bounds.Rows at measure instead of the measure's OWN row constraint. So when the terminal font
+        // grew — losing both columns AND rows, content going from plentiful to constrained and back — the
+        // text kept trimming to the old budget and never un-trimmed. TextBlock passed its constraint down
+        // and was immune (the twin above). Driving the measure constraint directly pins that the presenter
+        // trims to the CURRENT budget in both directions.
+        var text = new RichTextPresenter
+        {
+            Source = "one two three four five six seven eight nine ten",
+            TextWrapping = WrapMode.WordWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var (host, _) = Show(new StackPanel { Children = { text } }, columns: 40, rows: 20);
+        using var _1 = host;
+
+        AssertTrimTracksConstraint(text);
+    }
+
+    [Fact]
+    public void FigletPresenter_TracksTheMeasureRowConstraint_BothWays()
+    {
+        var figlet = new FigletPresenter { Text = "HI" }; // a short figlet word — fits the generous budget, not the tight one
+        var (host, _) = Show(new StackPanel { Children = { figlet } }, columns: 60, rows: 20);
+        using var _1 = host;
+
+        AssertTrimTracksConstraint(figlet);
+    }
+
+    /// <summary>Measures the element at a generous, then tight, then generous-again budget (both axes shrink,
+    /// as a font-size increase does), and asserts IsTrimmed tracks the CURRENT constraint each time — the
+    /// un-trim on the final grow-back is the fix.</summary>
+    private static void AssertTrimTracksConstraint(UIElement element)
+    {
+        static void Measure(UIElement e, int columns, int rows)
+        {
+            e.InvalidateMeasure();
+            e.Measure(new Size(columns, rows));
+        }
+
+        Measure(element, 40, 20);
+        Assert.False(element.GetValue(TextElement.IsTrimmedProperty)); // plentiful — fits
+
+        Measure(element, 10, 2);
+        Assert.True(element.GetValue(TextElement.IsTrimmedProperty));  // constrained (both axes) — must trim
+
+        Measure(element, 40, 20);
+        Assert.False(element.GetValue(TextElement.IsTrimmedProperty)); // plentiful again — must UN-trim (the bug)
+    }
+
+    [Fact]
     public void AccessTextPresenter_WideGlyphLabel_TrimsWithoutThrowing()
     {
         // "日本語" is 3 chars / 6 columns: the old char-index Substring(0, columns-1) threw

@@ -183,7 +183,12 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
 
     /// <inheritdoc/>
     protected override Size MeasurePrimaryContent(Size availableSize)
-        => FormattedTextCache.MeasureAndAdvertiseTrimmed(this, EnsureText(availableSize.Columns));
+        // Format against THIS measure's row constraint, not the stale previous-arrange Bounds.Rows: a
+        // font-size change re-measures with a different row budget, and deriving rows from Bounds meant
+        // the figlet kept trimming to the OLD budget. Unbounded rows map to a natural, untrimmed format;
+        // arrange then constrains to the final slot. (The twin of RichTextPresenter's fix; TextBlock
+        // already measured against its own constraint, which is why it was immune.)
+        => FormattedTextCache.MeasureAndAdvertiseTrimmed(this, EnsureText(availableSize.Columns, availableSize.Rows));
 
     /// <inheritdoc/>
     protected override void RenderPrimaryContent(RenderContext context)
@@ -203,7 +208,7 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
         }
     }
 
-    private FormattedText? EnsureText(int? possibleColumns, int? arrangedRows = null)
+    private FormattedText? EnsureText(int? possibleColumns, int? rowBudget = null)
     {
         if (Text is not { Length: > 0 } text)
             return null;
@@ -214,10 +219,11 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
         if (availableColumns is 0)
             return null;
 
-        // Bounds publishes AFTER ArrangeOverride runs, so the arrange-time reformat passes the
-        // fresh row budget explicitly — reading Bounds.Rows there re-formats under the OLD cap
-        // and the layout (and the IsTrimmed flag) never grows back.
-        var rows = arrangedRows ?? bounds.Rows;
+        // The row budget is passed explicitly by measure (its constraint) and arrange (the final slot),
+        // both FRESH. Only render falls back to Bounds.Rows — and render runs AFTER arrange, so Bounds is
+        // current there. The stale trap is reading Bounds.Rows before arrange publishes it: that re-formats
+        // under the OLD budget and the layout (and the IsTrimmed flag) never tracks a size change.
+        var rows = rowBudget ?? bounds.Rows;
         var maxRows = rows is not (0 or LayoutMath.Unbounded) ? rows : (int?) null;
 
         var request = new FormattedTextCache.LayoutRequest(

@@ -69,7 +69,9 @@ public static class CursorialTheme
         ThemeKeys.MenuForegroundHover, ThemeKeys.MenuForegroundHighlighted, ThemeKeys.MenuIconCheckedForeground,
         ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground,
         ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
-        ThemeKeys.ScrollBarThumbDragBrush
+        ThemeKeys.ScrollBarThumbDragBrush, ThemeKeys.ElevationPopup, ThemeKeys.ElevationDesktop,
+        ThemeKeys.ElevationDialog, ThemeKeys.ElevationHighest, ThemeKeys.ElevationRaised, ThemeKeys.ElevationWell,
+        ThemeKeys.ElevationWindow
     ];
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();

@@ -323,15 +323,21 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
         // properties ride the global AffectsRender lane with no cache term, so a baked flag
         // removed after the parse survived in the document default forever; imposed at paint, an
         // attribute-only flip is honored by a repaint by construction.
-        var style = CellStyle.Transparent
-                             .WithForeground(Color.Default);
+        // The carrier the pipeline actually takes — the BrushedStyle FromStated(CellStyle.Transparent
+        // .WithForeground(Default)) used to hand it: a transparent background and underline colour, no
+        // foreground (it rides the paint preference), no baked attributes (they impose at paint).
+        var style = new BrushedStyle
+                    {
+                        Background = Brushes.Transparent,
+                        UnderlineColor = Brushes.Transparent
+                    };
 
         // The underline COLOR stays parse-side (the ruling's delegated choice; criterion:
         // behaviour-preservation for current inputs): it has no preference rung of its own in the
         // resolver, so the flattened element color keeps riding the document default — unchanged
-        // bytes, no competition to misrank.
+        // bytes, no competition to misrank. (A default colour states nothing, as FromStated spelled it.)
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
-            style = style.WithUnderlineColor(fgColor);
+            style = style with { UnderlineColor = fgColor.IsDefault ? null : new SolidColorBrush(fgColor) };
 
         var glyphSource = new GlyphSource(Font, Sizing);
         var rtb = new RichTextBuilder(style, defaultGlyphSource: glyphSource);
@@ -341,7 +347,7 @@ public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSourc
                          new TextMarkupOptions
                          {
                              BrushResolver = ResourceBrushResolver.Create(this),
-                             DefaultStyle = BrushedStyle.FromStated(style)
+                             DefaultStyle = style
                          });
 
         return rtb.Build();

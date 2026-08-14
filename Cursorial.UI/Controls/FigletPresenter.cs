@@ -289,7 +289,7 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
 
     string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);
 
-    private CellStyle ResolveStyle()
+    private BrushedStyle ResolveStyle()
     {
         var attributes = TextElement.ComposeAttributes(this);
         var fg = Foreground ?? Brushes.Default;
@@ -307,15 +307,19 @@ public sealed class FigletPresenter : DrawnContentPresenter, ITrimmedTextSource
         // properties ride the global AffectsRender lane with no cache term, so a baked flag
         // removed after the parse survived in the block carrier forever; imposed at paint, an
         // attribute-only flip is honored by a repaint by construction.
-        var style = CellStyle.Transparent
-                             .WithForeground(Color.Default);
+        var style = new BrushedStyle
+                    {
+                        Background = Brushes.Transparent,
+                        UnderlineColor = Brushes.Transparent
+                    };
 
         // The underline COLOR stays parse-side (the ruling's delegated choice; criterion:
         // behaviour-preservation for current inputs): it has no preference rung in the resolver,
         // so the flattened element color still rides the block style — unchanged bytes (it is the
-        // parse-freshness witness FigletPresenterFreshnessTests pins).
+        // parse-freshness witness FigletPresenterFreshnessTests pins). A default colour states
+        // nothing, as FromStated spelled it.
         if (attributes.Flags.HasFlag(TextAttributes.Underline))
-            style = style.WithUnderlineColor(fgColor);
+            style = style with { UnderlineColor = fgColor.IsDefault ? null : new SolidColorBrush(fgColor) };
 
         return style;
     }

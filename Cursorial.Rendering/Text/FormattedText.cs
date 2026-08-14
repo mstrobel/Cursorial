@@ -16,7 +16,7 @@ namespace Cursorial.Rendering.Text;
 /// The result of formatting a <see cref="RichText"/> document against a column budget. Immutable
 /// — format once and paint many times; querying <see cref="Size"/> doesn't need a buffer.
 /// </summary>
-public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, int ProvidedColumns, in CellStyle DefaultStyle = default, bool FillEntireBounds = false) : IContent
+public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size Size, int ProvidedColumns, bool FillEntireBounds = false) : IContent
 {
     /// <summary>Empty formatted document — zero blocks, zero size.</summary>
     public static FormattedText Empty { get; } = new(ImmutableArray<FormattedBlock>.Empty, Size.Empty, 0);
@@ -31,7 +31,6 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// ladder's document leg, and the <see cref="FillEntireBounds"/> surround fill reads
     /// <see cref="BrushedStyle.Background"/> off it — the fall-through rung of the fill's own
     /// source ladder, under the caller's preference.
-    /// <see cref="DefaultStyle"/> is the same rung in resolved form, for resolved-value consumers.
     /// </summary>
     public BrushedStyle DefaultCarrier { get; init; }
 

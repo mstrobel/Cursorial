@@ -462,7 +462,7 @@ internal sealed class FormattedTextCache
         FastPathFormatCount++;
 
         return new FormattedText(ImmutableArray.Create<FormattedBlock>(paragraph), new Size(width, 1),
-                                 request.Columns, documentDefault.ResolveFlat())
+                                 request.Columns)
                {
                    DefaultCarrier = documentDefault
                };

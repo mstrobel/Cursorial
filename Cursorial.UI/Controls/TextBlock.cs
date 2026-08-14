@@ -37,8 +37,7 @@ public class TextBlock : UIElement, ITrimmedTextSource
     // glyphs transparent; the transparent background and underline color stay stated (the
     // compositing identity).
     private static readonly BrushedStyle PlainTextDefaultCarrier =
-        BrushedStyle.FromStated(Output.CellStyle.Transparent
-                                      .WithForeground(Cursorial.Media.Color.Default));
+        new() { Background = Brushes.Transparent, UnderlineColor = Brushes.Transparent };
 
     /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =

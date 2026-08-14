@@ -16,7 +16,7 @@ public class SceneCompositorTests
 
     private static SceneCompositor OverBlueBase() => new(CellStyle.Default.WithBackground(Blue));
 
-    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
+    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = brush }));
 
     // ---- P0: the compositing invariant ----
 
@@ -147,7 +147,7 @@ public class SceneCompositorTests
 
         // Scene paints only column 0; columns 1..3 stay transparent (cleared default).
         var scene = Scene.Create(4, 1);
-        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), new SolidColorBrush(Red)));
+        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), new BrushedStyle { Background = new SolidColorBrush(Red) }));
         var layers = new[] { new SceneLayer(scene) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -414,7 +414,7 @@ public class SceneCompositorTests
 
         var scene = Scene.Create(4, 1);
         scene.Draw(ctx => ctx.FillRectangle(scene.Bounds,
-            new LinearGradientBrush([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))])));
+            new BrushedStyle { Background = new LinearGradientBrush([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))]) }));
 
         Assert.True(compositor.Composite(new[] { new SceneLayer(scene, new CompositeParameters(opacity: 0)) }, view));
         Assert.Equal(Blue, buffer[0, 0].Style.Background);

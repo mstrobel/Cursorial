@@ -25,7 +25,7 @@ public class DrawingContextGradientTests
     public void FillRectangle_Gradient_SamplesPerCellBackground()
     {
         var scene = Scene.Create(4, 1);
-        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new LinearGradientBrush(BlackToWhite)));
+        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = new LinearGradientBrush(BlackToWhite) }));
 
         var buffer = Composite(scene, 4, 1);
 
@@ -40,7 +40,7 @@ public class DrawingContextGradientTests
     public void FillRectangle_Solid_StillWorks()
     {
         var scene = Scene.Create(2, 1);
-        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, Color.FromRgb(10, 20, 30)));   // implicit Color → Brush
+        scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(10, 20, 30)) }));
 
         var buffer = Composite(scene, 2, 1);
         Assert.Equal(Color.FromRgb(10, 20, 30), buffer[0, 0].Style.Background);
@@ -84,7 +84,7 @@ public class DrawingContextGradientTests
         var scene = Scene.Create(2, 1);
         scene.Draw(ctx =>
         {
-            ctx.FillRectangle(scene.Bounds, fill);
+            ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
             ctx.DrawText(0, 0, "A", DrawHarness.Ink(Color.FromRgb(255, 255, 255)));
         });
 

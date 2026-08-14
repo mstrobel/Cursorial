@@ -85,34 +85,19 @@ public sealed class RenderContextFillBrushedStyleTests
                     $"the fill's attribute never arrived: {host.GetCell(0, 0).Style.Attributes}");
     }
 
-    /// <summary>...and the same call with the existing <see cref="Color"/> overload — the one
-    /// <c>TextPresenter</c> actually makes — behaves identically, which is what "the wrappers are
-    /// unchanged" has to mean at this boundary.</summary>
-    [Fact]
-    public void FillOpaque_ColorOverload_HonorsNoOverwrite()
-    {
-        using var host = Shown(ctx =>
-        {
-            ctx.DrawText(0, 0, "X", Brushes.White);
-            ctx.FillOpaque(new Rect(0, 0, 2, 1), Colors.Transparent, TextAttributes.Inverse, overwrite: false);
-        });
-
-        Assert.Equal("X", host.GetCell(0, 0).Grapheme);
-        Assert.True(host.GetCell(0, 0).Style.Attributes.HasFlag(TextAttributes.Inverse),
-                    $"the fill's attribute never arrived: {host.GetCell(0, 0).Style.Attributes}");
-    }
-
     /// <summary>
     /// The word an element hands the veneer may carry AXIS-OWNING flags — <c>TextPresenter</c>'s
-    /// allowlist admits Bold, Faint and Italic — and the fold must decompose per axis rather than
-    /// throwing. Through <see cref="RenderContext"/>, on a real frame.
+    /// allowlist admits Bold, Faint and Italic — and <see cref="BrushedStyle.Imposing"/> must
+    /// decompose it per axis rather than throwing. Through <see cref="RenderContext"/>, on a real frame.
     /// </summary>
     [Fact]
     public void FillOpaque_WordCarryingAxisFlags_ReachesTheFrame()
     {
         var word = TextAttributes.Bold | TextAttributes.Italic | TextAttributes.Inverse;
 
-        using var host = Shown(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1), Teal, word, overwrite: true));
+        using var host = Shown(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1),
+                                                     new BrushedStyle { Background = new SolidColorBrush(Teal) }.Imposing(word),
+                                                     overwrite: true));
 
         Assert.Equal(word, host.GetCell(0, 0).Style.Attributes & word);
     }

@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
@@ -47,7 +48,7 @@ public sealed class Phase3EndToEndTests
         protected override Size MeasureOverride(Size availableSize) => new(12, 1);
 
         protected override void Render(RenderContext context)
-            => context.FillOpaque(context.Bounds, Fill);
+            => context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(Fill) });
     }
 
     /// <summary>The control stand-in that "stamps" template parts at P3 (template instantiation is P5).</summary>

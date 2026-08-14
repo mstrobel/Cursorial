@@ -96,7 +96,7 @@ public class ImageBrushTests
     {
         // Integration through the cell path: an opaque texel composited over the black base reads back as itself.
         var brush = new ImageBrush(Img2x2(), Stretch.Fill, BrushInterpolation.NearestNeighbor);
-        var b = DrawHarness.Render(2, 2, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 2), brush));
+        var b = DrawHarness.Render(2, 2, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 2), new BrushedStyle { Background = brush }));
         Assert.Equal(Red, b[0, 0].Style.Background);
         Assert.Equal(White, b[1, 1].Style.Background);
     }

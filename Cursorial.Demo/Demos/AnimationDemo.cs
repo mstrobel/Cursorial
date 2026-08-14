@@ -98,7 +98,7 @@ internal sealed class AnimationDemo : InteractiveDemo
         _slide.Draw(ctx =>
         {
             ctx.FillRectangle(new Rect(0, boxRow, boxW, 3),
-                new LinearGradientBrush(Color.FromRgb(185, 70, 160), Color.FromRgb(90, 120, 230)));
+                new BrushedStyle { Background = new LinearGradientBrush(Color.FromRgb(185, 70, 160), Color.FromRgb(90, 120, 230)) });
             ctx.DrawText(2, boxRow + 1, "slide + fade — cached scene", DemoSupport.Ink(Color.FromRgb(18, 18, 28)));
         });
         _slideMove = new CompositeParametersAnimation(
@@ -152,7 +152,7 @@ internal sealed class AnimationDemo : InteractiveDemo
 
         // Animated gradient bar — the brush is the per-frame value of a BrushAnimation.
         ctx.DrawText(1, 2, "Animated gradient (BrushInterpolator):", DemoSupport.Ink(Label));
-        ctx.FillRectangle(new Rect(1, 3, Math.Clamp(w - 2, 1, 60), 2), _gradient.ValueAt(t));
+        ctx.FillRectangle(new Rect(1, 3, Math.Clamp(w - 2, 1, 60), 2), new BrushedStyle { Background = _gradient.ValueAt(t) });
 
         // Easing progress bar — fill clamps to the track, so overshoot (Back) parks at the ends; the live
         // curve plot beside it reveals the shape (it dips below 0 / past 1).
@@ -160,9 +160,9 @@ internal sealed class AnimationDemo : InteractiveDemo
         double p = _progress.ValueAt(t);
         ctx.DrawText(1, 6, $"Easing: {name}    (←/→ to change)", DemoSupport.Ink(Label));
         int barW = Math.Clamp(w - 2, 1, 60);
-        ctx.FillRectangle(new Rect(1, 7, barW, 1), Color.FromRgb(40, 44, 60));     // track
+        ctx.FillRectangle(new Rect(1, 7, barW, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(40, 44, 60)) });     // track
         int fill = (int) Math.Round(Math.Clamp(p, 0.0, 1.0) * barW);
-        if (fill > 0) ctx.FillRectangle(new Rect(1, 7, fill, 1), Cyan);            // fill
+        if (fill > 0) ctx.FillRectangle(new Rect(1, 7, fill, 1), new BrushedStyle { Background = new SolidColorBrush(Cyan) });            // fill
 
         ctx.DrawText(1, 9, "Easing curve:", DemoSupport.Ink(Label));
         var pts = new PointD[33];
@@ -182,8 +182,8 @@ internal sealed class AnimationDemo : InteractiveDemo
         if (_focusBox is not null)
         {
             ctx.DrawText(_focusPanel.Column, 9, "RectAnimation:", DemoSupport.Ink(Label));
-            ctx.FillRectangle(_focusPanel, Color.FromRgb(28, 30, 42));   // panel backdrop
-            ctx.FillRectangle(_focusBox.ValueAt(t), Cyan);              // the gliding/resizing box
+            ctx.FillRectangle(_focusPanel, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(28, 30, 42)) });   // panel backdrop
+            ctx.FillRectangle(_focusBox.ValueAt(t), new BrushedStyle { Background = new SolidColorBrush(Cyan) });              // the gliding/resizing box
         }
     }
 }

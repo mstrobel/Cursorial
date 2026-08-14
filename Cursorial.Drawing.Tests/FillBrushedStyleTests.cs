@@ -133,8 +133,8 @@ public class FillBrushedStyleTests
     /// <c>Faint</c>, <c>Italic</c> and <c>Underline</c>: they have their own axes. And this exact word
     /// is what <c>TextPresenter</c>'s band fill hands the primitive
     /// (<c>baseStyle.Attributes &amp; FillAttributes | Inverse</c>, where the allowlist includes Bold,
-    /// Faint and Italic), so a wrapper that folds the word with a single <c>Applying</c> throws on a
-    /// real path. The fold must decompose per axis, the way
+    /// Faint and Italic), so folding the word with a single <c>Applying</c> throws on a real path;
+    /// <see cref="BrushedStyle.Imposing"/> decomposes it per axis instead, the way
     /// <c>DrawingContext.CreateBrushResolver</c>'s base-attribute leg does.
     /// </summary>
     [Theory]
@@ -150,9 +150,9 @@ public class FillBrushedStyleTests
         {
             switch (family)
             {
-                case 0: ctx.FillRectangle(region, Teal, word); break;
-                case 1: ctx.FillOpaque(region, Teal, word); break;
-                default: ctx.PaintRectangle(region, Teal, word); break;
+                case 0: ctx.FillRectangle(region, new BrushedStyle { Background = Solid(Teal) }.Imposing(word)); break;
+                case 1: ctx.FillOpaque(region, new BrushedStyle { Background = Solid(Teal) }.Imposing(word)); break;
+                default: ctx.PaintRectangle(region, new BrushedStyle { Background = Solid(Teal) }.Imposing(word)); break;
             }
         });
 
@@ -169,8 +169,9 @@ public class FillBrushedStyleTests
     public void Word_CarryingBothWeights_ImposesBold_RatherThanTheUnrenderablePair()
     {
         using var scene = Painted(1, 1,
-                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1), Teal,
-                                                        TextAttributes.Bold | TextAttributes.Faint));
+                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1),
+                                                        new BrushedStyle { Background = Solid(Teal) }
+                                                            .Imposing(TextAttributes.Bold | TextAttributes.Faint)));
 
         var attributes = scene.GetCell(0, 0).Style.Attributes;
         Assert.True(attributes.HasFlag(TextAttributes.Bold), $"Bold was not imposed: {attributes}");
@@ -186,7 +187,8 @@ public class FillBrushedStyleTests
     public void Word_CarryingUnderline_StillUnderlinesEveryFilledCell()
     {
         using var scene = Painted(1, 1,
-                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1), Teal, TextAttributes.Underline));
+                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1),
+                                                        new BrushedStyle { Background = Solid(Teal) }.Imposing(TextAttributes.Underline)));
 
         var style = scene.GetCell(0, 0).Style;
         Assert.True(style.Attributes.HasFlag(TextAttributes.Underline), $"Underline never arrived: {style.Attributes}");
@@ -221,8 +223,9 @@ public class FillBrushedStyleTests
     public void Fill_MasksNothing_TheAllowlistBelongsToThePolicy()
     {
         using var scene = Painted(1, 1,
-                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1), Teal,
-                                                        TextAttributes.Blink | TextAttributes.Strikethrough));
+                                  ctx => ctx.FillOpaque(new Rect(0, 0, 1, 1),
+                                                        new BrushedStyle { Background = Solid(Teal) }
+                                                            .Imposing(TextAttributes.Blink | TextAttributes.Strikethrough)));
 
         var attributes = scene.GetCell(0, 0).Style.Attributes;
         Assert.True(attributes.HasFlag(TextAttributes.Blink), $"Blink was masked away: {attributes}");
@@ -432,37 +435,6 @@ public class FillBrushedStyleTests
         Assert.Equal(32, scene.GetCell(0, 0).Style.Foreground.Red);
         Assert.Equal(96, scene.GetCell(1, 0).Style.Background.Red);
         Assert.Equal(96, scene.GetCell(1, 0).Style.Foreground.Red);
-    }
-
-    // ───────────── the wrappers, unchanged ─────────────
-
-    /// <summary>
-    /// The <see cref="Color"/> and <see cref="IBrush"/> overloads stay as thin wrappers — roughly sixty
-    /// call sites should not be pushed through template construction to say what two arguments already
-    /// say — and they land the cell they always landed.
-    /// </summary>
-    [Fact]
-    public void ColorAndBrushOverloads_LandTheCellsTheyAlwaysLanded()
-    {
-        using var scene = Painted(4, 1, ctx =>
-        {
-            ctx.FillRectangle(new Rect(0, 0, 1, 1), Teal);
-            ctx.FillRectangle(new Rect(1, 0, 1, 1), Solid(Teal));
-            ctx.FillOpaque(new Rect(2, 0, 1, 1), Teal);
-            ctx.PaintRectangle(new Rect(3, 0, 1, 1), Solid(Teal));
-        });
-
-        Assert.Null(scene.GetCell(0, 0).Grapheme);
-        Assert.Null(scene.GetCell(1, 0).Grapheme);
-        Assert.Equal(CellBuffer.DurableEmptyGrapheme, scene.GetCell(2, 0).Grapheme);
-        Assert.Null(scene.GetCell(3, 0).Grapheme);
-
-        for (var column = 0; column < 4; column++)
-        {
-            Assert.Equal(Teal, scene.GetCell(column, 0).Style.Background);
-            Assert.Equal(default, scene.GetCell(column, 0).Style.Attributes);
-            Assert.True(scene.GetCell(column, 0).Style.Foreground.IsDefault);
-        }
     }
 
     /// <summary>

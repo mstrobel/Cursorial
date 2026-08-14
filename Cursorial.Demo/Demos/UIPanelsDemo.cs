@@ -448,7 +448,7 @@ internal sealed class UIPanelsDemo : IDemo
     {
         protected override void Render(RenderContext context)
         {
-            context.FillOpaque(context.Bounds, fill);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
             if (label is not null && context.Size is { Columns: > 0, Rows: > 0 })
                 context.DrawText(context.Size.Columns / 2, context.Size.Rows / 2, label,
                                  new BrushedStyle
@@ -518,7 +518,7 @@ internal sealed class UIPanelsDemo : IDemo
         protected override void Render(RenderContext context)
         {
             var background = CardBackground;
-            context.FillOpaque(context.Bounds, background);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(background) });
             context.DrawText(0, 0, $" {Marker} {Title}",
                              new BrushedStyle
                              {

@@ -16,7 +16,7 @@ public class OccludeTests
     [Fact]
     public void FillOpaque_WritesSpaceBearingCells_WithBackground()
     {
-        var b = DrawHarness.Render(4, 2, ctx => ctx.FillOpaque(new Rect(0, 0, 2, 2), Blue));
+        var b = DrawHarness.Render(4, 2, ctx => ctx.FillOpaque(new Rect(0, 0, 2, 2), new BrushedStyle { Background = new SolidColorBrush(Blue) }));
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[0, 0].Grapheme);            // a real (space) glyph, not a blank null cell
         Assert.Equal(Blue, b[0, 0].Style.Background);
     }
@@ -26,7 +26,7 @@ public class OccludeTests
     {
         var b = DrawHarness.RenderLayers(4, 3, null,
             lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),   // bottom
-            upper => upper.FillOpaque(new Rect(0, 0, 3, 3), Blue));             // top
+            upper => upper.FillOpaque(new Rect(0, 0, 3, 3), new BrushedStyle { Background = new SolidColorBrush(Blue) }));             // top
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);            // the lower 'X' is hidden
         Assert.Equal(Blue, b[1, 1].Style.Background);
     }
@@ -37,7 +37,7 @@ public class OccludeTests
         // Contrast: a background-only fill keeps the lower glyph (only the background merges).
         var b = DrawHarness.RenderLayers(4, 3, null,
             lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),
-            upper => upper.FillRectangle(new Rect(0, 0, 3, 3), Blue));
+            upper => upper.FillRectangle(new Rect(0, 0, 3, 3), new BrushedStyle { Background = new SolidColorBrush(Blue) }));
         Assert.Equal("X", b[1, 1].Grapheme);
         Assert.Equal(Blue, b[1, 1].Style.Background);
     }
@@ -50,7 +50,7 @@ public class OccludeTests
             lower => lower.Set(0, 0, "X", CellStyle.Default.WithForeground(Red)),
             upper =>
             {
-                upper.FillOpaque(new Rect(0, 0, 4, 3), Blue);
+                upper.FillOpaque(new Rect(0, 0, 4, 3), new BrushedStyle { Background = new SolidColorBrush(Blue) });
                 upper.DrawBox(new Rect(0, 0, 4, 3), White, overwrite: true);
             });
         Assert.Equal("┌", b[0, 0].Grapheme);            // border corner drawn over the panel
@@ -65,7 +65,7 @@ public class OccludeTests
         var b = DrawHarness.Render(4, 1, ctx =>
         {
             ctx.Set(0, 0, "中", CellStyle.Default.WithForeground(White));   // WideLeft @0, continuation @1
-            ctx.FillOpaque(new Rect(1, 0, 2, 1), Blue);                 // overwrites the continuation
+            ctx.FillOpaque(new Rect(1, 0, 2, 1), new BrushedStyle { Background = new SolidColorBrush(Blue) });                 // overwrites the continuation
         });
         Assert.True(string.IsNullOrEmpty(b[0, 0].Grapheme));   // orphaned WideLeft cleaned up
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 0].Grapheme);
@@ -79,7 +79,7 @@ public class OccludeTests
         var frosted = new SolidColorBrush(Color.FromRgba(0, 0, 255, 128));
         var b = DrawHarness.RenderLayers(4, 3, Color.FromRgb(0, 0, 0),
             lower => lower.Set(1, 1, "X", CellStyle.Default.WithForeground(Red)),
-            upper => upper.FillOpaque(new Rect(0, 0, 3, 3), frosted));
+            upper => upper.FillOpaque(new Rect(0, 0, 3, 3), new BrushedStyle { Background = frosted }));
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, b[1, 1].Grapheme);   // glyph occluded regardless of fill alpha
     }
 }

@@ -6,6 +6,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -59,7 +60,7 @@ public class SceneSurfaceBlankTests
     public void SceneRaster_LeavesUnpaintedCellsTransparent()
     {
         using var scene = Scene.Create(6, 2);
-        scene.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1), Color.FromRgb(10, 20, 30)));
+        scene.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 2, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(10, 20, 30)) }));
 
         Assert.Equal(CellStyle.Transparent, scene.GetCell(5, 1).Style);
     }
@@ -72,7 +73,7 @@ public class SceneSurfaceBlankTests
         // FILLED transparent, that blank was Style.Default and the clear left an opaque rectangle
         // sitting in the middle of the group.
         using var scene = Scene.Create(6, 2);
-        scene.Draw(ctx => ctx.FillOpaque(scene.Bounds, Color.FromRgb(10, 20, 30)));
+        scene.Draw(ctx => ctx.FillOpaque(scene.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(10, 20, 30)) }));
 
         scene.Buffer.View(1, 0, 2, 1).Clear();
 
@@ -99,7 +100,7 @@ public class SceneSurfaceBlankTests
     public void ReRaster_WipesThePreviousRaster()
     {
         using var scene = Scene.Create(6, 1);
-        scene.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 6, 1), Color.FromRgb(10, 20, 30)));
+        scene.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 6, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(10, 20, 30)) }));
 
         scene.Invalidate();
         scene.Draw(_ => { });

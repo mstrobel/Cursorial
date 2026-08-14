@@ -144,12 +144,12 @@ internal sealed class DrawingDemo : InteractiveDemo
                 if (rows > 1)
                     ctx.FillRectangle(
                         new Rect(0, 1, cols, rows - 1),
-                        new LinearGradientBrush([new(0.0, Color.FromRgb(24, 28, 48)), new(1.0, Color.FromRgb(6, 8, 14))],
-                                             startPoint: RelativePoint.Top, endPoint: RelativePoint.Bottom));   // vertical
+                        new BrushedStyle { Background = new LinearGradientBrush([new(0.0, Color.FromRgb(24, 28, 48)), new(1.0, Color.FromRgb(6, 8, 14))],
+                                             startPoint: RelativePoint.Top, endPoint: RelativePoint.Bottom) });   // vertical
 
                 // Opaque title bar across the top row.
                 var barColor = Color.FromRgb(40, 52, 87);
-                ctx.FillRectangle(new Rect(0, 0, cols, 1), new SolidColorBrush(barColor));
+                ctx.FillRectangle(new Rect(0, 0, cols, 1), new BrushedStyle { Background = new SolidColorBrush(barColor) });
 
                 // Title text with a horizontal gradient foreground (teal → violet) over the bar — each
                 // glyph cell samples its own color.
@@ -167,9 +167,9 @@ internal sealed class DrawingDemo : InteractiveDemo
                     int top = rows - sw - 1;
                     ctx.DrawText(1, top - 1, "radial:  ellipse (raw)    circle (aspect-corrected) →", DemoSupport.Ink(Color.FromRgb(150, 160, 200)));
                     var deep = Color.FromRgb(16, 18, 30);
-                    ctx.FillRectangle(new Rect(1, top, sw, sw), new RadialGradientBrush(Color.FromRgb(120, 220, 232), deep));
+                    ctx.FillRectangle(new Rect(1, top, sw, sw), new BrushedStyle { Background = new RadialGradientBrush(Color.FromRgb(120, 220, 232), deep) });
                     ctx.FillRectangle(new Rect(sw + 4, top, sw, sw),
-                        new RadialGradientBrush(Color.FromRgb(196, 150, 255), deep) { CellAspectRatio = cellAspect });
+                        new BrushedStyle { Background = new RadialGradientBrush(Color.FromRgb(196, 150, 255), deep) { CellAspectRatio = cellAspect } });
                 }
             });
             return scene;
@@ -181,7 +181,7 @@ internal sealed class DrawingDemo : InteractiveDemo
             scene.Draw(ctx =>
             {
                 // Translucent fill — its alpha is preserved for the compositor to blend.
-                ctx.FillRectangle(scene.Bounds, new SolidColorBrush(fill));
+                ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
 
                 // A small opaque label tab so panels are identifiable while they overlap.
                 var labelStyle = CellStyle.Default.WithForeground(Color.FromRgb(245, 245, 250)).WithBackground(labelBackground);

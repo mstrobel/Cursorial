@@ -86,7 +86,7 @@ internal sealed class UIPrimitivesDemo : InteractiveDemo
         {
             var modal = new Rect(26, top + 1, 18, 5);
             ctx.DrawDropShadow(modal, ShadowGeometry.Drop(radius: 1, strength: 0.75, edges), Color.FromRgb(0, 0, 0));
-            ctx.FillOpaque(modal, Color.FromRgba(45, 40, 70, 63));
+            ctx.FillOpaque(modal, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgba(45, 40, 70, 63)) });
             ctx.DrawBox(modal, new Pen(Color.FromRgb(185, 120, 200)) { Weight = StrokeWeight.Light, Corners = CornerStyle.Rounded }, overwrite: true);
             ctx.DrawText(28, top + 2, "opaque modal", DemoSupport.Ink(Color.FromRgb(235, 225, 245)));
             ctx.DrawText(28, top + 3, "hides text", DemoSupport.Ink(Color.FromRgb(200, 190, 220)));

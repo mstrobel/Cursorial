@@ -752,7 +752,7 @@ public class RenderGroupCompositingTests
         protected override void Render(RenderContext context)
         {
             base.Render(context);
-            context.FillOpaque(Region ?? context.Bounds, color);
+            context.FillOpaque(Region ?? context.Bounds, new BrushedStyle { Background = new SolidColorBrush(color) });
         }
     }
 

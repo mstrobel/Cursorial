@@ -271,7 +271,7 @@ internal sealed class MotionDemo : IDemo
     {
         protected override void Render(RenderContext context)
         {
-            context.FillOpaque(context.Bounds, fill);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
             if (context.Size is { Columns: > 0, Rows: > 0 })
                 context.DrawText(1, context.Size.Rows / 2, label,
                                  new BrushedStyle

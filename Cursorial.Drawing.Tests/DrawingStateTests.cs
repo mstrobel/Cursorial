@@ -1,6 +1,7 @@
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -31,7 +32,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             using (ctx.PushTranslate(-1, -1))
-                ctx.FillRectangle(new Rect(0, 0, 4, 4), Red);   // local→scene shifted (−1,−1)
+                ctx.FillRectangle(new Rect(0, 0, 4, 4), new BrushedStyle { Background = new SolidColorBrush(Red) });   // local→scene shifted (−1,−1)
         });
         Assert.Equal(Red, b[0, 0].Style.Background);   // local (1,1) → scene (0,0)
         Assert.Equal(Red, b[2, 2].Style.Background);   // local (3,3) → scene (2,2)
@@ -44,7 +45,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             using (ctx.PushClip(new Rect(1, 1, 2, 2)))
-                ctx.FillRectangle(new Rect(0, 0, 8, 4), Red);   // would fill all; clip restricts to (1,1,2,2)
+                ctx.FillRectangle(new Rect(0, 0, 8, 4), new BrushedStyle { Background = new SolidColorBrush(Red) });   // would fill all; clip restricts to (1,1,2,2)
         });
         Assert.Equal(Red, b[1, 1].Style.Background);
         Assert.Equal(Red, b[2, 2].Style.Background);
@@ -58,7 +59,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(10, 6, ctx =>
         {
             using (ctx.Push(clip: new Rect(2, 1, 4, 2), translateColumns: 2, translateRows: 1))
-                ctx.FillRectangle(new Rect(0, 0, 4, 4), Red);   // 4×4 content, viewport shows 4×2
+                ctx.FillRectangle(new Rect(0, 0, 4, 4), new BrushedStyle { Background = new SolidColorBrush(Red) });   // 4×4 content, viewport shows 4×2
         });
         Assert.Equal(Red, b[2, 1].Style.Background);    // local (0,0) → scene (2,1), in clip
         Assert.Equal(Red, b[5, 2].Style.Background);    // local (3,1) → scene (5,2), in clip
@@ -74,7 +75,7 @@ public class DrawingStateTests
         {
             using (ctx.PushClip(new Rect(0, 0, 6, 6)))
             using (ctx.PushClip(new Rect(2, 2, 6, 6)))   // intersect → (2,2,4,4)
-                ctx.FillRectangle(new Rect(0, 0, 10, 10), Red);
+                ctx.FillRectangle(new Rect(0, 0, 10, 10), new BrushedStyle { Background = new SolidColorBrush(Red) });
         });
         Assert.Equal(Red, b[2, 2].Style.Background);
         Assert.Equal(Red, b[5, 5].Style.Background);
@@ -88,7 +89,7 @@ public class DrawingStateTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             using (ctx.PushClip(new Rect(0, 0, 2, 2))) { }   // pushed then immediately popped
-            ctx.FillRectangle(new Rect(0, 0, 8, 4), Red);     // unclipped again
+            ctx.FillRectangle(new Rect(0, 0, 8, 4), new BrushedStyle { Background = new SolidColorBrush(Red) });     // unclipped again
         });
         Assert.Equal(Red, b[7, 3].Style.Background);
     }

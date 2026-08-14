@@ -4,6 +4,7 @@ using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -572,7 +573,7 @@ public class IntermediateSurfaceEquivalenceTests
         var baseStyle = CellStyle.Default.WithBackground(Green);
 
         using var panel = Scene.Create(3, 1);
-        panel.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 3, 1), Blue));
+        panel.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 3, 1), new BrushedStyle { Background = new SolidColorBrush(Blue) }));
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, panel.GetCell(0, 0).Grapheme);
 
         var flat = Composite(baseStyle, 3, 1, [new SceneLayer(panel)]);

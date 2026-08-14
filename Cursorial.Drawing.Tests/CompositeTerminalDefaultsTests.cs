@@ -39,7 +39,7 @@ public class CompositeTerminalDefaultsTests
                 }
             });
 
-    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
+    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = brush }));
 
     // ---- Rung (a): a translucent veil over a Default background blends, not solid ----
 

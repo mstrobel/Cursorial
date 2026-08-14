@@ -323,7 +323,7 @@ public class PushStackCoverageTests
         {
             using (ctx.PushTranslate(2, 1))
             {
-                ctx.FillRectangle(new Rect(0, 0, 6, 5), fill);
+                ctx.FillRectangle(new Rect(0, 0, 6, 5), new BrushedStyle { Background = new SolidColorBrush(fill) });
                 ctx.DrawInnerShadow(new Rect(0, 0, 6, 5), ShadowGeometry.Inner(radius: 1, strength: 0.5), Black);
             }
         }, baseBackground: White);
@@ -542,8 +542,8 @@ public class PushStackCoverageTests
             {
                 using (ctx.Push(clip: new Rect(1, 1, 3, 2), translateColumns: 1, translateRows: 1))
                 {
-                    ctx.FillRectangle(huge, Red);
-                    ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), Blue);
+                    ctx.FillRectangle(huge, new BrushedStyle { Background = new SolidColorBrush(Red) });
+                    ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), new BrushedStyle { Background = new SolidColorBrush(Blue) });
                 }
             },
             baseBackground: White);

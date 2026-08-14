@@ -73,7 +73,7 @@ public sealed class Phase4EndToEndTests
 
         protected override void Render(RenderContext context)
         {
-            context.FillOpaque(context.Bounds, Fill);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(Fill) });
             if (Label is { Length: > 0 } label)
                 context.DrawText(0, 0, label, new BrushedStyle
                                               {

@@ -212,7 +212,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         const int w = ViewportColumns, h = ViewportRows;
 
         // Backdrop wash.
-        ctx.FillRectangle(new Rect(0, 0, w, h), _backdrop); ops++;
+        ctx.FillRectangle(new Rect(0, 0, w, h), new BrushedStyle { Background = _backdrop }); ops++;
 
         // Header band (rows 0–5): formatted-text title block, status chips, rule.
         ctx.DrawFormattedText(Header, new Rect(2, 0, 90, 4), BenchCapabilities); ops++;
@@ -220,7 +220,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         {
             var chip = new Rect(w - 16 * (6 - i) - 2, 1, 14, 1);
             string text = i == 5 ? $"TICK {_tick:D6}" : $"{MetricLabels[i][..4].ToUpperInvariant()} {Pseudo(i, 7) % 100:D2}%";
-            ctx.FillRectangle(chip, new SolidColorBrush(PanelBg)); ops++;
+            ctx.FillRectangle(chip, new BrushedStyle { Background = new SolidColorBrush(PanelBg) }); ops++;
             ctx.DrawText(chip.Column + 1, 1, text, DemoSupport.Ink(i == 5 ? Warn : Accent)); ops++;
         }
         ctx.DrawLine(0, 5, w - 1, 5, _rulePen); ops++;
@@ -258,7 +258,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
                               BenchCapabilities); ops++;
 
         // Status bar (row 59).
-        ctx.FillRectangle(new Rect(0, h - 1, w, 1), new SolidColorBrush(Color.FromRgb(35, 40, 60))); ops++;
+        ctx.FillRectangle(new Rect(0, h - 1, w, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(35, 40, 60)) }); ops++;
         ctx.DrawText(2, h - 1, "cursorial · rasterbench", DemoSupport.Ink(Accent)); ops++;
         ctx.DrawText(30, h - 1, $"frame {_tick:D6}", DemoSupport.Ink(Value)); ops++;
         ctx.DrawText(46, h - 1, "zone 200×60", DemoSupport.Ink(Label)); ops++;
@@ -293,7 +293,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         ctx.Sparkline(cx, cy + 7, cw, _spark, Good); ops++;
 
         int pct = (int) (Pseudo(index + (mutating ? _tick : 0), 101) % 101);
-        ctx.FillRectangle(new Rect(cx, cy + 8, Math.Max(1, cw * pct / 100), 1), _barFill); ops++;
+        ctx.FillRectangle(new Rect(cx, cy + 8, Math.Max(1, cw * pct / 100), 1), new BrushedStyle { Background = _barFill }); ops++;
         ctx.DrawText(cx + cw - 4, cy + 9, $"{pct,3}%", DemoSupport.Ink(Value)); ops++;
 
         return ops;
@@ -359,7 +359,7 @@ internal sealed class BandScrollScenario : RasterBenchScenario
             int doc = _anchorRow + r;
             if (doc % 24 == 0)
             {
-                ctx.FillRectangle(new Rect(0, r, ViewportColumns, 1), new SolidColorBrush(Color.FromRgb(35, 40, 60))); ops++;
+                ctx.FillRectangle(new Rect(0, r, ViewportColumns, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(35, 40, 60)) }); ops++;
                 ctx.DrawText(2, r, $"── section {doc / 24:D4} ── offset {doc:D6}", DemoSupport.Ink(Keyword)); ops++;
                 continue;
             }

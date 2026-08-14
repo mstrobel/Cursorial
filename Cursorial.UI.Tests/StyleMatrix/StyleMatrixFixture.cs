@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -83,7 +84,7 @@ public class Widget : UIElement
         var glyph = ((char)('0' + Math.Abs(GetValue(P)) % 10)).ToString();
         for (var row = 0; row < context.Size.Rows; row++)
         for (var column = 0; column < context.Size.Columns; column++)
-            context.Set(column, row, glyph, default);
+            context.Set(column, row, glyph, default(CellStyle));
     }
 }
 

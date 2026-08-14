@@ -1,5 +1,6 @@
 using Cursorial.Drawing;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
@@ -87,7 +88,7 @@ public class RenderTreeIntegrationTests
         {
             Assert.Equal(new Size(5, 2), ctx.Size);
             Assert.Equal(new Rect(0, 0, 5, 2), ctx.Bounds);
-            ctx.Set(0, 0, "X", default); // element-local origin
+            ctx.Set(0, 0, "X", default(CellStyle)); // element-local origin
             ctx.DrawText(1, 1, "ab", new BrushedStyle
                                      {
                                          Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
@@ -172,7 +173,7 @@ public class RenderTreeIntegrationTests
         tree.Render();
 
         Assert.NotNull(captured);
-        Assert.Throws<InvalidOperationException>(() => captured.Set(0, 0, "X", default));
+        Assert.Throws<InvalidOperationException>(() => captured.Set(0, 0, "X", default(CellStyle)));
     }
 
     [Fact]

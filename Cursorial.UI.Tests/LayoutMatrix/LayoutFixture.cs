@@ -1,4 +1,5 @@
 using Cursorial.Drawing;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.UI;
@@ -92,7 +93,7 @@ public class Probe : UIElement
         {
             for (var row = 0; row < context.Size.Rows; row++)
             for (var column = 0; column < context.Size.Columns; column++)
-                context.Set(column, row, glyph, default);
+                context.Set(column, row, glyph, default(CellStyle));
         }
 
         OnRender?.Invoke(this, context);

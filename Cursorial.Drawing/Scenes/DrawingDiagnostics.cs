@@ -1,6 +1,5 @@
 using System.Diagnostics;
 
-using Cursorial.Output;
 using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace

@@ -1,5 +1,4 @@
 using Cursorial.Animation;
-using Cursorial.Media;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;

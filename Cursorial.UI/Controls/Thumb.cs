@@ -1,6 +1,7 @@
 using Cursorial.Input;
-using Cursorial.Output;
+using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI.Input;
 
@@ -64,8 +65,8 @@ public class Thumb : Control
             {
                 for (int r = 0, rows = context.Size.Rows; r < rows; r++)
                 {
-                    var style = CellStyle.Transparent.WithForeground(background.ColorAt(c, r, bounds));
-                    if (blink) style = style.WithAttributes(TextAttributes.Blink);
+                    var style = new PartialStyle { Foreground = background.ColorAt(c, r, bounds), Background = Colors.Transparent };
+                    if (blink) style = style.Applying(TextAttributes.Blink);
                     context.Set(c, r, "█", style);
                 }
             }

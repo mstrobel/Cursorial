@@ -1,7 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.UI.Input;
@@ -271,7 +270,7 @@ public sealed class Track : UIElement
 
                     var style = tint.Kind == ColorKind.Default
                                     ? default
-                                    : default(CellStyle) with { Foreground = tint };
+                                    : new PartialStyle { Foreground = tint };
 
                     context.Set(col, row, thumbGrapheme, in style);
                 }
@@ -285,7 +284,7 @@ public sealed class Track : UIElement
             var col = vertical ? 0 : start + i;
             var row = vertical ? start + i : 0;
             var tint = brush?.ColorAt(col, row, thumbBounds) ?? Colors.Default;
-            var style = tint.Kind == ColorKind.Default ? default : default(CellStyle) with { Foreground = tint };
+            var style = tint.Kind == ColorKind.Default ? default : new PartialStyle { Foreground = tint };
             context.Set(col, row, thumbGrapheme, in style);
         }
     }

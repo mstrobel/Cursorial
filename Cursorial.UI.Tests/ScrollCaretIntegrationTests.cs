@@ -1,6 +1,7 @@
 using System.Buffers;
 
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.Text;
@@ -364,7 +365,7 @@ public class ScrollCaretIntegrationTests
             {
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
-                    context.Set(column, row, (column % 10).ToString(), default);
+                    context.Set(column, row, (column % 10).ToString(), default(CellStyle));
             }
         };
         presenter.Content = content;

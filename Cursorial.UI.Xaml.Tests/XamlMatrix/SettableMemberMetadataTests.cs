@@ -1,13 +1,9 @@
-using System;
-using System.Linq;
 using System.Reflection;
 
 using Cursorial.UI;
 using Cursorial.UI.Xaml;
 
 using UIControls = Cursorial.UI.Controls;
-
-using Xunit;
 
 namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
 

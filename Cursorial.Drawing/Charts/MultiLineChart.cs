@@ -1,6 +1,6 @@
 using Cursorial.Input;
-using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Drawing.Charts;
@@ -134,7 +134,7 @@ public sealed class MultiLineChart : ILayeredChart
             first = false;
 
             var color = line.Brush.ColorAt(position.Column, position.Row, _renderedArea);
-            rtb.Run(line.EffectiveMarkerGlyph, CellStyle.Default.WithForeground(color));
+            rtb.Run(line.EffectiveMarkerGlyph, new BrushedStyle { Foreground = new SolidColorBrush(color) });
             rtb.Run(" " + coordinates);
         }
 

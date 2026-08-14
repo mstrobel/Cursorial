@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Text;
 
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;

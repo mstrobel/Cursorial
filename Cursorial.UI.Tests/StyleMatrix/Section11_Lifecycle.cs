@@ -258,7 +258,9 @@ public class Section11_Lifecycle
             balanced.Seal();
 
 #pragma warning disable CS0618 // Type or member is obsolete
+#pragma warning disable CUR0002
             Assert.DoesNotContain(diagnostics, static d => d.Category == StyleDebugDiagnostics.HoverParityCategory);
+#pragma warning restore CUR0002
 #pragma warning restore CS0618 // Type or member is obsolete
         }
         finally

@@ -2,7 +2,6 @@ using System.Text;
 
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -255,6 +254,6 @@ public sealed class BarChart : IChart
             return;
 
         var color = Brush.ColorAt(column, row, bounds);
-        context.Set(column, row, glyph, CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
+        context.Set(column, row, glyph, new PartialStyle { Foreground = color, Background = Colors.Transparent });
     }
 }

@@ -7,7 +7,6 @@ using Cursorial.Rendering.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
-using Cursorial.UI.Themes;
 
 namespace Cursorial.Tests.UI.Controls;
 

@@ -17,7 +17,7 @@ namespace Cursorial.Drawing;
 /// <summary>
 /// The authoring surface handed to <see cref="Scene.Draw"/>. It draws into the scene's backing
 /// buffer — the one place an <see cref="IBrush"/> is resolved to a scalar <see cref="CellStyle"/> before
-/// reaching a cell. It exposes a scalar <see cref="Set"/>, a styled
+/// reaching a cell. It exposes a scalar <see cref="Set(int, int, string?, in PartialStyle)"/>, a styled
 /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/> (solid or gradient), a styled
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>, and
 /// <see cref="Pen"/>-based <see cref="DrawLine(int, int, int, int, in Pen, bool, Arm?)"/> /
@@ -25,7 +25,7 @@ namespace Cursorial.Drawing;
 /// The <see cref="Color"/> draw overloads wrap a <see cref="Pen"/> for the common solid case.
 /// </summary>
 /// <remarks>
-/// <see cref="Set"/> / <see cref="FillRectangle(in Rect, in BrushedStyle)"/> /
+/// <see cref="Set(int, int, string?, in PartialStyle)"/> / <see cref="FillRectangle(in Rect, in BrushedStyle)"/> /
 /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
 /// write cells <em>immediately</em>. <see cref="Pen"/> strokes are <em>deferred</em>: they accumulate
 /// so junctions form across separate calls (within a <see cref="BeginFigure()">figure</see>), then
@@ -67,7 +67,7 @@ public sealed class DrawingContext
     /// Nests. An empty intersection means subsequent draws paint nothing.
     /// </summary>
     /// <remarks>
-    /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set"/>,
+    /// Honored by <b>every</b> draw path: the per-cell writes (<see cref="Set(int, int, string?, in PartialStyle)"/>,
     /// <see cref="FillRectangle(in Rect, in BrushedStyle)"/>, <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>,
     /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>), the document/content
     /// paths (<see cref="DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>,
@@ -137,8 +137,7 @@ public sealed class DrawingContext
     }
 
     // Map a current-local coordinate to a scene coordinate, returning false when it falls outside the active
-    // clip (or onto a negative axis a ushort Rect can't address). The active clip is always within the scene
-    // bounds, so a true result is safe for the raw indexer.
+    // clip. The active clip is always within the scene bounds, so a true result is safe for the raw indexer.
     private bool TryMap(int localCol, int localRow, out int sceneCol, out int sceneRow)
     {
         var s = CurrentState;
@@ -386,10 +385,10 @@ public sealed class DrawingContext
     /// invent a frame for the other channels that the caller never stated and cannot control.
     /// </para>
     /// <para>
-    /// A <see cref="BrushedStyle.IsUniform"/> style — a solid colour, or none, which is nearly
+    /// A <see cref="BrushedStyle.IsUniform"/> style — a solid color, or none, which is nearly
     /// every fill — resolves ONCE for the whole rectangle instead of per cell. That is what keeps the
     /// hottest primitive in the framework from paying a per-cell resolve for a value it already knows;
-    /// the colour path it replaced sampled nothing at all per cell.
+    /// the color path it replaced sampled nothing at all per cell.
     /// </para>
     /// </remarks>
     private void FillRectangleCore(in Rect region, in BrushedStyle style, in Rect brushBounds, bool durable,
@@ -679,7 +678,7 @@ public sealed class DrawingContext
     /// <para>
     /// <b>The delta is the whole statement</b>: a draw OWNS the cells it inks, and
     /// <paramref name="baseStyle"/> says what varies per cell — attributes, the underline shape
-    /// and colour, a hyperlink and a blending mode included. A channel it declines to state
+    /// and color, a hyperlink and a blending mode included. A channel it declines to state
     /// resolves to its default (the <see cref="CellStyle.Default"/> ground state). In particular
     /// <c>Background = null</c> is <b>no opinion</b> — the Default background reaches the cell —
     /// where a stated <see cref="Brushes.Transparent"/> OVERWRITES it and lets a prior fill (or
@@ -734,7 +733,7 @@ public sealed class DrawingContext
 
         var bounds = sampleBounds.IsEmpty ? new Rect(column, row, widest, lineCount) : sampleBounds;
 
-        // The common case — a solid colour, or none — cannot vary by cell, and the VALUE form is what
+        // The common case — a solid color, or none — cannot vary by cell, and the VALUE form is what
         // makes that readable: fold it once here rather than resolving two brushes at every cluster.
         // Sampled at the run's own anchor against its own bounds, so a handwritten uniform brush is
         // never handed a degenerate rect it has to tolerate.
@@ -969,7 +968,7 @@ public sealed class DrawingContext
     /// <para>
     /// The foreground legs are a LADDER, weakest first: preference → document default → block → run, the
     /// same precedence algebra as the UI property lanes. Declaration wins by policy — the strongest rung
-    /// that STATES a foreground supplies the brush, and no leg compares colour values: two structurally
+    /// that STATES a foreground supplies the brush, and no leg compares color values: two structurally
     /// identical brushes at different scopes are different mapping policies, so value equality has nothing
     /// to say. Each winner samples the geometry of its own declaration site.
     /// </para>
@@ -1026,7 +1025,7 @@ public sealed class DrawingContext
                    else if (ctx.BlockForeground is { } blockBrush)
                    {
                        // Declared on the enclosing block: the 2-D laid-out box, so a run's position within
-                       // the block decides its colour.
+                       // the block decides its color.
                        style = new BrushedStyle { Foreground = blockBrush };
                        sampleRect = ctx.Block;
                    }
@@ -1777,8 +1776,9 @@ public sealed class DrawingContext
 
     /// <summary>
     /// Copies <paramref name="view"/>'s cells into the scene with <paramref name="region"/>'s top-left
-    /// (in current-local coordinates) as the anchor — the bulk-copy counterpart to <see cref="Set"/>,
-    /// used to land a separately composited surface (a layered chart) in one step.
+    /// (in current-local coordinates) as the anchor — the bulk-copy counterpart to
+    /// <see cref="Set(int, int, string?, in PartialStyle)"/>, used to land a separately composited surface
+    /// (a layered chart) in one step.
     /// </summary>
     /// <remarks>
     /// Honors the ambient translate and clip like every other draw path: the destination is mapped

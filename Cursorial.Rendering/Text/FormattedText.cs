@@ -361,10 +361,9 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// <c>blockRect</c> is the paragraph's sampling rect for a block-scoped brush (6a.1) — the walk's
     /// <c>Extent</c>, ink-anchored by the paragraph's own alignment. There is no block anchor COLUMN
     /// parameter: the loop below anchors every line for itself, against <paramref name="bounds"/> at the
-    /// paragraph's own <see cref="FormattedParagraph.Alignment"/> and the LINE's width.
-    /// <c>documentRect</c> is the document rung's sampling rect — the document's derived extent, computed
-    /// once in <see cref="Paint"/>; <paramref name="bounds"/> stays alongside because line anchoring still
-    /// needs the PAINT rect.
+    /// paragraph's own <c>Alignment</c> and the LINE's width. <c>documentRect</c> is the document rung's
+    /// sampling rect — the document's derived extent, computed once in <see cref="Paint"/>;
+    /// <paramref name="bounds"/> stays alongside because line anchoring still needs the PAINT rect.
     /// </remarks>
     private static void PaintParagraph(FormattedParagraph paragraph, in CellBufferView buffer, int row, int maxRows,
                                        in Rect blockRect, in Rect bounds, in Rect documentRect,

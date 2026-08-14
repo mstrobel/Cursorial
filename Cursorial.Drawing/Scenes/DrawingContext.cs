@@ -1588,7 +1588,7 @@ public sealed class DrawingContext
     public void DrawRectangle(in Rect rect, in Pen pen, IBrush? fill = null, bool overwrite = false)
     {
         if (fill is not null)
-            FillRectangle(rect, fill);
+            FillRectangle(rect, new BrushedStyle { Background = fill });
         DrawBox(rect, pen, overwrite);
     }
 
@@ -1628,7 +1628,7 @@ public sealed class DrawingContext
     public void DrawPanel(in Rect rect, in Pen pen, IBrush? fill = null, PanelTitle title = default, bool overwrite = false)
     {
         if (rect.Columns <= 0 || rect.Rows <= 0) return;
-        if (fill is not null) FillRectangle(rect, fill);
+        if (fill is not null) FillRectangle(rect, new BrushedStyle { Background = fill });
         DrawTitledBox(rect, title, pen, overwrite);
     }
 

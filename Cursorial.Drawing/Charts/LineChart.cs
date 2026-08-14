@@ -281,7 +281,7 @@ public sealed class LineChart : IChart
             {
                 // Sample the brush against the whole chart area (not the 1-column paint rect) so a gradient
                 // area-fill flows across the chart rather than restarting per column.
-                context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), fillBrush, area);
+                context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), new BrushedStyle { Background = fillBrush }, area);
             }
         }
     }

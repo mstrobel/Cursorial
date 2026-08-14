@@ -17,7 +17,7 @@ namespace Cursorial.UI.Controls;
 /// <para>
 /// The cue is PIPELINE data (M2 addendum): the mnemonic cluster becomes a run wearing the cue's
 /// <see cref="BrushedStyle"/> delta as its carrier, composed over the element's own style —
-/// which rides whole as the document-default carrier (<see cref="BrushedStyle.FromElement"/>,
+/// which rides whole as the document-default carrier (<see cref="Extensions.FromElement"/>),
 /// ruling M3's fallback shape). The plain-text fast path composes the same runs directly; the
 /// fast≡slow equivalence matrix covers indicator-bearing inputs, so the two renderings cannot
 /// drift. Both the carrier and the indicator are layout-key terms, so a cue or style change
@@ -25,7 +25,7 @@ namespace Cursorial.UI.Controls;
 /// </para>
 /// <para>
 /// Joining the pipeline is what gives the label real formatting ability: <see cref="TextWrapping"/>
-/// (default <see cref="WrapMode.NoWrap"/> — the historical single-line behaviour) and
+/// (default <see cref="WrapMode.NoWrap"/> — the historical single-line behavior) and
 /// <see cref="TextTrimming"/> (default <see cref="Rendering.Text.TextTrimming.CharacterEllipsis"/>)
 /// replace the hand-rolled single-line truncation. Column math stays grapheme-aware throughout.
 /// </para>
@@ -40,7 +40,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
     public static readonly StyledProperty<TextWeight> KeyWeightProperty =
         UIProperty.Register<AccessTextPresenter, TextWeight>(nameof(KeyWeight), defaultValue: TextWeight.Normal);
 
-    /// <summary>The text reverse-video atrribute applied to the mnemonic grapheme when the cue shows (default <see langword="false"/>; <c>AffectsRender</c>).</summary>
+    /// <summary>The text reverse-video attribute applied to the mnemonic grapheme when the cue shows (default <see langword="false"/>; <c>AffectsRender</c>).</summary>
     public static readonly StyledProperty<bool> KeyInverseProperty =
         UIProperty.Register<AccessTextPresenter, bool>(nameof(KeyInverse), defaultValue: false);
 
@@ -58,7 +58,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
         UIProperty.Register<AccessTextPresenter, IBrush?>(nameof(IndicatorBrush));
 
     /// <summary>The wrap mode (<see cref="TextElement.TextWrappingProperty"/> <c>AddOwner</c>;
-    /// default <see cref="WrapMode.NoWrap"/> — the label's historical single-line behaviour).</summary>
+    /// default <see cref="WrapMode.NoWrap"/> — the label's historical single-line behavior).</summary>
     public static readonly StyledProperty<WrapMode> TextWrappingProperty =
         TextElement.TextWrappingProperty.AddOwner<AccessTextPresenter>();
 
@@ -175,7 +175,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
 
         // The label has always rendered whitespace-trimmed (the old arrange did the Trim); the
         // mnemonic's KeyIndex is applied against the trimmed text, as it always was.
-        var text = label.Text?.Trim();
+        var text = label.Text.Trim();
 
         if (string.IsNullOrEmpty(text))
             return FormattedText.Empty;
@@ -235,7 +235,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
         // the mnemonic", against a weight the label states for its text as a whole.
         //
         // TextWeight.Normal is deliberately NOT imposed. It is the property's default and the value
-        // every colour tier ships, so treating it as an opinion would have the resting cue strip the
+        // every color tier ships, so treating it as an opinion would have the resting cue strip the
         // weight off the mnemonic of every bold label — "no cue weight" is what Normal has always
         // meant here.
         if (KeyWeight is not TextWeight.Normal)
@@ -244,7 +244,7 @@ public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
         var indicatorBrush = IndicatorBrush ?? Foreground;
 
         // The underline rides the cue when the key states one, and also when the LABEL is underlined —
-        // in which case the cue still owns the shape and the indicator colour over its own grapheme.
+        // in which case the cue still owns the shape and the indicator color over its own grapheme.
         // A shape implies the flag structurally (PartialStyle.ApplyTo), so no `Setting(Underline)` is
         // needed — and none is possible: Underline owns an axis, so WithSet/Setting reject it.
         if (hasKeyUnderline || labelStyle.AppliedAttributes.HasFlag(TextAttributes.Underline))

@@ -180,10 +180,36 @@ public sealed class DrawingContext
         EmitMapped(column, row, grapheme, in style);
     }
 
+    /// <summary>
+    /// Scalar write of a per-cell DELTA: <paramref name="style"/> is folded onto the destination cell
+    /// (a channel it declines to state falls through), the base-plus-delta shape the text primitives
+    /// take. The upper layers reach for this rather than building a whole <see cref="CellStyle"/> to write.
+    /// </summary>
+    public void Set(int column, int row, string? grapheme, in PartialStyle style)
+    {
+        if (_stateStack.Count == 0) { _surface.Set(column, row, grapheme, in style); return; }
+        EmitMapped(column, row, grapheme, in style);
+    }
+
     // Translate + clip a single glyph write under an active push. A wide glyph whose right half would fall
     // outside the active clip degrades to a blank single cell (mirroring the surface-edge degrade in
     // CellBufferView.Set), so a clip can never strand a continuation past its edge.
     private void EmitMapped(int localCol, int localRow, string? grapheme, in CellStyle style)
+    {
+        if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
+
+        if (!string.IsNullOrEmpty(grapheme) && GraphemeWidth.ClusterWidth(grapheme.AsSpan()) == 2 &&
+            sc + 1 >= CurrentState.Clip.ColumnEnd)
+        {
+            _surface.Set(sc, sr, null, in style);
+            return;
+        }
+
+        _surface.Set(sc, sr, grapheme, in style);
+    }
+
+    // The PartialStyle twin of EmitMapped: same translate + wide-glyph clip degrade, writing the delta.
+    private void EmitMapped(int localCol, int localRow, string? grapheme, in PartialStyle style)
     {
         if (!TryMap(localCol, localRow, out int sc, out int sr)) return;
 

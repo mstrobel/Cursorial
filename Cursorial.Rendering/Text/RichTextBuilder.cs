@@ -10,9 +10,9 @@ namespace Cursorial.Rendering.Text;
 
 /// <summary>
 /// Fluent builder for <see cref="RichText"/> documents. Tracks an open <see cref="TextParagraph"/>
-/// and a stack of styles + glyph maps + hyperlinks that combine for each appended
-/// <see cref="TextRun"/>; closes the open paragraph automatically when a block-level transition
-/// (<see cref="Text.HorizontalRule"/>, <see cref="Figlet"/>, etc.) is invoked.
+/// and a stack of styles + glyph maps + hyperlinks that combine for each appended <see cref="TextRun"/>; closes
+/// the open paragraph automatically when a block-level transition (<see cref="Text.HorizontalRule"/>,
+/// <see cref="Figlet(string, IGlyphFont, in BrushedStyle, TextAlignment?, Margins)"/>, etc.) is invoked.
 /// </summary>
 /// <remarks>
 /// <para>

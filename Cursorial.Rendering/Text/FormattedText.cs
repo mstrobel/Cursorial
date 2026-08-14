@@ -10,8 +10,6 @@ using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
-// ReSharper disable RedundantCast
-
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
@@ -69,7 +67,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// Its source reads down a ladder: <paramref name="background"/> — the caller's preference — first,
     /// then the document default's <see cref="BrushedStyle.Background"/>; no resolvable source means the
     /// fill contributes nothing (≡ filling <see cref="Color.Transparent"/> — the guard is channel
-    /// absence, not a flag). Blank-vs-tint derives from the SAMPLED colour per cell
+    /// absence, not a flag). Blank-vs-tint derives from the SAMPLED color per cell
     /// (<see cref="Color.IsOpaque"/>): a transparent sample is a tint no-op, a translucent sample tints
     /// the cell verbatim and its glyph survives for the compositor, and an opaque sample
     /// (<see cref="Color.Default"/>/palette kinds included) blanks and owns the cell as the fill
@@ -89,7 +87,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
             FillBackground(buffer, bounds, fill);
 
         // The fold's document rect — the rung samples where the document LANDS in the rect, not the
-        // box it was handed. The gate is a pure optimisation: a uniform carrier is rect-independent,
+        // box it was handed. The gate is a pure optimization: a uniform carrier is rect-independent,
         // so `bounds` is byte-identical there and the extra walk is skipped on the overwhelmingly
         // common path; an unconditional ComputeExtent would be equally correct.
         var documentRect = DefaultCarrier.IsUniform ? bounds : ComputeExtent(bounds);
@@ -109,9 +107,9 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
     /// <summary>
     /// The <see cref="FillEntireBounds"/> surround fill: <paramref name="background"/> sampled per cell
-    /// over <paramref name="bounds"/>, blank-vs-tint decided by the SAMPLED colour
+    /// over <paramref name="bounds"/>, blank-vs-tint decided by the SAMPLED color
     /// (<see cref="Color.IsOpaque"/> — never the brush-level bit, which speaks for the Opacity knob
-    /// alone and cannot know a positional brush's colour alpha). A mixed-alpha brush therefore owns
+    /// alone and cannot know a positional brush's color alpha). A mixed-alpha brush therefore owns
     /// where it samples opaque and tints where it samples translucent, per cell.
     /// </summary>
     /// <remarks>
@@ -226,7 +224,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
         // The block's 2-D rect — the sampling bounds for a block-scoped brush, from the walk. This is the
         // walk's EXTENT: anchored by the block's own alignment, so a block-declared gradient ramps across
-        // the cells the block actually inks (a centred paragraph in a wider rect samples where its glyphs
+        // the cells the block actually inks (a centered paragraph in a wider rect samples where its glyphs
         // land, not a Left-forced copy of its box). Text and rules sample the resolver per cell;
         // single-Style elements (figlet, sized text, block content) sample one color at the block's center
         // and hand it to their own painter (so a glyph an image/icon degrades to picks up the brush — the
@@ -252,7 +250,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                 // settles): the sized, FIGlet and rule arms all fold it already, and the resolver's
                 // generic ladder was giving content the rung's declared BRUSH while the fold withheld
                 // its VALUES — one declaration, two answers depending on whether a resolver happened
-                // to be installed. The content still takes ONE style sampled at its centre; the
+                // to be installed. The content still takes ONE style sampled at its center; the
                 // sampled VALUE is restated as the carrier the content lane speaks (FromStated), so
                 // the sample point stays this caller's.
                 content.Content.Paint(buffer, new Rect(column, row, block.Size.Columns, maxRows),
@@ -310,7 +308,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     private static readonly BrushedStyle InkBase = BrushedStyle.FromInk(CellStyle.Default);
 
     /// <summary>
-    /// A resolved value delta lifted back to carrier form — solid brushes for its stated colours, the
+    /// A resolved value delta lifted back to carrier form — solid brushes for its stated colors, the
     /// attribute masks copied — so a rung already sampled at its own rect can compose UNDER a carrier
     /// that must reach a glyph face unsampled.
     /// </summary>
@@ -413,7 +411,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                             // into [0, slack] — when the band cannot hold every
                                             // run's descent (two faces of equal height but
                                             // different descents), imperfect alignment beats ink
-                                            // bleeding into the neighbouring band.
+                                            // bleeding into the neighboring band.
                                             VerticalTextAlignment.Baseline
                                                 => Math.Max(0, Math.Min(bandBaseline - run.LineBaseline, slack)),
                                             _                            => slack
@@ -474,7 +472,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                                 // left to fall through to the cells — it rides UNDER the resolver's delta,
                                 // and the document rung and ink base ride under both. The context's inline
                                 // scope is the run's strip, so the run leg's brush gets its GEOMETRY —
-                                // wrap-invariant columns, band-local rows — not just its colour.
+                                // wrap-invariant columns, band-local rows — not just its color.
                                 var resolvedBase = documentDelta.Then(glyphText.Style.Resolve(cursor, runRow, strip)).ApplyTo(CellStyle.Default);
                                 var brushed = Brushed(resolver, glyphText.Style, resolvedBase, strip, blockRect, blockStyle.Foreground);
                                 face.Paint(buffer, cursor, runRow, glyphText.Text,
@@ -491,14 +489,14 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             // out in the direct font arm above via the placeholder's figlet
                             // block, one level deep.
                             var pieceRect = new Rect(cursor, runRow, pieceWidth, run.LineRows);
-                            // The single-style arm keeps its centre sample — one colour for the whole
+                            // The single-style arm keeps its center sample — one color for the whole
                             // piece, which is what reaches the OSC 66 backdrop SGR — and restates the
                             // sampled VALUE as the content lane's carrier (FromStated: stated channels
                             // become the delta, Default-valued ones stay absent, so ScaledText's
                             // figlet bake keeps the same stamp/box answer the CellStyle hand-off had).
-                            // The sample POINT is the piece's centre; the GEOMETRY a run-declared brush
+                            // The sample POINT is the piece's center; the GEOMETRY a run-declared brush
                             // resolves against is the run's strip (task #15) — the same rect the FIGlet
-                            // arm hands its face — so the one sample reads the centre cell's
+                            // arm hands its face — so the one sample reads the center cell's
                             // wrap-invariant position on the run's own ramp.
                             var style = ResolveStyle(resolver, documentCarrier, blockStyle, glyphText.Style,
                                                      cursor + pieceWidth / 2, runRow, documentRect, blockRect, strip);
@@ -534,9 +532,10 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         // cell, and the style does that itself — hoisted entirely when it cannot vary. The
                         // context's Style stays the run's OWN carrier: the fold never turns inherited
                         // channels into declarations.
-                        var brushed = resolver is null
-                                          ? BrushedTextStyle.None
-                                          : resolver(new BrushedTextContext(carrier, blockStyle.Foreground, blockRect, inlineScope, runBase.UnderlineStyle));
+                        var brushed =
+                            resolver?.Invoke(new BrushedTextContext(carrier, blockStyle.Foreground, blockRect,
+                                                                    inlineScope, runBase.UnderlineStyle))
+                            ?? BrushedTextStyle.None;
 
                         bool baseUniform = documentCarrier.IsUniform && blockStyle.IsUniform && carrier.IsUniform;
                         bool uniform = baseUniform && brushed.Style.IsUniform;
@@ -588,7 +587,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         // graphics protocol) is brush-colored; a real image ignores the style. The
                         // document rung folds under the content's carrier (the content-rung ruling —
                         // see the block-content arm); the paragraph's block rung deliberately does
-                        // not yet, which is the recorded follow-on. The centre-sampled VALUE is
+                        // not yet, which is the recorded follow-on. The center-sampled VALUE is
                         // restated as the lane's carrier (FromStated) so the sample point stays here.
                         var style = ResolveStyle(resolver, documentCarrier, block: default, content.Style, cursor + content.Width / 2, runRow, documentRect, blockRect);
                         content.Content.Paint(buffer, contentBounds, BrushedStyle.FromStated(style), capabilities);
@@ -721,7 +720,7 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
 
     // The style is IGNORED, deliberately — under the CellStyle signature and under the delta
     // alike. An embedded document paints its own runs over its own document rung; folding the
-    // caller's delta in as an outer preference here would be new behaviour on a route whose
+    // caller's delta in as an outer preference here would be new behavior on a route whose
     // callers (FragmentContent's base placeholder hand-off) rely on the drop today, and
     // ScaledText bypasses this route precisely because the drop exists. A preference-carrying
     // embedded paint is Paint(buffer, bounds, capabilities, resolver)'s job.
@@ -757,7 +756,7 @@ public sealed record FormattedParagraph(ImmutableArray<FormattedLine> Lines, Siz
     /// The paragraph's own declarations — <see cref="TextParagraph.Style"/> carried through layout.
     /// The ladder's block rung: the painter folds it between the document rung and every run's
     /// carrier, sampling the block's rect, so a block-declared gradient spans the block and a run's
-    /// position within it decides the colour. The identity for a paragraph that declares nothing.
+    /// position within it decides the color. The identity for a paragraph that declares nothing.
     /// </summary>
     public BrushedStyle Style { get; init; }
 

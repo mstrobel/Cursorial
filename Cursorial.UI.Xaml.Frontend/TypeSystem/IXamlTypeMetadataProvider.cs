@@ -129,7 +129,7 @@ public interface IXamlOwnMemberProvider
 {
     /// <summary>
     /// The settable member names DECLARED or <c>AddOwner</c>'d on <em>exactly</em> <paramref name="targetType"/>
-    /// — never a member purely inherited from a base type. The result honours the same XAML-settable filter as
+    /// — never a member purely inherited from a base type. The result honors the same XAML-settable filter as
     /// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/> (a read-only SCALAR appears in neither; a
     /// read-only content COLLECTION appears in both), so it is a provenance subset the host can intersect with
     /// the known-member set. A type's own attached-property declaration is an own member only when it is
@@ -189,6 +189,9 @@ public readonly struct XamlTypeResolution
 /// is expressed as plain strings (never <see cref="System.Type"/>), so a symbol backend could supply the same
 /// shape without loading the runtime type.
 /// </remarks>
+/// <param name="OwnerName">The simple name of the type which owns the attached attachable member.</param>
+/// <param name="OwnerNamespace">The CLR namespace of the type which owns the attached attachable member.</param>
+/// <param name="PropertyName">The unqualified name of the attachable member.</param>
 /// <param name="TargetsChildElements">
 /// Whether the owner INTENDS this property to be attached on its child elements — a container reading
 /// per-child layout/config (<c>Grid.Row</c>, <c>DockPanel.Dock</c>, <c>Canvas.Left</c>, <c>Ribbon.ButtonSize</c>),

@@ -133,6 +133,12 @@ public sealed class RenderContext
     public void Set(int column, int row, string? grapheme, in CellStyle style)
         => Inner.Set(column, row, grapheme, in style);
 
+    /// <summary>Writes one cell as a per-cell DELTA folded onto the destination — the form an element
+    /// reaches for when it has an opinion about some channels and none about the rest, rather than
+    /// stamping a whole <see cref="CellStyle"/>.</summary>
+    public void Set(int column, int row, string? grapheme, in PartialStyle style)
+        => Inner.Set(column, row, grapheme, in style);
+
     /// <summary>Blits the contents of <paramref name="view"/> into the back buffer at <paramref name="region"/>.</summary>
     public void Blit(CellBufferView view, in Rect region)
         => Inner.Blit(view, region);
@@ -146,7 +152,8 @@ public sealed class RenderContext
     /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
     /// drawing layer's <see langword="true"/> — the default an element actually reaches for. The narrower
     /// default is load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
-    /// <see cref="CellBuffer.Set"/> rescues the ink underneath only on the non-overwriting path.
+    /// <see cref="CellBuffer.Set(int, int, string, in PartialStyle)"/> rescues the ink underneath only
+    /// on the non-overwriting path.
     /// </remarks>
     public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)
         => Inner.FillOpaque(region, style, overwrite);
@@ -179,7 +186,7 @@ public sealed class RenderContext
     /// </summary>
     /// <remarks>
     /// <paramref name="baseStyle"/> is a per-cell DELTA over the draw's ground state — attributes,
-    /// underline, hyperlink and blending mode included, not just the two colour channels the brush
+    /// underline, hyperlink and blending mode included, not just the two color channels the brush
     /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the channel
     /// resolves to its default); on the brush overload an omitted background is
     /// <see cref="Brushes.Transparent"/>. A caller holding a whole <see cref="CellStyle"/> ground
@@ -316,8 +323,8 @@ public sealed class RenderContext
 
     /// <summary>Paints text through a glyph font at an element-local anchor (which may be negative —
     /// a scrolled editor); the font clips like a cell write. Optional brush colors per cell.</summary>
-    public void DrawGlyphText(Cursorial.Rendering.Fonts.IGlyphFont face, int column, int row, string text,
-                              IBrush? foreground, in Cursorial.Output.CellStyle style, in Rect brushBounds)
+    public void DrawGlyphText(Rendering.Fonts.IGlyphFont face, int column, int row, string text,
+                              IBrush? foreground, in CellStyle style, in Rect brushBounds)
     {
         if (foreground is null)
         {

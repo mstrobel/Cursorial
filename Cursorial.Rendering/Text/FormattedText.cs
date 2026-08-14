@@ -292,10 +292,32 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
     /// now where the declaration's cells LAND, not a box handed down from outside.
     /// </summary>
     private static CellStyle ResolveBase(in BrushedStyle document, in BrushedStyle block, in BrushedStyle carrier, int column, int row, in Rect documentRect, in Rect blockRect, in Rect carrierRect)
+        => ResolveBaseDelta(document, block, carrier, column, row, documentRect, blockRect, carrierRect).ApplyTo(CellStyle.Default);
+
+    /// <summary>
+    /// The fall-through fold as a value DELTA — the three rungs each resolved at their own rect and composed
+    /// (<see cref="PartialStyle.Then"/>), ONE step before <see cref="ResolveBase"/>'s
+    /// <c>ApplyTo(CellStyle.Default)</c>. The plain-text arm folds this onto the destination cell at
+    /// <see cref="CellBufferView.Set(int, int, string?, in PartialStyle)"/> — so the value lands at the write
+    /// boundary rather than being resolved to a whole <see cref="CellStyle"/> here.
+    /// </summary>
+    private static PartialStyle ResolveBaseDelta(in BrushedStyle document, in BrushedStyle block, in BrushedStyle carrier, int column, int row, in Rect documentRect, in Rect blockRect, in Rect carrierRect)
         => document.Resolve(column, row, documentRect)
                    .Then(block.Resolve(column, row, blockRect))
-                   .Then(carrier.Resolve(column, row, carrierRect))
-                   .ApplyTo(CellStyle.Default);
+                   .Then(carrier.Resolve(column, row, carrierRect));
+
+    /// <summary>
+    /// Owns the plain-text run's INK before the delta write: a FOREGROUND no rung stated resolves to
+    /// <see cref="Color.Default"/> — the terminal-default sentinel — rather than falling through to whatever the
+    /// destination cell held. This is the delta path's equivalent of the old <c>ApplyTo(CellStyle.Default)</c>
+    /// stamp and the FIGlet arm's <see cref="InkBase"/>: the piece's ink is owned, so an unstated colour is the
+    /// terminal default, not the board underneath. (A cleared cell already carries that default in RGB form, so
+    /// inheriting it would be incidental — and would pin an arbitrary colour on a cell that had been written.)
+    /// Every other channel legitimately folds onto the cell: the background falls through by design, and on a
+    /// blank the rest already equal <see cref="CellStyle.Default"/>'s, so the write lands byte-identical to the
+    /// resolved stamp.
+    /// </summary>
+    private static PartialStyle OwnInk(in PartialStyle style) => style with { Foreground = style.Foreground ?? Color.Default };
 
     /// <summary>
     /// The base a glyph face's fold rides over: every ink channel of <see cref="CellStyle.Default"/>
@@ -523,22 +545,27 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                         // rungs resolved at THEIR rects — the fall-through fold (ResolveBase); a
                         // composition that cannot vary by cell resolves once for the run.
                         var carrier = text.Style;
-                        var runBase = ResolveBase(documentCarrier, blockStyle, carrier, cursor, runRow, documentRect, blockRect, inlineScope);
+                        // The run's fall-through fold as a DELTA (ResolveBaseDelta) — it stays a PartialStyle all
+                        // the way to buffer.Set, which folds it onto the destination cell. OwnInk below restores
+                        // the ink-ownership the old ApplyTo(CellStyle.Default) gave, so the resolution to a whole
+                        // CellStyle happens at the write boundary and nowhere earlier.
+                        var runBase = ResolveBaseDelta(documentCarrier, blockStyle, carrier, cursor, runRow, documentRect, blockRect, inlineScope);
 
                         // ONE resolver call per run: which declaration wins, at what scope, and which
                         // inherited attributes merge are all run-level facts. Only the sampling is per
                         // cell, and the style does that itself — hoisted entirely when it cannot vary. The
                         // context's Style stays the run's OWN carrier: the fold never turns inherited
-                        // channels into declarations.
+                        // channels into declarations. The context's underline SHAPE is the resolved one —
+                        // the delta's, or CellStyle.Default's when no rung states it.
                         var brushed =
                             resolver?.Invoke(new BrushedTextContext(carrier, blockStyle.Foreground, blockRect,
-                                                                    inlineScope, runBase.UnderlineStyle))
+                                                                    inlineScope, runBase.UnderlineShape ?? CellStyle.Default.UnderlineStyle))
                             ?? BrushedTextStyle.None;
 
                         bool baseUniform = documentCarrier.IsUniform && blockStyle.IsUniform && carrier.IsUniform;
                         bool uniform = baseUniform && brushed.Style.IsUniform;
                         var uniformStyle = uniform
-                                               ? brushed.ApplyTo(cursor, runRow, runBase)
+                                               ? OwnInk(runBase.Then(brushed.Resolve(cursor, runRow)))
                                                : default;
 
                         var enumerator = text.Text.GetGraphemeEnumerator();
@@ -558,15 +585,16 @@ public sealed record FormattedText(ImmutableArray<FormattedBlock> Blocks, Size S
                             int width = GraphemeWidth.ClusterWidth(grapheme);
                             if (width < 1) width = 1;
 
-                            // The resolver's delta, resolved for THIS cell and folded onto the run's own
-                            // resolved base — so a brush that owns only a foreground leaves the rest
-                            // alone. Width is grapheme-driven, so a substituted style is layout-safe.
+                            // The resolver's delta, resolved for THIS cell and composed OVER the run's own base
+                            // delta — so a brush that owns only a foreground leaves the rest alone — then ink-owned
+                            // (OwnInk) and left a PartialStyle down to buffer.Set. Width is grapheme-driven, so a
+                            // substituted style is layout-safe.
                             var style = uniform
                                             ? uniformStyle
-                                            : brushed.ApplyTo(cursor, runRow,
-                                                              baseUniform
-                                                                  ? runBase
-                                                                  : ResolveBase(documentCarrier, blockStyle, carrier, cursor, runRow, documentRect, blockRect, inlineScope));
+                                            : OwnInk((baseUniform
+                                                          ? runBase
+                                                          : ResolveBaseDelta(documentCarrier, blockStyle, carrier, cursor, runRow, documentRect, blockRect, inlineScope))
+                                                     .Then(brushed.Resolve(cursor, runRow)));
 
                             // The one case where the surface knows better: a wide glyph at the window's
                             // right edge degrades to a blank single, and the next grapheme belongs in the

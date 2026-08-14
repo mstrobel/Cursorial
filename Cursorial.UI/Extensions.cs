@@ -73,7 +73,10 @@ public static class Extensions
                         Foreground = element.GetBaseValue(TextElement.ForegroundProperty),
                         Background = element.GetBaseValue(Panel.BackgroundProperty),
                         UnderlineColor = element.GetBaseValue(TextElement.UnderlineBrushProperty),
-                        Mode = element.GetBaseValue(RenderOptions.BlendingModeProperty)
+                        // RenderOptions.BlendingMode is NOT read here: it composites the element's WHOLE
+                        // surface at the render-boundary layer (RenderTree wires it into CompositeParameters,
+                        // and a non-default mode promotes a boundary), so folding it per-cell too would blend
+                        // the content twice.
                     };
 
             if (element.GetBaseValue(TextElement.UnderlineProperty) is {} underlineShape)

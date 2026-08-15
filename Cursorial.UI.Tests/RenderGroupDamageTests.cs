@@ -4,6 +4,7 @@ using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -522,7 +523,7 @@ public class RenderGroupDamageTests
         protected override void Render(RenderContext context)
         {
             base.Render(context);
-            context.FillOpaque(context.Bounds, Color);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color) });
         }
     }
 

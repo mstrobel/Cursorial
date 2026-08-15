@@ -1,6 +1,3 @@
-using Cursorial.Drawing.Media;
-using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -76,18 +73,18 @@ public sealed class GlyphPresenter : UIElement
         
         availableSize = new(GraphemeWidth.StringWidth(text), 1);
 
-        MeasureGraphemes(availableSize, text, out int width, out int height, out _);
+        MeasureGraphemes(availableSize, text, out int width, out int height, out _, out _);
         
         var maxSize = new Size(width, height);
         return maxSize.ClampTo(availableSize);
     }
 
-    private void MeasureGraphemes(Size size, string text, out int maxWidth, out int maxHeight, out Rect sampleBounds)
+    private void MeasureGraphemes(Size size, string text, out int maxWidth, out int maxHeight, out Rect sampleBounds, out int hUnit)
     {
         var width = size.Columns;
         var height = size.Rows;
 
-        var hUnit = GraphemeWidth.StringWidth(text);
+        hUnit = GraphemeWidth.StringWidth(text);
         
         if (Orientation is Orientation.Horizontal)
         {
@@ -114,56 +111,50 @@ public sealed class GlyphPresenter : UIElement
         var bounds = context.Bounds;
         if (bounds.IsEffectivelyEmpty) return;
         
-        var fg = Foreground ?? Brushes.Default;
-        var bg = Background;
-        var style = TextElement.ComposeAttributes(this).Apply(CellStyle.Default);
+        var style = BrushedStyle.FromElement(this);
 
-        var fgSample = fg is not SolidColorBrush;
-        var bgSample = bg is IBrush and not SolidColorBrush;
+        if (style.Foreground is null)
+            style = style with { Foreground = Brushes.Default };
 
-        if (fgSample is false)
-            style = style with { Foreground = fg.ColorAt(0, 0, bounds) };
-
-        if (bgSample is false)
-            style = style with { Background = bg?.ColorAt(0, 0, bounds) ?? Colors.Transparent }; 
-
-        MeasureGraphemes(bounds.Size, text, out int maxWidth, out int maxHeight, out Rect sampleBounds);
+        MeasureGraphemes(bounds.Size, text, out int maxWidth, out int maxHeight, out Rect sampleBounds, out int hUnit);
 
         if (maxWidth > bounds.Columns || maxHeight > bounds.Rows) return;
 
         var colStart = bounds.Column;
         var rowStart = bounds.Row;
 
-        for (var r = 0; r < maxHeight; r++)
+        Span<char> graphemes = stackalloc char[maxWidth];
+
+        if (hUnit > 1 || text.Length > 1)
         {
-            int c;
+            var length = 0;
 
-            for (c = 0; c < maxWidth;)
+            int gw;
+            var e = text.GetGraphemeEnumerator();
+            var unit = text.AsSpan();
+            
+            for (int i = 0; i + hUnit <= maxWidth; i += hUnit)
             {
-                var g = text.GetGraphemeEnumerator();
-                var widthWritten = 0;
-                var cEff = colStart + c;
-
-                // TODO: Optimize this to write repeating blocks when 'Fill=True'. Simple `stackalloc` win?
-                while (g.MoveNext())
-                {
-                    if (fgSample)
-                        style = style with { Foreground = fg.ColorAt(cEff + widthWritten, r, sampleBounds) };
-
-                    if (bgSample)
-                        style = style with { Background = bg!.ColorAt(cEff + widthWritten, r, sampleBounds) };
-
-                    var clusterWidth = GraphemeWidth.ClusterWidth(g.Current);
-
-                    if (widthWritten + clusterWidth > maxWidth)
-                        break;
-
-                    context.DrawText(cEff + widthWritten, rowStart + r, g.Current, style.Foreground, style.Background, style);
-                    widthWritten += clusterWidth;
-                }
-
-                c += widthWritten;
+                unit.CopyTo(graphemes.Slice(length));
+                length += hUnit;
             }
+
+            while (e.MoveNext() && length + (gw = GraphemeWidth.ClusterWidth(e.Current)) <= maxWidth)
+            {
+                e.Current.CopyTo(graphemes.Slice(length));
+                length += gw;
+            }
+
+            if (length < 1) return;
+
+            graphemes = graphemes.Slice(0, length);
         }
+        else
+        {
+            graphemes.Fill(text[0]);
+        }
+
+        for (var r = 0; r < maxHeight; r++)
+            context.DrawText(colStart, rowStart + r, graphemes, style, sampleBounds);
     }
 }

@@ -23,4 +23,15 @@
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
     </ItemGroup>
 
+    <!--
+        MIGRATION SCAFFOLDING (see Characterisation/README-scaffolding.md). The text-pipeline
+        characterisation harness slices fragment emissions with the same helper the rendering tests use,
+        rather than restating the DECSC…DECRC rule a second time. Remove this link when Characterisation/
+        is deleted; the file itself stays where it is (FrameRendererDefaultColorTests uses it).
+    -->
+    <ItemGroup>
+        <Compile Include="..\Cursorial.Rendering.Tests\FragmentEmissionSlicer.cs"
+                 Link="Characterisation\FragmentEmissionSlicer.cs" />
+    </ItemGroup>
+
 </Project>

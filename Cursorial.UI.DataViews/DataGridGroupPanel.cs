@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Rendering;
@@ -121,7 +120,7 @@ public sealed class DataGridGroupPanel : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         bool any = false;
 
@@ -135,7 +134,7 @@ public sealed class DataGridGroupPanel : UIElement
             any = true;
 
             if (ChipBackground is not null)
-                context.FillOpaque(new Rect(chip.X, 0, chip.Width, 1), ChipBackground);
+                context.FillOpaque(new Rect(chip.X, 0, chip.Width, 1), new BrushedStyle { Background = ChipBackground });
 
             // The §3.3 virtual band focus: the focused chip wears the glyph accent as a frame
             // (⟨…⟩ corners drawn in the padding cells — no new theme key for a keyboard cue).
@@ -179,7 +178,7 @@ public sealed class DataGridGroupPanel : UIElement
             int chipWidth = GraphemeWidth.StringWidth(chip);
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
             if (ChipBackground is not null)
-                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), ChipBackground);
+                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), new BrushedStyle { Background = ChipBackground });
             context.DrawText(chipX, 0, chip, _dragLocal.Row == 0 ? glyphBrush : promptBrush);
         }
     }

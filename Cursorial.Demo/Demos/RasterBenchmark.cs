@@ -163,20 +163,20 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
     // Formatted once (text layout is a layout-time cost in a retained UI, not a raster cost);
     // DrawFormattedText paints the laid-out blocks per raster.
     private static readonly FormattedText Header = FormatDoc(b => b
-        .Run("CURSORIAL ", CellStyle.Default.WithForeground(Accent).WithAttributes(TextAttributes.Bold))
-        .Run("raster benchmark", CellStyle.Default.WithForeground(Value))
+        .Run("CURSORIAL ", PartialStyle.WithForeground(Accent).Weighing(TextWeight.Bold))
+        .Run("raster benchmark", PartialStyle.WithForeground(Value))
         .LineBreak()
-        .Run("probe 1 — whole-zone re-raster · 200×60 dashboard · ", CellStyle.Default.WithForeground(Label))
-        .Run("12 panels, junction table, log block", CellStyle.Default.WithForeground(Good).WithAttributes(TextAttributes.Italic)),
+        .Run("probe 1 — whole-zone re-raster · 200×60 dashboard · ", PartialStyle.WithForeground(Label))
+        .Run("12 panels, junction table, log block", PartialStyle.WithForeground(Good).Posturing(TextStyle.Italic)),
         columns: 90, maxRows: 4);
 
     private static readonly FormattedText Log = FormatDoc(b =>
     {
         for (int i = 0; i < 10; i++)
         {
-            b.Run($"12:4{i % 10} ", CellStyle.Default.WithForeground(Label))
-             .Run(i % 3 == 0 ? "WARN " : "INFO ", CellStyle.Default.WithForeground(i % 3 == 0 ? Warn : Good))
-             .Run($"zone {i} recomposited in {i * 3 + 1} ms", CellStyle.Default.WithForeground(Value));
+            b.Run($"12:4{i % 10} ", PartialStyle.WithForeground(Label))
+             .Run(i % 3 == 0 ? "WARN " : "INFO ", PartialStyle.WithForeground(i % 3 == 0 ? Warn : Good))
+             .Run($"zone {i} recomposited in {i * 3 + 1} ms", PartialStyle.WithForeground(Value));
             if (i < 9) b.LineBreak();
         }
     }, columns: 39, maxRows: 11);
@@ -212,7 +212,7 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         const int w = ViewportColumns, h = ViewportRows;
 
         // Backdrop wash.
-        ctx.FillRectangle(new Rect(0, 0, w, h), _backdrop); ops++;
+        ctx.FillRectangle(new Rect(0, 0, w, h), new BrushedStyle { Background = _backdrop }); ops++;
 
         // Header band (rows 0–5): formatted-text title block, status chips, rule.
         ctx.DrawFormattedText(Header, new Rect(2, 0, 90, 4), BenchCapabilities); ops++;
@@ -220,8 +220,8 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         {
             var chip = new Rect(w - 16 * (6 - i) - 2, 1, 14, 1);
             string text = i == 5 ? $"TICK {_tick:D6}" : $"{MetricLabels[i][..4].ToUpperInvariant()} {Pseudo(i, 7) % 100:D2}%";
-            ctx.FillRectangle(chip, new SolidColorBrush(PanelBg)); ops++;
-            ctx.DrawText(chip.Column + 1, 1, text, i == 5 ? Warn : Accent); ops++;
+            ctx.FillRectangle(chip, new BrushedStyle { Background = new SolidColorBrush(PanelBg) }); ops++;
+            ctx.DrawText(chip.Column + 1, 1, text, DemoSupport.Ink(i == 5 ? Warn : Accent)); ops++;
         }
         ctx.DrawLine(0, 5, w - 1, 5, _rulePen); ops++;
 
@@ -247,8 +247,8 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
             for (int col = 0; col < 8; col++)
             {
                 int x = table.Column + col * 19 + 2, y = table.Row + band * 3 + 1;
-                ctx.DrawText(x, y, $"shard-{band}{col:X}", Label); ops++;
-                ctx.DrawText(x, y + 1, $"{Pseudo(band * 8 + col, 9973),8:N0} rq", band % 2 == 0 ? Value : Good); ops++;
+                ctx.DrawText(x, y, $"shard-{band}{col:X}", DemoSupport.Ink(Label)); ops++;
+                ctx.DrawText(x, y + 1, $"{Pseudo(band * 8 + col, 9973),8:N0} rq", DemoSupport.Ink(band % 2 == 0 ? Value : Good)); ops++;
             }
 
         // Log panel right of the table.
@@ -258,12 +258,12 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
                               BenchCapabilities); ops++;
 
         // Status bar (row 59).
-        ctx.FillRectangle(new Rect(0, h - 1, w, 1), new SolidColorBrush(Color.FromRgb(35, 40, 60))); ops++;
-        ctx.DrawText(2, h - 1, "cursorial · rasterbench", Accent); ops++;
-        ctx.DrawText(30, h - 1, $"frame {_tick:D6}", Value); ops++;
-        ctx.DrawText(46, h - 1, "zone 200×60", Label); ops++;
-        ctx.DrawText(62, h - 1, $"ops {DrawOpsLastRaster}", Label); ops++;
-        ctx.DrawText(w - 26, h - 1, "whole-zone re-raster", Warn); ops++;
+        ctx.FillRectangle(new Rect(0, h - 1, w, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(35, 40, 60)) }); ops++;
+        ctx.DrawText(2, h - 1, "cursorial · rasterbench", DemoSupport.Ink(Accent)); ops++;
+        ctx.DrawText(30, h - 1, $"frame {_tick:D6}", DemoSupport.Ink(Value)); ops++;
+        ctx.DrawText(46, h - 1, "zone 200×60", DemoSupport.Ink(Label)); ops++;
+        ctx.DrawText(62, h - 1, $"ops {DrawOpsLastRaster}", DemoSupport.Ink(Label)); ops++;
+        ctx.DrawText(w - 26, h - 1, "whole-zone re-raster", DemoSupport.Ink(Warn)); ops++;
 
         DrawOpsLastRaster = ops;
     }
@@ -282,8 +282,8 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         for (int m = 0; m < 6; m++)
         {
             long v = Pseudo(index * 31 + m + (mutating ? _tick : 0), 99991);
-            ctx.DrawText(cx, cy + m, MetricLabels[m], Label); ops++;
-            ctx.DrawText(cx + 16, cy + m, $"{v,10:N0}", m == 2 ? Warn : Value); ops++;
+            ctx.DrawText(cx, cy + m, MetricLabels[m], DemoSupport.Ink(Label)); ops++;
+            ctx.DrawText(cx + 16, cy + m, $"{v,10:N0}", DemoSupport.Ink(m == 2 ? Warn : Value)); ops++;
         }
 
         ctx.DrawLine(rect.Column + 1, cy + 6, rect.ColumnEnd - 2, cy + 6, _rulePen); ops++;
@@ -293,8 +293,8 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
         ctx.Sparkline(cx, cy + 7, cw, _spark, Good); ops++;
 
         int pct = (int) (Pseudo(index + (mutating ? _tick : 0), 101) % 101);
-        ctx.FillRectangle(new Rect(cx, cy + 8, Math.Max(1, cw * pct / 100), 1), _barFill); ops++;
-        ctx.DrawText(cx + cw - 4, cy + 9, $"{pct,3}%", Value); ops++;
+        ctx.FillRectangle(new Rect(cx, cy + 8, Math.Max(1, cw * pct / 100), 1), new BrushedStyle { Background = _barFill }); ops++;
+        ctx.DrawText(cx + cw - 4, cy + 9, $"{pct,3}%", DemoSupport.Ink(Value)); ops++;
 
         return ops;
     }
@@ -359,12 +359,12 @@ internal sealed class BandScrollScenario : RasterBenchScenario
             int doc = _anchorRow + r;
             if (doc % 24 == 0)
             {
-                ctx.FillRectangle(new Rect(0, r, ViewportColumns, 1), new SolidColorBrush(Color.FromRgb(35, 40, 60))); ops++;
-                ctx.DrawText(2, r, $"── section {doc / 24:D4} ── offset {doc:D6}", Keyword); ops++;
+                ctx.FillRectangle(new Rect(0, r, ViewportColumns, 1), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(35, 40, 60)) }); ops++;
+                ctx.DrawText(2, r, $"── section {doc / 24:D4} ── offset {doc:D6}", DemoSupport.Ink(Keyword)); ops++;
                 continue;
             }
 
-            ctx.DrawText(0, r, $"{doc,6}", Gutter); ops++;
+            ctx.DrawText(0, r, $"{doc,6}", DemoSupport.Ink(Gutter)); ops++;
             ops += PaintCodeLine(ctx, 8, r, doc);
         }
 
@@ -383,10 +383,10 @@ internal sealed class BandScrollScenario : RasterBenchScenario
             string call = Calls[(int) ((x >> 8) % (ulong) Calls.Length)];
 
             int c = column + indent;
-            c += ctx.DrawText(c, row, keyword, Keyword).Columns + 1;
-            c += ctx.DrawText(c, row, $"zone_{x % 997:D3} = ", Ident).Columns;
-            c += ctx.DrawText(c, row, $"{call}(band: {x % 91}, k: {x % 17})", Literal).Columns;
-            ctx.DrawText(c + 2, row, $"// doc row {doc}", Comment);
+            c += ctx.DrawText(c, row, keyword, DemoSupport.Ink(Keyword)).Columns + 1;
+            c += ctx.DrawText(c, row, $"zone_{x % 997:D3} = ", DemoSupport.Ink(Ident)).Columns;
+            c += ctx.DrawText(c, row, $"{call}(band: {x % 91}, k: {x % 17})", DemoSupport.Ink(Literal)).Columns;
+            ctx.DrawText(c + 2, row, $"// doc row {doc}", DemoSupport.Ink(Comment));
             return 4;
         }
     }

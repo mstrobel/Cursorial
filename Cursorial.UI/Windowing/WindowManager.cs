@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 using Cursorial.Drawing;
 using Cursorial.Input;
 using Cursorial.Input.Events;
+using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.UI.Controls;
@@ -45,7 +47,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private readonly List<Popup> _popups = [];              // open popups, in open order (the band above all windows)
     private readonly List<Window> _modalStack = [];         // active modals, bottom→top; the topmost is the gate
     private readonly HashSet<Window> _blocked = [];         // windows currently disabled by a modal (the `obscured` set)
+    // A placeholder base until the first RenderFrame adopts the TARGET buffer's blank — the screen buffer is
+    // handed in per frame (S6 owns it), so the terminal's derived default is not knowable at construction.
     private SceneCompositor _compositor = new();
+    private CellStyle _compositorBaseStyle;                 // the base _compositor was built with; tracks target.DefaultStyle
+    private TerminalColorDefaults _compositorDefaults;      // the effective terminal defaults _compositor substitutes; tracks target.Capabilities
     private bool _needsComposite;                           // a stack change reset the compositor → force one render so vacated cells repaint
     private OutputCapabilities _capabilities;
     private Size _viewport;
@@ -453,7 +459,7 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private void ResetCompositor()
     {
         var previous = _compositor;
-        _compositor = new SceneCompositor();
+        _compositor = new SceneCompositor(_compositorBaseStyle, _compositorDefaults);
         // Carry the ghost-footprint set across the reset. A Cells-layer image (iTerm2/Sixel) has no protocol
         // erase, so its pixels linger on the terminal until overwritten — and when occluded by a popup it isn't
         // a registered target fragment, so a fresh compositor would have no record of it. Without this hand-off,
@@ -481,6 +487,32 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     private bool RenderFrameCore(CellBuffer target)
     {
         var changed = false;
+
+        // ⓪ the compositor resets each frame's damage union to a BASE style before compositing, and that base
+        // must be the target's own notion of blank — the terminal's reported default fg/bg promoted to RGB by
+        // CellBuffer.DeriveDefaultStyle, which exists precisely "so we can take advantage of alpha blending".
+        // CellStyle.Default is NOT blendable: Color.Composite only alpha-blends RGB over RGB and returns a
+        // non-RGB-backdrop result at full opacity, so a Default base makes every translucent scene cell over an
+        // UNPAINTED region resolve opaque — the modal scrim rendering mottled (correctly veiled where a window
+        // painted an RGB background, near-solid where it did not). S6 owns the screen buffer and hands it in per
+        // frame, so its blank is only knowable here; adopt it through the same replace-the-compositor seam a
+        // topology change uses (the retained per-slot state is keyed to the old base, and the fresh buffer a
+        // capability renegotiation produces needs the full recomposite anyway). It settles on the first frame
+        // and then changes only when the terminal's reported defaults do.
+        //
+        // The compositor is ALSO handed the terminal's reported defaults as concrete RGB (TerminalColorDefaults),
+        // so a Color.Default operand composites against the real default instead of taking Color.Composite's
+        // opaque-by-kind short-circuit — the translucent-scrim / faded-window / ghosted-text fixes. This is a
+        // SEAM, not a global: reported defaults flow in here (FromCapabilities), NONE when the terminal reports
+        // nothing (byte-identical to today), and a future app-declared source would plug in at this one call.
+        // It tracks the same negotiation the base style does and changes only when a renegotiation replaces both.
+        var targetDefaults = TerminalColorDefaults.FromCapabilities(target.Capabilities);
+        if (target.DefaultStyle != _compositorBaseStyle || targetDefaults != _compositorDefaults)
+        {
+            _compositorBaseStyle = target.DefaultStyle;
+            _compositorDefaults = targetDefaults;
+            ResetCompositor();
+        }
 
         // ① raster each surface's dirty zones (z order doesn't matter for rastering — it's per-surface).
         foreach (var surface in _surfaces)

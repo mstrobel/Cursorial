@@ -1,7 +1,5 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -146,7 +144,7 @@ public sealed class DataGridAutoFilterRow : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         // §9.2 paint order (the rows presenter's mirror): scrolling cells first (shifted), then the
         // frozen region re-fills its background and draws its cells unshifted on top.
@@ -159,7 +157,7 @@ public sealed class DataGridAutoFilterRow : UIElement
             0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-2)
         {
             if (Background is not null && HorizontalOffset > 0)
-                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), new BrushedStyle { Background = Background });
 
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawFilterCell(context, owner, layout, i);
@@ -188,7 +186,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         bool focusCue = noColor && i == owner.FilterCellFocusIndex;
 
         if (i == owner.FilterCellFocusIndex && WellBackground is not null && !noColor)
-            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), WellBackground);
+            context.FillOpaque(new Rect(x + DataGridColumnLayout.CellPadding, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
         else if (focusCue)
             FillInverse(context, x + DataGridColumnLayout.CellPadding, entry.Width);
 
@@ -201,31 +199,33 @@ public sealed class DataGridAutoFilterRow : UIElement
         int contentX = x + DataGridColumnLayout.CellPadding;
 
         var placeholderBrush = PlaceholderBrush ?? Brushes.Default;
-        CellStyle contentStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
+        var contentStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse) : BrushedStyle.Identity;
 
         if (column.FilterCellKind == FilterCellKind.DistinctPicker)
         {
             // "(All) ▾" idle / the active summary in a well-fill (the mockup's picker cells).
             if (summary is not null && WellBackground is not null && !noColor)
-                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
 
             string text = summary ?? "(All)";
 
             DrawClipped(context, contentX, text, Math.Max(1, entry.Width - 2),
                         summary is not null ? TextBrush : PlaceholderBrush, contentStyle);
 
-            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾", placeholderBrush, null, contentStyle);
+            context.DrawText(x + cellWidth - DataGridColumnLayout.CellPadding - 1, 0, "▾",
+                             contentStyle with { Foreground = placeholderBrush, Background = Brushes.Transparent });
         }
         else if (summary is not null)
         {
             if (WellBackground is not null && !noColor)
-                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), WellBackground);
+                context.FillOpaque(new Rect(contentX, 0, entry.Width, 1), new BrushedStyle { Background = WellBackground });
 
             DrawClipped(context, contentX, summary, entry.Width, TextBrush, contentStyle);
         }
         else
         {
-            context.DrawText(contentX, 0, "⌕", placeholderBrush, null, contentStyle); // the idle affordance
+            context.DrawText(contentX, 0, "⌕",
+                             contentStyle with { Foreground = placeholderBrush, Background = Brushes.Transparent }); // the idle affordance
         }
     }
 
@@ -236,7 +236,7 @@ public sealed class DataGridAutoFilterRow : UIElement
         if (width <= 0)
             return;
 
-        context.FillOpaque(new Rect(x, 0, width, 1), TextBrush ?? Brushes.Default, TextAttributes.Inverse);
+        context.FillOpaque(new Rect(x, 0, width, 1), new BrushedStyle { Background = TextBrush ?? Brushes.Default }.Imposing(TextAttributes.Inverse));
     }
 
     /// <summary>A layout entry's painted x (§9.2 — frozen entries never shift).</summary>
@@ -246,34 +246,16 @@ public sealed class DataGridAutoFilterRow : UIElement
         return index < layout.FrozenCount ? entry.X : entry.X - HorizontalOffset;
     }
 
+    // Grapheme-safe truncation is the shared RenderContext.DrawTruncated walk (D10); this wrapper
+    // keeps the filter row's null-brush/empty-text skip and its transparent glyph background.
     private static void DrawClipped(RenderContext context, int x, string text, int maxWidth,
-                                    IBrush? brush, CellStyle style = default)
+                                    IBrush? brush, in BrushedStyle style = default)
     {
         if (brush is null || text.Length == 0)
             return;
 
-        if (GraphemeWidth.StringWidth(text) <= maxWidth)
-        {
-            context.DrawText(x, 0, text, brush, null, style);
-            return;
-        }
-
-        var enumerator = text.GetGraphemeEnumerator();
-        int width = 0, end = 0;
-
-        while (enumerator.MoveNext())
-        {
-            int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-            if (next > maxWidth - 1)
-                break;
-
-            width = next;
-            end = enumerator.ElementIndex + enumerator.Current.Length;
-        }
-
-        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
-        context.DrawText(x + width, 0, "…", brush, null, style);
+        context.DrawTruncated(x, 0, text, maxWidth,
+                              style with { Foreground = brush, Background = Brushes.Transparent });
     }
 
     // ── The roving editor (the §3.2 element-hosting idiom, one cell at a time — panel Q4) ────────

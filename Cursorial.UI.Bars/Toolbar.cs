@@ -37,7 +37,7 @@ public class Toolbar : ItemsControl
     /// <summary>The per-item overflow policy (attached; default <see cref="ToolbarOverflowMode.AsNeeded"/>).</summary>
     public static readonly AttachedProperty<ToolbarOverflowMode> OverflowModeProperty =
         UIProperty.RegisterAttached<Toolbar, UIElement, ToolbarOverflowMode>(
-            "OverflowMode", defaultValue: ToolbarOverflowMode.AsNeeded, changed: OnOverflowModeChanged);
+            "OverflowMode", defaultValue: ToolbarOverflowMode.AsNeeded, changed: OnOverflowModeChanged, targetsChildren: true);
 
     private const string PartOverflowToggle = "PART_OverflowToggle";
     private const string PartOverflowPopup = "PART_OverflowPopup";

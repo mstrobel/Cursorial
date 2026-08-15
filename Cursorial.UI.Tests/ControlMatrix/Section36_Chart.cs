@@ -1,5 +1,6 @@
 using Cursorial.Drawing;
 using Cursorial.Drawing.Charts;
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Terminal;
 using Cursorial.UI;
@@ -19,7 +20,7 @@ public sealed class Section36_Chart
     private sealed class StubChart : IChart
     {
         public void Render(DrawingContext context, in Rect area) =>
-            context.Set(area.Column, area.Row, "X", default);
+            context.Set(area.Column, area.Row, "X", default(CellStyle));
     }
 
     private static UIHeadlessHost Host(TerminalCapabilities? caps = null) =>

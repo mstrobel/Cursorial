@@ -1,8 +1,12 @@
 # Proposal: `PartialStyle` — Channel-Explicit Style Operations
 
 **Status: PROPOSED (2026-08-05).** Produced during the opacity-group compositing work, from a
-maintainer observation while auditing fill/tint call sites. No code written. §8 lists the decisions
-that need an owner before implementation.
+maintainer observation while auditing fill/tint call sites. No code written.
+
+**Revised 2026-08-06:** built on the decomposed text axes over mask-pair storage (§10.1), full type
+definitions and worked call-site conversions (§10–12), and placement settled (§9a:
+`Cursorial.Rendering.Media`, all three types). §8 lists the decisions that remain open. Type names
+throughout assume the `Style` → `CellStyle` rename.
 
 ---
 
@@ -16,7 +20,7 @@ Decomposing to one `UIProperty` per axis made the existing machinery compose cor
 
 That fix landed at the **UI property** layer. The same defect survives one layer down, at the
 **Drawing operations** layer, and for the same reason: a fill or a tint has to speak in whole
-`Style` values, so it cannot say which channels it actually owns.
+`CellStyle` values, so it cannot say which channels it actually owns.
 
 The thesis is therefore identical, applied to operations rather than properties: an operation
 should declare the channels it carries. `PartialStyle` is that declaration.
@@ -44,12 +48,12 @@ the one that means "leave it alone".
 turn flags on; replacement clobbers the other eight axes; neither can say "flip this one".
 
 **Blank/orphan rules had the mirror problem.** Wide-glyph orphan cells were reset with
-`Cell.Blank`, stamping `Style.Default` — an operation whose intent was "clear the glyph" silently
+`Cell.Blank`, stamping `CellStyle.Default` — an operation whose intent was "clear the glyph" silently
 claiming a channel it did not own, punching an opaque hole through whatever region the cell
 belonged to. Fixed (2026-08-05) by preserving the existing style, but the fix is a convention held
 by comments in five places rather than something the types express.
 
-**Diagnosis.** Three sentinel conventions (`Color.Default` means absent; `Style.Default` means
+**Diagnosis.** Three sentinel conventions (`Color.Default` means absent; `CellStyle.Default` means
 blank; OR means "add") each encode partial intent in a value whose real meaning is something else.
 They are not individually wrong; they are individually *ambiguous*, and the ambiguity is
 unresolvable within the current vocabulary.
@@ -59,16 +63,21 @@ unresolvable within the current vocabulary.
 ```csharp
 /// A channel-explicit style delta: which channels an operation owns, and what it does to them.
 /// OPERATIONS ONLY — never stored in a Cell. Nothing in the cell model accepts one; the only
-/// way out is ApplyTo, which yields a Style.
-public readonly struct PartialStyle
+/// way out is ApplyTo, which yields a CellStyle.
+public readonly record struct PartialStyle
 {
-    public Style ApplyTo(in Style current);
+    public CellStyle ApplyTo(in CellStyle current);
     public PartialStyle Then(in PartialStyle next);   // composition; see §5
 }
 ```
 
+*(Sketch only — §10.2 has the full definition. `record struct` rather than plain `struct`: the
+fluent setters are `with` expressions, and the properties in §12 assert with `Assert.Equal`, both of
+which want the generated value equality. The `readonly`-versus-`ref` argument below is unaffected by
+the record-ness.)*
+
 `readonly struct`, deliberately **not** `ref struct`. The invariant that matters is "never lands in
-a `Cell`", and that is already structural: no member of `Cell` or `Style` accepts a `PartialStyle`,
+a `Cell`", and that is already structural: no member of `Cell` or `CellStyle` accepts a `PartialStyle`,
 so there is no path into storage. Ref-ness would additionally forbid fields, arrays, lambda
 capture and use across `await` — four constraints, the last two surfacing far from the type's
 definition, bought to prevent a mistake that is not available to make. Revisit if misuse is ever
@@ -87,7 +96,7 @@ entry point: a delta may come from a resource lookup instead of an element fold,
 produce the same value — which is the property a type claiming to be "a declaration of channels
 owned" should have.
 
-`Style` itself stays a plain struct with non-nullable channels. It is per-cell hot data, copied per
+`CellStyle` itself stays a plain struct with non-nullable channels. It is per-cell hot data, copied per
 pixel through compositing; the expressiveness is needed at operation boundaries, not in storage.
 `Color` already spends its "default" state on *the terminal's default colour*, so nullability there
 would be a third state layered on an occupied one — which is how the current ambiguity arose.
@@ -178,7 +187,7 @@ has **no single colour to bake into a channel** — the very call `TintCells` al
 Keep `PartialStyle` free of geometry and put sampling in a resolve step:
 
 ```csharp
-public readonly struct StyleDeltaTemplate      // holds IBrush? per colour channel
+public readonly struct BrushedStyle      // holds IBrush? per colour channel
 {
     public PartialStyle Resolve(int column, int row, in Rect bounds);
 }
@@ -254,8 +263,10 @@ strictly assembly-aligned. Two measurements then narrow the choice to one:
 - **No namespace spans two assemblies today** — every namespace is owned by exactly one. A shared
   `Cursorial.Media` across both DLLs would break an invariant that currently holds universally.
 - **`Cursorial.Output` is excluded by a hard constraint, not preference.** It is the conceptually
-  best home — `Color` (`Cursorial.Core/Output/Color.cs`) and `Style` both live there, and a brush is
-  precisely a `Color` source resolving into a `Style`. But that namespace belongs to
+  best home AT THE TIME — `Color` and `Style` both lived in `Cursorial.Output`, and a brush is
+  precisely a `Color` source resolving into a style. (Both have since moved: `Color` to
+  `Cursorial.Media`, `Style` renamed to `CellStyle`. The conclusion stands regardless.) That
+  namespace belongs to
   `Cursorial.Core`, and `ColorAt` names a `Rect` from `Cursorial.Rendering`. Core sits *below*
   Rendering and cannot reference the parameter type.
 
@@ -294,11 +305,17 @@ One item to verify rather than assume at implementation time:
 property typed `IBrush` assigned from a string in markup (`Foreground="Red"`) resolves its type
 converter by CLR type. That path should get an explicit test, not an assumption.
 
-`StyleDeltaTemplate` can then also live in Rendering, holding `IBrush?` per channel directly. The
+`BrushedStyle` can then also live in Rendering, holding `IBrush?` per channel directly. The
 §5b fast path still applies — all-solid brushes make `Resolve` loop-invariant, so it resolves ONCE
 and only genuinely position-varying brushes pay per-cell work.
 
-## 5c. The delegates that already have delta semantics
+## 5c. The delegates that already have delta semantics — ✅ MIGRATED (see §11.7)
+
+> **Superseded in part.** Both delegates did convert, but `GlyphStyleProvider` was RETIRED rather than
+> re-typed: once `IBrush` moved into `Cursorial.Rendering`, the callback's whole reason for existing was
+> gone and `BrushedStyle.Resolve` turned out to BE its signature. `BrushedTextResolver` survives and
+> now returns a template, once per run. §11.7 records what actually landed.
+
 
 Two public delegates produce styling per position, and BOTH return a whole `Style`:
 
@@ -325,7 +342,7 @@ Layering, once converted:
 
 | form | shape | when |
 |---|---|---|
-| `StyleDeltaTemplate` (§5b) | declarative, brush per channel, no closure | the common case |
+| `BrushedStyle` (§5b) | declarative, brush per channel, no closure | the common case |
 | the two delegates → `PartialStyle` | arbitrary logic, now channel-explicit | the extensibility hook |
 
 **This is also the concrete case behind §2's `ref struct` rejection.** The residual risk identified
@@ -423,7 +440,7 @@ Rect Paint(in CellBufferView buffer, in Rect bounds, in Style style, OutputCapab
 Implementors are `Icon`, `Image`, `ScaledText`. **`ScaledText` needed brush-based styling, could not
 express it through the flat `Style` parameter, and grew a separate `public BrushedTextResolver?
 BrushResolver { get; set; }` property.** That pair — a flat style plus a side-channel per-cell
-colour source — *is* a `StyleDeltaTemplate`, hand-rolled and split across two places. Taking a
+colour source — *is* a `BrushedStyle`, hand-rolled and split across two places. Taking a
 template as the parameter retires the property and gives `Icon` and `Image` the capability for free.
 
 ### Two scopes, and they must not be conflated
@@ -431,7 +448,7 @@ template as the parameter retires the property and gives `Icon` and `Image` the 
 | scope | carrier | meaning |
 |---|---|---|
 | element / subtree | `UIElement.BlendingMode` → `CompositeParameters.Mode` | how a whole surface composites onto its parent |
-| single operation | `StyleDeltaTemplate.Mode` | how one fill/tint/paint's colours combine with the cells it touches |
+| single operation | `BrushedStyle.Mode` | how one fill/tint/paint's colours combine with the cells it touches |
 
 Both are legitimate — the same way opacity exists on both an element and a brush — but they need
 names that do not imply setting one affects the other.
@@ -501,10 +518,10 @@ fits four sites and fights the fifth is worse than the status quo.
 
 ## 8. Decisions needed
 
-1. **Does `Hyperlink` belong?** It is a `Style` channel but semantically unlike the others (identity,
+1. **Does `Hyperlink` belong?** It is a `CellStyle` channel but semantically unlike the others (identity,
    not appearance). Including it is uniform; excluding it keeps the type about rendering.
 2. **`UnderlineStyle` + `UnderlineColor`: independent channels or one unit?** They are separate on
-   `Style`, and SGR sets them separately, but "underline" as a user concept is one thing.
+   `CellStyle`, and SGR sets them separately, but "underline" as a user concept is one thing.
 3. **Is `Then` needed in v1**, or is single-delta application enough until a caller wants a stack?
 4. **Naming**: `PartialStyle` vs `StyleDelta` vs `StyleMask`. "Partial" reads as "incomplete";
    "delta" reads as "change", which is nearer the semantics.
@@ -529,8 +546,980 @@ fill, tint, or clear declares the channels it owns instead of implying them thro
 
 They are the same thesis at two layers, and the lower one is now the only remaining aggregation
 point: that document notes SGR already sets and resets each attribute independently, `StyleQuantizer`
-drops them one at a time, the cell `Style` is a bitset, and the Drawing markup tier composes
+drops them one at a time, the cell `CellStyle` is a bitset, and the Drawing markup tier composes
 per-flag. Everything below the operation boundary is decomposed. The operation boundary is not.
 
 **Reconcile before implementing:** the Drawing markup tier's existing per-flag composition may
 already contain machinery this type should reuse or replace rather than duplicate.
+
+---
+
+## 9a. Where they live — DECIDED
+
+| type | assembly | namespace |
+|---|---|---|
+| `PartialStyle`, `StyleChannels` | `Cursorial.Rendering` | **`Cursorial.Rendering.Media`** |
+| `BrushedStyle` | `Cursorial.Rendering` | **`Cursorial.Rendering.Media`** |
+| `CellStyle` (unchanged) | `Cursorial.Core` | `Cursorial.Output` |
+
+The split between `CellStyle` and `PartialStyle` is the state/operation line, which is the
+distinction this proposal opened with: **`CellStyle` is state** — it lives in a cell, so it belongs
+with the cell model in Core. **`PartialStyle` is an operation** over that state, so it belongs with
+the painting model. They are not separated by accident of dependency; they are separated because
+they are different kinds of thing.
+
+Everything else follows:
+
+- **`BrushedStyle` was pinned to Rendering anyway** — it needs `IBrush` and `Rect`, neither
+  visible to Core. Putting the value form beside it keeps the pair in one place.
+- **The namespace is already mapped.** `Cursorial.Rendering` declares
+  `[assembly: XmlnsDefinition(..., "Cursorial.Rendering.Media")]` and is in `XamlSchemaContext`'s
+  seed list, so using these as theme resources needs no further decision — and specifically does not
+  require mapping `Cursorial.Output`, which would drag ten VT writers plus `SgrEncoder`,
+  `VtOutputSequences` and `IOutputByteSink` into the markup namespace.
+- **Every consumer is at Rendering or above**: `CellBuffer.Restyle` (§5d), `IGlyphFont.Paint` (§5f),
+  `DrawingContext.TintCells` (Drawing), the presenters (UI). Core needs it nowhere.
+- **It keeps the `Core + Rendering` tier self-sufficient** (§5c) — that tier gains brushes, tinting,
+  and now the vocabulary to express them.
+
+Note this supersedes the earlier reasoning in §5c, which put `PartialStyle` in `Cursorial.Rendering`
+and `BrushedStyle` in `Cursorial.Drawing` on the assumption that a brush-carrying type could
+not descend. `IBrush` has since moved to `Cursorial.Rendering.Media`, which removes that constraint
+and lets both live together.
+
+## 10. The types
+
+> **IMPLEMENTED (2026-08-06)** on `feature/styling-redesign`:
+> `Cursorial.Rendering/Media/PartialStyle.cs`, `BrushedStyle.cs`, with the laws of §12 pinned
+> in `Cursorial.Rendering.Tests/Media/PartialStyleTests.cs` (610 cases).
+>
+> **The code is the specification now.** What follows is kept for the REASONING — why the shape is
+> what it is — and the listings below are illustrative, not authoritative. Four things changed during
+> implementation and the text has not been rewritten around them, because a spec that duplicates
+> shipped code drifts silently:
+>
+> 1. **`StyleChannels` does not exist.** Value channels are nullable; `null` is the only encoding of
+>    absent. The presence bitmask read badly at the use site (`d.Channels.HasFlag(…)` versus
+>    `d.Foreground is { } fg`), and its only remaining justification was struct size — which §2
+>    already disowns for an operation type. Deleting it also simplified `Then` from four `Has()`
+>    ternaries to four `??`.
+> 2. **No fluent setters for the nullable channels.** With presence and value set in one act,
+>    `with { Foreground = c }` is complete, so §10.2's "fluent setters maintain presence, `with` does
+>    not" is a rule about a problem that no longer exists. Fluent methods survive only for the
+>    ATTRIBUTE axes, where the correct edit is an algebra rather than an assignment.
+> 3. **`Clear`/`Xor` are `internal`.** They are storage — the form that composes — not interface.
+>    The public reading is `SetAttributes` / `UnsetAttributes` / `ToggledAttributes`, a disjoint and
+>    exhaustive partition, so no caller does bit algebra to learn what a delta does.
+> 4. **A shape implies the underline flag, structurally.** `ApplyTo` derives it from
+>    `UnderlineShape`'s presence, which is what makes a plain `with { UnderlineShape = … }` complete.
+>    Removal is carried by the mask and resets the shape — see §12.4.
+
+### 10.0 The listings below are the pre-implementation sketch
+
+Written against the real shapes: `CellStyle(Color Foreground, Color Background, TextAttributes
+Attributes, UnderlineStyle UnderlineStyle, Color UnderlineColor, Hyperlink Hyperlink)`,
+`TextAttributes` with nine flags, `UnderlineStyle` with five.
+
+### 10.1 Presence, and why the mask shrinks
+
+`PartialStyle` deliberately does NOT mirror `CellStyle`'s flag word. It uses the decomposed axes from
+`proposal-textattributes-decomposition.md` §1 — `TextWeight`, `TextStyle`, `UnderlineStyle?` and five
+booleans — because when this lands there is little reason for an API consumer to touch `CellStyle`
+at all. `CellStyle` is the cell's storage; `PartialStyle` is the vocabulary operations are written
+in, and it should carry the better one. `ApplyTo` does the folding.
+
+That choice pays for itself three times over:
+
+- **`Bold | Faint` stops being representable.** They are mutually exclusive on the wire (SGR 1 vs 2,
+  both reset by 22) but perfectly expressible as flags. `TextWeight` makes the nonsense state
+  unwriteable rather than merely wrong.
+- **Enum axes get presence for free.** `TextWeight?` gives leave / Normal / Faint / Bold with no
+  extra bit, because "leave" is `null` and `Normal` is a real value distinct from it.
+- **The `(Clear, Xor)` mask shrinks from nine flags to five** — `Strikethrough`, `Overline`,
+  `Inverse`, `Blink`, `Concealed` — and every one is an axis where TOGGLE is meaningful. Toggling a
+  weight is nonsense; toggling `Inverse` is the case that motivated the whole design. The algebra
+  stops being a uniform mechanism and becomes the specific tool for the axes that need it.
+
+```csharp
+/// <summary>Which value-carrying channels a <see cref="PartialStyle"/> carries.</summary>
+[Flags]
+public enum StyleChannels : byte
+{
+    None           = 0,
+    Foreground     = 1 << 0,
+    Background     = 1 << 1,
+    UnderlineColor = 1 << 2,
+    Underline      = 1 << 3,   // the SHAPE channel: present + null value == remove the underline
+    Hyperlink      = 1 << 4,
+
+    Colors         = Foreground | Background | UnderlineColor,
+}
+```
+
+Only `Underline` needs a bit here, because its value space already spends `null` on "no underline"
+(§1 of the decomposition proposal: *"presence + shape unified"*). A delta needs a third state —
+leave / remove / set-to-shape — so the bit says "I have an opinion" and the nullable value says which.
+
+### The decomposed axes are a PROJECTION, not storage
+
+Storage stays the `(Clear, Xor)` pair over the full nine-flag word. `Weight`, `Posture` and the
+underline flag are accessors that read and write it. That is not a compromise — it is strictly
+better than separate nullable fields:
+
+| | separate fields | projection onto `(Clear, Xor)` |
+|---|---|---|
+| struct size | + ~6 bytes of nullable enums | two `TextAttributes` |
+| composition | needs its own rule per axis | the ONE law already proved |
+| `Bold \| Faint` | unrepresentable | unrepresentable *through the API* |
+
+`Weighted(TextWeight.Bold)` is `Clear = Bold|Faint, Xor = Bold` — force Bold on, Faint off — which is
+exactly what SGR means, since 22 resets both. And composition needs no special case:
+
+```
+Weighted(Bold).Then(Weighted(Faint))  ->  C = B|F,  X = (B & ~(B|F)) ^ F = F      later wins
+Weighted(Bold).Then(Toggle(Inverse))  ->  C = B|F,  X = B ^ I                     axes accumulate
+```
+
+So the decomposition buys the vocabulary and the illegal-state block without buying a second
+algebra. The mask stays the single mechanism; the API stops exposing it where it does not belong.
+
+### 10.2 `PartialStyle`
+
+```csharp
+/// <summary>
+/// A style DELTA: the channels it carries, and what to do to them. Applying it to a
+/// <see cref="CellStyle"/> yields a new one; channels it does not carry pass through.
+/// <c>default</c> is the identity — applying it returns the base unchanged.
+/// </summary>
+/// <remarks>
+/// Attributes are a <c>(Clear, Xor)</c> mask pair rather than a value, which is what gives three
+/// states plus a fourth operation: <c>result = (base &amp; ~Clear) ^ Xor</c>.
+/// <list type="table">
+///   <item><term>set on</term>   <description><c>Clear = f, Xor = f</c></description></item>
+///   <item><term>set off</term>  <description><c>Clear = f, Xor = 0</c></description></item>
+///   <item><term>toggle</term>   <description><c>Clear = 0, Xor = f</c></description></item>
+///   <item><term>leave</term>    <description><c>Clear = 0, Xor = 0</c></description></item>
+/// </list>
+/// Toggle is the one the current code cannot express, and the one selection-on-inverse-text needs.
+/// </remarks>
+public readonly record struct PartialStyle
+{
+    public StyleChannels Channels { get; init; }
+
+    public Color     Foreground     { get; init; }
+    public Color     Background     { get; init; }
+    public Color     UnderlineColor { get; init; }
+    public Hyperlink Hyperlink      { get; init; }
+
+    /// <summary>The underline SHAPE. Meaningful only with <see cref="StyleChannels.Underline"/>
+    /// present, where <see langword="null"/> REMOVES the underline.</summary>
+    public UnderlineStyle? Underline { get; init; }
+
+    // ---- storage: one mask pair over the whole flag word ----
+
+    /// <summary>Flags forced to a definite state (off alone, or on together with <see cref="Xor"/>).</summary>
+    public TextAttributes Clear { get; init; }
+    /// <summary>Flags inverted after clearing. Set alone to TOGGLE.</summary>
+    public TextAttributes Xor   { get; init; }
+
+    // ---- decomposed axes: PROJECTIONS onto the pair above, never separate state ----
+
+    private const TextAttributes WeightMask = TextAttributes.Bold | TextAttributes.Faint;
+
+    /// <summary>The weight this delta imposes, or <see langword="null"/> if it leaves weight alone.</summary>
+    public TextWeight? Weight => (Clear & WeightMask) != WeightMask
+                                     ? null
+                                     : (Xor & TextAttributes.Bold)  != 0 ? TextWeight.Bold
+                                     : (Xor & TextAttributes.Faint) != 0 ? TextWeight.Faint
+                                     : TextWeight.Normal;
+
+    /// <summary>The posture this delta imposes, or <see langword="null"/> if it leaves it alone.</summary>
+    public TextStyle? Posture => (Clear & TextAttributes.Italic) is 0
+                                     ? null
+                                     : (Xor & TextAttributes.Italic) != 0 ? TextStyle.Italic : TextStyle.Normal;
+
+    /// <summary>How this delta's colours combine with the base's. <see langword="null"/> replaces.</summary>
+    public IBlendingMode? Mode { get; init; }
+
+    /// <summary>
+    /// True when this delta is inert in EVERY context — applying it returns the base unchanged, and
+    /// composing it changes nothing about what follows.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Mode"/> is included even though it cannot affect <see cref="ApplyTo"/> on its own
+    /// (it is read only inside the per-channel colour combine, which no absent channel reaches). It
+    /// matters because <see cref="Then"/> PROPAGATES it: a delta carrying only a mode is a blend
+    /// carrier that changes how subsequent deltas' colours land.
+    /// <code>
+    /// var dim = default(PartialStyle).WithBlending(BlendingModes.Multiply);
+    /// dim.ApplyTo(s) == s                    // inert applied directly
+    /// dim.Then(Foreground(c)) != Foreground(c)   // NOT inert composed
+    /// </code>
+    /// Excluding it would make this property sound only for the direct-apply fast path and a trap
+    /// for the obvious next use — pruning no-op deltas out of a chain, which would silently drop the
+    /// blend. The cost of including it is one skipped fast path for a mode-only delta, which is rare
+    /// and cheap; the cost of excluding it is a silent wrong render.
+    /// </remarks>
+    // THE RULE, so the next field added does not repeat the mistake:
+    //   every field NOT governed by `Channels` must appear here explicitly.
+    // Bit-governed state (the colours, the underline shape) is covered for free by the
+    // `Channels is None` test. Everything else has to be remembered — which is exactly how `Mode`
+    // was missed. Today the non-bit-governed set is precisely { Clear, Xor, Mode }.
+    public bool IsIdentity =>
+        Channels is StyleChannels.None && Clear is 0 && Xor is 0 && Mode is null;
+
+    /// <summary>The axes that are genuinely independent booleans — the only ones the flag-level
+    /// <see cref="Set"/>/<see cref="Clear(TextAttributes)"/>/<see cref="Toggle"/> factories accept.
+    /// Bold, Faint, Italic and Underline have their own axes and are rejected there.</summary>
+    public const TextAttributes Booleans =
+        TextAttributes.Strikethrough | TextAttributes.Overline | TextAttributes.Inverse |
+        TextAttributes.Blink | TextAttributes.Hidden;
+
+    // ---- construction: one factory per channel, composable by `with` ----
+
+    public static PartialStyle Foreground(Color c) =>
+        new() { Channels = StyleChannels.Foreground, Foreground = c };
+
+    public static PartialStyle Background(Color c) =>
+        new() { Channels = StyleChannels.Background, Background = c };
+
+    /// <summary>Impose a weight — forces Bold ON and Faint OFF, or vice versa, or both off for Normal.
+    /// The shared SGR 22 reset is why one mask covers both.</summary>
+    public static PartialStyle Weighted(TextWeight w) => new()
+    {
+        Clear = WeightMask,
+        Xor   = w switch { TextWeight.Bold => TextAttributes.Bold,
+                           TextWeight.Faint => TextAttributes.Faint,
+                           _ => 0 },
+    };
+
+    public static PartialStyle Postured(TextStyle p) => new()
+    {
+        Clear = TextAttributes.Italic,
+        Xor   = p is TextStyle.Italic ? TextAttributes.Italic : 0,
+    };
+
+    /// <summary>Force <paramref name="flags"/> ON. <paramref name="flags"/> must be within <see cref="Booleans"/>.</summary>
+    public static PartialStyle Set(TextAttributes flags) =>
+        new() { Clear = Require(flags), Xor = flags };
+
+    /// <summary>Force <paramref name="flags"/> OFF.</summary>
+    public static PartialStyle Clear(TextAttributes flags) =>
+        new() { Clear = Require(flags) };
+
+    /// <summary>INVERT <paramref name="flags"/> — on becomes off and off becomes on.</summary>
+    public static PartialStyle Toggle(TextAttributes flags) =>
+        new() { Xor = Require(flags) };
+
+    // Bold/Faint/Italic/Underline reach the mask only by mistake — they have their own axes, and
+    // routing them through the flag word is how `Bold | Faint` gets written.
+    private static TextAttributes Require(TextAttributes flags) =>
+        (flags & ~Booleans) is 0
+            ? flags
+            : throw new ArgumentOutOfRangeException(
+                  nameof(flags),
+                  $"{flags & ~Booleans} has its own axis; set Weight / Posture / Underline instead.");
+
+    // ---- fluent setters: these MAINTAIN the presence mask, `with` does not ----
+    //
+    // Every mutation goes through one of these. A raw `with { Background = c }` would set the value
+    // and leave the channel absent, so the delta would silently ignore it — a type that exists to
+    // track presence must never make presence the caller's job. If C# had a way to seal `with` on a
+    // record struct this would be enforced rather than merely provided.
+
+    public PartialStyle WithForeground(Color c) =>
+        this with { Channels = Channels | StyleChannels.Foreground, Foreground = c };
+
+    public PartialStyle WithBackground(Color c) =>
+        this with { Channels = Channels | StyleChannels.Background, Background = c };
+
+    /// <summary>Underline in <paramref name="style"/>, coloured <paramref name="color"/>. Sets the
+    /// shape channel AND forces the underline flag on — the shape is meaningless without it, so the
+    /// factory does both rather than leaving the caller to remember the second half.</summary>
+    public PartialStyle WithUnderline(UnderlineStyle style, Color color) =>
+        this with { Channels  = Channels | StyleChannels.Underline | StyleChannels.UnderlineColor,
+                    Underline = style,
+                    UnderlineColor = color,
+                    Clear = Clear | TextAttributes.Underline,
+                    Xor   = Xor   | TextAttributes.Underline };
+
+    /// <summary>Remove any underline: clears the flag and the shape together.</summary>
+    public PartialStyle WithoutUnderline() =>
+        this with { Channels  = Channels | StyleChannels.Underline,
+                    Underline = null,
+                    Clear = Clear | TextAttributes.Underline,
+                    Xor   = Xor   & ~TextAttributes.Underline };
+
+    public PartialStyle WithHyperlink(Hyperlink link) =>
+        this with { Channels = Channels | StyleChannels.Hyperlink, Hyperlink = link };
+
+    public PartialStyle WithBlending(IBlendingMode? mode) => this with { Mode = mode };
+
+    /// <summary>Force <paramref name="flags"/> ON in addition to whatever this delta already does.</summary>
+    public PartialStyle Setting(TextAttributes flags) => Then(Set(flags));
+
+    /// <summary>Force <paramref name="flags"/> OFF in addition to whatever this delta already does.</summary>
+    public PartialStyle Clearing(TextAttributes flags) => Then(Clear(flags));
+
+    /// <summary>INVERT <paramref name="flags"/> in addition to whatever this delta already does.</summary>
+    public PartialStyle Toggling(TextAttributes flags) => Then(Toggle(flags));
+
+    // ---- application ----
+
+    public CellStyle ApplyTo(in CellStyle b)
+    {
+        if (IsIdentity) return b;
+
+        return b with
+        {
+            Foreground     = Has(StyleChannels.Foreground)     ? Combine(Foreground,     b.Foreground)     : b.Foreground,
+            Background     = Has(StyleChannels.Background)     ? Combine(Background,     b.Background)     : b.Background,
+            UnderlineColor = Has(StyleChannels.UnderlineColor) ? Combine(UnderlineColor, b.UnderlineColor) : b.UnderlineColor,
+            Hyperlink      = Has(StyleChannels.Hyperlink) ? Hyperlink : b.Hyperlink,
+            UnderlineStyle = Has(StyleChannels.Underline) ? Underline ?? b.UnderlineStyle : b.UnderlineStyle,
+            Attributes     = (b.Attributes & ~Clear) ^ Xor,
+        };
+
+        Color Combine(Color source, Color backdrop) =>
+            Mode is null ? source : Color.Composite(source, backdrop, Mode);
+    }
+
+    private bool Has(StyleChannels c) => (Channels & c) != 0;
+
+    /// <summary>
+    /// This delta, then <paramref name="next"/> — one delta equivalent to applying both in order.
+    /// The attribute algebra composes exactly: <c>Clear = C₁ | C₂</c>, <c>Xor = (X₁ &amp; ~C₂) ^ X₂</c>.
+    /// </summary>
+    public PartialStyle Then(in PartialStyle next) => new()
+    {
+        Channels       = Channels | next.Channels,
+        Foreground     = next.Has(StyleChannels.Foreground)     ? next.Foreground     : Foreground,
+        Background     = next.Has(StyleChannels.Background)     ? next.Background     : Background,
+        UnderlineColor = next.Has(StyleChannels.UnderlineColor) ? next.UnderlineColor : UnderlineColor,
+        Hyperlink      = next.Has(StyleChannels.Hyperlink)       ? next.Hyperlink      : Hyperlink,
+        Underline      = next.Has(StyleChannels.Underline)       ? next.Underline      : Underline,
+        Clear          = Clear | next.Clear,
+        Xor            = (Xor & ~next.Clear) ^ next.Xor,
+        Mode           = next.Mode ?? Mode,
+    };
+}
+```
+
+`Then` is worth stating as a law, because it is testable and it is what makes the type composable
+rather than merely convenient:
+
+> `a.Then(b).ApplyTo(s)` ≡ `b.ApplyTo(a.ApplyTo(s))`, for every `a`, `b`, `s`.
+
+### 10.3 `BrushedStyle`
+
+The same shape with `IBrush` where `PartialStyle` has `Color` — the unresolved form, for callers
+that paint over a region and need per-cell colour.
+
+```csharp
+/// <summary>
+/// A <see cref="PartialStyle"/> whose colour channels are BRUSHES, resolved per cell. The form an
+/// operation is authored in; <see cref="Resolve"/> produces the value form for a given cell.
+/// </summary>
+public readonly record struct BrushedStyle
+{
+    public IBrush?    Foreground     { get; init; }
+    public IBrush?    Background     { get; init; }
+    public IBrush?    UnderlineColor { get; init; }
+    public Hyperlink? Hyperlink      { get; init; }
+
+    /// <summary>Present iff <see cref="HasUnderlineOpinion"/>; <see langword="null"/> removes it.</summary>
+    public UnderlineStyle? Underline    { get; init; }
+    public bool HasUnderlineOpinion     { get; init; }
+
+    public TextAttributes Clear { get; init; }
+    public TextAttributes Xor   { get; init; }
+    public IBlendingMode? Mode  { get; init; }
+
+    /// <summary>
+    /// True when every present brush is position-independent, so <see cref="Resolve"/> returns the
+    /// same value for every cell and a fill loop can hoist it. The common case.
+    /// </summary>
+    public bool IsUniform =>
+        Foreground is null or SolidColorBrush &&
+        Background is null or SolidColorBrush &&
+        UnderlineColor is null or SolidColorBrush;
+
+    public PartialStyle Resolve(int column, int row, in Rect bounds)
+    {
+        var channels = StyleChannels.None;
+        if (Foreground     is not null) channels |= StyleChannels.Foreground;
+        if (Background     is not null) channels |= StyleChannels.Background;
+        if (UnderlineColor is not null) channels |= StyleChannels.UnderlineColor;
+        if (Hyperlink      is not null) channels |= StyleChannels.Hyperlink;
+        if (HasUnderlineOpinion)        channels |= StyleChannels.Underline;
+
+        return new PartialStyle
+        {
+            Channels       = channels,
+            Foreground     = Foreground?.ColorAt(column, row, bounds)     ?? default,
+            Background     = Background?.ColorAt(column, row, bounds)     ?? default,
+            UnderlineColor = UnderlineColor?.ColorAt(column, row, bounds) ?? default,
+            Underline      = Underline,
+            Hyperlink      = Hyperlink ?? default,
+            Clear          = Clear,
+            Xor            = Xor,
+            Mode           = Mode,
+        };
+    }
+}
+```
+
+## 11. Worked examples — what each call site becomes
+
+### 11.1 Selection tint (`DrawingContext.TintCells`) — ✅ MIGRATED
+
+Before, with the mask hardcoded and no way to express "invert":
+
+```csharp
+var tinted = cell.Style with { Attributes = (cell.Style.Attributes & ~TextAttributes.Inverse) | style.Attributes };
+if (!style.Background.IsDefault)
+    tinted = tinted with { Background = style.Background };
+```
+
+After, the whole body — the operation is the caller's, so the method has none of its own:
+
+```csharp
+var cell = _surface[sceneColumn, sceneRow];
+_surface[sceneColumn, sceneRow] = cell with { Style = style.ApplyTo(cell.Style) };
+```
+
+`DrawingContext.TintCells` and its `RenderContext` passthrough now take a `PartialStyle`; the one
+caller (`TextPresenter.DrawFaceLine`, the glyph-face selection highlight) states both legs:
+
+```csharp
+// nocolor / no selection brush: FORCE Inverse, in whichever direction the run needs
+tint = inverse ? PartialStyle.WithCleared(TextAttributes.Inverse)
+               : PartialStyle.WithSet(TextAttributes.Inverse);
+
+// colour: paint the selection background AND clear Inverse — which the old spelling did
+// invisibly, via the hardcoded `& ~Inverse`, while the caller passed no attributes at all
+tint = PartialStyle.WithBackground(color).Clearing(TextAttributes.Inverse);
+```
+
+Three things the migration had to be careful about, each now pinned by a test:
+
+1. **The `& ~Inverse` ran on BOTH paths**, including the colour one where `style.Attributes` was
+   `None` — so the clear was invisible at the call site. A bare `WithBackground(colour)` leaves
+   selected inverse text inverted under its new background.
+2. **One `CellStyle` spelling meant two opposite operations.** `CellStyle.Default.WithAttributes(
+   inverse ? None : Inverse)` was a *clear* when the run was already inverse and a *set* when it was
+   not — legible only once you knew `TintCells` cleared the flag first. The two are now separate
+   factories, and say so.
+3. **The `Background.IsDefault` guard is load-bearing and survives, at the call site.** `Brushes.Default`
+   is a legal `TextBox.SelectionBrush` and samples to `Color.Default` everywhere, so "the brush stated
+   no background" is reachable. To a `PartialStyle` a present-but-default background is an ordinary
+   opinion — which is the point (§5d) — so the caller must now decide, rather than have the sentinel
+   decide for it.
+
+The `Toggle` this section originally reached for is available (`WithToggled`) and covered by
+`DrawingContextTintTests.TintCells_TogglesPerCell`, but the selection call site does not need it:
+`inverse` is a whole-run property the presenter already knows, so a forced set/clear is both
+sufficient and more predictable than a per-cell flip.
+
+### 11.2 `TextPresenter`'s hand-rolled algebra (§5f, five sites) — ✅ MIGRATED
+
+```csharp
+// :573   legacyBaseStyle.Attributes ^ TextAttributes.Inverse                         ✅ MIGRATED
+PartialStyle.Toggle(TextAttributes.Inverse)
+
+// :541   .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse)
+//                                                                             ✅ MIGRATED — see below
+noColor ? PartialStyle.Set(attr.Flags) : PartialStyle.Set(attr.Flags).Clearing(TextAttributes.Inverse)
+
+// :505   CellStyle.Default.WithAttributes(TextAttributes.Inverse)   ← "delta" faked via Default
+//                                                                             ✅ MIGRATED
+PartialStyle.Set(TextAttributes.Inverse)
+```
+
+The third is the tell: `CellStyle.Default.WithAttributes(...)` only works because `Default` reads as
+"unset" for the colour channels. It is a `PartialStyle` spelled in a type that cannot say so.
+
+**Two of the three have landed**, both through the selection-rule work rather than as a migration of
+their own:
+
+- The `^ Inverse` toggle is now `ResolveSelectionStyle`'s `PartialStyle.WithToggled(TextAttributes.Inverse)`,
+  the fall-through leg beside `WithBackground(colour).Clearing(Inverse)` (§11.1).
+- The band pre-fill no longer fakes a delta through `CellStyle.Default`: it is
+  `context.FillOpaque(rect, Color.Transparent, (legacyBaseStyle.Attributes & FillAttributes) | Inverse)`,
+  which states the attribute word directly and masks it through an allowlist. Not a `PartialStyle`, and
+  deliberately so — it is an opaque fill, an operation that OWNS the cells it writes, and the interesting
+  question there turned out to be *which attributes may spread onto cells nobody inked*, which is what
+  `FillAttributes` answers.
+
+  > **Still true of the CALL SITE** after §11.9. `FillOpaque` now takes a `BrushedStyle`, but this
+  > site keeps using the colour-plus-word wrapper, because a solid transparent fill plus a flag word is
+  > exactly what two arguments already say. What §11.9 changed underneath it is that the word is folded
+  > per AXIS rather than written into a `CellStyle` wholesale — which it had to be, since `FillAttributes`
+  > admits Bold, Faint and Italic and those cannot travel through `Applying`.
+
+**The third has landed too, and the argument that decided it is worth keeping.** This entry recorded
+`ResolveLineBaseStyle` as an OPEN QUESTION and leaned against migrating: it does not modify anybody's
+cells, it establishes the line's GROUND STATE — the style every run and every fill on that line is then
+a delta against — and by the ownership rule this document keeps arriving at (an operation that owns its
+cells takes a whole `CellStyle`, one that modifies cells somebody else wrote takes a delta) a ground
+state is the definitional case for the whole style.
+
+That argument is sound and it is not decisive, because it answers the wrong question. **A `CellStyle` can
+carry only a RESOLVED `Color`, so a line base built as one can never be brushed.** The ownership rule
+says the base MAY own its cells; it does not say the base must be colour-resolved. Capability wins over
+the rule here, and the rule survives intact for every site where the two do not collide.
+
+What the value form actually cost was a PARALLEL PARAMETER. The element's foreground brush could not ride
+in the base, so it travelled beside it — `IBrush? foreground` threaded through `RenderSingleLine`,
+`DrawFaceLine`, `DrawLineRun` and the presenter's private `DrawText`, with every signature between the
+resolve and the paint carrying both halves of one thing. `ResolveLineBaseStyle` now returns a
+`BrushedStyle` with the brush in it, resolved ONCE per render pass and handed down as a single
+carrier; three signatures shed the second parameter, and the base stopped being resolved once per lane
+(the two-lane divergence that produced three separate invisible-selection defects in this file is now
+structurally unavailable, not merely watched for).
+
+Two consequences worth recording:
+
+- **The unpack lands at the `RenderContext` boundary, and that is the right cut.** `DrawText` and
+  `DrawGlyphText` already take a brush plus a whole style and already do the per-cell sampling, so the
+  base's brush channel goes in one argument and its value channels — via a small
+  `ResolveLineBaseValue` that drops the foreground precisely because the brush carries it — go in the
+  other. Nothing wanted pushing deeper; the primitives were already delta-shaped where it mattered.
+
+  > **Superseded for the CELL lane** by §11.8: `DrawText` now takes the template itself, so the
+  > lane hands the base down whole and the unpack is gone rather than relocated. The paragraph is
+  > kept because its reasoning was right about the OTHER lanes and still governs them —
+  > `ResolveLineBaseValue` survives for the face lane and the sized-run lane, whose primitives
+  > (`DrawGlyphText`, `FormattedTextRun`) still take a resolved style.
+- **The parallel parameter was itself producing a defect.** The private `DrawText` branched on "is
+  there a brush?", and its no-brush leg called the *colour* overload with a hardcoded `null` background.
+  `DrawText` writes its background brush over the base style's, so that leg repainted a selected run's
+  highlight as `Transparent`: a fourth invisible selection, this one caused by the split carrier rather
+  than by the selection rule. With one carrier there is no leg — an absent brush is `Brushes.Default`,
+  which samples to the same `Color.Default` the colour overload substitutes and keeps the background.
+
+The remaining observation from the open-question entry still stands and is still not a representation
+question: the line's ground state would read better assembled from the element's value sources the §11.6
+way. That is a *derivation* change, tracked there.
+
+### 11.3 Glyph paint: stamp versus box (§5f) — ✅ MIGRATED
+
+The FLAT `IGlyphFont.Paint` overload takes a `PartialStyle`. Presence does the work — no new flag, no
+second overload:
+
+```csharp
+// stamp: ink the strokes, gaps show whatever is underneath (a FIGlet over existing content)
+face.Paint(buffer, column, row, text, PartialStyle.WithForeground(fg));
+
+// box: fill the glyph's box first, then ink — no pre-fill needed by the caller
+face.Paint(buffer, column, row, text, PartialStyle.WithForeground(fg) with { Background = bg });
+```
+
+**Why a delta belongs on a paint at all**, given the ownership rule §11.2 leans on: a paint always OWNS
+its ink cells — it writes them outright, and the channels it declines to state fall through to what the
+cell already held, as any delta's do. What the delta buys is a fact about the OTHER cells, whether this
+paint also owns the GAPS between the strokes. A whole style has nowhere to put that answer; the presence
+of one channel is exactly the room it needs. That reasoning now lives on the interface member, because it
+is the thing that makes this not an exception.
+
+Four things the migration had to settle, each pinned by a test in `GlyphStampOrBoxTests`:
+
+1. **The box is one fill, not per-cell opinion.** `GlyphPaint.Ink` fills `Measure(text)`'s rect with the
+   BACKGROUND ONLY and hands the ink pass the same delta minus its background. Minus, because re-stating
+   it would composite the same colour onto itself, which is not a no-op under a pushed blending mode —
+   `ShadowedFont` paints its shadow under `Multiply`. Background *only*, because the attributes that are
+   visible on a blank (Underline, Strikethrough, Overline) would rule a line clean across a multi-row
+   glyph box; which attributes may spread is a question that already has an owner, and it is
+   `TextPresenter.FillAttributes`, an allowlist this layer cannot see.
+2. **The DECORATORS settle the box, not their inner face.** `ShadowedFont` and `DecoratedFont` fill their
+   own (larger) box and forward a stamp inward. Forwarding the background instead would have the inner
+   face fill the GLYPH's box a second time, after the shadow had been painted into it — a drop shadow
+   surviving only in the offset fringe, erased everywhere it was meant to show through the glyph's holes.
+3. **`CellBuffer.Set` has a `Color.Default` rule of its own, and it limits box mode.** Its blend reads a
+   `Color.Default` source background as "keep the backdrop's", so boxing with `Color.Default` CLEARS the
+   box's cells (grapheme and all) but cannot repaint a coloured backdrop back to the terminal default.
+   The distinction this section exists for is still real and still observable — stamp leaves the content,
+   box removes it — but "reset these cells to the terminal background" remains unsayable one layer down.
+   Asserted in `Box_WithTheTerminalDefaultBackground_StillBoxes` so the limit is stated rather than
+   discovered.
+4. **Call sites that still hold a whole `CellStyle` must decide, out loud.** `FormattedText`'s
+   resolver-less FIGlet run, `RenderContext.DrawGlyphText`'s no-brush leg, and the interface's own default
+   template overload all read `Background.IsDefault` and pick — exactly the §11.1(3) rule: the caller
+   decides now, rather than having the sentinel decide for it. `PartialStyle.From` / `FromInk` are the two
+   adapters, and `From` is lossless except for one channel it cannot be — a null `CellStyle.Hyperlink` is
+   indistinguishable from "no opinion", so the adapter can never mean "remove the link".
+
+The mode this migration REMOVES is "paint the ink in a stated background, leave the gaps" — which was
+what the old signature actually did, and which is incoherent for a sparse face (background-coloured
+strokes floating over unrelated content). One test asserted it, `FigletFontTests.Paint_RespectsBlendingMode`,
+whose "untouched" gap is now filled and blended like every other cell of the box.
+
+The nocolor inverse pre-fill in `TextPresenter` is NOT retired by this. Box mode fills each GLYPH's box;
+the band fill also covers the inter-word gaps the face never inks, so it is not a replacement — and a
+universal band fill was separately measured and rejected (it grew SGR sequences 14–16%).
+
+### 11.4 The access key (`proposal-unified-text-path.md` §3) — ✅ MIGRATED
+
+Two channels and one attribute, everything else inherited — and it is a *value*, so it is built once
+and applied at paint rather than folded into a hand-assembled flag word:
+
+```csharp
+var cue = PartialStyle.WithUnderline(UnderlineStyle.Single, indicator);
+```
+
+*(The sketch this section shipped with read `default(PartialStyle).WithUnderline(…)`. `WithUnderline`
+is a static FACTORY — the instance sibling is `Underlining` — so the corrected spelling is above, and
+the `default(PartialStyle)` seed is what the real call site keeps, because it accumulates three
+independently-conditional channels before the underline is known to apply at all.)*
+
+Note what is *not* written: `WithSet(TextAttributes.Underline)`. That call would throw — `Underline`
+has its own axis, so `Require` rejects it — and `WithUnderline` already forces the flag on, because a
+shape without the flag is meaningless. The API refuses the half-expressed version of the operation.
+`AccessTextPresenter` states the shape through `with { UnderlineShape = … }` for the same reason: a
+shape implies the flag inside `ApplyTo`, so the presenter never needs the call that does not exist.
+
+**What the migration changed at the call site**, beyond the shape of the code:
+
+1. **Reverse-video became a `Toggling`.** The presenter's cue had a hand-written special case —
+   `combined &= ~Inverse` when the label was *already* inverse and the cue wanted inverse too, for
+   the double-reverse-video effect. That is a toggle, and the delta algebra says it in one call.
+2. **Weight became an axis, and the CUE wins.** `resolved.Flags | keyAttributes` produced `Bold |
+   Faint` whenever a Faint label carried a Bold cue — which the shipped Ansi16 theme does
+   (`InteractiveCueWeight = Bold`). `Weighing` imposes the cue's weight and clears the other, because
+   the cue is the later and more specific statement: the theme naming one grapheme the mnemonic,
+   against a weight the label states for its text as a whole. `TextWeight.Normal` is deliberately
+   *not* imposed — it is the property's default and the value every colour tier ships, so treating it
+   as an opinion would strip the weight off the mnemonic of every bold label.
+3. **The cue's underline shape stopped being conditional on the indicator brush.** The old code set
+   the shape and the colour together, inside `if (indicatorBrush is not null)`, so a `KeyUnderline`
+   of `Curly` silently degraded to `Single` when no brush resolved. The shape now rides the delta
+   unconditionally and only the sampled colour is brush-gated.
+
+The one thing the migration deliberately did **not** move is the sampling rect: the indicator colour
+is still sampled against the *text's* own box, origin at the first character of the first line, not
+against the parent-relative `Bounds` (`AccessKeyCueBrushTests`).
+
+### 11.5 Composition, and why `Then` matters
+
+A run inside a selection inside a disabled panel — three independent deltas, applied once:
+
+```csharp
+var effective = disabledDim.Then(selectionTint).Then(runStyle);
+foreach (var cell in region)
+    surface[cell] = effective.ApplyTo(surface[cell].Style);
+```
+
+Attribute algebra composes correctly through all three: a later `Set`/`Clear` wins over an earlier
+`Toggle` on the same flag (its `Clear` bit masks the earlier `Xor`), while toggles on *different*
+flags accumulate. That is the `Clear = C₁ | C₂`, `Xor = (X₁ & ~C₂) ^ X₂` law, and it is exactly the
+case the hand-rolled sites get wrong when they are composed by accident.
+
+### 11.6 Deriving a delta from an element's value sources
+
+The `ComposeAttributes`-shaped path: a channel is present iff the element actually set it, which the
+property system already knows.
+
+```csharp
+public static BrushedStyle FromElement(UIElement e) => new()
+{
+    Foreground     = IsSet(e, TextElement.ForegroundProperty)     ? TextElement.GetForeground(e)     : null,
+    Background     = IsSet(e, TextElement.BackgroundProperty)     ? TextElement.GetBackground(e)     : null,
+    UnderlineColor = IsSet(e, TextElement.UnderlineColorProperty) ? TextElement.GetUnderlineColor(e) : null,
+};
+
+// ...then fold in the axes the element has an opinion about, each through its own factory so the
+// mask is never assembled by hand:
+if (IsSet(e, TextElement.WeightProperty))  delta = delta.Then(PartialStyle.Weighted(TextElement.GetWeight(e)));
+if (IsSet(e, TextElement.StyleProperty))   delta = delta.Then(PartialStyle.Postured(TextElement.GetStyle(e)));
+if (IsSet(e, TextElement.InverseProperty)) delta = delta.Then(TextElement.GetInverse(e)
+                                                                  ? PartialStyle.Set(TextAttributes.Inverse)
+                                                                  : PartialStyle.Clear(TextAttributes.Inverse));
+
+// "the element has an opinion" == the value did not come from the default or from inheritance
+static bool IsSet(UIElement e, StyledProperty p) =>
+    e.GetValueSource(p) is not { Kind: ValueSourceKind.Default or ValueSourceKind.Inherited, IsCurrentValue: false };
+```
+
+Only non-solid brushes cannot be auto-populated this way, because their colour depends on the cell
+being painted — which is precisely the reason the template form exists.
+
+### 11.7 The per-cell glyph styling chain — ✅ MIGRATED
+
+Tracked as two steps (the `BrushedTextResolver` return type, and the `GlyphStyleProvider` return type).
+**They were done as ONE**, because they are one chain: `FormattedText` built the provider *from* the
+resolver, so migrating either alone would have lost information at exactly that adapter — a resolver
+returning a delta feeding a provider expected to return a whole style, or the reverse. There was no
+intermediate state worth having.
+
+The step also came out differently from the sketch above, in a way worth recording.
+
+**`GlyphStyleProvider` is gone, not re-typed.** The plan was to change its return type to `PartialStyle`.
+That was done first, and it worked — and then it was thrown away, because the delegate itself was the
+artefact of a constraint that no longer holds:
+
+```csharp
+// before: a callback, because Cursorial.Rendering could not name IBrush, so the CALLER had to sample
+public delegate CellStyle GlyphStyleProvider(int column, int row);
+Size Paint(…, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider);
+
+// after: the value form. BrushedStyle.Resolve IS that signature, plus the sampling bounds the
+// closure was capturing, plus IsUniform
+Size Paint(…, ReadOnlySpan<char> text, in CellStyle legacyBaseStyle, in BrushedStyle baseStyle, in Rect bounds);
+```
+
+Three things follow from passing the value instead of a closure over it:
+
+1. **`IsUniform` becomes readable.** A delegate is opaque, so every painted cell had to call it even for a
+   solid colour. `MonospaceFont` and `FigletFont` now resolve a uniform template ONCE and take the same
+   path as a flat style. Pinned by `Monospace_ResolvesAUniformTemplateOnce` (one brush sample for a
+   six-cell run) against `Monospace_ResolvesANonUniformTemplatePerCell` (six).
+2. **The base style became a parameter.** It had to: a delta with no base has nothing for its absent
+   channels to fall through to. `ShadowedFont` had been passing `default` for it — the provider overload
+   had no base to pass — so its shadow pass silently lost the run's underline shape. That was the one
+   pre-existing defect this step fixed, and it is what the red test caught.
+3. **The bounds became a parameter too, and are deliberately NOT the painted footprint.** They are the
+   brush's coordinate space, which belongs to the scope the brush was declared at — a block, the document,
+   or an inline run's reading-order strip — and defaulting them to the glyphs being painted would restart
+   every gradient at each run boundary.
+
+**`BrushedTextResolver` moved from per-CELL to per-RUN.** Everything it decides — which brush wins, at what
+scope, whether the run's foreground was inherited, which inherited attributes merge in — is a property of
+the run; only the sampling was per cell, and a template samples itself. It now returns
+`BrushedTextStyle(BrushedStyle Style, Rect Bounds)`:
+
+```csharp
+// the run declares its own brush:      new BrushedStyle { Foreground = bs.Foreground }, at its scope
+// no document brush:                   the IDENTITY — where it used to rebuild ctx.BaseStyle to say "no change"
+// document brush, foreground inherited: new BrushedStyle { Foreground = documentBrush }, over the block
+// document brush, foreground its own:   the IDENTITY again
+```
+
+The two identity legs are the payoff. A `CellStyle` return could only spell "no change" as a copy of the
+base — which the painter then applied on top of the value it was copied from, per cell.
+
+Three things this migration had to be careful about, each now pinned by a test:
+
+1. **`AddAttributes` is an OR, and the per-axis factories cannot express one.** `Weighted(Bold)` forces
+   Faint OFF — they share the SGR 22 reset — so decomposing the inherited-attribute leg into axes would
+   strip a run's own Faint under an inherited Bold. This needed a new factory, `PartialStyle.WithAdded`
+   (and `BrushedStyle.Adding`): the flag-word union, the only one that accepts the axis-owning flags.
+   It is not a hole in `WithSet`'s guard — that guard catches routing an axis through the boolean
+   factories by ACCIDENT, and here the union is the intent. Verified by mutation: making it a replace
+   fails three tests, including `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag`.
+
+   > **Retracted.** `PartialStyle.WithAdded`, `PartialStyle.Adding` and `BrushedStyle.Adding` have
+   > since been REMOVED; the paragraph above is kept only so the reversal is legible. It concedes its own
+   > defeat in the phrase "strip a run's own Faint": the union's one distinguishing capability is reaching
+   > `Bold | Faint`, and that is not a state the wire has. The encoder emits `ESC[1m` to reach it from a
+   > Faint predecessor and `ESC[2m` from a Bold one — same destination, different bytes, whichever arrived
+   > last wins — while `PartialStyle.Weight` reports plain `Bold` for it either way, so the accessor and
+   > the frame disagree in silence. Nor could a guard have been bolted on: composition is exact, so
+   > `WithAdded(Bold).Adding(Faint)` equals `WithAdded(Bold | Faint)` and any per-call check is evaded by
+   > splitting the call. The inherited-attribute leg now folds its flag word one axis at a time —
+   > `Weighing` for weight (Bold wins a word carrying both, deterministically), `Posturing` for posture,
+   > `Setting` for the genuine booleans, and the run's own shape re-stated to carry the underline flag.
+   > `BaseAttributes_DoNotClearTheRunsOppositeWeightFlag` was inverted into
+   > `BaseAttributes_Bold_ImposesTheWeight_ClearingTheRunsFaint`, and
+   > `EveryPublicFlagWordEntryPoint_RejectsTheAxisOwningFlags` now states the guard over the whole public
+   > surface by reflection, so a future unguarded sibling fails a test rather than a terminal.
+   >
+   > **The two remaining producers are also gone**, and they were not in this layer: the type could no
+   > longer construct `Bold | Faint`, but two UI call sites still reached it by OR-ing a flag word onto
+   > the element fold, with no markup involved. `AccessTextPresenter` unioned the access-key cue onto
+   > `TextElement.ComposeAttributes` (§11.4), and `TextPresenter`'s placeholder did `attributes |=
+   > TextAttributes.Faint` on the low-fidelity leg — so a `TextWeight="Bold"` TextBox at Ansi16/NoColor
+   > painted its placeholder in the unrenderable state from one property plus a tier check. Both now
+   > IMPOSE a weight the way `CreateBrushResolver` does, and each states its winner and why: the CUE
+   > wins at the access key (the later, more specific statement), and FAINT wins at the placeholder (on
+   > a tier with no muted colour, the de-emphasis is the entire signal that this is a prompt). Pinned
+   > by `Section45_TextAttributeAxes` rows TA19–TA21, which assert the whole attribute word with
+   > equality rather than `HasFlag` — "Bold is present" is exactly the check `Bold | Faint` passes.
+2. **The inline-vs-block scope distinction had to survive a per-cell → per-run reshaping.** Inline sampling
+   was `ColorAt(LogicalColumn, 0, Rect(0, 0, ScopeWidth, 1))` — a remapped COORDINATE — and a per-run
+   resolver hands back a rect, not a coordinate. It is expressible because the remap is a constant offset
+   within a line-piece: the painter now supplies `BrushedTextContext.InlineScope`, a 1-row rect REBASED so
+   that sampling at the cell's own `(column, row)` yields its logical offset. One sampling convention, both
+   scopes. Pinned by `FormattedText_InlineScopeIsWrapInvariant` (the ramp continues across a wrap instead
+   of restarting) and `RunBrush_SamplesAgainstItsDeclarationScope`.
+3. **`BrushedTextContext.BaseStyle` stays.** The resolver still READS it — `fg.IsDefault || fg ==
+   documentForeground` is the inherited-foreground test — it merely stops returning it. The base played two
+   roles and only the second one went away.
+
+No `IsDefault`-as-sentinel was lost. The one occurrence in this chain is that inherited-foreground test,
+which is an input the resolver reads, not an encoding of absence in what it returns; and a brush that
+samples to `Color.Default` still lands as a real foreground opinion, because the template carries the
+BRUSH and only `null` means absent.
+
+### 11.8 The text primitives: `DrawText` takes a template — ✅ MIGRATED
+
+Same shape as §11.3/§11.7, same reasoning, one layer up:
+
+```csharp
+// before: two brushes travelling beside a whole style — the pair BrushedStyle carries in one value
+public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                     IBrush foreground, IBrush? background = null, in CellStyle legacyBaseStyle = default);
+
+// after: base + delta, as IGlyphFont.Paint already took
+public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                     in BrushedStyle baseStyle, in CellStyle legacyBaseStyle = default);
+```
+
+Base style PLUS delta rather than a bare delta, for §11.3's reason: a draw OWNS the cells it inks, so a
+whole `CellStyle` is a legitimate ground state, while the delta says what varies per cell. `Fill*` is a
+separate slice and untouched.
+
+**The `Color` and `IBrush` overloads are KEPT**, as thin wrappers that build a template. Collapsing them
+would push every solid-colour caller — charts, `DataGrid`'s seven painters, `Axes`, `PanelTitle` — through
+template construction to say something the two-argument form already says, and the whole point of the
+convenience overloads is that the simple case is not made to pay for the general one.
+
+Three things this had to settle:
+
+1. **An omitted background means DIFFERENT things at the two entry points, and that is the design, not a
+   leak.** On the brush overload it stays `Brushes.Transparent`, which OVERWRITES `legacyBaseStyle`'s background;
+   on the template it is absence, so the base's background survives. The two are not interchangeable at the
+   cell: `CellBuffer.Set` rescues the grapheme under a whitespace write whose background is not opaque, and
+   `Color.Transparent` qualifies where `Color.Default` does not — so drawing a space with each lands a
+   different GRAPHEME, not merely a different sentinel. Pinned by
+   `SpaceOverContent_TransparentRescuesTheGlyph_WhereNoOpinionOverwritesIt`.
+2. **The sampling rect did not move.** `DrawText` samples against the full multi-line extent (widest
+   sanitized line × line count) anchored at the start cell, carried in a `Rect` whose origin may be negative
+   (`Rect` is `int`-backed, so a negative anchor passes through to the brush verbatim and samples
+   contract-equivalently). It resolves through `BrushedStyle.Resolve(column, row, in bounds)` — one
+   rect for foreground and background alike, because a text run's background covers precisely the cells its
+   glyphs do. `DrawFaceLine`'s per-WORD brush bounds are a separate pre-existing quirk and were left alone.
+3. **`IsUniform` became readable here too.** A solid template — the overwhelming majority — folds once for
+   the whole run instead of sampling two brushes at every cluster. Verified by mutation: hoisting
+   unconditionally fails four gradient tests across both overloads.
+
+**`TextPresenter`'s cell-lane unpack is gone**, which is what the slice was for. `ResolveLineBaseValue` +
+`lineBase.Foreground` at the paint site are replaced by the line base travelling to the primitive whole;
+the private `DrawText` helper that existed only to re-join the two halves is deleted, and with it its
+`?? Brushes.Default` (an absent foreground is now absence, and `CellStyle.Default`'s foreground is what it
+falls through to — the same `Color.Default` the fallback resolved to). `Inverse` moved from being OR-ed
+onto a pre-folded value to riding the BASE the delta falls through to; the two compose to the same
+attribute word because the base's half is `Applying`, which forces its bits on whatever the backdrop held.
+The selection likewise stops discarding its brush: `Composed` folds its attribute half and the brush itself
+goes into the template, so a gradient selection could colour per cell. Frame parity was verified cell for
+cell over fourteen presenter configurations (colour and NoColor tiers, selected and not, inverse, attributes,
+multi-line, placeholder): zero diff.
+
+`ResolveLineBaseValue` SURVIVES for the face lane and the sized-run lane, whose primitives still take a
+resolved `CellStyle`. Retiring it entirely waits on `DrawGlyphText`'s caller-side shape, not on this slice.
+
+### 11.9 The fill primitives: `FillRectangle` / `FillOpaque` / `PaintRectangle` take a template — ✅ MIGRATED
+
+The other half of §11.8, and the one the presenter's band fill needed:
+
+```csharp
+// before: one brush and a flag WORD, side by side, with no room for anything else
+public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true);
+
+// after: the delta, resolved per cell over the ground the fill owns
+public void FillOpaque(in Rect region, in BrushedStyle baseStyle, bool overwrite = true);
+```
+
+The base is **fixed, not passed**, which is where this diverges from `DrawText`. A draw's caller holds a
+resolved `CellStyle` for the run — the layout system built one — so handing it in is honest. A fill's
+caller holds nothing: the ground has always been `CellStyle.Default`, and a template is a total delta
+over it, so a `legacyBaseStyle` parameter would add surface without adding a single thing anybody could say.
+
+The `Color` / `IBrush` overloads are KEPT for §11.8's reason (about sixty solid-colour call sites), and
+all nine keep their **exact** defaults — including the two that disagree, `DrawingContext.FillOpaque`'s
+`overwrite: true` against `RenderContext`'s `false`. That narrower veneer default is what lets the band
+fill below paint over a glyph face without erasing it, so it is load-bearing rather than incidental; the
+new template overload at `RenderContext` matches it, and the `IBrush` overloads' `true` is left alone as
+an inconsistency older than this slice.
+
+Four things this had to settle:
+
+1. **The attribute WORD carries axis-owning flags, and `Applying` rejects them.** `PartialStyle.Require`
+   throws for Bold / Faint / Italic / Underline, and `TextPresenter`'s band fill hands the primitive
+   `(legacyBaseStyle.Attributes & FillAttributes) | Inverse` where the allowlist admits the first three — so the
+   naive one-line fold throws on a real path, not a hypothetical one. The wrappers fold per AXIS through
+   the same `Imposing` helper the element-attribute leg of `CreateBrushResolver` now shares (it was the
+   only other place doing this translation, and it was doing it inline). `WithAdded` stays deleted: the
+   fold never constructs `Bold | Faint`, it imposes Bold.
+2. **No mask lives in the primitive.** `FillAttributes` remains `TextPresenter`'s, in the policy that owns
+   the question. The primitive paints exactly what it is handed — an author who passes `Blink` asked for
+   it — and masking here would remove the escape hatch that ruling depends on.
+3. **`brushBounds` reframes every channel**, so the single-argument `Resolve` is the right one. Not
+   `DrawText`'s reason (a run's background covers its glyphs' cells) but a stronger one: a rectangle
+   fill's cells are UNIFORM, so it has one extent, and the four-argument split — background against the
+   fill box, foreground against the ink inside it — has nothing here to distinguish. `brushBounds` is not
+   a second extent; it is a reframing of the only one, and there is exactly one such declaration per call,
+   so letting it govern the background alone would invent a frame for the other channels that the caller
+   never stated and cannot control. Pinned by
+   `Template_BrushBounds_GovernEveryChannel_NotJustTheBackground`, which reads 32 where the four-argument
+   form reads 64.
+4. **An absent `Background` is `Color.Default` here, NOT `Transparent`** — the opposite of §11.8's
+   finding, and for a reason that falls straight out of the fixed ground: the base a fill resolves
+   against already carries `Default`, so absence and `Color.Default` are the same colour and the template
+   agrees with `FillOpaque(…, Color.Default, …)` rather than with `DrawText`'s brush overload. It matters
+   for the same reason it mattered there: `Color.Default` is OPAQUE to `CellBuffer.Set`, so on the
+   non-overwriting path it does not rescue the glyph underneath where `Transparent` does.
+
+`IsUniform` pays here more than anywhere — a solid fill is the hottest primitive in the framework, and the
+colour path it replaced sampled nothing at all per cell, so without the hoist this would have been a
+regression rather than a wash. Verified by mutation: hoisting unconditionally fails six gradient tests.
+
+**`TextPresenter`'s band fill call site is unchanged**, which is the point of keeping the wrappers. What
+changed is that the word it hands over is now folded through the axis API instead of being written into a
+`CellStyle` wholesale, and that its two existing pins
+(`BandFill_KeepsTheAllowedAttributes_OnInkedCells`, `BandFill_SpreadsOnlyTheAllowedAttributes_ToGapCells`)
+are what catch the naive fold — both throw under it.
+
+## 12. What the type has to prove
+
+**All of these now exist** as `PartialStyleTests`. Two were only discovered BY writing them, and both
+are recorded here because they are the kind of defect inspection does not find:
+
+- **§12.4a — `Then` resurrected a removed underline.** `next.UnderlineShape ?? UnderlineShape` treats
+  a null shape as "no opinion", but `WithoutUnderline` also has a null shape, meaning "no shape". So
+  `WithUnderline(Double).Then(WithoutUnderline())` kept the `Double`, and shape-implies-flag then
+  turned the underline back ON. That is exactly the sentinel-doing-double-duty defect §1 opens by
+  criticising, reintroduced on one channel. Resolved by `HasUnderlineOpinion`, which disambiguates
+  from the mask — where removal is actually recorded.
+- **§12.4b — removal left a stale shape.** Set-then-remove applied in sequence leaves the SET shape;
+  the composed equivalent leaves the BASE's. Invisible in rendering — a shape means nothing with the
+  flag off — but it breaks the composition law on a field nothing reads. Removal now resets the shape.
+
+Neither is reachable through the public API by accident, and neither would survive a hand-picked test
+set: both were found by asserting the law over ALL 196 ordered pairs of a 14-delta sample.
+
+Testable properties, in the order they should be written:
+
+1. **Identity.** `default(PartialStyle).ApplyTo(s) == s`, for every `s` — including styles with every
+   attribute set and non-default colours.
+2. **Composition.** `a.Then(b).ApplyTo(s) == b.ApplyTo(a.ApplyTo(s))`, exhaustively over the four
+   operations × the five boolean axes, over `Weighted`/`Postured`/`WithUnderline` in both orders,
+   and over channel-present/absent combinations.
+3. **Toggle is an involution.** `Toggle(f).Then(Toggle(f))` is the identity on `f`.
+4. **Clear beats an earlier Xor.** `Toggle(f).Then(Set(f))` forces on; `Toggle(f).Then(Clear(f))`
+   forces off — regardless of the base.
+5. **Absence is not `Default`.** A delta with no `Foreground` leaves a non-default foreground alone —
+   the bug the `CellStyle.Default.WithAttributes(...)` idiom is one refactor away from introducing.
+6. **`Resolve` is loop-invariant when `IsUniform`.** Same input cell range, one call versus N, equal
+   results — the property that lets fill loops hoist it.
+7. **Every fluent setter maintains presence.** For each `With*`, the resulting `Channels` contains
+   the bit it set. Cheap to write exhaustively, and it is the invariant a stray `with { … }` breaks
+   — see §10.2. Worth a source-level lint too, since the compiler cannot forbid the raw form.
+8. **The axes reject the flag word.** `Set`/`Clear`/`Toggle` throw for `Bold`, `Faint`, `Italic` and
+   `Underline`; `Weighted`/`Postured`/`WithUnderline` are the only routes to them. This is the test
+   that keeps the decomposed vocabulary from decaying back into flags one call site at a time.
+9. **Weight round-trips.** `Weighted(w).Weight == w` for all three values, and `Weight is null` for
+   any delta that did not set it — the projection is lossless in both directions.
+10. **`IsIdentity` is inert under composition, not just application.** A mode-only delta reports
+    `false`, and `a.Then(b)` for identity `a` equals `b` for every `b` — including deltas with colour
+    channels, which is the case a mode-only carrier would otherwise change. This is the property that
+    makes it safe to prune deltas from a chain.
+11. **The underline flag and the underline shape never disagree.** `StyleChannels.Underline` present
+    ⟺ `Underline` in `Clear`, and `Underline` non-null ⟺ `Underline` in `Xor` — through every
+    factory and through `Then` in both orders.
+
+    This holds only because `WithUnderline`/`WithoutUnderline` are the sole route to either half
+    (`Require` blocks `Set`/`Clear`/`Toggle(TextAttributes.Underline)`, so the flag cannot be moved
+    on its own), which makes it a COROLLARY of property 7 rather than an independent guarantee. A
+    raw `with { Underline = null }` over a `WithUnderline` delta produces flag-on-with-no-shape.
+    Worth pinning separately anyway: it is the invariant a future factory would most plausibly break
+    by setting one half.

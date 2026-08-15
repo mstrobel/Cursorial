@@ -36,19 +36,19 @@ public class Grid : Panel
     /// never saw this registration (doc §5.5).
     /// </summary>
     public static readonly AttachedProperty<int> RowProperty =
-        UIProperty.RegisterAttached<Grid, UIElement, int>("Row", coerce: static (_, value) => Math.Max(0, value));
+        UIProperty.RegisterAttached<Grid, UIElement, int>("Row", coerce: static (_, value) => Math.Max(0, value), targetsChildren: true);
 
     /// <summary>The child's column index (default 0; coerced ≥ 0). <c>[AffectsParentMeasure]</c> via the global lane.</summary>
     public static readonly AttachedProperty<int> ColumnProperty =
-        UIProperty.RegisterAttached<Grid, UIElement, int>("Column", coerce: static (_, value) => Math.Max(0, value));
+        UIProperty.RegisterAttached<Grid, UIElement, int>("Column", coerce: static (_, value) => Math.Max(0, value), targetsChildren: true);
 
     /// <summary>The child's row span (default 1; coerced ≥ 1, layout clamps to the remaining definitions — LD9). <c>[AffectsParentMeasure]</c></summary>
     public static readonly AttachedProperty<int> RowSpanProperty =
-        UIProperty.RegisterAttached<Grid, UIElement, int>("RowSpan", defaultValue: 1, coerce: static (_, value) => Math.Max(1, value));
+        UIProperty.RegisterAttached<Grid, UIElement, int>("RowSpan", defaultValue: 1, coerce: static (_, value) => Math.Max(1, value), targetsChildren: true);
 
     /// <summary>The child's column span (default 1; coerced ≥ 1). <c>[AffectsParentMeasure]</c></summary>
     public static readonly AttachedProperty<int> ColumnSpanProperty =
-        UIProperty.RegisterAttached<Grid, UIElement, int>("ColumnSpan", defaultValue: 1, coerce: static (_, value) => Math.Max(1, value));
+        UIProperty.RegisterAttached<Grid, UIElement, int>("ColumnSpan", defaultValue: 1, coerce: static (_, value) => Math.Max(1, value), targetsChildren: true);
 
     static Grid()
     {

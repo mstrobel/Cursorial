@@ -1,7 +1,7 @@
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -18,7 +18,7 @@ public class DrawTextLineBreakTests
     public void MultiLine_ContinuesAtOriginalStartColumn()
     {
         Size size = default;
-        var b = DrawHarness.Render(8, 4, ctx => size = ctx.DrawText(2, 1, "ab\ncd", White));
+        var b = DrawHarness.Render(8, 4, ctx => size = ctx.DrawText(2, 1, "ab\ncd", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(2, 2), size);
         Assert.Equal("a", b[2, 1].Grapheme);
@@ -34,7 +34,7 @@ public class DrawTextLineBreakTests
     public void LineBreakForms_AreEquivalent(string text)
     {
         Size size = default;
-        var b = DrawHarness.Render(8, 3, ctx => size = ctx.DrawText(0, 0, text, White));
+        var b = DrawHarness.Render(8, 3, ctx => size = ctx.DrawText(0, 0, text, DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(2, 2), size);
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -47,7 +47,7 @@ public class DrawTextLineBreakTests
     public void TrailingNewline_YieldsAFinalEmptyLineThatCounts()
     {
         Size size = default;
-        var b = DrawHarness.Render(6, 3, ctx => size = ctx.DrawText(0, 0, "ab\n", White));
+        var b = DrawHarness.Render(6, 3, ctx => size = ctx.DrawText(0, 0, "ab\n", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(2, 2), size);
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -59,7 +59,7 @@ public class DrawTextLineBreakTests
     public void EmptyLines_ConsumeARow()
     {
         Size size = default;
-        var b = DrawHarness.Render(6, 4, ctx => size = ctx.DrawText(0, 0, "a\n\nb", White));
+        var b = DrawHarness.Render(6, 4, ctx => size = ctx.DrawText(0, 0, "a\n\nb", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(1, 3), size);
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -71,7 +71,7 @@ public class DrawTextLineBreakTests
     public void ReturnSize_IsWidestLineByLineCount()
     {
         Size size = default;
-        DrawHarness.Render(10, 4, ctx => size = ctx.DrawText(0, 0, "x\nabcd\nyz", White));
+        DrawHarness.Render(10, 4, ctx => size = ctx.DrawText(0, 0, "x\nabcd\nyz", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(4, 3), size);
     }
@@ -80,7 +80,7 @@ public class DrawTextLineBreakTests
     public void EmptyText_ReturnsEmptySize()
     {
         Size size = new(9, 9);
-        DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, 0, "", White));
+        DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, 0, "", DrawHarness.Ink(White)));
 
         Assert.Equal(Size.Empty, size);
     }
@@ -93,7 +93,7 @@ public class DrawTextLineBreakTests
         var brush = new LinearGradientBrush([new(0.0, Black), new(1.0, White)],
                                             RelativePoint.TopLeft, RelativePoint.BottomLeft);
 
-        var b = DrawHarness.Render(4, 3, ctx => ctx.DrawText(0, 0, "A\nB", brush));
+        var b = DrawHarness.Render(4, 3, ctx => ctx.DrawText(0, 0, "A\nB", DrawHarness.Ink(brush)));
 
         Assert.Equal("A", b[0, 0].Grapheme);
         Assert.Equal("B", b[0, 1].Grapheme);
@@ -108,7 +108,7 @@ public class DrawTextLineBreakTests
         var b = DrawHarness.Render(6, 3, ctx =>
         {
             using (ctx.PushClip(new Rect(0, 0, 6, 1)))   // only row 0 visible
-                size = ctx.DrawText(0, 0, "ab\ncd", White);
+                size = ctx.DrawText(0, 0, "ab\ncd", DrawHarness.Ink(White));
         });
 
         Assert.Equal(new Size(2, 2), size);   // local advance ignores the clip (the §11 contract, per line)
@@ -124,7 +124,7 @@ public class DrawTextLineBreakTests
         var b = DrawHarness.Render(8, 4, ctx =>
         {
             using (ctx.PushTranslate(3, 1))
-                ctx.DrawText(0, 0, "a\nb", White);
+                ctx.DrawText(0, 0, "a\nb", DrawHarness.Ink(White));
         });
 
         Assert.Equal("a", b[3, 1].Grapheme);
@@ -135,7 +135,7 @@ public class DrawTextLineBreakTests
     public void NoPush_EachLineClampsAtSurfaceRightEdge()
     {
         Size size = default;
-        var b = DrawHarness.Render(3, 2, ctx => size = ctx.DrawText(0, 0, "abcd\nxy", White));
+        var b = DrawHarness.Render(3, 2, ctx => size = ctx.DrawText(0, 0, "abcd\nxy", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(3, 2), size);   // row 0 clamps at the edge: a b c, "d" dropped
         Assert.Equal("c", b[2, 0].Grapheme);
@@ -147,7 +147,7 @@ public class DrawTextLineBreakTests
     public void NoPush_OffSurfaceRow_DrawsNothing_ButCountsTheLine()
     {
         Size size = default;
-        var b = DrawHarness.Render(4, 1, ctx => size = ctx.DrawText(0, 0, "a\nb", White));
+        var b = DrawHarness.Render(4, 1, ctx => size = ctx.DrawText(0, 0, "a\nb", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(1, 2), size);   // line count is the text's; the off-surface row advanced 0
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -159,7 +159,7 @@ public class DrawTextLineBreakTests
         // Regression (P2.6 review #1): the multi-line rewrite built the brush bounds before the
         // row guard, so a negative start row threw instead of degrading gracefully (design §13.1).
         Size size = default;
-        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, -1, "a\nb", White));
+        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, -1, "a\nb", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(1, 2), size);   // the off-surface line advanced 0; the line count is the text's
         Assert.Equal("b", b[0, 0].Grapheme);  // line 2 lands on surface row 0
@@ -170,7 +170,7 @@ public class DrawTextLineBreakTests
     public void NoPush_AllRowsNegative_NoThrow_DrawsNothing()
     {
         Size size = default;
-        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, -3, "ab", White));
+        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, -3, "ab", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(0, 1), size);   // off-surface row advances 0; the line still counts
         Assert.Null(b[0, 0].Grapheme);
@@ -180,7 +180,7 @@ public class DrawTextLineBreakTests
     public void NoPush_NegativeStartColumn_NoThrow_ClipsLeftEdge()
     {
         Size size = default;
-        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(-2, 0, "abcd", White));
+        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(-2, 0, "abcd", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(4, 1), size);   // the advance counts from the (negative) start
         Assert.Equal("c", b[0, 0].Grapheme);  // "a"/"b" clipped left of the surface
@@ -195,7 +195,7 @@ public class DrawTextLineBreakTests
         var b = DrawHarness.Render(6, 3, ctx =>
         {
             using (ctx.PushTranslate(2, 2))
-                size = ctx.DrawText(0, -1, "a\nb", White);
+                size = ctx.DrawText(0, -1, "a\nb", DrawHarness.Ink(White));
         });
 
         Assert.Equal(new Size(1, 2), size);
@@ -207,16 +207,17 @@ public class DrawTextLineBreakTests
     public void Brush_NegativeAnchor_SamplesContractEquivalently()
     {
         // The same text drawn (A) at row 0 un-pushed and (B) at local row −1 under a +1 translate
-        // lands on the same scene rows with identical bounds-relative sample positions — the
-        // SampleBounds zero-origin shift must color them identically.
+        // lands on the same scene rows with identical bounds-relative sample positions — the brush
+        // reads the (negative) bounds origin only as a subtrahend, so it must color them identically.
+        // BrushNegativeOriginEquivalenceTests pins that property for every brush kind.
         var brush = new LinearGradientBrush([new(0.0, Black), new(1.0, White)],
                                             RelativePoint.TopLeft, RelativePoint.BottomLeft);
 
-        var a = DrawHarness.Render(4, 3, ctx => ctx.DrawText(0, 0, "x\ny\nz", brush));
+        var a = DrawHarness.Render(4, 3, ctx => ctx.DrawText(0, 0, "x\ny\nz", DrawHarness.Ink(brush)));
         var b = DrawHarness.Render(4, 3, ctx =>
         {
             using (ctx.PushTranslate(0, 1))
-                ctx.DrawText(0, -1, "x\ny\nz", brush);
+                ctx.DrawText(0, -1, "x\ny\nz", DrawHarness.Ink(brush));
         });
 
         for (var row = 0; row < 3; row++)
@@ -227,12 +228,13 @@ public class DrawTextLineBreakTests
     }
 
     [Fact]
-    public void HugeLineCount_PastTheRectCap_NoThrow()
+    public void HugeLineCount_NoThrow()
     {
-        // 70,001 lines exceeds the ushort Rect cap (65,535); SampleBounds clamps defensively.
+        // 70,001 lines: the measure pass builds a brush-bounds Rect that tall, which Rect carries fine
+        // (it is int-backed, MaxExtent = int.MaxValue) — the run still measures and paints normally.
         var text = string.Concat(Enumerable.Repeat("x\n", 70_000));
         Size size = default;
-        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, 0, text, White));
+        var b = DrawHarness.Render(4, 2, ctx => size = ctx.DrawText(0, 0, text, DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(1, 70_001), size);   // trailing newline yields a final empty line
         Assert.Equal("x", b[0, 0].Grapheme);
@@ -243,7 +245,7 @@ public class DrawTextLineBreakTests
     public void Tab_BecomesOneSpace()
     {
         Size size = default;
-        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(0, 0, "a\tb", White));
+        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(0, 0, "a\tb", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(3, 1), size);
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -255,7 +257,7 @@ public class DrawTextLineBreakTests
     public void OtherControlCharacters_AreSkipped()
     {
         Size size = default;
-        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(0, 0, "a\u0007b\u009Cc", White));
+        var b = DrawHarness.Render(6, 1, ctx => size = ctx.DrawText(0, 0, "a\u0007b\u009Cc", DrawHarness.Ink(White)));
 
         Assert.Equal(new Size(3, 1), size);   // BEL (C0) and ST (C1) contribute zero columns
         Assert.Equal("a", b[0, 0].Grapheme);
@@ -272,7 +274,7 @@ public class DrawTextLineBreakTests
         DrawingDiagnostics.DiagnosticRaised += handler;
         try
         {
-            DrawHarness.Render(6, 1, ctx => ctx.DrawText(0, 0, "a\tb\u0007", White));
+            DrawHarness.Render(6, 1, ctx => ctx.DrawText(0, 0, "a\tb\u0007", DrawHarness.Ink(White)));
         }
         finally
         {

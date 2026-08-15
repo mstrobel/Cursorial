@@ -79,8 +79,8 @@ public abstract class Panel : UIElement
         var attrs = resolved.Flags;
 
         if (occludes)
-            context.FillOpaque(bounds, background, attrs, overwrite: false);
+            context.FillOpaque(bounds, new BrushedStyle { Background = background }.Imposing(attrs), overwrite: false);
         else
-            context.PaintRectangle(bounds, background, attrs, overwrite: true);
+            context.PaintRectangle(bounds, new BrushedStyle { Background = background }.Imposing(attrs), overwrite: true);
     }
 }

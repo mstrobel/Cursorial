@@ -1612,6 +1612,7 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         (StyleCapabilities.Emoji, CapabilityClasses.Emoji),
         (StyleCapabilities.Unicode, CapabilityClasses.Unicode),
         (StyleCapabilities.TextSizing, CapabilityClasses.TextSizing),
+        (StyleCapabilities.Local, CapabilityClasses.Local),
     ];
 
     /// <summary>
@@ -1631,6 +1632,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
                        ColorDepth.Ansi16    => StyleCapabilities.Ansi16,
                        _                    => StyleCapabilities.NoColor
                    };
+
+        // Locality is derived from the PROCESS environment (SSH_CONNECTION / SSH_TTY), read through the
+        // app's injectable IEnvironmentReader — the seam that keeps this deterministic under test regardless
+        // of where the suite runs (e.g., over SSH). Local is the sole member of the axis: present = local,
+        // absent = remote.
+        if (_app.EnvironmentReader.IsSSH() is false)
+            mask |= StyleCapabilities.Local;
 
         // Non-color axes stay sourced from the negotiated snapshot (CD14).
         if (capabilities.Input.Mouse.Motion)

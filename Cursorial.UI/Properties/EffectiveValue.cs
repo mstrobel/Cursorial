@@ -326,18 +326,82 @@ internal sealed class EffectiveValue<T> : EffectiveValueBase
         BaseValue = coerced;
         store.Owner.DispatchBaseValueChanged(Property, oldBase, coerced, HasAnimatedValue);
 
+        // ── the PD18 seam ──────────────────────────────────────────────────────────────────────
+        // The A20 dispatch above is USER code, so every field below is re-read across it. An observer
+        // that writes or clears from inside it has already recomputed this entry underneath the
+        // suspended operation, and the pin is: PUBLISH ONLY A CHANGE THAT IS STILL OURS AND STILL A
+        // CHANGE. What a nested operation leaves behind is not uniform — the guard therefore tests the
+        // resulting STATE, not the operation:
+        //
+        //   · `ClearValue` → `ClearLocal` → `Reevaluate` assigns both lanes and notifies; the local
+        //     contribution is gone (`HasLocal` false, reads route to the storeless tier). Resuming
+        //     RESURRECTS it — announcing a value the very next `GetValue` disagrees with (M233a/M233b).
+        //   · `SetValue` whose coerced result DIFFERS takes `SetLocalValue`'s full path: both lanes
+        //     assigned, notified, and it is the last writer in the lane (§2.2). Resuming clobbers it
+        //     with this operation's stale coercion and leaves an un-animated entry whose lanes disagree
+        //     — `Value != BaseValue`, so `GetValue` and `GetBaseValue` answer differently (M233c).
+        //   · `SetValue` whose DIFFERENT raw coerces to the SAME base takes `SetLocalValue`'s GATED
+        //     path instead, which assigns NEITHER lane and notifies NOTHING — it moves only the raw
+        //     slot and the provenance flags and returns (PD20/M231/M231a). That path is reachable here
+        //     by construction: `BaseValue = coerced` above is exactly what its gate compares against.
+        //     Nobody published anything, so the effective write is still ours to make.
+        //   · `ClearValue` and THEN a `SetValue` back to the same coerced result re-establishes the
+        //     contribution and publishes the value itself, both lanes included. Nothing is left for
+        //     this operation but a no-change announcement (M233d).
+        //
+        // Two tests answer all four, because of a STORE-WIDE INVARIANT: every site that assigns the
+        // effective lane on an un-animated entry assigns `Value = BaseValue` in the same breath —
+        // `SetLocalValue` (both are `coerced`), `SetCurrentValue`'s in-place overwrite (M121: un-animated,
+        // the overwrite IS the base), `Reevaluate` (`Value = BaseValue`, `default(T)` on a total
+        // retraction), `EndAnimation` (the base resurfacing). THIS method is the only place that holds
+        // the two apart, and only for the length of the dispatch above. So any nested operation that
+        // RAN TO COMPLETION left `Value == BaseValue`, and one of the two tests below necessarily fires;
+        // the cases where neither fires are exactly the two where nothing was published — no nested
+        // operation at all, or `SetLocalValue`'s gated path.
+        //
+        //   `BaseValue` — is the winning base still the one we just stored? Not the raw, which the gated
+        //   path moves out from under us (M231a). Not `HasLocal` either: a retraction is caught here
+        //   whenever `coerced` differs from the `default(T)` it stores (M233b), and by the no-change test
+        //   when it does not (M233a) — a `!HasLocal` disjunct would be dead, since by the invariant
+        //   `HasLocal == false` forces `Value == BaseValue` and so forces one of these two to fire.
+        //   `Value` — is anything left to say? The equality gate every other publisher in the store
+        //   already applies (`Reevaluate`'s equal-value promotion, `SetLocalValue`'s equal-value lane
+        //   flip, `SetCurrentValue`'s PD20 gate, `FlushPending`'s canceled-out scope) — §0.3 rule 3, one
+        //   notification per real change. DEAD at rest: `Value == BaseValue` there, and
+        //   `BaseValue != coerced` was established at the top of this method, so it fires only across
+        //   this seam. Without it the seam publishes `(coerced → coerced)`, which on an inheriting
+        //   property fans out over a subtree that was just told the truth (M233a/M233d).
         if (HasAnimatedValue)
-            return; // masked: the animated effective is untouched
+            return; // masked: the animated effective is untouched (an observer may have started one)
+
+        if (!comparer.Equals(BaseValue, coerced))
+            return; // superseded across the seam — the writer that replaced us already notified
 
         var oldValue = Value;
+        if (comparer.Equals(oldValue, coerced))
+            return; // re-established across the seam — the nested writer already published this value
+
         Value = coerced;
         IsCoerced = BaseIsCoerced;
         BoxedValue = null;
 
         // PD27: a pure SetCurrentValue graft never surfaces LocalValue — a re-coercion on the graft
         // notifies at the underlying lane, like the graft's own writes (M133b, audit fix 2026-07-12).
+        //
+        // The `Unset` arm was the sentinel leak (2026-08-09): `EffectivePriority` is read AFTER the
+        // base dispatch, and a base observer that cleared from inside it left `Reevaluate`'s
+        // `EffectivePriority = Unset` for this line to stamp on its own delivery. The supersession
+        // guard above closes that window at the source — the delivery no longer happens — so the arm
+        // is now an unreachable backstop, kept because it costs one compare and because what makes it
+        // dead is an invariant of OTHER methods, not of this one: the only site that assigns
+        // `EffectivePriority = Unset` is `Reevaluate`'s total retraction, which in the same breath
+        // assigns `Value = BaseValue = default(T)` — and the guard above admits only entries whose
+        // `Value` and `BaseValue` DIFFER (one equals `coerced`, the other does not), so a retracted
+        // entry cannot reach this line. (M233a/M233b as amended 2026-08-09; §0.3 rule 1 still forbids
+        // the sentinel on any lane-bearing notification, and `SetCurrentValue`'s live twin is
+        // M307/M307a.)
         var lane = EffectivePriority;
-        if (LocalIsCurrentValueOnly)
+        if (LocalIsCurrentValueOnly || lane == BindingPriority.Unset)
             store.GetUnsetFallback(Property, metadata, out lane);
 
         store.NotifyOrDefer(this, metadata, oldValue, coerced, lane); // else the current effective lane (M233)

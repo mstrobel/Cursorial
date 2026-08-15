@@ -1,5 +1,6 @@
 using System.Buffers;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Content;
@@ -55,8 +56,22 @@ public interface IBufferFragment
     /// If the fragment provides its own style that should be blended over the anchor style, it may
     /// advertise it here.
     /// </summary>
+    // CACHE KEY: resolved value, never the template. Blended over the entry's AnchorStyle at
+    // emission — the point where a value is required and a policy would have nothing to sample
+    // against; the coordinates are gone by the time the renderer reads this.
     CellStyle? StyleOverride => null;
-   
+
+    /// <summary>
+    /// The blending mode for compositing <see cref="StyleOverride"/> over the anchor style. For sized
+    /// text this is how a run's blend <c>Mode</c> reaches the emitted FOREGROUND: the override and the
+    /// anchor are the same resolved value, so the blend is fg-over-its-own-background — a Multiply
+    /// darkens the ink by what sits behind it. <see langword="null"/> means SourceOver, so a fragment
+    /// that advertises no mode blends exactly as before.
+    /// </summary>
+    // CACHE KEY: part of fragment identity via the concrete fragment's Key. Blend modes are singletons,
+    // so reference identity is value identity — stable across re-raster, like StyleOverride's own value.
+    IBlendingMode? StyleBlendMode => null;
+
     /// <summary>
     /// Classification of the fragment by display-stack layer — see <see cref="FragmentLayer"/>
     /// for the rendering implications. Defaults to <see cref="FragmentLayer.Cells"/> since

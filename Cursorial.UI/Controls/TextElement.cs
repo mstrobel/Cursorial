@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
@@ -22,22 +21,6 @@ public readonly record struct ResolvedTextAttributes(TextAttributes Flags, Under
 {
     /// <summary>Whether the folded flags carry <see cref="TextAttributes.Inverse"/> (the Border fill's one-flag read).</summary>
     public bool Inverse => (Flags & TextAttributes.Inverse) != 0;
-
-    /// <summary>
-    /// Returns a new style based on <paramref name="style"/> with the resolved text attributes and underline style
-    /// applied. 
-    /// </summary>
-    /// <param name="style">The base style.</param>
-    /// <returns>The base style with the resolved text attributes and underline style applied.</returns>
-    public CellStyle Apply(in CellStyle style)
-    {
-        var newStyle = style with { Attributes =  Flags };
-
-        if (Flags.HasFlag(TextAttributes.Underline))
-            newStyle = style with { UnderlineStyle = UnderlineShape };
-        
-        return newStyle;
-    }
 }
 
 /// <summary>
@@ -76,6 +59,7 @@ public abstract class TextElement
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextWeightProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, TextStyleProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineProperty);
+        UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, UnderlineBrushProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, StrikethroughProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, OverlineProperty);
         UIObject.AddGlobalEffects(PropertyEffects.AffectsRender, InverseProperty);
@@ -120,6 +104,28 @@ public abstract class TextElement
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, TextTrimming>(nameof(TextTrimming),
                                                                           defaultValue: TextTrimming.CharacterEllipsis);
+
+    /// <inheritdoc cref="IsTrimmedProperty"/>
+    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+        UIProperty.RegisterAttachedReadOnly<TextElement, UIElement, bool>(nameof(TextBlock.IsTrimmed));
+
+    /// <summary>Indicates whether any of the text content had trimming applied.</summary>
+    public static readonly AttachedProperty<bool> IsTrimmedProperty =
+        (AttachedProperty<bool>)IsTrimmedPropertyKey.Property;
+
+    /// <summary>Gets a value indicating whether the text content of the given element has trimmed.</summary>
+    public static bool GetIsTrimmed(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(IsTrimmedProperty);
+    }
+
+    /// <summary>Sets a value indicating whether the text content of the given element has trimmed.</summary>
+    internal static void SetIsTrimmed(UIElement element, bool value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(IsTrimmedProperty, value);
+    }
 
     /// <summary>
     /// The OSC 66 sizing for the element's text (proposal-glyph-runs Phase 3): a non-normal
@@ -223,6 +229,10 @@ public abstract class TextElement
     public static readonly AttachedProperty<UnderlineStyle?> UnderlineProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, UnderlineStyle?>("Underline");
 
+    /// <summary>Underline brush (SGR 58/59). Non-inheriting.</summary>
+    public static readonly AttachedProperty<IBrush?> UnderlineBrushProperty =
+        UIProperty.RegisterAttached<TextElement, UIElement, IBrush?>("UnderlineBrush");
+
     /// <summary>Strikethrough (SGR 9/29). Non-inheriting.</summary>
     public static readonly AttachedProperty<bool> StrikethroughProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, bool>("Strikethrough");
@@ -284,6 +294,20 @@ public abstract class TextElement
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(UnderlineProperty, value);
+    }
+
+    /// <summary>Reads the underline brush attached property to <paramref name="element"/> (<see langword="null"/> = none).</summary>
+    public static IBrush? GetUnderlineBrush(UIElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        return element.GetValue(UnderlineBrushProperty);
+    }
+
+    /// <summary>Sets the underline brush attached property on <paramref name="element"/> (<see langword="null"/> = none).</summary>
+    public static void SetUnderlineBrush(UIElement element, IBrush? value)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        element.SetValue(UnderlineBrushProperty, value);
     }
 
     /// <summary>Reads the strikethrough axis attached to <paramref name="element"/>.</summary>
@@ -397,7 +421,7 @@ public abstract class TextElement
     internal static readonly UIProperty[] AllAxisProperties =
     [
         TextWeightProperty, TextStyleProperty, UnderlineProperty, StrikethroughProperty,
-        OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty,
+        OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty, UnderlineBrushProperty
     ];
 
     /// <summary>

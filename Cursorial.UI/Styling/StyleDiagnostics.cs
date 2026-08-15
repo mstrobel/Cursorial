@@ -5,6 +5,7 @@ using System.Text;
 
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Data;
 
 // ReSharper disable CheckNamespace
@@ -294,7 +295,7 @@ public static class StyleDebugDiagnostics
     internal const string StyleLoopCategory = "style-loop";
 
     /// <summary>The SD23-③ category: a <c>:pointerover</c> rule with no <c>:focus</c> parity (the §3.8 lint).</summary>
-    [Obsolete("Cursorial has full mouse support, rendering this lint pointless. It is no longer emitted.")]
+    [Obsolete("Cursorial has full mouse support, rendering this lint pointless. It is no longer emitted.", DiagnosticId = "CUR0002")]
     internal const string HoverParityCategory = "style-hover-parity";
 
     /// <summary>The SD23-④ category: an ancestor-state rule whose chain exceeds the 64-element placement bitmap (greedy fallback).</summary>

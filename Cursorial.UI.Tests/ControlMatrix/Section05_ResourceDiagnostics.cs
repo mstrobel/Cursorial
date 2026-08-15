@@ -1,4 +1,5 @@
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
@@ -160,7 +161,7 @@ public sealed class Section05_ResourceDiagnostics
     [Fact] // audit fix 2026-07-12: an active conditional rule piercing a Template-lane reference is NOT resource-backed
     public void GetResourceKey_TriggerRulePiercesTemplateResource_ReturnsNull_ThenKeyOnRetraction()
     {
-        var constant = new Cursorial.Drawing.Media.SolidColorBrush(Color.FromRgb(90, 0, 0));
+        var constant = new SolidColorBrush(Color.FromRgb(90, 0, 0));
 
         using var host = UIHeadlessHost.Create();
         Cursorial.UI.Controls.Border? part = null;

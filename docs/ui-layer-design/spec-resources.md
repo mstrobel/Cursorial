@@ -336,7 +336,7 @@ public static class ResourceBrushResolver
 {
     /// <summary>A TextMarkupOptions.BrushResolver over the element's resource chain: tries BrushMarkup's
     /// inline grammar first ("linear:#f92672,#66d9ef"), then TryFindResource(name) accepting IBrush
-    /// (wrapped as BrushedStyle, DeclarationScope.Inline) or BrushedStyle directly; else null (parser
+    /// (wrapped as ScopedBrush, DeclarationScope.Inline) or ScopedBrush directly; else null (parser
     /// raises "Unrecognized brush"). [brush=Theme.AccentBrush] and {StaticResource Theme.AccentBrush}
     /// therefore share one namespace. Resolution is static-per-parse; refresh rides the S8 cache-key
     /// contract on ResourceServices.GetResourceVersion (§2.4).</summary>

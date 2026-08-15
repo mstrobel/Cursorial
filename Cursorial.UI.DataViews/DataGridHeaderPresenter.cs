@@ -1,9 +1,7 @@
 using System.Globalization;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -154,7 +152,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         var entries = layout.Entries;
 
@@ -180,7 +178,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-1)
         {
             if (Background is not null && HorizontalOffset > 0)
-                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), Background);
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, 1), new BrushedStyle { Background = Background });
 
             for (int i = 0; i < layout.FrozenCount; i++)
                 DrawHeaderCell(context, owner, layout, i, dragging, ghostIndex);
@@ -219,7 +217,7 @@ public sealed class DataGridHeaderPresenter : UIElement
             int chipX = Math.Clamp(_dragLocal.Column, 0, Math.Max(0, Bounds.Columns - chipWidth));
 
             if (HoverBackground is not null)
-                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), HoverBackground);
+                context.FillOpaque(new Rect(chipX, 0, chipWidth, 1), new BrushedStyle { Background = HoverBackground });
 
             context.DrawText(chipX, 0, chip,
                              groupZone
@@ -249,7 +247,7 @@ public sealed class DataGridHeaderPresenter : UIElement
                           : i == _hoverEntry || i == owner.HeaderFocusIndex;
 
         if (tinted && HoverBackground is not null)
-            context.FillOpaque(new Rect(x, 0, cellWidth, 1), HoverBackground);
+            context.FillOpaque(new Rect(x, 0, cellWidth, 1), new BrushedStyle { Background = HoverBackground });
 
         // NoColor tier: the hover tint resolves to Default (invisible), so the FOCUSED header cell
         // carries a reverse-video + bold cue instead (a solid bar laid down first; the caption/glyphs
@@ -260,8 +258,8 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (focusCue)
             FillInverse(context, x, cellWidth);
 
-        CellStyle captionStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse | TextAttributes.Bold) : default;
-        CellStyle glyphStyle = focusCue ? default(CellStyle).WithAttributes(TextAttributes.Inverse) : default;
+        var captionStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse | TextAttributes.Bold) : BrushedStyle.Identity;
+        var glyphStyle = focusCue ? BrushedStyle.Identity.Imposing(TextAttributes.Inverse) : BrushedStyle.Identity;
 
         // Caption, truncated to leave glyph room on the right.
         string caption = entry.Column.EffectiveHeader;
@@ -271,8 +269,14 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (direction is not null)
             glyphRoom += ordinal > 0 ? 3 : 2;
 
-        DrawTruncated(context, x + DataGridColumnLayout.CellPadding, caption,
-                      Math.Max(1, entry.Width - glyphRoom), Foreground, captionStyle);
+        // Grapheme-safe truncation is the shared RenderContext.DrawTruncated walk (D10); the
+        // null-brush skip and the transparent glyph background stay this painter's.
+        if (Foreground is {} captionBrush)
+        {
+            context.DrawTruncated(x + DataGridColumnLayout.CellPadding, 0, caption,
+                                  Math.Max(1, entry.Width - glyphRoom),
+                                  captionStyle with { Foreground = captionBrush, Background = Brushes.Transparent });
+        }
 
         // Right-aligned glyph cluster: [sort][ordinal] [filter▾].
         int glyphX = x + cellWidth - DataGridColumnLayout.CellPadding - 1;
@@ -283,9 +287,13 @@ public sealed class DataGridHeaderPresenter : UIElement
             bool active = owner.HasColumnFilter(entry.Column);
 
             context.DrawText(glyphX, 0, "▾",
-                             active
-                                 ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground
-                                 : FilterGlyphBrush ?? foreground, null, glyphStyle);
+                             glyphStyle with
+                             {
+                                 Foreground = active
+                                                  ? ActiveFilterBrush ?? FilterGlyphBrush ?? foreground
+                                                  : FilterGlyphBrush ?? foreground,
+                                 Background = Brushes.Transparent,
+                             });
             glyphX -= 2;
         }
 
@@ -294,13 +302,13 @@ public sealed class DataGridHeaderPresenter : UIElement
             if (ordinal > 0 && ordinal < 9)
             {
                 context.DrawText(glyphX, 0, (ordinal + 1).ToString(CultureInfo.InvariantCulture),
-                                 SortGlyphBrush ?? foreground, null, glyphStyle);
+                                 glyphStyle with { Foreground = SortGlyphBrush ?? foreground, Background = Brushes.Transparent });
 
                 glyphX -= 1;
             }
 
             context.DrawText(glyphX, 0, d == Shaping.SortDirection.Ascending ? "▲" : "▼",
-                             SortGlyphBrush ?? foreground, null, glyphStyle);
+                             glyphStyle with { Foreground = SortGlyphBrush ?? foreground, Background = Brushes.Transparent });
         }
     }
 
@@ -311,37 +319,7 @@ public sealed class DataGridHeaderPresenter : UIElement
         if (width <= 0)
             return;
 
-        context.FillOpaque(new Rect(x, 0, width, 1), Foreground ?? Brushes.Default, TextAttributes.Inverse);
-    }
-
-    private static void DrawTruncated(RenderContext context, int x, string text, int maxWidth, IBrush? brush,
-                                      CellStyle style = default)
-    {
-        if (brush is null)
-            return;
-
-        if (GraphemeWidth.StringWidth(text) <= maxWidth)
-        {
-            context.DrawText(x, 0, text, brush, null, style);
-            return;
-        }
-
-        var enumerator = text.GetGraphemeEnumerator();
-        int width = 0, end = 0;
-
-        while (enumerator.MoveNext())
-        {
-            int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
-
-            if (next > maxWidth - 1)
-                break;
-
-            width = next;
-            end = enumerator.ElementIndex + enumerator.Current.Length;
-        }
-
-        context.DrawText(x, 0, text.AsSpan(0, end), brush, null, style);
-        context.DrawText(x + width, 0, "…", brush, null, style);
+        context.FillOpaque(new Rect(x, 0, width, 1), new BrushedStyle { Background = Foreground ?? Brushes.Default }.Imposing(TextAttributes.Inverse));
     }
 
     /// <summary>The layout entry under a local x (through the §9.2 split map), or −1.</summary>

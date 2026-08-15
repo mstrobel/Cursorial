@@ -1,14 +1,7 @@
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Fonts;
-
-/// <summary>
-/// Supplies the <see cref="CellStyle"/> for the glyph cell at (<paramref name="column"/>, <paramref name="row"/>).
-/// Lets a font be painted with a position-dependent color source (e.g. a gradient flowing across a FIGlet
-/// headline) while the font itself stays unaware of brushes — the provider takes only cell coordinates and a
-/// <see cref="CellStyle"/>, never a higher-layer brush type.
-/// </summary>
-public delegate CellStyle GlyphStyleProvider(int column, int row);
 
 /// <summary>
 /// A font that renders text into cells of a <see cref="CellBuffer"/>. Implementations cover
@@ -18,7 +11,7 @@ public delegate CellStyle GlyphStyleProvider(int column, int row);
 /// </summary>
 /// <remarks>
 /// <para>
-/// Fonts operate exclusively through the cell-grid model — they call <see cref="CellBuffer.Set"/>
+/// Fonts operate exclusively through the cell-grid model — they call <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/>
 /// (or write through the indexer) and otherwise know nothing about escape sequences, terminal
 /// protocols, or capabilities. That keeps the abstraction simple and lets the rendering layer
 /// reuse wide-cell handling, the blending stack, diff rendering, and capability-aware
@@ -62,21 +55,96 @@ public interface IGlyphFont
     /// insufficient room.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>The background's PRESENCE picks the mode</b> — there is no flag and no second overload,
+    /// because there is nothing a flag could say that the delta does not already:
+    /// <list type="table">
+    ///   <item><term>background absent</term><description><b>STAMP.</b> Only the cells the face inks
+    ///   are written; the gaps keep whatever was underneath, grapheme and style alike. That is what
+    ///   lets a <see cref="FigletFont"/> headline sit over existing content and show it through the
+    ///   holes in its glyphs.</description></item>
+    ///   <item><term>background present</term><description><b>BOX.</b> The glyph's whole
+    ///   <see cref="Measure"/> box is filled with that background first, then the ink goes down on
+    ///   top — so the caller gets an opaque block without pre-filling it, and gets one for
+    ///   <see cref="Cursorial.Media.Color.Default"/> too.</description></item>
+    /// </list>
+    /// The pair is exactly what a <see cref="CellStyle"/> could not spell: its only word for "no
+    /// opinion about the background" is <see cref="Cursorial.Media.Color.Default"/>, which is also its word for "the
+    /// terminal's own background", so whichever way a face chose to read that sentinel, one of the
+    /// two modes was unreachable.
+    /// </para>
+    /// <para>
+    /// <b>Why a delta here at all — and why that is not an exception to the ownership rule.</b> The
+    /// rule this codebase follows is that an operation which OWNS the cells it writes takes a whole
+    /// <see cref="CellStyle"/> (nothing is underneath for an absent channel to mean), while one that
+    /// MODIFIES cells somebody else wrote takes a delta — <c>DrawingContext.TintCells</c>, the
+    /// selection highlight. A paint always owns its INK cells: it writes them outright, and the
+    /// channels the delta declines to state fall through to what those cells already held, as any
+    /// delta's do. What the delta buys is a fact about the OTHER cells — whether this paint also owns
+    /// the GAPS between the strokes. A whole style has nowhere to put that answer; the presence of
+    /// one channel is precisely the room it needs, which is why the delta is the right shape here.
+    /// </para>
+    /// <para>
     /// Fonts must respect the buffer's active blending mode by routing all cell writes through
-    /// <see cref="CellBuffer.Set"/> rather than the raw indexer. Coordinates beyond the buffer's
+    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> rather than the raw indexer. Coordinates beyond the buffer's
     /// extent are silently clipped — implementations should not throw on out-of-range targets,
     /// they should paint what fits.
+    /// </para>
     /// </remarks>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style);
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style);
 
     /// <summary>
-    /// Paint <paramref name="text"/> sampling <paramref name="styleProvider"/> per cell, so a caller can color
-    /// the glyphs with a position-dependent source (a gradient across a headline) without the font knowing
-    /// about brushes. The default samples the provider once at the anchor and paints a single style; fonts that
-    /// render cell-by-cell (e.g. <see cref="FigletFont"/>) override this to sample each painted cell.
+    /// Paint <paramref name="text"/> styled by <paramref name="baseStyle"/> resolved against
+    /// <paramref name="bounds"/> — so a caller can color the glyphs with a position-dependent source (a
+    /// gradient across a headline) without pre-resolving it. The default resolves once at the anchor and
+    /// forwards the delta to the flat overload; fonts that render cell-by-cell (e.g.
+    /// <see cref="FigletFont"/>) override this to resolve each painted cell.
     /// </summary>
-    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
-        => Paint(buffer, column, row, text, styleProvider(column, row));
+    /// <remarks>
+    /// <para>
+    /// <b>Why a style and not a callback.</b> This overload used to take a <c>GlyphStyleProvider</c>
+    /// delegate, which existed only because <see cref="IBrush"/> lived in the drawing layer and
+    /// <c>Cursorial.Rendering</c> could not name it — so the caller wrapped brush sampling in a closure and
+    /// the font sampled blind. <see cref="IBrush"/> is in Rendering now, and
+    /// <see cref="BrushedStyle.Resolve(int,int,in Rect,in Rect)"/> IS that callback's signature plus
+    /// the content and fill bounds it was closing over. Passing the value form also makes
+    /// <see cref="BrushedStyle.IsUniform"/> readable, which a callback could never expose: the common
+    /// case (a solid color, or no color at all) resolves once instead of once per cell.
+    /// </para>
+    /// <para>
+    /// <b>There is no base parameter.</b> The channels <paramref name="baseStyle"/> declines to state fall
+    /// through to the DESTINATION CELLS, through the delta write primitives
+    /// (<see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/> and the fold it is built on) — the
+    /// painted cluster keeps whatever color, attribute or link the caller said nothing about. A caller
+    /// holding a whole-style base that must survive over cells styled differently restates it UNDER the
+    /// delta instead (<see cref="BrushedStyle.From(in CellStyle)"/> / <see cref="BrushedStyle.FromInk"/>
+    /// composed via <see cref="BrushedStyle.Then"/>), so the fall-through never reaches the cells.
+    /// </para>
+    /// <para>
+    /// <b>The bounds are REQUIRED, and are not the painted footprint.</b> They are the brush's coordinate
+    /// space, which belongs to the SCOPE the brush was declared at — a paragraph, a block, the whole document,
+    /// or an inline run's wrap-invariant reading-order strip — and is routinely larger than, or differently
+    /// shaped from, the cells this call paints. Defaulting them to the footprint would restart every gradient
+    /// at each run boundary, silently demoting a document-scoped brush to a run-scoped one. A caller that
+    /// genuinely wants the footprint says so with <c>new Rect(column, row, Measure(text))</c>.
+    /// </para>
+    /// <para>
+    /// Implementations fold onto the destination cells through the delta write primitives, and must resolve
+    /// PER SAMPLE unless <see cref="BrushedStyle.IsUniform"/> says the answer cannot vary.
+    /// </para>
+    /// <para>
+    /// The default hands the resolved delta to the flat overload unchanged, so stamp-versus-box is the
+    /// delta's own answer: the presence of its background picks the mode, per the flat overload's contract
+    /// above. Nothing is guessed from a folded value — the adapter that read a
+    /// <see cref="Cursorial.Media.Color.Default"/> background as "stamp" went with the base parameter it
+    /// was guessing for.
+    /// </para>
+    /// </remarks>
+    Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+               in BrushedStyle baseStyle, in Rect bounds)
+    {
+        return Paint(buffer, column, row, text, baseStyle.Resolve(column, row, bounds));
+    }
 
     /// <summary>
     /// The advance metrics text layout consults to wrap and trim text rendered with this font

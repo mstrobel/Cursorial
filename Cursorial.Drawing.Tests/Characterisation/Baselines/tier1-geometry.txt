@@ -1,0 +1,1305 @@
+# TIER 1 — GEOMETRY
+#
+# MIGRATION SCAFFOLDING — a characterisation baseline, not a specification. Regenerate with
+# CURSORIAL_TEXT_CHARACTERISATION_REGENERATE=1 and review the diff.
+#
+# FormattedText.ToPlainText() per corpus case, through the real paint path at
+# OutputCapabilities.None. Metadata is deliberately limited to block- and line-level geometry:
+# run-level shape is exactly what the carrier migration is allowed to change.
+# corpus: 86 cases
+
+== plain-single-line ==
+desc: One unwrapped run. The floor: if this moves, everything moved.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=13x1 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=13x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=13 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |Hello, world.|
+plain(natural):
+  |Hello, world.|
+
+== empty-document ==
+desc: RichText.Empty formats to FormattedText.Empty — zero blocks, zero size.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=0x0 provided=0 hasTrimmedLines=no blocks=0
+plain(bounds=0,0 12x2):
+  ||
+plain(natural):
+  |<throws ArgumentOutOfRangeException: columns ('0') must be a non-negative and non-zero value. (Parameter 'columns')>|
+
+== empty-paragraph ==
+desc: A paragraph with no inlines still occupies a row.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=0x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=0x1 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
+    line[0] columns=0 rows=1 trimmed=no
+plain(bounds=0,0 12x2):
+  ||
+plain(natural):
+  ||
+
+== whitespace-only ==
+desc: Whitespace-only content: the packer drops leading whitespace, so this is the empty line.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=0x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=0x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=0 rows=1 trimmed=no
+plain(bounds=0,0 12x2):
+  ||
+plain(natural):
+  ||
+
+== whitespace-with-tabs ==
+desc: Tab expansion at format time (TabWidth = 4) around real glyphs.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=11x1 provided=16 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=11x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=11 rows=1 trimmed=no
+plain(bounds=0,0 16x2):
+  |a    b    c|
+plain(natural):
+  |a    b    c|
+
+== document-default-style-nontrivial ==
+desc: A document whose DefaultStyle sets fg + bg + attributes + a curly coloured underline; every run inherits it, which is exactly what a delta carrier must keep reproducing.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=10x1 provided=16 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=10x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 16x2):
+  |inherit me|
+plain(natural):
+  |inherit me|
+
+== document-default-style-fill-bounds ==
+desc: FillEntireBounds fills the whole rect with the document default's background (durable, owning blanks) and re-centres the document.
+format: columns=12 maxRows=- fillEntireBounds=yes
+result: size=6x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |            |
+  |filled      |
+  |            |
+  |            |
+plain(natural):
+  |filled      |
+
+== wrap-word-w8 ==
+desc: Word wrap at a budget narrower than several words.
+format: columns=8 maxRows=- fillEntireBounds=no
+result: size=8x7 provided=8 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=8x7 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=7
+    line[0] columns=3 rows=1 trimmed=no
+    line[1] columns=5 rows=1 trimmed=no
+    line[2] columns=5 rows=1 trimmed=no
+    line[3] columns=3 rows=1 trimmed=no
+    line[4] columns=5 rows=1 trimmed=no
+    line[5] columns=8 rows=1 trimmed=no
+    line[6] columns=8 rows=1 trimmed=no
+plain(bounds=0,0 8x8):
+  |the|
+  |quick|
+  |brown|
+  |fox|
+  |jumps|
+  |over the|
+  |lazy dog|
+plain(natural):
+  |the|
+  |quick|
+  |brown|
+  |fox|
+  |jumps|
+  |over the|
+  |lazy dog|
+
+== wrap-word-w12 ==
+desc: Same prose, wider budget — the wrap points must move and nothing else.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 12x6):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+plain(natural):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+
+== wrap-word-w20 ==
+desc: Same prose again at 20.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=19x3 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=19x3 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=3
+    line[0] columns=19 rows=1 trimmed=no
+    line[1] columns=19 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 20x4):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+plain(natural):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+
+== wrap-word-w44 ==
+desc: Same prose at a budget that fits it whole — the no-wrap control.
+format: columns=44 maxRows=- fillEntireBounds=no
+result: size=43x1 provided=44 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=43x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=43 rows=1 trimmed=no
+plain(bounds=0,0 44x2):
+  |the quick brown fox jumps over the lazy dog|
+plain(natural):
+  |the quick brown fox jumps over the lazy dog|
+
+== wrap-character ==
+desc: CharacterWrap breaks mid-word at any cluster boundary.
+format: columns=10 maxRows=- fillEntireBounds=no
+result: size=10x5 provided=10 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=10x5 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=5
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=8 rows=1 trimmed=no
+    line[4] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 10x6):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy|
+  |dog|
+plain(natural):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy|
+  |dog|
+
+== wrap-nowrap-clips ==
+desc: NoWrap with no trimming: one line, clipped at the budget.
+format: columns=10 maxRows=- fillEntireBounds=no
+result: size=43x1 provided=10 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=43x1 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=1
+    line[0] columns=43 rows=1 trimmed=no
+plain(bounds=0,0 10x2):
+  |the quick|
+plain(natural):
+  |the quick|
+
+== wrap-overflow-long-token ==
+desc: WordWrapOverflow lets an unbreakable token run past the right edge — the painter's clip, not the packer's, is what stops it.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=36x3 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=36x3 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=3
+    line[0] columns=2 rows=1 trimmed=no
+    line[1] columns=36 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 12x5):
+  |ok|
+  |https://exam|
+  |end|
+plain(natural):
+  |ok|
+  |https://exam|
+  |end|
+
+== wrap-soft-hyphen ==
+desc: A soft hyphen is a break opportunity that materialises a visible hyphen when used.
+format: columns=8 maxRows=- fillEntireBounds=no
+result: size=8x3 provided=8 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=8x3 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=3
+    line[0] columns=6 rows=1 trimmed=no
+    line[1] columns=8 rows=1 trimmed=no
+    line[2] columns=7 rows=1 trimmed=no
+plain(bounds=0,0 8x5):
+  |extra-|
+  |ordinari|
+  |ly long|
+plain(natural):
+  |extra-|
+  |ordinari|
+  |ly long|
+
+== wrap-hard-linebreak ==
+desc: A LineBreak inline ends the line early; the following run flows onto the next row.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=6x2 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=5 rows=1 trimmed=no
+    line[1] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 14x3):
+  |first|
+  |second|
+plain(natural):
+  |first|
+  |second|
+
+== wrap-wide-glyphs ==
+desc: CJK: layout advance is 2 cells per cluster, and the painter's cursor must agree with the packer's arithmetic or every downstream column slides.
+format: columns=7 maxRows=- fillEntireBounds=no
+result: size=6x3 provided=7 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x3 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=3
+    line[0] columns=6 rows=1 trimmed=no
+    line[1] columns=6 rows=1 trimmed=no
+    line[2] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 7x5):
+  |字字字|
+  |字字字|
+  |字字|
+plain(natural):
+  |字字字|
+  |字字字|
+  |字字|
+
+== align-left ==
+desc: TextAlignment.Left over wrapped prose.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=19x3 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=19x3 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=3
+    line[0] columns=19 rows=1 trimmed=no
+    line[1] columns=19 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 20x4):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+plain(natural):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+
+== align-center ==
+desc: TextAlignment.Center — excess slack goes right.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=19x3 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=19x3 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=3
+    line[0] columns=19 rows=1 trimmed=no
+    line[1] columns=19 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 20x4):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |        dog|
+plain(natural):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |        dog|
+
+== align-right ==
+desc: TextAlignment.Right.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=19x3 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=19x3 align=Right margin=(0,1,0,1) trimmed=no valign=Bottom lines=3
+    line[0] columns=19 rows=1 trimmed=no
+    line[1] columns=19 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 20x4):
+  | the quick brown fox|
+  | jumps over the lazy|
+  |                 dog|
+plain(natural):
+  | the quick brown fox|
+  | jumps over the lazy|
+  |                 dog|
+
+== align-justify ==
+desc: TextAlignment.Justify distributes slack into inter-word gaps as synthesized space runs — extra runs on the line, which a run-carrier change can disturb.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=19x3 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=19x3 align=Justify margin=(0,1,0,1) trimmed=no valign=Bottom lines=3
+    line[0] columns=19 rows=1 trimmed=no
+    line[1] columns=19 rows=1 trimmed=no
+    line[2] columns=3 rows=1 trimmed=no
+plain(bounds=0,0 20x4):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+plain(natural):
+  |the quick brown fox|
+  |jumps over the lazy|
+  |dog|
+
+== align-center-wider-than-budget ==
+desc: Painting a 12-column document into a 20-column rect: the block anchor, not the paragraph's own line alignment, does the centring.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x4 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x6):
+  |     the quick|
+  |     brown fox|
+  |     jumps over|
+  |    the lazy dog|
+plain(natural):
+  | the quick|
+  | brown fox|
+  | jumps over|
+  |the lazy dog|
+
+== trim-character-ellipsis ==
+desc: NoWrap + CharacterEllipsis: truncate at a cluster and append U+2026.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=yes
+plain(bounds=0,0 12x2):
+  |the quick b…|
+plain(natural):
+  |the quick b…|
+
+== trim-word-ellipsis ==
+desc: NoWrap + WordEllipsis: back off to a word boundary, drop trailing space, append U+2026.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=10x1 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=10x1 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=1
+    line[0] columns=10 rows=1 trimmed=yes
+plain(bounds=0,0 12x2):
+  |the quick…|
+plain(natural):
+  |the quick…|
+
+== trim-clip-from-end ==
+desc: ClipFromEnd drops the overflow silently — no ellipsis, but HasTrimmedLines still set.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=yes
+plain(bounds=0,0 12x2):
+  |the quick br|
+plain(natural):
+  |the quick br|
+
+== trim-maxlines ==
+desc: Per-paragraph MaxLines with WordEllipsis on the last visible line.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=10x2 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=10x2 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=2
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |the quick|
+  |brown fox…|
+plain(natural):
+  |the quick|
+  |brown fox…|
+
+== trim-document-rowcap ==
+desc: The document-level row cap drops whole blocks — HasTrimmedLines is the tooltip's hinge.
+format: columns=12 maxRows=3 fillEntireBounds=no
+result: size=12x3 provided=12 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=12x3 align=Left margin=(0,0,0,0) trimmed=yes valign=Bottom lines=3
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=11 rows=1 trimmed=no
+plain(bounds=0,0 12x3):
+  |the quick|
+  |brown fox|
+  |jumps over…|
+plain(natural):
+  |the quick|
+  |brown fox|
+  |jumps over…|
+
+== trim-ellipsis-in-a-styled-run ==
+desc: The trim indicator is synthesized — which style does it inherit?
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=14x1 provided=14 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=14x1 align=Left margin=(0,1,0,1) trimmed=yes valign=Bottom lines=1
+    line[0] columns=14 rows=1 trimmed=yes
+plain(bounds=0,0 14x2):
+  |plain styled …|
+plain(natural):
+  |plain styled …|
+
+== blocks-margins-stacked ==
+desc: Three blocks with differing margins: adjacent margins collapse to the max, and the first block's top margin is suppressed.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=12x8 provided=16 hasTrimmedLines=no blocks=3
+  block[0] FormattedParagraph size=9x1 align=Left margin=(0,2,0,2) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=1 trimmed=no
+  block[1] FormattedParagraph size=12x1 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+  block[2] FormattedParagraph size=12x1 align=Left margin=(0,3,0,3) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 16x10):
+  |top block|
+  ||
+  ||
+  |middle block|
+  ||
+  ||
+  ||
+  |bottom block|
+plain(natural):
+  |top block|
+  ||
+  ||
+  |middle block|
+  ||
+  ||
+  ||
+  |bottom block|
+
+== blocks-rules-and-paragraphs ==
+desc: Horizontal rules between paragraphs, each rule repeating its glyph across the budget.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=14x9 provided=14 hasTrimmedLines=no blocks=5
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+  block[1] FormattedHorizontalRule size=14x1 align=Left margin=(0,1,0,1) trimmed=no glyph="━"
+  block[2] FormattedParagraph size=4x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=4 rows=1 trimmed=no
+  block[3] FormattedHorizontalRule size=14x1 align=Left margin=(0,1,0,1) trimmed=no glyph="┈"
+  block[4] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 14x9):
+  |header|
+  ||
+  |━━━━━━━━━━━━━━|
+  ||
+  |body|
+  ||
+  |┈┈┈┈┈┈┈┈┈┈┈┈┈┈|
+  ||
+  |footer|
+plain(natural):
+  |header|
+  ||
+  |━━━━━━━━━━━━━━|
+  ||
+  |body|
+  ||
+  |┈┈┈┈┈┈┈┈┈┈┈┈┈┈|
+  ||
+  |footer|
+
+== blocks-rule-alignment ==
+desc: A rule painted into a rect wider than its own block size — the anchor-column rule.
+format: columns=8 maxRows=- fillEntireBounds=no
+result: size=8x1 provided=8 hasTrimmedLines=no blocks=1
+  block[0] FormattedHorizontalRule size=8x1 align=Center margin=(0,1,0,1) trimmed=no glyph="═"
+plain(bounds=0,0 16x3):
+  |    ════════════|
+plain(natural):
+  |════════|
+
+== blocks-inline-content ==
+desc: An InlineContent embedding is an indivisible word in the flow; a block-level one stacks. Both take one sampled style at their centre.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=15x2 provided=16 hasTrimmedLines=no blocks=2
+  block[0] FormattedParagraph size=15x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=1 trimmed=no
+  block[1] FormattedContentBlock size=4x1 align=Center margin=(0,0,0,0) trimmed=no
+plain(bounds=0,0 16x4):
+  |before ▣▣ after|
+  |      ████|
+plain(natural):
+  |before ▣▣ after|
+  |      ████|
+
+== markup-named-colors ==
+desc: [fg=named] / [bg=named] resolve through MarkupColor's palette table.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=14x1 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=14x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=14 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |red on blue bc|
+plain(natural):
+  |red on blue bc|
+
+== markup-indexed-colors ==
+desc: [fg=NNN] palette indices — a Palette-kind Color, which is NOT an RGB triple.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=13x1 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=13x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=13 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |196 bg17 zero|
+plain(natural):
+  |196 bg17 zero|
+
+== markup-hex-colors ==
+desc: [fg=#rrggbb] and the three-digit [fg=#rgb] short form.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=13x1 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=13x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=13 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |long short bg|
+plain(natural):
+  |long short bg|
+
+== markup-attributes ==
+desc: Nested [b][i][u][s] — attribute composition through the builder's style stack.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=16x1 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=16x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=16 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |bbibiubius plain|
+plain(natural):
+  |bbibiubius plain|
+
+== markup-mixed-runs-one-paragraph ==
+desc: Colour, attribute, glyph-map, hyperlink and break tags interleaved in one paragraph — many small runs on a line, wrapping between them.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=16 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
+    line[0] columns=14 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=15 rows=1 trimmed=no
+    line[3] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 16x6):
+  |red plain bold|
+  |ＦＷ link|
+  |after the break|
+  |tail|
+plain(natural):
+  |red plain bold|
+  |ＦＷ link|
+  |after the break|
+  |tail|
+
+== markup-paragraph-attributes ==
+desc: [p] attributes drive wrap / align / trim / maxlines from markup rather than the builder.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=10x2 provided=14 hasTrimmedLines=yes blocks=1
+  block[0] FormattedParagraph size=10x2 align=Right margin=(0,1,0,1) trimmed=yes valign=Bottom lines=2
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 14x4):
+  |     the quick|
+  |    brown fox…|
+plain(natural):
+  |     the quick|
+  |    brown fox…|
+
+== markup-hr-and-escapes ==
+desc: [hr=style/] plus escaped brackets — the parser's literal path.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=16x6 provided=16 hasTrimmedLines=no blocks=3
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+  block[1] FormattedHorizontalRule size=16x1 align=Left margin=(0,1,0,1) trimmed=no glyph="┄"
+  block[2] FormattedParagraph size=12x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=12 rows=1 trimmed=no
+    line[1] columns=11 rows=1 trimmed=no
+plain(bounds=0,0 16x6):
+  |before|
+  ||
+  |┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄|
+  ||
+  |after [not a|
+  |tag] \\ done|
+plain(natural):
+  |before|
+  ||
+  |┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄|
+  ||
+  |after [not a|
+  |tag] \\ done|
+
+== brush-document-scope-horizontal ==
+desc: A document brush samples ONE continuous rect — the document's derived extent — so one gradient spans both blocks and nothing resets at the block boundary. The cells here cannot tell the extent from the old painted-docBounds rect: the prose fills the 12-column budget, so the two rects differ only in height and origin-matching width, and a horizontal brush never samples the row axis. The desc names the extent because the contract does; the freeze is axis-coincidence, not identity.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x5 provided=12 hasTrimmedLines=no blocks=2
+  block[0] FormattedParagraph size=12x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+  block[1] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 12x7):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+  |second|
+plain(natural):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+  |second|
+
+== brush-document-scope-vertical ==
+desc: Top-to-bottom over wrapped lines: the derived document extent's height — the four rows the text inks, not the paint rect's five — is what the ramp spans.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 12x5):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+plain(natural):
+  |the quick|
+  |brown fox|
+  |jumps over|
+  |the lazy dog|
+
+== brush-run-inline-scope-unwrapped ==
+desc: A per-run Inline-scoped gradient laid out WITHOUT a wrap. Paired with the wrapped case below: the same grapheme must take the same colour in both.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=14x1 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=14x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=14 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |aaaa bbbb cccc|
+plain(natural):
+  |aaaa bbbb cccc|
+
+== brush-run-inline-scope-wrapped ==
+desc: THE wrap-invariance case (cf. FormattedText_InlineScopeIsWrapInvariant). The same Inline-scoped run wrapped at 9: the gradient must flow across the break as one reading-order strip rather than restarting per line-piece. This is the property most likely to break silently under a carrier migration.
+format: columns=9 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=9 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |aaaa bbbb|
+  |cccc|
+plain(natural):
+  |aaaa bbbb|
+  |cccc|
+
+== brush-run-inline-scope-wrapped-wide ==
+desc: Wrap invariance with wide glyphs — the logical-offset accounting and the painter's cursor advance must stay in step across the break.
+format: columns=7 maxRows=- fillEntireBounds=no
+result: size=6x2 provided=7 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=6 rows=1 trimmed=no
+    line[1] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 10x4):
+  |字字字|
+  |字字字|
+plain(natural):
+  |字字字|
+  |字字字|
+
+== brush-block-style-scope ==
+desc: A gradient declared on the enclosing block's own style: every run that declares no foreground samples the block's 2-D rect, so a run's position within the block decides its colour. Replaces brush-run-block-scope (a Block-scoped ScopedBrush tag on one run), a construction scope inference removed.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 14x3):
+  |xxxxxxxxxxAB|
+plain(natural):
+  |xxxxxxxxxxAB|
+
+== brush-document-default-gradient ==
+desc: A gradient declared as the document default's foreground samples the document's derived extent — the ladder's document rung observed directly: the 12-wide text in the 24-wide budget ramps across its own 12 columns, and the section's bytes are the byte-twin of brush-block-style-scope's ramp (for a single Left block the document rung's rect and the block rung's rect coincide; the two sections differ only in which rung declared the brush). Replaces brush-run-document-scope (a Document-scoped ScopedBrush tag), a construction scope inference removed.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |xxxxxxxxxxAB|
+plain(natural):
+  |xxxxxxxxxxAB|
+
+== brush-run-wins-over-document ==
+desc: A run's own brush beats the document brush; untagged runs keep the document's.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=5x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=5x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=5 rows=1 trimmed=no
+plain(bounds=0,0 14x3):
+  |gg RR|
+plain(natural):
+  |gg RR|
+
+== document-default-foreground-beats-preference-brush ==
+desc: A document default that STATES a foreground beats the caller's preference brush — the object model wins wherever it speaks; the preference colours only text no level declared for.
+format: columns=9 maxRows=- fillEntireBounds=no
+result: size=9x1 provided=9 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |aaaa bbbb|
+plain(natural):
+  |aaaa bbbb|
+
+== brush-explicit-foreground-wins ==
+desc: A run's OWN explicit foreground beats the brush — a stated CellStyle channel is a declaration at run scope, and the ladder colours only text no level declared for.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=18x1 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=18x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=18 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |inherited explicit|
+plain(natural):
+  |inherited explicit|
+
+== brush-horizontal-rule ==
+desc: A rule is coloured per cell against its own painted extent.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=16x1 provided=16 hasTrimmedLines=no blocks=1
+  block[0] FormattedHorizontalRule size=16x1 align=Left margin=(0,1,0,1) trimmed=no glyph="─"
+plain(bounds=0,0 16x2):
+  |────────────────|
+plain(natural):
+  |────────────────|
+
+== brush-inherited-attributes ==
+desc: The element-attribute leg of the resolver: inherited Bold|Underline plus a non-default underline shape, union-merged onto every cell without a re-format.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |plain italic|
+plain(natural):
+  |plain italic|
+
+== brush-inline-content-fallback-glyph ==
+desc: Inline content samples one colour at its centre, so an image/icon degrading to a glyph still picks up the brush.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=6x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 12x3):
+  |ab ███|
+plain(natural):
+  |ab ███|
+
+== figlet-small-block ==
+desc: A FIGlet block is sugar over a one-run paragraph; the face paints directly at the piece rect, so a multi-cell glyph samples per cell.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== figlet-mini-centered ==
+desc: Block alignment applied to a FIGlet headline.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x4 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x4 align=Center margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=4 trimmed=no
+plain(bounds=0,0 24x5):
+  |         _. |_|
+  |        (_| |_)|
+plain(natural):
+  |         _. |_|
+  |        (_| |_)|
+
+== figlet-wraps-and-trims ==
+desc: A FIGlet run participates in the shared packer: it wraps at the budget, and the trim indicator falls back to '...' when the face cannot draw U+2026.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=12x8 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x8 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=12 rows=4 trimmed=no
+    line[1] columns=12 rows=4 trimmed=no
+plain(bounds=0,0 14x8):
+  |  _. |_   _|
+  | (_| |_) (_|
+  ||
+  |          _|
+  |  _|  _ _|_|
+  | (_| (/_ ||
+plain(natural):
+  |  _. |_   _|
+  | (_| |_) (_|
+  ||
+  |          _|
+  |  _|  _ _|_|
+  | (_| (/_ ||
+
+== figlet-inline-run-mixed-band ==
+desc: A FIGlet-sourced run beside plain text in ONE paragraph: the band is as tall as the face, and the one-row run places itself by the paragraph's vertical alignment.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=4 trimmed=no
+plain(bounds=0,0 20x5):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+plain(natural):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+
+== figlet-inline-run-baseline-aligned ==
+desc: Same mixed band under VerticalTextAlignment.Baseline — the run drops by the baseline difference rather than to the band's bottom row.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=17x5 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=17x5 align=Left margin=(0,0,0,0) trimmed=no valign=Baseline lines=1
+    line[0] columns=17 rows=5 trimmed=no
+plain(bounds=0,0 20x6):
+  |       _|
+  |      /_\\|
+  |     / _ \\|
+  |hi  /_/ \\_\\ there|
+plain(natural):
+  |       _|
+  |      /_\\|
+  |     / _ \\|
+  |hi  /_/ \\_\\ there|
+
+== figlet-brushed-per-cell ==
+desc: The FIGlet arm hands the UNSAMPLED template to the face so a multi-cell glyph samples per cell. If a carrier migration collapses that to one colour per character, this dump goes flat.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== figlet-explicit-background-boxes ==
+desc: A stated background BOXES the glyphs; Color.Default lets the face STAMP. The one place a run's whole-CellStyle carrier is load-bearing today.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== sized-block-scale2 ==
+desc: SizedTextBlock at scale 2. Cells show the fallback face; the fragment is tier 3's.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=5x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=5x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=5 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |Title|
+  |▀▀▀▀▀|
+plain(natural):
+  |Title|
+  |▀▀▀▀▀|
+
+== sized-block-scale3-centered ==
+desc: Scale 3, centred — the anchor column the fragment is emitted at moves with alignment.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=11x4 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=11x4 align=Center margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=11 rows=4 trimmed=no
+plain(bounds=0,0 24x5):
+  |        _|
+  |       |_) o  _|
+  |       |_) | (_||
+  |              _||
+plain(natural):
+  |        _|
+  |       |_) o  _|
+  |       |_) | (_||
+  |              _||
+
+== sized-block-styled ==
+desc: Sized text carrying an explicit fg + bg + attributes. That style becomes the OSC 66 backdrop SGR — historically the fragile part.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=3x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=3x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=3 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |Hot|
+  |▀▀▀|
+plain(natural):
+  |Hot|
+  |▀▀▀|
+
+== sized-block-fractional ==
+desc: A footprint-identity fractional sizing (s=1:n=1:d=2) still emits OSC 66 — it must not be optimised into the cell walk.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=4x1 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=4x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 24x3):
+  |half|
+plain(natural):
+  |half|
+
+== sized-block-multiline ==
+desc: Author line breaks inside block text: one OSC 66 sequence per line, with explicit CUP between them.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=3x4 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=3x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=2 rows=2 trimmed=no
+    line[1] columns=3 rows=2 trimmed=no
+plain(bounds=0,0 24x6):
+  |ab|
+  |▀▀|
+  |cde|
+  |▀▀▀|
+plain(natural):
+  |ab|
+  |▀▀|
+  |cde|
+  |▀▀▀|
+
+== sized-block-alignment-keys ==
+desc: Non-default vertical/horizontal alignment keys in the OSC 66 metadata block.
+format: columns=16 maxRows=- fillEntireBounds=no
+result: size=1x2 provided=16 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=1x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=1 rows=2 trimmed=no
+plain(bounds=0,0 16x4):
+  |v|
+  |▀|
+plain(natural):
+  |v|
+  |▀|
+
+== sized-inline-run-mixed ==
+desc: A sized RUN inline with plain text — sized and cell text sharing one line band.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=2 trimmed=no
+plain(bounds=0,0 20x4):
+  |   UP|
+  |go ▀▀ now|
+plain(natural):
+  |   UP|
+  |go ▀▀ now|
+
+== sized-over-painted-background ==
+desc: Sized text whose anchor cell carries a panel background. FrameRenderer hands the fragment the anchor cell's style, so the backdrop SGR must name that colour rather than the terminal default — the seam commit 2137e58b closed.
+format: columns=24 maxRows=- fillEntireBounds=yes
+result: size=5x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=5x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=5 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |                        |
+  |Panel                   |
+  |▀▀▀▀▀                   |
+  |                        |
+plain(natural):
+  |Panel                   |
+  |▀▀▀▀▀                   |
+
+== sized-brushed-block-scope ==
+desc: A brushed sized run takes ONE colour sampled at its centre — the single-style arm. That sampled colour is what reaches the OSC 66 backdrop SGR.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=4x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=4x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=4 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |Grad|
+  |▀▀▀▀|
+plain(natural):
+  |Grad|
+  |▀▀▀▀|
+
+== sized-explicit-figlet-fallback ==
+desc: An explicit fallback face pins which arm a non-supporting terminal takes.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=8x4 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=8x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=8 rows=4 trimmed=no
+plain(bounds=0,0 24x5):
+  |  _|
+  | |_ |_|
+  | |  |_)|
+plain(natural):
+  |  _|
+  | |_ |_|
+  | |  |_)|
+
+== mixed-runs-styles-in-one-line ==
+desc: Adjacent runs differing in each style axis in turn — the per-run carrier's whole job, on one line.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=6x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 12x2):
+  |ABCDEF|
+plain(natural):
+  |ABCDEF|
+
+== mixed-runs-wrapping-mid-run ==
+desc: A styled run split by a wrap: both pieces must keep the run's style and its logical offset accounting.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=11x3 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=11x3 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=3
+    line[0] columns=11 rows=1 trimmed=no
+    line[1] columns=11 rows=1 trimmed=no
+    line[2] columns=9 rows=1 trimmed=no
+plain(bounds=0,0 12x5):
+  |lead styled|
+  |tail across|
+  |the break|
+plain(natural):
+  |lead styled|
+  |tail across|
+  |the break|
+
+== mixed-runs-hyperlink ==
+desc: A hyperlink run split by a wrap — the OSC 8 target rides the CellStyle and must survive on the continuation piece.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x3 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x3 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=3
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=12 rows=1 trimmed=no
+    line[2] columns=5 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |a linked|
+  |phrase that|
+  |wraps|
+plain(natural):
+  |a linked|
+  |phrase that|
+  |wraps|
+
+== mixed-runs-glyph-map ==
+desc: A glyph map substitutes per grapheme at format time, changing cell widths as it goes.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=10x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=10x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |ab ｃｄ ef|
+plain(natural):
+  |ab ｃｄ ef|
+
+== figlet-brushed-explicit-background ==
+desc: figlet-explicit-background-boxes, plus a document brush — the pair that shows the FIGlet arm's two halves disagreeing. With no resolver the painter sees the stated background and asks for a box (the arm's resolver-null path in FormattedText.PaintParagraph); with one it hands the face a BrushedStyle and never asks at all (the resolver path — FigletFont's brushed overload has no GlyphPaint.Ink call, so no box is ever filled), so the glyph gaps stay unwritten and the stated background survives on the ink cells only. None of the first 73 cases combined a stated background with a brush, so the missing box was invisible. The foreground is left inherited so the brush leg is live too: this also pins per-cell gradient sampling over a run that states a background.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== figlet-transparent-document-default ==
+desc: figlet-small-block on CellStyle.Transparent instead of CellStyle.Default — which is what production actually builds (RichTextPresenter.cs:433, TextBlock.cs:293) and what none of the first 73 cases used (sized-transparent-document-default, appended alongside this one, is the other). Transparent is Rgb(0,0,0,0), NOT Default, so Background.IsDefault is false and the face takes the BOX arm (FormattedText.cs:240-243). This section does NOT pin that arm, and it is not the only case that takes it: figlet-explicit-background-boxes states an opaque Teal, so it takes BOX too, and it is the case where the arm IS observable — its gap cells carry the Teal the box filled. Here the fill is TRANSPARENT and the blank underneath is opaque, so the box composites straight back to it and the gap cells come out byte-identical to figlet-small-block's. Read the INK cells instead: what this section actually demonstrates is a transparent foreground and underline colour resolving to the backdrop rather than staying Color.Default. A stationary section is therefore NOT evidence the box arm is intact. Seeing a transparent box would take a surface whose blank is itself transparent (a Scene); nothing in the repo puts this face's box arm on one today.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=9x5 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x5 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=5 trimmed=no
+plain(bounds=0,0 24x6):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+plain(natural):
+  |  _  _ _|
+  | | || (_)|
+  | | __ | ||
+  | |_||_|_||
+
+== sized-transparent-document-default ==
+desc: sized-block-scale2 on CellStyle.Transparent — the same production default, carried all the way into the OSC 66 backdrop SGR, where it stops being invisible. A fragment is a paint path that cannot composite transparency away — sized text is never written into cells, so there is no back buffer to blend against — which is why FrameRenderer.EmitFragmentBytes resolves all three colour channels itself before the absolute SGR goes out, and why the three do not resolve alike. BACKGROUND takes the anchor cell's own, the surface the fragment is drawn over, so a transparent one reaches the wire at neither tier. FOREGROUND and UNDERLINE COLOUR have no ink underneath to inherit and are reset to Color.Default, so the emission gains a bare 39 — a foreground RESET — and states no underline colour, which is also what StyleQuantizer produces for a transparent colour at every depth below truecolor. Authored in phase 0a, when the substitution covered background only: the transparent foreground and underline colour then survived quantization at TRUECOLOR and escaped as an explicit BLACK (38;2;0;0;0;58:2::0:0:0) while ANSI256 emitted the 39, the two tiers disagreeing about one document. Note the background outcome is over-determined — WriteDelta also declines to emit anything for a transparent background (FrameRenderer.cs:741-744) — so this section pins the bytes without isolating which rule produced them.
+format: columns=24 maxRows=- fillEntireBounds=no
+result: size=5x2 provided=24 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=5x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=5 rows=2 trimmed=no
+plain(bounds=0,0 24x4):
+  |Title|
+  |▀▀▀▀▀|
+plain(natural):
+  |Title|
+  |▀▀▀▀▀|
+
+== align-center-brushed-wider-than-budget ==
+desc: align-center-wider-than-budget, plus a horizontal document brush. Among the first 73 cases the align-* family carries no brush and no brushed case states an alignment, so nothing combined them. The document/preference rung samples the derived extent — (4,0,12,4), the block's REAL Center anchor in the 20-column rect — so the ramp spans exactly the centred ink, columns 4-15: defect 1's family finally sampling where the glyphs land. The Left-forced block SamplingRect this desc once deferred to is gone; the walk carries only the ink-anchored Extent, and the block rung samples it (witnessed by brush-block-style-scope-centred).
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x4 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x4 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=4
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=9 rows=1 trimmed=no
+    line[2] columns=10 rows=1 trimmed=no
+    line[3] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x6):
+  |     the quick|
+  |     brown fox|
+  |     jumps over|
+  |    the lazy dog|
+plain(natural):
+  | the quick|
+  | brown fox|
+  | jumps over|
+  |the lazy dog|
+
+== figlet-inline-run-tagged-brush ==
+desc: figlet-inline-run-mixed-band with a per-run ScopedBrush on the FIGlet run and a contrasting solid document brush underneath. brush-run-wins-over-document pins the tag winning on a plain run; this pins what the same construction does on the FIGlet arm, which passes the run's tag into the resolver context (FormattedText.Brushed). So the run's declared red reaches the face, and the document's teal colours the untagged runs around it. Authored in phase 0a while that context was hard-coded to tag: null — the declared brush was dropped and the teal coloured the glyphs too, which is the behaviour the phase-0b diff moved off.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=4 trimmed=no
+plain(bounds=0,0 20x5):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+plain(natural):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+
+== sized-inline-run-tagged-brush ==
+desc: The same tag reaching the SIZED arm, authored the way the sized overload allows it — a PushTag scope the run inherits (RichTextBuilder.cs:183-184 omits the tag argument, so it defaults to null, and :174 falls back to CurrentTag). The sized arm passes the run's tag into FormattedText.ResolveStyle just as the FIGlet arm does, so the declared red is what reaches the sampled style — and, at tier 3, the OSC 66 backdrop SGR. Authored in phase 0a while both arms hard-coded tag: null and the document's teal reached the style instead.
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=9 rows=2 trimmed=no
+plain(bounds=0,0 20x4):
+  |   UP|
+  |go ▀▀ now|
+plain(natural):
+  |   UP|
+  |go ▀▀ now|
+
+== brush-fill-entire-bounds ==
+desc: FillEntireBounds with a document brush — the other two cases that set the flag (document-default-style-fill-bounds, sized-over-painted-background) carry no brush. Two operations sharing one rect: the surround BACKGROUND FILL samples the whole box (its source ladder reads the preference Background, absent here — the document brush is a FOREGROUND preference with no background leg — then the document default's, the solid green), and the document then paints its own extent brushed. The surround is therefore flat while the text ramps. The fill also re-centres the document vertically, which is why the word lands on row 2 of 5; the derived extent the brush samples against moves down with it, but this brush is HORIZONTAL, so nothing here samples that axis and the moved row is not pinned by this section.
+format: columns=14 maxRows=- fillEntireBounds=yes
+result: size=6x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=6 rows=1 trimmed=no
+plain(bounds=0,0 14x5):
+  |              |
+  |              |
+  |filled        |
+  |              |
+  |              |
+plain(natural):
+  |filled        |
+
+== markup-brush-run-wrapped ==
+desc: brush-run-inline-scope-wrapped's geometry reached through MARKUP instead of BrushedRun: same text, same budget, same paint rect, so the two sections are meant to be read against each other. Both wrap-invariance guards reach the brush through the BUILDER — brush-run-inline-scope-wrapped via BrushedRun, and FormattedText_InlineScopeIsWrapInvariant via a bare run plus a hand-written resolver — and [brush=…] arrives by a different route: the parser resolves the value to a ScopedBrush and pushes it as a tag SCOPE (TextMarkup.cs:294-295) rather than attaching it to one run — so a markup brush that stopped flowing across a wrap would not move any existing baseline.
+format: columns=9 maxRows=- fillEntireBounds=no
+result: size=9x2 provided=9 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=9x2 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=9 rows=1 trimmed=no
+    line[1] columns=4 rows=1 trimmed=no
+plain(bounds=0,0 12x4):
+  |aaaa bbbb|
+  |cccc|
+plain(natural):
+  |aaaa bbbb|
+  |cccc|
+
+== brush-run-solid-equal-to-document-default ==
+desc: A run-declared SOLID equal to the document default's colour still wins at its own scope — declaration wins by policy, no value equality anywhere. Under a gradient document brush the declared solid is visibly flat; phase 6's restatement sentinel briefly inverted this, unpinned.
+format: columns=14 maxRows=- fillEntireBounds=no
+result: size=10x1 provided=14 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=10x1 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=10 rows=1 trimmed=no
+plain(bounds=0,0 14x3):
+  |aaaa SOLID|
+plain(natural):
+  |aaaa SOLID|
+
+== brush-block-style-scope-centred ==
+desc: brush-block-style-scope with the paragraph CENTRED and the paint rect wider than the 12-column budget — the combination no earlier case has: brush-block-style-scope is Left-aligned (its old SamplingRect and its ink coincided) and align-center-brushed-wider-than-budget carries a document brush, not a block one. The block rung samples the walk's ink-anchored Extent, (4,0,12,1), so the ramp spans exactly the centred glyphs at columns 4-15 — the re-aim this case was appended to witness. As recorded one commit earlier it pinned the pre-re-aim bytes: the Left-forced SamplingRect covered columns 0-11, the leftmost glyph started 0.375 up the ramp and the last four clamped flat blue past its end. That rect is deleted; this section is the surviving half of defect 1, closed.
+format: columns=12 maxRows=- fillEntireBounds=no
+result: size=12x1 provided=12 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=12x1 align=Center margin=(0,1,0,1) trimmed=no valign=Bottom lines=1
+    line[0] columns=12 rows=1 trimmed=no
+plain(bounds=0,0 20x3):
+  |    xxxxxxxxxxAB|
+plain(natural):
+  |xxxxxxxxxxAB|
+
+== figlet-inline-run-brushed-gradient ==
+desc: figlet-inline-run-tagged-brush with the run's declared brush a GRADIENT instead of a solid — both tagged-brush cases are solids, which are rect-independent, so no earlier case can see the run leg's geometry on the FIGlet arm. Appended in 7b as the witness for the task-#15 fix, and re-recorded when the fix landed: a run-declared brush on a glyph run now samples the run's wrap-invariant reading-order strip (reading-order column, band top, TOTAL run width, band height — FormattedText.GlyphRunStrip), exactly as text runs do, so the declared gradient wins the run leg WITH its geometry: the face samples every glyph cell against the strip (3,0,6x4) and the Mini 'A' sweeps red-to-blue across its six columns. As first recorded this section pinned the pre-fix bytes — the context's inline scope was the 1×1 cell at the piece's anchor, every ink cell sat right of that rect and clamped past the ramp's end, and the whole glyph came out the flat END colour — and the resolver-null arm handed the face the PIECE rect, the two paths disagreeing about one document. The strip closed that disagreement; the wrapped pins appended alongside the fix witness the wrap-invariance the unwrapped strip here cannot (for an unwrapped run the strip and the piece rect coincide).
+format: columns=20 maxRows=- fillEntireBounds=no
+result: size=15x4 provided=20 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=15x4 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=1
+    line[0] columns=15 rows=4 trimmed=no
+plain(bounds=0,0 20x5):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+plain(natural):
+  |     /\\|
+  |    /--\\|
+  |hi        there|
+
+== figlet-run-brushed-gradient-wrapped ==
+desc: The task-#15 fix's central property, pinned: a WRAPPED figlet run with a run-declared horizontal gradient. 'A B' in Mini at an 8-column budget wraps into two 4-row bands — 'A' (width 6, logical 0-5) and 'B' (width 5, logical 8-12; the space, logical 6-7, is consumed by the wrap) — and the run's strip spans its TOTAL width (13), rebased per piece (band 1 samples (0,0,13x4), band 2 (-8,4,13x4)), so the ramp CONTINUES across the wrap in reading order instead of restarting per piece: band 2's ink picks up blue-dominant past band 1's red-dominant tail. Under piece-rect sampling band 2 would restart near red (t=0.5/5); under the pre-fix 1×1 anchor rect both bands were flat end-colour blue. The resolver path's half of the pair; its resolver-null twin below must hold byte-identical ink.
+format: columns=8 maxRows=- fillEntireBounds=no
+result: size=6x8 provided=8 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x8 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=6 rows=4 trimmed=no
+    line[1] columns=5 rows=4 trimmed=no
+plain(bounds=0,0 8x8):
+  |  /\\|
+  | /--\\|
+  ||
+  |  _|
+  | |_)|
+  | |_)|
+plain(natural):
+  |  /\\|
+  | /--\\|
+  ||
+  |  _|
+  | |_)|
+  | |_)|
+
+== figlet-run-brushed-gradient-wrapped-null-resolver ==
+desc: figlet-run-brushed-gradient-wrapped with NO resolver installed — the FIGlet arm's resolver-null path, which the task-#15 ruling changed to match (option (b)'s stated cost): the face is handed the run's strip, not the piece rect. The ink bytes here must be IDENTICAL to the resolver case above — the two paths agreeing about one document is the closure of the disagreement figlet-inline-run-brushed-gradient originally pinned. Before the fix this path sampled the PIECE rect, so band 2 restarted its ramp near red while the resolver path painted flat blue.
+format: columns=8 maxRows=- fillEntireBounds=no
+result: size=6x8 provided=8 hasTrimmedLines=no blocks=1
+  block[0] FormattedParagraph size=6x8 align=Left margin=(0,0,0,0) trimmed=no valign=Bottom lines=2
+    line[0] columns=6 rows=4 trimmed=no
+    line[1] columns=5 rows=4 trimmed=no
+plain(bounds=0,0 8x8):
+  |  /\\|
+  | /--\\|
+  ||
+  |  _|
+  | |_)|
+  | |_)|
+plain(natural):
+  |  /\\|
+  | /--\\|
+  ||
+  |  _|
+  | |_)|
+  | |_)|

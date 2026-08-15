@@ -7,6 +7,7 @@ using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -187,7 +188,7 @@ internal sealed class FormatDemo : InteractiveDemo
         // A composite document mixing BBcode markup (for the prose-heavy sections) and the builder
         // (for FIGlet + HR blocks that don't have terse markup equivalents). Builds once and is
         // reused across resizes by re-formatting against the new column budget.
-        var builder = new RichTextBuilder(defaultStyle);
+        var builder = new RichTextBuilder(PartialStyle.From(defaultStyle));
 
         // Inline content registry: makes embedded icons / badges reachable from markup via
         // [content=name/]. The PNG paths use embedded resources; Icon falls back to its glyph
@@ -206,13 +207,13 @@ internal sealed class FormatDemo : InteractiveDemo
                                                                 renderSize: new Size(2, 0))
                               };
 
-        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = defaultStyle };
+        var markupOptions = new TextMarkupOptions { Content = contentRegistry, DefaultStyle = BrushedStyle.FromStated(defaultStyle) };
 
         // Title.
         builder.Figlet("Rich Text",
                        FigletFonts.Standard,
-                       defaultStyle.WithForeground(Color.FromHex("#f92572"))
-                                   .WithAttributes(TextAttributes.Bold),
+                       PartialStyle.WithForeground(Color.FromHex("#f92572"))
+                                   .Weighing(TextWeight.Bold),
                        alignment: TextAlignment.Center);
 
         builder.HorizontalRule(HorizontalRule.Double);

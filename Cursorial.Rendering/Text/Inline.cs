@@ -1,5 +1,5 @@
-using Cursorial.Output;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Text;
 
@@ -19,8 +19,9 @@ namespace Cursorial.Rendering.Text;
 public abstract record Inline;
 
 /// <summary>
-/// A styled text run — the atomic unit of paragraph content. Carries the raw text, an SGR
-/// <see cref="Style"/>, an optional <see cref="IGlyphMap"/> for per-grapheme substitution
+/// A styled text run — the atomic unit of paragraph content. Carries the raw text, a
+/// <see cref="BrushedStyle"/> carrier (channels the run states; anything it declines to state is
+/// inherited), an optional <see cref="IGlyphMap"/> for per-grapheme substitution
 /// (Fullwidth, SmallCaps, custom icon set, …), and an optional OSC&#x202F;8 hyperlink target
 /// that the renderer wraps around the run's visible cells.
 /// </summary>
@@ -32,19 +33,12 @@ public abstract record Inline;
 /// closing once at the end of the original run causes the link target to be lost on the second
 /// line.
 /// </para>
-/// <para>
-/// <c>Tag</c> is opaque per-run metadata, preserved through layout (including wrap-splits) onto every
-/// <see cref="FormattedTextRun"/> derived from this run. Rendering treats it as an opaque passenger; a higher
-/// layer (e.g. <c>Cursorial.Drawing</c>) uses it to attach a brush to the run without <c>IBrush</c> entering
-/// <see cref="Style"/>. Null for ordinary runs.
-/// </para>
 /// </remarks>
 public sealed record TextRun(
     string Text,
-    CellStyle Style = default,
+    BrushedStyle Style = default,
     IGlyphMap? Map = null,
-    string? Hyperlink = null,
-    object? Tag = null) : Inline
+    string? Hyperlink = null) : Inline
 {
     /// <summary>
     /// The run's glyph source (proposal-glyph-runs): how its clusters measure and paint.
@@ -53,6 +47,16 @@ public sealed record TextRun(
     /// same pipeline as plain text, at its own per-cluster cell advances.
     /// </summary>
     public Fonts.GlyphSource? Source { get; init; }
+
+    /// <summary>
+    /// Marks an INDICATOR run — an access-key mnemonic or similar cue whose <see cref="Style"/>
+    /// delta marks exactly its own clusters (maintainer ruling 2026-08-11 #3: "if the indicator
+    /// glyph survived the trim, I see no reason why the ellipses should inherit its style"). The
+    /// run formats and paints like any other, but a trim indicator the formatter synthesizes
+    /// immediately after a surviving indicator run does not inherit its style — the ellipsis
+    /// joins the nearest preceding non-indicator run, falling back to the document default.
+    /// </summary>
+    public bool Indicator { get; init; }
 }
 
 /// <summary>

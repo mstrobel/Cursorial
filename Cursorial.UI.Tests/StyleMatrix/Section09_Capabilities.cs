@@ -2,6 +2,7 @@
 // renegotiation path the same way the P2 suites do (the synthetic host completes synchronously).
 
 using Cursorial.Media;
+using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
 
@@ -11,7 +12,7 @@ using static Cursorial.Tests.UI.StyleMatrix.StyleMatrixFixture;
 
 namespace Cursorial.Tests.UI.StyleMatrix;
 
-/// <summary>Style matrix §9 — capability classes (S140–S146; SD14, inversion 6: negotiated snapshot at P3).</summary>
+/// <summary>Style matrix §9 — capability classes (S140–S147; SD14, inversion 6: negotiated snapshot at P3).</summary>
 public class Section09_Capabilities
 {
     [Fact]
@@ -33,12 +34,19 @@ public class Section09_Capabilities
     }
 
     [Fact]
-    public void S141_Ansi16Host_ExactlyTierEmojiAndUnicode()
+    public void S141_Ansi16Host_ExactlyTierEmojiUnicodeAndLocal()
     {
-        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy });
+        using var tree = ShowTree(new UIHeadlessHostOptions { Capabilities = HeadlessCapabilities.Ansi16Legacy }, show: false);
+        tree.App.EnvironmentReader = new FakeEnvironmentReader(isSSH: false); // deterministic locality — see below
+        tree.Host.ShowRoot(tree.Root);
 
-        // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04).
-        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode"], tree.Root.Classes.ToArray());
+        // Exact set: caps-emoji is default-present since the FB-15 opt-out flip (2026-07-04). caps-local is
+        // present because the locality axis derives from the injected IEnvironmentReader, not the ambient
+        // process environment — the seam reports IsSSH() == false and Local is stamped whenever it is false.
+        // Injecting the reader is what makes this ENVIRONMENT-INDEPENDENT: the assertion holds even when the
+        // suite runs over SSH (the old SSH-sensitivity gap). Local is the sole member of its axis — an SSH run
+        // simply drops caps-local (there is no caps-remote class).
+        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode", "caps-local"], tree.Root.Classes.ToArray());
     }
 
     [Theory]
@@ -128,5 +136,32 @@ public class Section09_Capabilities
 
         Assert.Contains("caps-truecolor", newRoot.Classes);
         Assert.Contains("caps-unicode", newRoot.Classes);
+    }
+
+    [Theory]
+    [InlineData(true, false)]  // injected SSH reader → caps-local OMITTED (remote)
+    [InlineData(false, true)]  // injected non-SSH reader → caps-local present (local)
+    public void S147_LocalityAxis_TracksTheInjectedEnvironmentReader(bool isSSH, bool expectLocal)
+    {
+        // Both branches of the locality derivation, driven purely through UIApplication's injectable
+        // IEnvironmentReader seam — the proof that StyleCapabilities.Local is sourced from the injected
+        // reader's IsSSH() and nothing else. This is what discharges the environment-sensitivity of S141.
+        using var tree = ShowTree(show: false);
+        tree.App.EnvironmentReader = new FakeEnvironmentReader(isSSH);
+        tree.Host.ShowRoot(tree.Root);
+
+        Assert.Equal(expectLocal, tree.Root.Classes.Contains("caps-local"));
+        Assert.DoesNotContain("caps-remote", tree.Root.Classes); // the axis has a single class; there is no remote
+    }
+
+    /// <summary>
+    /// A deterministic <see cref="IEnvironmentReader"/> for the locality tests: only <see cref="IsSSH"/> is
+    /// meaningful (it drives <see cref="StyleCapabilities.Local"/>). Everything else returns the empty/false
+    /// default, so the stamped locality depends on nothing but the injected SSH flag.
+    /// </summary>
+    private sealed class FakeEnvironmentReader(bool isSSH) : IEnvironmentReader
+    {
+        public string? GetVariable(string name) => null;
+        public bool IsSSH() => isSSH;
     }
 }

@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -74,20 +75,20 @@ public class RichTextBuilderTests
     [Fact]
     public void Push_AppliesStyleToSubsequentRun()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder();
         builder.Push(in bold);
         builder.Run("bold");
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
     public void Push_ScopeDispose_PopsStyle()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder();
         using (builder.Push(in bold))
             builder.Run("inside");
@@ -95,15 +96,15 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var inlines = ((TextParagraph)doc.Blocks[0]).Inlines;
-        Assert.True(((TextRun)inlines[0]).Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.False(((TextRun)inlines[1]).Style.Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(((TextRun)inlines[0]).Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.False(((TextRun)inlines[1]).Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
     public void Push_NestedStyles_Merge()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
-        var italic = CellStyle.Default.WithAttributes(TextAttributes.Italic);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
+        var italic = PartialStyle.Postured(TextStyle.Italic);
         var builder = new RichTextBuilder();
         using (builder.Push(in bold))
         using (builder.Push(in italic))
@@ -111,15 +112,15 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Bold));
-        Assert.True(run.Style.Attributes.HasFlag(TextAttributes.Italic));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
+        Assert.True(run.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Italic));
     }
 
     [Fact]
     public void Push_ChildColorWins()
     {
-        var red = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
-        var blue = CellStyle.Default.WithForeground(Color.FromRgb(0, 0, 255));
+        var red = PartialStyle.WithForeground(Color.FromRgb(255, 0, 0));
+        var blue = PartialStyle.WithForeground(Color.FromRgb(0, 0, 255));
         var builder = new RichTextBuilder();
         using (builder.Push(in red))
         using (builder.Push(in blue))
@@ -127,8 +128,8 @@ public class RichTextBuilderTests
 
         var doc = builder.Build();
         var run = (TextRun)((TextParagraph)doc.Blocks[0]).Inlines[0];
-        Assert.Equal(0, run.Style.Foreground.Red);
-        Assert.Equal(255, run.Style.Foreground.Blue);
+        Assert.Equal(0, run.Style.ResolveFlat().Foreground.Red);
+        Assert.Equal(255, run.Style.ResolveFlat().Foreground.Blue);
     }
 
     [Fact]

@@ -568,7 +568,7 @@ public sealed class Section03_SubscriptionsAndMerge
         // The brush lives on the root's element scope so a keyed pulse on it sweeps that root's registry.
         var root = new StackPanel { Name = "Root" };
         root.Resources["Brush.Accent"] = Vbrush;
-        var tb = new TextBlock { Markup = "[brush=Brush.Accent]X[/brush]" };
+        var tb = new TextBlock { Markup = "[fg=Brush.Accent]X[/fg]" };
         root.Children.Add(tb);
         host.ShowRoot(root);
         host.RunFrame();

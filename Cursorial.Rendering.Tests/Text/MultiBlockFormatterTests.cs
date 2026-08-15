@@ -4,6 +4,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Tests.Rendering.Text;
@@ -26,7 +27,7 @@ public class MultiBlockFormatterTests
     [Fact]
     public void HorizontalRule_CustomGlyphAndStyle()
     {
-        var redStyle = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var redStyle = PartialStyle.WithForeground(Color.FromRgb(255, 0, 0));
         var doc = new RichTextBuilder()
             .HorizontalRule(glyph: "═", style: redStyle, alignment: TextAlignment.Center)
             .Build();
@@ -34,7 +35,7 @@ public class MultiBlockFormatterTests
         var rule = (FormattedHorizontalRule) ft.Blocks[0];
 
         Assert.Equal("═", rule.Glyph);
-        Assert.Equal(255, rule.Style.Foreground.Red);
+        Assert.Equal(255, rule.Style.ResolveFlat().Foreground.Red);
         Assert.Equal(TextAlignment.Center, rule.Alignment);
     }
 
@@ -93,6 +94,23 @@ public class MultiBlockFormatterTests
 
         Assert.Single(ft.Blocks);
         Assert.Equal(1, ft.Size.Rows);
+    }
+
+    /// <summary>Adjacent block margins collapse to the MAX of bottom and top — they do not add.</summary>
+    [Fact]
+    public void Margins_AdjacentMargins_CollapseToTheMax()
+    {
+        var doc = new RichTextBuilder()
+            .Paragraph(margin: new Margins(0, 2)).Run("top block")
+            .Paragraph(margin: new Margins(0, 1)).Run("middle block")
+            .Paragraph(margin: new Margins(0, 3)).Run("bottom block")
+            .Build();
+        var ft = new TextFormatter().Format(doc, 20);
+
+        // 1 row + max(2,1)=2 + 1 row + max(1,3)=3 + 1 row = 8. Additive stacking would give 10
+        // (gaps of 3 and 4), and the first block's top margin is suppressed either way.
+        Assert.Equal(3, ft.Blocks.Length);
+        Assert.Equal(8, ft.Size.Rows);
     }
 
     // ---- MaxRows across multi-block layouts ----
@@ -236,7 +254,7 @@ public class MultiBlockFormatterTests
 
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => _size;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
             PaintCalled = true;
             LastPaintBounds = bounds;

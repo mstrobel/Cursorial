@@ -25,4 +25,8 @@
         <InternalsVisibleTo Include="Cursorial.Drawing.Tests" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Geometry\" />
+    </ItemGroup>
+
 </Project>

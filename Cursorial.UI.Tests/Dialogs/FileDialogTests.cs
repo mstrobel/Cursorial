@@ -1,7 +1,3 @@
-// xUnit1031 (no blocking task ops) is deliberately disabled — the headless host is single-thread-affine and
-// the awaited dialog tasks finish on pure (non-UI) continuations, so a bounded Wait cannot deadlock.
-#pragma warning disable xUnit1031
-
 using System.Text;
 
 using Cursorial.Input;
@@ -65,12 +61,18 @@ public sealed class FileDialogTests
         return text.ToString();
     }
 
-    /// <summary>Pumps the host idle, then waits out the dialog task's pure (non-UI) mapping tail.</summary>
+    /// <summary>
+    /// Pumps the host idle, then keeps pumping while it waits out the dialog task's tail. The tail is
+    /// NOT always a pure (non-UI) mapping continuation: the overwrite confirmation resumes back on the
+    /// UI thread — <c>TaskDialog.ShowAsync</c>'s <c>ConfigureAwait(false)</c> into
+    /// <c>FileSaveDialog.ConfirmOverwriteAsync</c>'s <c>ConfigureAwait(true)</c> — so its resumption is
+    /// posted to the dispatcher and runs only in a frame. Blocking the UI thread here instead would
+    /// deadlock until the deadline; see <see cref="HeadlessPump"/>.
+    /// </summary>
     private static FileDialogResult Complete(UIHeadlessHost host, Task<FileDialogResult> task)
     {
         Assert.True(host.RunUntilIdle());
-        Assert.True(task.Wait(TimeSpan.FromSeconds(5)), "the dialog task did not complete");
-        return task.Result;
+        return HeadlessPump.WaitForResult(host, task, "the dialog task");
     }
 
     private static Task<FileDialogResult> ShowOpen(UIHeadlessHost host,

@@ -2,6 +2,7 @@ using Cursorial.Drawing;
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
 
@@ -46,45 +47,45 @@ internal sealed class PensDemo : InteractiveDemo
         var amber = Color.FromRgb(235, 195, 90);
         var green = Color.FromRgb(90, 210, 120);
 
-        ctx.DrawText(1, 0, "Cursorial Drawing — pens · boxes · junctions · braille (Phase 3 + 4b)", heading);
+        ctx.DrawText(1, 0, "Cursorial Drawing — pens · boxes · junctions · braille (Phase 3 + 4b)", DemoSupport.Ink(heading));
 
         // --- Box weights (+ ASCII glyph set) ---
-        ctx.DrawText(1, 2, "Box weights:", label);
+        ctx.DrawText(1, 2, "Box weights:", DemoSupport.Ink(label));
         ctx.DrawBox(new Rect(1, 3, 8, 3), Pens.Light.WithColor(cyan));
         ctx.DrawBox(new Rect(11, 3, 8, 3), Pens.Heavy.WithColor(cyan));
         ctx.DrawBox(new Rect(21, 3, 8, 3), Pens.Double.WithColor(cyan));
         ctx.DrawBox(new Rect(31, 3, 8, 3), Pens.Ascii.WithColor(cyan));
-        ctx.DrawText(2, 6, "light", label);
-        ctx.DrawText(12, 6, "heavy", label);
-        ctx.DrawText(22, 6, "double", label);
-        ctx.DrawText(32, 6, "ascii", label);
+        ctx.DrawText(2, 6, "light", DemoSupport.Ink(label));
+        ctx.DrawText(12, 6, "heavy", DemoSupport.Ink(label));
+        ctx.DrawText(22, 6, "double", DemoSupport.Ink(label));
+        ctx.DrawText(32, 6, "ascii", DemoSupport.Ink(label));
 
         // --- Rounded + dashed ---
-        ctx.DrawText(1, 8, "Rounded · dashed:", label);
+        ctx.DrawText(1, 8, "Rounded · dashed:", DemoSupport.Ink(label));
         ctx.DrawBox(new Rect(1, 9, 8, 3), Pens.Rounded.WithColor(green));
         ctx.DrawBox(new Rect(11, 9, 14, 3), Pens.Light.WithColor(green).WithDash(LineDash.Triple));
 
         // --- Junction table grid: outer box + internal lines; corners/tees/crosses self-resolve. ---
-        ctx.DrawText(1, 13, "Junction grid (┌┬┐ ├┼┤ └┴┘):", label);
+        ctx.DrawText(1, 13, "Junction grid (┌┬┐ ├┼┤ └┴┘):", DemoSupport.Ink(label));
         ctx.DrawBox(new Rect(1, 14, 22, 6), Pens.Light.WithColor(cyan));
         ctx.DrawLine(8, 14, 8, 19, Pens.Light.WithColor(cyan));    // internal vertical
         ctx.DrawLine(15, 14, 15, 19, Pens.Light.WithColor(cyan));  // internal vertical
         ctx.DrawLine(1, 16, 22, 16, Pens.Light.WithColor(cyan));   // internal horizontal
 
         // --- Mixed-weight composed border (heavy top, light sides → ┍ ┑ corners) ---
-        ctx.DrawText(40, 2, "Mixed-weight border:", label);
+        ctx.DrawText(40, 2, "Mixed-weight border:", DemoSupport.Ink(label));
         ctx.DrawLine(40, 3, 55, 3, Pens.Heavy.WithColor(amber));   // heavy top
         ctx.DrawLine(40, 5, 55, 5, Pens.Light.WithColor(amber));   // light bottom
         ctx.DrawLine(40, 3, 40, 5, Pens.Light.WithColor(amber));   // light left
         ctx.DrawLine(55, 3, 55, 5, Pens.Light.WithColor(amber));   // light right
 
         // --- Gradient-stroked box (the brush samples across the box bounds) ---
-        ctx.DrawText(40, 7, "Gradient stroke:", label);
+        ctx.DrawText(40, 7, "Gradient stroke:", DemoSupport.Ink(label));
         var stroke = new LinearGradientBrush(Color.FromRgb(120, 220, 232), Color.FromRgb(196, 150, 255));
         ctx.DrawBox(new Rect(40, 8, 18, 3), new Pen(stroke));
 
         // --- Diagonal lines → braille (an X plus a fan, sub-cell resolution) ---
-        ctx.DrawText(40, 12, "Diagonals → braille:", label);
+        ctx.DrawText(40, 12, "Diagonals → braille:", DemoSupport.Ink(label));
         ctx.DrawLine(40, 13, 58, 20, cyan);   // ╲
         ctx.DrawLine(58, 13, 40, 20, cyan);   // ╱  (forms an X in braille)
         ctx.DrawLine(49, 13, 42, 20, green);  // fan spokes from the apex

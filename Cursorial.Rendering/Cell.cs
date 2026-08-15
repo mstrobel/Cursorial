@@ -31,6 +31,10 @@ namespace Cursorial.Rendering;
 /// </param>
 /// <param name="Kind">Single-width, wide left-half, or wide right-half continuation.</param>
 /// <param name="Style">Foreground / background / attribute / underline state applied to the cell.</param>
+// CACHE KEY: resolved value, never the template. The renderer's frame diff compares cells by
+// value, and this record's equality is what makes that sound. A policy carrier here (IBrush has
+// no value equality) would degrade the comparison to reference identity and re-emit cells whose
+// resolved appearance never changed.
 public readonly record struct Cell(string? Grapheme, CellKind Kind, CellStyle Style)
 {
     /// <summary>A single-width blank cell with default styling — the <c>default(Cell)</c> value.</summary>

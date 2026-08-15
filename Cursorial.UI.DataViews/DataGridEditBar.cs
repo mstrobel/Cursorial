@@ -77,7 +77,7 @@ public sealed class DataGridEditBar : UIElement
             return;
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, 1), new BrushedStyle { Background = Background });
 
         // "✎ editing SO-1044 · Enter commit · Esc cancel · Tab next cell" — segment by segment,
         // walking x by measured width (the ✎ can render wide on some terminals; measure, don't count).

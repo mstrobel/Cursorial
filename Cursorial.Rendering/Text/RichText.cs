@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-using Cursorial.Output;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Rendering.Text;
 
@@ -26,5 +26,5 @@ public sealed record RichText(ImmutableArray<Block> Blocks)
     
     /// <summary>The default style applied to all text in the document.</summary>
     /// <remarks>The background of the default style is used for filling the entire document host when requested.</remarks>
-    public CellStyle DefaultStyle { get; init; } = CellStyle.Default;
+    public BrushedStyle DefaultStyle { get; init; } = BrushedStyle.Identity;
 }

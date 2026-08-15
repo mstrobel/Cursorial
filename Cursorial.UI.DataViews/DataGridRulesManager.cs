@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-using Cursorial.Drawing.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI.Bars;
 using Cursorial.UI.Controls;

@@ -59,8 +59,8 @@ internal sealed class ImageSceneDemo : InteractiveDemo
         var heading = Color.FromRgb(200, 210, 255);
         var label = Color.FromRgb(150, 160, 200);
 
-        ctx.DrawText(2, 0, "Images composited inside a Scene — DrawContent → fragment passthrough (Phase 6b):", heading);
-        ctx.DrawText(2, 1, "Real images on a Kitty / iTerm2 / Sixel terminal; the fallback glyph otherwise.", label);
+        ctx.DrawText(2, 0, "Images composited inside a Scene — DrawContent → fragment passthrough (Phase 6b):", DemoSupport.Ink(heading));
+        ctx.DrawText(2, 1, "Real images on a Kitty / iTerm2 / Sixel terminal; the fallback glyph otherwise.", DemoSupport.Ink(label));
 
         int boxWidth = Math.Min(ctx.Bounds.Columns - 4, 44);
         if (boxWidth < 14) return;   // too narrow to lay out the gallery
@@ -71,7 +71,7 @@ internal sealed class ImageSceneDemo : InteractiveDemo
         {
             if (x + 11 > 2 + boxWidth) break;
             ctx.DrawContent(new Rect(x, 4, 10, 5), content, Capabilities.Output);
-            ctx.DrawText(x, 10, meta.Label, label);
+            ctx.DrawText(x, 10, meta.Label, DemoSupport.Ink(label));
             x += 13;
         }
     }

@@ -1,7 +1,6 @@
 using System.Globalization;
 
 using Cursorial.Animation;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -603,10 +602,10 @@ internal static class ControlThemes
     /// <summary>The drop-down's key hints. ASCII-only, like every other popup footer: the arrow glyphs are
     /// ambiguous-width and would mis-measure on the terminals the renderer's width defense exists for.</summary>
     private const string BreadcrumbDropDownFooter = //"^v move   type to filter   Enter open   Esc dismiss" +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]↑↓[/brush]  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]type[/brush] to filter  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]⏎[/brush] open  " +
-                                                    $"[brush={ThemeKeys.TextDimBrush}]⎋[/brush] cancel";
+                                                    $"[fg={ThemeKeys.TextDimBrush}]↑↓[/fg]  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]type[/fg] to filter  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]⏎[/fg] open  " +
+                                                    $"[fg={ThemeKeys.TextDimBrush}]⎋[/fg] cancel";
 
     // A breadcrumb trail: [… ▸] [Home ▸] [Projects ▸] [assets], sitting ON the page (no resting fill — it is a
     // trail, not a field) with the chips carrying the only fills. The leading "…" chip is a real
@@ -1089,6 +1088,12 @@ internal static class ControlThemes
         return border;
     });
 
+    // Foreground is deliberately NOT pinned here (unlike Button/Label/StatusBarItem): an Icon is CONTENT, and
+    // the doc contract is that it takes its host's ink by INHERITANCE. A pin sits at BindingPriority.Style,
+    // which beats Inherited, so an icon inside a focused/pressed control would keep the resting TextBrush
+    // while the face reverse-videos around it — TextBrush ink on a TextBrush fill, an invisible glyph. The
+    // theme-flip staleness a pin would have papered over is fixed at its real source instead: the Icon's
+    // cached EffectiveIconBrush (see Icon.OnApplicationResourcesChanged).
     private static Style IconTheme()
         => new Style { Key = "Theme.Icon" }
           .Set(Control.TemplateProperty, IconTemplate());
@@ -2711,10 +2716,12 @@ public sealed class ToggleGlyph : UIElement, IValueObserver<bool?>
     private static void DrawAt(RenderContext context, int column, string text, IBrush? brush, TextAttributes attributes)
     {
         var style = new CellStyle().WithAttributes(attributes);
-        if (brush is { })
-            context.DrawText(column, 0, text, brush, baseStyle: style);
-        else
-            context.DrawText(column, 0, text, Colors.Default, baseStyle: style);
+        var styleTemplate = BrushedStyle.Identity.Composed(PartialStyle.From(style));
+
+        if (brush != null)
+            styleTemplate = styleTemplate.WithForeground(brush);
+
+        context.DrawText(column, 0, text, styleTemplate);
     }
 
     // The mark color for the checked / indeterminate states (a ThemeKeys brush resource resolved through

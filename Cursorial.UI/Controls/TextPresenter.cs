@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -337,29 +336,52 @@ public sealed class TextPresenter : UIElement
         if (viewportColumns <= 0 || viewportRows <= 0)
             return;
 
-        var foreground = owner.Foreground ?? ResolveBrush(ThemeKeys.TextBrush);
         var text = owner.DisplayText ?? string.Empty;
 
         if (text.Length == 0)
         {
             if (owner.Placeholder is { Length: > 0 } placeholder)
             {
+                // The placeholder is NOT the line base and deliberately does not ride it: it resolves
+                // its own brush (muted, or the presenter's own on a tier with no muted colour to
+                // carry the de-emphasis) and its own attribute word.
+                var foreground = ResolveForegroundBrush();
+
                 // MutedBrush carries the placeholder color on color tiers; Faint carries the de-emphasis on the
                 // NoColor tier where MutedBrush resolves to Default (adoption-spec §5: placeholder → Faint).
                 IBrush? muted;
-                TextAttributes attributes = TextElement.ComposeAttributes(owner).Flags/* | TextAttributes.Faint*/;
+                var baseStyle = CellStyle.Default.WithAttributes(TextElement.ComposeAttributes(owner).Flags);
 
                 var lowFidelity = UIApplication.Current?.ActualThemeVariant.Tier < ColorDepth.Ansi256;
 
                 if (lowFidelity)
-                    attributes |= TextAttributes.Faint;
-
-                if (lowFidelity)
+                {
+                    // WEIGHT IS AN AXIS, AND FAINT WINS. This used to be `attributes |= Faint`, which
+                    // produced `Bold | Faint` from one property plus a tier check — a TextWeight="Bold"
+                    // TextBox at Ansi16/NoColor. That state is not renderable: Bold and Faint share the
+                    // SGR 22 reset, so reaching it emits ESC[1m from a Faint predecessor and ESC[2m from
+                    // a Bold one, and the placeholder's weight ends up depending on what was painted
+                    // before it. `Weighted` IMPOSES Faint and clears the inherited Bold, because the
+                    // de-emphasis IS the placeholder treatment down here — on a tier with no muted colour
+                    // to carry it, Faint is the entire signal that this is a prompt and not real content,
+                    // so it must not be the side that loses.
+                    baseStyle = PartialStyle.Weighted(TextWeight.Faint).ApplyTo(baseStyle);
                     muted = foreground;
+                }
                 else
+                {
                     muted = ResolveBrush(ThemeKeys.MutedBrush) ?? foreground;
+                }
 
-                DrawText(context, 0, 0, placeholder, muted, null, CellStyle.Default.WithAttributes(attributes));
+                // An unresolvable muted brush is ABSENCE, and the style says so directly — the
+                // base's (default) foreground stands, which is what the Brushes.Default fallback
+                // this replaced was spelling the long way round. The background is stated for the
+                // same reason the cell lane states it: transparent, so the field's chrome shows.
+                // The attribute base rides UNDER the delta (FromStated: stated channels only, so
+                // the Default colours stay absent and the composed word folds on per axis).
+                context.DrawText(0, 0, placeholder,
+                                 BrushedStyle.FromStated(baseStyle)
+                                             .Then(new BrushedStyle { Foreground = muted, Background = Brushes.Transparent }));
             }
 
             return;
@@ -379,9 +401,16 @@ public sealed class TextPresenter : UIElement
         var selectionStart = owner.ToDisplayIndex(modelSelectionStart);
         var selectionEnd = owner.ToDisplayIndex(modelSelectionEnd);
 
+        // ONE line base for the whole render pass. It used to be resolved per LANE — once in the face
+        // painter and once per run in the cell painter — with the foreground brush threaded alongside
+        // it, which is two chances for the two lanes to disagree about the same ground state. This
+        // file has already produced three separate invisible-selection defects out of exactly that
+        // shape, so the base is built once here and handed down as a single carrier.
+        var lineBase = ResolveLineBaseStyle(noColor);
+
         if (!owner.IsMultiLine)
         {
-            RenderSingleLine(context, text, viewportColumns, foreground, noColor, selectionBrush, selectionStart, selectionEnd, inverse);
+            RenderSingleLine(context, text, viewportColumns, lineBase, noColor, selectionBrush, selectionStart, selectionEnd, inverse);
             return;
         }
 
@@ -410,19 +439,19 @@ public sealed class TextPresenter : UIElement
             if (EditingSource is { Font: {} font, Sizing.IsNormal: true } faceSource && font != MonospaceFont.Default)
             {
                 DrawFaceLine(context, glyphs, lineStart, text, firstChar, lastChar, selFrom, selTo, localRow,
-                             foreground, noColor, selectionBrush, inverse, faceSource);
+                             lineBase, noColor, selectionBrush, inverse, faceSource);
             }
             else
             {
-                DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
-                DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, foreground, selected: true, noColor, selectionBrush, inverse);
-                DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, foreground, selected: false, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, firstChar, selFrom, localRow, lineBase, selected: false, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selFrom, selTo, localRow, lineBase, selected: true, noColor, selectionBrush, inverse);
+                DrawLineRun(context, glyphs, lineStart, text, selTo, lastChar, localRow, lineBase, selected: false, noColor, selectionBrush, inverse);
             }
         }
     }
 
-    private void RenderSingleLine(RenderContext context, string text, int viewport, IBrush? foreground, bool noColor,
-                                  IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
+    private void RenderSingleLine(RenderContext context, string text, int viewport, in BrushedStyle lineBase,
+                                  bool noColor, IBrush? selectionBrush, int selectionStart, int selectionEnd, bool inverse)
     {
         var layout = GraphemeLayout.Build(text, EditingMetrics);
         // The visible char window covers the viewport — boundary at/before the left edge through the boundary
@@ -437,13 +466,13 @@ public sealed class TextPresenter : UIElement
         if (EditingSource is { Font: not null, Sizing.IsNormal: true } faceSource)
         {
             DrawFaceLine(context, layout, 0, text, firstChar, lastChar, selFrom, selTo, 0,
-                         foreground, noColor, selectionBrush, inverse, faceSource);
+                         lineBase, noColor, selectionBrush, inverse, faceSource);
             return;
         }
 
-        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, foreground, selected: false, noColor, selectionBrush, inverse);
-        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, foreground, selected: true, noColor, selectionBrush, inverse);
-        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, foreground, selected: false, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, firstChar, selFrom, 0, lineBase, selected: false, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selFrom, selTo, 0, lineBase, selected: true, noColor, selectionBrush, inverse);
+        DrawLineRun(context, layout, 0, text, selTo, lastChar, 0, lineBase, selected: false, noColor, selectionBrush, inverse);
     }
 
     /// <summary>
@@ -454,7 +483,7 @@ public sealed class TextPresenter : UIElement
     /// </summary>
     private void DrawFaceLine(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text,
                               int from, int to, int selFrom, int selTo, int localRow,
-                              IBrush? foreground, bool noColor, IBrush? selectionBrush, bool inverse,
+                              in BrushedStyle lineBase, bool noColor, IBrush? selectionBrush, bool inverse,
                               GlyphSource source)
     {
         if (to <= from)
@@ -462,7 +491,7 @@ public sealed class TextPresenter : UIElement
 
         int lineRows = source.Metrics.LineRows;
 
-        var baseStyle = ResolveLineBaseStyle(noColor);
+        var baseStyle = ResolveLineBaseValue(lineBase);
 
         int viewport = Math.Max(1, _viewportColumns);
 
@@ -487,9 +516,12 @@ public sealed class TextPresenter : UIElement
             if (wordColumn + wordWidth <= 0) continue; // fully scrolled off to the left
             if (wordColumn >= viewport) break;         // this and everything after: off to the right
 
+            // THE UNPACK, and the only place the face lane needs one: the primitive takes a brush and
+            // a whole style, and does the per-cell sampling itself, so the base's brush channel goes
+            // in one argument and its value channels in the other.
             var brushBounds = new Rect(Math.Max(0, wordColumn), localRow, Math.Max(1, wordWidth), lineRows);
             context.DrawGlyphText(source.Font!, wordColumn, localRow, text[wordStart..i],
-                                  foreground, baseStyle, brushBounds);
+                                  lineBase.Foreground, baseStyle, brushBounds);
         }
 
         // Special case for .caps-nocolor: if the text presentation area is inverted by default, then rather than
@@ -497,17 +529,22 @@ public sealed class TextPresenter : UIElement
         // attribute, then 'un-invert' only the selection rectangle. This is necessary for figlet fonts that only
         // write sparsely; otherwise the inversion would be partial (non-rectangular).
         //
-        // Note that in the next 'if' block down, the selection block flips the presenter's native the 'Inverse'
-        // flag, ensuring the highlighting contrasts the content regardless of whether the presenter is light-on-dark
-        // or dark-on-light.
+        // Note that in the next 'if' block down, the selection block FLIPS whatever Inverse state each cell is
+        // actually in, ensuring the highlighting contrasts the content regardless of whether the presenter is
+        // light-on-dark or dark-on-light.
         if (inverse)
         {
-            var tint = CellStyle.Default.WithAttributes(TextAttributes.Inverse);
             var startColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
             var endColumn = glyphs.ColumnOf(to - lineStart) - _scrollColumn;
 
+            // The line's OWN attributes ride the fill (masked to the ones that may spread), not
+            // TextAttributes.Inverse alone. FillOpaque writes space-bearing cells; CellBuffer.Set
+            // rescues the grapheme and composites the foreground back, but NOT the attributes — so a
+            // bare Inverse here silently stripped Bold / Italic / … from every cell the face inked.
             context.FillOpaque(new Rect(startColumn, localRow, endColumn - startColumn, lineRows),
-                               Color.Transparent, tint.Attributes);
+                               new BrushedStyle { Background = new SolidColorBrush(Color.Transparent) }
+                                   .Imposing((baseStyle.Attributes & FillAttributes) | TextAttributes.Inverse),
+                               overwrite: false);
         }
 
         // Selection: tint the selected span in place — graphemes untouched. Clamped to the
@@ -521,63 +558,207 @@ public sealed class TextPresenter : UIElement
             {
                 var selRect = new Rect(selStart, localRow, selEnd - selStart, lineRows);
 
-                var tint = noColor || selectionBrush is null
-                               ? CellStyle.Default.WithAttributes(inverse ? TextAttributes.None : TextAttributes.Inverse)
-                               : CellStyle.Transparent.WithBackground(selectionBrush.ColorAt(
-                                                                      selStart + (selEnd - selStart) / 2, localRow,
-                                                                      selRect));
-
-                context.TintCells(selRect, tint);
+                // The tint is a DELTA against whatever each cell already holds, so this call site does
+                // not need to know the presenter's inverse state at all — which is the point: the
+                // toggle reads the CELL, not a presenter-level bool standing in for it.
+                context.TintCells(selRect,
+                                  ResolveSelectionStyle(noColor, selectionBrush,
+                                                        selStart + (selEnd - selStart) / 2, localRow, selRect));
             }
         }
     }
 
-    private CellStyle ResolveLineBaseStyle(bool noColor)
+    /// <summary>
+    /// Attributes safe to spread across cells the presenter did not ink. An ALLOWLIST, never a
+    /// denylist: a new <see cref="TextAttributes"/> member must default to NOT spreading, because the
+    /// failure mode of spreading something unnoticed is far louder than the failure mode of not
+    /// spreading it.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><see cref="TextAttributes.Bold"/> / <see cref="TextAttributes.Faint"/> /
+    /// <see cref="TextAttributes.Italic"/> are invisible on a blank cell, so spreading them is free and
+    /// keeps the SGR state uniform across the band.</item>
+    /// <item><see cref="TextAttributes.Inverse"/> is visible on a blank and is the entire reason the
+    /// fill exists.</item>
+    /// <item><see cref="TextAttributes.Underline"/> / <see cref="TextAttributes.Strikethrough"/> /
+    /// <see cref="TextAttributes.Overline"/> are visible on blanks and MUST be excluded — spreading
+    /// them would rule every row of a multi-row FIGlet band.</item>
+    /// <item><see cref="TextAttributes.Blink"/> is excluded deliberately even though it is only
+    /// conditionally ink-dependent: as long as there is a mechanism to accomplish what the author
+    /// wants, the common case should steer into the pit of success. The asymmetry of harm decides it —
+    /// excluded-but-wanted is a subtle inconsistency, included-but-unwanted strobes the whole content
+    /// rect.</item>
+    /// <item><see cref="TextAttributes.Hidden"/> is a no-op on blanks by definition, so it is safe.</item>
+    /// </list>
+    /// The mask lives HERE, in the policy, and deliberately not in <c>FillOpaque</c>: the primitive must
+    /// keep painting exactly what it is handed — an author who passes <c>Blink</c> asked for it — and
+    /// masking there would remove the very escape hatch this ruling depends on.
+    /// </remarks>
+    private const TextAttributes FillAttributes =
+        TextAttributes.Bold | TextAttributes.Faint | TextAttributes.Italic |
+        TextAttributes.Inverse | TextAttributes.Hidden;
+
+    /// <summary>
+    /// THE selection rule, in one place: <b>no usable selection brush ⇒ TOGGLE
+    /// <see cref="TextAttributes.Inverse"/>; a usable brush ⇒ paint its background and CLEAR
+    /// <see cref="TextAttributes.Inverse"/>.</b> All three painting lanes (plain cells, sized runs,
+    /// glyph-face tints) route through here — each used to hand-roll it, and they drifted: the sized
+    /// lane's spelling left the selection INVISIBLE on a colour tier whose theme resolves no
+    /// <c>SelectionBrush</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why CLEAR on the brush path.</b> If <see cref="TextAttributes.Inverse"/> survives, the
+    /// terminal swaps the channels at render time: the brush's <em>background</em> colour comes out as
+    /// the visible foreground and the band the caller meant to paint never appears — and the visible
+    /// foreground then comes from the cell's background channel, which is <see cref="Color.Transparent"/>
+    /// here, so the text renders as the backdrop. Clearing is what makes the brush's declared channel the
+    /// one you see. (It used to happen by accident, as a side effect of <c>TintCells</c> clearing
+    /// Inverse unconditionally, and nobody could say why.)
+    /// </para>
+    /// <para>
+    /// <b>Why TOGGLE on the no-brush path.</b> Forcing the flag depends on a presenter-level bool being
+    /// an accurate proxy for every cell's state, and when the proxy is wrong the selection is
+    /// <em>invisible</em> — forcing Inverse on cells that are already inverse changes nothing. A toggle
+    /// reads each cell's actual state instead, which is what "the selection flips the content" always
+    /// meant; the old ternaries were hand-rolled XORs standing in for an operation the old API could not
+    /// express.
+    /// </para>
+    /// <para>
+    /// <paramref name="noColor"/> is not a selection concept here — it only decides whether a brush is
+    /// USABLE. Neither is a brush that samples to the terminal default: <c>Brushes.Default</c> is a legal
+    /// <see cref="TextBox.SelectionBrush"/>, and a default background is indistinguishable from no
+    /// selection at all, so it falls through to the toggle rather than painting nothing. (A
+    /// present-but-default background is a real opinion to a <see cref="PartialStyle"/> where it was
+    /// silence to a <see cref="CellStyle"/>, so the guard has to be stated rather than inherited.)
+    /// </para>
+    /// </remarks>
+    private static PartialStyle ResolveSelectionStyle(bool noColor, IBrush? selectionBrush,
+                                                      int column, int row, in Rect bounds)
+    {
+        var background = noColor ? null : selectionBrush?.ColorAt(column, row, bounds);
+
+        return background is { IsDefault: false } color
+                   ? PartialStyle.WithBackground(color).Removing(TextAttributes.Inverse)
+                   : PartialStyle.WithToggled(TextAttributes.Inverse);
+    }
+
+    /// <summary>The presenter's foreground BRUSH — what the line base rides on, and the placeholder's
+    /// fallback when its own muted brush does not resolve.</summary>
+    private IBrush? ResolveForegroundBrush() => Owner?.Foreground ?? ResolveBrush(ThemeKeys.TextBrush);
+
+    /// <summary>
+    /// A visual line's GROUND STATE: the style every run, fill and tint on that line is then a delta
+    /// against. A <see cref="BrushedStyle"/> rather than a <see cref="CellStyle"/> for one
+    /// reason — <b>capability</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ownership rule this presenter otherwise follows (an operation that OWNS its cells takes a
+    /// whole <see cref="CellStyle"/>; one that MODIFIES cells somebody else wrote takes a delta) says
+    /// a ground state may be a whole style, and that argument is sound as far as it goes. It is not
+    /// decisive, because it answers the wrong question: a <see cref="CellStyle"/> can only carry a
+    /// RESOLVED <see cref="Color"/>, so a base built as one can never be brushed. The rule says the
+    /// base may own its cells; it does not say the base must be colour-resolved.
+    /// </para>
+    /// <para>
+    /// What that bought before was a parallel parameter: the brush travelled BESIDE the base through
+    /// every signature between here and the paint, and each painting lane re-decided "is there a
+    /// brush?" at the end of it. One carrier ends both.
+    /// </para>
+    /// </remarks>
+    private BrushedStyle ResolveLineBaseStyle(bool noColor)
     {
         var attr = TextElement.ComposeAttributes(this);
 
-        var baseStyle = CellStyle.Default
-                                 .WithBackground(noColor ? Color.Default : Color.Transparent)
-                                 .WithAttributes(noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse);
+        // Inverse is the PRESENTER's axis, not the run's, and each lane imposes it the way its own
+        // geometry needs: the face lane as one whole-band fill (so a sparse FIGlet inverts as a clean
+        // rectangle rather than per glyph hole), the cell lane per run. So the base states it OFF —
+        // except on NoColor, where the theme's caps rule makes Inverse the only content signal there
+        // is and the base carries it. Verbatim from the value form this replaced.
+        var flags = noColor ? attr.Flags : attr.Flags & ~TextAttributes.Inverse;
 
-        if (attr.Flags.HasFlag(TextAttributes.Underline))
-            baseStyle = baseStyle.WithUnderlineStyle(attr.UnderlineShape);
+        var style = new BrushedStyle
+                    {
+                        Foreground = ResolveForegroundBrush(),
 
-        return baseStyle;
+                        // Sentinels, not authored fills, and both position-independent — which is what lets
+                        // ResolveLineBaseValue sample them at a fixed point. Transparent lets whatever the field's
+                        // chrome painted show through under the glyph; Default is NoColor's "say nothing".
+                        Background = noColor ? Brushes.Default : Brushes.Transparent,
+
+                        // UNCONDITIONALLY, unlike the shape below. A colour and a presence are two different
+                        // opinions: "whatever underline is drawn, draw it in this" is what a theme wants (error
+                        // underlines are red) without asserting that everything is underlined, and gating the
+                        // colour on the flag would make it unsayable. The asymmetry is the stack's, not this
+                        // method's — PartialStyle.WithUnderlineColor states it, and
+                        // PartialStyleTests.WithUnderlineColor_DoesNotForceAnUnderline pins it. Read at BASE
+                        // priority, the same access BrushedStyle.FromElement uses, so the two agree.
+                        UnderlineColor = this.GetBaseValue(TextElement.UnderlineBrushProperty),
+                    };
+
+        // The attribute WORD is folded per AXIS rather than unioned in wholesale, for the reason
+        // BrushedStyle.Imposing gives at length: Bold and Faint share the SGR 22 reset, so
+        // `Bold | Faint` is not two attributes but a state the encoder cannot spell. The word's
+        // underline shape rides the fold the same way — stated when the word delivers the flag, so
+        // the two never disagree.
+        return style.Imposing(flags, attr.UnderlineShape);
     }
+
+    /// <summary>
+    /// The base's VALUE form, for the primitives that STILL take a whole <see cref="CellStyle"/> —
+    /// the glyph-face lane and the sized-run lane. The foreground is deliberately dropped: it reaches
+    /// those primitives as the BRUSH argument, which they sample per cell — resolving it here would
+    /// pin one colour for the whole run, and a gradient base would paint flat.
+    /// </summary>
+    /// <remarks>
+    /// The sample point is <c>(0, 0)</c> against an empty box because every channel left after the
+    /// foreground is removed is position-independent by construction (see
+    /// <see cref="ResolveLineBaseStyle"/>). A base that grew a position-dependent BACKGROUND would
+    /// need the real bounds threaded in here — and the fact that these primitives take one
+    /// background <em>colour</em>, not a brush, is what would surface it.
+    /// <para>
+    /// The CELL lane no longer calls this: <c>DrawText</c> takes the style whole, so the base
+    /// travels to the primitive un-resolved and the primitive samples it. That is the unpack this
+    /// method used to exist for, and it is gone from the lane that paints most of the text.
+    /// </para>
+    /// </remarks>
+    private static CellStyle ResolveLineBaseValue(in BrushedStyle lineBase)
+        => (lineBase with { Foreground = null }).Resolve(0, 0, default).ApplyTo(CellStyle.Default);
 
     // Draws one run [from, to) of a single visual line at row localRow. Columns are line-local — glyphs hold the
     // line's per-cluster columns and lineStart is the line's model offset (0 for single-line).
     private void DrawLineRun(RenderContext context, in GraphemeLayout glyphs, int lineStart, string text, int from, int to,
-                             int localRow, IBrush? foreground, bool selected, bool noColor, IBrush? selectionBrush, bool inverse)
+                             int localRow, in BrushedStyle lineBase, bool selected, bool noColor,
+                             IBrush? selectionBrush, bool inverse)
     {
         if (to <= from)
             return;
 
         var localColumn = glyphs.ColumnOf(from - lineStart) - _scrollColumn;
-        var baseStyle = ResolveLineBaseStyle(noColor);
-    
+
         if (EditingSource is { PaintsAsCells: false } source)
         {
+            var baseStyle = ResolveLineBaseValue(lineBase);
+
             // A non-cell editor run paints per selection segment — the "fragment splits at
             // selection boundaries" model: [pre][selected][post] as separate pieces, the
             // selected piece's backdrop carrying the highlight.
             var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
-            var rect = new Rect(localColumn, localRow, runWidth, source.Metrics.LineRows);
-            var backdrop = baseStyle;
+            var rect = new Rect(localColumn, localRow, Math.Max(0, runWidth), source.Metrics.LineRows);
+
+            // ADD, never replace — backdrop starts as baseStyle (the folded attributes), not Default.
+            // The selection delta then applies to the style the run WOULD have painted in, which is
+            // what makes the toggle contrast: an inverse run's selection un-inverts, a plain run's
+            // inverts. The old spelling toggled off `baseStyle` instead, so an inverse run's selection
+            // came out identical to its surroundings.
+            var backdrop = inverse ? baseStyle.AddAttributes(TextAttributes.Inverse) : baseStyle;
 
             if (selected && (!noColor || Owner?.IsFocused is true))
             {
-                backdrop = noColor || selectionBrush is null
-                               ? backdrop.WithAttributes(noColor
-                                                             ? baseStyle.Attributes ^ TextAttributes.Inverse
-                                                             : baseStyle.Attributes)
-                               : backdrop.WithBackground(
-                                   selectionBrush.ColorAt(localColumn + runWidth / 2, localRow, rect));
-            }
-            else if (inverse)
-            {
-                backdrop = backdrop.WithAttributes(TextAttributes.Inverse);
+                backdrop = ResolveSelectionStyle(noColor, selectionBrush, localColumn + runWidth / 2, localRow, rect)
+                    .ApplyTo(backdrop);
             }
 
             var runText = text[from..to];
@@ -591,49 +772,65 @@ public sealed class TextPresenter : UIElement
             if (backdrop != baseStyle)
             {
                 if (backdrop.Background is { IsDefault: false } bg)
-                    context.FillOpaque(rect, bg, backdrop.Attributes);
+                    context.FillOpaque(rect, new BrushedStyle { Background = new SolidColorBrush(bg) }.Imposing(backdrop.Attributes), overwrite: true);
                 else
-                    context.FillOpaque(rect, Color.Default, backdrop.Attributes);
+                    context.FillOpaque(rect, new BrushedStyle { Background = new SolidColorBrush(Color.Default) }.Imposing(backdrop.Attributes), overwrite: true);
             }
 
-            var pieceRun = new FormattedTextRun(runText, backdrop, null) { Source = source };
+            // The piece's carrier states the backdrop's STATED channels (BrushedStyle.FromStated): a
+            // selection background is stated, so the highlight keeps boxing the face's glyphs, while the
+            // backdrop's Default foreground (stripped above) stays absent — which is what lets the
+            // element's brush below colour the face.
+            var pieceRun = new FormattedTextRun(runText, BrushedStyle.FromStated(backdrop), null) { Source = source };
             var pieceLine = new FormattedLine([pieceRun], runWidth, false, rect.Rows);
             var piecePara = new FormattedParagraph([pieceLine], new Size(runWidth, rect.Rows), TextAlignment.Left, false);
             var piece = new FormattedText([piecePara], piecePara.Size, runWidth);
 
-            if (foreground is {} pieceBrush)
-                context.DrawFormattedText(piece, rect, pieceBrush);
-            else
-                context.DrawFormattedText(piece, rect);
+            // The document carries no colour of its own, so the base's brush IS the run's foreground;
+            // with no brush (an absent Foreground channel) the document's own (unset) colours stand.
+            context.DrawFormattedText(piece, rect, new BrushedStyle { Foreground = lineBase.Foreground });
 
             return;
         }
 
         var span = text.AsSpan(from, to - from);
 
-        var style = inverse && !selected ? baseStyle.WithAttributes(TextAttributes.Inverse) : baseStyle;
-        var selectionStyle = baseStyle.WithAttributes(style.Attributes ^ TextAttributes.Inverse);
+        // THE UNPACK IS GONE. The line base travels to the primitive as the TEMPLATE it already is,
+        // and the primitive samples every brush channel per cell — where this used to resolve the
+        // base to a value, pull the foreground brush back out, and hand the two along in parallel
+        // arguments.
+        //
+        // Inverse is the presenter's axis, not the base's, so it rides UNDER the delta rather than
+        // being OR-ed onto a pre-folded value. `Applying` forces the bit ON whatever the backdrop
+        // held, and composing the run OVER it (`runBase.Then(run)`) lands exactly where the old
+        // fall-through base did — the algebra gives `(Inverse & ~run.Clear) ^ run.Xor` on both
+        // routes — including on NoColor, where the base states Inverse itself.
+        var runBase = inverse ? BrushedStyle.Identity.Applying(TextAttributes.Inverse) : BrushedStyle.Identity;
+
+        // DrawText's background contract, now STATED rather than inherited. The primitive's brush
+        // overload substitutes Transparent for an omitted background; its BrushedStyle overload reads a
+        // null background as "no opinion" and lets the base's through. The cell lane wants the
+        // former — transparent is what lets the field's chrome show under the glyph — so it says so,
+        // and does not depend on which overload it happens to reach.
+        var run = lineBase.WithBackground(Brushes.Transparent);
 
         if (selected && (!noColor || Owner?.IsFocused is true))
         {
-            if (noColor)
-                DrawText(context, localColumn, localRow, span, foreground, null, selectionStyle);
-            else
-                DrawText(context, localColumn, localRow, span, foreground, selectionBrush, style);
-        }
-        else
-        {
-            DrawText(context, localColumn, localRow, span, foreground, null, style);
-        }
-    }
+            var runWidth = glyphs.ColumnOf(to - lineStart) - glyphs.ColumnOf(from - lineStart);
+            var rect = new Rect(localColumn, localRow, Math.Max(0, runWidth), 1);
+            var selection = ResolveSelectionStyle(noColor, selectionBrush, localColumn + runWidth / 2, localRow, rect);
 
-    private static void DrawText(RenderContext context, int column, int row, ReadOnlySpan<char> text,
-                                 IBrush? foreground, IBrush? background, in CellStyle style)
-    {
-        if (foreground is {} brush)
-            context.DrawText(column, row, text, brush, background, style);
-        else
-            context.DrawText(column, row, text, Color.Default, null, style);
+            // Composed folds the selection's ATTRIBUTE half (the Inverse clear-or-toggle) onto the
+            // base's. Its resolved Background is read as a DECISION, not as a value — the brush
+            // itself goes into the style, so a gradient selection colours per cell exactly as the
+            // base's foreground does, which a resolved colour could never do.
+            run = run.Composed(selection);
+
+            if (selection.Background is not null)
+                run = run.WithBackground(selectionBrush);
+        }
+
+        context.DrawText(localColumn, localRow, span, runBase.Then(run));
     }
 
     private IBrush? ResolveBrush(string key)

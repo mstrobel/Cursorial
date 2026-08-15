@@ -26,6 +26,46 @@ public class SizedTextFragmentMultiLineTests
         return Encoding.ASCII.GetString(w.WrittenSpan);
     }
 
+    private static string EmitToString(SizedTextFragment fragment, CellStyle anchorStyle)
+    {
+        var w = new ArrayBufferWriter<byte>();
+        var f = new FrameRenderer();
+        f.EmitFragmentBytes(0, 0, new CellBuffer.FragmentEntry(fragment, anchorStyle), w, CapsWithScale(), default);
+        return Encoding.ASCII.GetString(w.WrittenSpan);
+    }
+
+    [Fact]
+    public void Mode_BlendsTheEmittedForegroundOverItsBackground()
+    {
+        var style = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0))   // red
+                                     .WithBackground(Color.FromRgb(0, 0, 255));  // blue
+        var withMode = new SizedTextFragment(new TextSizing(Scale: 2), "X", style, BlendingModes.Multiply);
+        var noMode   = new SizedTextFragment(new TextSizing(Scale: 2), "X", style);
+
+        Assert.Same(BlendingModes.Multiply, withMode.StyleBlendMode);
+        Assert.Null(noMode.StyleBlendMode);
+
+        // The renderer computes StyleOverride.BlendOver(AnchorStyle, StyleBlendMode). Production registers a
+        // sized-text fragment with AnchorStyle == its own resolved style, so this blends fg over its own bg.
+        var blended = withMode.StyleOverride!.Value.BlendOver(style, withMode.StyleBlendMode);
+        Assert.Equal(Color.FromRgb(0, 0, 0), blended.Foreground);   // Multiply(red, blue) = black
+
+        // And it reaches the wire: the mode-bearing emission differs from the mode-less one (whose fg is red).
+        Assert.NotEqual(EmitToString(noMode, style), EmitToString(withMode, style));
+    }
+
+    [Fact]
+    public void Mode_IsPartOfTheCacheKey()
+    {
+        var style = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var multiply = new SizedTextFragment(new TextSizing(Scale: 2), "X", style, BlendingModes.Multiply);
+        var screen   = new SizedTextFragment(new TextSizing(Scale: 2), "X", style, BlendingModes.Screen);
+        var none     = new SizedTextFragment(new TextSizing(Scale: 2), "X", style);
+
+        Assert.NotEqual(multiply.Key, screen.Key);
+        Assert.NotEqual(multiply.Key, none.Key);
+    }
+
     [Fact]
     public void Lines_SinglePayload_ProducesOneLine()
     {

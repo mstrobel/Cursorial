@@ -3,6 +3,7 @@ using System.Globalization;
 
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -204,23 +205,79 @@ public sealed class FigletFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
-        var compatible = EnsureCompatibleStyle(style);
-        return PaintCore(buffer, column, row, text, (_, _) => compatible);
+        // This face is the reason the two modes exist: its glyphs are mostly holes, so a stamp shows
+        // whatever it was painted over and a box does not. Both go through the same ink pass — the box
+        // has already been filled by the time GlyphPaint hands the delta back, minus its background.
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
+
+        // Compatibility applies to the FOLDED style, per cell: the delta is one way for an attribute this
+        // face cannot render to arrive and the cell underneath is another, and the face's constraint is on
+        // what it paints, not on what it was told. That is why this face folds by hand instead of handing
+        // the delta to Set — there is an adjustment BETWEEN the fold and the write, and the adjustment has
+        // to see the cell's contribution. It folds through the write's own primitive, though, so the rule
+        // about what an absent background means stays in one place.
+        return PaintScoped(buffer, column, row, text, ink.Mode,
+                           (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, ink, applyBlending: false)));
     }
 
     /// <summary>
-    /// Paint sampling <paramref name="styleProvider"/> per painted cell — so a gradient (or any position-dependent
-    /// source) flows across the rendered glyphs rather than the whole headline taking one flat color.
+    /// Paint <paramref name="text"/> styled per painted cell by <paramref name="baseStyle"/> resolved
+    /// against <paramref name="bounds"/> — so a gradient (or any position-dependent source) flows across the
+    /// rendered glyphs rather than the whole headline taking one flat color, while the channels the brushed style
+    /// says nothing about come from the cells underneath.
     /// </summary>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider styleProvider)
+    /// <remarks>
+    /// This face is the reason the per-cell overload exists at all: one CHARACTER covers many cells here, so
+    /// resolving once per character (let alone once per run) would band the gradient at glyph boundaries.
+    /// A uniform BrushedStyle cannot vary, though, so it resolves once for the whole run — a saving the
+    /// previous callback form could not even ask about. The fold still runs per cell either way: what an
+    /// absent channel keeps is each cell's own.
+    /// </remarks>
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                      in BrushedStyle baseStyle, in Rect bounds)
     {
-        ArgumentNullException.ThrowIfNull(styleProvider);
-        return PaintCore(buffer, column, row, text, (c, r) => EnsureCompatibleStyle(styleProvider(c, r)));
+        // EnsureCompatibleStyle applies to the FOLDED style, per cell — as on the flat path above, and for
+        // the same reason: the delta is one way for an attribute this face cannot render to arrive and the
+        // cell underneath is another. Both arms fold through the write's own primitive, so the rule about
+        // what an absent background means stays in one place.
+        if (baseStyle.IsUniform)
+        {
+            var uniform = baseStyle.Resolve(column, row, bounds);
+            return PaintScoped(buffer, column, row, text, uniform.Mode,
+                               (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, uniform, applyBlending: false)));
+        }
+
+        // `in` parameters cannot be captured; the resolve needs both at every sample.
+        var baseStyleCopy = baseStyle;
+        var box = bounds;
+
+        return PaintScoped(buffer, column, row, text, baseStyle.Mode,
+                           (c, r, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, baseStyleCopy.Resolve(c, r, box), applyBlending: false)));
     }
 
-    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, GlyphStyleProvider provider)
+    // Scope a delta-carried blending Mode on the buffer's stack for the whole run, so each cell's
+    // Set(CellStyle) write below blends the folded ink foreground-over-BACKGROUND against that cell —
+    // the same contract Set(PartialStyle) gives the plain arms. The fold runs FLAT (applyBlending:
+    // false) so the mode is applied exactly once, by the write's BlendOver, not doubled as a tint. A
+    // null mode takes the plain path and rides whatever mode is already on the stack.
+    private Size PaintScoped(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                             IBlendingMode? mode, Func<int, int, CellStyle, CellStyle> provider)
+    {
+        if (mode is null)
+            return PaintCore(buffer, column, row, text, provider);
+
+        buffer.PushBlendingMode(mode);
+        try { return PaintCore(buffer, column, row, text, provider); }
+        finally { buffer.PopBlendingMode(); }
+    }
+
+    // The resolved-style form both Paint overloads funnel into: by this point the BrushedStyle has been resolved
+    // and folded, so what flows through here is a plain per-cell CellStyle lookup. The third argument is the
+    // style the cell being painted already holds — the base both overloads' deltas fold onto.
+    private Size PaintCore(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                           Func<int, int, CellStyle, CellStyle> provider)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -250,7 +307,7 @@ public sealed class FigletFont : IGlyphFont
         return new Size(painted, height);
     }
 
-    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, GlyphStyleProvider style)
+    private void PaintGlyph(in CellBufferView buffer, int column, int row, FigletGlyph glyph, Func<int, int, CellStyle, CellStyle> style)
     {
         var lines = glyph.Lines;
 
@@ -302,6 +359,20 @@ public sealed class FigletFont : IGlyphFont
                 if (ch == HardBlank) cluster = " ";
                 else cluster = line.Length == grapheme.Length ? line : grapheme.ToString();
 
+                // The cell as it stands, read ONCE and used twice: as the smush look-back below, and
+                // as the base the flat overload's delta folds onto (an absent channel means "keep
+                // whatever is here").
+                //
+                // Read, not the indexer: the indexer VALIDATES and throws, and its contract is
+                // "the caller has proven this is in range". The guards above prove the cell is
+                // inside the window, but they used to be written against [0, Columns) — which is
+                // the wrong interval on a re-based view, so a negative push translate turned this
+                // look-back into an ArgumentOutOfRangeException thrown out of the render pass.
+                // Read is the non-throwing form and yields a blank outside the window, which is
+                // exactly the "nothing to smush with" answer — and, for the flat overload, the
+                // "nothing underneath to inherit" one.
+                var existing = buffer.Read(targetCol, targetRow);
+
                 // Smushing: if a previous glyph in this same Paint call already wrote a non-space
                 // character into this cell (which happens when ComputeOverlap added the +1 smush
                 // bonus), apply the FIGlet smush rule to merge the two characters rather than
@@ -312,14 +383,6 @@ public sealed class FigletFont : IGlyphFont
                 // a correct overlap computation).
                 if (cluster != " " && cluster.Length == 1)
                 {
-                    // Read, not the indexer: the indexer VALIDATES and throws, and its contract is
-                    // "the caller has proven this is in range". The guards above prove the cell is
-                    // inside the window, but they used to be written against [0, Columns) — which is
-                    // the wrong interval on a re-based view, so a negative push translate turned this
-                    // look-back into an ArgumentOutOfRangeException thrown out of the render pass.
-                    // Read is the non-throwing form and yields a blank outside the window, which is
-                    // exactly the "nothing to smush with" answer.
-                    var existing = buffer.Read(targetCol, targetRow);
                     if (existing.Grapheme is { Length: > 0 and 1 } prev &&
                         prev[0] is var prevCh &&
                         prevCh != ' ' &&
@@ -329,7 +392,7 @@ public sealed class FigletFont : IGlyphFont
                     }
                 }
 
-                buffer.Set(targetCol, targetRow, cluster, style(targetCol, targetRow));
+                buffer.Set(targetCol, targetRow, cluster, style(targetCol, targetRow, existing.Style));
 
                 targetCol += width;
             }

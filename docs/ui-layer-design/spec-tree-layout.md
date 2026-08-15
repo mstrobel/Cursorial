@@ -251,7 +251,7 @@ public sealed class RenderContext
     public void Set(int column, int row, string? grapheme, in CellStyle style);
     public void FillRectangle(in Rect region, IBrush brush); public void FillRectangle(in Rect region, Color color);
     public void FillOpaque(in Rect region, IBrush brush);    public void FillOpaque(in Rect region, Color color);
-    public int  DrawText(int column, int row, ReadOnlySpan<char> text, IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default);
+    public int  DrawText(int column, int row, ReadOnlySpan<char> text, IBrush foreground, IBrush? background = null, in CellStyle legacyBaseStyle = default);
     public void DrawLine(int x0, int y0, int x1, int y1, in Pen pen, bool overwrite = false);
     public void DrawBox(in Rect rect, in Pen pen, bool overwrite = false);
     public void DrawRectangle(in Rect rect, in Pen pen, IBrush? fill = null, bool overwrite = false);

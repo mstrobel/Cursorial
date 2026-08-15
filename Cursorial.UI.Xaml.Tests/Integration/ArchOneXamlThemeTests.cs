@@ -1,9 +1,10 @@
 // xUnit1031 (no blocking task ops) is deliberately disabled — UITestHost is single-thread-affine.
 #pragma warning disable xUnit1031
 
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Hosting.Headless;
@@ -282,10 +283,10 @@ public sealed class ArchOneXamlThemeTests
 
     // ── #81: the post-P9 control-theme XAML twins (batch 1: inline-renderable) ──
 
-    private sealed class StubChart : Cursorial.Drawing.Charts.IChart
+    private sealed class StubChart : Drawing.Charts.IChart
     {
-        public void Render(Cursorial.Drawing.DrawingContext context, in Rect area) =>
-            context.Set(area.Column, area.Row, "X", default);
+        public void Render(Drawing.DrawingContext context, in Rect area) =>
+            context.Set(area.Column, area.Row, "X", default(CellStyle));
     }
 
     [Theory] // the post-P9 inline-renderable twins render identically to the code-first BuiltIn

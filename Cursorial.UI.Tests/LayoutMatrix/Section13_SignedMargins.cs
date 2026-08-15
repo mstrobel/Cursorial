@@ -1,3 +1,4 @@
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -83,7 +84,7 @@ public class Section13_SignedMargins
             {
                 for (var row = 0; row < context.Size.Rows; row++)
                 for (var column = 0; column < context.Size.Columns; column++)
-                    context.Set(column, row, row == 0 ? "x" : "y", default);
+                    context.Set(column, row, row == 0 ? "x" : "y", default(CellStyle));
             }
         };
         var panel = new StackPanel();

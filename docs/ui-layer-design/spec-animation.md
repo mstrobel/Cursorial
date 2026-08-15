@@ -154,7 +154,21 @@ public readonly record struct RepeatBehavior
 public abstract class AnimationTrack
 {
     public string?     TargetName { get; set; }            // null ⇒ the Begin scope element; resolved via S1 namescope
-    public UIProperty? TargetProperty { get; set; }        // required; XAML converter resolves "Control.Background"
+    public UIProperty? TargetProperty { get; set; }        // a StyledProperty<T> directly on the resolved target
+    public PropertyPath? TargetPath { get; set; }          // #26: a path from the target INTO a sub-object's value —
+                                                           //   the terminal segment is the animated StyledProperty<T>.
+                                                           //   REUSES the binding PropertyPath grammar (§6.3), not a
+                                                           //   second dialect: "Foreground.Phase", the type-qualified
+                                                           //   "(TextBlock.Foreground).(PhaseShiftedBrush.Phase)", or the
+                                                           //   compile-time PropertyPath(ForegroundProperty, PhaseProperty).
+                                                           //   Makes an INLINE sub-object (a PhaseShiftedBrush written
+                                                           //   straight into Foreground) animatable without a resource.
+                                                           //   Mutually exclusive with TargetProperty (exactly one; Seal).
+                                                           //   Resolved ONCE at Begin, holding the terminal sub-object
+                                                           //   (a later swap of an intermediate value does not re-target
+                                                           //   — WPF-consistent). Sub-object retirement/leak coverage is
+                                                           //   #25's: the resolved sub-object begins through the same
+                                                           //   BeginStoryboardChild and retires by scope on detach.
     public TimeSpan    BeginTime { get; set; }             // stagger within the storyboard; property untouched until then
     public RepeatBehavior Repeat { get; set; } = RepeatBehavior.Once;
     public bool        AutoReverse { get; set; }           // maps onto the mechanism 2×2: Repeat/PingPong/Loop/AutoReverse

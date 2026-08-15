@@ -2,6 +2,7 @@ using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -45,7 +46,7 @@ public class ShadowTests
         var fill = Color.FromRgb(150, 150, 150);
         var b = DrawHarness.Render(8, 6, ctx =>
         {
-            ctx.FillRectangle(new Rect(0, 0, 8, 6), fill);
+            ctx.FillRectangle(new Rect(0, 0, 8, 6), new BrushedStyle { Background = new SolidColorBrush(fill) });
             ctx.DrawInnerShadow(new Rect(0, 0, 8, 6), ShadowGeometry.Inner(radius: 1, strength: 0.5), Black);
         }, baseBackground: Blue);
 
@@ -59,7 +60,7 @@ public class ShadowTests
         var fill = Color.FromRgb(150, 150, 150);
         var b = DrawHarness.Render(8, 4, ctx =>
         {
-            ctx.FillRectangle(new Rect(0, 0, 8, 4), fill);
+            ctx.FillRectangle(new Rect(0, 0, 8, 4), new BrushedStyle { Background = new SolidColorBrush(fill) });
             ctx.Set(0, 0, "A", CellStyle.Default.WithForeground(White).WithBackground(fill));
             ctx.DrawInnerShadow(new Rect(0, 0, 8, 4), ShadowGeometry.Inner(radius: 1, strength: 0.5), Black);
         });
@@ -72,7 +73,7 @@ public class ShadowTests
         var fill = Color.FromRgb(150, 150, 150);
         var b = DrawHarness.Render(8, 4, ctx =>
         {
-            ctx.FillRectangle(new Rect(0, 0, 8, 4), fill);
+            ctx.FillRectangle(new Rect(0, 0, 8, 4), new BrushedStyle { Background = new SolidColorBrush(fill) });
             ctx.DrawInnerShadow(new Rect(0, 0, 8, 4), ShadowGeometry.Inner(radius: 1, strength: 0.5, edges: ShadowEdges.Left), Black);
         });
         Assert.True(b[0, 1].Style.Background.Red < fill.Red, "left edge darkened");
@@ -119,7 +120,7 @@ public class ShadowTests
         DrawHarness.Render(8, 6, ctx =>
         {
             ctx.DrawDropShadow(new Rect(2, 2, 3, 2));
-            ctx.FillRectangle(new Rect(2, 2, 3, 2), Color.FromRgb(150, 150, 150));
+            ctx.FillRectangle(new Rect(2, 2, 3, 2), new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(150, 150, 150)) });
             ctx.DrawInnerShadow(new Rect(2, 2, 3, 2));
         });
     }

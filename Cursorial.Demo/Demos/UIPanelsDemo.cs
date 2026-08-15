@@ -2,10 +2,10 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -435,7 +435,12 @@ internal sealed class UIPanelsDemo : IDemo
             => new(GraphemeWidth.StringWidth(Text), 1);
 
         protected override void Render(RenderContext context)
-            => context.DrawText(0, 0, Text, _foreground, _background);
+            => context.DrawText(0, 0, Text,
+                                new BrushedStyle
+                                {
+                                    Foreground = new SolidColorBrush(_foreground),
+                                    Background = _background is {} bg ? new SolidColorBrush(bg) : Brushes.Transparent,
+                                });
     }
 
     /// <summary>A solid color block with an optional centered glyph label.</summary>
@@ -443,9 +448,14 @@ internal sealed class UIPanelsDemo : IDemo
     {
         protected override void Render(RenderContext context)
         {
-            context.FillOpaque(context.Bounds, fill);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
             if (label is not null && context.Size is { Columns: > 0, Rows: > 0 })
-                context.DrawText(context.Size.Columns / 2, context.Size.Rows / 2, label, Color.FromRgb(235, 235, 235), fill);
+                context.DrawText(context.Size.Columns / 2, context.Size.Rows / 2, label,
+                                 new BrushedStyle
+                                 {
+                                     Foreground = new SolidColorBrush(Color.FromRgb(235, 235, 235)),
+                                     Background = new SolidColorBrush(fill),
+                                 });
         }
     }
 
@@ -508,8 +518,13 @@ internal sealed class UIPanelsDemo : IDemo
         protected override void Render(RenderContext context)
         {
             var background = CardBackground;
-            context.FillOpaque(context.Bounds, background);
-            context.DrawText(0, 0, $" {Marker} {Title}", CardForeground, background);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(background) });
+            context.DrawText(0, 0, $" {Marker} {Title}",
+                             new BrushedStyle
+                             {
+                                 Foreground = new SolidColorBrush(CardForeground),
+                                 Background = new SolidColorBrush(background),
+                             });
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)

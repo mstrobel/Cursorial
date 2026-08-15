@@ -3,20 +3,23 @@ using System.Collections.Immutable;
 using Cursorial.Output;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
 
 /// <summary>
 /// Fluent builder for <see cref="RichText"/> documents. Tracks an open <see cref="TextParagraph"/>
-/// and a stack of styles + glyph maps + hyperlinks that combine for each appended
-/// <see cref="TextRun"/>; closes the open paragraph automatically when a block-level transition
-/// (<see cref="Text.HorizontalRule"/>, <see cref="Figlet"/>, etc.) is invoked.
+/// and a stack of styles + glyph maps + hyperlinks that combine for each appended <see cref="TextRun"/>; closes
+/// the open paragraph automatically when a block-level transition (<see cref="Text.HorizontalRule"/>,
+/// <see cref="Figlet(string, IGlyphFont, in BrushedStyle, TextAlignment?, Margins)"/>, etc.) is invoked.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Style scoping.</b> <see cref="Push(in CellStyle)"/> pushes a style onto an inheritance stack;
-/// each child layer merges with its parent (child wins where set). <see cref="PushMap"/> and
+/// <b>Style scoping.</b> <see cref="Push(in BrushedStyle)"/> pushes a style DELTA onto an
+/// inheritance stack; each child layer composes over its parent (child wins per channel,
+/// <see cref="BrushedStyle.Then"/>), and channels no layer states fall through to the document
+/// default at paint. <see cref="PushMap"/> and
 /// <see cref="PushHyperlink"/> apply per-run attributes similarly. The returned
 /// <see cref="StyleScope"/> pops the corresponding layer on disposal — use
 /// <c>using var _ = builder.Push(...)</c> for lexical scoping that mirrors markup nesting.
@@ -31,7 +34,7 @@ namespace Cursorial.Rendering.Text;
 public sealed class RichTextBuilder
 {
     private readonly ImmutableArray<Block>.Builder _blocks = ImmutableArray.CreateBuilder<Block>();
-    private readonly CellStyle _defaultStyle;
+    private readonly BrushedStyle _defaultStyle;
     private readonly GlyphSource? _defaultGlyphSource;
     private readonly TextTrimming _defaultTrimming;
     private readonly WrapMode _defaultWrap;
@@ -48,15 +51,31 @@ public sealed class RichTextBuilder
     private TextTrimming _openTrim;
     private int? _openMaxLines;
     private Margins _openMargin;
+    private BrushedStyle _openStyle;
 
     // Style / map / hyperlink stacks. The TOP of each stack is the active value applied to
-    // appended runs that don't supply their own.
-    private readonly Stack<CellStyle> _styles = new();
+    // appended runs that don't supply their own. The style stack holds DELTAS, pre-composed on
+    // push — the document default is NOT its floor; it rides Build()'s carrier and folds under
+    // every run at paint.
+    private readonly Stack<BrushedStyle> _styles = new();
     private readonly Stack<IGlyphMap?> _maps = new();
     private readonly Stack<string?> _hyperlinks = new();
-    private readonly Stack<object?> _tags = new();
 
-    public RichTextBuilder(CellStyle defaultStyle = default,
+    public RichTextBuilder(PartialStyle defaultStyle = default,
+                           TextTrimming? defaultTrimming = null,
+                           WrapMode? defaultWrap = null,
+                           GlyphSource? defaultGlyphSource = null)
+        : this(BrushedStyle.From(defaultStyle), defaultTrimming, defaultWrap, defaultGlyphSource)
+    {
+    }
+
+    /// <summary>
+    /// The carrier form of the document default, for a caller that already holds one — or one that
+    /// wants to declare a brushed channel (a gradient document foreground) no <see cref="PartialStyle"/>
+    /// can spell. The markup parser hands <see cref="TextMarkupOptions.DefaultStyle"/> through here
+    /// instead of flattening it.
+    /// </summary>
+    public RichTextBuilder(in BrushedStyle defaultStyle,
                            TextTrimming? defaultTrimming = null,
                            WrapMode? defaultWrap = null,
                            GlyphSource? defaultGlyphSource = null)
@@ -92,15 +111,22 @@ public sealed class RichTextBuilder
     internal bool HasContent => _blocks.Count > 0 || _openInlines?.Count > 0;
     
     /// <summary>
-    /// Push <paramref name="style"/> onto the style stack. The pushed layer is merged with the
-    /// previous top (child wins per <see cref="StyleExtensions.Compose"/>); subsequent
-    /// <see cref="Run(string)"/> calls inherit the resulting style. Dispose the returned
-    /// <see cref="StyleScope"/> to pop.
+    /// Push <paramref name="style"/>'s stated channels onto the style stack — sugar for
+    /// <see cref="Push(in BrushedStyle)"/> through <see cref="BrushedStyle.From(in PartialStyle)"/>, so an
+    /// identity delta pushes the identity.
     /// </summary>
-    public StyleScope Push(in CellStyle style)
+    public StyleScope Push(in PartialStyle style) => Push(BrushedStyle.From(style));
+
+    /// <summary>
+    /// Push a style delta onto the style stack. The pushed layer composes over the previous top
+    /// (child wins per channel, <see cref="BrushedStyle.Then"/>); subsequent <see cref="Run(string)"/>
+    /// calls carry the composed delta, and channels no layer states fall through to the document
+    /// default at paint. Dispose the returned <see cref="StyleScope"/> to pop.
+    /// </summary>
+    public StyleScope Push(in BrushedStyle style)
     {
-        var current = _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
-        _styles.Push(current.Compose(in style));
+        var current = _styles.Count > 0 ? _styles.Peek() : BrushedStyle.Identity;
+        _styles.Push(current.Then(in style));
         return new StyleScope(this, StyleScope.Layer.Style);
     }
 
@@ -126,39 +152,33 @@ public sealed class RichTextBuilder
         return new StyleScope(this, StyleScope.Layer.Hyperlink);
     }
 
-    /// <summary>
-    /// Push an opaque <paramref name="tag"/> onto the tag stack. Subsequent <see cref="Run(string)"/> calls
-    /// inherit it (preserved through layout onto every derived <see cref="FormattedTextRun"/>); a higher layer
-    /// (Drawing) reads it to brush-color the runs, e.g. for a <c>[brush=…]</c> markup tag. Dispose to pop.
-    /// </summary>
-    public StyleScope PushTag(object? tag)
-    {
-        _tags.Push(tag);
-        return new StyleScope(this, StyleScope.Layer.Tag);
-    }
-
     // ---- Inline appends ----
 
-    /// <summary>Append a text run inheriting the current style / map / hyperlink / tag stacks.</summary>
+    /// <summary>Append a text run inheriting the current style / map / hyperlink stacks.</summary>
     public RichTextBuilder Run(string text)
     {
-        return Run(text, source: null, CurrentStyle, CurrentTag);
-    }
-
-    /// <summary>Append a text run with an explicit style, ignoring the style stack (but inheriting the tag).</summary>
-    public RichTextBuilder Run(string text, in CellStyle style)
-    {
-        return Run(text, source: null, style, CurrentTag);
+        return Run(text, source: null, CurrentStyle);
     }
 
     /// <summary>
-    /// Append a text run with an explicit style and an opaque <paramref name="tag"/> — preserved through
-    /// layout onto every derived <see cref="FormattedTextRun"/>. A higher layer (Drawing) uses it to attach a
-    /// brush to the run; Rendering never interprets it.
+    /// Append a text run with an explicit style, ignoring the style stack.
+    /// The delta's stated channels are the run's own declarations
+    /// (<see cref="BrushedStyle.From(in PartialStyle)"/>); channels it leaves absent fall through to
+    /// the document default at paint.
     /// </summary>
-    public RichTextBuilder Run(string text, in CellStyle style, object? tag)
+    public RichTextBuilder Run(string text, in PartialStyle style)
     {
-        return Run(text, source: null, style, tag);
+        return Run(text, source: null, BrushedStyle.From(style));
+    }
+
+    /// <summary>
+    /// Append a text run carrying <paramref name="style"/> as given — the brushed form of
+    /// <see cref="Run(string, in PartialStyle)"/>, for a run that declares a foreground brush (or any
+    /// other brushed channel) without markup. Ignores the style stack.
+    /// </summary>
+    public RichTextBuilder Run(string text, in BrushedStyle style)
+    {
+        return Run(text, source: null, style);
     }
 
     /// <summary>
@@ -167,20 +187,59 @@ public sealed class RichTextBuilder
     /// participant in the paragraph flow — it wraps, trims, and aligns like plain text, at the
     /// source's per-cluster cell advances.
     /// </summary>
-    public RichTextBuilder Run(string text, GlyphSource? source, in CellStyle style = default, object? tag = null)
+    public RichTextBuilder Run(string text, GlyphSource? source, in PartialStyle style = default)
+    {
+        return Run(text, source, BrushedStyle.From(style));
+    }
+
+    /// <summary>
+    /// The brushed form of <see cref="Run(string, GlyphSource?, in PartialStyle)"/> — a sourced run that
+    /// declares a foreground brush (or any other brushed channel) directly on its own carrier.
+    /// </summary>
+    public RichTextBuilder Run(string text, GlyphSource? source, in BrushedStyle style)
     {
         ArgumentNullException.ThrowIfNull(text);
         if (text.Length == 0) return this;
-        AppendInline(new TextRun(text, DefaultStyle(style), CurrentMap, CurrentHyperlink, tag ?? CurrentTag)
+
+        // The run's carrier states exactly what the caller declared (BrushedStyle.From at the
+        // flat public boundary); undeclared channels stay absent and fall through to the enclosing
+        // rungs at paint, and the background's PRESENCE decides stamp vs box downstream. Scope is
+        // inferred from the declaration site: a brush stated here samples the run's own strip.
+        AppendInline(new TextRun(text, style, CurrentMap, CurrentHyperlink)
                      {
                          Source = source ?? _defaultGlyphSource
                      });
         return this;
     }
 
+    /// <summary>
+    /// Append an INDICATOR run — an access-key mnemonic (or similar cue) wearing
+    /// <paramref name="style"/> as its carrier over exactly its own clusters. It formats and
+    /// paints like <see cref="Run(string, in BrushedStyle)"/>, but a trim indicator the
+    /// formatter synthesizes immediately after it does not inherit its style (maintainer ruling
+    /// 2026-08-11 #3): the ellipsis joins the nearest preceding non-indicator run instead,
+    /// falling back to the document default.
+    /// </summary>
+    public RichTextBuilder IndicatorRun(string text, in BrushedStyle style)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length == 0) return this;
+
+        AppendInline(new TextRun(text, style, CurrentMap, CurrentHyperlink)
+                     {
+                         Source = _defaultGlyphSource,
+                         Indicator = true
+                     });
+        return this;
+    }
+
     /// <summary>Append a text run at the given OSC 66 <paramref name="sizing"/> — shorthand for a
     /// <see cref="GlyphSource"/> with no fallback face.</summary>
-    public RichTextBuilder Run(string text, in TextSizing sizing, in CellStyle style = default)
+    public RichTextBuilder Run(string text, in TextSizing sizing, in PartialStyle style = default)
+        => Run(text, new GlyphSource(null, sizing), style);
+
+    /// <summary>The brushed form of <see cref="Run(string, in TextSizing, in PartialStyle)"/>.</summary>
+    public RichTextBuilder Run(string text, in TextSizing sizing, in BrushedStyle style)
         => Run(text, new GlyphSource(null, sizing), style);
 
     /// <summary>Append a hard line break inside the current paragraph.</summary>
@@ -194,15 +253,16 @@ public sealed class RichTextBuilder
     /// Append a one-shot hyperlinked run. Convenience for the common case where the link
     /// target's scope matches a single run's text.
     /// </summary>
-    public RichTextBuilder Hyperlink(string text, string uri, in CellStyle style = default)
+    public RichTextBuilder Hyperlink(string text, string uri, in PartialStyle style = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentException.ThrowIfNullOrEmpty(uri);
         if (text.Length == 0) return this;
 
-        var effectiveStyle = DefaultStyle(style);
-        var resolvedStyle = effectiveStyle == default ? CurrentStyle : CurrentStyle.Compose(in effectiveStyle);
-        AppendInline(new TextRun(text, resolvedStyle, CurrentMap, uri));
+        // The explicit style's stated channels compose over the stack's delta; an all-default style is
+        // the identity, so the stack's composition carries alone and undeclared channels fall through
+        // to the document default at paint.
+        AppendInline(new TextRun(text, CurrentStyle.Then(BrushedStyle.From(style)), CurrentMap, uri));
         return this;
     }
 
@@ -229,22 +289,26 @@ public sealed class RichTextBuilder
     /// <summary>
     /// Close the currently-open paragraph (if any) and start a fresh one with the supplied
     /// per-paragraph options. Subsequent inline appends accumulate into the new paragraph.
+    /// <paramref name="style"/> is the paragraph's own declaration set (<see cref="TextParagraph.Style"/>)
+    /// — the ladder's block rung; a foreground brush declared here samples the block's 2-D rect.
     /// </summary>
     public RichTextBuilder Paragraph(
         WrapMode? wrap = null,
         TextAlignment? alignment = null,
         TextTrimming? trim = null,
         int? maxLines = null,
-        Margins? margin = null)
+        Margins? margin = null,
+        in BrushedStyle style = default)
     {
         FlushOpenParagraph();
         _openInlines = ImmutableArray.CreateBuilder<Inline>();
         _openWrap = wrap ?? _defaultWrap;
         _openAlignment = alignment;
         _openTrim = trim ?? _defaultTrimming;
-        
+
         _openMaxLines = maxLines;
         _openMargin = margin ?? TextParagraph.DefaultMargins;
+        _openStyle = style;
         return this;
     }
 
@@ -252,14 +316,14 @@ public sealed class RichTextBuilder
     public RichTextBuilder HorizontalRule(
         // ReSharper disable once MethodOverloadWithOptionalParameter
         string glyph = "─",
-        in CellStyle style = default,
+        in PartialStyle style = default,
         TextAlignment? alignment = null,
         Margins? margin = null)
     {
         ArgumentNullException.ThrowIfNull(glyph);
         FlushOpenParagraph();
 
-        _blocks.Add(new HorizontalRule(glyph, DefaultStyle(style))
+        _blocks.Add(new HorizontalRule(glyph, BrushedStyle.From(style))
                     {
                         Alignment = alignment,
                         Margin = margin ?? Text.HorizontalRule.DefaultMargins
@@ -277,10 +341,10 @@ public sealed class RichTextBuilder
     {
         ArgumentNullException.ThrowIfNull(standardRule);
         FlushOpenParagraph();
-        
-        if (DefaultStyle(standardRule.Style) is {} ds && ds != default)
-            standardRule = standardRule with { Style = ds };
 
+        // A preset rule states no style of its own; its identity carrier falls through to the document
+        // default at paint — the same answer the builder used to restate onto it here. A rule that
+        // already states something keeps it.
         _blocks.Add(standardRule);
 
         return this;
@@ -289,7 +353,21 @@ public sealed class RichTextBuilder
     /// <summary>Append a <see cref="FigletBlock"/>.</summary>
     public RichTextBuilder Figlet(
         string text, IGlyphFont face,
-        in CellStyle style = default,
+        in PartialStyle style = default,
+        TextAlignment? alignment = null,
+        Margins margin = default)
+        => Figlet(text, face, BrushedStyle.From(style), alignment, margin);
+
+    /// <summary>
+    /// Append a <see cref="FigletBlock"/> whose carrier is stated directly — the brushed sibling of
+    /// the <see cref="PartialStyle"/> form, mirroring the brushed <c>Run</c> overloads: a gradient (or
+    /// any non-uniform brush) rides the block to the FIGlet paint arm's per-cell sampling instead of
+    /// being flattened at the boundary. The style is required — passing
+    /// <see cref="BrushedStyle.Identity"/> spells "no declaration" explicitly.
+    /// </summary>
+    public RichTextBuilder Figlet(
+        string text, IGlyphFont face,
+        in BrushedStyle style,
         TextAlignment? alignment = null,
         Margins margin = default)
     {
@@ -297,7 +375,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(face);
         FlushOpenParagraph();
 
-        _blocks.Add(new FigletBlock(text, face, DefaultStyle(style)) { Alignment = alignment, Margin = margin });
+        _blocks.Add(new FigletBlock(text, face, style) { Alignment = alignment, Margin = margin });
 
         return this;
     }
@@ -305,7 +383,7 @@ public sealed class RichTextBuilder
     /// <summary>Append a <see cref="SizedTextBlock"/> using the supplied OSC 66 sizing parameters.</summary>
     public RichTextBuilder SizedText(
         string text, TextSizing sizing,
-        in CellStyle style = default,
+        in PartialStyle style = default,
         IGlyphFont? fallback = null,
         TextAlignment? alignment = null,
         Margins margin = default)
@@ -313,7 +391,7 @@ public sealed class RichTextBuilder
         ArgumentNullException.ThrowIfNull(text);
         FlushOpenParagraph();
 
-        _blocks.Add(new SizedTextBlock(text, sizing, DefaultStyle(style))
+        _blocks.Add(new SizedTextBlock(text, sizing, BrushedStyle.From(style))
                     {
                         Fallback = fallback,
                         Alignment = alignment,
@@ -339,15 +417,16 @@ public sealed class RichTextBuilder
     public RichText Build()
     {
         FlushOpenParagraph();
+        // The ctor default rides out as the document rung's CARRIER — the painter folds it under every
+        // run and rule, so nothing here restates it onto the content.
         return new RichText(_blocks.ToImmutable()) { DefaultStyle = _defaultStyle };
     }
 
     // ---- Internals ----
 
-    private CellStyle CurrentStyle => _styles.Count > 0 ? _styles.Peek() : _defaultStyle;
+    private BrushedStyle CurrentStyle => _styles.Count > 0 ? _styles.Peek() : BrushedStyle.Identity;
     private IGlyphMap? CurrentMap => _maps.Count > 0 ? _maps.Peek() : null;
     private string? CurrentHyperlink => _hyperlinks.Count > 0 ? _hyperlinks.Peek() : null;
-    private object? CurrentTag => _tags.Count > 0 ? _tags.Peek() : null;
 
     private void AppendInline(Inline inline)
     {
@@ -365,7 +444,8 @@ public sealed class RichTextBuilder
                         Alignment = _openAlignment,
                         Trim = _openTrim,
                         MaxLines = _openMaxLines,
-                        Margin = _openMargin
+                        Margin = _openMargin,
+                        Style = _openStyle
                     });
 
         _openInlines = null;
@@ -374,9 +454,8 @@ public sealed class RichTextBuilder
         _openTrim = _defaultTrimming;
         _openMaxLines = null;
         _openMargin = default;
+        _openStyle = default;
     }
-
-    private CellStyle DefaultStyle(CellStyle style) => style == default ? _defaultStyle : style;
 
     internal void PopLayer(StyleScope.Layer layer)
     {
@@ -385,20 +464,19 @@ public sealed class RichTextBuilder
             case StyleScope.Layer.Style when _styles.Count > 0:        _styles.Pop(); break;
             case StyleScope.Layer.Map when _maps.Count > 0:            _maps.Pop(); break;
             case StyleScope.Layer.Hyperlink when _hyperlinks.Count > 0: _hyperlinks.Pop(); break;
-            case StyleScope.Layer.Tag when _tags.Count > 0:            _tags.Pop(); break;
         }
     }
 }
 
 /// <summary>
-/// Disposable scope returned by <see cref="RichTextBuilder.Push(in CellStyle)"/>,
+/// Disposable scope returned by <see cref="RichTextBuilder.Push(in BrushedStyle)"/>,
 /// <see cref="RichTextBuilder.PushMap"/>, and <see cref="RichTextBuilder.PushHyperlink"/>.
 /// Disposing pops the corresponding layer off the builder's stack. Intended for
 /// <c>using var _ = builder.Push(...);</c> lexical scoping.
 /// </summary>
 public readonly struct StyleScope : IDisposable
 {
-    internal enum Layer { Style, Map, Hyperlink, Tag }
+    internal enum Layer { Style, Map, Hyperlink }
 
     private readonly RichTextBuilder? _builder;
     private readonly Layer _layer;
@@ -411,23 +489,4 @@ public readonly struct StyleScope : IDisposable
 
     /// <summary>Pops the pushed layer off the builder.</summary>
     public void Dispose() => _builder?.PopLayer(_layer);
-}
-
-/// <summary>Helpers used by <see cref="RichTextBuilder"/> for style inheritance.</summary>
-internal static class StyleExtensions
-{
-    /// <summary>
-    /// Compose two styles, child winning on every field that's non-default. Used to merge a
-    /// pushed style with its parent on the builder's style stack.
-    /// </summary>
-    public static CellStyle Compose(this in CellStyle parent, in CellStyle child)
-    {
-        var result = parent;
-        if (!child.Foreground.IsDefault) result = result.WithForeground(child.Foreground);
-        if (!child.Background.IsDefault) result = result.WithBackground(child.Background);
-        if (child.Attributes != default) result = result.WithAttributes(parent.Attributes | child.Attributes);
-        if (child.UnderlineStyle != default) result = result.WithUnderlineStyle(child.UnderlineStyle);
-        if (!child.UnderlineColor.IsDefault) result = result.WithUnderlineColor(child.UnderlineColor);
-        return result;
-    }
 }

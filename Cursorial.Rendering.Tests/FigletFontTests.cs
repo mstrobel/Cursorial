@@ -4,6 +4,7 @@ using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Rendering;
 
@@ -102,7 +103,7 @@ public class FigletFontTests
         var font = BuildBehaviorFont(FigletLayoutMode.None);
         var buffer = new CellBuffer(10, 5);
 
-        var painted = font.Paint(buffer, 0, 0, "A", CellStyle.Default);
+        var painted = font.Paint(buffer, 0, 0, "A", default(PartialStyle));
 
         Assert.Equal(new Size(3, 3), painted);
         Assert.Equal("A", buffer[1, 0].Grapheme);
@@ -126,7 +127,7 @@ public class FigletFontTests
 
         var buffer = new CellBuffer(5, 1);
 
-        font.Paint(buffer, 0, 0, "X", CellStyle.Default);
+        font.Paint(buffer, 0, 0, "X", default(PartialStyle));
 
         Assert.Equal("X", buffer[0, 0].Grapheme);
         Assert.Equal(" ", buffer[1, 0].Grapheme); // hardblank → visible space
@@ -145,7 +146,7 @@ public class FigletFontTests
         try
         {
             font.Paint(buffer, 0, 0,
-                       "A", CellStyle.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+                       "A", PartialStyle.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally
         {
@@ -153,7 +154,32 @@ public class FigletFontTests
         }
 
         Assert.Equal(Color.FromRgb(255, 255, 0), buffer[1, 0].Style.Background);
-        Assert.Equal(Color.FromRgb(255, 0, 0), buffer[0, 0].Style.Background); // untouched
+
+        // (0,0) is a HOLE in the glyph, and it comes out yellow too — because a stated background
+        // BOXES, and the fill blends through the pushed mode exactly as the ink does. This line used
+        // to assert "untouched", back when a whole CellStyle could only mean "ink the strokes and
+        // leave the gaps". That stamp is now a background the delta simply does not carry, and it is
+        // pinned in GlyphStampOrBoxTests rather than riding along inside a blending test.
+        Assert.Equal(Color.FromRgb(255, 255, 0), buffer[0, 0].Style.Background);
+    }
+
+    [Fact]
+    public void Paint_DeltaCarryingMode_BlendsTheInkForegroundOverTheCellBackground()
+    {
+        var font = BuildBehaviorFont(FigletLayoutMode.None);
+        var buffer = new CellBuffer(5, 5);
+        buffer.Fill(new Cell(" ", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)))); // blue
+
+        // An ink-only delta (no background → no box) carrying its OWN Multiply mode, no ambient push.
+        // The glyph's foreground must blend against the cell's BACKGROUND via the scoped mode —
+        // Multiply(red, blue) = black — the same fg-over-bg contract the plain arms get from Set.
+        font.Paint(buffer, 0, 0, "A",
+                   PartialStyle.WithForeground(Color.FromRgb(255, 0, 0)) with { Mode = BlendingModes.Multiply });
+
+        // (1,0) is the 'A' stroke in the top glyph row " A ".
+        Assert.Equal("A", buffer[1, 0].Grapheme);
+        Assert.Equal(Color.FromRgb(0, 0, 0), buffer[1, 0].Style.Foreground);   // red × blue = black
+        Assert.Equal(Color.FromRgb(0, 0, 255), buffer[1, 0].Style.Background); // background left alone
     }
 
     [Fact]
@@ -163,7 +189,7 @@ public class FigletFontTests
         var buffer = new CellBuffer(5, 5);
 
         // 'A' is 3 wide. Anchor at column 3 — only 2 columns fit.
-        font.Paint(buffer, 3, 0, "A", CellStyle.Default);
+        font.Paint(buffer, 3, 0, "A", default(PartialStyle));
 
         // Cells inside the buffer at the right side got painted; the third column would have
         // been at col 5, which is past the right edge.
@@ -332,7 +358,7 @@ public class FigletFontTests
         // Paint into a buffer big enough for the measured size and assert at least one cell got
         // ink.
         var buffer = new CellBuffer(size.Columns + 2, size.Rows);
-        font.Paint(buffer, 0, 0, "Hi", CellStyle.Default);
+        font.Paint(buffer, 0, 0, "Hi", default(PartialStyle));
 
         bool anyInk = false;
 

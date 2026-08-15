@@ -933,7 +933,8 @@ public sealed class RenderTree
             }
 
             // ReSharper disable RedundantCheckBeforeAssignment
-            var parameters = new CompositeParameters(sceneOffsetColumn, sceneOffsetRow, OpacityByte(opacity), clip);
+            var parameters = new CompositeParameters(sceneOffsetColumn, sceneOffsetRow, OpacityByte(opacity), clip,
+                                                     boundary.GetValue(Media.RenderOptions.BlendingModeProperty));
             if (parameters != zone.Parameters)
                 zone.Parameters = parameters; // publish only when different — equality is the change detector
             // ReSharper restore RedundantCheckBeforeAssignment

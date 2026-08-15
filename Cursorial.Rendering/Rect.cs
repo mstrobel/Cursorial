@@ -153,6 +153,28 @@ public readonly record struct Rect
             : Empty;
     }
 
+    /// <summary>
+    /// Returns the smallest rectangle containing both this rectangle and <paramref name="other"/> —
+    /// the dual of <see cref="Intersection"/>.
+    /// </summary>
+    /// <remarks>
+    /// An EMPTY operand is the IDENTITY, not a point at its anchor: a rectangle with zero columns or
+    /// zero rows covers no cells, so it has no position to contribute and must not drag the result
+    /// back toward its anchor. Without that rule <c>Rect.Empty.Union(new Rect(37, 0, 5, 1))</c> would
+    /// come back 42 columns wide, stretched to the origin the default rect happens to sit on — which
+    /// is exactly what an accumulator seeded with <see cref="Empty"/> does on its first step.
+    /// </remarks>
+    public Rect Union(Rect other)
+    {
+        if (IsEmpty) return other;
+        if (other.IsEmpty) return this;
+
+        int column = Math.Min(Column, other.Column);
+        int row = Math.Min(Row, other.Row);
+        int columnEnd = Math.Max(ColumnEnd, other.ColumnEnd);
+        int rowEnd = Math.Max(RowEnd, other.RowEnd);
+        return new Rect(column, row, columnEnd - column, rowEnd - row);
+    }
 
     /// <summary>
     /// Deconstructs the rectangle into its top-left corner coordinates and dimensions.

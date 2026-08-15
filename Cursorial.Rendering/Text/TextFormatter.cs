@@ -1,9 +1,9 @@
 using System.Collections.Immutable;
 using System.Text;
 
-using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -156,11 +156,16 @@ public sealed class TextFormatter
             lastBlockMargins = block.Margin;
         }
 
+        // The document's carrier rides through whole as DefaultCarrier — the rung the painter's
+        // fall-through fold composes under every run, and the rung the FillEntireBounds surround
+        // fill reads its fall-through background BRUSH off.
         var result = new FormattedText(formattedBlocks.ToImmutable(),
                                        new Size(widthUsed, totalRows),
                                        availableColumns,
-                                       text.DefaultStyle,
-                                       fillEntireBounds);
+                                       fillEntireBounds)
+                     {
+                         DefaultCarrier = text.DefaultStyle
+                     };
 
         return documentRowCapDropped && !result.HasTrimmedLines
                    ? result with { HasTrimmedLines = true }
@@ -224,7 +229,7 @@ public sealed class TextFormatter
     }
 
     private List<LineDraft> PlainTextToLines(int availableColumns, OutputCapabilities capabilities, string blockText,
-                                             GlyphSource? source = null, CellStyle style = default)
+                                             GlyphSource? source = null, BrushedStyle style = default)
     {
         // Author-supplied line breaks are honored as hard breaks. The paragraph lane keeps its
         // documented contract (LineBreak inlines are the channel; a literal '\n' in a TextRun is
@@ -302,7 +307,7 @@ public sealed class TextFormatter
                                    usedWidth,
                                    plainTextOnly ? TextAlignment.Left : paragraph.Alignment,
                                    trimmedLines,
-                                   paragraph.VerticalAlignment);
+                                   paragraph.VerticalAlignment) with { Style = paragraph.Style };
     }
 
     private FormattedParagraph FormatParagraphCore(List<LineDraft> lines, int? knownUsedWidth = null,
@@ -390,8 +395,9 @@ public sealed class TextFormatter
             string previousCluster = ""; // kerning context — resets wherever a painted piece boundary falls
             // Wrap-invariant 1-D brush sampling: track each piece's cumulative logical offset within this
             // source run, sharing a carrier whose total width is back-filled below (W isn't known until the
-            // run is fully emitted). Only when the run carries a brush tag — untagged runs skip the accounting.
-            var scope = run.Tag is not null ? new InlineRunScope() : null;
+            // run is fully emitted). A run's brush arrives on its own carrier, which opens the accounting —
+            // a run that states no foreground has no brush to keep wrap-invariant.
+            var scope = run.Style.Foreground is not null ? new InlineRunScope() : null;
             int runOffset = 0;
 
             void EmitFragment()
@@ -399,7 +405,7 @@ public sealed class TextFormatter
                 previousCluster = ""; // a new piece paints independently — no junction to smush
                 if (fragmentBuilder.Length == 0) return;
                 _wordRuns.Add(new FormattedTextRun(fragmentBuilder.ToString(), run.Style, run.Hyperlink)
-                                  { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource });
+                                  { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator });
                 runOffset += fragmentWidth;
                 _wordWidth += fragmentWidth;
                 fragmentBuilder.Clear();
@@ -468,7 +474,7 @@ public sealed class TextFormatter
                         int tabWidth = metrics.StringWidth(tabSpaces);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(tabSpaces, run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator },
                             tabWidth));
                         runOffset += tabWidth;
                         continue;
@@ -481,7 +487,7 @@ public sealed class TextFormatter
                         int spaceWidth = metrics.ClusterWidth(g);
                         _atoms.Add(new SpaceAtom(
                             new FormattedTextRun(g.ToString(), run.Style, run.Hyperlink)
-                                { Tag = run.Tag, LogicalStart = runOffset, Scope = scope, Source = runSource },
+                                { LogicalStart = runOffset, Scope = scope, Source = runSource, Indicator = run.Indicator },
                             spaceWidth));
                         runOffset += spaceWidth;
                         continue;
@@ -830,10 +836,10 @@ public sealed class TextFormatter
                 // the source run. Both share the run's scope, so a char-wrapped brushed run stays continuous.
                 headRuns.Add(new FormattedTextRun(headFragment.ToString(), text.Style, text.Hyperlink)
                              {
-                                 Tag = text.Tag,
                                  LogicalStart = text.LogicalStart,
                                  Scope = text.Scope,
-                                 Source = text.Source
+                                 Source = text.Source,
+                                 Indicator = text.Indicator
                              });
                 headWidth += headFragmentWidth;
             }
@@ -842,10 +848,10 @@ public sealed class TextFormatter
             {
                 tailRuns.Add(new FormattedTextRun(tailFragment.ToString(), text.Style, text.Hyperlink)
                              {
-                                 Tag = text.Tag,
                                  LogicalStart = text.LogicalStart + headFragmentWidth,
                                  Scope = text.Scope,
-                                 Source = text.Source
+                                 Source = text.Source,
+                                 Indicator = text.Indicator
                              });
                 tailWidth += tailFragmentWidth;
             }
@@ -983,7 +989,7 @@ public sealed class TextFormatter
         /// against a zero-descent face (ansi-shadow, 7/7) the baseline row IS the bottom row.
         /// </para>
         /// </remarks>
-        public FormattedTextRun ToRun(in CellStyle style) => new(Text, style, null)
+        public FormattedTextRun ToRun(in BrushedStyle style) => new(Text, style, null)
                                                          {
                                                              Source = Source,
                                                              VerticalAlignment = MixedSource
@@ -1004,7 +1010,7 @@ public sealed class TextFormatter
 
         if (line.Width + ellipsisWidth <= maxWidth)
         {
-            line.Append(choice.ToRun(joins?.Style ?? default), ellipsisWidth);
+            line.Append(choice.ToRun(EllipsisJoinStyle(line.Runs)), ellipsisWidth);
             return line;
         }
 
@@ -1026,7 +1032,7 @@ public sealed class TextFormatter
             clippedEllipsisWidth = clippedChoice.Width;
         }
 
-        clipped.Append(clippedChoice.ToRun(clippedJoins?.Style ?? default), clippedEllipsisWidth);
+        clipped.Append(clippedChoice.ToRun(EllipsisJoinStyle(clipped.Runs)), clippedEllipsisWidth);
         return clipped;
     }
 
@@ -1084,7 +1090,7 @@ public sealed class TextFormatter
                         if (draft.Width + joinWidth > maxWidth)
                             return AppendEllipsisCharacter(line, maxWidth);
 
-                        draft.Append(joinChoice.ToRun(joins?.Style ?? default), joinWidth);
+                        draft.Append(joinChoice.ToRun(EllipsisJoinStyle(draft.Runs)), joinWidth);
                         return draft;
                     }
                     // No word boundary seen — fall back to character ellipsis.
@@ -1104,17 +1110,35 @@ public sealed class TextFormatter
         }
 
         // Whole line fits already — append ellipsis directly.
-        line.Append(lineEndChoice.ToRun(lineEnd?.Style ?? default), ellipsisWidth);
+        line.Append(lineEndChoice.ToRun(EllipsisJoinStyle(line.Runs)), ellipsisWidth);
         return line;
     }
 
     /// <summary>The last visible text run — the one an appended ellipsis visually joins (its
-    /// style AND glyph source both carry over).</summary>
+    /// glyph source carries over; its STYLE only when it is not an indicator run — see
+    /// <see cref="EllipsisJoinStyle"/>).</summary>
     private static FormattedTextRun? LastTextRun(IReadOnlyList<FormattedRun> runs)
     {
         for (int i = runs.Count - 1; i >= 0; i--)
             if (runs[i] is FormattedTextRun text) return text;
         return null;
+    }
+
+    /// <summary>
+    /// The style an appended trim indicator inherits: the last text run's, SKIPPING indicator runs
+    /// (maintainer ruling 2026-08-11 #3 — "if the indicator glyph survived the trim, I see no
+    /// reason why the ellipses should inherit its style"). An indicator run's delta marks exactly
+    /// its own clusters, so a cut landing immediately after a surviving mnemonic yields a PLAIN
+    /// ellipsis — the nearest preceding non-indicator run's style, or the identity (the document
+    /// default at paint) when the whole surviving line is the indicator. The ellipsis still
+    /// measures and paints through the visually-joined run's SOURCE (<see cref="LastTextRun"/>);
+    /// only the style join skips.
+    /// </summary>
+    private static BrushedStyle EllipsisJoinStyle(IReadOnlyList<FormattedRun> runs)
+    {
+        for (int i = runs.Count - 1; i >= 0; i--)
+            if (runs[i] is FormattedTextRun { Indicator: false } text) return text.Style;
+        return default;
     }
 
     /// <summary>
@@ -1173,7 +1197,8 @@ public sealed class TextFormatter
             return new FormattedParagraph(ImmutableArray<FormattedLine>.Empty, new Size(columns, 0),
                                           paragraph.Alignment, true)
                    {
-                       VerticalAlignment = paragraph.VerticalAlignment
+                       VerticalAlignment = paragraph.VerticalAlignment,
+                       Style = paragraph.Style
                    };
         }
 
@@ -1189,7 +1214,8 @@ public sealed class TextFormatter
 
         return new FormattedParagraph(kept, new Size(columns, finalRows), paragraph.Alignment, true)
                {
-                   VerticalAlignment = paragraph.VerticalAlignment
+                   VerticalAlignment = paragraph.VerticalAlignment,
+                   Style = paragraph.Style
                };
     }
 
@@ -1284,7 +1310,7 @@ public sealed class TextFormatter
     }
 
     private readonly record struct SoftBreakPoint(
-        int FragmentIndex, int WidthBefore, CellStyle Style, string? Hyperlink, GlyphSource Source);
+        int FragmentIndex, int WidthBefore, BrushedStyle Style, string? Hyperlink, GlyphSource Source);
 
     /// <summary>
     /// Mutable line buffer used during layout. Converts to an immutable

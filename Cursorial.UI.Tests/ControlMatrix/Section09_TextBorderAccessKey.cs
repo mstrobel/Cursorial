@@ -3,6 +3,7 @@ using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 using Cursorial.UI;
@@ -66,7 +67,7 @@ public sealed class Section09_TextBorderAccessKey
     [Fact] // C163
     public void C163_MarkupBrushResolvesAndWinsOverText()
     {
-        var tb = new TextBlock { Text = "ignored", Markup = "[brush=Theme.AccentBrush]Hi[/brush]" };
+        var tb = new TextBlock { Text = "ignored", Markup = "[fg=Theme.AccentBrush]Hi[/fg]" };
         using var host = Attach(tb);
 
         // Markup wins over Text.
@@ -90,7 +91,7 @@ public sealed class Section09_TextBorderAccessKey
     [Fact] // C165
     public void C165_ResourceVersionBumpInvalidatesCache()
     {
-        var tb = new TextBlock { Markup = "[brush=K]Hi[/brush]" };
+        var tb = new TextBlock { Markup = "[fg=K]Hi[/fg]" };
         var host = UIHeadlessHost.Create();
         host.Application.Resources["K"] = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00));
         host.ShowRoot(tb);

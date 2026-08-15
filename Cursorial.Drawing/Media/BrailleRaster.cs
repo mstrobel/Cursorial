@@ -1,3 +1,4 @@
+using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
@@ -7,7 +8,9 @@ namespace Cursorial.Drawing.Media;
 internal struct BrailleRecord
 {
     public IBrush Brush;
-    public SampleBounds Bounds;
+
+    /// <summary>The brush sampling bounds in scene coordinates; signed origin, exactly as <see cref="StrokeRecord.Bounds"/>.</summary>
+    public Rect Bounds;
     public TextAttributes Attributes;
     public GlyphSet GlyphSet;
     public bool Overwrite;

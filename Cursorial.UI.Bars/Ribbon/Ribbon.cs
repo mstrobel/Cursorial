@@ -21,7 +21,7 @@ public class Ribbon : TabControl
     /// re-measures the control so its face re-lays-out.</summary>
     public static readonly AttachedProperty<RibbonButtonSize> ButtonSizeProperty =
         UIProperty.RegisterAttached<Ribbon, UIElement, RibbonButtonSize>(
-            "ButtonSize", defaultValue: RibbonButtonSize.Medium, inherits: true);
+            "ButtonSize", defaultValue: RibbonButtonSize.Medium, inherits: true, targetsChildren: true);
 
     /// <summary>The inherited COMPACT-density signal a group fans to its hosted controls under the band's fold. A group
     /// at <see cref="RibbonGroupDensity.Compact"/> writes <c>true</c>; it inherits to every child bar control and stamps
@@ -29,7 +29,7 @@ public class Ribbon : TabControl
     /// <see cref="ButtonSizeProperty"/>, so an authored <c>Large</c> face restores byte-identically when the band
     /// widens). Framework-set only (the band drives it); not for app authors.</summary>
     public static readonly AttachedProperty<bool> IsDensityCompactProperty =
-        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsDensityCompact", defaultValue: false, inherits: true);
+        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsDensityCompact", defaultValue: false, inherits: true, targetsChildren: true);
 
     /// <summary>The DEEPEST density tier a group may be demoted to under the band's fold (a per-group author cap — the
     /// ribbon analog of <c>ToolbarOverflowMode.Never</c>). Default <see cref="RibbonGroupDensity.Collapsed"/> (fully
@@ -37,12 +37,12 @@ public class Ribbon : TabControl
     /// <see cref="RibbonGroupDensity.Normal"/> to pin a signature group at full size (never demotes). NOT inherited.</summary>
     public static readonly AttachedProperty<RibbonGroupDensity> MinDensityProperty =
         UIProperty.RegisterAttached<Ribbon, RibbonGroup, RibbonGroupDensity>(
-            "MinDensity", defaultValue: RibbonGroupDensity.Collapsed);
+            "MinDensity", defaultValue: RibbonGroupDensity.Collapsed, targetsChildren: true);
 
 
     /// <inheritdoc cref="BandContentRowsProperty"/>
     protected internal static readonly UIPropertyKey<int> BandContentRowsPropertyKey =
-        UIProperty.RegisterAttachedReadOnly<Ribbon, UIElement, int>("BandContentRows", defaultValue: 1, inherits: true);
+        UIProperty.RegisterAttachedReadOnly<Ribbon, UIElement, int>("BandContentRows", defaultValue: 1, inherits: true, targetsChildren: true);
 
     /// <summary>The band's AUTHORED content height in rows (1 or 2), stamped by <see cref="RibbonBand"/> from authored
     /// facts only — a control authoring a <see cref="RibbonButtonSize.Large"/> face, a <see cref="RibbonControlGroup"/>
@@ -65,7 +65,7 @@ public class Ribbon : TabControl
     /// collapse, and <see cref="RibbonBand"/> pins its authored height to 1 (so control groups lay flat). The exact
     /// <c>IsDensityCompact</c> mechanism, one axis over. Framework-set only.</summary>
     internal static readonly AttachedProperty<bool> IsLayoutSimplifiedProperty =
-        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsLayoutSimplified", defaultValue: false, inherits: true);
+        UIProperty.RegisterAttached<Ribbon, UIElement, bool>("IsLayoutSimplified", defaultValue: false, inherits: true, targetsChildren: true);
 
     /// <summary>Raised (bubbling) when the special File tab is invoked — the app opens its Backstage/File view. In P2
     /// the ribbon leaves the caption row and Backstage to the app; this is the hook.</summary>

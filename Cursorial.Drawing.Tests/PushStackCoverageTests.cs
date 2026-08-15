@@ -9,6 +9,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 using static Cursorial.Rendering.CellBuffer;
@@ -322,7 +323,7 @@ public class PushStackCoverageTests
         {
             using (ctx.PushTranslate(2, 1))
             {
-                ctx.FillRectangle(new Rect(0, 0, 6, 5), fill);
+                ctx.FillRectangle(new Rect(0, 0, 6, 5), new BrushedStyle { Background = new SolidColorBrush(fill) });
                 ctx.DrawInnerShadow(new Rect(0, 0, 6, 5), ShadowGeometry.Inner(radius: 1, strength: 0.5), Black);
             }
         }, baseBackground: White);
@@ -541,8 +542,8 @@ public class PushStackCoverageTests
             {
                 using (ctx.Push(clip: new Rect(1, 1, 3, 2), translateColumns: 1, translateRows: 1))
                 {
-                    ctx.FillRectangle(huge, Red);
-                    ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), Blue);
+                    ctx.FillRectangle(huge, new BrushedStyle { Background = new SolidColorBrush(Red) });
+                    ctx.FillOpaque(new Rect(1, 0, ushort.MaxValue, ushort.MaxValue), new BrushedStyle { Background = new SolidColorBrush(Blue) });
                 }
             },
             baseBackground: White);
@@ -562,7 +563,7 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => availableSpace;
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
             for (int r = bounds.Row; r < bounds.RowEnd; r++)
             for (int c = bounds.Column; c < bounds.ColumnEnd; c++)
@@ -576,9 +577,11 @@ public class PushStackCoverageTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            // The anchor style is a value seam — resolve the delta at the fragment's anchor.
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment,
+                               style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
             var size = fragment.GetSize();
             return new Rect(bounds.Column, bounds.Row, size.Columns, size.Rows);
         }

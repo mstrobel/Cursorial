@@ -1,8 +1,8 @@
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -16,7 +16,7 @@ public class ScenePoolTests
         // Rent, paint it red, return it to the pool.
         var first = pool.Rent(2, 1);
         // ReSharper disable once AccessToDisposedClosure
-        first.Draw(ctx => ctx.FillRectangle(first.Bounds, new SolidColorBrush(Color.FromRgb(255, 0, 0))));
+        first.Draw(ctx => ctx.FillRectangle(first.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(255, 0, 0)) }));
         first.Dispose();
 
         // Rent again at the same size → the recycled buffer must come back TRANSPARENT, not red.
@@ -238,9 +238,9 @@ public class ScenePoolTests
         a.Dispose();   // idempotent
 
         var b = pool.Rent(1, 1);
-        b.Draw(ctx => ctx.FillRectangle(b.Bounds, new SolidColorBrush(Color.FromRgb(255, 0, 0))));
+        b.Draw(ctx => ctx.FillRectangle(b.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(255, 0, 0)) }));
         var c = pool.Rent(1, 1);
-        c.Draw(ctx => ctx.FillRectangle(c.Bounds, new SolidColorBrush(Color.FromRgb(0, 0, 255))));
+        c.Draw(ctx => ctx.FillRectangle(c.Bounds, new BrushedStyle { Background = new SolidColorBrush(Color.FromRgb(0, 0, 255)) }));
 
         // If b and c aliased one buffer, c's blue would have overwritten b. Composite b → still red.
         var buffer = new CellBuffer(1, 1);

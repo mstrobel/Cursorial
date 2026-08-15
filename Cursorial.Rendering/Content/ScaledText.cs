@@ -1,7 +1,9 @@
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -25,7 +27,7 @@ namespace Cursorial.Rendering.Content;
 /// <para>
 /// <b>Style.</b> The style is applied uniformly across the painted region. When the OSC 66
 /// path fires, it becomes the SGR backdrop for the fragment. When the font path fires, it's
-/// passed to each <see cref="CellBuffer.Set"/> call — so the cell buffer's blending stack
+/// passed to each <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> call — so the cell buffer's blending stack
 /// composes it against whatever's already painted underneath.
 /// </para>
 /// </remarks>
@@ -63,14 +65,21 @@ public sealed class ScaledText : FragmentContent
     /// </summary>
     public BrushedTextResolver? BrushResolver { get; set; }
 
-    protected internal override bool IsCachedFragmentStale(Size availableSpace, in CellStyle style,
+    protected internal override bool IsCachedFragmentStale(Size availableSpace, in BrushedStyle style,
                                                            OutputCapabilities? capabilities = null)
     {
         // The style is baked into the emission (the OSC 66 SGR backdrop), so a style change —
         // a selection highlight arriving or leaving — must rebuild even at an unchanged size.
+        //
+        // CACHE KEY: resolved value, never the template. The IContent lane carries a style delta
+        // now, so the carrier is resolved at the fragment's anchor BEFORE this comparison — a
+        // uniform carrier resolves identically at every cell, which is what lets the anchor
+        // resolution take the flat form here, where no anchor is in scope. A carrier whose
+        // brushes are not IsUniform has no single resolved value and rebuilds unconditionally.
         return base.IsCachedFragmentStale(availableSpace, style, capabilities) ||
+               style.IsUniform is false ||
                ExistingFragment is not SizedTextFragment { Style: var existingStyle } ||
-               existingStyle != style;
+               existingStyle != style.ResolveFlat();
     }
 
     protected override Size MeasureOverride(Size availableSpace, OutputCapabilities capabilities, out bool canCreateFragment)
@@ -110,7 +119,7 @@ public sealed class ScaledText : FragmentContent
         return new Size(Math.Min(monospaceColumns, availableSpace.Columns), Math.Max(1, rows));
     }
 
-    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in BrushedStyle style)
     {
         var rtb = new RichTextBuilder();
 
@@ -125,7 +134,9 @@ public sealed class ScaledText : FragmentContent
         // wrapped — and the default WordWrap's packer DROPS LEADING WHITESPACE, which collapsed
         // the spaces to the right of an editor's caret split and shifted every following glyph
         // left of where the caret math placed it. The STYLE rides the figlet block, so a
-        // selection backdrop reaches the glyph cells (it used to be dropped entirely).
+        // selection backdrop reaches the glyph cells (it used to be dropped entirely). It rides
+        // UNRESOLVED — the carrier becomes the FigletBlock's own carrier, so a non-uniform brush
+        // reaches the FIGlet paint arm's per-cell sampling instead of being flattened here.
         var rt = rtb.Figlet(Text, FallbackFont, style).Build();
         var tf = new TextFormatter { Alignment = alignment, Trim = TextTrimming.None, Wrap = WrapMode.NoWrap };
         var ft = tf.Format(rt, size.Columns, maxRows: null, capabilities);
@@ -133,9 +144,17 @@ public sealed class ScaledText : FragmentContent
         return ft;
     }
 
+    // CACHE KEY: resolved value, never the template. Compared below to decide whether the
+    // realization is stale; same forward rule as IsCachedFragmentStale — the delta resolves at
+    // the anchor before the comparison, and !IsUniform rebuilds unconditionally.
     private CellStyle _placeholderStyle;
 
-    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+    // The Mode is not in _placeholderStyle (it is resolved away over Default), so it is tracked
+    // separately: a run that changes ONLY its blend mode must still rebuild the realization, which
+    // bakes the mode into its FIGlet carrier. Blend modes are singletons, so reference identity suffices.
+    private IBlendingMode? _placeholderMode;
+
+    protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
@@ -143,22 +162,41 @@ public sealed class ScaledText : FragmentContent
 
         var placeholderSize = DesiredSize ?? bounds.Size;
 
+        // The carrier resolved at the piece's anchor — the value seams below (the staleness
+        // compare, the uniform backdrop fill) need one CellStyle, and for the uniform carrier
+        // every cell resolves to this same value.
+        var resolved = style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default);
+
         // The realization bakes the style into its glyph runs — a style change (the selection
         // backdrop appearing or moving) must REBUILD, not reuse (the old ??= cached the first
-        // style forever, which is why figlet selection highlighting never showed).
-        if (RealizedPlaceholder is null || _placeholderStyle != style)
+        // style forever, which is why figlet selection highlighting never showed). A non-uniform
+        // carrier has no single resolved value to key the realization on, so it rebuilds
+        // unconditionally — the forward rule the cache-key census states.
+        if (RealizedPlaceholder is null || style.IsUniform is false || _placeholderStyle != resolved ||
+            !ReferenceEquals(_placeholderMode, style.Mode))
         {
             RealizedPlaceholder = BuildPlaceholder(placeholderSize, capabilities, style);
-            _placeholderStyle = style;
+            _placeholderStyle = resolved;
+            _placeholderMode = style.Mode;
         }
 
         var rect = new Rect(bounds.Position, placeholderSize);
 
         // A selection-style backdrop covers the WHOLE piece rect — glyph ink is sparse, and a
         // highlight that only tints ink cells is unreadable. Background-or-attribute styles fill
-        // first; the glyphs paint over the fill carrying the same style.
-        if (style != CellStyle.Default)
-            buffer.ClearCells(rect, style);
+        // first; the glyphs paint over the fill carrying the same style. A uniform carrier fills
+        // with its one resolved value; a non-uniform one resolves per cell over the piece rect.
+        if (style.IsUniform)
+        {
+            if (resolved != CellStyle.Default)
+                buffer.ClearCells(rect, resolved);
+        }
+        else
+        {
+            for (int r = rect.Row; r < rect.RowEnd; r++)
+            for (int c = rect.Column; c < rect.ColumnEnd; c++)
+                buffer.ClearCells(new Rect(c, r, 1, 1), style.Resolve(c, r, rect).ApplyTo(CellStyle.Default));
+        }
 
         if (RealizedPlaceholder is FormattedText ft)
             return ft.Paint(buffer, rect, capabilities, BrushResolver);
@@ -169,10 +207,19 @@ public sealed class ScaledText : FragmentContent
         return bounds;
     }
 
-    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style,
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in BrushedStyle style,
                                                        OutputCapabilities capabilities)
     {
-        var fragment = new SizedTextFragment(Sizing, Text, style);
+        // The fragment's Style is a CACHE-KEY value and the whole emission's SGR backdrop — one
+        // SGR, so one sample: the carrier resolves at the fragment's anchor. (A non-uniform
+        // carrier never caches — IsCachedFragmentStale rebuilds it unconditionally — so the
+        // anchor sample is a per-paint value, not a stale key.)
+        // The Mode is carried, NOT consumed by ApplyTo(Default): it has no operand over the abstract
+        // default, and its job is the emitted FOREGROUND — applied at FrameRenderer's StyleOverride-over-
+        // AnchorStyle blend, which (the two being equal) is fg over its own background.
+        var fragment = new SizedTextFragment(Sizing, Text,
+                                             style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default),
+                                             style.Mode);
         if (fragment.IsSupported(capabilities))
             return fragment;
 

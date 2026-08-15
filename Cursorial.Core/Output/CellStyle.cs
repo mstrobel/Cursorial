@@ -61,11 +61,6 @@ public readonly record struct CellStyle(
                                                       .WithBackground(Color.Transparent)
                                                       .WithUnderlineColor(Color.Transparent);
 
-    /// <summary>The default style for text shadows.</summary>
-    public static CellStyle DefaultShadow { get; } = Default.WithForeground(Color.FromRgba(0, 0, 0, 127))
-                                                        .WithUnderlineColor(Color.FromRgba(0, 0, 0, 127))
-                                                        .WithBackground(Color.Transparent);
-
     /// <summary>Replace the foreground color.</summary>
     public CellStyle WithForeground(Color color) => this with { Foreground = color };
 

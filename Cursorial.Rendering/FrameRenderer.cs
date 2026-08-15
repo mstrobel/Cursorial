@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
@@ -24,7 +25,8 @@ namespace Cursorial.Rendering;
 /// </para>
 /// <list type="number">
 /// <item><description>
-/// (Full redraw only) <see cref="ScreenWriter.WriteClearScreen"/> + SGR reset.
+/// (Full redraw only) SGR reset + <see cref="ScreenWriter.WriteClearScreen"/>, in that order —
+/// the erase paints the terminal's current background, so the reset has to land first.
 /// </description></item>
 /// <item><description>
 /// For each cell that differs from the corresponding cell in the previous frame: a cursor
@@ -104,6 +106,16 @@ public sealed class FrameRenderer
     private bool[]? _dirtyCells;
     private bool _hasDirtyRegions;
 
+    // The colors the terminal reported as its own defaults, in the only form SGR 39 / 49 can
+    // reproduce — see CaptureTerminalDefaultColors. Color.Default in either field means "no
+    // substitution for this channel". Refreshed per render because the back buffer is a source.
+    private Color _terminalDefaultForeground = Color.Default;
+    private Color _terminalDefaultBackground = Color.Default;
+
+    // CACHE KEY: resolved value, never the template. The SGR state believed live on the
+    // terminal; SyncStyle's == against it is the sole gate on emitting SGR bytes. A policy
+    // carrier here could neither be compared (reference equality re-emits every run) nor
+    // encoded (SgrEncoder needs channel values, and the coordinates are gone by now).
     private CellStyle _currentStyle;
     private Hyperlink _currentHyperlink;
     private int _cursorRow;
@@ -156,6 +168,8 @@ public sealed class FrameRenderer
         ArgumentNullException.ThrowIfNull(back);
         ArgumentNullException.ThrowIfNull(output);
 
+        CaptureTerminalDefaultColors(back);
+
         // Synchronized output (DECSET 2026) brackets the entire frame so the terminal commits
         // all paints atomically — eliminates mid-frame tearing on supporting terminals. We
         // gate on the negotiated capability; non-supporting terminals would just print junk.
@@ -203,8 +217,14 @@ public sealed class FrameRenderer
                 }
             }
 
-            ScreenWriter.WriteClearScreen(output);
+            // The reset goes BEFORE the erase, not after. ED (CSI 2 J) erases to the terminal's CURRENT
+            // background — the same rule the end-of-frame reset below exists to contain — so clearing
+            // first would fill the screen with whatever SGR state we inherited: the shell's on the very
+            // first frame, or the last cell's colour on a ForceFullRedraw. Resetting first makes the
+            // erase land on the terminal's own default, which is what the freshly-zeroed front buffer
+            // below is asserting the screen now holds (see Adapt).
             SgrEncoder.WriteReset(output);
+            ScreenWriter.WriteClearScreen(output);
 
             CursorWriter.WriteMoveTo(output, 0, 0);
             _currentStyle = CellStyle.Default;
@@ -669,8 +689,14 @@ public sealed class FrameRenderer
 
         // Shift the front buffer to reflect the scroll. The newly-uncovered rows become blank
         // on the terminal (per SU/SD semantics) — we initialize the corresponding front cells
-        // to default so the cell diff sees back != front and repaints with whatever the
-        // caller has there.
+        // to default so the cell diff repaints them with whatever the caller has there.
+        //
+        // SU/SD fill those rows with the terminal's CURRENT background, and because Adapt now stores
+        // the emitted form, a zeroed front cell asserts they hold the terminal's own default — so that
+        // fill has to land under a reset SGR state. It does: Render's end-of-frame reset leaves every
+        // incremental frame starting at CellStyle.Default, and nothing between there and here touches
+        // SGR (scroll detection never runs on a full redraw). The unpainted tail of a newly-uncovered
+        // row then costs nothing, which on a log-shaped screen is most of the row.
         var front = _frontCells!;
         if (scrollUp)
         {
@@ -713,7 +739,80 @@ public sealed class FrameRenderer
         _currentHyperlink = target;
     }
 
-    // Emit the SGR delta needed to move from the current style to <paramref name="target"/>.
+    /// <summary>
+    /// Record the colors the terminal reported as its own defaults, which is what SGR 39 / 49 select.
+    /// Only a color the terminal can actually paint qualifies: an absent report and
+    /// <see cref="Color.Transparent"/> both leave the channel at <see cref="Color.Default"/>, which
+    /// disables the substitution for it (transparent especially — <see cref="SgrEncoder.WriteDelta"/>
+    /// deliberately emits nothing at all for a transparent background, and substituting would start
+    /// emitting <c>49</c> where today nothing goes out).
+    /// </summary>
+    /// <remarks>
+    /// The renderer's own capabilities win: they describe the terminal these bytes are going to. The
+    /// back buffer is the fallback for the capability-less constructor (tests, upstream quantizers) —
+    /// it derived its blank style from the same negotiation, so it knows the same answer.
+    /// </remarks>
+    private void CaptureTerminalDefaultColors(CellBuffer back)
+    {
+        var color = _capabilities?.Color ?? back.Capabilities?.Output.Color;
+
+        _terminalDefaultForeground = Reproducible(color?.DefaultForeground);
+        _terminalDefaultBackground = Reproducible(color?.DefaultBackground);
+
+        static Color Reproducible(Color? reported)
+            => reported is { IsDefault: false, IsTransparent: false } value ? value : Color.Default;
+    }
+
+    /// <summary>
+    /// Replace a color that is already the terminal's own default with <see cref="Color.Default"/>, so
+    /// the delta emits the default-color code (SGR 39 / 49) instead of naming the color.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two callers, and the rule has to be identical for both: <see cref="Adapt"/> (whose result is what
+    /// the cell pass emits <em>and</em> what the front buffer stores) and the fragment backdrop in
+    /// <see cref="EmitFragmentBytes"/>.
+    /// </para>
+    /// <para>
+    /// <see cref="CellBuffer.DefaultStyle"/> promotes the terminal's reported default fg/bg to a
+    /// concrete color so blank cells can alpha-blend, and the frame compositor bases itself on that
+    /// blank — so an <em>unpainted</em> cell arrives here carrying a real color rather than
+    /// <see cref="Color.Default"/>. Naming it costs bytes, and at a reduced color depth it is also less
+    /// accurate: <see cref="StyleQuantizer"/> snaps it to the nearest palette entry, an approximation of
+    /// a color the terminal reproduces <em>exactly</em> when told to use its default. Identical at
+    /// truecolor, strictly closer below it, shorter either way.
+    /// </para>
+    /// <para>
+    /// The decision is made on <paramref name="source"/> — the style <em>before</em> capability
+    /// adaptation — while the replacement is applied to <paramref name="adapted"/>. Comparing the
+    /// quantized forms instead would also catch a <em>different</em> color that merely lands on the same
+    /// palette entry, and paint the terminal's default over it.
+    /// </para>
+    /// <para>
+    /// Two of the three color channels are substitutable. The third is not: the underline channel's
+    /// default code (SGR 59) means "follow the foreground", not "the terminal's default underline
+    /// color" — no such color is reported, and <see cref="Color.Default"/> already <em>is</em>
+    /// follow-the-foreground here, so there is nothing to substitute.
+    /// </para>
+    /// </remarks>
+    private CellStyle SubstituteTerminalDefaultColors(in CellStyle adapted, in CellStyle source)
+    {
+        var style = adapted;
+
+        if (!_terminalDefaultForeground.IsDefault && source.Foreground == _terminalDefaultForeground)
+            style = style.WithForeground(Color.Default);
+
+        if (!_terminalDefaultBackground.IsDefault && source.Background == _terminalDefaultBackground)
+            style = style.WithBackground(Color.Default);
+
+        return style;
+    }
+
+    // Emit the SGR delta needed to move from the current style to <paramref name="target"/>, which has
+    // already been through Adapt — capability quantization AND the default-color substitution — so it
+    // IS the emitted form. _currentStyle therefore tracks the state the TERMINAL is in rather than what
+    // the caller asked for; recording the request instead would leave every subsequent delta computed
+    // against a state the terminal is not in.
     private void SyncStyle(IBufferWriter<byte> output, in CellStyle target)
     {
         if (target == _currentStyle) return;
@@ -837,7 +936,8 @@ public sealed class FrameRenderer
                 {
                     // Paint the right neighbor with its own content first (so a narrow render
                     // keeps it), then the ambiguous glyph at c (so a wide render covers it).
-                    var neighbor = Adapt(IntendedCellFor(c + 1, r, row[c + 1], back), c + 1, r);
+                    var neighborIntended = IntendedCellFor(c + 1, r, row[c + 1], back);
+                    var neighbor = Adapt(neighborIntended, c + 1, r);
 
                     SyncCursor(output, r, c + 1);
                     SyncHyperlink(output, neighbor.Style.Hyperlink);
@@ -1013,18 +1113,90 @@ public sealed class FrameRenderer
         CursorWriter.WriteSavePosition(output);
         CursorWriter.WriteMoveTo(output, col, row);
 
+        // The anchor cell's style before capability adaptation. The default-color substitution decides
+        // on the unadapted color and applies the replacement to the adapted one — see
+        // SubstituteTerminalDefaultColors for why the decision cannot be made on the quantized form.
+        var source = existingStyle;
+
         existingStyle = AdaptStyle(existingStyle, col, row);
-        
-        SgrEncoder.WriteAbsolute(output, in existingStyle);
-        
-        var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle) ?? entry.AnchorStyle;
+
+        // The backdrop gets the same substitution the cell pass applies, or a fragment anchored over
+        // unpainted background paints the quantized approximation of the terminal's default while every
+        // cell around it now shows the terminal's true default — a seam at any depth below truecolor.
+        // It cooperates with WriteAbsolute rather than duplicating it: the leading SGR 0 already puts
+        // the terminal at its own default fg/bg, which is exactly why WriteAbsolute skips a channel
+        // holding Color.Default.
+        //
+        // The delta below keeps the UNSUBSTITUTED style as its starting point, deliberately. The two
+        // differ only in a channel the terminal is already displaying its default in, so the delta's
+        // "unchanged" branch leaves that default standing — which is the substitution propagating to
+        // the anchor style, not a state-tracking slip. Substituting the delta's origin instead would
+        // make an anchor style that IS the derived default compare unequal and re-emit the very
+        // approximation this removes.
+        SgrEncoder.WriteAbsolute(output, SubstituteTerminalDefaultColors(existingStyle, source));
+
+        var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle, entry.Fragment.StyleBlendMode) ?? entry.AnchorStyle;
+
+        // Transparency is resolved here or not at all, and the three colour channels do not resolve the
+        // same way.
+        //
+        // Cell painting composites transparency away against the back buffer (Color.Composite returns the
+        // backdrop for a transparent source), so by emission time a cell holds resolved colours. A
+        // FRAGMENT is never painted into cells — OSC 66 sized text draws over a region whose cells the
+        // renderer does not own — so it gets an absolute SGR instead, and whatever alpha survives to this
+        // point goes on the wire. Leaving it alone is not neutral: Color.Transparent is Rgb(0,0,0,0), and
+        // SgrEncoder's transparency check covers the BACKGROUND channel (WriteDelta, WriteAbsolute) while
+        // the foreground is written unconditionally, so a transparent FOREGROUND escapes as an explicit
+        // BLACK — a colour the author never wrote, and one that can render the fragment invisible on a
+        // dark terminal.
+        //
+        // BACKGROUND has a backdrop to inherit: the fragment is drawn over the anchor cell's surface, so
+        // that cell's background is what "show what is behind" means here, and taking it is the nearest
+        // thing to compositing this path can do.
+        //
+        // FOREGROUND and UNDERLINE COLOUR have no counterpart — there is no ink underneath a glyph for it
+        // to show through, so every concrete colour would be invented, including the anchor cell's own
+        // (that is one arbitrary cell's ink, and the fragment covers a whole region). Naming no colour is
+        // the honest statement: a transparent foreground asked not to be seen, and SGR 39 hands the choice
+        // to the terminal. For the underline channel Color.Default additionally means "follow the
+        // foreground" (see SubstituteTerminalDefaultColors), which is exactly where a transparent underline
+        // belongs once the foreground has stopped naming a colour.
+        //
+        // Deciding this before AdaptStyle settles a tier disagreement rather than adding a rule:
+        // StyleQuantizer maps Color.Transparent to Color.Default at every depth BELOW truecolor, so the
+        // reduced depths already emitted the bare 39 while full depth — where quantization passes the
+        // colour through untouched — emitted the black. Substituting here makes truecolor agree with them.
+        // Captured before the substitutions erase the evidence: the delta guard below has to know that a
+        // transparent channel WAS declared, since resolving one can land the style on CellStyle.Default.
+        bool resolvedTransparency = anchorStyle.Background.IsTransparent ||
+                                    anchorStyle.Foreground.IsTransparent ||
+                                    anchorStyle.UnderlineColor.IsTransparent;
 
         if (anchorStyle is { Background.IsTransparent: true })
             anchorStyle = anchorStyle.WithBackground(existingStyle.Background);
 
+        if (anchorStyle is { Foreground.IsTransparent: true })
+            anchorStyle = anchorStyle.WithForeground(Color.Default);
+
+        if (anchorStyle is { UnderlineColor.IsTransparent: true })
+            anchorStyle = anchorStyle.WithUnderlineColor(Color.Default);
+
         anchorStyle = AdaptStyle(anchorStyle, col, row);
 
-        if (anchorStyle != CellStyle.Default)
+        // A fragment that declared NO style leaves the backdrop the absolute SGR just wrote standing:
+        // AddFragment's anchorStyle defaults to CellStyle.Default, and that is an absence, not a request
+        // for the terminal's own fg/bg. Asking whether the style IS CellStyle.Default is how that absence
+        // is recognised — but only for a style the substitutions above did not touch. A DECLARED
+        // transparency can land on CellStyle.Default too (a transparent foreground resolves to
+        // Color.Default; over an anchor whose background is already Color.Default nothing fills the other
+        // channel in), and there the absence test reads a request as an absence: it skips the delta, leaves
+        // the terminal in the backdrop, and paints the fragment in the ANCHOR CELL'S INK — the inheritance
+        // the foreground rule exists to refuse. So a substitution having fired is itself proof the style was
+        // declared, and it lets the delta through.
+        //
+        // Comparing against existingStyle instead does not work: it makes the no-style case emit a delta
+        // (39;49) that erases the backdrop, which is the carve-out this guard was written for.
+        if (anchorStyle != CellStyle.Default || resolvedTransparency)
             SgrEncoder.WriteDelta(output, in existingStyle, in anchorStyle);
 
         entry.Fragment.Emit(col, row, output, caps);
@@ -1073,13 +1245,34 @@ public sealed class FrameRenderer
         _cursorCol = -1;
     }
 
+    /// <summary>
+    /// The cell the renderer will actually put on the wire: quantized for the terminal's colour depth,
+    /// then with any colour still equal to the terminal's own reported default replaced by
+    /// <see cref="Color.Default"/> — the form SGR 39 / 49 emit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The front buffer stores <em>this</em>, deliberately — the emitted form, not the intended one.
+    /// <see cref="CellBuffer.DefaultStyle"/> promotes the terminal's reported default fg/bg to a concrete
+    /// colour so blank cells can alpha-blend, so an UNPAINTED cell arrives here as a null grapheme
+    /// carrying real colours. Normalising them away collapses it to <c>default(Cell)</c>, which is
+    /// precisely what a freshly-allocated front buffer holds — so it drops out of the frame diff
+    /// altogether instead of costing a cursor move plus a space. On a mostly-empty screen that is most
+    /// of the frame.
+    /// </para>
+    /// <para>
+    /// What makes the claim true is the full redraw's ordering: <c>SGR 0</c> precedes <c>CSI 2 J</c>, so
+    /// the erase leaves the terminal's own default behind and a zeroed front cell is an accurate
+    /// statement about the screen. Reverse them and a screen cleared under an inherited background
+    /// would never be repainted.
+    /// </para>
+    /// </remarks>
     private Cell Adapt(in Cell cell, int column, int row)
     {
-        if (_quantizer is null) return cell;
-        // Ordered dither perturbs RGB by the cell's position before palette reduction (no-op at full
-        // depth / for non-RGB). Off → the plain position-independent quantize.
-        var quantized = AdaptStyle(cell.Style, column, row);
-        return quantized == cell.Style ? cell : cell with { Style = quantized };
+        // The substitution decides on the UNADAPTED colour and applies to the adapted one — see
+        // SubstituteTerminalDefaultColors for why it cannot be decided on the quantized form.
+        var style = SubstituteTerminalDefaultColors(AdaptStyle(cell.Style, column, row), cell.Style);
+        return style == cell.Style ? cell : cell with { Style = style };
     }
 
     private CellStyle AdaptStyle(in CellStyle style, int column, int row)

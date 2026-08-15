@@ -1,5 +1,8 @@
+using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -64,6 +67,37 @@ public class TextFormatterTests
     {
         var doc = Paragraph("hello");
         Assert.Throws<ArgumentOutOfRangeException>(() => new TextFormatter().Format(doc, 0));
+    }
+
+    /// <summary>A paragraph with no inlines still occupies a row.</summary>
+    /// <remarks>Migrated from the characterisation corpus (empty-paragraph).</remarks>
+    [Fact]
+    public void Format_EmptyParagraph_StillOccupiesARow()
+    {
+        var doc = new RichTextBuilder().Paragraph().Build();
+        var ft = new TextFormatter().Format(doc, 12);
+        var para = FirstParagraph(ft);
+
+        Assert.Single(para.Lines);
+        Assert.Equal(1, para.Lines[0].Rows);
+        Assert.Equal(0, para.Lines[0].Columns);
+        Assert.Equal(new Size(0, 1), ft.Size);
+    }
+
+    /// <summary>
+    /// Whitespace-only content: the packer drops leading whitespace, so this is the empty line.
+    /// </summary>
+    /// <remarks>Migrated from the characterisation corpus (whitespace-only).</remarks>
+    [Fact]
+    public void Format_WhitespaceOnly_PacksToTheEmptyLine()
+    {
+        var doc = new RichTextBuilder().Run("     ").Build();
+        var ft = new TextFormatter().Format(doc, 12);
+        var para = FirstParagraph(ft);
+
+        Assert.Single(para.Lines);
+        Assert.Equal(0, para.Lines[0].Columns);
+        Assert.Equal(new Size(0, 1), ft.Size);
     }
 
     // ---- WordWrap ----
@@ -333,7 +367,7 @@ public class TextFormatterTests
     [Fact]
     public void Format_PreservesStyles()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder().Run("normal ");
         using (builder.Push(in bold)) builder.Run("bold");
         builder.Run(" more");
@@ -344,7 +378,7 @@ public class TextFormatterTests
         var line = para.Lines[0];
 
         Assert.Contains(line.Runs.OfType<FormattedTextRun>(),
-                        r => r.Style.Attributes.HasFlag(TextAttributes.Bold));
+                        r => r.Style.ResolveFlat().Attributes.HasFlag(TextAttributes.Bold));
     }
 
     [Fact]
@@ -365,6 +399,167 @@ public class TextFormatterTests
         Assert.Equal("ａｂｃ", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
         // Each fullwidth char is 2 cells; "abc" → 6 cells.
         Assert.Equal(6, para.Lines[0].Columns);
+    }
+
+    // ---- The trim ellipsis at an indicator run (maintainer ruling 2026-08-11 #3) ----
+
+    /// <summary>
+    /// A cut landing immediately after a surviving INDICATOR run (an access-key mnemonic) yields
+    /// a PLAIN ellipsis: the style join skips indicator runs and takes the nearest preceding
+    /// non-indicator run's style — "if the indicator glyph survived the trim, I see no reason why
+    /// the ellipses should inherit its style." Non-indicator styled runs keep donating their style
+    /// (the corpus' trim-ellipsis-in-a-styled-run contract is untouched).
+    /// </summary>
+    [Fact]
+    public void Trim_CharacterEllipsisCutAfterAnIndicatorRun_TakesThePrecedingRunsStyle()
+    {
+        var pre = BrushedStyle.Identity.Applying(TextAttributes.Strikethrough);
+        var cue = BrushedStyle.Identity.Underlining(UnderlineStyle.Single);
+
+        var doc = new RichTextBuilder()
+                  .Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.CharacterEllipsis)
+                  .Run("S", in pre)
+                  .IndicatorRun("a", in cue)
+                  .Run("ve")
+                  .Build();
+
+        var line = FirstParagraph(new TextFormatter { Trim = TextTrimming.CharacterEllipsis }
+                                      .Format(doc, 3)).Lines[0];
+
+        Assert.True(line.Trimmed);
+
+        var runs = line.Runs.OfType<FormattedTextRun>().ToArray();
+        Assert.Equal(new[] { "S", "a", "…" }, runs.Select(r => r.Text).ToArray());
+
+        Assert.Equal(cue, runs[1].Style);   // the surviving mnemonic keeps its cue
+        Assert.True(runs[1].Indicator);
+        Assert.Equal(pre, runs[2].Style);   // the ellipsis skips it — the preceding run's style
+        Assert.False(runs[2].Indicator);
+    }
+
+    /// <summary>The same ruling through <c>AppendEllipsisAtWordBoundary</c>: the word cut strips
+    /// the trailing space, the draft ends in the indicator run, and the appended ellipsis still
+    /// skips it for style.</summary>
+    [Fact]
+    public void Trim_WordEllipsisCutAfterAnIndicatorRun_TakesThePrecedingRunsStyle()
+    {
+        var pre = BrushedStyle.Identity.Applying(TextAttributes.Strikethrough);
+        var cue = BrushedStyle.Identity.Underlining(UnderlineStyle.Single);
+
+        var doc = new RichTextBuilder()
+                  .Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.WordEllipsis)
+                  .Run("S", in pre)
+                  .IndicatorRun("a", in cue)
+                  .Run(" ve")
+                  .Build();
+
+        var line = FirstParagraph(new TextFormatter { Trim = TextTrimming.WordEllipsis }
+                                      .Format(doc, 4)).Lines[0];
+
+        Assert.True(line.Trimmed);
+
+        var runs = line.Runs.OfType<FormattedTextRun>().ToArray();
+        Assert.Equal(new[] { "S", "a", "…" }, runs.Select(r => r.Text).ToArray());
+
+        Assert.Equal(cue, runs[1].Style);   // the surviving mnemonic keeps its cue
+        Assert.Equal(pre, runs[2].Style);   // the ellipsis skips it — the preceding run's style
+    }
+
+    // ---- Corpus-retirement pins: format-time expansion and per-piece continuation ----
+
+    /// <summary>Tab expansion at format time (TabWidth = 4) around real glyphs — the plain-monospace
+    /// lane; the scaled-run budget rule is pinned separately in GlyphRunTests.</summary>
+    [Fact]
+    public void Format_ExpandsTabs_AroundRealGlyphs()
+    {
+        var doc = new RichTextBuilder().Run("a\tb\tc").Build();
+        var ft = new TextFormatter().Format(doc, 16);
+        var para = FirstParagraph(ft);
+
+        Assert.Single(para.Lines);
+        Assert.Equal(11, para.Lines[0].Columns);
+        Assert.Equal("a    b    c", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+    }
+
+    /// <summary>CJK at the formatter: layout advance is 2 cells per cluster, so a 7-column budget takes
+    /// three 2-cell clusters per line and the packer's arithmetic agrees with the painter's cursor.</summary>
+    [Fact]
+    public void WordWrap_WideGlyphs_WrapAtCellAdvances()
+    {
+        var doc = new RichTextBuilder().Run("字字字 字字字 字字").Build();
+        var ft = new TextFormatter().Format(doc, 7);
+        var para = FirstParagraph(ft);
+
+        Assert.Equal(3, para.Lines.Length);
+        Assert.Equal(6, para.Lines[0].Columns);
+        Assert.Equal(6, para.Lines[1].Columns);
+        Assert.Equal(4, para.Lines[2].Columns);
+        Assert.Equal("字字字", LineText(para.Lines[0], ft.ProvidedColumns, para.Alignment));
+        Assert.Equal("字字", LineText(para.Lines[2], ft.ProvidedColumns, para.Alignment));
+    }
+
+    /// <summary>A document whose DefaultStyle states every channel — fg + bg + Bold|Underline + a curly
+    /// coloured underline — paints that full set onto every inked cell, with no resolver installed.</summary>
+    [Fact]
+    public void Paint_DocumentDefaultStyle_EveryChannelReachesTheCells()
+    {
+        var style = CellStyle.Default
+                             .WithForeground(Color.FromRgb(255, 176, 0))
+                             .WithBackground(Color.FromRgb(16, 16, 32))
+                             .WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
+                             .WithUnderlineStyle(UnderlineStyle.Curly)
+                             .WithUnderlineColor(Color.FromRgb(0, 128, 128));
+        var doc = new RichTextBuilder(PartialStyle.From(style)).Run("inherit me").Build();
+        var ft = new TextFormatter().Format(doc, 16);
+
+        var buffer = new CellBuffer(16, 2);
+        ft.Paint(buffer, new Rect(0, 0, 16, 2), OutputCapabilities.None);
+
+        const string text = "inherit me";
+        for (int c = 0; c < text.Length; c++)
+        {
+            Assert.Equal(text[c].ToString(), buffer[c, 0].Grapheme);
+            Assert.Equal(style, buffer[c, 0].Style);
+        }
+    }
+
+    /// <summary>The OSC 8 target survives onto the continuation piece of a wrapped run — both painted
+    /// pieces of one hyperlinked source run carry the same Uri.</summary>
+    [Fact]
+    public void Paint_HyperlinkRun_KeepsItsUriAcrossTheWrap()
+    {
+        var builder = new RichTextBuilder();
+        using (builder.PushHyperlink("https://example.com/wrapped"))
+            builder.Run("aaaa bbbb");
+        var ft = new TextFormatter().Format(builder.Build(), 4);
+
+        var buffer = new CellBuffer(4, 2);
+        ft.Paint(buffer, new Rect(0, 0, 4, 2), OutputCapabilities.None);
+
+        Assert.Equal("a", buffer[0, 0].Grapheme);
+        Assert.Equal("b", buffer[0, 1].Grapheme);
+        Assert.Equal("https://example.com/wrapped", buffer[0, 0].Style.Hyperlink.Uri);
+        Assert.Equal("https://example.com/wrapped", buffer[0, 1].Style.Hyperlink.Uri);
+    }
+
+    /// <summary>A CellStyle-styled run that wraps keeps the run's style on BOTH pieces — the split
+    /// machinery must not lose the carrier on the continuation.</summary>
+    [Fact]
+    public void Paint_StyledRun_BothWrapPiecesKeepTheRunsStyle()
+    {
+        var style = CellStyle.Default
+                             .WithForeground(Color.FromRgb(255, 0, 0))
+                             .WithAttributes(TextAttributes.Bold);
+        var doc = new RichTextBuilder().Run("aaaa bbbb", PartialStyle.From(style)).Build();
+        var ft = new TextFormatter().Format(doc, 4);
+
+        var buffer = new CellBuffer(4, 2);
+        ft.Paint(buffer, new Rect(0, 0, 4, 2), OutputCapabilities.None);
+
+        Assert.Equal("a", buffer[0, 0].Grapheme);
+        Assert.Equal("b", buffer[0, 1].Grapheme);
+        Assert.Equal(style, buffer[0, 0].Style);
+        Assert.Equal(style, buffer[0, 1].Style);   // the continuation piece, same carrier
     }
 }
 

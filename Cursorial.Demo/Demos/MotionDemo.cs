@@ -1,8 +1,8 @@
 using Cursorial.Animation;
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -271,9 +271,14 @@ internal sealed class MotionDemo : IDemo
     {
         protected override void Render(RenderContext context)
         {
-            context.FillOpaque(context.Bounds, fill);
+            context.FillOpaque(context.Bounds, new BrushedStyle { Background = new SolidColorBrush(fill) });
             if (context.Size is { Columns: > 0, Rows: > 0 })
-                context.DrawText(1, context.Size.Rows / 2, label, labelColor, fill);
+                context.DrawText(1, context.Size.Rows / 2, label,
+                                 new BrushedStyle
+                                 {
+                                     Foreground = new SolidColorBrush(labelColor),
+                                     Background = new SolidColorBrush(fill),
+                                 });
         }
     }
 
@@ -303,6 +308,12 @@ internal sealed class MotionDemo : IDemo
 
         protected override Size MeasureOverride(Size availableSize) => new(GraphemeWidth.StringWidth(Text), 1);
 
-        protected override void Render(RenderContext context) => context.DrawText(0, 0, Text, _foreground, _background);
+        protected override void Render(RenderContext context)
+            => context.DrawText(0, 0, Text,
+                                new BrushedStyle
+                                {
+                                    Foreground = new SolidColorBrush(_foreground),
+                                    Background = _background is {} bg ? new SolidColorBrush(bg) : Brushes.Transparent,
+                                });
     }
 }

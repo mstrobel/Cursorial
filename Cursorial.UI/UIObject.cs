@@ -30,6 +30,8 @@ public abstract class UIObject : IInheritanceNode
     private ValueStore? _store;
     private UIObject? _inheritanceParent;
     private List<UIObject>? _inheritanceChildren;
+    private List<SubObjectWatch>? _subObjectWatchRecords; // as HOST: one node per property currently holding a watched sub-object
+    private List<SubObjectWatch>? _subObjectWatchers;     // as VALUE: the (host, slot) pairs auto-subscribed to this object's changes
     private int _notificationDepth; // DEBUG-only fail-fast diagnostics (matrix M255)
 
     /// <summary>
@@ -958,6 +960,7 @@ public abstract class UIObject : IInheritanceNode
     internal void TearDownValueStore()
     {
         VerifyAccess();
+        TearDownSubObjectWatches(); // the sub-object half first: no watched brush retains this host afterwards
         _store?.TearDown();
     }
 
@@ -1055,6 +1058,13 @@ public abstract class UIObject : IInheritanceNode
     internal void DispatchPropertyChanged<T>(
         UIProperty property, PropertyChangedCallback<T>? changedCallback, T oldValue, T newValue, BindingPriority priority)
     {
+        // Sub-object auto-watch bookkeeping (§sub-object observation) rides the same dispatch that
+        // reported the value transition — detach the replaced sub-object, attach the new one —
+        // BEFORE any user code runs, so handlers observe consistent watch state. Value-typed
+        // properties fold the whole test away at JIT time.
+        if (oldValue is UIObject || newValue is UIObject)
+            UpdateSubObjectWatch(property, newValue is UIObject newSub ? newSub : null);
+
         EnterNotification();
 
         try
@@ -1105,6 +1115,13 @@ public abstract class UIObject : IInheritanceNode
                     : BindingPriority.Inherited;
                 NotifyInheritanceChildren(styled, oldValue, newValue, descendantLane);
             }
+
+            // Sub-object observation, the notifying half: this object is itself the value of one or
+            // more hosts' properties — its own change fans out to them at this property's declared
+            // effect level (clamped per host). Last in the pinned channel order: the origin-site
+            // channels above ran first, exactly as they do before the inherited fan-out.
+            if (_subObjectWatchers is { Count: > 0 })
+                NotifySubObjectWatchers(property);
         }
         finally
         {
@@ -1143,6 +1160,233 @@ public abstract class UIObject : IInheritanceNode
     /// copied values valid only for the duration of the call; copy them out to retain.
     /// </summary>
     protected virtual void OnPropertyChanged(in UIPropertyChangedEventArgs args) {}
+
+    // ───────────────────────── sub-object observation (auto-watch) ─────────────────────────
+    //
+    // When a styled property's effective value is itself a UIObject (the animatable brush shape:
+    // a PhaseShiftedBrush in an IBrush slot), the owner auto-subscribes to the sub-object's
+    // property changes and routes each one through the owning slot's EFFECT path: the
+    // sub-property's declared effect level, clamped by the host slot's ceiling through the
+    // Measure→Arrange→Render implication closure (PropertyEffectsClosure), fires the host
+    // property's FLAG effects only. The host's value-changed channels — metadata Changed, typed/
+    // untyped observers, the OnPropertyChanged virtual — deliberately do NOT fire: they compare
+    // old/new references (Icon.UpdateEffectiveIconBrush is the in-tree example), and no reference
+    // changed. Bookkeeping rides the existing seams, not a parallel registry: attach/detach ride
+    // the single change dispatch (the store already equality-gates UIObject values by reference,
+    // so every effective reference transition dispatches), and the teardown sweep (ledger A13)
+    // detaches whatever the records still hold. Scope, deliberately: styled properties only
+    // (direct properties have no store ladder and no effects routing — ledger A24), values that
+    // are UIObjects but NOT UIElements (elements are tree citizens whose changes route their own
+    // effects — watching them would double-invalidate), and never the owner itself (a self-valued
+    // slot would loop the forwarding chain). Deliveries on the INHERITED channel never attach —
+    // the contributing ancestor owns the watch and fans sub-changes to non-shadowed descendants
+    // below, mirroring the eager-notify walk (ledger A3).
+
+    /// <summary>
+    /// The attach/detach half, run at the top of every ordinary change dispatch: replaces this
+    /// host's watch on <paramref name="property"/> with <paramref name="newTarget"/> (detaching a
+    /// replaced sub-object, attaching the new one; <see langword="null"/> detaches). One shared
+    /// <see cref="SubObjectWatch"/> node enters both parties' lists.
+    /// </summary>
+    private void UpdateSubObjectWatch(UIProperty property, UIObject? newTarget)
+    {
+        if (property.IsDirect)
+            return; // scope: styled properties only (A24 — no store ladder, no effects routing)
+
+        if (newTarget is UIElement || ReferenceEquals(newTarget, this))
+            newTarget = null; // elements route their own effects; a self-watch would loop the chain
+
+        var records = _subObjectWatchRecords;
+
+        if (records is not null)
+        {
+            for (var i = 0; i < records.Count; i++)
+            {
+                var record = records[i];
+                if (!ReferenceEquals(record.HostProperty, property))
+                    continue;
+
+                if (ReferenceEquals(record.Target, newTarget))
+                    return; // unchanged — the same sub-object re-dispatched (a lane flip)
+
+                records.RemoveAt(i);
+                record.Target._subObjectWatchers?.Remove(record);
+                RetireSubObjectAnimationsIfOrphaned(record.Target, depth: 0); // replaced out of its last attached slot ⇒ left the tree (§9.6)
+                break;
+            }
+        }
+
+        if (newTarget is null)
+            return;
+
+        var watch = new SubObjectWatch(this, property, newTarget);
+        (_subObjectWatchRecords ??= []).Add(watch);
+        (newTarget._subObjectWatchers ??= []).Add(watch);
+    }
+
+    /// <summary>
+    /// The notifying half, run after this object's own channels: fans this change out to every
+    /// (host, slot) watching this object, at this property's declared effect level for this
+    /// object's runtime type, implication-expanded. Iterates the live list by index (the
+    /// <see cref="NotifyInheritanceChildren"/> idiom) — allocation-free, the per-animation-tick
+    /// path.
+    /// </summary>
+    private void NotifySubObjectWatchers(UIProperty property)
+    {
+        var effects = PropertyEffectsClosure.Expand(property.GetEffects(GetType()));
+        if (effects == PropertyEffects.None)
+            return; // an effect-less sub-property invalidates nothing anywhere
+
+        var watchers = _subObjectWatchers!;
+        for (var i = 0; i < watchers.Count; i++)
+            watchers[i].Host.DeliverSubObjectChange(watchers[i].HostProperty, effects);
+    }
+
+    /// <summary>
+    /// One host's receipt of a sub-object change on <paramref name="hostProperty"/>:
+    /// <paramref name="subEffects"/> (implication-expanded at the origin, still closed after any
+    /// number of upstream clamps) is clamped by this slot's ceiling for this runtime type, and the
+    /// surviving level is delivered to <see cref="OnSubObjectPropertyChanged"/>. Inheriting slots
+    /// then fan the (unclamped) sub-change to non-shadowed inheritance descendants — each clamps
+    /// against its own type, mirroring how <see cref="OnInheritedPropertyChanged"/> resolves
+    /// effects per descendant — because descendants without an own contribution paint this very
+    /// sub-object.
+    /// </summary>
+    internal void DeliverSubObjectChange(UIProperty hostProperty, PropertyEffects subEffects)
+    {
+        var clamped = subEffects & PropertyEffectsClosure.Expand(hostProperty.GetEffects(GetType()));
+        if (clamped != PropertyEffects.None)
+            OnSubObjectPropertyChanged(hostProperty, clamped);
+
+
+        if (!hostProperty.Inherits || _inheritanceChildren is not {} children)
+            return;
+
+        for (var i = 0; i < children.Count; i++)
+        {
+            var child = children[i];
+            if (child._store?.TryGetEntry(hostProperty.Id) is { EffectivePriority: not BindingPriority.Unset })
+                continue; // shadowed (own base) or masked (own animation): the child paints its own value
+
+            child.DeliverSubObjectChange(hostProperty, subEffects);
+        }
+    }
+
+    /// <summary>
+    /// The sub-object change hook: a <see cref="UIObject"/> held by <paramref name="property"/>
+    /// changed one of its own properties, and <paramref name="effects"/> is the surviving effect
+    /// level — the sub-property's declared effects intersected with this slot's ceiling, both
+    /// expanded through the Measure→Arrange→Render implication closure (so the set is closed;
+    /// reduce to generator flags before invalidating). The element tree overrides this to run the
+    /// flag dispatch (§5.5); the base implementation forwards along the watch chain — this object
+    /// may itself be the value of another host's slot (a wrapped wrapper), and each hop re-clamps.
+    /// The host's value-changed channels do not fire for sub-changes (no reference changed).
+    /// </summary>
+    protected virtual void OnSubObjectPropertyChanged(UIProperty property, PropertyEffects effects)
+    {
+        if (_subObjectWatchers is not {} watchers)
+            return;
+
+        for (var i = 0; i < watchers.Count; i++)
+            watchers[i].Host.DeliverSubObjectChange(watchers[i].HostProperty, effects);
+    }
+
+    /// <summary>
+    /// The teardown leg (ledger A13's sub-object half): detaches every watch this host still
+    /// holds, so a long-lived sub-object (a shared animated brush) stops referencing the
+    /// discarded element. Fires no notifications on this host (PD13's spirit); a target whose
+    /// last chain this was gets its animations retired, with the same one store-owned restore
+    /// notification the element detach-stop produces (§9.6).
+    /// </summary>
+    private void TearDownSubObjectWatches()
+    {
+        if (_subObjectWatchRecords is not {} records)
+            return;
+
+        _subObjectWatchRecords = null;
+        for (var i = 0; i < records.Count; i++)
+        {
+            records[i].Target._subObjectWatchers?.Remove(records[i]);
+            RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth: 0);
+        }
+    }
+
+    // ── sub-object detach-stop (§9.6's sub-object lane) ──────────────────────────────────────────
+    //
+    // A standalone animation begun directly against a non-element UIObject (an animated brush's
+    // Phase) has no element to ride the detach-stop lane on — its retirement keys on the WATCH
+    // graph instead: the target retires when its last watch chain to a tree-attached element goes
+    // away. The full semantics choice (tree participation, not object liveness) is documented at
+    // the retirement site, AnimationScheduler.OnSubObjectDetached.
+
+    /// <summary>
+    /// Caps the watch-graph walks below. Wrapper cycles (a brush hosting a wrapper that hosts it
+    /// back) are constructible property-wise; the cap keeps the walks total, and a capped chain
+    /// CLAIMS participation — never retire on a cycle.
+    /// </summary>
+    private const int MaxWatchChainDepth = 64;
+
+    /// <summary>
+    /// The sub-object analogue of <see cref="UIElement.IsAttachedToTree"/>: whether some watch
+    /// chain from this object ends at a tree-attached element — an attached element (or a wrapper
+    /// an attached element consumes, transitively) currently holds this object in a watched slot.
+    /// Detached-but-alive consumers do not count: participation is tree membership, not liveness.
+    /// </summary>
+    internal bool IsWatchedFromAttachedTree(int depth = 0)
+    {
+        if (_subObjectWatchers is not {} watchers)
+            return false;
+
+        if (depth >= MaxWatchChainDepth)
+            return true; // cycle / pathological nesting — claim participation (see MaxWatchChainDepth)
+
+        for (var i = 0; i < watchers.Count; i++)
+        {
+            var host = watchers[i].Host;
+            if (host is UIElement element ? element.IsAttachedToTree : host.IsWatchedFromAttachedTree(depth + 1))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The sub-object detach-stop follow-through (§9.6): called when an edge into the watch graph
+    /// went away — this host detached from the tree (its watches survive an ordinary detach), or
+    /// one of its watches was removed (value replaced / store torn down). Retires the standalone
+    /// animations of every watched target that no longer participates in an attached tree.
+    /// </summary>
+    internal void RetireOrphanedSubObjectAnimations()
+    {
+        if (_subObjectWatchRecords is not {} records)
+            return;
+
+        for (var i = 0; i < records.Count; i++)
+            RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth: 0);
+    }
+
+    /// <summary>
+    /// Retires every scheduler instance targeting <paramref name="target"/> when it no longer
+    /// participates in an attached tree, then descends into the targets IT hosts (a wrapped
+    /// wrapper's participation may have flowed through it). Elements never retire here — their
+    /// animations ride the element detach-stop lane (<c>AnimationScheduler.OnElementDetached</c>).
+    /// </summary>
+    private static void RetireSubObjectAnimationsIfOrphaned(UIObject target, int depth)
+    {
+        if (target is UIElement || depth >= MaxWatchChainDepth)
+            return;
+
+        if (target.IsWatchedFromAttachedTree())
+            return; // still consumed from an attached tree — keeps animating (the sharing rule)
+
+        AnimationScheduler.CurrentOrNull?.OnSubObjectDetached(target);
+
+        if (target._subObjectWatchRecords is {} records)
+        {
+            for (var i = 0; i < records.Count; i++)
+                RetireSubObjectAnimationsIfOrphaned(records[i].Target, depth + 1);
+        }
+    }
 
     [Conditional("DEBUG")]
     private void EnterNotification()

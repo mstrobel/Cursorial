@@ -3,6 +3,7 @@ using System.Globalization;
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Drawing.Charts;
 
@@ -106,7 +107,8 @@ public sealed class Axes
             int r = projector.ToCell(xRange.Min, t).Row;
             if (r < plot.Row || r >= axisRow) continue;
             string label = yFormat(t);
-            context.DrawText(axisColumn - 1 - label.Length, r, label, LabelColor);
+            context.DrawText(axisColumn - 1 - label.Length, r, label,
+                             new BrushedStyle { Foreground = new SolidColorBrush(LabelColor), Background = Brushes.Transparent });
         }
 
         // X tick labels: centered under the tick column, on the bottom gutter row.
@@ -115,7 +117,8 @@ public sealed class Axes
             int c = projector.ToCell(t, yRange.Min).Column;
             if (c < plotLeft || c >= area.ColumnEnd) continue;
             string label = xFormat(t);
-            context.DrawText(c - label.Length / 2, axisRow + 1, label, LabelColor);
+            context.DrawText(c - label.Length / 2, axisRow + 1, label,
+                             new BrushedStyle { Foreground = new SolidColorBrush(LabelColor), Background = Brushes.Transparent });
         }
 
         return new PlotLayout(plot, xRange, yRange);

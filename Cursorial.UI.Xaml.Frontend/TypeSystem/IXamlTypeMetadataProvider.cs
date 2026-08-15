@@ -39,6 +39,15 @@ public interface IXamlTypeMetadataProvider
     /// events), for a did-you-mean suggestion on a member-not-found diagnostic (P6 review P2-16). Takes the
     /// abstract <see cref="IXamlType"/> so a symbol backend can enumerate from a Roslyn symbol. May return
     /// an empty array when the provider cannot enumerate (no suggestion is offered).
+    /// <para>
+    /// The set is the UNION of the members settable in EITHER XAML form — attribute-settable scalars AND
+    /// content-settable read-only collections populated as property elements
+    /// (<c>&lt;Panel.Children&gt;…</c>, <c>Style.Setters</c>) — so it is the complete "known members" list
+    /// for a member spelled either way. Read-only SCALARS (<c>Bounds</c>, <c>DesiredSize</c>) are settable in
+    /// neither form and are absent. A caller that must split the two (attribute completion wants scalars only;
+    /// property-element completion wants scalars + collections) recovers the distinction per-member from the
+    /// resolved <see cref="XamlMember"/>'s value type / collection-ness.
+    /// </para>
     /// </summary>
     string[] GetKnownMemberNames(IXamlType type);
 }
@@ -72,6 +81,68 @@ public interface IXamlStaticResolver
 }
 
 /// <summary>
+/// An OPTIONAL companion seam to <see cref="IXamlTypeMetadataProvider"/> — the exact shape of
+/// <see cref="IXamlStaticResolver"/>: it enumerates the attached properties that may be <em>set on</em> a
+/// target type, so a designer / completion host can offer <c>Owner.Property</c> attributes (e.g.
+/// <c>Grid.Column</c>) on a child element without reaching into the framework's property registry itself.
+/// It is a SEPARATE interface rather than a member on <see cref="IXamlTypeMetadataProvider"/> so it stays
+/// non-breaking on netstandard2.0 — that runtime has no default interface methods (a body on an interface
+/// member is <c>CS8701</c> there), so an added interface method cannot carry an empty default and would break
+/// every existing provider. Existing providers keep working untouched; a provider that CAN answer opts in by
+/// implementing this. The runtime reflection provider (<c>ReflectionXamlMetadata</c>) implements it over the
+/// property registry; the build-time symbol provider does not (generated/AOT completion is not the host's
+/// path — the host drives the runtime reflection provider). A consumer probes for the capability
+/// (<c>provider is IXamlAttachablePropertyProvider ap</c>) and simply offers no attachable completion when it
+/// is absent, mirroring the loader's <c>{x:Static}</c> probe (<c>XamlObjectGraphBuilder</c>).
+/// </summary>
+public interface IXamlAttachablePropertyProvider
+{
+    /// <summary>
+    /// The attached properties declarable on <paramref name="targetType"/> — every attached property whose
+    /// host (target) type is assignable from it — as <see cref="XamlAttachableMember"/>s. Empty when none
+    /// apply, or when the provider cannot map the type (e.g. a symbol backend whose
+    /// <see cref="IXamlType.UnderlyingSystemType"/> is <see langword="null"/>). The set reflects only the
+    /// attached properties whose owners have registered (the registry is populated as owner types initialize);
+    /// forcing owner registration is the consumer's concern.
+    /// </summary>
+    XamlAttachableMember[] GetAttachableMembers(IXamlType targetType);
+}
+
+/// <summary>
+/// An OPTIONAL companion seam to <see cref="IXamlTypeMetadataProvider"/> — the exact shape of
+/// <see cref="IXamlAttachablePropertyProvider"/>: it enumerates a type's <em>own</em> settable member names —
+/// those DECLARED on the type or brought onto it via <c>AddOwner</c>, but <em>not</em> the purely-inherited
+/// members it merely receives from its base types. A completion host uses it to rank suggestions: a member the
+/// element itself introduces (band 2) is more relevant than one inherited from a distant base, so the host tags
+/// a candidate as "own" by simple set-membership against this result (the names are aligned with
+/// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/>). It is a SEPARATE interface rather than a member
+/// on <see cref="IXamlTypeMetadataProvider"/> so it stays non-breaking on netstandard2.0 — that runtime has no
+/// default interface methods (a body on an interface member is <c>CS8701</c> there), so an added interface method
+/// cannot carry an empty default and would break every existing provider. Existing providers keep working
+/// untouched; a provider that CAN answer opts in by implementing this. The runtime reflection provider
+/// (<c>ReflectionXamlMetadata</c>) implements it over reflection + the property registry; the build-time symbol
+/// provider does not (generated/AOT completion is not the host's path — the host drives the runtime reflection
+/// provider). A consumer probes for the capability (<c>provider is IXamlOwnMemberProvider om</c>) and simply
+/// treats every member as inherited when it is absent, mirroring the loader's <c>{x:Static}</c> probe.
+/// </summary>
+public interface IXamlOwnMemberProvider
+{
+    /// <summary>
+    /// The settable member names DECLARED or <c>AddOwner</c>'d on <em>exactly</em> <paramref name="targetType"/>
+    /// — never a member purely inherited from a base type. The result honors the same XAML-settable filter as
+    /// <see cref="IXamlTypeMetadataProvider.GetKnownMemberNames"/> (a read-only SCALAR appears in neither; a
+    /// read-only content COLLECTION appears in both), so it is a provenance subset the host can intersect with
+    /// the known-member set. A type's own attached-property declaration is an own member only when it is
+    /// self-usable — a CHILD-only attached property (<c>Grid.Row</c>) is not, though it stays attachable on
+    /// children. Empty when none apply, or when the
+    /// provider cannot map the type (e.g. a symbol backend whose <see cref="IXamlType.UnderlyingSystemType"/> is
+    /// <see langword="null"/>). Registry-backed members require their owner type to have registered; forcing that
+    /// registration is the provider's concern.
+    /// </summary>
+    string[] GetOwnMemberNames(IXamlType targetType);
+}
+
+/// <summary>
 /// The outcome of a type resolution: the resolved type, an ambiguity, or a miss.
 /// </summary>
 public readonly struct XamlTypeResolution
@@ -102,4 +173,36 @@ public readonly struct XamlTypeResolution
 
     /// <summary>A miss (no matching type).</summary>
     public static XamlTypeResolution NotFound() => default;
+}
+
+/// <summary>
+/// One attached property a host can offer on a target element, decomposed so a designer can both PRESENT it in
+/// XAML syntax (<c>Owner.Property</c>, e.g. <c>Grid.Column</c>) and RESOLVE the owner's xmlns prefix.
+/// <see cref="OwnerName"/> is the owner's simple (XAML) name; <see cref="OwnerNamespace"/> is its CLR namespace.
+/// </summary>
+/// <remarks>
+/// The CLR namespace is carried deliberately rather than returning a bare <c>"Owner.Property"</c> string: it is
+/// the join key back to an xmlns URI (through the xmlns→CLR-namespace map the host already holds), which the
+/// host needs to emit the correct prefix when the owner is NOT under the document's default namespace — either a
+/// third-party attached property, or the common case where the document binds the Cursorial URI to a non-default
+/// prefix (<c>c:Grid.Column</c>). It also disambiguates two owners that share a simple name across namespaces. It
+/// is expressed as plain strings (never <see cref="System.Type"/>), so a symbol backend could supply the same
+/// shape without loading the runtime type.
+/// </remarks>
+/// <param name="OwnerName">The simple name of the type which owns the attached attachable member.</param>
+/// <param name="OwnerNamespace">The CLR namespace of the type which owns the attached attachable member.</param>
+/// <param name="PropertyName">The unqualified name of the attachable member.</param>
+/// <param name="TargetsChildElements">
+/// Whether the owner INTENDS this property to be attached on its child elements — a container reading
+/// per-child layout/config (<c>Grid.Row</c>, <c>DockPanel.Dock</c>, <c>Canvas.Left</c>, <c>Ribbon.ButtonSize</c>),
+/// mirroring <c>UIProperty.TargetsChildElements</c>. A completion host uses it to lift ONLY these to the
+/// parent-context band when the element sits inside such a container: a broadly-hosted attached SERVICE
+/// (<c>NameScope</c>, <c>ToolTipService</c>, owner <c>UIElement</c>) is attachable everywhere but is not
+/// child-positioning, so it stays out of that band. <see langword="false"/> when unreported.
+/// </param>
+public readonly record struct XamlAttachableMember(
+    string OwnerName, string OwnerNamespace, string PropertyName, bool TargetsChildElements = false)
+{
+    /// <summary>The XAML-presentable qualified form — <c>Owner.Property</c> (e.g. <c>Grid.Column</c>).</summary>
+    public string QualifiedName => OwnerName + "." + PropertyName;
 }

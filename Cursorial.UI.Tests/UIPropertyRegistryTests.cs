@@ -72,6 +72,50 @@ public class UIPropertyRegistryTests
         => Assert.Empty(UIPropertyRegistry.FindOwnersByShortName("RgNoSuchShortName"));
 
     [Fact]
+    public void RegisterAttached_TargetsChildrenMarker_RoundTrips()
+    {
+        var childOnly = UIProperty.RegisterAttached<RegistryHost, RegistryHost, int>("RgAttachedChildOnly", targetsChildren: true);
+        var selfUsable = UIProperty.RegisterAttached<RegistryHost, RegistryHost, int>("RgAttachedSelfUsable");
+        var plainStyled = UIProperty.Register<RegistryHost, int>("RgPlainNotChildTargeted");
+
+        Assert.True(childOnly.TargetsChildElements);
+        Assert.False(selfUsable.TargetsChildElements);   // default polarity: UNMARKED = self-usable
+        Assert.False(plainStyled.TargetsChildElements);  // a non-attached property is never child-targeted
+    }
+
+    [Fact]
+    public void OwnMembersOf_ExcludesChildTargeted_IncludesSelfUsable_ButBothStayAttachable()
+    {
+        var childOnly = UIProperty.RegisterAttached<RegistryHost, RegistryHost, int>("RgOwnChildOnly", targetsChildren: true);
+        var selfUsable = UIProperty.RegisterAttached<RegistryHost, RegistryHost, int>("RgOwnSelfUsable");
+
+        var own = UIPropertyRegistry.OwnMembersOf(typeof(RegistryHost));
+        Assert.Contains(selfUsable, own);       // unmarked self-usable attached declaration IS an own member
+        Assert.DoesNotContain(childOnly, own);  // marked child-only attached declaration is NOT
+
+        // The marker governs ONLY own-membership — BOTH remain attachable on any assignable host (band 1/3).
+        var attachable = UIPropertyRegistry.AttachableOnType(typeof(RegistryHost));
+        Assert.Contains(childOnly, attachable);
+        Assert.Contains(selfUsable, attachable);
+    }
+
+    [Fact]
+    public void Grid_Row_IsAttachable_ButNotAnOwnMember_TheNestedGridDivergence()
+    {
+        _ = Cursorial.UI.Controls.Grid.RowProperty; // force Grid's static ctor so its attached declarations register
+
+        var own = UIPropertyRegistry.OwnMembersOf(typeof(Cursorial.UI.Controls.Grid)).Select(p => p.Name).ToList();
+        var attachable = UIPropertyRegistry.AttachableOnType(typeof(Cursorial.UI.Controls.Grid)).Select(p => p.Name).ToList();
+
+        // A Grid nested inside another Grid is STILL offered Grid.Row (attachable / band 1)...
+        Assert.Contains("Row", attachable);
+        Assert.Contains("Column", attachable);
+        // ...yet Grid.Row is not a Grid's own intrinsic member (band 2). The two queries diverge — the whole point.
+        Assert.DoesNotContain("Row", own);
+        Assert.DoesNotContain("Column", own);
+    }
+
+    [Fact]
     public void InheritingPropertyIds_TracksRegistrations()
     {
         var inheriting = UIProperty.Register<RegistryHost, int>("RgInheriting1", inherits: true);

@@ -1,0 +1,3 @@
+# Generated output written beside a baseline when the characterisation harness reports a mismatch —
+# a debugging aid for the failing run, never something to commit. See ../README-scaffolding.md.
+*.actual

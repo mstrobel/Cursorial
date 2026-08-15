@@ -82,6 +82,13 @@ public sealed class SceneCompositor
     private readonly CellStyle _baseStyle;
     private readonly CellBuffer? _baseLayer;
 
+    // The terminal's effective default colors, substituted for Color.Default at this compositor's arithmetic
+    // inputs so a Default operand composites against the real default instead of short-circuiting opaque. This
+    // is the SEAM (see TerminalColorDefaults): the compositor never reaches into a global — reported / declared
+    // / none all arrive through this one value. None (the default, and what ForIntermediate uses) disables
+    // substitution entirely, so an unknown default is byte-identical to the pre-substitution behaviour.
+    private readonly TerminalColorDefaults _defaults;
+
     // Whether the target is an INTERMEDIATE surface (a group buffer that will itself be composited
     // later) rather than the terminal's final target. See ForIntermediate for what that changes.
     private readonly bool _intermediate;
@@ -118,10 +125,25 @@ public sealed class SceneCompositor
     private List<Rect> _ghostRemainderNext = [];
 
     /// <summary>Composite over a uniform base fill (default: <see cref="CellStyle.Default"/>).</summary>
-    public SceneCompositor(CellStyle baseStyle = default) => _baseStyle = baseStyle;
+    /// <param name="baseStyle">The style reset-to-base writes for an uncovered cell.</param>
+    /// <param name="defaults">The terminal's effective default colors, substituted for
+    /// <see cref="Color.Default"/> at the compositor's arithmetic inputs;
+    /// <see cref="TerminalColorDefaults.None"/> (the default) disables substitution — see that type for the
+    /// reported / declared / none seam.</param>
+    public SceneCompositor(CellStyle baseStyle = default, TerminalColorDefaults defaults = default)
+    {
+        _baseStyle = baseStyle;
+        _defaults = defaults;
+    }
 
     /// <summary>Composite over a stored backdrop buffer (copied per-region on reset-to-base).</summary>
-    public SceneCompositor(CellBuffer baseLayer) => _baseLayer = baseLayer ?? throw new ArgumentNullException(nameof(baseLayer));
+    /// <param name="baseLayer">The backdrop copied per-region on reset-to-base.</param>
+    /// <param name="defaults">See the other constructor.</param>
+    public SceneCompositor(CellBuffer baseLayer, TerminalColorDefaults defaults = default)
+    {
+        _baseLayer = baseLayer ?? throw new ArgumentNullException(nameof(baseLayer));
+        _defaults = defaults;
+    }
 
     private SceneCompositor(CellStyle baseStyle, bool intermediate)
     {
@@ -307,7 +329,7 @@ public sealed class SceneCompositor
 
             for (int tr = frS; tr < frE; tr++)
             for (int tc = fcS; tc < fcE; tc++)
-                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, wideColumnEnd, _intermediate);
+                CompositeCell(target, tc, tr, buffer[tc - p.OffsetColumn, tr - p.OffsetRow], p.Opacity, mode, wideColumnEnd, _intermediate, _defaults);
         }
 
         PassThroughFragments(layers, target, layerSetChanged);
@@ -534,14 +556,23 @@ public sealed class SceneCompositor
 
     private static void CompositeCell(in CellBufferView target, int column, int row,
                                       in Cell source, byte opacity, IBlendingMode mode, int wideColumnEnd,
-                                      bool intermediate)
+                                      bool intermediate, TerminalColorDefaults defaults)
     {
         if (source.Kind == CellKind.WideContinuation) return;   // the WideLeft paints both columns
 
         var dst = target[column, row];
-        var sourceStyle = opacity == 255 ? source.Style : ScaleSourceAlpha(source.Style, opacity);
+        var sourceStyle = opacity == 255 ? source.Style : ScaleSourceAlpha(source.Style, opacity, defaults);
         var targetStyle = dst.Style;
-        var mergedBackground = CompositeColor(sourceStyle.Background, targetStyle.Background, mode, intermediate);
+
+        // Substitute the backdrop's terminal-default background for the real RGB default only when the source
+        // will actually blend into it (a translucent RGB): an opaque source wins both channels outright and a
+        // transparent one yields the backdrop unchanged, so neither needs a concrete backdrop — and substituting
+        // there would only erode a Default-kind cell's live theme-tracking for no visible gain. None-valued
+        // defaults (every non-screen compositor, and every intermediate surface) make this a no-op.
+        var backdropBackground = NeedsBlendBackdrop(sourceStyle.Background)
+                                     ? defaults.ResolveBackground(targetStyle.Background)
+                                     : targetStyle.Background;
+        var mergedBackground = CompositeColor(sourceStyle.Background, backdropBackground, mode, intermediate);
 
         // The glyph the blanking branches below store. On the final target that is a plain blank — the write
         // is the answer and nothing reads it back. On a surface it has to carry replace semantics onwards,
@@ -550,13 +581,20 @@ public sealed class SceneCompositor
 
         if (string.IsNullOrEmpty(source.Grapheme))
         {
-            // The tint dims what the cell will actually SHOW. On an intermediate surface the stored foreground
-            // is verbatim (see the glyph-bearing path below), so it may still be translucent and sitting over
-            // its own background — resolve it first, or the tint lands on an unresolved color and the final
-            // pass folds the background in a second time. This is what makes an opacity-1 group bit-exact.
+            // The tint dims what the cell will actually SHOW, so the destination foreground it tints must be the
+            // one that renders. On an intermediate surface the stored foreground is verbatim (see the
+            // glyph-bearing path below), so it may still be translucent and sitting over its own background —
+            // resolve it first, or the tint lands on an unresolved color and the final pass folds the background
+            // in a second time. This is what makes an opacity-1 group bit-exact. On the final target, substitute
+            // a Default destination foreground for the real RGB default (same NeedsBlendBackdrop gate as the
+            // background) so the text GHOSTS through dimmed instead of VANISHING: without it the tint lands on
+            // Default, resolves opaque to the veil color, and fg == bg. An opaque cover still sets fg == bg (text
+            // hidden) — the gate keeps that intended contract because only a translucent veil substitutes.
             var destinationForeground = intermediate
                                             ? Color.CompositeOver(targetStyle.Foreground, targetStyle.Background, mode)
-                                            : targetStyle.Foreground;
+                                            : NeedsBlendBackdrop(sourceStyle.Background)
+                                                ? defaults.ResolveForeground(targetStyle.Foreground)
+                                                : targetStyle.Foreground;
 
             var blendedForeground = CompositeColor(sourceStyle.Background, destinationForeground, mode, intermediate);
 
@@ -619,9 +657,16 @@ public sealed class SceneCompositor
         // background here is only the group's own, and the final pass folds fg over the background the group
         // actually lands on. Folding at both levels applies the group's backdrop twice — for a glyph
         // {fg=red@50%, bg=opaque blue} in a group at 0.5 over green that is (64,63,127) instead of (64,95,95).
+        // Fold the glyph's own foreground over the merged background. Substitute a Default merged background for
+        // the real RGB default only when the foreground is translucent and would otherwise punch opaque over it;
+        // the STORED background stays mergedBackground (unsubstituted) so a Default-kind cell keeps its default
+        // identity — only the folded foreground sees the concrete default.
+        var foldBackground = NeedsBlendBackdrop(sourceStyle.Foreground)
+                                 ? defaults.ResolveBackground(mergedBackground)
+                                 : mergedBackground;
         var mergedForeground = intermediate
                                    ? sourceStyle.Foreground
-                                   : Color.Composite(sourceStyle.Foreground, mergedBackground, mode);
+                                   : Color.Composite(sourceStyle.Foreground, foldBackground, mode);
 
         var style = sourceStyle with { Foreground = mergedForeground, Background = mergedBackground };
 
@@ -767,16 +812,27 @@ public sealed class SceneCompositor
     private static Color CompositeColor(Color source, Color backdrop, IBlendingMode mode, bool intermediate) =>
         intermediate ? Color.CompositeOver(source, backdrop, mode) : Color.Composite(source, backdrop, mode);
 
-    private static CellStyle ScaleSourceAlpha(CellStyle style, byte opacity) =>
+    // A layer-opacity fade (this runs only when opacity < 255). Substitute the source's Default fg/bg for the
+    // real terminal defaults BEFORE scaling, so a Default-styled window / toast / menu fades like an RGB one
+    // instead of holding full strength and popping at the end (ScaleAlpha leaves non-RGB untouched). Underline
+    // is never substituted — SGR 59 means "follow the foreground", not a reported color. None-valued defaults
+    // make both substitutions no-ops, preserving today's exact fade behaviour.
+    private static CellStyle ScaleSourceAlpha(CellStyle style, byte opacity, TerminalColorDefaults defaults) =>
         style with
         {
-            Foreground = ScaleAlpha(style.Foreground, opacity),
-            Background = ScaleAlpha(style.Background, opacity),
+            Foreground = ScaleAlpha(defaults.ResolveForeground(style.Foreground), opacity),
+            Background = ScaleAlpha(defaults.ResolveBackground(style.Background), opacity),
             UnderlineColor = ScaleAlpha(style.UnderlineColor, opacity)
         };
 
     private static Color ScaleAlpha(Color color, byte opacity) =>
         color.Kind == ColorKind.Rgb ? color.WithAlpha((byte) (color.Alpha * opacity / 255)) : color;
+
+    // True when compositing `source` over a Default backdrop actually blends rather than replaces — the only
+    // case where substituting the backdrop's Default for the terminal's real default changes the result. An
+    // opaque source wins both channels outright; a transparent source yields the backdrop unchanged; only a
+    // translucent (partial-alpha) RGB source mixes, and mixing needs a concrete RGB backdrop.
+    private static bool NeedsBlendBackdrop(Color source) => !source.IsOpaque && !source.IsTransparent;
 
     private static bool TryFootprint(int sceneColumns, int sceneRows, in CompositeParameters p, int targetColumns, int targetRows, out Rect rect)
     {

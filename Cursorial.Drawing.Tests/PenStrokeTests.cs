@@ -142,13 +142,13 @@ public class PenStrokeTests
         var boxThenText = DrawHarness.Render(3, 3, ctx =>
         {
             ctx.DrawBox(Box3, Pens.Light);
-            ctx.DrawText(0, 0, "X", white);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(white));
         });
         Assert.Equal("X", boxThenText[0, 0].Grapheme);
 
         var textThenBox = DrawHarness.Render(3, 3, ctx =>
         {
-            ctx.DrawText(0, 0, "X", white);
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(white));
             ctx.DrawBox(Box3, Pens.Light);
         });
         Assert.Equal("X", textThenBox[0, 0].Grapheme);
@@ -159,7 +159,7 @@ public class PenStrokeTests
     {
         var b = DrawHarness.Render(3, 3, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Color.FromRgb(255, 255, 255));
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Color.FromRgb(255, 255, 255)));
             ctx.DrawBox(Box3, Pens.Light, overwrite: true);
         });
         Assert.Equal("┌", b[0, 0].Grapheme);
@@ -209,7 +209,7 @@ public class PenStrokeTests
         // either half (text beats decoration), but draws normally on the clear cells.
         var b = DrawHarness.Render(5, 1, ctx =>
         {
-            ctx.DrawText(1, 0, "中", Color.FromRgb(255, 255, 255));
+            ctx.DrawText(1, 0, "中", DrawHarness.Ink(Color.FromRgb(255, 255, 255)));
             ctx.DrawLine(0, 0, 4, 0, Pens.Light);
         });
 

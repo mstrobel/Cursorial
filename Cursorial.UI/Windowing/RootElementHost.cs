@@ -1,4 +1,5 @@
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Themes;
 
@@ -20,11 +21,27 @@ public sealed class RootElementHost : UIElement
     private Border? _overlay; // created on the FIRST modal push — an app that never shows a modal never pays
                               // the overlay element or its theme-brush subscription (test-visible costs)
 
+    /// <inheritdoc cref="Panel.BackgroundProperty"/>
+    public static readonly StyledProperty<IBrush?> BackgroundProperty =
+        Panel.BackgroundProperty.AddOwner<RootElementHost>();
+
+    static RootElementHost()
+    {
+        BackgroundProperty.OverrideMetadata<RootElementHost>(
+            new PropertyMetadata<IBrush?>
+            {
+                DefaultResourceKey = ThemeKeys.ElevationDesktop
+            });
+    }
+
     internal RootElementHost(UIElement content)
     {
         _content = content;
         AdoptChild(content, index: -1);
     }
+
+    /// <inheritdoc cref="BackgroundProperty"/>
+    public IBrush? Background { get => GetValue(BackgroundProperty); set => SetValue(BackgroundProperty, value); }
 
     /// <summary>The hosted application root element (the value <see cref="UIApplication.RootElement"/> reflects).</summary>
     public UIElement Content => _content;
@@ -92,5 +109,14 @@ public sealed class RootElementHost : UIElement
         _content.Arrange(bounds);
         _overlay?.Arrange(bounds);
         return finalSize;
+    }
+
+    protected override void Render(RenderContext context)
+    {
+        base.Render(context);
+
+        if (GetValue(BackgroundProperty) is not {} bg) return;
+
+        context.PaintRectangle(context.Bounds, BrushedStyle.Identity.WithBackground(bg), overwrite: false);
     }
 }

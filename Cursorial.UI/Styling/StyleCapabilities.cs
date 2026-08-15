@@ -58,5 +58,12 @@ public enum StyleCapabilities
     Unicode = 1 << 11,
 
     /// <summary>OSC 66 text sizing support (kitty text sizing protocol).</summary>
-    TextSizing = 1 << 12
+    TextSizing = 1 << 12,
+
+    /// <summary>
+    /// Indicates, as best as the framework can determine, that an application is running locally and not through
+    /// an SSH tunnel. This is the sole member of the locality axis: present means the process is local, absent
+    /// means it is remote (e.g., an SSH session). The top declared flag.
+    /// </summary>
+    Local = 1 << 13
 }

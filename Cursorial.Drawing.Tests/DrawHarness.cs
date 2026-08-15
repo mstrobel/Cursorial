@@ -2,6 +2,7 @@ using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -44,4 +45,20 @@ internal static class DrawHarness
         foreach (var s in scenes) s.Dispose();
         return buffer;
     }
+
+    /// <summary>
+    /// The retired two-argument <c>DrawText</c> forms, restated: solid <paramref name="foreground"/>
+    /// ink over a STATED background — <see cref="Brushes.Transparent"/> when omitted, which was those
+    /// forms' contract verbatim (transparent OVERWRITES the cell's background; it is not absence).
+    /// </summary>
+    public static BrushedStyle Ink(Color foreground, Color? background = null) =>
+        new()
+        {
+            Foreground = new SolidColorBrush(foreground),
+            Background = background is {} bg ? new SolidColorBrush(bg) : Brushes.Transparent,
+        };
+
+    /// <inheritdoc cref="Ink(Color, Color?)"/>
+    public static BrushedStyle Ink(IBrush foreground, IBrush? background = null) =>
+        new() { Foreground = foreground, Background = background ?? Brushes.Transparent };
 }

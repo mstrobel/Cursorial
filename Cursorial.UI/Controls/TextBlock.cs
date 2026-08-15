@@ -9,18 +9,35 @@ namespace Cursorial.UI.Controls;
 
 /// <summary>
 /// The leaf text element (design doc §12.7): renders <see cref="Text"/> (never access-key-folded) or
-/// <see cref="Markup"/> (BBCode incl. <c>[brush=…]</c> via the S7 chain; wins over <see cref="Text"/>),
+/// <see cref="Markup"/> (BBCode incl. <c>[fg=…]</c>/<c>[bg=…]</c> brush values via the S7 chain; wins over <see cref="Text"/>),
 /// element-local through <see cref="RenderContext"/>. <see cref="Foreground"/> inherits via
-/// <see cref="TextElement"/>. The <c>FormattedText</c> layout is cached keyed by
-/// <c>(text/markup identity, width, caps, resource version, ActualThemeVariant)</c> — variant flips
-/// and renegotiates invalidate via the key; <b>no</b> dictionary subscription (sealed dictionaries
+/// <see cref="TextElement"/>. The <c>FormattedText</c> layout is cached in the shared
+/// <see cref="FormattedTextCache"/>, keyed by
+/// <c>(text/markup identity, width, wrap/alignment/trim, caps, resource version, ActualThemeVariant)</c> —
+/// variant flips and renegotiates invalidate via the key, and a capability renegotiation also
+/// pulses the cache's subscription; <b>no</b> dictionary subscription (sealed dictionaries
 /// never pulse — CD16).
 /// </summary>
-public class TextBlock : UIElement
+public class TextBlock : UIElement, ITrimmedTextSource
 {
-    private FormattedText? _cached;
-    private CacheKey _cacheKey;
-    private int? _cachedHeight; // the maxRows budget _cached was formatted under (null = unbounded)
+    // Created lazily so no base-constructor property plumbing can observe a null cache.
+    // Internal (not private) so tests can observe the M2 fast-path routing counters.
+    internal FormattedTextCache Cache
+        => field ??= new FormattedTextCache(this, () =>
+                                                  {
+                                                      InvalidateMeasure();
+                                                      InvalidateVisual();
+                                                  });
+
+    // The plain lane's document default (BuildPlainText's spelling), in carrier form — shared
+    // between the full pipeline's RichTextBuilder and the M2 fast path so both lanes carry the
+    // SAME document rung. The document default declares no FOREGROUND: the element brush rides
+    // the paint preference (Render), which colors text no level of the document declared one
+    // for. Transparent's stated foreground would out-rank it at the document rung and paint the
+    // glyphs transparent; the transparent background and underline color stay stated (the
+    // compositing identity).
+    private static readonly BrushedStyle PlainTextDefaultCarrier =
+        new() { Background = Brushes.Transparent, UnderlineColor = Brushes.Transparent };
 
     /// <summary>The literal text content (<c>AffectsMeasure | AffectsRender</c>; never access-key-folded — doc §12.7).</summary>
     public static readonly StyledProperty<string?> TextProperty =
@@ -43,12 +60,13 @@ public class TextBlock : UIElement
     public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
         TextElement.TextTrimmingProperty.AddOwner<TextBlock>();
 
-    /// <inheritdoc cref="IsTrimmedProperty"/>
-    internal static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
-        UIProperty.RegisterReadOnly<TextBlock, bool>(nameof(IsTrimmed));
+    /// <inheritdoc cref="TextElement.IsTrimmedProperty"/>
+    public static readonly StyledProperty<bool> IsTrimmedProperty =
+        TextElement.IsTrimmedProperty.AddOwner<TextBlock>();
 
-    /// <summary>Indicates whether any of the text content had trimming applied.</summary>
-    public static readonly StyledProperty<bool> IsTrimmedProperty = IsTrimmedPropertyKey.Property;
+    /// <inheritdoc cref="TextElement.IsTrimmedPropertyKey"/>
+    protected static readonly UIPropertyKey<bool> IsTrimmedPropertyKey =
+        TextElement.IsTrimmedPropertyKey;
 
     /// <summary>The text foreground — <see cref="TextElement.ForegroundProperty"/> <c>AddOwner</c> (inherits).</summary>
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
@@ -65,6 +83,10 @@ public class TextBlock : UIElement
     /// <inheritdoc cref="TextElement.UnderlineProperty"/>
     public static readonly StyledProperty<UnderlineStyle?> UnderlineProperty =
         TextElement.UnderlineProperty.AddOwner<TextBlock>();
+
+    /// <inheritdoc cref="TextElement.UnderlineBrushProperty"/>
+    public static readonly StyledProperty<IBrush?> UnderlineBrushProperty =
+        TextElement.UnderlineBrushProperty.AddOwner<TextBlock>();
 
     /// <inheritdoc cref="TextElement.StrikethroughProperty"/>
     public static readonly StyledProperty<bool> StrikethroughProperty =
@@ -121,6 +143,9 @@ public class TextBlock : UIElement
     /// <inheritdoc cref="UnderlineProperty"/>
     public UnderlineStyle? Underline { get => GetValue(UnderlineProperty); set => SetValue(UnderlineProperty, value); }
     
+    /// <inheritdoc cref="UnderlineBrushProperty"/>
+    public IBrush? UnderlineBrush { get => GetValue(UnderlineBrushProperty); set => SetValue(UnderlineBrushProperty, value); }
+    
     /// <inheritdoc cref="StrikethroughProperty"/>
     public bool Strikethrough { get => GetValue(StrikethroughProperty); set => SetValue(StrikethroughProperty, value); }
     
@@ -152,7 +177,7 @@ public class TextBlock : UIElement
     public TextTrimming TextTrimming { get => GetValue(TextTrimmingProperty); set => SetValue(TextTrimmingProperty, value); }
 
     /// <inheritdoc cref="IsTrimmedProperty"/>
-    public bool IsTrimmed { get => GetValue(IsTrimmedProperty); protected set => SetValue(IsTrimmedPropertyKey, value); }
+    public bool IsTrimmed { get => GetValue(IsTrimmedProperty); protected set => SetValue(TextElement.IsTrimmedPropertyKey, value); }
 
     /// <inheritdoc cref="ForegroundProperty"/>
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
@@ -191,67 +216,57 @@ public class TextBlock : UIElement
         // AffectsRender, so a flip re-paints the cached layout without re-formatting it). The fold is
         // the single composition point (proposal-TextAttributes-decomposition §3.1).
         var resolved = TextElement.ComposeAttributes(this);
-        if (Foreground is {} brush)
-            context.DrawFormattedText(formatted, context.Bounds, brush, resolved.Flags, resolved.UnderlineShape);
-        else
-            context.DrawFormattedText(formatted, context.Bounds, resolved.Flags, resolved.UnderlineShape);
+        context.DrawFormattedText(formatted, context.Bounds,
+                                  new BrushedStyle { Foreground = Foreground }
+                                      .Imposing(resolved.Flags, resolved.UnderlineShape));
+    }
+
+    /// <inheritdoc/>
+    protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToTree(in e);
+        Cache.Attach();
+    }
+
+    /// <inheritdoc/>
+    protected override void OnDetachedFromTree(in TreeAttachmentEventArgs e)
+    {
+        Cache.Detach();
+        base.OnDetachedFromTree(in e);
     }
 
     private FormattedText GetFormatted(int width, int? height = null)
     {
-        var caps = UIApplication.Current is {} app ? app.Capabilities.Output : null;
+        // Markup wins over Text (doc §12.7), so the key's source is the effective one — a Text
+        // change under a set Markup formats identically and may serve the cached layout. The lane
+        // bit keeps a literal Text from serving a layout for an IDENTICAL markup string.
+        var request = new FormattedTextCache.LayoutRequest(
+            Markup ?? Text, MarkupLane: Markup is not null, width, height,
+            TextWrapping, TextAlignment, TextTrimming);
 
-        var key = new CacheKey(
-            Text, Markup, width, TextWrapping, TextAlignment, TextTrimming,
-            ResourceServices.GetResourceVersion(this),
-            UIApplication.Current?.ActualThemeVariant,
-            caps);
-
-        if (_cached is {} cached && _cacheKey.Equals(key) && HeightCompatible(cached, _cachedHeight, height))
+        if (Cache.TryGetLayout(in request, out var cached))
             return cached;
 
-        var formatted = Format(width, caps, height);
-        _cached = formatted;
-        _cacheKey = key;
-        _cachedHeight = height;
+        // M2: a single markup-free line that fits needs no RichText model — the cache constructs
+        // the layout directly, byte-identical by construction (FormattedTextFastPathTests proves it
+        // cell-for-cell against the pipeline below). Anything ineligible formats exactly as before.
+        var formatted = Cache.TryFormatPlainTextFast(in request, PlainTextDefaultCarrier)
+                        ?? Format(width, Cache.OutputCapabilities, height);
+        Cache.StoreLayout(in request, formatted);
         return formatted;
-    }
-
-    /// <summary>
-    /// Whether a cached layout built under <paramref name="cachedHeight"/> is the SAME layout a
-    /// fresh format at <paramref name="height"/> would produce. Equal budgets trivially agree; a
-    /// layout whose row cap never bit (or that was built unbounded) is valid for any budget it
-    /// fits in. A layout the cap DID truncate is only valid for that exact budget — reusing it
-    /// for a taller one is how text used to stay trimmed forever after the space it needed came
-    /// back.
-    /// </summary>
-    private static bool HeightCompatible(FormattedText cached, int? cachedHeight, int? height)
-    {
-        if (cachedHeight == height)
-            return true;
-
-        bool capBit = cachedHeight is {} cap && cached.Size.Rows >= cap;
-        return !capBit && (height is null || cached.Size.Rows <= height);
     }
 
     private FormattedText Format(int width,
                                  OutputCapabilities? caps,
                                  int? maxHeight = null,
-                                 TextTrimming? trimmingOverride = null, 
+                                 TextTrimming? trimmingOverride = null,
                                  WrapMode? wrappingOverride = null)
     {
-        var formatter = new TextFormatter
-                        {
-                            Alignment = TextAlignment,
-                            Trim = trimmingOverride ?? TextTrimming,
-                            Wrap = wrappingOverride ?? TextWrapping
-                        };
-
         RichText document;
 
         if (Markup is {} markup)
         {
-            // Markup wins over Text (doc §12.7); [brush=…] resolves via the S7 chain.
+            // Markup wins over Text (doc §12.7); [fg=…]/[bg=…] brush values resolve via the S7 chain.
             var options = new TextMarkupOptions
                           {
                               BrushResolver = ResourceBrushResolver.Create(this),
@@ -269,10 +284,10 @@ public class TextBlock : UIElement
             return FormattedText.Empty;
         }
 
-        if (document.IsEmpty)
-            return FormattedText.Empty;
-
-        return formatter.Format(document, width, maxHeight, capabilities: caps);
+        return Cache.Format(document, width, maxHeight, TextAlignment,
+                             trimmingOverride ?? TextTrimming,
+                             wrappingOverride ?? TextWrapping,
+                             caps);
     }
 
     // Builds a single paragraph honoring hard line breaks (\r\n | \n | \r → LineBreak), per the
@@ -281,9 +296,11 @@ public class TextBlock : UIElement
                                     TextTrimming? trimmingOverride = null,
                                     WrapMode? wrappingOverride = null)
     {
-        var builder = new RichTextBuilder(defaultTrimming: trimmingOverride ?? TextTrimming,
-                                          defaultWrap: wrappingOverride ?? TextWrapping,
-                                          defaultStyle: Output.CellStyle.Transparent);
+        // The document default is the shared PlainTextDefaultCarrier (see its comment for why it
+        // declares no foreground) — one definition for this pipeline and the M2 fast path.
+        var builder = new RichTextBuilder(PlainTextDefaultCarrier,
+                                          defaultTrimming: trimmingOverride ?? TextTrimming,
+                                          defaultWrap: wrappingOverride ?? TextWrapping);
 
         return BuildPlainText(this, text, builder);
     }
@@ -304,43 +321,31 @@ public class TextBlock : UIElement
             glyphSource = new GlyphSource(font);
         }
 
-        var start = 0;
+        // \r\n | \n | \r → LineBreak, with \r\n as ONE break — the shared splitter (D12: this fold
+        // used to live only here while FigletPresenter split on the raw char pair).
+        var first = true;
 
-        for (var i = 0; i < text.Length; i++)
+        foreach (var range in HardLineBreaks.EnumerateLines(text))
         {
-            var c = text[i];
+            if (!first)
+                builder.LineBreak();
 
-            if (c is not ('\n' or '\r'))
-                continue;
+            first = false;
 
-            if (i > start)
+            if (range.End.Value > range.Start.Value)
             {
                 if (glyphSource != null)
-                    builder.Run(text[start..i], glyphSource);
+                    builder.Run(text[range], glyphSource);
                 else
-                    builder.Run(text[start..i]);
+                    builder.Run(text[range]);
             }
-
-            builder.LineBreak();
-
-            // Treat \r\n as one break.
-            if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
-                i++;
-
-            start = i + 1;
-        }
-
-        if (start < text.Length)
-        {
-            if (glyphSource != null)
-                builder.Run(text[start..], glyphSource);
-            else
-                builder.Run(text[start..]);
         }
 
         return builder.Build();
     }
 
+    // The CharacterEllipsis untrimmed spelling (RTP/Figlet use Trim=None — the difference is
+    // Mike-gated M4, so each implementation keeps its own).
     internal string? GetUntrimmedText(int maxWidth)
     {
         var formattedText = Format(maxWidth,
@@ -354,14 +359,5 @@ public class TextBlock : UIElement
         return formattedText.ToPlainText();
     }
 
-    private readonly record struct CacheKey(
-        string? Text,
-        string? Markup,
-        int Width,
-        WrapMode Wrap,
-        TextAlignment Alignment,
-        TextTrimming Trim,
-        int ResourceVersion,
-        ThemeVariant? Variant,
-        OutputCapabilities? Capabilities);
+    string? ITrimmedTextSource.GetUntrimmedText(int maxWidth) => GetUntrimmedText(maxWidth);
 }

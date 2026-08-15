@@ -1,7 +1,6 @@
 using System.Buffers;
 
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
@@ -17,7 +16,7 @@ public class SceneCompositorTests
 
     private static SceneCompositor OverBlueBase() => new(CellStyle.Default.WithBackground(Blue));
 
-    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, brush));
+    private static void Fill(Scene scene, IBrush brush) => scene.Draw(ctx => ctx.FillRectangle(scene.Bounds, new BrushedStyle { Background = brush }));
 
     // ---- P0: the compositing invariant ----
 
@@ -66,6 +65,31 @@ public class SceneCompositorTests
     }
 
     // ---- Base, transparency, coverage ----
+
+    [Fact] // regression: the base is what makes an uncovered cell BLENDABLE — see WindowManager.RenderFrameCore ⓪
+    public void Base_FromTheTargetsDerivedBlank_KeepsATranslucentSourceBlended()
+    {
+        // A terminal that reported its default background: CellBuffer.DeriveDefaultStyle promotes it to RGB
+        // "so we can take advantage of alpha blending", and that promoted blank is the buffer's DefaultStyle.
+        var terminalDefault = Color.FromRgb(30, 30, 46);
+        var buffer = new CellBuffer(4, 1, defaultStyle: CellStyle.Default.WithBackground(terminalDefault));
+        var scene = Scene.Create(4, 1);
+        Fill(scene, new SolidColorBrush(RedHalf));
+        var layers = new[] { new SceneLayer(scene) };
+
+        // Based on the target's own blank, the source's alpha survives: a genuine 50% blend.
+        Assert.True(new SceneCompositor(buffer.DefaultStyle).Composite(layers, buffer.AsView()));
+        Assert.Equal(Color.Composite(RedHalf, terminalDefault, BlendingModes.Default), buffer[0, 0].Style.Background);
+
+        // The defect it pins: a CellStyle.Default base overwrites the derived blank with a NON-RGB color, and
+        // Color.Composite reports a non-RGB backdrop's result at full opacity — the alpha is discarded outright.
+        var unblendable = new CellBuffer(4, 1, defaultStyle: CellStyle.Default.WithBackground(terminalDefault));
+        scene.Invalidate();
+        Fill(scene, new SolidColorBrush(RedHalf));
+        Assert.True(new SceneCompositor().Composite(layers, unblendable.AsView()));
+        Assert.Equal(RedHalf.WithAlpha(255), unblendable[0, 0].Style.Background);
+        Assert.NotEqual(buffer[0, 0].Style.Background, unblendable[0, 0].Style.Background);
+    }
 
     [Fact]
     public void UncoveredCells_ShowBase_PaintedCells_ShowComposite()
@@ -123,7 +147,7 @@ public class SceneCompositorTests
 
         // Scene paints only column 0; columns 1..3 stay transparent (cleared default).
         var scene = Scene.Create(4, 1);
-        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), new SolidColorBrush(Red)));
+        scene.Draw(ctx => ctx.FillRectangle(new Rect(0, 0, 1, 1), new BrushedStyle { Background = new SolidColorBrush(Red) }));
         var layers = new[] { new SceneLayer(scene) };
 
         Assert.True(compositor.Composite(layers, view));
@@ -390,7 +414,7 @@ public class SceneCompositorTests
 
         var scene = Scene.Create(4, 1);
         scene.Draw(ctx => ctx.FillRectangle(scene.Bounds,
-            new LinearGradientBrush([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))])));
+            new BrushedStyle { Background = new LinearGradientBrush([new(0.0, Color.FromRgb(0, 0, 0)), new(1.0, Color.FromRgb(255, 255, 255))]) }));
 
         Assert.True(compositor.Composite(new[] { new SceneLayer(scene, new CompositeParameters(opacity: 0)) }, view));
         Assert.Equal(Blue, buffer[0, 0].Style.Background);
@@ -437,13 +461,13 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var a = Scene.Create(12, 2);
-        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", DrawHarness.Ink(Red)));
 
         var b = Scene.Create(4, 2);
         b.Draw(ctx =>
         {
-            ctx.DrawText(0, 0, "xxxx", Red);
-            ctx.DrawText(0, 1, "xxxx", Red);
+            ctx.DrawText(0, 0, "xxxx", DrawHarness.Ink(Red));
+            ctx.DrawText(0, 1, "xxxx", DrawHarness.Ink(Red));
         });
 
         Assert.True(compositor.Composite(
@@ -466,7 +490,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var a = Scene.Create(12, 2);
-        a.Draw(ctx => ctx.DrawText(4, 0, "中", Red));
+        a.Draw(ctx => ctx.DrawText(4, 0, "中", DrawHarness.Ink(Red)));
 
         var b = Scene.Create(4, 2);
         Fill(b, new SolidColorBrush(Red));
@@ -497,7 +521,7 @@ public class SceneCompositorTests
         // [0,6) makes the WideLeft the last visible cell — its continuation column belongs to
         // the neighbor layer.
         var scrolled = Scene.Create(10, 2);
-        scrolled.Draw(ctx => ctx.DrawText(7, 0, "中", Red));
+        scrolled.Draw(ctx => ctx.DrawText(7, 0, "中", DrawHarness.Ink(Red)));
 
         var neighbor = Scene.Create(3, 2);
         Fill(neighbor, new SolidColorBrush(Red));
@@ -535,9 +559,9 @@ public class SceneCompositorTests
         var content = Scene.Create(12, 2);
         content.Draw(ctx =>
         {
-            ctx.DrawText(1, 0, "✅", Red);   // emoji pair at (1,2)
-            ctx.DrawText(5, 0, "中", Red);   // CJK pair at (5,6)
-            ctx.DrawText(8, 0, "x", Red);    // plain text at 8
+            ctx.DrawText(1, 0, "✅", DrawHarness.Ink(Red));   // emoji pair at (1,2)
+            ctx.DrawText(5, 0, "中", DrawHarness.Ink(Red));   // CJK pair at (5,6)
+            ctx.DrawText(8, 0, "x", DrawHarness.Ink(Red));    // plain text at 8
         });
 
         var cover = Scene.Create(12, 2);
@@ -569,8 +593,8 @@ public class SceneCompositorTests
         var content = Scene.Create(10, 1);
         content.Draw(ctx =>
         {
-            ctx.DrawText(2, 0, "✅", Red);
-            ctx.DrawText(6, 0, "ab", Red);
+            ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Red));
+            ctx.DrawText(6, 0, "ab", DrawHarness.Ink(Red));
         });
 
         var chrome = Scene.Create(10, 1);
@@ -593,7 +617,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(8, 1);
-        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Red));
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Red)));
 
         var passThrough = Scene.Create(8, 1);
         Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0))); // fully transparent
@@ -619,8 +643,8 @@ public class SceneCompositorTests
         var content = Scene.Create(12, 1);
         content.Draw(ctx =>
         {
-            ctx.DrawText(1, 0, "✅", Red);
-            ctx.DrawText(5, 0, "ab", Red);
+            ctx.DrawText(1, 0, "✅", DrawHarness.Ink(Red));
+            ctx.DrawText(5, 0, "ab", DrawHarness.Ink(Red));
         });
 
         var menu = Scene.Create(12, 1);
@@ -645,7 +669,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(12, 2);
-        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", DrawHarness.Ink(Red))); // pair at (4,5)
 
         var cover = Scene.Create(4, 2);
         Fill(cover, new SolidColorBrush(Red)); // opaque, footprint starts at the continuation column
@@ -672,7 +696,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(12, 2);
-        content.Draw(ctx => ctx.DrawText(4, 0, "✅", Red)); // pair at (4,5)
+        content.Draw(ctx => ctx.DrawText(4, 0, "✅", DrawHarness.Ink(Red))); // pair at (4,5)
 
         var cover = Scene.Create(5, 2);
         Fill(cover, new SolidColorBrush(Red)); // opaque, footprint columns 0..4 — covers ONLY the WideLeft
@@ -698,7 +722,7 @@ public class SceneCompositorTests
         var compositor = OverBlueBase();
 
         var content = Scene.Create(8, 1);
-        content.Draw(ctx => ctx.DrawText(2, 0, "✅", Color.FromRgba(0, 0, 0, 0))); // transparent fg
+        content.Draw(ctx => ctx.DrawText(2, 0, "✅", DrawHarness.Ink(Color.FromRgba(0, 0, 0, 0)))); // transparent fg
 
         var passThrough = Scene.Create(8, 1);
         Fill(passThrough, new SolidColorBrush(Color.FromRgba(255, 0, 0, 0)));
@@ -723,7 +747,7 @@ public class SceneCompositorTests
         band.Draw(ctx =>
         {
             for (int r = 0; r < 6; r++)
-                ctx.DrawText(2, r, "中文", Red);
+                ctx.DrawText(2, r, "中文", DrawHarness.Ink(Red));
         });
 
         var layers = new[] { new SceneLayer(band, new CompositeParameters(offsetRow: 0, clip: new Rect(0, 0, 10, 3))) };

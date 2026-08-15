@@ -53,7 +53,7 @@ public class ChartHitTestTests
         Assert.True(chart.HitTest(new CellPosition(0, 4), out var tip));   // the (0,0) end
         Assert.Contains("X=0", TipText(tip));
         Assert.Contains("Y=0", TipText(tip));
-        Assert.Contains(TipRuns(tip), r => r.Style.Foreground == Green && r.Text == "●");   // the series indicator
+        Assert.Contains(TipRuns(tip), r => HasForeground(r, Green) && r.Text == "●");   // the series indicator
 
         Assert.True(chart.HitTest(new CellPosition(9, 0), out _));         // the (9,9) end
         Assert.False(chart.HitTest(new CellPosition(9, 4), out _));        // bottom-right: off the curve
@@ -155,19 +155,23 @@ public class ChartHitTestTests
         Assert.True(chart.HitTest(new CellPosition(5, 5), out var crossing));
         var runs = TipRuns(crossing);
         Assert.Equal(2, runs.Count(r => r.Text.Contains("X=")));
-        Assert.Contains(runs, r => r.Style.Foreground == Green && r.Text == "●");
-        Assert.Contains(runs, r => r.Style.Foreground == Red && r.Text == "●");
+        Assert.Contains(runs, r => HasForeground(r, Green) && r.Text == "●");
+        Assert.Contains(runs, r => HasForeground(r, Red) && r.Text == "●");
 
         Assert.True(chart.HitTest(new CellPosition(0, 10), out var single));    // only the rising line
         var singleRuns = TipRuns(single);
         Assert.Equal(1, singleRuns.Count(r => r.Text.Contains("X=")));
-        Assert.Contains(singleRuns, r => r.Style.Foreground == Green && r.Text == "●");
+        Assert.Contains(singleRuns, r => HasForeground(r, Green) && r.Text == "●");
 
         Assert.False(chart.HitTest(new CellPosition(10, 5), out _), "the right edge's middle is off both lines");
     }
 
     // The tooltip's full text, indicator glyphs included.
     private static string TipText(object? tip) => string.Concat(TipRuns(tip).Select(r => r.Text));
+
+    // A run's carrier states its colors as brushes; the tooltip's indicators are solid.
+    private static bool HasForeground(Cursorial.Rendering.Text.TextRun run, Color color)
+        => run.Style.Foreground is Cursorial.Rendering.Media.SolidColorBrush s && s.Color == color;
 
     // Flattens a rich chart tooltip (RichText) into its text runs for assertion.
     private static List<Cursorial.Rendering.Text.TextRun> TipRuns(object? tip)

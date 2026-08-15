@@ -5,6 +5,7 @@
 
 using System.Text;
 
+using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
@@ -93,7 +94,7 @@ public sealed class BoundaryClipDiagnosisTests(ITestOutputHelper output)
                         OnRender = (p, ctx) =>
                         {
                             for (var i = 0; i < p.Natural.Columns; i++)
-                                ctx.Set(i, 0, Alphabet[i].ToString(), default);
+                                ctx.Set(i, 0, Alphabet[i].ToString(), default(CellStyle));
                         }
                     };
 
@@ -199,7 +200,7 @@ public sealed class BoundaryClipDiagnosisTests(ITestOutputHelper output)
                         OnRender = (p, ctx) =>
                         {
                             for (var i = 0; i < p.Natural.Columns; i++)
-                                ctx.Set(i, 0, Alphabet[i].ToString(), default);
+                                ctx.Set(i, 0, Alphabet[i].ToString(), default(CellStyle));
                         }
                     };
 

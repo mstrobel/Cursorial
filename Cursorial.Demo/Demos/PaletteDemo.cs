@@ -3,6 +3,7 @@ using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -105,7 +106,7 @@ internal sealed class PaletteDemo : InteractiveDemo
         if (palette is null || palette.Count == 0)
         {
             var msg = statusMessage ?? "[p align=center][fg=#dcdcff]No palette data.[/fg][/p]";
-            var rtb = new RichTextBuilder(style).Paragraph(alignment: TextAlignment.Center);
+            var rtb = new RichTextBuilder(PartialStyle.From(style)).Paragraph(alignment: TextAlignment.Center);
             TextMarkup.Parse(msg, rtb);
             var msgFormatted = new TextFormatter().Format(rtb.Build(), buffer.Columns, buffer.Rows);
 

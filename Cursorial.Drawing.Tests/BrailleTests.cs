@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -65,7 +66,7 @@ public class BrailleTests
     {
         var b = DrawHarness.Render(4, 4, ctx =>
         {
-            ctx.DrawText(0, 0, "X", Color.FromRgb(255, 255, 255));
+            ctx.DrawText(0, 0, "X", DrawHarness.Ink(Color.FromRgb(255, 255, 255)));
             ctx.DrawLine(0, 0, 3, 3, Color.FromRgb(0, 200, 0));
         });
         Assert.Equal("X", b[0, 0].Grapheme);

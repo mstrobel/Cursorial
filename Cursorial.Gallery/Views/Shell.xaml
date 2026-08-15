@@ -113,29 +113,76 @@
 
         <DataTemplate DataType="vm:WelcomeViewModel">
           <DockPanel>
+            <DockPanel.Resources>
+              <PhaseShiftedBrush x:Key="WelcomeBrush">
+                <PhaseShiftedBrush.Brush>
+                  <LinearGradientBrush StartPoint="0,0"
+                                       EndPoint="1,1"
+                                       Spread="Reflect">
+                    <GradientStop Offset="0" Color="#ff5495" />
+                    <GradientStop Offset="1" Color="#feeb84" />
+                  </LinearGradientBrush>
+                </PhaseShiftedBrush.Brush>
+              </PhaseShiftedBrush>
+            </DockPanel.Resources>
             <StackPanel VerticalAlignment="Center"
                         Margin="8,1">
               <RichTextPresenter Source="{Binding WelcomeTextPreamble}"
+                                 HorizontalAlignment="Center"
                                  TextAlignment="Center"
-                                 TextElement.TextStyle="Italic"
-                                 Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}" />
-              
+                                 Foreground="{DynamicResource {x:Static ThemeKeys.PurpleBrush}}"
+                                 TextElement.TextStyle="Italic"/>
+
               <ImagePresenter SourceUri="embedded://Cursorial.Gallery/cursorial_banner.png"
                               MaxHeight="8"
                               HorizontalAlignment="Center">
                 <ImagePresenter.PlaceholderContent>
                   <RichTextPresenter Source="{Binding WelcomeText}"
+                                     HorizontalAlignment="Center"
                                      TextAlignment="Center"
                                      TextElement.TextStyle="Italic">
-                    <TextElement.Foreground>
+                    <RichTextPresenter.Foreground>
                       <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
                         <GradientStop Color="#2c83b7" Offset="0"/>
                         <GradientStop Color="#73c6e7" Offset="1 "/>
                       </LinearGradientBrush>
-                    </TextElement.Foreground>
+                    </RichTextPresenter.Foreground>
                   </RichTextPresenter>
                 </ImagePresenter.PlaceholderContent>
               </ImagePresenter>
+
+              <GlyphPresenter x:Name="GradientSweep" Glyph="&#x2571;" Fill="True" Margin="0,2,0,0">
+                <GlyphPresenter.Foreground>
+                  <PhaseShiftedBrush x:Key="WelcomeBrush">
+                    <PhaseShiftedBrush.Brush>
+                      <LinearGradientBrush StartPoint="0,0"
+                                           EndPoint="1,1"
+                                           Spread="Reflect">
+                        <GradientStop Offset="0" Color="#ff5495" />
+                        <GradientStop Offset="1" Color="#feeb84" />
+                      </LinearGradientBrush>
+                    </PhaseShiftedBrush.Brush>
+                  </PhaseShiftedBrush>
+                </GlyphPresenter.Foreground>
+                <GlyphPresenter.Style>
+                  <Style RequiresCapabilities="Local, Truecolor">
+                    <Style.Enter>
+                      <BeginStoryboard>
+                        <BeginStoryboard.Storyboard>
+                          <Storyboard>
+                            <Storyboard.Children>
+                              <DoubleTrack Target="{x:Reference GradientSweep}"
+                                           TargetPath="(GlyphPresenter.Foreground).(PhaseShiftedBrush.Phase)"
+                                           From="0.0" To="2.0" Duration="0:0:1"
+                                           Repeat="{x:Static RepeatBehavior.Forever}" />
+                            </Storyboard.Children>
+                          </Storyboard>
+                        </BeginStoryboard.Storyboard>
+                      </BeginStoryboard>
+                    </Style.Enter>
+                  </Style>
+                </GlyphPresenter.Style>
+              </GlyphPresenter>
 
               <RichTextPresenter TextAlignment="Center"
                                  Margin="0,2,0,0"
@@ -189,7 +236,7 @@
             <TabItem Header="Content-_Assisted Scrolling">
               <DockPanel>
                 <Border DockPanel.Dock="Top" Margin="0,0,0,1">
-                  <TextBlock Markup="When [brush=Theme.TextDimBrush]ScrollViewer[/brush] content implements the [brush=Theme.TextDimBrush]IScrollContentHost[/brush] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
+                  <TextBlock Markup="When [fg=Theme.TextDimBrush]ScrollViewer[/fg] content implements the [fg=Theme.TextDimBrush]IScrollContentHost[/fg] interface, it automatically takes control of line and page-level scrolling. The chessboard pattern below snaps to whole squares when scrolling with the keyboard." />
                 </Border>
                 <ScrollViewer HorizontalScrollBarVisibility="Visible"
                               VerticalScrollBarVisibility="Visible">

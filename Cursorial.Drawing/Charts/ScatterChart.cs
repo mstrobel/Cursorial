@@ -1,7 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 
@@ -98,7 +97,7 @@ public sealed class ScatterChart : IChart
             if (!context.IsVisible(column, row)) continue;
 
             var color = Brush.ColorAt(column, row, area);
-            context.Set(column, row, glyph, CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
+            context.Set(column, row, glyph, new PartialStyle { Foreground = color, Background = Colors.Transparent });
             _renderedPoints[new CellPosition(column, row)] = p;
         }
     }

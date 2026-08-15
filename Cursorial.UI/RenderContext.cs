@@ -133,41 +133,46 @@ public sealed class RenderContext
     public void Set(int column, int row, string? grapheme, in CellStyle style)
         => Inner.Set(column, row, grapheme, in style);
 
+    /// <summary>Writes one cell as a per-cell DELTA folded onto the destination — the form an element
+    /// reaches for when it has an opinion about some channels and none about the rest, rather than
+    /// stamping a whole <see cref="CellStyle"/>.</summary>
+    public void Set(int column, int row, string? grapheme, in PartialStyle style)
+        => Inner.Set(column, row, grapheme, in style);
+
     /// <summary>Blits the contents of <paramref name="view"/> into the back buffer at <paramref name="region"/>.</summary>
     public void Blit(CellBufferView view, in Rect region)
         => Inner.Blit(view, region);
 
-    /// <summary>Background-only fill: lower layers' glyphs show through (a deliberate glyph-transparent scrim).</summary>
-    public void FillRectangle(in Rect region, IBrush brush)
-        => Inner.FillRectangle(region, brush);
+    /// <inheritdoc cref="DrawingContext.FillRectangle(in Rect, in BrushedStyle)"/>
+    public void FillRectangle(in Rect region, in BrushedStyle style)
+        => Inner.FillRectangle(region, style);
 
-    /// <inheritdoc cref="FillRectangle(in Rect, IBrush)"/>
-    public void FillRectangle(in Rect region, Color color)
-        => Inner.FillRectangle(region, color);
+    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, in BrushedStyle, bool)"/>
+    /// <remarks>
+    /// <b><paramref name="overwrite"/> defaults to <see langword="false"/> here</b>, narrower than the
+    /// drawing layer's <see langword="true"/> — the default an element actually reaches for. The narrower
+    /// default is load-bearing: <c>TextPresenter</c>'s inverse band fill paints OVER a glyph face, and
+    /// <see cref="CellBuffer.Set(int, int, string, in PartialStyle)"/> rescues the ink underneath only
+    /// on the non-overwriting path.
+    /// </remarks>
+    public void FillOpaque(in Rect region, in BrushedStyle style, bool overwrite = true)
+        => Inner.FillOpaque(region, style, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, Color, TextAttributes, bool)"/>
-    public void FillOpaque(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.FillOpaque(region, color, attributes, overwrite);
+    /// <inheritdoc cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>
+    /// <param name="region">The rectangle to fill, in element-local coordinates.</param>
+    /// <param name="style">The per-cell delta every occluder cell takes.</param>
+    /// <param name="brushBounds">The sampling region for <paramref name="style"/>'s brushes.</param>
+    /// <param name="overwrite">Whether to overwrite existing non-whitespace content. Default is <c>false</c>.</param>
+    public void FillOpaque(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = true)
+        => Inner.FillOpaque(region, style, brushBounds, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
-    public void FillOpaque(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = true)
-        => Inner.FillOpaque(region, brush, attributes, overwrite);
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, bool)"/>
+    public void PaintRectangle(in Rect region, in BrushedStyle style, bool overwrite = false)
+        => Inner.PaintRectangle(region, style, overwrite);
 
-    /// <inheritdoc cref="DrawingContext.FillOpaque(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    public void FillOpaque(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = true)
-        => Inner.FillOpaque(region, brush, brushBounds, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, Color, TextAttributes, bool)"/>
-    public void PaintRectangle(in Rect region, Color color, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, color, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, TextAttributes, bool)"/>
-    public void PaintRectangle(in Rect region, IBrush brush, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, brush, region, attributes, overwrite);
-
-    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, IBrush, in Rect, TextAttributes, bool)"/>
-    public void PaintRectangle(in Rect region, IBrush brush, in Rect brushBounds, TextAttributes attributes = default, bool overwrite = false)
-        => Inner.PaintRectangle(region, brush, brushBounds, attributes, overwrite);
+    /// <inheritdoc cref="DrawingContext.PaintRectangle(in Rect, in BrushedStyle, in Rect, bool)"/>
+    public void PaintRectangle(in Rect region, in BrushedStyle style, in Rect brushBounds, bool overwrite = false)
+        => Inner.PaintRectangle(region, style, brushBounds, overwrite);
 
     // ───────────────────────────── text and content ─────────────────────────────
 
@@ -179,39 +184,109 @@ public sealed class RenderContext
     /// text's bounding box: widest line's advance × line count — per line the full local width
     /// (clusters a band/zone edge clips away still advance the count).
     /// </summary>
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         IBrush foreground, IBrush? background = null, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
-
-    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, IBrush, IBrush?, in CellStyle)"/>
-    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
-                         Color foreground, Color? background = null, in CellStyle baseStyle = default)
-        => Inner.DrawText(column, row, text, foreground, background, baseStyle);
-
-    /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>, brushed; capabilities auto-supplied.</summary>
     /// <remarks>
-    /// <paramref name="brush"/> colors the cells that <b>inherited</b> the document foreground
-    /// (unset, or equal to the document's default); a run's own explicit foreground (markup color)
-    /// wins over the brush — the Drawing layer's document-brush contract. Use this overload when
-    /// the element supplies the base color (themed text over a <see cref="FormattedText"/> reused
-    /// across styles); use the two-argument overload when the document's own runs/markup carry all
-    /// the color and nothing should be imposed from outside.
+    /// <paramref name="baseStyle"/> is a per-cell DELTA over the draw's ground state — attributes,
+    /// underline, hyperlink and blending mode included, not just the two color channels the brush
+    /// overload can carry. An absent <c>Background</c> here is <b>no opinion</b> (the channel
+    /// resolves to its default); on the brush overload an omitted background is
+    /// <see cref="Brushes.Transparent"/>. A caller holding a whole <see cref="CellStyle"/> ground
+    /// state restates it UNDER the delta — <c>BrushedStyle.FromStated(base).Then(delta)</c>. See
+    /// <see cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>.
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, IBrush brush, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text, in BrushedStyle baseStyle)
+        => Inner.DrawText(column, row, text, baseStyle);
+
+    /// <inheritdoc cref="DrawingContext.DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle, in Rect)"/>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         in BrushedStyle baseStyle, in Rect sampleBounds)
+        => Inner.DrawText(column, row, text, baseStyle, sampleBounds);
+
+    /// <inheritdoc cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/>
+    /// <remarks>An omitted <paramref name="background"/> is <see cref="Brushes.Transparent"/>.</remarks>
+    public Size DrawText(int column, int row, ReadOnlySpan<char> text,
+                         IBrush foreground, IBrush? background = null)
+        => Inner.DrawText(column, row, text,
+                          new BrushedStyle
+                          {
+                              Foreground = foreground,
+                              Background = background ?? Brushes.Transparent
+                          });
+
+    /// <summary>
+    /// Draws one line of text truncated to <paramref name="maxWidth"/> cells on a grapheme-cluster
+    /// boundary, appending <paramref name="ellipsis"/> when content was cut. Text that fits paints
+    /// whole with no ellipsis; text that does not keeps the longest prefix whose display width fits
+    /// in <c>maxWidth − StringWidth(ellipsis)</c> cells and paints the ellipsis immediately after
+    /// it. <paramref name="maxWidth"/> = <see cref="int.MaxValue"/> is the documented no-limit
+    /// spelling: the text paints whole without being measured at all. Returns the painted bounding
+    /// box (the text's own box when it fit; prefix + ellipsis width × 1 row when truncated).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a hot-loop primitive, not the text pipeline: one measured walk and at most two
+    /// <see cref="DrawText(int, int, ReadOnlySpan{char}, in BrushedStyle)"/> calls, no layout
+    /// object — a DataGrid repaints every visible cell through it. Wrapping, rich content, and trim
+    /// modes other than a trailing ellipsis belong to
+    /// <see cref="DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>. Line breaks are
+    /// not interpreted: the text is treated as a single line.
+    /// </para>
+    /// <para>
+    /// <paramref name="baseStyle"/> is the same per-cell delta <c>DrawText</c> takes — a caller
+    /// inking a cell over an opaque fill states <see cref="Brushes.Transparent"/> as the background
+    /// itself. The cut is by grapheme clusters against the column budget: a char-index cut reads a
+    /// display-column count as a UTF-16 length, which can split a surrogate pair or an emoji
+    /// sequence. The ellipsis is measured, not assumed one cell wide — a custom
+    /// <paramref name="ellipsis"/> (or an empty one: truncate with no indicator) reserves exactly
+    /// its own display width.
+    /// </para>
+    /// </remarks>
+    public Size DrawTruncated(int column, int row, ReadOnlySpan<char> text, int maxWidth,
+                              in BrushedStyle baseStyle, string ellipsis = TextFormatter.DefaultEllipsis)
     {
-        Inner.DrawFormattedText(text, bounds, brush, _capabilities, baseAttributes, baseUnderlineShape);
+        if (maxWidth < int.MaxValue && GraphemeWidth.StringWidth(text) > maxWidth)
+        {
+            int ellipsisWidth = GraphemeWidth.StringWidth(ellipsis);
+
+            // Keep whole grapheme clusters while they fit the post-ellipsis budget.
+            var enumerator = text.GetGraphemeEnumerator();
+            int width = 0;
+            int end = 0;
+
+            while (enumerator.MoveNext())
+            {
+                int next = width + GraphemeWidth.ClusterWidth(enumerator.Current);
+
+                if (next > maxWidth - ellipsisWidth)
+                    break;
+
+                width = next;
+                end = enumerator.ElementIndex + enumerator.Current.Length;
+            }
+
+            Inner.DrawText(column, row, text[..end], baseStyle);
+            Inner.DrawText(column + width, row, ellipsis, baseStyle);
+            return new Size(width + ellipsisWidth, 1);
+        }
+
+        return Inner.DrawText(column, row, text, baseStyle);
     }
 
     /// <summary>Paints a laid-out document into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
     /// <remarks>
-    /// Renders with the document's <b>own</b> colors (markup spans, run styles) only. See the
-    /// brushed overload's remarks for when to supply an external brush instead. <paramref name="baseAttributes"/>
-    /// (default none) union-merges an inherited <see cref="TextAttributes"/> — an ancestor's
-    /// <c>TextElement.TextAttributes</c> — onto every painted cell at paint time.
+    /// <paramref name="preference"/> is the element-side opinion folded onto every painted cell. Its
+    /// <see cref="BrushedStyle.Foreground"/> colors the cells that <b>inherited</b> the document
+    /// foreground (unset, or equal to the document's default); a run's own explicit foreground
+    /// (markup color) wins over the brush — the Drawing layer's document-brush contract. Its
+    /// attribute channels merge an ancestor's <c>TextElement.TextAttributes</c> onto the paint per
+    /// axis — build them with <see cref="BrushedStyle.Imposing"/>, which routes each flag through
+    /// the axis that owns it. State a Foreground when the element supplies the base color (themed
+    /// text over a <see cref="FormattedText"/> reused across styles); pass
+    /// <see langword="default"/> to render with the document's <b>own</b> colors (markup spans,
+    /// run styles) and attributes, imposing nothing from outside.
     /// </remarks>
-    public void DrawFormattedText(FormattedText text, in Rect bounds, TextAttributes baseAttributes = default, UnderlineStyle baseUnderlineShape = UnderlineStyle.Single)
+    public void DrawFormattedText(FormattedText text, in Rect bounds, in BrushedStyle preference = default)
     {
-        Inner.DrawFormattedText(text, bounds, _capabilities, baseAttributes, baseUnderlineShape);
+        Inner.DrawFormattedText(text, bounds, _capabilities, preference);
     }
 
     /// <summary>Paints embedded content (images, sized text) into element-local <paramref name="bounds"/>; capabilities auto-supplied.</summary>
@@ -220,42 +295,54 @@ public sealed class RenderContext
         Inner.DrawContent(bounds, content, _capabilities);
     }
 
-    /// <summary>Paints embedded content with an explicit <paramref name="style"/> — the SGR backdrop for
-    /// protocol-backed content (a selection background riding an OSC 66 emission).</summary>
-    public void DrawContent(in Rect bounds, IContent content, in Cursorial.Output.CellStyle style)
+    /// <summary>Paints embedded content with an explicit <paramref name="style"/> delta — for
+    /// protocol-backed content it resolves at the fragment's anchor into the SGR backdrop (a
+    /// selection background riding an OSC 66 emission).</summary>
+    /// <remarks>
+    /// The replacement the retired <see cref="Cursorial.Output.CellStyle"/> overload's obsoletion
+    /// promised: the carrier is the delta the text pipeline speaks, and the UI layer stops naming
+    /// the back-buffer format here.
+    /// </remarks>
+    public void DrawContent(in Rect bounds, IContent content, in BrushedStyle style)
     {
         Inner.DrawContent(bounds, content, _capabilities, style);
     }
 
     /// <summary>
-    /// Restyles cells in place — graphemes preserved, background/attributes applied. Incoming style
-    /// attributes are overlaid existing attributes, except for <see cref="TextAttributes.Inverse"/>:
-    /// the inverse value is always taken from the incoming style.
+    /// Restyles cells in place — graphemes preserved, each cell's style becoming whatever
+    /// <paramref name="style"/> yields from it. Channels the delta does not carry pass through, so the
+    /// caller states exactly which of background, attributes and the rest the tint has an opinion about.
     /// </summary>
     /// <remarks>
     /// This method provides selection-highlight primitive for glyph-rendered (FIGlet) text: geometry never shifts.
     /// </remarks>
-    public void TintCells(in Rect bounds, in Cursorial.Output.CellStyle style)
+    public void TintCells(in Rect bounds, in PartialStyle style)
     {
         Inner.TintCells(bounds, style);
     }
 
     /// <summary>Paints text through a glyph font at an element-local anchor (which may be negative —
     /// a scrolled editor); the font clips like a cell write. Optional brush colors per cell.</summary>
-    public void DrawGlyphText(Cursorial.Rendering.Fonts.IGlyphFont face, int column, int row, string text,
-                              IBrush? foreground, in Cursorial.Output.CellStyle style, in Rect brushBounds)
+    public void DrawGlyphText(Rendering.Fonts.IGlyphFont face, int column, int row, string text,
+                              IBrush? foreground, in CellStyle style, in Rect brushBounds)
     {
         if (foreground is null)
         {
-            Inner.DrawGlyphText(face, column, row, text, style);
+            // No brush: the style goes down flat, and its background has to be read through the sentinel
+            // it arrived in — Color.Default is a CellStyle's only word for "no opinion", so it STAMPS
+            // (a FIGlet line keeps showing the band underneath through its holes, which is what the
+            // presenter's inverse pre-fill is there to be seen through), and anything else is a real
+            // background and BOXES.
+            Inner.DrawGlyphText(face, column, row, text,
+                                style.Background.IsDefault ? PartialStyle.FromInk(style) : PartialStyle.From(style));
             return;
         }
 
-        var captured = style;
-        var brush = foreground;
-        var bounds = brushBounds;
-        Inner.DrawGlyphText(face, column, row, text,
-                            (c, r) => captured.WithForeground(brush.ColorAt(c, r, bounds)));
+        // The brush owns a FOREGROUND and says nothing else — the base style flows through as the fold's
+        // backdrop, and the brush goes to the face unsampled instead of being wrapped in a closure the face
+        // had to invoke blind.
+        Inner.DrawGlyphText(face, column, row, text, style,
+                            new BrushedStyle { Foreground = foreground }, brushBounds);
     }
 
     /// <summary>Paints a cell-rendered <see cref="IChart"/> into element-local <paramref name="area"/> (the chart clips to it).</summary>
@@ -305,7 +392,7 @@ public sealed class RenderContext
 
     /// <summary>
     /// Fill + titled border in one call. The fill is Drawing's <b>background-only</b>
-    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, IBrush, TextAttributes, bool)"/>
+    /// <c>FillRectangle</c> — for an opaque surface use <see cref="FillOpaque(in Rect, in BrushedStyle, bool)"/>
     /// followed by <see cref="DrawTitledBox"/> with <c>overwrite: true</c> (the <c>Panel.Background</c>
     /// path does the opaque fill for you).
     /// </summary>

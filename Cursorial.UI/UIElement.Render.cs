@@ -41,7 +41,12 @@ public abstract partial class UIElement
            || RenderOffsetColumn != 0
            || RenderOffsetRow != 0
            || ClipToBounds
-           || CompositeClip is not null;
+           || CompositeClip is not null
+           // A non-SourceOver blending mode composites the element's WHOLE surface against its backdrop,
+           // so it needs its own layer. SourceOver never does — it is a plain replace on opaque content,
+           // and the only translucency it acts on already promotes via Opacity < 1 — so it is excluded.
+           || (GetValue(Media.RenderOptions.BlendingModeProperty) is { } blend
+               && !ReferenceEquals(blend, Cursorial.Media.BlendingModes.Default));
 
     /// <summary>Whether the element is (or will be, next pass) a render boundary — promotion is sticky.</summary>
     internal bool IsEffectiveRenderBoundary => IsPromotedBoundary || IsRenderBoundaryCandidate;

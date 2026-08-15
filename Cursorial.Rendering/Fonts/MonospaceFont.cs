@@ -1,5 +1,6 @@
 using System.Globalization;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Fonts;
@@ -15,7 +16,7 @@ namespace Cursorial.Rendering.Fonts;
 /// Grapheme segmentation uses <see cref="StringInfo.GetTextElementEnumerator(string)"/>, so
 /// emoji clusters, CJK, accented Latin, and ZWJ sequences are all treated as single visual
 /// units. Wide-cell handling is the buffer's responsibility — this font just calls
-/// <see cref="CellBuffer.Set"/> per cluster and reads back the advance.
+/// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> per cluster and reads back the advance.
 /// </remarks>
 public sealed class MonospaceFont : IGlyphFont
 {
@@ -78,19 +79,34 @@ public sealed class MonospaceFont : IGlyphFont
     }
 
     /// <inheritdoc/>
-    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style)
+    public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in PartialStyle style)
     {
-        return PaintCore(buffer, column, row, text, style, null);
+        // Every cell in this face's box is a cell it inks (a run of spaces is still a run of cells it
+        // writes), so box mode adds nothing a caller could see EXCEPT at the edges — a clipped run, or
+        // one whose measured width outruns what fit. The fill runs anyway rather than being special-cased
+        // away: "the background reached the box" must not depend on which face is under the call.
+        var ink = GlyphPaint.Ink(buffer, column, row, Measure(text), style);
+
+        return PaintCore(buffer, column, row, text, style: null, bounds: default, ink);
     }
 
+    /// <inheritdoc/>
     public Size Paint(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
-                      GlyphStyleProvider styleProvider)
+                      in BrushedStyle baseStyle, in Rect bounds)
     {
-        return PaintCore(buffer, column, row, text, default, styleProvider);
+        // A uniform BrushedStyle resolves to the same delta everywhere, so resolve it once here and take the
+        // ink path — one cluster loop with no per-cell resolve. No GlyphPaint pass: this path never fills a
+        // box, and every cell in this face's footprint is a cell the loop writes anyway.
+        return baseStyle.IsUniform
+                   ? PaintCore(buffer, column, row, text, style: null, bounds: default,
+                               ink: baseStyle.Resolve(column, row, bounds))
+                   : PaintCore(buffer, column, row, text, baseStyle, bounds, ink: null);
     }
 
-    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text, in CellStyle style,
-                                  GlyphStyleProvider? styleProvider = null)
+    // Exactly one of `style` and `ink` is non-null: `style` is a BrushedStyle still to be resolved per
+    // cluster; `ink` is already a resolved delta. Both are deltas over the cells themselves.
+    private static Size PaintCore(CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                                  in BrushedStyle? style, in Rect bounds, in PartialStyle? ink)
     {
         if (buffer.IsEmpty || text.IsEmpty) return Size.Empty;
 
@@ -129,8 +145,15 @@ public sealed class MonospaceFont : IGlyphFont
                 // CellBuffer.Set takes a string; materialize the cluster once per call.
                 // For most graphemes this is 1–4 chars — short enough that an alternative
                 // span-based Set is a future micro-optimization.
-                var clusterStyle = styleProvider?.Invoke(col, row) ?? style;
-                int written = buffer.Set(col, row, cluster.ToString(), clusterStyle);
+                // Resolved per cluster, not once up front: a non-uniform BrushedStyle is position-dependent,
+                // so hoisting the resolve out of the loop would paint one cell's answer across the whole run.
+                // (The uniform case never reaches here — the overload above resolves it and passes ink.)
+                // Both arms go through the DELTA overload, which folds over the CELL — that is what
+                // makes an absent channel mean "leave it": the cluster keeps the colour, attribute or
+                // hyperlink the caller declined to state.
+                int written = ink is { } d
+                                  ? buffer.Set(col, row, cluster.ToString(), d)
+                                  : buffer.Set(col, row, cluster.ToString(), style!.Value.Resolve(col, row, bounds));
 
                 // The one case where the surface knows better than the layout: a wide glyph at the
                 // window's right edge degrades to a blank single, freeing the column it did not take.

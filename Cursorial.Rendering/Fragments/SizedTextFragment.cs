@@ -1,5 +1,6 @@
 using System.Buffers;
 
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Text;
@@ -43,12 +44,13 @@ public sealed class SizedTextFragment : IBufferFragment
     private readonly string[] _lines;
 
     /// <summary>Construct a sized-text fragment at the requested sizing, text content, and style.</summary>
-    public SizedTextFragment(in TextSizing sizing, string text, in CellStyle style)
+    public SizedTextFragment(in TextSizing sizing, string text, in CellStyle style, IBlendingMode? mode = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         Sizing = sizing;
         Text = text;
         Style = style;
+        Mode = mode;
 
         // Split on LF. CR alone (no following LF) is left in the line as a literal character —
         // most terminals render it as a backspace, but for OSC 66 it falls through to the
@@ -68,6 +70,13 @@ public sealed class SizedTextFragment : IBufferFragment
     /// <summary>The style applied to the whole rendered region.</summary>
     public CellStyle Style { get; }
 
+    /// <summary>
+    /// The blend mode the run carried, applied to <see cref="Style"/> over the anchor style at emission —
+    /// which, the two being equal, blends the foreground over its own background (see
+    /// <see cref="IBufferFragment.StyleBlendMode"/>). <see langword="null"/> when the run states no mode.
+    /// </summary>
+    public IBlendingMode? Mode { get; }
+
     /// <summary>The text content split into individual lines, one OSC 66 emission per line.</summary>
     public ReadOnlySpan<string> Lines => _lines;
 
@@ -77,10 +86,17 @@ public sealed class SizedTextFragment : IBufferFragment
     /// remove + add and re-emit unchanged sized text; equal content at the same anchor must
     /// diff-skip instead, exactly like <see cref="KittyImageFragment"/>'s content key.
     /// </summary>
-    public object Key => (Text, Sizing, Style);
+    // CACHE KEY: resolved value, never the template. The tuple compares by value only because
+    // every element does; a brush in Style's place would make equal-looking keys unequal per
+    // re-raster and re-transmit the emission every frame. Mode is an IBlendingMode singleton, so its
+    // reference identity IS value identity — stable across re-raster like the rest of the tuple.
+    public object Key => (Text, Sizing, Style, Mode);
 
     /// <inheritdoc/>
     public CellStyle? StyleOverride => Style;
+
+    /// <inheritdoc/>
+    public IBlendingMode? StyleBlendMode => Mode;
 
     /// <inheritdoc/>
     public FragmentLayer Layer => FragmentLayer.Cells;

@@ -9,6 +9,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fragments;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
@@ -751,7 +752,7 @@ public class RenderGroupCompositingTests
         protected override void Render(RenderContext context)
         {
             base.Render(context);
-            context.FillOpaque(Region ?? context.Bounds, color);
+            context.FillOpaque(Region ?? context.Bounds, new BrushedStyle { Background = new SolidColorBrush(color) });
         }
     }
 
@@ -771,9 +772,11 @@ public class RenderGroupCompositingTests
     {
         public Size Measure(Size availableSpace, OutputCapabilities capabilities) => fragment.GetSize();
 
-        public Rect Paint(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
         {
-            buffer.AddFragment(bounds.Column, bounds.Row, fragment, style);
+            // The anchor style is a value seam — resolve the delta at the fragment's anchor.
+            buffer.AddFragment(bounds.Column, bounds.Row, fragment,
+                               style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
             var size = fragment.GetSize();
             return new Rect(bounds.Column, bounds.Row, size.Columns, size.Rows);
         }

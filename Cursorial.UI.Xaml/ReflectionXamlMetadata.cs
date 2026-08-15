@@ -20,7 +20,7 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 [RequiresUnreferencedCode("Resolves XAML types, members, converters, and x:Static fields by reflection.")]
 [RequiresDynamicCode("Compiles activation/setter thunks; AOT falls back to Activator/MethodInfo.Invoke.")]
-public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver
+public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlStaticResolver, IXamlAttachablePropertyProvider, IXamlOwnMemberProvider
 {
     /// <summary>The process-wide default instance over <see cref="XamlSchemaContext.Default"/>.</summary>
     public static ReflectionXamlMetadata Instance { get; } = new(XamlSchemaContext.Default);
@@ -65,15 +65,150 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         if (type.UnderlyingSystemType is not { } clrType)
             return Array.Empty<string>();
 
+        // Force static ctors (and their bases') so every inherited UIProperty registration is present before the
+        // settable filter consults the registry — mirrors BuildType; idempotent and cheap after the first run.
+        EnsureRegistered(clrType);
+
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var prop in clrType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            names.Add(prop.Name);
+            if (IsSettableMember(clrType, prop)) // read-only SCALARS (Bounds, IsFocused, …) out; read-only COLLECTIONS (Setters, Children) in
+                names.Add(prop.Name);
         foreach (var evt in clrType.GetEvents(BindingFlags.Public | BindingFlags.Instance))
-            names.Add(evt.Name);
+            names.Add(evt.Name); // events classify as (settable) event-handler members
 
         var result = new string[names.Count];
         names.CopyTo(result);
         return result;
+    }
+
+    /// <inheritdoc/>
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Own-member enumeration for completion-ranking provenance over a resolved XAML type.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "Own-member enumeration for completion-ranking provenance over a resolved XAML type.")]
+    public string[] GetOwnMemberNames(IXamlType targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        // A symbol backend has no runtime type to reflect / query the registry with; return nothing (the host
+        // treats every member as inherited). The reflection provider always carries the CLR type.
+        if (targetType.UnderlyingSystemType is not { } clrType)
+            return Array.Empty<string>();
+
+        EnsureRegistered(clrType);
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+
+        // (1) Reflection members DECLARED on EXACTLY clrType (DeclaredOnly ⇒ never a purely-inherited base
+        //     member), under the same settable filter as GetKnownMemberNames.
+        foreach (var prop in clrType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            if (IsSettableMember(clrType, prop))
+                names.Add(prop.Name);
+        foreach (var evt in clrType.GetEvents(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            names.Add(evt.Name);
+
+        // (2) Registry members whose EXACT owner is clrType — declared OR AddOwner'd here. This recovers
+        //     AddOwner'd members reflection's DeclaringType misses: their CLR wrapper is often absent on the new
+        //     owner (e.g. TextElement.Foreground AddOwner'd onto Control, which declares no Foreground wrapper).
+        //     Read-only SCALARS are excluded by the shared settable rule; read-only COLLECTIONS stay (content-settable).
+        foreach (var property in UIPropertyRegistry.OwnMembersOf(clrType))
+            if (IsSettable(property))
+                names.Add(property.Name);
+
+        var result = new string[names.Count];
+        names.CopyTo(result);
+        return result;
+    }
+
+    // ── Settable-member classification (Cursorial's property read-only model, NOT reflection CanWrite) ──────
+    //
+    // A member is XAML-settable — and so appears in GetKnownMemberNames / GetOwnMemberNames — when it is
+    // settable in ANY XAML form, the UNION of two disjoint ways:
+    //   (a) ATTRIBUTE-settable — a settable SCALAR: a non-read-only UIProperty (regardless of its CLR
+    //       wrapper's accessors), or a plain CLR property exposing a PUBLIC setter.
+    //   (b) CONTENT-settable — a read-only property populated in place via property-element / content syntax:
+    //       a COLLECTION (<Panel.Children>…</Panel.Children>, Style.Setters, StackPanel.Children) OR a
+    //       ResourceDictionary (<Button.Resources>…</Button.Resources>). Both are things the loader fills from
+    //       child elements — collections through IsCollectionType (ContentPropertyIsCollection / the
+    //       collection-fill getter in BuildMember), dictionaries through the ResourceDictionary add-item path
+    //       (BuildMember's addDictionaryItem). IsCollectionType deliberately reports ResourceDictionary as
+    //       false (it routes to the dictionary populator, not the list one), so content-settability must name
+    //       it explicitly — otherwise a read-only Resources vanishes from property-element completion.
+    // Read-only SCALARS (Bounds, DesiredSize, IsFocused) are settable in NEITHER form and stay excluded — the
+    // #31 fix the attribute path depends on. The union is the complete "known members" set; a caller that
+    // needs the attribute-vs-content split (attribute completion wants scalars only; property-element
+    // completion wants scalars + read-only collections/dictionaries) recovers it per-member from the resolved
+    // XamlMember's collection-ness (the designer host already type-narrows the enumeration this way).
+
+    /// <summary>True when <paramref name="memberType"/> is filled from child elements — a collection (the
+    /// loader's <see cref="IsCollectionType"/> signal) or a <see cref="ResourceDictionary"/> — so a read-only
+    /// property of this type is still CONTENT-settable via property-element / content syntax.</summary>
+    private static bool IsContentSettable(Type memberType)
+        => IsCollectionType(memberType) || typeof(ResourceDictionary).IsAssignableFrom(memberType);
+
+    /// <summary>
+    /// The XAML-settable rule for a REGISTERED <see cref="UIProperty"/>, shared by both member-enumeration
+    /// paths: settable iff it is not <see cref="UIProperty.IsReadOnly"/> (attribute-settable) OR its type is a
+    /// collection (content-settable). A read-write <c>StyledProperty</c> stays settable through the property
+    /// system (<c>SetValue</c>/XAML) even when its CLR wrapper is get-only; a <c>RegisterReadOnly</c>
+    /// styled/attached property and a setter-less <c>RegisterDirect</c> property are read-only — yet a read-only
+    /// COLLECTION property (populated via child elements) is still content-settable and enumerable.
+    /// </summary>
+    private static bool IsSettable(UIProperty property) => !property.IsReadOnly || IsContentSettable(property.PropertyType);
+
+    /// <summary>
+    /// The XAML-settable rule for a reflected CLR property member. The property model is authoritative: when the
+    /// member is a registered <see cref="UIProperty"/> its <see cref="UIProperty.IsReadOnly"/> flag decides
+    /// (regardless of the CLR wrapper's accessors); otherwise it is a plain CLR property, attribute-settable iff
+    /// it exposes a PUBLIC setter. Reflection <c>CanWrite</c> is deliberately NOT used — it is
+    /// <see langword="true"/> for a non-public setter (e.g. <c>UIElement.IsArrangeValid</c>'s <c>private set</c>),
+    /// which is not XAML-settable. Either kind also qualifies when its type is a COLLECTION (content-settable —
+    /// <c>Style.Setters</c> / <c>Panel.Children</c> are get-only collections populated as property elements).
+    /// </summary>
+    private static bool IsSettableMember(Type clrType, PropertyInfo property)
+        => UIPropertyRegistry.Find(clrType, property.Name) is { } uiProperty
+            ? IsSettable(uiProperty)
+            : property.GetSetMethod(nonPublic: false) is not null || IsContentSettable(property.PropertyType);
+
+    /// <summary>
+    /// Forces the static constructors of <paramref name="clrType"/> and its bases so every inherited /
+    /// <c>AddOwner</c>'d <see cref="UIProperty"/> registration is present before a registry lookup (a derived
+    /// type's static ctor does not run its base's). Idempotent; a no-op once the type has initialized.
+    /// </summary>
+    private static void EnsureRegistered(Type clrType)
+    {
+        for (Type? t = clrType; t is not null && t != typeof(object); t = t.BaseType)
+            RuntimeHelpers.RunClassConstructor(t.TypeHandle);
+    }
+
+    /// <inheritdoc/>
+    public XamlAttachableMember[] GetAttachableMembers(IXamlType targetType)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        // A symbol backend has no runtime type to query the registry with; return nothing (the host's
+        // completion falls back gracefully). The reflection provider always carries the CLR type.
+        if (targetType.UnderlyingSystemType is not { } clrType)
+            return Array.Empty<XamlAttachableMember>();
+
+        // The registry answers "which attached properties may be set on this target" (HostType assignable
+        // from the target) — including read-only ones like TextElement.IsTrimmed (attached on any UIElement,
+        // but reported, never assigned). Completion offers only SETTABLE members, so apply the same
+        // IsSettable gate the member paths use: a read-only attached SCALAR is dropped; a read-only attached
+        // COLLECTION (content-settable via property-element syntax) is admitted. Then reshape each survivor
+        // into the host-presentable (owner, name) form.
+        var attachable = UIPropertyRegistry.AttachableOnType(clrType);
+        if (attachable.Count == 0)
+            return Array.Empty<XamlAttachableMember>();
+
+        var result = new List<XamlAttachableMember>(attachable.Count);
+        foreach (var property in attachable)
+        {
+            if (!IsSettable(property))
+                continue;
+
+            var owner = property.OwnerType;
+            result.Add(new XamlAttachableMember(
+                owner.Name, owner.Namespace ?? string.Empty, property.Name, property.TargetsChildElements));
+        }
+
+        return result.Count == 0 ? Array.Empty<XamlAttachableMember>() : result.ToArray();
     }
 
     /// <summary>The cached <see cref="XamlType"/> for a resolved CLR type (the dual-provider drift surface).</summary>

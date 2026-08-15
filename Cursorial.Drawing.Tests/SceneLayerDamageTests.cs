@@ -1,8 +1,8 @@
 using Cursorial.Drawing;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -215,8 +215,8 @@ public class SceneLayerDamageTests
         scene.Invalidate();
         scene.Draw(context =>
                    {
-                       context.FillRectangle(scene.Bounds, new SolidColorBrush(Body));
-                       context.FillRectangle(SpotCell, new SolidColorBrush(spot));
+                       context.FillRectangle(scene.Bounds, new BrushedStyle { Background = new SolidColorBrush(Body) });
+                       context.FillRectangle(SpotCell, new BrushedStyle { Background = new SolidColorBrush(spot) });
                    });
     }
 }

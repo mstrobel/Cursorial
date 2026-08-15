@@ -1,4 +1,8 @@
+using Cursorial.Rendering.Media;
+using Cursorial.Text;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
+using Cursorial.UI.Media;
 
 namespace Cursorial.UI;
 
@@ -45,5 +49,60 @@ public static class Extensions
                          FocusNavigationMethod.Pointer or
                          FocusNavigationMethod.Directional or
                          FocusNavigationMethod.AccessKey;
+    }
+
+    private static readonly TextAttributes[] BooleanAttributes
+        = Enum.GetValues<TextAttributes>()
+              .Where(t => PartialStyle.Booleans.HasFlag(t))
+              .ToArray();
+
+    extension(BrushedStyle)
+    {
+        /// <summary>
+        /// Derives a <see cref="BrushedStyle"/> from a UI element by reconciling its decomposed text and
+        /// brush properties. Values are read at <see cref="UIObject.GetBaseValue">base priority</see> — inherited
+        /// included, animated excluded. A theme-resolved default (e.g., <see cref="TextElement.ForegroundProperty"/>)
+        /// counts as a stated opinion, so compose this before any delta that should override it.
+        /// </summary>
+        public static BrushedStyle FromElement(UIElement element)
+        {
+            ArgumentNullException.ThrowIfNull(element);
+
+            var t = new BrushedStyle
+                    {
+                        Foreground = element.GetBaseValue(TextElement.ForegroundProperty),
+                        Background = element.GetBaseValue(Panel.BackgroundProperty),
+                        UnderlineColor = element.GetBaseValue(TextElement.UnderlineBrushProperty),
+                        // RenderOptions.BlendingMode is NOT read here: it composites the element's WHOLE
+                        // surface at the render-boundary layer (RenderTree wires it into CompositeParameters,
+                        // and a non-default mode promotes a boundary), so folding it per-cell too would blend
+                        // the content twice.
+                    };
+
+            if (element.GetBaseValue(TextElement.UnderlineProperty) is {} underlineShape)
+                t = t.Underlining(underlineShape); // Underline is not in BooleanAttributes, so set separately.
+
+            var resolvedAttributes = TextElement.ComposeAttributes(element);
+            var booleans = TextAttributes.None;
+
+            if (resolvedAttributes.Flags.HasFlag(TextAttributes.Bold))
+                t = t.Weighing(TextWeight.Bold);
+            else if (resolvedAttributes.Flags.HasFlag(TextAttributes.Faint))
+                t = t.Weighing(TextWeight.Faint);
+
+            if (resolvedAttributes.Flags.HasFlag(TextAttributes.Italic))
+                t = t.Posturing(TextStyle.Italic);
+
+            foreach (var attribute in BooleanAttributes)
+            {
+                if (resolvedAttributes.Flags.HasFlag(attribute))
+                    booleans |= attribute;
+            }
+
+            if (booleans != TextAttributes.None)
+                t = t.Applying(booleans);
+
+            return t;
+        }
     }
 }

@@ -1,12 +1,12 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Input.Events;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Terminal;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
@@ -91,7 +91,11 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             for (var r = 0; r < rows && r < context.Size.Rows; r++)
-                context.DrawText(0, r, glyph, Color.FromRgb(220, 220, 220));
+                context.DrawText(0, r, glyph, new BrushedStyle
+                                              {
+                                                  Foreground = new SolidColorBrush(Color.FromRgb(220, 220, 220)),
+                                                  Background = Brushes.Transparent,
+                                              });
         }
     }
 
@@ -268,7 +272,11 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             if (Text is { Length: > 0 } t)
-                context.DrawText(0, 0, t, Color.FromRgb(255, 255, 255));
+                context.DrawText(0, 0, t, new BrushedStyle
+                                          {
+                                              Foreground = new SolidColorBrush(Color.FromRgb(255, 255, 255)),
+                                              Background = Brushes.Transparent,
+                                          });
         }
     }
 
@@ -499,7 +507,12 @@ public sealed class Phase5EndToEndTests
         protected override void Render(RenderContext context)
         {
             for (var r = 0; r < rows && r < context.Size.Rows; r++)
-                context.DrawText(0, r, $"[{r.ToString(CultureInfo.InvariantCulture)}]", Color.FromRgb(210, 210, 210));
+                context.DrawText(0, r, $"[{r.ToString(CultureInfo.InvariantCulture)}]",
+                                 new BrushedStyle
+                                 {
+                                     Foreground = new SolidColorBrush(Color.FromRgb(210, 210, 210)),
+                                     Background = Brushes.Transparent,
+                                 });
         }
     }
 
@@ -564,7 +577,7 @@ public sealed class Phase5EndToEndTests
     /// <see cref="ResourceServices.GetResourceVersion"/> and the <see cref="UIApplication.ActualThemeVariant"/>
     /// (CD16): the cache is the staleness firewall. Re-formatting under the SAME variant serves the
     /// cached layout (no re-resolve); once the requested theme base flips the variant, the cache key
-    /// differs, so the next format re-resolves the markup <c>[brush=…]</c> against the new variant's
+    /// differs, so the next format re-resolves the markup <c>[fg=…]</c> against the new variant's
     /// dictionary — the new ink reaches the cells, never the stale dark ink. No dictionary subscription
     /// (the sealed BuiltIn never pulses — the cache key alone catches the change).
     /// </summary>
@@ -586,7 +599,7 @@ public sealed class Phase5EndToEndTests
         host.Application.RequestedThemeBase = ThemeBase.Dark;
         host.RunFrame();
 
-        var block = new TextBlock { Markup = "[brush=ink]Hello[/brush]", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        var block = new TextBlock { Markup = "[fg=ink]Hello[/fg]", HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         host.ShowRoot(block);
         Assert.True(host.RunUntilIdle());
 
@@ -603,7 +616,7 @@ public sealed class Phase5EndToEndTests
 
         // Flip the requested base to Light: the variant changes (the variant-changed signal fires). The
         // cache key now carries the new variant, so the next format of the block re-resolves
-        // [brush=ink] against the Light dictionary — the staleness firewall holds (no dictionary
+        // [fg=ink] against the Light dictionary — the staleness firewall holds (no dictionary
         // subscription, per CD16 — the variant flip alone does not pull a re-render, the next
         // invalidation-driven format does, and it must not serve the stale dark ink).
         host.Application.RequestedThemeBase = ThemeBase.Light;
@@ -614,6 +627,57 @@ public sealed class Phase5EndToEndTests
         block.InvalidateVisual();
         host.RunFrame();
         Assert.Equal(lightInk, host.GetCell(0, 0).Style.Foreground); // re-formatted under the new variant — no staleness
+    }
+
+    /// <summary>
+    /// The <see cref="RichTextPresenter"/> sibling of
+    /// <see cref="TextBlock_ReFormatsOnThemeVariantFlip_GetResourceVersionAndVariantCacheKey"/>. A
+    /// <see cref="string"/> <c>Source</c> is parsed through <c>ResourceBrushResolver</c>, which BAKES
+    /// the resolved <c>IBrush</c> into the produced <c>RichText</c> — "resolution is
+    /// static-per-parse; freshness rides the <c>GetResourceVersion</c> cache-key contract". The
+    /// presenter's cached parse must therefore carry the same freshness terms the TextBlock cache key
+    /// does, or a variant flip repaints the pre-flip ink forever (the parse is sticky:
+    /// <c>_cachedState.Source</c> shadows <c>Source</c> on every later read).
+    /// </summary>
+    [Fact]
+    public void RichTextPresenter_ReParsesOnThemeVariantFlip_GetResourceVersionAndVariantCacheKey()
+    {
+        using var host = Create();
+
+        var darkInk = Color.FromRgb(200, 210, 240);
+        var lightInk = Color.FromRgb(20, 24, 60);
+        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(ThemeBase.Dark, null)] =
+            new ResourceDictionary { ["ink"] = new SolidColorBrush(darkInk) };
+        host.Application.Resources.ThemeDictionaries[new ThemeVariantKey(ThemeBase.Light, null)] =
+            new ResourceDictionary { ["ink"] = new SolidColorBrush(lightInk) };
+
+        host.Application.RequestedThemeBase = ThemeBase.Dark;
+        host.RunFrame();
+
+        var presenter = new RichTextPresenter
+                        {
+                            Source = "[fg=ink]Hello[/fg]",
+                            HorizontalAlignment = HorizontalAlignment.Left,
+                            VerticalAlignment = VerticalAlignment.Top
+                        };
+        host.ShowRoot(presenter);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(ThemeBase.Dark, host.Application.ActualThemeVariant.Base);
+        Assert.Equal(darkInk, host.GetCell(0, 0).Style.Foreground); // parsed against the Dark dictionary
+
+        // A re-render under the SAME variant serves the cached parse — still dark.
+        presenter.InvalidateVisual();
+        host.RunFrame();
+        Assert.Equal(darkInk, host.GetCell(0, 0).Style.Foreground);
+
+        host.Application.RequestedThemeBase = ThemeBase.Light;
+        host.RunFrame();
+        Assert.Equal(ThemeBase.Light, host.Application.ActualThemeVariant.Base);
+
+        presenter.InvalidateVisual();
+        host.RunFrame();
+        Assert.Equal(lightInk, host.GetCell(0, 0).Style.Foreground); // re-parsed under the new variant
     }
 
     // ───────────────────────────── shared finders ─────────────────────────────

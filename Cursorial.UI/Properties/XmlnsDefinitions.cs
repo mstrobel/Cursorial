@@ -7,4 +7,5 @@ using Cursorial.Markup;
 [assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Controls")]
 [assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Data")]
 [assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Input")]
+[assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Media")]
 [assembly: XmlnsDefinition("https://cursorial.dev/ui", "Cursorial.UI.Themes")]

@@ -1,8 +1,8 @@
 using Cursorial.Drawing;
 using Cursorial.Drawing.Charts;
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 
 // ReSharper disable CheckNamespace
 
@@ -80,18 +80,18 @@ internal sealed class ChartsDemo : InteractiveDemo
         var amber = Color.FromRgb(235, 195, 90);
         var cyan = Color.FromRgb(120, 220, 232);
 
-        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines · lines · scatter · axes · signed bars · area fill · gaps", heading);
+        ctx.DrawText(1, 0, "Cursorial Charts — bars · sparklines · lines · scatter · axes · signed bars · area fill · gaps", DemoSupport.Ink(heading));
 
         // Vertical bar chart (eighth-block fractional heights), with a one-cell gap between bars.
-        ctx.DrawText(1, 2, "Vertical bars:", label);
+        ctx.DrawText(1, 2, "Vertical bars:", DemoSupport.Ink(label));
         new BarChart(Bars, green) { Gap = 1 }.Render(ctx, new Rect(1, 3, 26, 6));
 
         // Single-row sparkline.
-        ctx.DrawText(1, 10, "Sparkline:", label);
+        ctx.DrawText(1, 10, "Sparkline:", DemoSupport.Ink(label));
         ctx.Sparkline(1, 11, Math.Min(40, Math.Max(1, ctx.Bounds.Columns - 2)), Spark, amber);
 
         // Gradient-filled bars — the brush samples per cell across the chart area (bottom→top fade).
-        ctx.DrawText(1, 13, "Gradient bars:", label);
+        ctx.DrawText(1, 13, "Gradient bars:", DemoSupport.Ink(label));
         var gradient = new LinearGradientBrush(Color.FromRgb(60, 180, 90), Color.FromRgb(80, 200, 235),
                                                startPoint: RelativePoint.Bottom, endPoint: RelativePoint.Top);
         new BarChart(Bars, gradient) { Gap = 1 }.Render(ctx, new Rect(1, 14, 26, 6));
@@ -101,7 +101,7 @@ internal sealed class ChartsDemo : InteractiveDemo
         {
             int w = Math.Min(38, ctx.Bounds.Columns - 41);
 
-            ctx.DrawText(40, 2, "Lines (multi-series) + axes:", label);
+            ctx.DrawText(40, 2, "Lines (multi-series) + axes:", DemoSupport.Ink(label));
             var magenta = Color.FromRgb(230, 120, 200);
             ChartSeries[] series = [new ChartSeries(LineData, cyan), new ChartSeries(LineData2, magenta)];
             var (ux, uy) = new MultiLineChart(series).ResolveRange();
@@ -118,21 +118,21 @@ internal sealed class ChartsDemo : InteractiveDemo
                 XRange = layout.X, YRange = layout.Y,
             }.Render(ctx, layout.Plot);
 
-            ctx.DrawText(40, 12, "Scatter:", label);
+            ctx.DrawText(40, 12, "Scatter:", DemoSupport.Ink(label));
             ctx.ScatterChart(new Rect(40, 13, w, 6), Scatter, amber);
         }
 
         // ---- Deferred features now landed: signed bars + category labels, area fill + NaN gap, layered fills ----
         if (ctx.Bounds.Rows >= NewBand + 8)
         {
-            ctx.DrawText(1, NewBand, "Signed bars + category labels:", label);
+            ctx.DrawText(1, NewBand, "Signed bars + category labels:", DemoSupport.Ink(label));
             new BarChart(Signed, cyan) { Gap = 1, Categories = Months, LabelColor = label }
                 .Render(ctx, new Rect(1, NewBand + 1, 26, 7));
 
             // The area-fill + NaN-gap + layered-blend charts are composited as separate ToLayers scenes
             // (see BuildOverlay / RenderFrame); here we just label that region.
             if (ctx.Bounds.Columns > 44)
-                ctx.DrawText(40, NewBand, "Area fill + NaN gap, two layers blended:", label);
+                ctx.DrawText(40, NewBand, "Area fill + NaN gap, two layers blended:", DemoSupport.Ink(label));
         }
     }
 

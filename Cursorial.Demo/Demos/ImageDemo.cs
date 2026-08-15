@@ -4,6 +4,7 @@ using Cursorial.Output.Capabilities;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 // ReSharper disable CheckNamespace
@@ -152,7 +153,7 @@ internal sealed class ImageDemo : InteractiveDemo, IDemo
 
         var content = new Image(data, placeholderStyle);
 
-        content.Paint(buf, anchorCol, anchorRow, defaultStyle, outputCaps);
+        content.Paint(buf, anchorCol, anchorRow, BrushedStyle.FromStated(defaultStyle), outputCaps);
 
         // Footer.
         int footerRow = Math.Min(anchorRow + imageH + 1, rows - 1);

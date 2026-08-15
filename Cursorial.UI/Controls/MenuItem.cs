@@ -27,7 +27,7 @@ public class MenuItem : HeaderedItemsControl, IAccessKeyTarget, ICommandSource, 
 
     /// <inheritdoc cref="IsWithinMenuProperty"/>
     internal static readonly UIPropertyKey<bool> IsWithinMenuPropertyKey =
-        UIProperty.RegisterAttachedReadOnly<MenuItem, UIElement, bool>("IsWithinMenu", defaultValue: false, inherits: true);
+        UIProperty.RegisterAttachedReadOnly<MenuItem, UIElement, bool>("IsWithinMenu", defaultValue: false, inherits: true, targetsChildren: true);
 
     /// <summary>Indicates whether the element is within a <see cref="Menu"/> popup.</summary>
     public static readonly AttachedProperty<bool> IsWithinMenuProperty = (AttachedProperty<bool>) IsWithinMenuPropertyKey.Property;

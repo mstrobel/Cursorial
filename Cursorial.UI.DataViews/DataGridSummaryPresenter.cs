@@ -1,4 +1,3 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -167,7 +166,7 @@ public sealed class DataGridSummaryPresenter : UIElement
         int rows = Math.Max(1, Bounds.Rows);
 
         if (Background is not null)
-            context.FillOpaque(new Rect(0, 0, Bounds.Columns, rows), Background);
+            context.FillOpaque(new Rect(0, 0, Bounds.Columns, rows), new BrushedStyle { Background = Background });
 
         var stackRow = new Dictionary<int, int>(); // entry index → next stacked row
         var cells = CollectCells();
@@ -181,7 +180,7 @@ public sealed class DataGridSummaryPresenter : UIElement
             0) // width, not count — the §9.3 gutter is pinned even with no Fixed column (audit W2-3)
         {
             if (Background is not null && HorizontalOffset > 0)
-                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, rows), Background);
+                context.FillOpaque(new Rect(0, 0, layout.FrozenWidth, rows), new BrushedStyle { Background = Background });
 
             DrawCellPass(context, layout, cells, stackRow, rows, frozen: true);
         }

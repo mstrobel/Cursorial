@@ -1,7 +1,7 @@
-using Cursorial.Drawing.Media;
 using Cursorial.Media;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Drawing;
 
@@ -96,7 +96,7 @@ public class ImageBrushTests
     {
         // Integration through the cell path: an opaque texel composited over the black base reads back as itself.
         var brush = new ImageBrush(Img2x2(), Stretch.Fill, BrushInterpolation.NearestNeighbor);
-        var b = DrawHarness.Render(2, 2, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 2), brush));
+        var b = DrawHarness.Render(2, 2, ctx => ctx.FillRectangle(new Rect(0, 0, 2, 2), new BrushedStyle { Background = brush }));
         Assert.Equal(Red, b[0, 0].Style.Background);
         Assert.Equal(White, b[1, 1].Style.Background);
     }
@@ -107,7 +107,7 @@ public class ImageBrushTests
         // A wide (CJK) cluster: the WideLeft cell samples the brush; the continuation follows it.
         var brush = new ImageBrush(new DecodedImage(1, 1, [10, 200, 30, 255]), Stretch.Fill,
                                    BrushInterpolation.NearestNeighbor);
-        var b = DrawHarness.Render(4, 1, ctx => ctx.DrawText(0, 0, "中a", brush));
+        var b = DrawHarness.Render(4, 1, ctx => ctx.DrawText(0, 0, "中a", DrawHarness.Ink(brush)));
         Assert.Equal("中", b[0, 0].Grapheme);
         Assert.Equal(CellKind.WideLeft, b[0, 0].Kind);
         Assert.Equal(CellKind.WideContinuation, b[1, 0].Kind);

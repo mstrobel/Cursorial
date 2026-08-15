@@ -2,8 +2,8 @@ using System.Globalization;
 using System.Text;
 
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering.Content;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -30,17 +30,27 @@ public sealed class TextMarkupOptions
     public IReadOnlyDictionary<string, IContent> Content { get; init; } =
         new Dictionary<string, IContent>(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The default style applied to all text.</summary>
-    public CellStyle DefaultStyle { get; init; }
+    /// <summary>The document default: the style text that declares nothing itself falls through to.</summary>
+    /// <remarks>
+    /// A carrier: callers with a resolved <see cref="Cursorial.Output.CellStyle"/> adapt it via
+    /// <see cref="BrushedStyle.FromStated"/>. It rides through to <see cref="RichText.DefaultStyle"/> —
+    /// the painter's document rung — rather than being flattened into the parsed runs, and is consumed
+    /// only by the <see cref="TextMarkup.Parse(string, TextMarkupOptions)"/> overloads that create the
+    /// builder; parsing into an existing builder keeps that builder's own default.
+    /// </remarks>
+    public BrushedStyle DefaultStyle { get; init; }
 
     /// <summary>
-    /// Resolves a <c>[brush=VALUE]</c> markup value to an <b>opaque tag</b> attached to the runs it wraps — the
-    /// tag a higher layer reads to brush-color them (see <see cref="FormattedTextRun.Tag"/>). The resolver
-    /// returns <see cref="object"/>, so this parser stays brush-agnostic (no <c>IBrush</c> dependency); the
-    /// Drawing layer supplies a resolver that parses inline gradient syntax or looks up a named brush. Returns
-    /// null to reject the value. Null (the default) means <c>[brush]</c> is unsupported and raises a parse error.
+    /// Resolves a <c>[fg=VALUE]</c> / <c>[bg=VALUE]</c> markup value to the <see cref="IBrush"/> the
+    /// wrapped runs state on their own carriers, sampling each run's wrap-invariant strip. Consulted
+    /// BEFORE the built-in grammar (named colours, palette indices, <c>#hex</c>,
+    /// <c>linear:</c>/<c>radial:</c>/<c>conic:</c> gradients), so a registered name overrides a
+    /// built-in one at exactly the width of the name. <see cref="BrushMarkup.Resolver"/> supplies the
+    /// stock implementation (a named registry plus the same inline grammar). Returns null to decline
+    /// the value — the parser then falls through to the built-in grammar. Null (the default) means
+    /// only the built-in grammar applies.
     /// </summary>
-    public Func<string, object?>? BrushResolver { get; init; }
+    public Func<string, IBrush?>? BrushResolver { get; init; }
 
     public WrapMode? DefaultTextWrapping { get; init; }
 
@@ -59,9 +69,16 @@ public sealed class TextMarkupOptions
 /// </para>
 /// <list type="bullet">
 /// <item><c>[b][/b]</c>, <c>[i][/i]</c>, <c>[u][/u]</c>, <c>[s][/s]</c> — bold, italic, underline, strikethrough.</item>
-/// <item><c>[fg=color][/fg]</c>, <c>[bg=color][/bg]</c> — foreground / background color. Color formats:
-///       named (<c>red</c>, <c>brightblue</c>, …), palette index (<c>0</c>–<c>255</c>),
-///       hex (<c>#ff0000</c> or <c>#f00</c>).</item>
+/// <item><c>[fg=value][/fg]</c>, <c>[bg=value][/bg]</c> — foreground / background brush. Values:
+///       named color (<c>red</c>, <c>brightblue</c>, …), palette index (<c>0</c>–<c>255</c>),
+///       hex (<c>#ff0000</c> or <c>#f00</c>), an inline gradient
+///       (<c>linear:</c>/<c>radial:</c>/<c>conic:</c> plus a comma-separated color list), or any
+///       name the options' <see cref="TextMarkupOptions.BrushResolver"/> resolves — the resolver is
+///       consulted first, so a registered name overrides a built-in one.</item>
+/// <item><c>[blend=mode][/blend]</c> — blend the run's ink over what it lands on. Modes:
+///       <c>multiply</c>, <c>screen</c>, <c>overlay</c>, <c>darken</c>, <c>lighten</c>,
+///       <c>plus</c>/<c>add</c>, <c>over</c> (the default). Affects the FOREGROUND against the cell's
+///       background; a stated background blends too.</item>
 /// <item><c>[link=uri][/link]</c> — OSC 8 hyperlink target.</item>
 /// <item><c>[font=name][/font]</c> — per-grapheme remap; built-ins: <c>fullwidth</c>,
 ///       <c>doublestruck</c>, <c>smallcaps</c>, <c>superscript</c>, <c>subscript</c>.</item>
@@ -235,6 +252,7 @@ public static class TextMarkup
     private sealed class TextMarkupParser(string input, RichTextBuilder builder, TextMarkupOptions options)
     {
         private readonly TextMarkupLexer _lexer = new(input);
+
         private readonly Stack<(string Name, StyleScope Scope)> _styleStack = new();
         private bool _inExplicitParagraph;
 
@@ -269,17 +287,24 @@ public static class TextMarkup
 
         private void HandleOpen(Token token)
         {
+            // Style tags push DELTAS: each states exactly the axis its tag names — imposed per axis for
+            // the attribute tags, a stated BRUSH for the colour tags ([fg]/[bg] resolve on the brush
+            // path: the options' resolver first, then the built-in grammar) — and the document default
+            // stops being baked into every markup run: undeclared channels fall through to it at paint.
             switch (token.Name)
             {
-                case "b": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Bold))); break;
-                case "i": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Italic))); break;
-                case "u": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Underline))); break;
-                case "s": Push(token.Name, builder.Push(options.DefaultStyle.WithAttributes(TextAttributes.Strikethrough))); break;
+                case "b": Push(token.Name, builder.Push(BrushedStyle.Identity.Weighing(TextWeight.Bold))); break;
+                case "i": Push(token.Name, builder.Push(BrushedStyle.Identity.Posturing(TextStyle.Italic))); break;
+                case "u": Push(token.Name, builder.Push(BrushedStyle.Identity.Underlining())); break;
+                case "s": Push(token.Name, builder.Push(BrushedStyle.Identity.Applying(TextAttributes.Strikethrough))); break;
                 case "fg":
-                    Push(token.Name, builder.Push(options.DefaultStyle.WithForeground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithForeground(ResolveBrush(token.Value, token.Position))));
                     break;
                 case "bg":
-                    Push(token.Name, builder.Push(options.DefaultStyle.WithBackground(ParseColor(token.Value, token.Position))));
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithBackground(ResolveBrush(token.Value, token.Position))));
+                    break;
+                case "blend":
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithMode(ParseBlendMode(token.Value, token.Position))));
                     break;
                 case "link" or "url":
                     if (string.IsNullOrEmpty(token.Value))
@@ -288,9 +313,6 @@ public static class TextMarkup
                     break;
                 case "font":
                     Push(token.Name, builder.PushMap(ResolveGlyphMap(token.Value, token.Position)));
-                    break;
-                case "brush":
-                    Push(token.Name, builder.PushTag(ResolveBrush(token.Value, token.Position)));
                     break;
                 case "p":
                     OpenParagraph(token);
@@ -439,6 +461,19 @@ public static class TextMarkup
                    _                     => throw Error(position, $"Unknown wrap mode '{value}'. Use word | character | nowrap | overflow.")
                };
 
+        private static IBlendingMode ParseBlendMode(string value, int position)
+            => value.ToLowerInvariant() switch
+               {
+                   "over" or "normal" or "sourceover" => BlendingModes.SourceOver,
+                   "multiply"                         => BlendingModes.Multiply,
+                   "screen"                           => BlendingModes.Screen,
+                   "overlay"                          => BlendingModes.Overlay,
+                   "darken"                           => BlendingModes.Darken,
+                   "lighten"                          => BlendingModes.Lighten,
+                   "plus" or "add"                    => BlendingModes.Plus,
+                   _                                  => throw Error(position, $"Unknown blend mode '{value}'. Use multiply | screen | overlay | darken | lighten | plus | over.")
+               };
+
         private static TextAlignment ParseAlignment(string value, int position)
             => value.ToLowerInvariant() switch
                {
@@ -473,26 +508,25 @@ public static class TextMarkup
                                     $"smallcaps (smcap), superscript (super), subscript (sub).")
                };
 
-        // Resolve a [brush=VALUE] tag to an opaque tag via the caller-supplied resolver. Kept brush-agnostic:
-        // the parser never sees a brush type — it just attaches whatever object the resolver returns.
-        private object ResolveBrush(string value, int position)
+        // Resolve a [fg=VALUE] / [bg=VALUE] value to the IBrush the wrapped runs state. The caller-supplied
+        // resolver is consulted BEFORE the built-in grammar, so a registered name overrides a built-in one
+        // at exactly the width of the name; syntax (#hex, palette indices, kind:stops gradients) parses
+        // only when the resolver declines — or is absent, which leaves the built-in grammar alone.
+        private IBrush ResolveBrush(string value, int position)
         {
             if (string.IsNullOrEmpty(value))
-                throw Error(position, "[brush] requires a value: [brush=name] or [brush=linear:colorA,colorB].");
-            if (options.BrushResolver is not { } resolver)
-                throw Error(position, "[brush] is not supported here — supply TextMarkupOptions.BrushResolver (the Drawing layer wires one up).");
-            return resolver(value) ?? throw Error(position, $"Unrecognized brush '{value}'.");
-        }
+                throw Error(position, "Color tag requires a value (named, palette index, #hex, or an inline gradient).");
 
-        // ---- Color parsing ----
+            if (options.BrushResolver?.Invoke(value) is { } resolved)
+                return resolved;
 
-        private static Color ParseColor(string raw, int position)
-        {
-            if (string.IsNullOrEmpty(raw))
-                throw Error(position, "Color tag requires a value (named, palette index, or #hex).");
-            return MarkupColor.TryParse(raw, out var color)
-                       ? color
-                       : throw Error(position, $"Unrecognized color '{raw}'. Use a name, palette index 0–255, or #hex.");
+            if (BrushMarkup.TryParseInline(value, out var brush))
+                return brush;
+
+            throw Error(position,
+                        $"Unrecognized color or brush '{value}'. Use a name, palette index 0–255, #hex, "
+                      + "an inline gradient (linear:/radial:/conic: plus colors), or a name the options' "
+                      + "BrushResolver recognizes.");
         }
 
         private static FormatException Error(int position, string message) =>

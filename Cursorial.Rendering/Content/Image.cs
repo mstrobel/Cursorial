@@ -2,6 +2,7 @@ using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fragments;
 using Cursorial.Rendering.Imaging;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 
 namespace Cursorial.Rendering.Content;
@@ -112,7 +113,7 @@ public class Image : FragmentContent
     }
 
     /// <inheritdoc/>
-    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in CellStyle style, OutputCapabilities capabilities)
+    protected override IBufferFragment? CreateFragment(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
     {
         if (capabilities.Graphics is {KittyGraphics: false, ITerm2InlineImages: false, Sixel: false})
             return null;
@@ -288,9 +289,9 @@ public class Image : FragmentContent
         return preliminarySize;
     }
 
-    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in CellStyle style)
+    protected override IContent BuildPlaceholder(Size size, OutputCapabilities capabilities, in BrushedStyle style)
     {
-        var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = PlaceholderStyle });
+        var richText = TextMarkup.Parse(PlaceholderText, new TextMarkupOptions { DefaultStyle = BrushedStyle.FromStated(PlaceholderStyle) });
         var formatter = new TextFormatter { Wrap = WrapMode.WordWrap, Alignment = TextAlignment.Center };
         var formattedText = formatter.Format(richText, Math.Max(1, size.Columns), Math.Max(1, size.Rows), capabilities, fillEntireBounds: true);
         

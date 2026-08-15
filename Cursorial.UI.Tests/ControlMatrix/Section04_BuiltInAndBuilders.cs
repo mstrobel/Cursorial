@@ -1,10 +1,10 @@
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.UI;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 using Cursorial.UI.Themes;
 
-using DrawingMedia = Cursorial.Drawing.Media;
 using Style = Cursorial.UI.Style;
 
 using static Cursorial.Tests.UI.ControlMatrix.ControlMatrixFixture;
@@ -33,7 +33,7 @@ public sealed class Section04_BuiltInAndBuilders
         Assert.NotSame(CursorialTheme.BuiltIn, copy);
 
         // Mutating the copy does not affect BuiltIn.
-        copy[ThemeKeys.AccentBrush] = new DrawingMedia.SolidColorBrush(Color.FromRgb(1, 2, 3));
+        copy[ThemeKeys.AccentBrush] = new SolidColorBrush(Color.FromRgb(1, 2, 3));
         Assert.True(CursorialTheme.BuiltIn.IsSealed); // BuiltIn untouched
     }
 
@@ -72,7 +72,7 @@ public sealed class Section04_BuiltInAndBuilders
     {
         var variant = new ThemeVariant(ThemeBase.Dark, tier);
         Assert.True(CursorialTheme.BuiltIn.TryGetResource(ThemeKeys.AccentBrush, variant, out var v));
-        var brush = Assert.IsType<DrawingMedia.SolidColorBrush>(v);
+        var brush = Assert.IsType<SolidColorBrush>(v);
         Assert.Equal(expectedKind, brush.Color.Kind); // the specific value pinned per tier
     }
 
@@ -169,11 +169,11 @@ public sealed class Section04_BuiltInAndBuilders
         // Style instance is untouched; only the resolved resource changes).
         var beforeTheme = CursorialTheme.BuiltIn[typeof(Button)];
         var skin = Color.FromRgb(0x11, 0xAA, 0x55);
-        host.Application.Resources[ThemeKeys.ButtonForegroundNormal] = new DrawingMedia.SolidColorBrush(skin);
+        host.Application.Resources[ThemeKeys.ButtonForegroundNormal] = new SolidColorBrush(skin);
         host.RunFrame();
 
         // The resolved Foreground tracks the override; the theme Style instance is the same (no re-template).
-        var brush = Assert.IsType<DrawingMedia.SolidColorBrush>(button.Foreground);
+        var brush = Assert.IsType<SolidColorBrush>(button.Foreground);
         Assert.Equal(skin, brush.Color);
         Assert.Same(beforeTheme, CursorialTheme.BuiltIn[typeof(Button)]);
     }
@@ -200,8 +200,8 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C100b — reassigning app.Theme retracts the old theme's rules and arms the new theme's (live re-match)
     public void C100b_ThemeReassignment_RetractsOldArmsNew()
     {
-        var brush1 = new DrawingMedia.SolidColorBrush(Color.FromRgb(10, 20, 30));
-        var brush2 = new DrawingMedia.SolidColorBrush(Color.FromRgb(40, 50, 60));
+        var brush1 = new SolidColorBrush(Color.FromRgb(10, 20, 30));
+        var brush2 = new SolidColorBrush(Color.FromRgb(40, 50, 60));
 
         using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
@@ -228,7 +228,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C100c — mutating the live app.Theme.Styles re-reads on the theme-origin pulse (C100 "re-read on pulse")
     public void C100c_ThemeStylesMutation_ReReadsLive()
     {
-        var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(7, 8, 9));
+        var brush = new SolidColorBrush(Color.FromRgb(7, 8, 9));
 
         using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
@@ -251,7 +251,7 @@ public sealed class Section04_BuiltInAndBuilders
     [Fact] // C100e — CD15: a variant flip stays resource-only — the theme-style frame survives (no retract / no double-arm)
     public void C100e_VariantFlip_DoesNotReMatchThemeStyles()
     {
-        var brush = new DrawingMedia.SolidColorBrush(Color.FromRgb(1, 2, 3));
+        var brush = new SolidColorBrush(Color.FromRgb(1, 2, 3));
 
         using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK" };
@@ -293,7 +293,7 @@ public sealed class Section04_BuiltInAndBuilders
         // auto-focuses and shows the theme's :focus fill — so positively assert that legitimate fill IS
         // applied (a real SolidColorBrush, not null), and that it is NOT the ignored element-style's magenta.
         Assert.True(button.IsFocused);
-        Assert.IsType<DrawingMedia.SolidColorBrush>(button.Background);
+        Assert.IsType<SolidColorBrush>(button.Background);
         Assert.NotSame(Vbrush, button.Background);
     }
 
@@ -304,7 +304,7 @@ public sealed class Section04_BuiltInAndBuilders
         // slot, so the theme rule here is specificity-boosted with a resting simple (#name), not a
         // class — a class-gated theme rule would be conditional (StyleTrigger) and pierce the resting
         // app rule (the accepted cross-slot consequence, pinned below).
-        var themeBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(99, 0, 0));
+        var themeBrush = new SolidColorBrush(Color.FromRgb(99, 0, 0));
 
         using var host = UIHeadlessHost.Create();
         var button = new Button { Content = "OK", Name = "ok" };
@@ -312,7 +312,7 @@ public sealed class Section04_BuiltInAndBuilders
 
         // A MORE-specific resting theme rule (Button#ok, names=1) at Theme(2) competes with a
         // LESS-specific resting app rule (Button) at App(3). Layer beats specificity: the app rule wins.
-        var conditionalBrush = new DrawingMedia.SolidColorBrush(Color.FromRgb(0, 99, 0));
+        var conditionalBrush = new SolidColorBrush(Color.FromRgb(0, 99, 0));
         var theme = CursorialTheme.CreateDefault();
         theme.Styles =
         [

@@ -10,7 +10,7 @@ namespace Cursorial.Rendering.Media;
 /// solid color).
 /// </summary>
 /// <remarks>
-/// Brushes are immutable definitions; <see cref="ColorAt"/> is pure and allocation-free, safe to call
+/// Brushes are immutable definitions; <see cref="ColorAt(int, int, Rect)"/> is pure and allocation-free, safe to call
 /// once per cell from a fill loop and safe for repeated, potentially concurrent invocation. There is no
 /// implicit <see cref="Color"/> → <see cref="IBrush"/> conversion (interfaces can't be conversion
 /// targets); use <c>SolidColorBrush</c> (which has an implicit conversion from
@@ -19,12 +19,25 @@ namespace Cursorial.Rendering.Media;
 public interface IBrush
 {
     /// <summary>
-    /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt"/> (RGB
+    /// Indicates whether this brush is <em>uniform</em>, i.e., it produces the same color for all sampling locations.
+    /// </summary>
+    bool IsUniform => false;
+
+    /// <summary>
+    /// Whole-brush opacity (0–1), folded into each sampled color's alpha at <see cref="ColorAt(int, int, Rect)"/> (RGB
     /// only). Clamped to [0, 1].
     /// </summary>
     double Opacity => 1.0;
 
-    /// <summary>Whether the brush's opacity is 1.0 (opaque).</summary>'
+    /// <summary>Whether the brush is opaque.</summary>
+    /// <remarks>
+    /// The DEFAULT speaks for the <see cref="Opacity"/> knob alone: <see cref="ColorAt(int, int, Rect)"/> is
+    /// positional, so the interface cannot know its colours' alpha in general — a brush whose
+    /// colours themselves carry alpha still reports opaque here (design doc defect 6). An
+    /// implementation that does know its colours (<c>SolidColorBrush</c>) overrides this to fold
+    /// them in. Per-cell decisions must test the SAMPLED colour (<see cref="Color.IsOpaque"/>),
+    /// not this bit.
+    /// </remarks>
     bool IsOpaque => Math.Abs(Opacity - 1.0) < double.Epsilon;
     
     /// <summary>
@@ -42,4 +55,17 @@ public interface IBrush
     /// return a defined parameter via their degenerate-bounds checks).
     /// </remarks>
     Color ColorAt(int column, int row, Rect bounds);
+
+    /// <summary>
+    /// The phase-shifted sample: <see cref="ColorAt(int, int, Rect)"/> with the brush's parameter
+    /// axis advanced by <paramref name="phase"/> periods before its out-of-range policy applies.
+    /// The DEFAULT ignores the phase — a brush with no parameter axis (a solid color, an image
+    /// sampled per cell) has nothing to shift, and <see cref="Rect"/>'s integer coordinates make a
+    /// fractional shift inexpressible through the positional arguments — so only brushes that own
+    /// a continuous parameterization (<c>GradientBrush</c>: <paramref name="phase"/> is added to
+    /// the raw gradient parameter <c>t</c>, and the brush's <c>GradientSpread</c> then decides
+    /// wrap/clamp/reflect) override this. Callers with no phase to apply should keep calling the
+    /// three-argument form.
+    /// </summary>
+    Color ColorAt(int column, int row, Rect bounds, double phase) => ColorAt(column, row, bounds);
 }

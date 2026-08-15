@@ -1,5 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Media;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.UI.Themes;
@@ -68,7 +69,9 @@ public static class CursorialTheme
         ThemeKeys.MenuForegroundHover, ThemeKeys.MenuForegroundHighlighted, ThemeKeys.MenuIconCheckedForeground,
         ThemeKeys.MenuIconUncheckedForeground, ThemeKeys.MenuIconUncheckedHoverForeground,
         ThemeKeys.ScrollBarTrackBrush, ThemeKeys.ScrollBarThumbNormalBrush, ThemeKeys.ScrollBarThumbHoverBrush,
-        ThemeKeys.ScrollBarThumbDragBrush
+        ThemeKeys.ScrollBarThumbDragBrush, ThemeKeys.ElevationPopup, ThemeKeys.ElevationDesktop,
+        ThemeKeys.ElevationDialog, ThemeKeys.ElevationHighest, ThemeKeys.ElevationRaised, ThemeKeys.ElevationWell,
+        ThemeKeys.ElevationWindow
     ];
 
     private static readonly ResourceDictionary BuiltInDictionary = CreateSealed();
@@ -443,7 +446,7 @@ public static class CursorialTheme
                   };
         
         rgb[ThemeKeys.ElevationWell] = new SolidColorBrush(dark ? Color.FromHex("#0d0f19") : Color.FromHex("#f6f6f8"));
-        rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#d2d3da"));
+        rgb[ThemeKeys.ElevationDesktop] = new SolidColorBrush(dark ? Color.FromHex("#080910") : Color.FromHex("#e3e4e8"));
         rgb[ThemeKeys.ElevationWindow] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8"));
         rgb[ThemeKeys.ElevationPopup] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) { Opacity = 0.85 };
         rgb[ThemeKeys.ElevationDialog] = new SolidColorBrush(dark ? Color.FromHex("#11111C") : Color.FromHex("#f6f6f8")) /*{ Opacity = 0.95 }*/;
@@ -496,7 +499,7 @@ public static class CursorialTheme
         rgb[ThemeKeys.GreenBrush] = new SolidColorBrush(dark ? Color.FromHex("#63C792") : Color.FromHex("#1e7d52"));
         rgb[ThemeKeys.RedBrush] = new SolidColorBrush(dark ? Color.FromHex("#f7768e") : Color.FromHex("#8c4351"));
         rgb[ThemeKeys.PurpleBrush] = new SolidColorBrush(dark ? Color.FromHex("#bb9af7") : Color.FromHex("#5a3e8e"));
-        rgb[ThemeKeys.StatusBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#1f2335") : Color.FromHex("#e9e9ed"));
+        rgb[ThemeKeys.StatusBarBackground] = new SolidColorBrush(dark ? Color.FromHex("#262a40") : Color.FromHex("#caccd3"));
         rgb[ThemeKeys.StatusBarAltBackground] = new SolidColorBrush(dark ? Color.FromHex("#7aa2f7") : Color.FromHex("#34548a"));
         // Branch/alt status text reads on the accent fill → the on-accent ink (spec StatusBranchForeground =
         // --on-accent, so it tracks OnAccentBrush exactly: #0d0f19 dark / #e9e9ed light).

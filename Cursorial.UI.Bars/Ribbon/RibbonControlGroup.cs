@@ -65,7 +65,7 @@ public class RibbonControlGroup : ItemsControl
     /// min-width packing heuristic. Only the first marked child takes effect; ignored in single-row layouts.
     /// </summary>
     public static readonly AttachedProperty<bool> RowBreakProperty =
-        UIProperty.RegisterAttached<RibbonControlGroup, UIElement, bool>("RowBreak", defaultValue: false);
+        UIProperty.RegisterAttached<RibbonControlGroup, UIElement, bool>("RowBreak", defaultValue: false, targetsChildren: true);
 
     /// <summary>Creates a ribbon control group hosting bar controls.</summary>
     public RibbonControlGroup()

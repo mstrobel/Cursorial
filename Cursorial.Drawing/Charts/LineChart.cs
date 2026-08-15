@@ -1,7 +1,6 @@
 using Cursorial.Drawing.Media;
 using Cursorial.Input;
 using Cursorial.Media;
-using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
@@ -251,7 +250,7 @@ public sealed class LineChart : IChart
                 if (!context.IsVisible(column, row)) continue;
 
                 var color = Brush.ColorAt(column, row, area);
-                context.Set(column, row, glyph, CellStyle.Default.WithForeground(color).WithBackground(Colors.Transparent));
+                context.Set(column, row, glyph, new PartialStyle { Foreground = color, Background = Colors.Transparent });
             }
         }
     }
@@ -281,7 +280,7 @@ public sealed class LineChart : IChart
             {
                 // Sample the brush against the whole chart area (not the 1-column paint rect) so a gradient
                 // area-fill flows across the chart rather than restarting per column.
-                context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), fillBrush, area);
+                context.FillRectangle(new Rect(area.Column + idx, area.Row + first, 1, last - first + 1), new BrushedStyle { Background = fillBrush }, area);
             }
         }
     }
@@ -324,7 +323,7 @@ public sealed class LineChart : IChart
         // RichText, matching MultiLineChart's shape: the marker glyph in the line's brush color
         // (sampled at the hit cell) as the indicator, then the coordinates.
         var rtb = new RichTextBuilder();
-        rtb.Run(EffectiveMarkerGlyph, CellStyle.Default.WithForeground(Brush.ColorAt(position.Column, position.Row, _renderedArea)));
+        rtb.Run(EffectiveMarkerGlyph, new BrushedStyle { Foreground = new SolidColorBrush(Brush.ColorAt(position.Column, position.Row, _renderedArea)) });
         rtb.Run(" " + coordinates);
         hitObject = rtb.Build();
         return true;

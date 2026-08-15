@@ -1,6 +1,9 @@
-using Cursorial.Drawing.Media;
+using Cursorial.Media;
 using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
+using Cursorial.UI.Themes;
+
+using R = Cursorial.UI.ResourceExtensions;
 
 // ReSharper disable CheckNamespace
 
@@ -8,7 +11,7 @@ namespace Cursorial.UI;
 
 /// <summary>
 /// Bridges the resource chain into text markup (design doc §11.9): produces a
-/// <see cref="TextMarkupOptions.BrushResolver"/> over an element's chain so <c>[brush=Theme.AccentBrush]</c>
+/// <see cref="TextMarkupOptions.BrushResolver"/> over an element's chain so <c>[fg=Theme.AccentBrush]</c>
 /// markup and <c>{DynamicResource Theme.AccentBrush}</c> resolve identically (one brush namespace).
 /// Inline gradient grammar (<c>linear:…</c>) resolves via <see cref="BrushMarkup"/>; a bare name
 /// resolves as a resource key through the element's chain to an <see cref="IBrush"/>. Resolution is
@@ -16,23 +19,70 @@ namespace Cursorial.UI;
 /// </summary>
 public static class ResourceBrushResolver
 {
+    private static readonly Dictionary<byte, string> Ansi16ThemeKeys =
+        new()
+        {
+            { 0, ThemeKeys.AnsiBlack },
+            { 1, ThemeKeys.AnsiRed },
+            { 2, ThemeKeys.AnsiGreen },
+            { 3, ThemeKeys.AnsiYellow },
+            { 4, ThemeKeys.AnsiBlue },
+            { 5, ThemeKeys.AnsiMagenta },
+            { 6, ThemeKeys.AnsiCyan },
+            { 7, ThemeKeys.AnsiWhite },
+            { 8, ThemeKeys.AnsiLightBlack },
+            { 9, ThemeKeys.AnsiLightRed },
+            { 10, ThemeKeys.AnsiLightGreen },
+            { 11, ThemeKeys.AnsiLightYellow },
+            { 12, ThemeKeys.AnsiLightBlue },
+            { 13, ThemeKeys.AnsiLightMagenta },
+            { 14, ThemeKeys.AnsiLightCyan },
+            { 15, ThemeKeys.AnsiLightWhite }
+        };
+
+    private static readonly Func<string, object?> ApplicationLookup =
+        s => R.WalkApplicationTail(s, R.ResolveVariant(null), null, out var o) ? o : null;
+
+    private static Func<string, object?> ElementLookup(UIElement scope)
+        => s => scope.TryFindResource(s, out var resolved) ? resolved : null;
+
+    /// <summary>A brush resolver that walks the application tail.</summary>
+    public static Func<string, IBrush?> ForApplication { get; } = CreateCore(ApplicationLookup);
+
     /// <summary>Creates a brush resolver over <paramref name="scope"/>'s chain.</summary>
-    public static Func<string, object?> Create(UIElement scope)
+    public static Func<string, IBrush?> Create(UIElement scope)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        return CreateCore(ElementLookup(scope));
+    }
+
+    private static Func<string, IBrush?> CreateCore(Func<string, object?> innerLookup)
+    {
+        ArgumentNullException.ThrowIfNull(innerLookup);
+
         var inline = BrushMarkup.Resolver();
 
         return value =>
-        {
-            // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
-            if (inline(value) is { } parsed)
-                return parsed;
+               {
+                   // 1. Inline gradient grammar (linear:/radial:/conic:) — shared with text markup.
+                   if (inline(value) is { } brush)
+                   {
+                       if (brush is SolidColorBrush { Color: { Kind: ColorKind.Palette, PaletteIndex: var i } } &&
+                           MarkupColor.IsThemePaletteIndex(i) &&
+                           Ansi16ThemeKeys.TryGetValue(i, out var themeKey) &&
+                           innerLookup(themeKey) is IBrush themeBrush)
+                       {
+                           return themeBrush;
+                       }
 
-            // 2. A bare resource name resolved through the element's chain to an IBrush.
-            if (scope.TryFindResource(value, out var resolved) && resolved is IBrush brush)
-                return new BrushedStyle(brush);
+                       return brush;
+                   }
 
-            return null; // unknown — the parser raises "Unrecognized brush"
-        };
+                   // 2. A bare resource name resolved through the element's chain to an IBrush.
+                   if (innerLookup(value) is IBrush resource)
+                       return resource;
+
+                   return null; // unknown — the parser raises "Unrecognized brush"
+               };
     }
 }

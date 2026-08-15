@@ -4,6 +4,7 @@ using Cursorial.Drawing;
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Tests.Drawing;
@@ -492,7 +493,7 @@ public class IntermediateSurfaceEquivalenceTests
 
     /// <summary>
     /// <b>RESIDUAL DIVERGENCE — not cell reclassification, and not closed by the replacing-blank marker.</b>
-    /// <see cref="CellBuffer.Set"/> resolves the style it stores against the destination cell
+    /// <see cref="CellBuffer.Set(int, int, string?, in CellStyle)"/> resolves the style it stores against the destination cell
     /// (<c>Style.BlendOver</c>): an underline color that is not <see cref="Color.Default"/> composites over the
     /// destination's <i>background</i>, one that is inherits the destination's underline color. A wide pair is
     /// the only write the compositor makes through <c>Set</c>, so a wide glyph's underline color is resolved
@@ -572,7 +573,7 @@ public class IntermediateSurfaceEquivalenceTests
         var baseStyle = CellStyle.Default.WithBackground(Green);
 
         using var panel = Scene.Create(3, 1);
-        panel.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 3, 1), Blue));
+        panel.Draw(ctx => ctx.FillOpaque(new Rect(0, 0, 3, 1), new BrushedStyle { Background = new SolidColorBrush(Blue) }));
         Assert.Equal(CellBuffer.DurableEmptyGrapheme, panel.GetCell(0, 0).Grapheme);
 
         var flat = Composite(baseStyle, 3, 1, [new SceneLayer(panel)]);

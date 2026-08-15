@@ -70,7 +70,7 @@ know anything.
 The seam must offer a **backdrop colour**, because implementors that cannot carry alpha to the
 terminal have to flatten against it before encoding.
 
-§4 widens this from an opacity-specific member to a single `Apply(in StyleDeltaTemplate, Color)`
+§4 widens this from an opacity-specific member to a single `Apply(in BrushedStyle, Color)`
 covering opacity, tint and blend together — read it before implementing this section.
 
 ## 3. All four implementors can honour it
@@ -113,11 +113,11 @@ blending are additional transforms over the same buffer rather than new machiner
 ### One seam, not three
 
 Opacity, tint, and blend are all "derive a fragment by transforming its RGBA against a backdrop".
-Per-channel colour plus a blending mode is exactly what `StyleDeltaTemplate` carries
+Per-channel colour plus a blending mode is exactly what `BrushedStyle` carries
 (`proposal-partial-style.md` §5b, §5e). So the seam is singular:
 
 ```csharp
-IBufferFragment? Apply(in StyleDeltaTemplate template, ReadOnlySpan<Color> backdropByCell) => null;
+IBufferFragment? Apply(in BrushedStyle style, ReadOnlySpan<Color> backdropByCell) => null;
 ```
 
 The backdrop is **per cell over the footprint**, not a single colour — a single `Color` would only
@@ -168,7 +168,7 @@ So: `Clip` keeps suppression; opacity and blending fall back to rendering unmodi
 
 - **The group-opacity work** — this is a hole in its correctness story, not a follow-on feature. It
   should land close behind, or the feature ships with a visible inconsistency.
-- **`proposal-partial-style.md` §5e** — `IContent.Paint` taking a `StyleDeltaTemplate` still stands
+- **`proposal-partial-style.md` §5e** — `IContent.Paint` taking a `BrushedStyle` still stands
   on its own (it retires `ScaledText.BrushResolver` and gives `Icon`/`Image` brush support), but it
   is *not* load-bearing for fragment opacity. That was the design before the `Clip` seam was found.
 - **`RenderOptions.BlendingMode`** — §4 is why fragments CAN participate, at cell-resolution

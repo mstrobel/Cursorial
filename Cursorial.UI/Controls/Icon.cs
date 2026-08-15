@@ -92,6 +92,11 @@ public class Icon : Control
     public static void SetIconBrush(UIElement element, IBrush? value) => element.SetValue(IconBrushProperty, value);
 
     private UIApplication? _subscribedApp; // the app whose capability/nerd-font events we're subscribed to
+
+    // Deliberately OUTSIDE the resolved-value CACHE-KEY census: IBrush has no value equality,
+    // so the != in UpdateEffectiveIconBrush is a reference comparison — and that is fine HERE
+    // because a false inequality only dispatches a spurious property change. Over-invalidation is
+    // this cache's only failure mode; the census sites gate re-emission, where it is not.
     private IBrush? _cachedEffectiveBrush;
 
     static Icon()
@@ -147,6 +152,7 @@ public class Icon : Control
             app.CapabilityOverridesChanged += OnCapabilityOverridesChanged; // FB-5 override flip (image tier gate)
             app.NerdFontAvailableChanged += OnNerdFontChanged; // nerd-font (glyph tier) opt-in flip
             app.EmojiAvailableChanged += OnEmojiChanged; // emoji tier availability flip (FB-15, opt-out)
+            app.ResourcesChanged += OnApplicationResourcesChanged; // theme-variant flip / dictionary swap (see below)
             _subscribedApp = app;
         }
 
@@ -163,6 +169,7 @@ public class Icon : Control
             app.CapabilityOverridesChanged -= OnCapabilityOverridesChanged;
             app.NerdFontAvailableChanged -= OnNerdFontChanged;
             app.EmojiAvailableChanged -= OnEmojiChanged;
+            app.ResourcesChanged -= OnApplicationResourcesChanged;
             _subscribedApp = null;
         }
 
@@ -170,6 +177,23 @@ public class Icon : Control
         
         UpdateEffectiveIconBrush();
     }
+
+    /// <summary>
+    /// The theme-flip pulse for <see cref="EffectiveIconBrush"/>. Its <see cref="Control.Foreground"/> leg
+    /// commonly sits at <see cref="BindingPriority.Default"/>, where the themed default
+    /// (<see cref="PropertyMetadata{T}.DefaultResourceKey"/>) resolves lazily with NO store entry and NO
+    /// change notification — by design. The lazy READ is always current, but this cache is not: nothing
+    /// raises <c>Foreground</c>, so neither <see cref="OnPropertyChanged"/> nor
+    /// <see cref="OnInheritedPropertyChanged"/> fires, and the glyph leaf — which binds
+    /// <see cref="EffectiveIconBrushProperty"/> at <see cref="BindingPriority.LocalValue"/> — keeps
+    /// re-painting the pre-flip ink no matter how often it is invalidated. The application catch-all is the
+    /// signal the default-tier re-render walk itself rides (variant flips and dictionary swaps), so it is
+    /// where the cache re-derives. Pinning <c>Foreground</c> in <c>Theme.Icon</c> would also silence this,
+    /// but at <see cref="BindingPriority.Style"/> — beating the inherited host ink an icon is documented to
+    /// take, which hides the glyph on a reverse-video focused/pressed face.
+    /// </summary>
+    private void OnApplicationResourcesChanged(object? sender, ResourcesChangedEventArgs e)
+        => UpdateEffectiveIconBrush();
 
     private void UpdateEffectiveIconBrush()
     {

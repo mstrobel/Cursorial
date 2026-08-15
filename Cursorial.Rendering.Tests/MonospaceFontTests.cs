@@ -2,6 +2,7 @@ using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 
 namespace Cursorial.Tests.Rendering;
 
@@ -36,7 +37,7 @@ public class MonospaceFontTests
     public void Paint_AsciiAtAnchor_LaysDownCells()
     {
         var buffer = new CellBuffer(10, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 2, 0, "hi", CellStyle.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 2, 0, "hi", default(PartialStyle));
 
         Assert.Equal(new Size(2, 1), painted);
         Assert.Equal("h", buffer[2, 0].Grapheme);
@@ -47,7 +48,7 @@ public class MonospaceFontTests
     public void Paint_AtRightEdge_ClipsRatherThanThrows()
     {
         var buffer = new CellBuffer(5, 1);
-        var painted = MonospaceFont.Default.Paint(buffer, 3, 0, "abcdef", CellStyle.Default);
+        var painted = MonospaceFont.Default.Paint(buffer, 3, 0, "abcdef", default(PartialStyle));
 
         // Only 2 cells fit at column 3 in a 5-wide buffer (cols 3, 4).
         Assert.Equal(new Size(2, 1), painted);
@@ -57,8 +58,8 @@ public class MonospaceFontTests
     public void Paint_OutOfBoundsAnchor_PaintsNothing()
     {
         var buffer = new CellBuffer(5, 1);
-        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 0, 5, "x", CellStyle.Default));
-        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", CellStyle.Default));
+        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 0, 5, "x", default(PartialStyle)));
+        Assert.Equal(Size.Empty, MonospaceFont.Default.Paint(buffer, 5, 0, "x", default(PartialStyle)));
     }
 
     [Fact]
@@ -73,7 +74,7 @@ public class MonospaceFontTests
         try
         {
             MonospaceFont.Default.Paint(buffer, 0, 0,
-                "x", CellStyle.Default.WithBackground(Color.FromRgb(0, 255, 0)));
+                "x", PartialStyle.WithBackground(Color.FromRgb(0, 255, 0)));
         }
         finally { buffer.PopBlendingMode(); }
 

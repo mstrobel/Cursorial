@@ -1,8 +1,8 @@
 using System.Collections.Immutable;
 
-using Cursorial.Output;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Text;
@@ -53,6 +53,14 @@ public sealed record TextParagraph(ImmutableArray<Inline> Inlines) : Block
 
     /// <summary>Optional per-paragraph row cap. Content past this many wrapped lines is dropped (with the active <see cref="Trim"/> applied to the final visible line).</summary>
     public int? MaxLines { get; init; }
+
+    /// <summary>
+    /// The paragraph's own style declarations — the ladder's block rung. Channels stated here beat
+    /// the document default and the caller's preference, and lose to a run's own carrier; a
+    /// block-declared foreground brush samples the block's 2-D rect, so a run's position within the
+    /// block decides its colour. The identity (the default) declares nothing.
+    /// </summary>
+    public BrushedStyle Style { get; init; }
 
     /// <summary>
     /// Where shorter runs sit within a taller line band (proposal-glyph-runs): when a line mixes
@@ -106,7 +114,7 @@ public enum VerticalTextAlignment
 /// Common box-drawing styles are exposed as static factories; supply any single-cell grapheme
 /// for custom rules.
 /// </summary>
-public sealed record HorizontalRule(string Glyph, CellStyle Style = default) : Block
+public sealed record HorizontalRule(string Glyph, BrushedStyle Style = default) : Block
 {
     public static Margins DefaultMargins { get; } = new(0, 1);
 
@@ -131,7 +139,7 @@ public sealed record HorizontalRule(string Glyph, CellStyle Style = default) : B
 /// determines the block's footprint; the formatter centers / left-anchors / right-anchors it
 /// within the column budget per <see cref="Block.Alignment"/> and clips on overflow.
 /// </summary>
-public sealed record FigletBlock(string Text, IGlyphFont Face, CellStyle Style = default) : Block;
+public sealed record FigletBlock(string Text, IGlyphFont Face, BrushedStyle Style = default) : Block;
 
 /// <summary>
 /// Kitty OSC 66 sized-text headline. The formatter computes the cell footprint from the
@@ -139,7 +147,7 @@ public sealed record FigletBlock(string Text, IGlyphFont Face, CellStyle Style =
 /// <see cref="Fallback"/> (typically a FIGlet face derived from the <see cref="TextSizing"/>
 /// scale, the same way <c>ScaledText</c> handles it).
 /// </summary>
-public sealed record SizedTextBlock(string Text, TextSizing Sizing, CellStyle Style = default) : Block
+public sealed record SizedTextBlock(string Text, TextSizing Sizing, BrushedStyle Style = default) : Block
 {
     /// <summary>FIGlet face used when the terminal doesn't honor OSC 66.</summary>
     public IGlyphFont? Fallback { get; init; }

@@ -9,6 +9,7 @@ using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Fonts;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
@@ -234,7 +235,8 @@ public sealed class ClipToBoundsRenderEquivalenceTests
 
             case Paint.Text:
                 for (var row = 0; row < rows; row++)
-                    context.DrawText(0, row, Line(row, columns), Ink);
+                    context.DrawText(0, row, Line(row, columns),
+                                     new BrushedStyle { Foreground = new SolidColorBrush(Ink), Background = Brushes.Transparent });
                 break;
 
             case Paint.Formatted:
@@ -270,7 +272,7 @@ public sealed class ClipToBoundsRenderEquivalenceTests
         for (var row = 0; row < rows; row++)
         {
             if (row > 0) builder.LineBreak();
-            builder.Run(Line(row, columns), CellStyle.Default.WithForeground(Ink));
+            builder.Run(Line(row, columns), PartialStyle.WithForeground(Ink));
         }
 
         return new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.None }

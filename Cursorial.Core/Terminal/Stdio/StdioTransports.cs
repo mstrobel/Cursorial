@@ -13,11 +13,14 @@ namespace Cursorial.Terminal.Stdio;
 public static class StdioTransports
 {
     /// <summary>
-    /// Opens the platform stdio transports, applying raw mode and (on Windows) enabling VT
-    /// processing. Throws when the standard streams are not connected to a terminal.
+    /// Opens the platform stdio transports, applying raw mode and (on Windows) enabling VT processing.
+    /// When stdin and/or stdout is redirected (a pipe or a file — <c>app | less</c>, <c>app &gt; log</c>,
+    /// <c>echo x | app</c>), attaches to the controlling terminal for the redirected direction —
+    /// <c>/dev/tty</c> on POSIX, <c>CONIN$</c> / <c>CONOUT$</c> on Windows — so the UI keeps driving the
+    /// real terminal. Throws only when there is no controlling terminal at all (a daemon / CI with no tty).
     /// </summary>
     /// <exception cref="PlatformNotSupportedException">Thrown on operating systems other than Linux, macOS, FreeBSD, or Windows.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when raw mode cannot be applied — typically because stdin or stdout is redirected to a non-terminal.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when neither the standard streams nor a controlling terminal are usable — use the BYO <see cref="TerminalSession.OpenAsync(Input.IInputByteSource, Output.IOutputByteSink, TerminalSessionOptions?, System.Threading.CancellationToken)"/> overload for headless scenarios.</exception>
     public static IStdioTransports Open()
     {
         if (OperatingSystem.IsWindows())

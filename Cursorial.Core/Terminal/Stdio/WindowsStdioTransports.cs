@@ -90,6 +90,12 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
     private int _terminalRestored;
     private int _disposed;
 
+    // Console-device handles we opened via CreateFile (CONIN$ / CONOUT$) when the matching std handle
+    // was redirected; IntPtr.Zero when the std handle was used directly. Owned handles are the only ones
+    // we CloseHandle on dispose — GetStdHandle values are process-global and left untouched.
+    private readonly IntPtr _ownedInputHandle;
+    private readonly IntPtr _ownedOutputHandle;
+
     private WindowsStdioTransports(
         IntPtr stdinHandle,
         IntPtr stdoutHandle,
@@ -97,6 +103,8 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         uint originalStdoutMode,
         uint originalOutputCodePage,
         uint originalInputCodePage,
+        IntPtr ownedInputHandle,
+        IntPtr ownedOutputHandle,
         IInputByteSource source,
         StreamOutputByteSink sink)
     {
@@ -106,6 +114,8 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         _originalStdoutMode = originalStdoutMode;
         _originalOutputCodePage = originalOutputCodePage;
         _originalInputCodePage = originalInputCodePage;
+        _ownedInputHandle = ownedInputHandle;
+        _ownedOutputHandle = ownedOutputHandle;
         _source = source;
         _sink = sink;
     }
@@ -130,6 +140,44 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         // console — throw early so callers reach for the BYO overload instead.
         bool stdinIsConsole = GetConsoleMode(stdinHandle, out uint originalStdinMode);
         bool stdoutIsConsole = GetConsoleMode(stdoutHandle, out uint originalStdoutMode);
+
+        // Redirected I/O: when a std handle is not a console (piped / redirected to a file), try to
+        // attach to the controlling console directly via CONIN$ / CONOUT$ — the Windows analog of
+        // /dev/tty. If that opens a real console, route that direction through it and OWN the handle;
+        // otherwise keep the std handle (an MSYS2 / ConPTY-less pty already carries the terminal's VT
+        // bytes over the pipe, so there is no separate console to attach to).
+        IntPtr ownedInputHandle = IntPtr.Zero;
+        IntPtr ownedOutputHandle = IntPtr.Zero;
+
+        if (!stdinIsConsole)
+        {
+            IntPtr con = OpenConsoleDevice("CONIN$");
+            if (con != IntPtr.Zero && GetConsoleMode(con, out originalStdinMode))
+            {
+                stdinHandle = con;
+                ownedInputHandle = con;
+                stdinIsConsole = true;
+            }
+            else if (con != IntPtr.Zero)
+            {
+                CloseHandle(con);
+            }
+        }
+
+        if (!stdoutIsConsole)
+        {
+            IntPtr con = OpenConsoleDevice("CONOUT$");
+            if (con != IntPtr.Zero && GetConsoleMode(con, out originalStdoutMode))
+            {
+                stdoutHandle = con;
+                ownedOutputHandle = con;
+                stdoutIsConsole = true;
+            }
+            else if (con != IntPtr.Zero)
+            {
+                CloseHandle(con);
+            }
+        }
 
         if (isNativeConsole && !stdinIsConsole)
         {
@@ -243,6 +291,8 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                                               originalStdoutMode,
                                               originalOutputCodePage,
                                               originalInputCodePage,
+                                              ownedInputHandle,
+                                              ownedOutputHandle,
                                               source,
                                               sink);
         }
@@ -268,7 +318,11 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
                 try { asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 catch { /* best-effort */ }
             }
-            
+
+            // Close any CONIN$ / CONOUT$ we opened before the failure.
+            if (ownedInputHandle  != IntPtr.Zero) { try { CloseHandle(ownedInputHandle); }  catch { /* best-effort */ } }
+            if (ownedOutputHandle != IntPtr.Zero) { try { CloseHandle(ownedOutputHandle); } catch { /* best-effort */ } }
+
             throw;
             // @formatter:on
         }
@@ -347,6 +401,11 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         try { await _sink.DisposeAsync().ConfigureAwait(false); }   catch { /* best-effort */ }
 
         RestoreTerminalState();
+
+        // Close the CONIN$ / CONOUT$ handles we opened, if any — last, after the mode restore and both
+        // transports are torn down. GetStdHandle values are process-global and left untouched.
+        if (_ownedInputHandle  != IntPtr.Zero) { try { CloseHandle(_ownedInputHandle); }  catch { /* best-effort */ } }
+        if (_ownedOutputHandle != IntPtr.Zero) { try { CloseHandle(_ownedOutputHandle); } catch { /* best-effort */ } }
         // @formatter:on
     }
 
@@ -404,6 +463,36 @@ internal sealed partial class WindowsStdioTransports : IStdioTransports
         SafeFileHandleFileOptionsField?.SetValue(safeHandle, FileOptions.None);
         return new FileStream(safeHandle, access, bufferSize: 4096, isAsync: false);
     }
+
+    /// <summary>
+    /// Open a console device (<c>CONIN$</c> / <c>CONOUT$</c>) via CreateFile, returning
+    /// <see cref="IntPtr.Zero"/> on failure (no controlling console). Both are opened
+    /// GENERIC_READ|GENERIC_WRITE with FILE_SHARE_READ|FILE_SHARE_WRITE — <c>CONOUT$</c> in particular
+    /// must be share-write to attach to the active screen buffer.
+    /// </summary>
+    private static IntPtr OpenConsoleDevice(string name)
+    {
+        const uint GENERIC_READ = 0x80000000;
+        const uint GENERIC_WRITE = 0x40000000;
+        const uint FILE_SHARE_READ = 0x1;
+        const uint FILE_SHARE_WRITE = 0x2;
+        const uint OPEN_EXISTING = 3;
+
+        IntPtr handle = CreateFile(name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                   IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+
+        // INVALID_HANDLE_VALUE (-1) or 0 → failed / no console attached to the process.
+        return handle == IntPtr.Zero || handle == new IntPtr(-1) ? IntPtr.Zero : handle;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial IntPtr CreateFile(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+                                             IntPtr lpSecurityAttributes, uint dwCreationDisposition,
+                                             uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(IntPtr hObject);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial IntPtr GetStdHandle(int nStdHandle);

@@ -111,25 +111,33 @@ internal sealed class PosixResizeMonitor : IResizeMonitor
     }
 
     /// <summary>
-    /// Read the current cell-grid size via <c>stty size</c>, which prints "ROWS COLS".
-    /// Returns false on any failure (subprocess error, parse failure, stdin not a TTY).
+    /// Read the current cell-grid size via <c>stty size</c> ("ROWS COLS"). Tries the process's own
+    /// stdin (fd 0) first — the common case — and falls back to the controlling terminal via a shell
+    /// redirect (<c>stty size &lt; /dev/tty</c>) when stdin is redirected (a pipe / file, e.g.
+    /// <c>echo x | app</c>), so resize still resolves against the real terminal. Returns false on any
+    /// failure (subprocess error, parse failure, no terminal at all).
     /// </summary>
     private static bool TryReadSize(out int rows, out int cols)
+    {
+        return TryReadSizeVia(viaControllingTty: false, out rows, out cols)
+            || TryReadSizeVia(viaControllingTty: true, out rows, out cols);
+    }
+
+    private static bool TryReadSizeVia(bool viaControllingTty, out int rows, out int cols)
     {
         rows = 0;
         cols = 0;
 
         try
         {
-            var psi = new ProcessStartInfo
-                      {
-                          FileName = "stty",
-                          Arguments = "size",
-                          UseShellExecute = false,
-                          RedirectStandardOutput = true,
-                          RedirectStandardError = false,
-                          RedirectStandardInput = false,
-                      };
+            var psi = viaControllingTty
+                          ? new ProcessStartInfo { FileName = "sh", ArgumentList = { "-c", "stty size < /dev/tty" } }
+                          : new ProcessStartInfo { FileName = "stty", Arguments = "size" };
+
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = false;
+            psi.RedirectStandardInput = false;
 
             using var process = Process.Start(psi);
             if (process is null) return false;

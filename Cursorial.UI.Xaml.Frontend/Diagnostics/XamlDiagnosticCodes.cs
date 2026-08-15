@@ -112,4 +112,11 @@ public static class XamlDiagnosticCodes
 
     /// <summary>The document has no root element (valid but empty XML).</summary>
     public const string EmptyDocument = "CUR3003";
+
+    /// <summary>A member assignment threw a runtime fault while building the object (a user setter or
+    /// coercion callback faulted) — surfaced only when it must be combined with an EndInit fault.</summary>
+    public const string MemberAssignmentFailed = "CUR3004";
+
+    /// <summary>An <c>ISupportInitialize.EndInit()</c> threw while finalizing a bracketed object.</summary>
+    public const string InitializationFailed = "CUR3005";
 }

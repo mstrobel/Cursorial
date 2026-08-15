@@ -1,5 +1,6 @@
 using System.Collections;
 using System.ComponentModel;
+using System.Runtime.ExceptionServices;
 
 using Cursorial.Markup;
 using Cursorial.UI.Controls;
@@ -209,9 +210,20 @@ internal sealed class XamlObjectGraphBuilder
         _currentObject = instance;
         IDisposable? deferScope = instance is UIObject uiObject ? uiObject.DeferNotifications() : null;
         int scopeDepth = _scopes.Depth;
+
+        // EndInit must run to balance BeginInit even when member application faulted — but a fault EndInit
+        // raises must not mask the member fault (WPF's ISupportInitialize hazard: the finally's EndInit
+        // throw would replace the in-flight member throw). So we only intercept the member fault when an
+        // EndInit still has to run; otherwise it propagates natively, byte-identical to before.
+        Exception? memberError = null;
+        Exception? endInitError = null;
         try
         {
             ApplyMembers(objectIndex, in record, instance, type, line, column);
+        }
+        catch (Exception ex) when (needsInit)
+        {
+            memberError = ex;
         }
         finally
         {
@@ -219,7 +231,23 @@ internal sealed class XamlObjectGraphBuilder
             deferScope?.Dispose();
             _currentObject = previousObject;
             if (needsInit)
-                ((ISupportInitialize)instance).EndInit();
+            {
+                try { ((ISupportInitialize)instance).EndInit(); }
+                catch (Exception ex) { endInitError = ex; }
+            }
+        }
+
+        if (endInitError is not null)
+        {
+            // EndInit faulted: surface one XamlParseException carrying both faults, the member one (if any)
+            // as the root-cause inner exception. No member fault → the EndInit fault alone.
+            throw BuildInitializationFailure(memberError, endInitError, line, column);
+        }
+
+        if (memberError is not null)
+        {
+            // EndInit succeeded but member application faulted — re-raise the original, stack intact.
+            ExceptionDispatchInfo.Throw(memberError);
         }
 
         // A <DataCondition> with no Binding: the Xaml init lane bypasses the ctors' RequireReflectionLane guard, so a
@@ -1601,6 +1629,46 @@ internal sealed class XamlObjectGraphBuilder
 
     internal XamlParseException Fatal(string code, string message, int line, int column, Exception? inner = null)
         => new(XamlDiagnostic.Error(code, message, _source, Math.Max(line, 1), Math.Max(column, 1)), inner);
+
+    /// <summary>
+    /// Builds the failure surfaced when an <see cref="ISupportInitialize.EndInit"/> throws. When member
+    /// application also faulted, that member fault is the root cause: it stays the inner exception and its
+    /// code/line/column lead, with the EndInit fault concatenated into the (first) diagnostic's message and
+    /// appended to <see cref="XamlParseException.Diagnostics"/>. Because <c>XamlParseException</c> surfaces
+    /// only the first diagnostic's text, the concatenation lives in that lead message so neither fault is
+    /// lost. A raw member fault (a user setter / coercion throw, not already a <see cref="XamlParseException"/>)
+    /// is itself wrapped with line/column here.
+    /// </summary>
+    private XamlParseException BuildInitializationFailure(Exception? memberError, Exception endInitError, int line, int column)
+    {
+        var endInitDiag = XamlDiagnostic.Error(
+            XamlDiagnosticCodes.InitializationFailed,
+            $"ISupportInitialize.EndInit() failed: {endInitError.Message}",
+            _source, Math.Max(line, 1), Math.Max(column, 1));
+
+        if (memberError is null)
+            return new XamlParseException(endInitDiag, endInitError);
+
+        // A throwing CLR setter surfaces through reflection (PropertyInfo.SetValue) as
+        // TargetInvocationException; peel it so the real fault's message and type lead the combined
+        // diagnostic and become the inner exception, not the generic invocation-wrapper text.
+        var memberFault = memberError is System.Reflection.TargetInvocationException { InnerException: { } real }
+            ? real
+            : memberError;
+
+        IReadOnlyList<XamlDiagnostic> memberDiags = memberFault is XamlParseException { Diagnostics.Count: > 0 } xpe
+            ? xpe.Diagnostics
+            : [XamlDiagnostic.Error(XamlDiagnosticCodes.MemberAssignmentFailed, memberFault.Message, _source, Math.Max(line, 1), Math.Max(column, 1))];
+
+        var lead = memberDiags[0];
+
+        var fatal = XamlDiagnostic.Error(
+            lead.Code,
+            $"{lead.Message} — additionally, ISupportInitialize.EndInit() failed: {endInitError.Message}",
+            lead.Source, lead.Line, lead.Column);
+
+        return new XamlParseException([fatal, endInitDiag], memberFault);
+    }
 
     // ── X2/X3 handler-facing helpers ───────────────────────────────────────────────────────────
 

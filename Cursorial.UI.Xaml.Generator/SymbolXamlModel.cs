@@ -302,15 +302,48 @@ internal static class SymbolXamlModel
         return false;
     }
 
-    /// <summary>True when the type implements <c>System.ComponentModel.ISupportInitialize</c> — the loader
-    /// brackets its member sets with <c>BeginInit</c>/<c>EndInit</c>.</summary>
+    /// <summary>True when the type — or any base type — implements
+    /// <c>System.ComponentModel.ISupportInitialize</c>, directly or transitively (e.g. via
+    /// <c>ISupportInitializeNotification</c>, which extends it). The loader brackets such a type's member
+    /// sets with <c>BeginInit</c>/<c>EndInit</c>. Walks the base-class chain AND, at each level, the
+    /// interface-extension hierarchy explicitly — recursing each interface's own bases via
+    /// <c>Interfaces</c> rather than trusting <c>AllInterfaces</c> to flatten it — so the transitive and
+    /// inherited cases resolve the same way the reflection provider's <c>IsAssignableFrom</c> does.</summary>
     public static bool RequiresInitialize(INamedTypeSymbol type)
     {
-        foreach (var iface in type.AllInterfaces)
+        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
         {
-            if (iface.ToDisplayString() == "System.ComponentModel.ISupportInitialize")
-                return true;
+            foreach (var iface in current.Interfaces)
+            {
+                if (InterfaceIsOrExtendsSupportInitialize(iface))
+                {
+                    return true;
+                }
+            }
         }
+
+        return false;
+    }
+
+    // ISupportInitializeNotification extends ISupportInitialize, so a type implementing only the notification
+    // form still requires init — match by recursing each interface's directly-extended bases (Interfaces),
+    // walking the interface hierarchy independently of the class hierarchy.
+    private static bool InterfaceIsOrExtendsSupportInitialize(INamedTypeSymbol iface)
+    {
+        if (iface.Name == "ISupportInitialize" &&
+            iface.ContainingNamespace?.ToDisplayString() == "System.ComponentModel")
+        {
+            return true;
+        }
+
+        foreach (var baseInterface in iface.Interfaces)
+        {
+            if (InterfaceIsOrExtendsSupportInitialize(baseInterface))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 

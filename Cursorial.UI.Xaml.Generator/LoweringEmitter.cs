@@ -1766,6 +1766,13 @@ internal static class LoweringEmitter
         // initializer; they fall to the member loop's ClrSetBlocked → TODO.)
         var initMembers = isRoot ? null : ScanInitOnlyMembers(c, in obj, objType, hasScope, dataType);
 
+        // An ISupportInitialize element has its member sets bracketed with BeginInit/EndInit, matching the
+        // runtime builder (XamlObjectGraphBuilder) — otherwise AOT-lowered XAML would skip initialization
+        // that the reflection loader performs. NeedsBeginInit is stamped by the parser from the type
+        // metadata's RequiresInitialize. The root is `this` (already constructed by the caller), so it can't
+        // be bracketed here; a non-root ISupportInitialize element is bracketed around its member loop.
+        bool bracketInit = !isRoot && obj.HasFlag(ObjectFlags.NeedsBeginInit);
+
         if (!isRoot)
         {
             if (objType is null)
@@ -1776,6 +1783,8 @@ internal static class LoweringEmitter
             var initializer = initMembers is { Entries.Count: > 0 } ? $" {{ {string.Join(", ", initMembers.Entries)} }}" : "()";
             c.CurrentLineInfo = obj.PackedLineInfo; // re-assert (a property-element child build in the scan moved it)
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
+            if (bracketInit)
+                c.Line($"((global::System.ComponentModel.ISupportInitialize){varExpr}).BeginInit();");
         }
 
         // This object's <X.Resources> (pushed by EmitResourcesMember) is visible to its whole subtree, then
@@ -1944,6 +1953,11 @@ internal static class LoweringEmitter
 
         if (c.AmbientScopeStack.Count > ambientDepth)
             c.AmbientScopeStack.RemoveRange(ambientDepth, c.AmbientScopeStack.Count - ambientDepth);
+
+        // Close the ISupportInitialize bracket after all members are set (and scopes unwound) — the
+        // runtime builder calls EndInit last, in its finally, once member application has completed.
+        if (bracketInit)
+            c.Line($"((global::System.ComponentModel.ISupportInitialize){varExpr}).EndInit();");
     }
 
     // The XAML2009 built-in (CLR basic) type local names — the set a primitive element initializes from its

@@ -116,7 +116,7 @@ public readonly record struct BrushedStyle
 
     /// <summary>
     /// Fold a flag WORD onto this style <b>per axis</b> — one implementation, shared by the fill
-    /// primitives' colour-plus-attributes overloads, the paint preference handed to
+    /// primitives' color-plus-attributes overloads, the paint preference handed to
     /// <c>DrawingContext.DrawFormattedText</c>, and the element-attribute leg of
     /// <c>DrawingContext.CreateBrushResolver</c>.
     /// </summary>
@@ -234,7 +234,7 @@ public readonly record struct BrushedStyle
     }
 
     /// <summary>
-    /// The brushed form of <see cref="PartialStyle.From"/>: EVERY channel stated, the colours as solid
+    /// The brushed form of <see cref="PartialStyle.From"/>: EVERY channel stated, the colors as solid
     /// brushes — so resolving the result at any cell reproduces <paramref name="style"/> whole, and a
     /// stated background selects BOX mode at a glyph paint. The adapter for a caller holding a whole
     /// <see cref="CellStyle"/> base that must survive a paint whose unstated channels fall through to the
@@ -266,7 +266,7 @@ public readonly record struct BrushedStyle
 
     /// <summary>
     /// Lift a resolved <see cref="PartialStyle"/> delta to a carrier: each stated
-    /// (non-<see langword="null"/>) colour becomes a <see cref="SolidColorBrush"/>, and the blend
+    /// (non-<see langword="null"/>) color becomes a <see cref="SolidColorBrush"/>, and the blend
     /// <see cref="PartialStyle.Mode"/>, underline shape, hyperlink and attribute masks carry across; an
     /// absent channel stays absent. Lossless — a <see cref="PartialStyle"/> already spells absence as
     /// <see langword="null"/>, so unlike <see cref="FromStated(in CellStyle)"/> no
@@ -294,11 +294,11 @@ public readonly record struct BrushedStyle
 
     /// <summary>
     /// The producer-boundary adapter from a resolved <see cref="CellStyle"/> to the delta it MEANS:
-    /// each channel stated iff the style states one. A colour becomes a <see cref="SolidColorBrush"/>
+    /// each channel stated iff the style states one. A color becomes a <see cref="SolidColorBrush"/>
     /// when it is not <see cref="Cursorial.Media.Color.Default"/> and stays ABSENT when it is; the
     /// attribute word folds on per axis — <see cref="Imposing"/> for weight, posture and the booleans,
     /// an outright <see cref="Underlining"/> with the style's shape for a stated underline — rather
-    /// than through <see cref="From"/>'s clear-everything mask. Whatever the result declines to
+    /// than through <see cref="From(in CellStyle)"/>'s clear-everything mask. Whatever the result declines to
     /// state falls through to what the paint composes underneath — the document default's rung, or the
     /// destination cells — and an absent background still selects STAMP at a glyph paint, a stated one
     /// (Transparent included) BOX.
@@ -306,9 +306,9 @@ public readonly record struct BrushedStyle
     /// <remarks>
     /// This is where the <see cref="Cursorial.Media.Color.Default"/>-as-absent sentinel is read: once, at
     /// the point the whole style is given up, instead of once per consumer downstream — past this
-    /// boundary absence is spelled <see langword="null"/>. Use <see cref="From"/> / <see cref="FromInk"/>
-    /// for a caller whose whole style must survive verbatim over arbitrarily-styled cells; the
-    /// hyperlink caveat is <see cref="PartialStyle.From"/>'s, unchanged.
+    /// boundary absence is spelled <see langword="null"/>. Use <see cref="From(in CellStyle)"/> /
+    /// <see cref="FromInk"/> for a caller whose whole style must survive verbatim over
+    /// arbitrarily-styled cells; the hyperlink caveat is <see cref="PartialStyle.From"/>'s, unchanged.
     /// </remarks>
     public static BrushedStyle FromStated(in CellStyle style)
     {

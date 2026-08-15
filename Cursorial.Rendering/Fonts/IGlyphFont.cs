@@ -115,10 +115,10 @@ public interface IGlyphFont
     /// <b>There is no base parameter.</b> The channels <paramref name="baseStyle"/> declines to state fall
     /// through to the DESTINATION CELLS, through the delta write primitives
     /// (<see cref="CellBuffer.Set(int, int, string?, in PartialStyle)"/> and the fold it is built on) — the
-    /// painted cluster keeps whatever colour, attribute or link the caller said nothing about. A caller
+    /// painted cluster keeps whatever color, attribute or link the caller said nothing about. A caller
     /// holding a whole-style base that must survive over cells styled differently restates it UNDER the
-    /// delta instead (<see cref="BrushedStyle.From"/> / <see cref="BrushedStyle.FromInk"/> composed via
-    /// <see cref="BrushedStyle.Then"/>), so the fall-through never reaches the cells.
+    /// delta instead (<see cref="BrushedStyle.From(in CellStyle)"/> / <see cref="BrushedStyle.FromInk"/>
+    /// composed via <see cref="BrushedStyle.Then"/>), so the fall-through never reaches the cells.
     /// </para>
     /// <para>
     /// <b>The bounds are REQUIRED, and are not the painted footprint.</b> They are the brush's coordinate

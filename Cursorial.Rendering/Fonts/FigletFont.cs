@@ -218,8 +218,8 @@ public sealed class FigletFont : IGlyphFont
         // the delta to Set — there is an adjustment BETWEEN the fold and the write, and the adjustment has
         // to see the cell's contribution. It folds through the write's own primitive, though, so the rule
         // about what an absent background means stays in one place.
-        return PaintCore(buffer, column, row, text,
-                         (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, ink)));
+        return PaintScoped(buffer, column, row, text, ink.Mode,
+                           (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, ink, applyBlending: false)));
     }
 
     /// <summary>
@@ -245,16 +245,32 @@ public sealed class FigletFont : IGlyphFont
         if (baseStyle.IsUniform)
         {
             var uniform = baseStyle.Resolve(column, row, bounds);
-            return PaintCore(buffer, column, row, text,
-                             (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, uniform)));
+            return PaintScoped(buffer, column, row, text, uniform.Mode,
+                               (_, _, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, uniform, applyBlending: false)));
         }
 
         // `in` parameters cannot be captured; the resolve needs both at every sample.
         var baseStyleCopy = baseStyle;
         var box = bounds;
 
-        return PaintCore(buffer, column, row, text,
-                         (c, r, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, baseStyleCopy.Resolve(c, r, box))));
+        return PaintScoped(buffer, column, row, text, baseStyle.Mode,
+                           (c, r, backdrop) => EnsureCompatibleStyle(CellBuffer.FoldOntoCell(backdrop, baseStyleCopy.Resolve(c, r, box), applyBlending: false)));
+    }
+
+    // Scope a delta-carried blending Mode on the buffer's stack for the whole run, so each cell's
+    // Set(CellStyle) write below blends the folded ink foreground-over-BACKGROUND against that cell —
+    // the same contract Set(PartialStyle) gives the plain arms. The fold runs FLAT (applyBlending:
+    // false) so the mode is applied exactly once, by the write's BlendOver, not doubled as a tint. A
+    // null mode takes the plain path and rides whatever mode is already on the stack.
+    private Size PaintScoped(in CellBufferView buffer, int column, int row, ReadOnlySpan<char> text,
+                             IBlendingMode? mode, Func<int, int, CellStyle, CellStyle> provider)
+    {
+        if (mode is null)
+            return PaintCore(buffer, column, row, text, provider);
+
+        buffer.PushBlendingMode(mode);
+        try { return PaintCore(buffer, column, row, text, provider); }
+        finally { buffer.PopBlendingMode(); }
     }
 
     // The resolved-style form both Paint overloads funnel into: by this point the BrushedStyle has been resolved

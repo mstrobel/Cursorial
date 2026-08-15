@@ -164,6 +164,25 @@ public class FigletFontTests
     }
 
     [Fact]
+    public void Paint_DeltaCarryingMode_BlendsTheInkForegroundOverTheCellBackground()
+    {
+        var font = BuildBehaviorFont(FigletLayoutMode.None);
+        var buffer = new CellBuffer(5, 5);
+        buffer.Fill(new Cell(" ", CellKind.Single, CellStyle.Default.WithBackground(Color.FromRgb(0, 0, 255)))); // blue
+
+        // An ink-only delta (no background → no box) carrying its OWN Multiply mode, no ambient push.
+        // The glyph's foreground must blend against the cell's BACKGROUND via the scoped mode —
+        // Multiply(red, blue) = black — the same fg-over-bg contract the plain arms get from Set.
+        font.Paint(buffer, 0, 0, "A",
+                   PartialStyle.WithForeground(Color.FromRgb(255, 0, 0)) with { Mode = BlendingModes.Multiply });
+
+        // (1,0) is the 'A' stroke in the top glyph row " A ".
+        Assert.Equal("A", buffer[1, 0].Grapheme);
+        Assert.Equal(Color.FromRgb(0, 0, 0), buffer[1, 0].Style.Foreground);   // red × blue = black
+        Assert.Equal(Color.FromRgb(0, 0, 255), buffer[1, 0].Style.Background); // background left alone
+    }
+
+    [Fact]
     public void Paint_ClipsToBufferRightEdge()
     {
         var font = BuildBehaviorFont(FigletLayoutMode.None);

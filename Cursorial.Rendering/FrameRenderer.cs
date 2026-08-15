@@ -1135,7 +1135,7 @@ public sealed class FrameRenderer
         // approximation this removes.
         SgrEncoder.WriteAbsolute(output, SubstituteTerminalDefaultColors(existingStyle, source));
 
-        var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle) ?? entry.AnchorStyle;
+        var anchorStyle = entry.Fragment.StyleOverride?.BlendOver(entry.AnchorStyle, entry.Fragment.StyleBlendMode) ?? entry.AnchorStyle;
 
         // Transparency is resolved here or not at all, and the three colour channels do not resolve the
         // same way.

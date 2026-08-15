@@ -1,3 +1,4 @@
+using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Output.Capabilities;
 using Cursorial.Rendering.Fonts;
@@ -148,6 +149,11 @@ public sealed class ScaledText : FragmentContent
     // the anchor before the comparison, and !IsUniform rebuilds unconditionally.
     private CellStyle _placeholderStyle;
 
+    // The Mode is not in _placeholderStyle (it is resolved away over Default), so it is tracked
+    // separately: a run that changes ONLY its blend mode must still rebuild the realization, which
+    // bakes the mode into its FIGlet carrier. Blend modes are singletons, so reference identity suffices.
+    private IBlendingMode? _placeholderMode;
+
     protected override Rect PaintPlaceholder(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -166,10 +172,12 @@ public sealed class ScaledText : FragmentContent
         // style forever, which is why figlet selection highlighting never showed). A non-uniform
         // carrier has no single resolved value to key the realization on, so it rebuilds
         // unconditionally — the forward rule the cache-key census states.
-        if (RealizedPlaceholder is null || style.IsUniform is false || _placeholderStyle != resolved)
+        if (RealizedPlaceholder is null || style.IsUniform is false || _placeholderStyle != resolved ||
+            !ReferenceEquals(_placeholderMode, style.Mode))
         {
             RealizedPlaceholder = BuildPlaceholder(placeholderSize, capabilities, style);
             _placeholderStyle = resolved;
+            _placeholderMode = style.Mode;
         }
 
         var rect = new Rect(bounds.Position, placeholderSize);
@@ -206,8 +214,12 @@ public sealed class ScaledText : FragmentContent
         // SGR, so one sample: the carrier resolves at the fragment's anchor. (A non-uniform
         // carrier never caches — IsCachedFragmentStale rebuilds it unconditionally — so the
         // anchor sample is a per-paint value, not a stale key.)
+        // The Mode is carried, NOT consumed by ApplyTo(Default): it has no operand over the abstract
+        // default, and its job is the emitted FOREGROUND — applied at FrameRenderer's StyleOverride-over-
+        // AnchorStyle blend, which (the two being equal) is fg over its own background.
         var fragment = new SizedTextFragment(Sizing, Text,
-                                             style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default));
+                                             style.Resolve(bounds.Column, bounds.Row, bounds).ApplyTo(CellStyle.Default),
+                                             style.Mode);
         if (fragment.IsSupported(capabilities))
             return fragment;
 

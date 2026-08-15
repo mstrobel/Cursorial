@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 
+using Cursorial.Media;
 using Cursorial.Rendering.Content;
 using Cursorial.Rendering.Media;
 using Cursorial.Text;
@@ -74,6 +75,10 @@ public sealed class TextMarkupOptions
 ///       (<c>linear:</c>/<c>radial:</c>/<c>conic:</c> plus a comma-separated color list), or any
 ///       name the options' <see cref="TextMarkupOptions.BrushResolver"/> resolves — the resolver is
 ///       consulted first, so a registered name overrides a built-in one.</item>
+/// <item><c>[blend=mode][/blend]</c> — blend the run's ink over what it lands on. Modes:
+///       <c>multiply</c>, <c>screen</c>, <c>overlay</c>, <c>darken</c>, <c>lighten</c>,
+///       <c>plus</c>/<c>add</c>, <c>over</c> (the default). Affects the FOREGROUND against the cell's
+///       background; a stated background blends too.</item>
 /// <item><c>[link=uri][/link]</c> — OSC 8 hyperlink target.</item>
 /// <item><c>[font=name][/font]</c> — per-grapheme remap; built-ins: <c>fullwidth</c>,
 ///       <c>doublestruck</c>, <c>smallcaps</c>, <c>superscript</c>, <c>subscript</c>.</item>
@@ -298,6 +303,9 @@ public static class TextMarkup
                 case "bg":
                     Push(token.Name, builder.Push(BrushedStyle.Identity.WithBackground(ResolveBrush(token.Value, token.Position))));
                     break;
+                case "blend":
+                    Push(token.Name, builder.Push(BrushedStyle.Identity.WithMode(ParseBlendMode(token.Value, token.Position))));
+                    break;
                 case "link" or "url":
                     if (string.IsNullOrEmpty(token.Value))
                         throw Error(token.Position, "[link] requires a URI: [link=https://example.com].");
@@ -451,6 +459,19 @@ public static class TextMarkup
                    "nowrap" or "none"    => WrapMode.NoWrap,
                    "overflow"            => WrapMode.WordWrapOverflow,
                    _                     => throw Error(position, $"Unknown wrap mode '{value}'. Use word | character | nowrap | overflow.")
+               };
+
+        private static IBlendingMode ParseBlendMode(string value, int position)
+            => value.ToLowerInvariant() switch
+               {
+                   "over" or "normal" or "sourceover" => BlendingModes.SourceOver,
+                   "multiply"                         => BlendingModes.Multiply,
+                   "screen"                           => BlendingModes.Screen,
+                   "overlay"                          => BlendingModes.Overlay,
+                   "darken"                           => BlendingModes.Darken,
+                   "lighten"                          => BlendingModes.Lighten,
+                   "plus" or "add"                    => BlendingModes.Plus,
+                   _                                  => throw Error(position, $"Unknown blend mode '{value}'. Use multiply | screen | overlay | darken | lighten | plus | over.")
                };
 
         private static TextAlignment ParseAlignment(string value, int position)

@@ -56,6 +56,22 @@ public class TextMarkupTests
     }
 
     [Fact]
+    public void Parse_BlendTag_SetsMode()
+    {
+        var rt = TextMarkup.Parse("[blend=multiply]text[/blend]");
+        var run = FirstRun(rt);
+
+        Assert.Equal("text", run.Text);
+        Assert.Same(BlendingModes.Multiply, run.Style.Mode);
+    }
+
+    [Fact]
+    public void Parse_BlendTag_UnknownMode_Throws()
+    {
+        Assert.ThrowsAny<Exception>(() => TextMarkup.Parse("[blend=bogus]x[/blend]"));
+    }
+
+    [Fact]
     public void Parse_ForegroundPaletteIndex()
     {
         var rt = TextMarkup.Parse("[fg=42]text[/fg]");

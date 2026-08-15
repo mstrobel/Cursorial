@@ -27,7 +27,7 @@ public class MultiBlockFormatterTests
     [Fact]
     public void HorizontalRule_CustomGlyphAndStyle()
     {
-        var redStyle = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
+        var redStyle = PartialStyle.WithForeground(Color.FromRgb(255, 0, 0));
         var doc = new RichTextBuilder()
             .HorizontalRule(glyph: "═", style: redStyle, alignment: TextAlignment.Center)
             .Build();

@@ -31,7 +31,7 @@ public class FormattedTextFillBoundsTests
 
     // A one-line document with no stated background anywhere; painted into 3 rows it re-centres to
     // row 1, leaving rows 0 and 2 (and the line's right) as surround.
-    private static FormattedText Document(CellStyle? defaultStyle = null)
+    private static FormattedText Document(PartialStyle? defaultStyle = null)
         => new TextFormatter().Format(new RichTextBuilder(defaultStyle ?? default).Run("hi").Build(),
                                       10, fillEntireBounds: true);
 
@@ -157,7 +157,7 @@ public class FormattedTextFillBoundsTests
     [Fact]
     public void PreferenceBackground_WinsOverTheDocumentDefaults()
     {
-        var text = Document(CellStyle.Default.WithBackground(Green));
+        var text = Document(PartialStyle.WithBackground(Green));
 
         var buffer = Painted(text, new SolidColorBrush(Blue), out _);
         Assert.Equal(Blue, buffer[0, 0].Style.Background);      // the preference's opinion fills

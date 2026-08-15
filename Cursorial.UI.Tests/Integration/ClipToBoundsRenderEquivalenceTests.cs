@@ -272,7 +272,7 @@ public sealed class ClipToBoundsRenderEquivalenceTests
         for (var row = 0; row < rows; row++)
         {
             if (row > 0) builder.LineBreak();
-            builder.Run(Line(row, columns), CellStyle.Default.WithForeground(Ink));
+            builder.Run(Line(row, columns), PartialStyle.WithForeground(Ink));
         }
 
         return new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.None }

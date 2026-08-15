@@ -163,20 +163,20 @@ internal sealed class DashboardScenario(bool mutate) : RasterBenchScenario(Viewp
     // Formatted once (text layout is a layout-time cost in a retained UI, not a raster cost);
     // DrawFormattedText paints the laid-out blocks per raster.
     private static readonly FormattedText Header = FormatDoc(b => b
-        .Run("CURSORIAL ", CellStyle.Default.WithForeground(Accent).WithAttributes(TextAttributes.Bold))
-        .Run("raster benchmark", CellStyle.Default.WithForeground(Value))
+        .Run("CURSORIAL ", PartialStyle.WithForeground(Accent).Weighing(TextWeight.Bold))
+        .Run("raster benchmark", PartialStyle.WithForeground(Value))
         .LineBreak()
-        .Run("probe 1 — whole-zone re-raster · 200×60 dashboard · ", CellStyle.Default.WithForeground(Label))
-        .Run("12 panels, junction table, log block", CellStyle.Default.WithForeground(Good).WithAttributes(TextAttributes.Italic)),
+        .Run("probe 1 — whole-zone re-raster · 200×60 dashboard · ", PartialStyle.WithForeground(Label))
+        .Run("12 panels, junction table, log block", PartialStyle.WithForeground(Good).Posturing(TextStyle.Italic)),
         columns: 90, maxRows: 4);
 
     private static readonly FormattedText Log = FormatDoc(b =>
     {
         for (int i = 0; i < 10; i++)
         {
-            b.Run($"12:4{i % 10} ", CellStyle.Default.WithForeground(Label))
-             .Run(i % 3 == 0 ? "WARN " : "INFO ", CellStyle.Default.WithForeground(i % 3 == 0 ? Warn : Good))
-             .Run($"zone {i} recomposited in {i * 3 + 1} ms", CellStyle.Default.WithForeground(Value));
+            b.Run($"12:4{i % 10} ", PartialStyle.WithForeground(Label))
+             .Run(i % 3 == 0 ? "WARN " : "INFO ", PartialStyle.WithForeground(i % 3 == 0 ? Warn : Good))
+             .Run($"zone {i} recomposited in {i * 3 + 1} ms", PartialStyle.WithForeground(Value));
             if (i < 9) b.LineBreak();
         }
     }, columns: 39, maxRows: 11);

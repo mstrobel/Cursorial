@@ -143,12 +143,10 @@ internal static class TextCorpus
             Description = "A document whose DefaultStyle sets fg + bg + attributes + a curly coloured underline; "
                         + "every run inherits it, which is exactly what a delta carrier must keep reproducing.",
             Document = static () => new RichTextBuilder(
-                                            CellStyle.Default
-                                                     .WithForeground(Amber)
-                                                     .WithBackground(Color.FromRgb(16, 16, 32))
-                                                     .WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
-                                                     .WithUnderlineStyle(UnderlineStyle.Curly)
-                                                     .WithUnderlineColor(Teal))
+                                            (PartialStyle.WithForeground(Amber)
+                                                 with { Background = Color.FromRgb(16, 16, 32), UnderlineColor = Teal })
+                                                .Weighing(TextWeight.Bold)
+                                                .Underlining(UnderlineStyle.Curly))
                                         .Run("inherit me")
                                         .Build(),
             Columns = 16, PaintColumns = 16, PaintRows = 2
@@ -158,7 +156,7 @@ internal static class TextCorpus
             Id = "document-default-style-fill-bounds",
             Description = "FillEntireBounds fills the whole rect with the document default's background "
                         + "(durable, owning blanks) and re-centres the document.",
-            Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 32, 0)))
+            Document = static () => new RichTextBuilder(PartialStyle.WithBackground(Color.FromRgb(0, 32, 0)))
                                     .Run("filled")
                                     .Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 4, FillEntireBounds = true
@@ -343,7 +341,7 @@ internal static class TextCorpus
             Document = static () => new RichTextBuilder()
                                     .Paragraph(wrap: WrapMode.NoWrap, trim: TextTrimming.CharacterEllipsis)
                                     .Run("plain ")
-                                    .Run("styled tail that overflows", CellStyle.Default.WithForeground(Amber))
+                                    .Run("styled tail that overflows", PartialStyle.WithForeground(Amber))
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 2
         },
@@ -370,7 +368,7 @@ internal static class TextCorpus
                                     .Run("header").EndParagraph()
                                     .HorizontalRule(Cursorial.Rendering.Text.HorizontalRule.Heavy)
                                     .Run("body").EndParagraph()
-                                    .HorizontalRule("┈", CellStyle.Default.WithForeground(Teal))
+                                    .HorizontalRule("┈", PartialStyle.WithForeground(Teal))
                                     .Run("footer")
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 9
@@ -380,7 +378,7 @@ internal static class TextCorpus
             Id = "blocks-rule-alignment",
             Description = "A rule painted into a rect wider than its own block size — the anchor-column rule.",
             Document = static () => new RichTextBuilder()
-                                    .HorizontalRule("═", CellStyle.Default, TextAlignment.Center)
+                                    .HorizontalRule("═", default, TextAlignment.Center)
                                     .Build(),
             Columns = 8, PaintColumns = 16, PaintRows = 3
         },
@@ -558,7 +556,7 @@ internal static class TextCorpus
             Description = "A document default that STATES a foreground beats the caller's preference brush — "
                         + "the object model wins wherever it speaks; the preference colours only text no "
                         + "level declared for.",
-            Document = static () => new RichTextBuilder(CellStyle.Default.WithForeground(Color.FromRgb(180, 180, 180)))
+            Document = static () => new RichTextBuilder(PartialStyle.WithForeground(Color.FromRgb(180, 180, 180)))
                                     .Run("aaaa bbbb")
                                     .Build(),
             Columns = 9, PaintColumns = 12, PaintRows = 4,
@@ -571,7 +569,7 @@ internal static class TextCorpus
                         + "declaration at run scope, and the ladder colours only text no level declared for.",
             Document = static () => new RichTextBuilder()
                                     .Run("inherited ")
-                                    .Run("explicit", CellStyle.Default.WithForeground(Amber))
+                                    .Run("explicit", PartialStyle.WithForeground(Amber))
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 3,
             DocumentBrush = LeftToRight()
@@ -591,7 +589,7 @@ internal static class TextCorpus
                         + "underline shape, union-merged onto every cell without a re-format.",
             Document = static () => new RichTextBuilder()
                                     .Run("plain ")
-                                    .Run("italic", CellStyle.Default.WithAttributes(TextAttributes.Italic))
+                                    .Run("italic", PartialStyle.Postured(TextStyle.Italic))
                                     .Build(),
             Columns = 20, PaintColumns = 20, PaintRows = 3,
             Brushed = true,
@@ -688,7 +686,7 @@ internal static class TextCorpus
                         + "place a run's whole-CellStyle carrier is load-bearing today.",
             Document = static () => new RichTextBuilder()
                                     .Figlet("Hi", FigletFonts.Small,
-                                            CellStyle.Default.WithForeground(Amber).WithBackground(Teal))
+                                            PartialStyle.WithForeground(Amber) with { Background = Teal })
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 6
         },
@@ -718,10 +716,9 @@ internal static class TextCorpus
                         + "backdrop SGR — historically the fragile part.",
             Document = static () => new RichTextBuilder()
                                     .SizedText("Hot", new TextSizing(Scale: 2),
-                                               CellStyle.Default
-                                                        .WithForeground(Amber)
-                                                        .WithBackground(Color.FromRgb(64, 0, 0))
-                                                        .WithAttributes(TextAttributes.Bold))
+                                               (PartialStyle.WithForeground(Amber)
+                                                    with { Background = Color.FromRgb(64, 0, 0) })
+                                                   .Weighing(TextWeight.Bold))
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 4, EmitsFragments = true
         },
@@ -771,7 +768,7 @@ internal static class TextCorpus
             Description = "Sized text whose anchor cell carries a panel background. FrameRenderer hands the "
                         + "fragment the anchor cell's style, so the backdrop SGR must name that colour rather "
                         + "than the terminal default — the seam commit 2137e58b closed.",
-            Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 48, 96)))
+            Document = static () => new RichTextBuilder(PartialStyle.WithBackground(Color.FromRgb(0, 48, 96)))
                                     .SizedText("Panel", new TextSizing(Scale: 2))
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 4,
@@ -804,14 +801,11 @@ internal static class TextCorpus
             Description = "Adjacent runs differing in each style axis in turn — the per-run carrier's whole job, "
                         + "on one line.",
             Document = static () => new RichTextBuilder()
-                                    .Run("A", CellStyle.Default.WithForeground(Red))
-                                    .Run("B", CellStyle.Default.WithBackground(Blue))
-                                    .Run("C", CellStyle.Default.WithAttributes(TextAttributes.Bold))
-                                    .Run("D", CellStyle.Default
-                                                       .WithAttributes(TextAttributes.Underline)
-                                                       .WithUnderlineStyle(UnderlineStyle.Dashed)
-                                                       .WithUnderlineColor(Teal))
-                                    .Run("E", CellStyle.Default.WithAttributes(TextAttributes.Inverse))
+                                    .Run("A", PartialStyle.WithForeground(Red))
+                                    .Run("B", PartialStyle.WithBackground(Blue))
+                                    .Run("C", PartialStyle.Weighted(TextWeight.Bold))
+                                    .Run("D", PartialStyle.WithUnderline(UnderlineStyle.Dashed, Teal))
+                                    .Run("E", PartialStyle.WithApplied(TextAttributes.Inverse))
                                     .Run("F")
                                     .Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 2
@@ -824,7 +818,7 @@ internal static class TextCorpus
             Document = static () => new RichTextBuilder()
                                     .Run("lead ")
                                     .Run("styled tail across the break",
-                                         CellStyle.Default.WithForeground(Amber).WithAttributes(TextAttributes.Italic))
+                                         PartialStyle.WithForeground(Amber).Posturing(TextStyle.Italic))
                                     .Build(),
             Columns = 12, PaintColumns = 12, PaintRows = 5
         },
@@ -868,7 +862,7 @@ internal static class TextCorpus
                         + "brush leg is live too: this also pins per-cell gradient sampling over a run that "
                         + "states a background.",
             Document = static () => new RichTextBuilder()
-                                    .Figlet("Hi", FigletFonts.Small, CellStyle.Default.WithBackground(Teal))
+                                    .Figlet("Hi", FigletFonts.Small, PartialStyle.WithBackground(Teal))
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 6,
             DocumentBrush = LeftToRight()
@@ -891,7 +885,8 @@ internal static class TextCorpus
                         + "Color.Default. A stationary section is therefore NOT evidence the box arm is intact. "
                         + "Seeing a transparent box would take a surface whose blank is itself transparent (a "
                         + "Scene); nothing in the repo puts this face's box arm on one today.",
-            Document = static () => new RichTextBuilder(CellStyle.Transparent)
+            Document = static () => new RichTextBuilder(PartialStyle.WithForeground(Color.Transparent)
+                                                                with { Background = Color.Transparent, UnderlineColor = Color.Transparent })
                                     .Figlet("Hi", FigletFonts.Small)
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 6
@@ -917,7 +912,8 @@ internal static class TextCorpus
                         + "— WriteDelta also declines to emit anything for a transparent background "
                         + "(FrameRenderer.cs:741-744) — so this section pins the bytes without isolating which "
                         + "rule produced them.",
-            Document = static () => new RichTextBuilder(CellStyle.Transparent)
+            Document = static () => new RichTextBuilder(PartialStyle.WithForeground(Color.Transparent)
+                                                                with { Background = Color.Transparent, UnderlineColor = Color.Transparent })
                                     .SizedText("Title", new TextSizing(Scale: 2))
                                     .Build(),
             Columns = 24, PaintColumns = 24, PaintRows = 4, EmitsFragments = true
@@ -991,7 +987,7 @@ internal static class TextCorpus
                         + "which is why the word lands on row 2 of 5; the derived extent the brush samples "
                         + "against moves down with it, but this brush is HORIZONTAL, so nothing here samples "
                         + "that axis and the moved row is not pinned by this section.",
-            Document = static () => new RichTextBuilder(CellStyle.Default.WithBackground(Color.FromRgb(0, 32, 0)))
+            Document = static () => new RichTextBuilder(PartialStyle.WithBackground(Color.FromRgb(0, 32, 0)))
                                     .Run("filled")
                                     .Build(),
             Columns = 14, PaintColumns = 14, PaintRows = 5,
@@ -1020,7 +1016,7 @@ internal static class TextCorpus
                         + "scope — declaration wins by policy, no value equality anywhere. Under a gradient "
                         + "document brush the declared solid is visibly flat; phase 6's restatement sentinel "
                         + "briefly inverted this, unpinned.",
-            Document = static () => new RichTextBuilder(CellStyle.Default.WithForeground(Color.FromRgb(180, 180, 180)))
+            Document = static () => new RichTextBuilder(PartialStyle.WithForeground(Color.FromRgb(180, 180, 180)))
                                     .Run("aaaa ")
                                     .Run("SOLID", new BrushedStyle
                                                   {

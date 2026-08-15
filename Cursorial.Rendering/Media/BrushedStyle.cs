@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
 namespace Cursorial.Rendering.Media;
@@ -264,7 +265,29 @@ public readonly record struct BrushedStyle
     }
 
     /// <summary>
-    /// <see cref="From"/> minus the background: the INK of <paramref name="style"/> and no opinion
+    /// Lift a resolved <see cref="PartialStyle"/> delta to a carrier: each stated
+    /// (non-<see langword="null"/>) colour becomes a <see cref="SolidColorBrush"/>, and the blend
+    /// <see cref="PartialStyle.Mode"/>, underline shape, hyperlink and attribute masks carry across; an
+    /// absent channel stays absent. Lossless — a <see cref="PartialStyle"/> already spells absence as
+    /// <see langword="null"/>, so unlike <see cref="FromStated(in CellStyle)"/> no
+    /// <see cref="Cursorial.Media.Color.Default"/>-as-absent sentinel is read, and a STATED
+    /// <c>Color.Default</c> survives as a stated-default brush.
+    /// </summary>
+    public static BrushedStyle From(in PartialStyle delta)
+        => new()
+        {
+            Foreground     = delta.Foreground     is { } fg ? BrushFor(fg) : null,
+            Background     = delta.Background     is { } bg ? BrushFor(bg) : null,
+            UnderlineColor = delta.UnderlineColor is { } uc ? BrushFor(uc) : null,
+            Hyperlink      = delta.Hyperlink,
+            UnderlineShape = delta.UnderlineShape,
+            Mode           = delta.Mode,
+            Clear          = delta.Clear,
+            Xor            = delta.Xor
+        };
+
+    /// <summary>
+    /// <see cref="From(in CellStyle)"/> minus the background: the INK of <paramref name="style"/> and no opinion
     /// about the surrounding cells, which selects STAMP mode at a glyph paint.
     /// </summary>
     public static BrushedStyle FromInk(in CellStyle style) => From(style) with { Background = null };
@@ -380,4 +403,14 @@ public readonly record struct BrushedStyle
                    Mode           = Mode
                };    
     }
+
+    private static IBrush? BrushFor(Color? color)
+        => color switch
+           {
+               null                                                            => null,
+               { Kind: ColorKind.Default }                                     => Brushes.Default,
+               { Kind: ColorKind.Rgb } c                                       => new SolidColorBrush(c),
+               { PaletteIndex: var i } when MarkupColor.IsThemePaletteIndex(i) => SolidColorBrush.FromPalette(i),
+               { PaletteIndex: var p }                                         => ColorPalette.Ansi256[p],
+           };
 }

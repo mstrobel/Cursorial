@@ -145,7 +145,7 @@ public class InlineContentTests
         // the glyph painted in the terminal's own colour.
         var teal = Color.FromRgb(0, 128, 128);
         var content = new FixedSizeContent(2);
-        var doc = new RichTextBuilder(CellStyle.Default.WithForeground(teal))
+        var doc = new RichTextBuilder(PartialStyle.WithForeground(teal))
             .Run("a ").InlineContent(content)
             .Build();
 

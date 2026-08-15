@@ -103,7 +103,7 @@ internal sealed class BrushedTextDemo : InteractiveDemo
 
     private static RichText BuildDocument(in CellStyle defaultStyle)
     {
-        var builder = new RichTextBuilder(defaultStyle);
+        var builder = new RichTextBuilder(PartialStyle.From(defaultStyle));
         var opts = BrushMarkup.Options(BrushedStyle.FromStated(defaultStyle));   // enables [fg=…]/[bg=…] gradient markup (inline + registry)
 
         TextMarkup.Parse(

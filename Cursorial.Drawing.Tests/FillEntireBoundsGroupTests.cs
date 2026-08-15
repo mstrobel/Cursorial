@@ -95,7 +95,7 @@ public class FillEntireBoundsGroupTests
 
     // "aaaa bbbb" is exactly the 9-column budget: one line, re-centred to row 1 of 3 by the fill's
     // vertical centring, so rows 0 and 2 and the line's right are the surround.
-    private static FormattedText FillDocument(CellStyle defaultStyle = default) =>
+    private static FormattedText FillDocument(PartialStyle defaultStyle = default) =>
         new TextFormatter().Format(new RichTextBuilder(defaultStyle).Run("aaaa bbbb").Build(),
                                    9, fillEntireBounds: true);
 
@@ -145,7 +145,7 @@ public class FillEntireBoundsGroupTests
         lower.Draw(ctx => ctx.DrawText(0, 2, "x", new BrushedStyle { Foreground = new SolidColorBrush(Red) }));
 
         using var upper = Scene.Create(12, 3);
-        upper.Draw(ctx => ctx.DrawFormattedText(FillDocument(CellStyle.Default.WithBackground(Blue)),
+        upper.Draw(ctx => ctx.DrawFormattedText(FillDocument(PartialStyle.WithBackground(Blue)),
                                                 new Rect(0, 0, 12, 3), OutputCapabilities.None));
 
         var target = Composite(Green, 12, 3, [new SceneLayer(lower), new SceneLayer(upper)]);
@@ -162,7 +162,7 @@ public class FillEntireBoundsGroupTests
         // the per-run resolver (whose decode drops Background deliberately), so the document's own
         // painted line keeps its cells.
         using var member = Scene.Create(12, 3);
-        member.Draw(ctx => ctx.DrawFormattedText(FillDocument(CellStyle.Default.WithBackground(Green)),
+        member.Draw(ctx => ctx.DrawFormattedText(FillDocument(PartialStyle.WithBackground(Green)),
                                                  new Rect(0, 0, 12, 3), OutputCapabilities.None,
                                                  new BrushedStyle { Background = new SolidColorBrush(Blue) }));
 

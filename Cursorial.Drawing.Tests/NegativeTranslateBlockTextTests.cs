@@ -170,7 +170,7 @@ public class NegativeTranslateBlockTextTests
 
     private static FormattedText Format(string text)
         => new TextFormatter { Wrap = WrapMode.NoWrap, Trim = TextTrimming.None }
-           .Format(new RichTextBuilder().Run(text, CellStyle.Default).Build(), text.Length);
+           .Format(new RichTextBuilder().Run(text, default(PartialStyle)).Build(), text.Length);
 
     /// <summary>The always-correct leg: the same cells placed one at a time through the translate.</summary>
     private static string PerCellReference(int dx)

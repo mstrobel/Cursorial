@@ -298,7 +298,7 @@ public class BrushResolverDeltaTests
     [Fact]
     public void PaintedCells_CarryOneWeightFlag_NotBoth()
     {
-        var doc = new RichTextBuilder().Run("hi", CellStyle.Default.WithAttributes(TextAttributes.Faint)).Build();
+        var doc = new RichTextBuilder().Run("hi", PartialStyle.Weighted(TextWeight.Faint)).Build();
         var ft = new TextFormatter().Format(doc, 10, maxRows: null, OutputCapabilities.None);
 
         var b = DrawHarness.Render(10, 2, ctx => ctx.DrawFormattedText(ft, new Rect(0, 0, 10, 2),
@@ -404,7 +404,7 @@ public class BrushResolverDeltaTests
     [Fact]
     public void FigletFace_SamplesTheBrushPerCellAndKeepsTheRunsOtherChannels()
     {
-        var style = CellStyle.Default.WithForeground(Color.Default).WithBackground(Blue);
+        var style = PartialStyle.WithBackground(Blue);
         var doc = new RichTextBuilder().Figlet("HI", FigletFonts.Standard, style).Build();
         var ft = new TextFormatter().Format(doc, 40, maxRows: null, OutputCapabilities.None);
 
@@ -441,7 +441,7 @@ public class BrushResolverDeltaTests
     [Fact]
     public void FigletFace_WithAStatedBackground_NeverBoxes_OnTheResolverPath()
     {
-        var style = CellStyle.Default.WithBackground(Green);
+        var style = PartialStyle.WithBackground(Green);
         var doc = new RichTextBuilder().Figlet("HI", FigletFonts.Standard, style).Build();
         var ft = new TextFormatter().Format(doc, 40, maxRows: null, OutputCapabilities.None);
 
@@ -479,9 +479,8 @@ public class BrushResolverDeltaTests
                                     CellStyle.Default.WithForeground(Color.FromRgb(60, 60, 60))
                                              .WithBackground(Color.Transparent));
 
-        var style = CellStyle.Default.WithForeground(Color.FromRgb(255, 255, 255))
-                             .WithAttributes(TextAttributes.Underline)
-                             .WithUnderlineStyle(UnderlineStyle.Curly);
+        var style = PartialStyle.WithForeground(Color.FromRgb(255, 255, 255))
+                                .Underlining(UnderlineStyle.Curly);
 
         var doc = new RichTextBuilder().Figlet("AB", face, style).Build();
         var ft = new TextFormatter().Format(doc, 10, maxRows: null, OutputCapabilities.None);

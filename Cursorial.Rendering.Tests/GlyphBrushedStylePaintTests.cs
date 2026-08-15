@@ -330,7 +330,7 @@ public class GlyphBrushedStylePaintTests
     [Fact]
     public void FormattedText_CallsTheResolverOncePerRunAndFoldsOntoItsOwnStyle()
     {
-        var ft = new TextFormatter().Format(new RichTextBuilder().Run("abcdef", Rich).Build(), 10);
+        var ft = new TextFormatter().Format(new RichTextBuilder().Run("abcdef", PartialStyle.From(Rich)).Build(), 10);
         var bounds = new Rect(0, 0, 10, 2);
 
         // Differenced against the no-resolver frame: the formatter owns some of the run's style, so the
@@ -357,7 +357,7 @@ public class GlyphBrushedStylePaintTests
     [Fact]
     public void FormattedText_IdentityResolverPaintsExactlyWhatNoResolverDoes()
     {
-        var ft = new TextFormatter().Format(new RichTextBuilder().Run("ab", Rich).Build(), 10);
+        var ft = new TextFormatter().Format(new RichTextBuilder().Run("ab", PartialStyle.From(Rich)).Build(), 10);
         var bounds = new Rect(0, 0, 10, 2);
 
         var plain = new CellBuffer(10, 2);
@@ -378,7 +378,7 @@ public class GlyphBrushedStylePaintTests
     [Fact]
     public void FormattedText_ResolverSeesTheRunsOwnCarrier()
     {
-        var ft = new TextFormatter().Format(new RichTextBuilder().Run("ab", Rich).Build(), 10);
+        var ft = new TextFormatter().Format(new RichTextBuilder().Run("ab", PartialStyle.From(Rich)).Build(), 10);
 
         var seen = new List<(BrushedStyle Style, UnderlineStyle Shape)>();
         var buffer = new CellBuffer(10, 2);

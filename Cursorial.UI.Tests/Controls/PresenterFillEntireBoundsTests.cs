@@ -4,6 +4,7 @@
 using Cursorial.Media;
 using Cursorial.Output;
 using Cursorial.Rendering;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI.Controls;
@@ -30,7 +31,7 @@ public sealed class PresenterFillEntireBoundsTests
         // A document whose DefaultStyle states a background — the fill's document rung. With the
         // flag wired, the surround of the presenter's bounds takes that background as the durable
         // fill cell, and the one-line document re-centres vertically ((5 - 1) / 2 = row 2).
-        var document = new RichTextBuilder(CellStyle.Default.WithBackground(Navy)).Run("hi").Build();
+        var document = new RichTextBuilder(PartialStyle.WithBackground(Navy)).Run("hi").Build();
 
         var presenter = new RichTextPresenter
                         {

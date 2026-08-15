@@ -1,5 +1,6 @@
 using Cursorial.Media;
 using Cursorial.Output;
+using Cursorial.Rendering.Media;
 using Cursorial.Rendering.Text;
 using Cursorial.Text;
 
@@ -74,7 +75,7 @@ public class RichTextBuilderTests
     [Fact]
     public void Push_AppliesStyleToSubsequentRun()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder();
         builder.Push(in bold);
         builder.Run("bold");
@@ -87,7 +88,7 @@ public class RichTextBuilderTests
     [Fact]
     public void Push_ScopeDispose_PopsStyle()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder();
         using (builder.Push(in bold))
             builder.Run("inside");
@@ -102,8 +103,8 @@ public class RichTextBuilderTests
     [Fact]
     public void Push_NestedStyles_Merge()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
-        var italic = CellStyle.Default.WithAttributes(TextAttributes.Italic);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
+        var italic = PartialStyle.Postured(TextStyle.Italic);
         var builder = new RichTextBuilder();
         using (builder.Push(in bold))
         using (builder.Push(in italic))
@@ -118,8 +119,8 @@ public class RichTextBuilderTests
     [Fact]
     public void Push_ChildColorWins()
     {
-        var red = CellStyle.Default.WithForeground(Color.FromRgb(255, 0, 0));
-        var blue = CellStyle.Default.WithForeground(Color.FromRgb(0, 0, 255));
+        var red = PartialStyle.WithForeground(Color.FromRgb(255, 0, 0));
+        var blue = PartialStyle.WithForeground(Color.FromRgb(0, 0, 255));
         var builder = new RichTextBuilder();
         using (builder.Push(in red))
         using (builder.Push(in blue))

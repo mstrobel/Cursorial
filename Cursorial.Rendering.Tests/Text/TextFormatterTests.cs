@@ -367,7 +367,7 @@ public class TextFormatterTests
     [Fact]
     public void Format_PreservesStyles()
     {
-        var bold = CellStyle.Default.WithAttributes(TextAttributes.Bold);
+        var bold = PartialStyle.Weighted(TextWeight.Bold);
         var builder = new RichTextBuilder().Run("normal ");
         using (builder.Push(in bold)) builder.Run("bold");
         builder.Run(" more");
@@ -509,7 +509,7 @@ public class TextFormatterTests
                              .WithAttributes(TextAttributes.Bold | TextAttributes.Underline)
                              .WithUnderlineStyle(UnderlineStyle.Curly)
                              .WithUnderlineColor(Color.FromRgb(0, 128, 128));
-        var doc = new RichTextBuilder(style).Run("inherit me").Build();
+        var doc = new RichTextBuilder(PartialStyle.From(style)).Run("inherit me").Build();
         var ft = new TextFormatter().Format(doc, 16);
 
         var buffer = new CellBuffer(16, 2);
@@ -550,7 +550,7 @@ public class TextFormatterTests
         var style = CellStyle.Default
                              .WithForeground(Color.FromRgb(255, 0, 0))
                              .WithAttributes(TextAttributes.Bold);
-        var doc = new RichTextBuilder().Run("aaaa bbbb", style).Build();
+        var doc = new RichTextBuilder().Run("aaaa bbbb", PartialStyle.From(style)).Build();
         var ft = new TextFormatter().Format(doc, 4);
 
         var buffer = new CellBuffer(4, 2);

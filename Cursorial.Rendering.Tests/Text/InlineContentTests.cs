@@ -32,6 +32,35 @@ public class InlineContentTests
         }
     }
 
+    private sealed class ModeProbe : IContent
+    {
+        public IBlendingMode? Seen { get; private set; }
+        public Size Measure(Size availableSpace, OutputCapabilities capabilities) => new(1, 1);
+        public Rect Paint(in CellBufferView buffer, in Rect bounds, in BrushedStyle style, OutputCapabilities capabilities)
+        {
+            Seen = style.Mode;
+            return bounds;
+        }
+    }
+
+    [Fact]
+    public void InlineContent_ReceivesTheDocumentBlendingMode()
+    {
+        var content = new ModeProbe();
+        var doc = new RichTextBuilder(BrushedStyle.Identity with { Mode = BlendingModes.Multiply })
+            .Run("ab ").InlineContent(content)
+            .Build();
+
+        var ft = new TextFormatter().Format(doc, 20);
+        var buffer = new CellBuffer(20, 3);
+        ft.Paint(buffer, new Rect(0, 0, 20, 3), OutputCapabilities.None);
+
+        // The content arm preserves the run's Mode into the BrushedStyle handed to IContent.Paint (via
+        // AsBrushed), so a content that recurses — a nested FormattedText — threads it to its own Set/face
+        // application point. The framework's contract is that the Mode ARRIVES; applying it is the content's.
+        Assert.Same(BlendingModes.Multiply, content.Seen);
+    }
+
     [Fact]
     public void InlineContent_TreatedAsAtomicWord_OnSameLine()
     {

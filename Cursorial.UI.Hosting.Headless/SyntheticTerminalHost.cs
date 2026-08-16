@@ -118,6 +118,35 @@ public sealed class SyntheticTerminalHost : ITerminalHost
     }
 
     /// <summary>
+    /// Enters the alt buffer (mirrored into the captured output) and subsumes the screen-local re-apply
+    /// (headless has no real Kitty stack, so it's just the count the tests assert). The returned scope
+    /// leaves the alt buffer on dispose.
+    /// </summary>
+    public ValueTask<IAsyncDisposable> PushAltScreenAsync(CancellationToken cancellationToken = default)
+    {
+        ReapplyScreenLocalOptInsCount++;
+        ScreenWriter.WriteEnterAlternateScreen(Output.Writer);
+        return ValueTask.FromResult<IAsyncDisposable>(new AltScreenScope(this));
+    }
+
+    private sealed class AltScreenScope(SyntheticTerminalHost host) : IAsyncDisposable
+    {
+        private SyntheticTerminalHost? _host = host;
+
+        public async ValueTask DisposeAsync()
+        {
+            var owner = Interlocked.Exchange(ref _host, null);
+            if (owner is null)
+                return;
+
+            // Flush: the scope is disposed AFTER the frame loop's final teardown flush, so these bytes
+            // need their own flush to reach the captured output (pauseWriterThreshold 0 ⇒ synchronous).
+            ScreenWriter.WriteLeaveAlternateScreen(owner.Output.Writer);
+            await owner.Output.Writer.FlushAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Injects raw wire bytes into the parser path (the <c>UITestHost.SendBytes</c> substrate).
     /// Synchronous — the in-memory pipe never back-pressures.
     /// </summary>

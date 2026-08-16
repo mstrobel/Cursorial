@@ -81,6 +81,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     private UIElement? _rootElement;
     private bool _systemsReady;
     private bool _enteredAltScreen;
+    private IAsyncDisposable? _altScreenScope;
     private int _runCalled;
     private int _tornDown;
     private Task<int>? _runTask;

@@ -194,24 +194,21 @@ public sealed partial class UIApplication
 
         _enteredAltScreen = _options.UseAlternateScreen && _capabilities.Output.Window.AlternateScreenBuffer;
 
+        // Enter the alt buffer via a scope the SESSION owns (PushAltScreen). Besides DECSET 1049 it
+        // re-applies the per-screen-buffer Kitty keyboard push onto the now-active alt stack — negotiation
+        // pushed it on the MAIN screen, which is a separate, fresh stack — so key-up / repeat reporting
+        // (and the access-key Alt gate, ND23) engage on the alt screen. Disposing the scope at teardown
+        // pops that push then leaves the alt buffer (pop-before-leave), so it never strands on the alt
+        // stack for the next program (e.g. `less`); the owned session's emergency signal handler closes
+        // it too. The clear-screen fallback stays on the main screen (no scope), as does a headless host.
         if (_enteredAltScreen)
-            ScreenWriter.WriteEnterAlternateScreen(writer);
+            _altScreenScope = host.PushAltScreenAsync().AsTask().GetAwaiter().GetResult();
         else
             ScreenWriter.WriteClearScreen(writer);
 
         SgrEncoder.WriteReset(writer);
         WriteThemeCursorColor(writer); // OSC 12 = the theme accent, so the real terminal caret stays visible across variants (teardown emits OSC 112)
         writer.FlushAsync().AsTask().GetAwaiter().GetResult();
-
-        // The Kitty keyboard flag stack is per-screen-buffer: negotiation (during host open) pushed our
-        // flags on the MAIN screen, but we just switched to the ALTERNATE screen — a fresh, empty stack.
-        // Re-apply the negotiated screen-local opt-ins on the now-active alt screen so key-up / repeat
-        // reporting (and with it the access-key Alt gate, ND23) actually engages instead of being
-        // stranded on the main screen. The negotiator's restore accounting is untouched; the extra
-        // alt-screen push is discarded when we leave the alt screen at teardown. No-op for the
-        // clear-screen fallback (still on the main screen) and for headless hosts.
-        if (_enteredAltScreen)
-            host.ReapplyScreenLocalOptInsAsync().AsTask().GetAwaiter().GetResult();
 
         // Input assembly (design doc §10.4): synthesizer innermost (opt-in), click transform
         // outermost; the pull surface, never EventInputDevice (it swallows handler exceptions).
@@ -925,13 +922,20 @@ public sealed partial class UIApplication
                         _scratch,
                         MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)
 
-                if (_enteredAltScreen)
-                    ScreenWriter.WriteLeaveAlternateScreen(_scratch);
-                else
+                if (!_enteredAltScreen)
                     ScreenWriter.WriteClearScreen(_scratch);
 
                 host.Output.Writer.Write(_scratch.WrittenSpan);
                 host.Output.Writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+
+                // Dispose the alt-screen scope AFTER the renderer/cursor/SGR teardown above (renderer.Close
+                // MUST run before we leave the buffer): it pops the alt-screen Kitty push, then leaves the
+                // alt buffer — pop-before-leave, so nothing strands on the alt stack for the next program.
+                if (_altScreenScope is { } altScope)
+                {
+                    _altScreenScope = null;
+                    altScope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
             }
             catch {}
         }

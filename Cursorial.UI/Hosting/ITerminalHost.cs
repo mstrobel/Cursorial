@@ -48,4 +48,24 @@ public interface ITerminalHost : IAsyncDisposable
     /// </summary>
     ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
         => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Enters the alternate screen buffer and pushes the per-screen-buffer screen-local opt-ins (the
+    /// Kitty keyboard flag) onto it, returning a scope that pops them and leaves the alt buffer on
+    /// dispose — pop BEFORE leave, so the push never strands on the alt buffer's Kitty stack for the
+    /// next program that uses the alt screen (e.g. <c>less</c>). Subsumes the alt-screen use of
+    /// <see cref="ReapplyScreenLocalOptInsAsync"/>; ref-counted; the owned session's emergency signal
+    /// handler closes an open scope too. Hosts with no alt-buffer state return a no-op scope.
+    /// </summary>
+    ValueTask<IAsyncDisposable> PushAltScreenAsync(CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<IAsyncDisposable>(NoOpAsyncDisposable.Instance);
+}
+
+/// <summary>A shared no-op <see cref="IAsyncDisposable"/> — the default alt-screen scope for hosts
+/// without alt-buffer state.</summary>
+internal sealed class NoOpAsyncDisposable : IAsyncDisposable
+{
+    public static readonly NoOpAsyncDisposable Instance = new();
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

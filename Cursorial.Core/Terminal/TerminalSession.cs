@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 
 using Cursorial.Input;
@@ -529,6 +530,92 @@ public sealed class TerminalSession : IAsyncDisposable
         }
     }
 
+    // Alt-screen scope depth. Ref-counted so nested pushes enter/push once and leave/pop once. The alt
+    // buffer + the per-screen-buffer Kitty keyboard push are restorable terminal state the session owns,
+    // so EmergencyRestoreAndDispose can close an open scope before BuildRestoreSequence.
+    private int _altScreenDepth;
+
+    /// <summary>
+    /// Enters the alternate screen buffer (DECSET 1049) and re-applies the negotiated screen-local
+    /// opt-ins (the per-screen-buffer Kitty keyboard push) onto it, returning a scope that pops those
+    /// opt-ins and leaves the alt buffer on dispose — pop BEFORE leave, so the push never strands on
+    /// the alt buffer's Kitty stack for the next program (e.g. <c>less</c>) that uses the alt screen.
+    /// Ref-counted; nested pushes enter/push once. <see cref="EmergencyRestoreAndDispose"/> closes an
+    /// open scope on a signal kill too.
+    /// </summary>
+    public async ValueTask<IAsyncDisposable> PushAltScreenAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        await _negotiatorLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+            if (++_altScreenDepth == 1)
+            {
+                // Enter the alt buffer, THEN push the screen-local opt-ins so the Kitty push lands on
+                // the now-active alt stack. One ordered write — the re-apply flushes both.
+                ScreenWriter.WriteEnterAlternateScreen(_output.Writer);
+                await _negotiator.ReapplyScreenLocalOptInsAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _negotiatorLock.Release();
+        }
+
+        return new AltScreenScope(this);
+    }
+
+    private async ValueTask ReleaseAltScreenAsync()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
+        await _negotiatorLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_altScreenDepth == 0 || --_altScreenDepth != 0)
+                return;
+
+            WriteAltScreenReleaseBytes(_output.Writer);
+            await _output.Writer.FlushAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort — a half-left alt screen is worse than throwing out of teardown.
+        }
+        finally
+        {
+            _negotiatorLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// The bytes that undo <see cref="PushAltScreenAsync"/>: pop the screen-local Kitty push (if one
+    /// was applied) WHILE STILL on the alt buffer, then leave the alt buffer. Shared by the async
+    /// release and the synchronous emergency path so the pop-before-leave order is defined once.
+    /// </summary>
+    private void WriteAltScreenReleaseBytes(IBufferWriter<byte> writer)
+    {
+        if (Capabilities.Output.Protocol.KittyKeyboardPush)
+            writer.Write(VtInputSequences.OptInSequences.PopKittyKeyboard);
+
+        ScreenWriter.WriteLeaveAlternateScreen(writer);
+    }
+
+    private sealed class AltScreenScope(TerminalSession session) : IAsyncDisposable
+    {
+        private TerminalSession? _session = session;
+
+        public ValueTask DisposeAsync()
+        {
+            var owner = Interlocked.Exchange(ref _session, null);
+            return owner is null ? ValueTask.CompletedTask : owner.ReleaseAltScreenAsync();
+        }
+    }
+
     private Task PausePumpForRenegotiationAsync(CancellationToken cancellationToken)
     {
         // VtInputDevice exposes the pause primitive internally; route through a helper so the
@@ -807,7 +894,21 @@ public sealed class TerminalSession : IAsyncDisposable
         //   returns an empty buffer and WriteBytesSync is a no-op.
         if (_ownedTransports is not null)
         {
-            try { _ownedTransports.WriteBytesSync(_negotiator.BuildRestoreSequence().Span); }
+            try
+            {
+                // Close an open alt-screen scope FIRST — pop the alt-buffer Kitty push, then leave the
+                // alt buffer — so the BuildRestoreSequence pop below lands on the MAIN screen. Both
+                // per-screen pushes then get popped on their own screen even on a signal kill.
+                if (Volatile.Read(ref _altScreenDepth) > 0)
+                {
+                    Volatile.Write(ref _altScreenDepth, 0);
+                    var altRelease = new ArrayBufferWriter<byte>();
+                    WriteAltScreenReleaseBytes(altRelease);
+                    _ownedTransports.WriteBytesSync(altRelease.WrittenSpan);
+                }
+
+                _ownedTransports.WriteBytesSync(_negotiator.BuildRestoreSequence().Span);
+            }
             catch { /* best-effort */ }
         }
 

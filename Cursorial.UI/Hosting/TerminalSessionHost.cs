@@ -66,6 +66,9 @@ public sealed class TerminalSessionHost : ITerminalHost
     public ValueTask ReapplyScreenLocalOptInsAsync(CancellationToken cancellationToken = default)
         => _session.ReapplyScreenLocalOptInsAsync(cancellationToken);
 
+    public ValueTask<IAsyncDisposable> PushAltScreenAsync(CancellationToken cancellationToken = default)
+        => _session.PushAltScreenAsync(cancellationToken);
+
     /// <inheritdoc/>
     public ValueTask DisposeAsync()
         => _disposeSession ? _session.DisposeAsync() : ValueTask.CompletedTask;

@@ -136,7 +136,11 @@ internal sealed class PosixResizeMonitor : IResizeMonitor
 
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
-            psi.RedirectStandardError = false;
+            // Capture (and discard) stderr rather than letting it inherit fd 2: the fd-0 `stty size` attempt
+            // prints "stty: stdin isn't a terminal" when stdin is redirected (a pipe / file), which would
+            // otherwise leak onto the user's terminal before the /dev/tty fallback succeeds. `stty size` is a
+            // read-only query, so redirecting its streams is safe (unlike a mode-changing stty).
+            psi.RedirectStandardError = true;
             psi.RedirectStandardInput = false;
 
             using var process = Process.Start(psi);

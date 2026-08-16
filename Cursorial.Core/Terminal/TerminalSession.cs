@@ -896,16 +896,24 @@ public sealed class TerminalSession : IAsyncDisposable
         {
             try
             {
-                // Close an open alt-screen scope FIRST — pop the alt-buffer Kitty push, then leave the
-                // alt buffer — so the BuildRestoreSequence pop below lands on the MAIN screen. Both
-                // per-screen pushes then get popped on their own screen even on a signal kill.
+                var restore = new ArrayBufferWriter<byte>();
+
+                // Close an open alt-screen scope FIRST — pop the alt-buffer Kitty push, then leave the alt
+                // buffer — so the following pops/re-enables land on the MAIN screen the shell inherits.
                 if (Volatile.Read(ref _altScreenDepth) > 0)
                 {
                     Volatile.Write(ref _altScreenDepth, 0);
-                    var altRelease = new ArrayBufferWriter<byte>();
-                    WriteAltScreenReleaseBytes(altRelease);
-                    _ownedTransports.WriteBytesSync(altRelease.WrittenSpan);
+                    WriteAltScreenReleaseBytes(restore);
                 }
+
+                // UI-level restore the frame-loop teardown normally emits but the signal path otherwise
+                // skips: show the cursor, reset SGR, re-enable autowrap. Without it a killed TUI leaves the
+                // shell in the raw state it ran in — no visible cursor, wrapping off. Safe/idempotent to
+                // emit even for a BYO session that didn't hide the cursor.
+                CursorWriter.WriteShow(restore);
+                SgrEncoder.WriteReset(restore);
+                ScreenWriter.WriteEnableAutowrap(restore);
+                _ownedTransports.WriteBytesSync(restore.WrittenSpan);
 
                 _ownedTransports.WriteBytesSync(_negotiator.BuildRestoreSequence().Span);
             }

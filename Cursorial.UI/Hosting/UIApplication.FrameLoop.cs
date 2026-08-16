@@ -935,6 +935,14 @@ public sealed partial class UIApplication
                 {
                     _altScreenScope = null;
                     altScope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+                    // Re-assert autowrap on the MAIN screen now that we've left the alt buffer. DECAWM can
+                    // be per-screen-buffer, so renderer.Close's re-enable (emitted on the alt screen above)
+                    // doesn't reliably carry to the main screen the shell / next program inherits.
+                    _scratch.ResetWrittenCount();
+                    ScreenWriter.WriteEnableAutowrap(_scratch);
+                    host.Output.Writer.Write(_scratch.WrittenSpan);
+                    host.Output.Writer.FlushAsync().AsTask().GetAwaiter().GetResult();
                 }
             }
             catch {}

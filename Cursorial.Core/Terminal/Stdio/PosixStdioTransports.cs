@@ -344,10 +344,58 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
         int oNoCtty = OperatingSystem.IsMacOS()   ? 0x20000 :
                       OperatingSystem.IsFreeBSD() ? 0x8000  :
                                                     0x100;   // Linux
+
+        // Prefer the REAL terminal device (a tty fd's ttyname) over the /dev/tty clone device. macOS
+        // poll(2) returns POLLNVAL for /dev/tty — an input pump polling it busy-spins and never reads a
+        // byte — but poll works on the real pty slave (which is why the un-redirected fd 0 path is fine).
+        // stdin/stdout/stderr, when a tty, all name the same controlling terminal, so resolve the path from
+        // whichever is still attached and open THAT.
+        foreach (int stdFd in new[] { 0, 1, 2 })
+        {
+            if (!IsTty(stdFd) || !TryTtyName(stdFd, out var path))
+                continue;
+
+            int viaName = OpenPath(path, oNoCtty);
+            if (viaName >= 0 && IsTty(viaName))
+                return viaName;
+
+            if (viaName >= 0)
+                Close(viaName);
+        }
+
+        // Every standard stream is redirected (no tty to name) — fall back to /dev/tty. macOS poll will
+        // still fail here, but that fully-headless case belongs on the BYO TerminalSession path anyway.
+        return OpenPath("/dev/tty", oNoCtty);
+    }
+
+    private static int OpenPath(string path, int oNoCtty)
+    {
         // @formatter:off
-        try { return Open("/dev/tty", ORdwr | oNoCtty); }
+        try { return Open(path, ORdwr | oNoCtty); }
         catch (DllNotFoundException) { return -1; }
         // @formatter:on
+    }
+
+    /// <summary>Resolve the terminal device path backing a tty <paramref name="fd"/> via <c>ttyname_r</c>.</summary>
+    private static bool TryTtyName(int fd, out string path)
+    {
+        path = string.Empty;
+
+        try
+        {
+            var buffer = new byte[256];
+            if (TtyNameR(fd, ref buffer[0], (nuint) buffer.Length) != 0)
+                return false;
+
+            int length = Array.IndexOf(buffer, (byte) 0);
+            if (length <= 0)
+                return false;
+
+            path = System.Text.Encoding.UTF8.GetString(buffer, 0, length);
+            return true;
+        }
+        catch (DllNotFoundException)        { return false; }
+        catch (EntryPointNotFoundException) { return false; }
     }
 
     private static void Close(int fd)
@@ -366,6 +414,10 @@ internal sealed partial class PosixStdioTransports : IStdioTransports
     /// <summary><c>open(const char *path, int flags)</c> — open a file/device; returns an fd or -1.</summary>
     [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     private static partial int Open(string path, int flags);
+
+    /// <summary><c>ttyname_r(int fd, char *buf, size_t buflen)</c> — the terminal device path for a tty fd; 0 on success.</summary>
+    [LibraryImport("libc", EntryPoint = "ttyname_r", SetLastError = true)]
+    private static partial int TtyNameR(int fd, ref byte buf, nuint buflen);
 
     /// <summary><c>close(int fd)</c>.</summary>
     [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]

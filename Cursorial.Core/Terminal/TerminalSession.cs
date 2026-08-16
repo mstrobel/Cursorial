@@ -907,11 +907,14 @@ public sealed class TerminalSession : IAsyncDisposable
                 }
 
                 // UI-level restore the frame-loop teardown normally emits but the signal path otherwise
-                // skips: show the cursor, reset SGR, re-enable autowrap. Without it a killed TUI leaves the
-                // shell in the raw state it ran in — no visible cursor, wrapping off. Safe/idempotent to
-                // emit even for a BYO session that didn't hide the cursor.
+                // skips: show the cursor, reset SGR, reset the cursor color (the app sets OSC 12 for the
+                // theme accent), re-enable autowrap. Without it a killed TUI leaves the shell in the raw
+                // state it ran in — hidden cursor, app-colored cursor, wrapping off. Each is a
+                // restore-to-default that's safe/idempotent even for a BYO session; a terminal lacking a
+                // given feature ignores its sequence.
                 CursorWriter.WriteShow(restore);
                 SgrEncoder.WriteReset(restore);
+                PaletteWriter.WriteResetCursor(restore);
                 ScreenWriter.WriteEnableAutowrap(restore);
                 _ownedTransports.WriteBytesSync(restore.WrittenSpan);
 

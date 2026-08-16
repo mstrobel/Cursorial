@@ -24,6 +24,20 @@
     </ItemGroup>
 
     <!--
+        Characterisation baselines are EMBEDDED, not read as loose files. A deterministic CI build
+        (DeterministicSourcePaths / ContinuousIntegrationBuild) rewrites [CallerFilePath] to a /_-rooted
+        virtual path that isn't on the filesystem, so a disk lookup both misses the committed baseline and
+        then faults creating /_ ("Access to the path '/_' is denied"). The embedded copy carries the bytes
+        regardless of the source-path mapping; LogicalName keeps the lookup key stable (Baselines/<file>).
+    -->
+    <ItemGroup>
+        <None Remove="Characterisation/Baselines/*.txt" />
+        <EmbeddedResource Include="Characterisation/Baselines/*.txt">
+            <LogicalName>Baselines/%(FileName)%(Extension)</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+
+    <!--
         MIGRATION SCAFFOLDING (see Characterisation/README-scaffolding.md). The text-pipeline
         characterisation harness slices fragment emissions with the same helper the rendering tests use,
         rather than restating the DECSC…DECRC rule a second time. Remove this link when Characterisation/

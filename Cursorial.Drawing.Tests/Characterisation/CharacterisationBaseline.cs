@@ -54,6 +54,9 @@ internal static class CharacterisationBaseline
     /// <summary>Maximum diff lines reported per side before the report truncates.</summary>
     private const int MaxHunkLines = 80;
 
+    /// <summary>UTF-8 without a BOM — the byte-for-byte determinism contract for every baseline read or written.</summary>
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private static bool Regenerating =>
         AlwaysRegenerate || Environment.GetEnvironmentVariable(RegenerateVariable) is "1" or "true" or "TRUE";
 
@@ -75,9 +78,11 @@ internal static class CharacterisationBaseline
 
         if (Regenerating)
         {
+            // Deliberate, local-only regeneration (never set in CI): rewrite the source-tree baseline, which is
+            // then re-embedded on the next build. callerPath is a real, writable path in this local scenario.
             Directory.CreateDirectory(directory);
-            File.WriteAllText(baselinePath, actual, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            if (File.Exists(actualPath)) File.Delete(actualPath);
+            File.WriteAllText(baselinePath, actual, Utf8NoBom);
+            TryDeleteActual(actualPath);
 
             Assert.Fail($"""
                          Characterisation baseline '{baselineName}' was REGENERATED, so this run fails by design.
@@ -87,30 +92,77 @@ internal static class CharacterisationBaseline
                          """);
         }
 
-        if (!File.Exists(baselinePath))
+        // Read the committed baseline from an EMBEDDED RESOURCE, not from disk. A deterministic CI build
+        // (DeterministicSourcePaths) rewrites [CallerFilePath] to a /_-rooted virtual path that isn't on the
+        // filesystem, so a File.Exists/ReadAllText lookup would both miss the committed baseline and then fault
+        // creating /_. The resource carries the bytes regardless of the source-path mapping.
+        string? expectedRaw = ReadEmbeddedBaseline(baselineName);
+
+        if (expectedRaw is null)
         {
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(actualPath, actual, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            TryWriteActual(actualPath, actual);
 
             Assert.Fail($"""
-                         Characterisation baseline '{baselineName}' does not exist.
+                         Characterisation baseline '{baselineName}' is not embedded in the test assembly.
 
-                         The generated output was written beside it as '{baselineName}.actual'. If it is correct,
-                         re-run with {RegenerateVariable}=1 to adopt it as the baseline.
+                         Add it under Characterisation/Baselines/ (globbed as an EmbeddedResource), or if the
+                         generated output is correct, re-run with {RegenerateVariable}=1 to adopt it, then rebuild.
                          """);
         }
 
-        string expected = Normalize(File.ReadAllText(baselinePath));
+        string expected = Normalize(expectedRaw);
 
         if (expected == actual)
         {
             // A stale .actual from an earlier failing run would be confusing to find next to a green tree.
-            if (File.Exists(actualPath)) File.Delete(actualPath);
+            TryDeleteActual(actualPath);
             return;
         }
 
-        File.WriteAllText(actualPath, actual, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        TryWriteActual(actualPath, actual);
         Assert.Fail(Report(baselineName, expected, actual));
+    }
+
+    /// <summary>Reads the committed baseline embedded as <c>Baselines/&lt;name&gt;</c> (its csproj LogicalName),
+    /// or null when no such resource exists.</summary>
+    private static string? ReadEmbeddedBaseline(string baselineName)
+    {
+        using var stream = typeof(CharacterisationBaseline).Assembly
+                                                           .GetManifestResourceStream("Baselines/" + baselineName);
+        if (stream is null)
+            return null;
+
+        using var reader = new StreamReader(stream, Utf8NoBom, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>Writes the <c>.actual</c> companion beside the baseline, best-effort. Under a deterministic CI
+    /// build the source tree isn't writable (the <c>/_</c> path), so the write is skipped and the assertion that
+    /// follows carries the failure rather than an <see cref="UnauthorizedAccessException"/> masking it.</summary>
+    private static void TryWriteActual(string actualPath, string actual)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(actualPath)!);
+            File.WriteAllText(actualPath, actual, Utf8NoBom);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            // No writable source tree (a deterministic CI path) — the mismatch report is the signal that matters.
+        }
+    }
+
+    private static void TryDeleteActual(string actualPath)
+    {
+        try
+        {
+            if (File.Exists(actualPath))
+                File.Delete(actualPath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            // Nothing to clean up in a non-writable tree.
+        }
     }
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n');

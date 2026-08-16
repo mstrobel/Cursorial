@@ -724,6 +724,38 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
     // ── Root surface (the RootElement/ShowRoot path; HostWindow == null) ─────────────────────────────
 
     /// <summary>
+    /// The inline-presentation height probe: measures the root host at
+    /// (<paramref name="widthConstraint"/> × <paramref name="maxRows"/>) and returns the content's
+    /// desired height clamped to <c>[1, maxRows]</c> — the <see cref="FitWindowToContent"/> probe
+    /// pattern applied to the root band, height axis only (inline width is always the full terminal,
+    /// so no wrap-feedback settle is needed: the height measured at a fixed width is honest).
+    /// </summary>
+    /// <remarks>
+    /// The probe constraint uses <paramref name="maxRows"/> rather than unbounded height so
+    /// scrollable content can express a desire up to the cap and no further. When the fitted height
+    /// equals the current viewport (no surface resize follows to force a fresh pass), the root is
+    /// re-invalidated so the coming pass re-stamps the tree at the real constraint — the same
+    /// fit-held rule <see cref="FitWindowToContent"/> applies.
+    /// </remarks>
+    internal int MeasureRootContentHeight(int widthConstraint, int maxRows)
+    {
+        if (_rootHost is null)
+            return 1;
+
+        _rootHost.Measure(new Size(widthConstraint, maxRows));
+
+        var fitted = Math.Clamp(_rootHost.DesiredSize.Rows, 1, maxRows);
+
+        if (fitted == _viewport.Rows)
+        {
+            _rootHost.InvalidateMeasure();
+            _rootHost.InvalidateArrange();
+        }
+
+        return fitted;
+    }
+
+    /// <summary>
     /// Sets (or, with <see langword="null"/>, clears) the chrome-less application-root surface — the
     /// W0 replacement for the single-root <c>SetRoot</c>. The root must already be attached via its tree;
     /// the surface fills the screen. The layer set changes wholesale, so the compositor is reset.

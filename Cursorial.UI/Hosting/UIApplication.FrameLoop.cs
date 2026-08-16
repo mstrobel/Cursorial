@@ -184,15 +184,22 @@ public sealed partial class UIApplication
         var host = _host!;
 
         _capabilities = host.Capabilities;
+        _screenSize = size;
 
-        _buffer = new CellBuffer(size.Columns, size.Rows, _capabilities) { CursorVisible = false };
-        _renderer = new FrameRenderer(_capabilities.Output, new FrameRendererOptions(OrderedDither: _options.OrderedDither));
+        // Inline: the buffer spans the REGION, not the screen — full terminal width, height fitted
+        // to content before Phase 5 each frame (1 row until the first fit runs).
+        var bufferSize = _options.Inline ? (size.Columns, Rows: 1) : size;
+
+        _buffer = new CellBuffer(bufferSize.Columns, bufferSize.Rows, _capabilities) { CursorVisible = false };
+        _renderer = new FrameRenderer(_capabilities.Output,
+                                      new FrameRendererOptions(OrderedDither: _options.OrderedDither,
+                                                               Inline: _options.Inline));
 
         // UI-mode entry: alt screen when supported and requested, else clear-screen fallback;
         // cursor hiding is left to the buffer (CursorVisible = false ⇒ DECRST 25 on frame 0).
         var writer = host.Output.Writer;
 
-        _enteredAltScreen = _options.UseAlternateScreen && _capabilities.Output.Window.AlternateScreenBuffer;
+        _enteredAltScreen = !_options.Inline && _options.UseAlternateScreen && _capabilities.Output.Window.AlternateScreenBuffer;
 
         // Enter the alt buffer via a scope the SESSION owns (PushAltScreen). Besides DECSET 1049 it
         // re-applies the per-screen-buffer Kitty keyboard push onto the now-active alt stack — negotiation
@@ -203,8 +210,19 @@ public sealed partial class UIApplication
         // it too. The clear-screen fallback stays on the main screen (no scope), as does a headless host.
         if (_enteredAltScreen)
             _altScreenScope = host.PushAltScreenAsync().AsTask().GetAwaiter().GetResult();
-        else
+        else if (!_options.Inline)
             ScreenWriter.WriteClearScreen(writer);
+        else
+        {
+            // Inline entry: no screen takeover at all. Ask the terminal where the shell left the
+            // cursor (DSR-CPR) — the reply anchors the region's top row; until it lands (or times
+            // out into the bottom-anchor fallback) Phase 6 emits nothing. The response arrives
+            // through the input pump as a DeviceResponseEvent and is routed to the sink below.
+            _inlineCpr = InlineCprState.Startup;
+            _inlineCprQueryTimestamp = _options.TimeProvider.GetTimestamp();
+            _inlineCprSink = RegisterDeviceResponseSink(OnInlineDeviceResponse);
+            CursorWriter.WriteQueryPosition(writer);
+        }
 
         SgrEncoder.WriteReset(writer);
         WriteThemeCursorColor(writer); // OSC 12 = the theme accent, so the real terminal caret stays visible across variants (teardown emits OSC 112)
@@ -324,7 +342,11 @@ public sealed partial class UIApplication
 
                 bool workPending = _windowManager is { HasDirtyVisuals: true } ||
                                    _windowManager is { HasPendingLayout: true } ||
-                                   StyleHooks is { HasPendingActivations: true };
+                                   StyleHooks is { HasPendingActivations: true } ||
+                                   // An outstanding inline DSR-CPR query gated Phase 6 — keep the
+                                   // loop ticking at frame pace so its timeout fallback can fire
+                                   // even when the terminal never replies (no wake would come).
+                                   _inlineCpr != InlineCprState.None;
 
                 if (workPending || (AnimationDriver?.HasActiveAnimations ?? false))
                 {
@@ -394,6 +416,17 @@ public sealed partial class UIApplication
                     break;
 
                 default:
+                    // Inline: mouse events arrive in SCREEN coordinates; the UI lives in REGION
+                    // coordinates. Translate by the region origin — or swallow the event when it
+                    // falls outside the region (that's the shell's screen estate, not ours).
+                    if (_options.Inline && inputEvent is MouseEvent mouse)
+                    {
+                        if (TranslateInlineMouse(mouse) is not {} translated)
+                            break;
+
+                        inputEvent = translated;
+                    }
+
                     try
                     {
                         var dispatched = InputDispatchTarget?.Dispatch(inputEvent) ?? InputDispatchResult.NotUIInput;
@@ -488,6 +521,26 @@ public sealed partial class UIApplication
 
         try
         {
+            // Inline content sizing — BEFORE the pass, so this frame lays out and renders at the
+            // fitted height (no one-frame flicker): the region tracks the root's desired height the
+            // way a SizeToContent window tracks its content, capped by the builder's MaxHeight and
+            // the terminal. A height change resizes the region buffer and re-fits the viewport; the
+            // renderer sees the dimension change and repaints the region in full (its inline
+            // full-redraw erase also wipes the extent a shrink leaves behind). The region only ever
+            // grows/shrinks at its BOTTOM edge — the origin doesn't move here (growth past the
+            // terminal bottom scrolls at render time, in PrepareInlineRegion).
+            if (_options.Inline && _windowManager is {} wmInline && (resized || wmInline.HasPendingLayout))
+            {
+                var maxRows = Math.Clamp(_options.InlineMaxHeight ?? _screenSize.Rows, 1, Math.Max(1, _screenSize.Rows));
+                var fitted = wmInline.MeasureRootContentHeight(_screenSize.Columns, maxRows);
+
+                if (fitted != _buffer!.Rows)
+                {
+                    _buffer.Resize(_screenSize.Columns, fitted);
+                    wmInline.OnViewportResized(new Size(_screenSize.Columns, fitted));
+                }
+            }
+
             if (_windowManager is { HasPendingLayout: true } layout)
             {
                 try
@@ -534,8 +587,12 @@ public sealed partial class UIApplication
             // controller is installed. Runs after OnLayoutCompleted so surface offsets are final for the frame.
             KeyTipController?.CompletePendingLayout();
 
-            // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its window).
-            if (!_renegotiating)
+            // PHASE 6 — render, GATED on !_renegotiating (the negotiator owns the pipe during its
+            // window) and, inline, on the region origin being known: nothing paints before the
+            // startup / post-resize DSR-CPR reply (or its timeout fallback) says where the region
+            // is. Queued control sequences simply wait a frame — the origin resolves in
+            // milliseconds (or at the fallback deadline) and nothing is lost.
+            if (!_renegotiating && (!_options.Inline || EnsureInlineOrigin()))
             {
                 // Consume the request flag unconditionally (no short-circuit): leaving it set when
                 // visuals are already dirty would buy one wasted empty-diff render next frame.
@@ -592,6 +649,13 @@ public sealed partial class UIApplication
                     if (changed || resized || _renderer!.NeedsFullRedraw)
                     {
                         _scratch.ResetWrittenCount(); // pooled ArrayBufferWriter<byte>, reset per frame
+
+                        // Inline: make physical room for the region before the delta — scroll the
+                        // shell history up when the region's bottom would pass the terminal's last
+                        // row — and hand the renderer its (possibly moved) origin.
+                        if (_options.Inline)
+                            PrepareInlineRegion(_scratch);
+
                         _renderer!.Render(_buffer!, _scratch);
                         rendered = true;
                     }
@@ -700,12 +764,253 @@ public sealed partial class UIApplication
 
     private void ApplyResize(ResizeEvent resize)
     {
+        if (_options.Inline)
+        {
+            // The terminal resized under an inline region. Width lands now (height re-fits before
+            // Phase 5 — the resized flag drives the probe); the height only CLAMPS here, in case
+            // the terminal got shorter than the region. The bigger problem is the origin: the
+            // terminal just rewrapped its main buffer, so the region's absolute top row is stale —
+            // re-ask the terminal where the hardware cursor is (it rides the region through the
+            // rewrap) and re-derive the origin from its believed region-relative row. Until the
+            // reply (or its timeout, which falls back to clamping the old origin), Phase 6 holds.
+            _screenSize = (resize.Columns, resize.Rows);
+
+            var maxRows = Math.Clamp(_options.InlineMaxHeight ?? resize.Rows, 1, Math.Max(1, resize.Rows));
+            _buffer!.Resize(resize.Columns, Math.Min(_buffer.Rows, maxRows));
+            _windowManager?.OnViewportResized(new Size(resize.Columns, _buffer.Rows));
+
+            BeginInlineReanchor();
+            return;
+        }
+
         // Coalesced last-wins: buffer Resize (contents discarded; the renderer full-redraws on
         // dimension change) → render system (fresh compositor + invalidate all) → layout facade
         // (full relayout lands in Phase 5 of the SAME frame).
+        _screenSize = (resize.Columns, resize.Rows);
         _buffer!.Resize(resize.Columns, resize.Rows);
         var size = new Size(resize.Columns, resize.Rows);
         _windowManager?.OnViewportResized(size);
+    }
+
+    // ───────────────────────────── inline presentation (UseInline) ─────────────────────────────
+
+    /// <summary>
+    /// How long an inline application waits for the terminal's DSR-CPR reply before resolving the
+    /// region origin blind. Real terminals answer in single-digit milliseconds (a slow SSH hop in
+    /// the low hundreds); the timeout only ever fires on a terminal that doesn't implement DSR.
+    /// </summary>
+    private static readonly TimeSpan InlineCprTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The inline device-response sink: anchors the region from a cursor-position report. Runs on
+    /// the UI thread (Phase 1's response router). Only an <b>outstanding</b> query may anchor —
+    /// an R-final CSI with two parameters is also how F3-with-modifiers arrives on some terminals
+    /// (the classic CPR collision), so an unsolicited "report" is ignored.
+    /// </summary>
+    private void OnInlineDeviceResponse(DeviceResponseEvent response)
+    {
+        if (response.Kind != DeviceResponseKind.CursorPositionReport || _inlineCpr == InlineCprState.None)
+            return;
+
+        if (!TryParseCursorReport(response.Payload.Span, out var row, out var column))
+            return;
+
+        var rows = Math.Max(1, _screenSize.Rows);
+        row = Math.Clamp(row - 1, 0, rows - 1); // 1-based wire → 0-based screen
+
+        _inlineOrigin = _inlineCpr == InlineCprState.Startup
+            // The region starts on the shell's cursor line — or the NEXT line when the shell left
+            // the cursor mid-line (a prompt without a trailing newline), which must not be painted
+            // over. `row + 1` may point one past the bottom row; the render-time scroll adjust in
+            // PrepareInlineRegion makes the room.
+            ? row + (column > 1 ? 1 : 0)
+            // Re-anchor: the hardware cursor rode the region through the terminal's resize rewrap;
+            // subtracting its believed region-relative row recovers the region top.
+            : Math.Clamp(row - Math.Max(0, _buffer?.CursorRow ?? 0), 0, Math.Max(0, rows - (_buffer?.Rows ?? 1)));
+
+        _inlineCpr = InlineCprState.None;
+        RequestFullRedraw(); // the region may have moved — repaint it wholesale at the new origin
+    }
+
+    /// <summary>Parses a CPR parameter run — <c>&lt;row&gt; ; &lt;col&gt;</c>, 1-based ASCII.</summary>
+    private static bool TryParseCursorReport(ReadOnlySpan<byte> payload, out int row, out int column)
+    {
+        row = 0;
+        column = 0;
+
+        var separator = payload.IndexOf((byte) ';');
+        if (separator <= 0)
+            return false;
+
+        return TryParseAsciiInt(payload[..separator], out row) &&
+               TryParseAsciiInt(payload[(separator + 1)..], out column) &&
+               row >= 1 && column >= 1;
+
+        // Digits-prefix parse: a Kitty-style CPR can carry colon subparameters after a value —
+        // take the leading integer and ignore the rest.
+        static bool TryParseAsciiInt(ReadOnlySpan<byte> span, out int value)
+            => System.Buffers.Text.Utf8Parser.TryParse(span, out value, out int consumed) && consumed > 0;
+    }
+
+    /// <summary>
+    /// The Phase 6 inline gate: true when the region origin is known and rendering may proceed.
+    /// While a DSR-CPR query is outstanding this holds emission (returning false) until the reply
+    /// lands — or, past <see cref="InlineCprTimeout"/>, resolves the origin blind: a post-resize
+    /// re-anchor keeps the old origin clamped on-screen; startup bottom-anchors by force (arming
+    /// <see cref="_inlineForceBottomScroll"/> so the next render scrolls the region into the
+    /// bottom rows without needing to know the cursor row).
+    /// </summary>
+    private bool EnsureInlineOrigin()
+    {
+        if (_inlineCpr == InlineCprState.None)
+            return _inlineOrigin is not null;
+
+        if (_options.TimeProvider.GetElapsedTime(_inlineCprQueryTimestamp) < InlineCprTimeout)
+            return false; // the reply is usually milliseconds away — hold this frame's emission
+
+        var startup = _inlineCpr == InlineCprState.Startup;
+        _inlineCpr = InlineCprState.None;
+
+        if (!startup && _inlineOrigin is {} previous)
+        {
+            _inlineOrigin = Math.Clamp(previous, 0, Math.Max(0, _screenSize.Rows - _buffer!.Rows));
+        }
+        else
+        {
+            _inlineForceBottomScroll = true;
+            _inlineOrigin = Math.Max(0, _screenSize.Rows - _buffer!.Rows);
+        }
+
+        RequestFullRedraw();
+        return true;
+    }
+
+    /// <summary>
+    /// Pre-delta region maintenance, emitted into the same frame flush just before
+    /// <see cref="FrameRenderer.Render"/>: scrolls the screen up when the region's bottom would
+    /// pass the terminal's last row (region growth near the bottom — the shell history above moves
+    /// into the scrollback to mint the missing rows), then hands the renderer the (possibly moved)
+    /// origin. Uses literal line feeds from the bottom row, NOT SU (<c>CSI S</c>): LF pushes the
+    /// departing top lines into the scrollback, where the user's shell history belongs; SU
+    /// discards them on most terminals.
+    /// </summary>
+    private void PrepareInlineRegion(IBufferWriter<byte> output)
+    {
+        var rows = Math.Max(1, _screenSize.Rows);
+        var height = Math.Min(_buffer!.Rows, rows);
+        var origin = _inlineOrigin ?? Math.Max(0, rows - height);
+
+        int scroll;
+
+        if (_inlineForceBottomScroll)
+        {
+            // The DSR fallback reserves blind: from the terminal's bottom row, `height` line feeds
+            // guarantee the rows above the final cursor line are ours regardless of where the
+            // shell prompt sat (worst case a blank band separates it from the region).
+            _inlineForceBottomScroll = false;
+            scroll = height;
+        }
+        else
+        {
+            scroll = origin + height - rows;
+        }
+
+        if (scroll > 0)
+        {
+            CursorWriter.WriteMoveTo(output, 0, rows - 1);
+
+            var lf = output.GetSpan(scroll);
+            lf[..scroll].Fill((byte) '\n');
+            output.Advance(scroll);
+
+            origin = rows - height;
+        }
+
+        _inlineOrigin = origin;
+        _renderer!.RowOffset = origin; // a change forgets the front buffer → full region repaint
+    }
+
+    /// <summary>
+    /// Translates a screen-space mouse event into region space, or swallows it: outside the region
+    /// is the shell's screen estate, not ours. Events that are part of an in-flight drag (buttons
+    /// held, or a release) clamp to the region edge instead of dropping — losing them would strand
+    /// S3's capture state mid-gesture.
+    /// </summary>
+    private MouseEvent? TranslateInlineMouse(MouseEvent mouse)
+    {
+        if (_inlineOrigin is not {} origin || _buffer is null)
+            return null; // the region isn't on screen yet — nothing to hit
+
+        var row = mouse.Position.Row - origin;
+
+        if (row < 0 || row >= _buffer.Rows)
+        {
+            if (mouse.ButtonsHeld == MouseButtons.None && mouse.Kind != MouseEventKind.ButtonUp)
+                return null;
+
+            row = Math.Clamp(row, 0, _buffer.Rows - 1);
+        }
+
+        return row == mouse.Position.Row ? mouse : mouse with { Position = mouse.Position with { Row = row } };
+    }
+
+    /// <summary>
+    /// Starts a post-resize origin re-anchor: the terminal just rewrapped its main buffer, so the
+    /// region's absolute top row is stale. Re-queries DSR-CPR (the hardware cursor rides the
+    /// region through the rewrap; <see cref="OnInlineDeviceResponse"/> re-derives the origin from
+    /// its believed region-relative row) — except while the negotiator owns the pipe, where the
+    /// old origin is kept, clamped on-screen.
+    /// </summary>
+    private void BeginInlineReanchor()
+    {
+        if (_renegotiating)
+        {
+            if (_inlineOrigin is {} origin)
+                _inlineOrigin = Math.Clamp(origin, 0, Math.Max(0, _screenSize.Rows - _buffer!.Rows));
+
+            RequestFullRedraw();
+            return;
+        }
+
+        _inlineCpr = InlineCprState.Reanchor;
+        _inlineCprQueryTimestamp = _options.TimeProvider.GetTimestamp();
+
+        var writer = _host!.Output.Writer;
+        CursorWriter.WriteQueryPosition(writer);
+        writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// The inline exit bytes (the teardown's alt-screen-leave / clear-screen analog), per
+    /// <see cref="InlineExitBehavior"/>: Clear rewinds to the region's top-left and erases
+    /// everything below, so the shell prompt resumes where the application started; Retain parks
+    /// on a fresh line below the last frame (the LF scrolls one line when the region ends on the
+    /// bottom row) and sweeps anything staler below it. An application whose origin never
+    /// resolved rendered nothing — the shell's line is left untouched.
+    /// </summary>
+    private void WriteInlineExit(IBufferWriter<byte> output)
+    {
+        if (_inlineOrigin is not {} origin)
+            return;
+
+        var rows = Math.Max(1, _screenSize.Rows);
+        var height = Math.Min(_buffer?.Rows ?? 1, rows);
+
+        if (InlineExitBehavior == InlineExitBehavior.Clear)
+        {
+            CursorWriter.WriteMoveTo(output, 0, Math.Clamp(origin, 0, rows - 1));
+            ScreenWriter.WriteClearScreenAfter(output);
+        }
+        else
+        {
+            CursorWriter.WriteMoveTo(output, 0, Math.Clamp(origin + height - 1, 0, rows - 1));
+
+            var lf = output.GetSpan(1);
+            lf[0] = (byte) '\n';
+            output.Advance(1);
+
+            ScreenWriter.WriteClearScreenAfter(output);
+        }
     }
 
     // ───────────────────────────── renegotiation (design doc §10.6) ─────────────────────────────
@@ -808,7 +1113,8 @@ public sealed partial class UIApplication
             _buffer = new CellBuffer(columns, rows, effective) { CursorVisible = false };
 
             _renderer = new FrameRenderer(effective.Output,
-                                          new FrameRendererOptions(OrderedDither: _options.OrderedDither));
+                                          new FrameRendererOptions(OrderedDither: _options.OrderedDither,
+                                                                   Inline: _options.Inline));
 
             _effectiveInputCapabilities = ApplyDecorationProjections(effective.Input);
             _supportsAltKeyTracking = ComputeAltKeyTracking(effective.Input);
@@ -883,7 +1189,11 @@ public sealed partial class UIApplication
         }
         catch {}
 
-        // 3. Cancel the pump; blocking wait.
+        // 3. Cancel the pump; blocking wait. (The inline CPR sink unhooks with it — no more
+        //    device responses are coming once the pump stops.)
+        _inlineCprSink?.Dispose();
+        _inlineCprSink = null;
+
         try
         {
             _pumpCts?.Cancel();
@@ -907,7 +1217,13 @@ public sealed partial class UIApplication
             try
             {
                 _scratch.ResetWrittenCount();
-                _renderer.Close(_scratch);
+
+                // Retain-mode inline exit keeps the last frame standing — fragment payloads
+                // (images, sized text) are part of that frame, so their protocol erases are
+                // skipped; every other exit erases them as always.
+                var retainInlineFrame = _options.Inline && InlineExitBehavior == InlineExitBehavior.Retain;
+
+                _renderer.Close(_scratch, eraseFragments: !retainInlineFrame);
                 CursorWriter.WriteShow(_scratch);
                 SgrEncoder.WriteReset(_scratch);
 
@@ -922,7 +1238,9 @@ public sealed partial class UIApplication
                         _scratch,
                         MouseCursorShape.Default); // §7.6 — the shell inherits the default pointer (not WriteReset: Ghostty ignores empty-payload reset)
 
-                if (!_enteredAltScreen)
+                if (_options.Inline)
+                    WriteInlineExit(_scratch);
+                else if (!_enteredAltScreen)
                     ScreenWriter.WriteClearScreen(_scratch);
 
                 host.Output.Writer.Write(_scratch.WrittenSpan);

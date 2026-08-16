@@ -103,10 +103,49 @@ public sealed class UIApplicationBuilder
         return this;
     }
 
-    /// <summary>Enter the alternate screen buffer at startup when the terminal supports it (default true).</summary>
+    /// <summary>Enter the alternate screen buffer at startup when the terminal supports it (default true).
+    /// Ignored by an inline application (<see cref="UseInline"/>), which never leaves the main screen.</summary>
     public UIApplicationBuilder UseAlternateScreen(bool enabled = true)
     {
         _options.UseAlternateScreen = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Run as an INLINE application: instead of taking over the screen, the application renders in
+    /// a region of the main screen buffer that begins where the shell left the cursor. The region
+    /// spans the full terminal width and tracks the root content's desired height frame-to-frame —
+    /// growing (scrolling the shell history up when it runs out of rows below) and shrinking (the
+    /// vacated rows are wiped) — capped at <paramref name="maxHeight"/> and the terminal height.
+    /// The alternate screen is never entered; <see cref="UseAlternateScreen"/> is ignored.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On exit the region is erased (<see cref="InlineExitBehavior.Clear"/> — the shell prompt
+    /// resumes where the application started) or the last rendered frame is left standing
+    /// (<see cref="InlineExitBehavior.Retain"/> — the prompt resumes on the line below). The
+    /// choice is re-assignable at runtime via <see cref="UIApplication.InlineExitBehavior"/>, so
+    /// an application can decide as it exits (retain on accept, clear on cancel).
+    /// </para>
+    /// <para>
+    /// The region's screen position is discovered with a cursor-position query (DSR-CPR) at
+    /// startup and re-queried on terminal resize; mouse coordinates are translated into region
+    /// space, and mouse activity outside the region is not delivered. On a terminal that never
+    /// answers DSR the application falls back, after a short timeout, to scrolling the region into
+    /// the bottom rows of the screen.
+    /// </para>
+    /// </remarks>
+    /// <param name="maxHeight">Optional cap on the region height in rows (≥ 1); the terminal
+    /// height always caps regardless. <see langword="null"/> = terminal height only.</param>
+    /// <param name="exitBehavior">The initial <see cref="UIApplication.InlineExitBehavior"/>.</param>
+    public UIApplicationBuilder UseInline(int? maxHeight = null, InlineExitBehavior exitBehavior = InlineExitBehavior.Clear)
+    {
+        if (maxHeight is < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxHeight), maxHeight, "The inline region height cap must be at least one row.");
+
+        _options.Inline = true;
+        _options.InlineMaxHeight = maxHeight;
+        _options.InlineExitBehavior = exitBehavior;
         return this;
     }
 
@@ -172,6 +211,9 @@ internal sealed class UIApplicationOptions
     public MouseClickOptions ClickOptions = new();
     public (TimeSpan? UpTimeout, TimeSpan? RepeatTimeout)? KeyReleaseSynthesis;
     public bool UseAlternateScreen = true;
+    public bool Inline;
+    public int? InlineMaxHeight;
+    public InlineExitBehavior InlineExitBehavior = InlineExitBehavior.Clear;
     public bool OrderedDither;
     public bool ExitOnUnhandledCtrlC = true;
     public bool TranslateNumpadKeys = false;

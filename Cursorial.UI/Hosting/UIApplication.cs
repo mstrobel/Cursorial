@@ -86,6 +86,27 @@ public sealed partial class UIApplication : IAsyncDisposable
     private int _tornDown;
     private Task<int>? _runTask;
 
+    // ── Inline presentation (UseInline): the region below the shell prompt ──
+    // The terminal size; equals the buffer size in full-screen mode, while inline the buffer spans
+    // only the region (full terminal width × content-fitted height).
+    private (int Columns, int Rows) _screenSize;
+    // Absolute 0-based screen row of the region's top; null until the startup DSR-CPR reply (or its
+    // timeout fallback) resolves it. Rendering is gated on it — nothing paints before it's known.
+    private int? _inlineOrigin;
+    private InlineCprState _inlineCpr;
+    private long _inlineCprQueryTimestamp;
+    // Armed by the DSR timeout fallback: the next inline render blindly scrolls the region into the
+    // bottom rows (CUP to the last row + region-height line feeds) since nothing knows the cursor row.
+    private bool _inlineForceBottomScroll;
+    private IDisposable? _inlineCprSink;
+
+    private enum InlineCprState
+    {
+        None,     // no outstanding cursor-position query
+        Startup,  // awaiting the initial "where did the shell leave the cursor" reply
+        Reanchor  // awaiting a post-resize reply (the terminal rewrapped; the origin is stale)
+    }
+
     private readonly FocusManager _focusManager;
     private readonly AccessKeyManager _accessKeys;
     private readonly InputDispatcher _inputDispatcher;
@@ -143,6 +164,7 @@ public sealed partial class UIApplication : IAsyncDisposable
         AnimationDriver = _animationScheduler;
         AnimationScheduler.Install(_animationScheduler); // build/headless thread; the UI thread re-installs at loop start
         _caretService.StateChanged = RequestRender; // a pure caret move must arm Phase 6 (§5.9)
+        InlineExitBehavior = options.InlineExitBehavior;
         _current = this; // Build-thread Current: pre-run UIObject construction is legal from here
     }
 
@@ -173,6 +195,14 @@ public sealed partial class UIApplication : IAsyncDisposable
 
     /// <summary>The single UI thread's dispatcher.</summary>
     public UIDispatcher Dispatcher { get; }
+
+    /// <summary>
+    /// What happens to the inline region when the application exits — meaningful only for an
+    /// inline application (<see cref="UIApplicationBuilder.UseInline"/>). Initialized from the
+    /// builder and re-assignable while running, so an application can decide at exit time (retain
+    /// the accepted result's frame, clear on cancel); the value is read once, at teardown.
+    /// </summary>
+    public InlineExitBehavior InlineExitBehavior { get; set; }
 
     /// <summary>
     /// S3's input dispatcher (design doc §7.4) — the application's routing surface: capture,

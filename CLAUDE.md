@@ -115,7 +115,9 @@ Twenty-five projects:
 
 `docs/ui-layer-design.md` is the canonical design reference (§0 invariants, §2–4 engine chapters, §5–12 subsystem
 sections, §13 resolved decisions, §14 phase plan, §15 deferrals); full design-phase artifacts are archived under
-`docs/ui-layer-design/`. The acronym **UI is fully capitalized in type names** (`UIElement`, `UIProperty`). The UI
+`docs/ui-layer-design/`. Inline applications (`UIApplicationBuilder.UseInline` — the region-below-the-prompt
+presentation, DSR-CPR origin protocol, content-fitted height, Clear/Retain exit) are specified in
+`docs/ui-layer-design/inline-presentation.md`. The acronym **UI is fully capitalized in type names** (`UIElement`, `UIProperty`). The UI
 styling object is `Cursorial.UI.Style`; framework source disambiguates the SGR record via
 `using CellStyle = Cursorial.Output.Style;`.
 

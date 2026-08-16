@@ -120,6 +120,7 @@ public sealed class FrameRenderer
     private Hyperlink _currentHyperlink;
     private int _cursorRow;
     private int _cursorCol;
+    private int _rowOffset;
     private bool _firstFrame = true;
     private bool _cursorVisible = true;
     private CursorShape _cursorShape = CursorShape.Default;
@@ -139,6 +140,27 @@ public sealed class FrameRenderer
 
     /// <summary>The options the renderer was constructed with.</summary>
     public FrameRendererOptions Options => _options;
+
+    /// <summary>
+    /// The absolute terminal row of buffer row 0 — every emitted cursor address adds this offset.
+    /// Zero (the default) for full-screen rendering; an inline host
+    /// (<see cref="FrameRendererOptions.Inline"/>) sets it to the region's top row and updates it
+    /// whenever the region moves. Changing the offset forgets the prior frame (<see cref="Reset"/>):
+    /// every believed terminal position is expressed in absolute screen rows, so a moved region
+    /// invalidates all of them and the next <see cref="Render"/> repaints the region in full.
+    /// </summary>
+    public int RowOffset
+    {
+        get => _rowOffset;
+        set
+        {
+            if (value == _rowOffset)
+                return;
+
+            _rowOffset = value;
+            Reset();
+        }
+    }
 
     /// <summary>
     /// Forget any prior frame state. The next <see cref="Render"/> call will do a full redraw.
@@ -217,16 +239,31 @@ public sealed class FrameRenderer
                 }
             }
 
-            // The reset goes BEFORE the erase, not after. ED (CSI 2 J) erases to the terminal's CURRENT
-            // background — the same rule the end-of-frame reset below exists to contain — so clearing
-            // first would fill the screen with whatever SGR state we inherited: the shell's on the very
-            // first frame, or the last cell's colour on a ForceFullRedraw. Resetting first makes the
-            // erase land on the terminal's own default, which is what the freshly-zeroed front buffer
+            // The reset goes BEFORE the erase, not after. ED (CSI 2 J / CSI 0 J) erases to the terminal's
+            // CURRENT background — the same rule the end-of-frame reset below exists to contain — so
+            // clearing first would fill the screen with whatever SGR state we inherited: the shell's on
+            // the very first frame, or the last cell's colour on a ForceFullRedraw. Resetting first makes
+            // the erase land on the terminal's own default, which is what the freshly-zeroed front buffer
             // below is asserting the screen now holds (see Adapt).
             SgrEncoder.WriteReset(output);
-            ScreenWriter.WriteClearScreen(output);
 
-            CursorWriter.WriteMoveTo(output, 0, 0);
+            if (_options.Inline)
+            {
+                // Inline: the screen is NOT ours — never ED 2. Move to the region's top-left and erase
+                // cursor-to-end-of-screen instead: the shell's content sits ABOVE the region by contract,
+                // so everything from the region top down is region extent. ED 0 both clears the band the
+                // diff is about to repaint and wipes any taller extent a shrink left standing (the host
+                // resizes the back buffer, the dimension change lands here, and the erase sweeps the
+                // orphaned rows in the same stroke).
+                MoveTo(output, 0, 0);
+                ScreenWriter.WriteClearScreenAfter(output);
+            }
+            else
+            {
+                ScreenWriter.WriteClearScreen(output);
+                CursorWriter.WriteMoveTo(output, 0, 0);
+            }
+
             _currentStyle = CellStyle.Default;
             _currentHyperlink = Hyperlink.None;
             _cursorRow = 0;
@@ -261,8 +298,10 @@ public sealed class FrameRenderer
         // away from the rect the renderer tracks for them, stranding ghosts the diff can no
         // longer see — so the previous overlay-only test was not enough. When the back buffer is
         // the front shifted up/down by K rows, emit SU/SD and shift _frontCells in place so the
-        // subsequent EmitDiff only repaints the K newly-uncovered rows.
-        if (!fullRedraw && back.FragmentsInternal.Count == 0 && _frontFragments.Count == 0)
+        // subsequent EmitDiff only repaints the K newly-uncovered rows. Never inline: SU/SD move
+        // the WHOLE screen (the default scroll region), shell history included — a scrolled chat
+        // view would drag the user's prompt along with it.
+        if (!fullRedraw && !_options.Inline && back.FragmentsInternal.Count == 0 && _frontFragments.Count == 0)
             TryDetectAndApplyScroll(back, output);
 
         ComputeFragmentGuardCells(back);
@@ -719,11 +758,16 @@ public sealed class FrameRenderer
         SgrEncoder.WriteReset(output);
     }
 
+    // Emit a CUP to buffer position (row, column) — the one place buffer rows become terminal
+    // rows. RowOffset is zero in full-screen rendering; inline it is the region's absolute top.
+    private void MoveTo(IBufferWriter<byte> output, int column, int row)
+        => CursorWriter.WriteMoveTo(output, column, row + _rowOffset);
+
     // Re-position the cursor to (r, c) if our tracked position differs.
     private void SyncCursor(IBufferWriter<byte> output, int r, int c)
     {
         if (_cursorRow == r && _cursorCol == c) return;
-        CursorWriter.WriteMoveTo(output, c, r);
+        MoveTo(output, c, r);
         _cursorRow = r;
         _cursorCol = c;
     }
@@ -971,7 +1015,7 @@ public sealed class FrameRenderer
                     twoSpaces[1] = (byte) ' ';
                     output.Advance(2);
 
-                    CursorWriter.WriteMoveTo(output, c, r);
+                    MoveTo(output, c, r);
                     _cursorRow = r;
                     _cursorCol = c;
                 }
@@ -1111,7 +1155,7 @@ public sealed class FrameRenderer
                                     CellStyle existingStyle)
     {
         CursorWriter.WriteSavePosition(output);
-        CursorWriter.WriteMoveTo(output, col, row);
+        MoveTo(output, col, row);
 
         // The anchor cell's style before capability adaptation. The default-color substitution decides
         // on the unadapted color and applies the replacement to the adapted one — see
@@ -1228,7 +1272,7 @@ public sealed class FrameRenderer
                                         IBufferWriter<byte> output, OutputCapabilities caps)
     {
         CursorWriter.WriteSavePosition(output);
-        CursorWriter.WriteMoveTo(output, col, row);
+        MoveTo(output, col, row);
 
         entry.Fragment.EmitErase(col, row, output, caps);
 
@@ -1342,20 +1386,29 @@ public sealed class FrameRenderer
 
         if (_cursorRow != back.CursorRow || _cursorCol != back.CursorColumn)
         {
-            CursorWriter.WriteMoveTo(output, back.CursorColumn, back.CursorRow);
+            MoveTo(output, back.CursorColumn, back.CursorRow);
             _cursorRow = back.CursorRow;
             _cursorCol = back.CursorColumn;
         }
     }
 
-    public void Close(IBufferWriter<byte> output)
+    /// <param name="output">The frame output target.</param>
+    /// <param name="eraseFragments">
+    /// Whether standing fragments emit their protocol erase sequences (the default). An inline host
+    /// retaining its last frame on exit (<c>InlineExitBehavior.Retain</c>) passes false so images /
+    /// sized text survive in the retained region; the tracked fragment set is forgotten either way.
+    /// </param>
+    public void Close(IBufferWriter<byte> output, bool eraseFragments = true)
     {
         var fragments = _frontFragments.ToList();
 
         _frontFragments.Clear();
 
-        foreach (var f in fragments)
-            f.Value.Fragment.EmitErase(f.Key.Column, f.Key.Row, output, _capabilities ?? OutputCapabilities.None);
+        if (eraseFragments)
+        {
+            foreach (var f in fragments)
+                f.Value.Fragment.EmitErase(f.Key.Column, f.Key.Row, output, _capabilities ?? OutputCapabilities.None);
+        }
 
         // Restore autowrap to the terminal's default-on state. Pairs with the WriteDisableAutowrap
         // call in the first-frame full-redraw branch — without this the next program to use the
@@ -1392,5 +1445,17 @@ public sealed class FrameRenderer
 /// capabilities (the raw-style constructor). <b>Disables vertical scroll detection</b> while on, because
 /// the per-cell dither phase is position-dependent and would not survive a row shift.
 /// </param>
+/// <param name="Inline">
+/// Opt-in for INLINE rendering: the buffer is a region of the main screen buffer rather than the whole
+/// screen, anchored at <see cref="FrameRenderer.RowOffset"/>. Three behaviors change: full redraws
+/// erase with "CUP to region top + ED 0" (cursor-to-end-of-screen) instead of ED 2 — the rows above
+/// the region belong to the shell and must never clear; every emitted cursor address adds
+/// <see cref="FrameRenderer.RowOffset"/>; and vertical scroll detection (SU/SD) is disabled, since
+/// those sequences scroll the whole screen, shell history included. The host owns the offset: it
+/// discovers where the region starts, keeps the region's bottom on-screen (scrolling with literal
+/// line-feeds when the region grows past the last row), and updates <see cref="FrameRenderer.RowOffset"/>
+/// before rendering.
+/// </param>
 public readonly record struct FrameRendererOptions(
-    bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false, bool OrderedDither = false);
+    bool ForceFullRedraw = false, bool RestrictToDirtyRegions = false, bool OrderedDither = false,
+    bool Inline = false);

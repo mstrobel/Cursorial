@@ -61,6 +61,23 @@ public static class CursorWriter
     /// <summary>Move the cursor left <paramref name="cells"/> columns (CUB). Zero or negative is a no-op.</summary>
     public static void WriteMoveLeft(IBufferWriter<byte> writer, int cells) => WriteRelativeMove(writer, cells, (byte) 'D');
 
+    /// <summary>
+    /// Query the current cursor position (DSR-CPR, <c>CSI 6 n</c>). The terminal replies with
+    /// <c>CSI &lt;row&gt; ; &lt;col&gt; R</c> (1-based), surfaced by the input pipeline as a
+    /// <c>DeviceResponseKind.CursorPositionReport</c>. Terminals that don't implement DSR never
+    /// reply — pair the query with a timeout, never an open-ended wait.
+    /// </summary>
+    public static void WriteQueryPosition(IBufferWriter<byte> writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        var span = writer.GetSpan(4);
+        span[0] = Escape;
+        span[1] = CsiOpen;
+        span[2] = (byte) '6';
+        span[3] = (byte) 'n';
+        writer.Advance(4);
+    }
+
     /// <summary>Save the cursor position and SGR state (DECSC, <c>ESC 7</c>).</summary>
     public static void WriteSavePosition(IBufferWriter<byte> writer)
     {

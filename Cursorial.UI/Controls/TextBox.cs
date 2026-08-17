@@ -730,6 +730,11 @@ public class TextBox : Control
                 RecordFullReplace(current, resulting, caretBefore, anchorBefore);
         }
 
+        // The funnel owns the repaint (OnTextChanged skips it under _isApplyingEdit) and must guarantee it:
+        // SetCaretAndSelection fires only when the clamped caret actually moved, and the AffectsMeasure pass
+        // only when the measured width changed — an in-band transform (a clamping/normalizing two-way source)
+        // can dodge both, leaving a stale raster over the new Text. Redundant refreshes are per-frame no-ops.
+        RefreshPresenter();
         RaiseTextChanged();
     }
 
@@ -824,7 +829,11 @@ public class TextBox : Control
         }
 
         if (!string.Equals(Text, current, StringComparison.Ordinal))
+        {
+            RefreshPresenter(); // same guarantee as ApplyTextEdit: a restored caret that happens to equal the
+                                // current one (undoing a same-length transform) must not leave the raster stale
             RaiseTextChanged(); // after the funnel settles — handlers see the restored caret/selection, not a mid-edit state
+        }
         return true;
     }
 

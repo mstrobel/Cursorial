@@ -69,4 +69,10 @@ public sealed record FileSaveDialogRequest(string Title)
     /// <summary>Whether the New Folder affordance (<c>Alt+N</c>) is offered (default <see langword="true"/>).
     /// Off for a provider that cannot create directories.</summary>
     public bool CanCreateDirectories { get; init; } = true;
+
+    /// <summary>The window title, e.g. <c>"Save As"</c>.</summary>
+    public string Title { get; init; } = Title;
+
+    public FileSaveDialogRequest() : this("Save File") {
+    }
 }

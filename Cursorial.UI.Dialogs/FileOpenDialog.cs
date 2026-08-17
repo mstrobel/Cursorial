@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Cursorial.Rendering;
-using Cursorial.UI.Input;
 
 namespace Cursorial.UI.Dialogs;
 
@@ -21,23 +20,31 @@ namespace Cursorial.UI.Dialogs;
 /// </summary>
 public sealed class FileOpenDialog : Window
 {
-    private readonly FileDialogViewModel _model;
     private readonly FileDialogView _view;
 
     /// <summary>Control themes resolve exact-key, so a <see cref="Window"/> subclass must opt into the base
     /// window chrome, or it has no template at all and measures 0×0.</summary>
     protected override object ControlThemeKey => typeof(Window);
 
+    public FileOpenDialog()
+        : this(new FileDialogViewModel(
+                   new FileOpenDialogRequest("Select File")
+                   {
+                       FileSystem = PhysicalFileSystemProvider.Instance,
+                       InitialDirectory = Environment.CurrentDirectory,
+                       ShowHiddenEntries = true
+                   }),
+               "Select File") {}
+
     private FileOpenDialog(FileDialogViewModel model, string title)
     {
-        _model = model;
         _view = new FileDialogView(model);
 
         ApplyDialogAppearance(this);
 
         Title = title;
         DataContext = model;
-        Content = _view.Root;
+        Content = _view;
 
         model.Completed += (_, result) => Close(result);
         ContentRendered += OnContentRendered;
@@ -139,33 +146,14 @@ public sealed class FileOpenDialog : Window
         }
     }
 
-    /// <inheritdoc/>
-    protected override void OnPreviewKeyDown(KeyEventArgs e)
-    {
-        base.OnPreviewKeyDown(e);
-
-        // First stop on the tunnel: the dialog's accelerators outrank the controls' own keys (Alt+↑ must beat
-        // the file list's ↑). Everything that must yield instead rides OnKeyDown.
-        if (!e.Handled && _view.HandlePreviewKey(e))
-            e.Handled = true;
-    }
-
-    /// <inheritdoc/>
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-
-        // Last stop on the bubble: everything a control wanted (Backspace in a text field, Escape in the
-        // completion popup) has already been claimed, so what arrives here is genuinely dialog-wide. Escape
-        // deliberately falls through unhandled at the top level so the Cancel button's IsCancel binding —
-        // which runs in the gesture tail, after the route — finally cancels.
-        if (!e.Handled && _view.HandleKey(e))
-            e.Handled = true;
-    }
-
     private void OnContentRendered(object? sender, EventArgs e)
     {
         ContentRendered -= OnContentRendered;
-        _view.FocusFileList();
+
+        if (_view.FocusFileList())
+            return;
+
+        if (UIApplication.Current is { Dispatcher.ShutdownToken.IsCancellationRequested: false } app)
+            app.Dispatcher.InvokeAsync(() => _view.FocusFileList());
     }
 }

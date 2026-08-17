@@ -22,7 +22,6 @@ namespace Cursorial.UI.Dialogs;
 /// </summary>
 public sealed class FileSaveDialog : Window
 {
-    private readonly FileDialogViewModel _model;
     private readonly FileDialogView _view;
 
     /// <summary>Control themes resolve exact-key, so a <see cref="Window"/> subclass must opt into the base
@@ -31,12 +30,11 @@ public sealed class FileSaveDialog : Window
 
     private FileSaveDialog(FileDialogViewModel model, string title)
     {
-        _model = model;
         _view = new FileDialogView(model);
 
         Title = title;
         DataContext = model;
-        Content = _view.Root;
+        Content = _view;
 
         FileOpenDialog.ApplyDialogAppearance(this);
 
@@ -166,6 +164,10 @@ public sealed class FileSaveDialog : Window
 
         // Save opens with the NAME field focused and its stem selected — the user is here to type a name, and
         // the listing is context. (Open focuses the listing, where its user is here to pick.)
-        _view.FocusFileName();
+        if (_view.FocusFileName())
+            return;
+
+        if (UIApplication.Current is { Dispatcher.ShutdownToken.IsCancellationRequested: false } app)
+            app.Dispatcher.InvokeAsync(() => _view.FocusFileName());
     }
 }

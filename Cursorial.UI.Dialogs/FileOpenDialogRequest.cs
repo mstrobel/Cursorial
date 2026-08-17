@@ -60,4 +60,10 @@ public sealed record FileOpenDialogRequest(string Title)
     /// create the file itself; the dialog then returns the typed path unchecked.
     /// </summary>
     public bool MustExist { get; init; } = true;
+
+    /// <summary>The window title, e.g. <c>"Open File"</c>.</summary>
+    public string Title { get; init; } = Title;
+
+    public FileOpenDialogRequest() : this("Open File") {
+    }
 }

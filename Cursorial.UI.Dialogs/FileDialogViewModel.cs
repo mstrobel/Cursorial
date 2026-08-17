@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -39,8 +40,15 @@ namespace Cursorial.UI.Dialogs;
 /// funneled through <see cref="RequeryCommands"/> so a new command cannot be half-wired.
 /// </para>
 /// </summary>
-internal sealed class FileDialogViewModel : ObservableObject, IDisposable
+public sealed class FileDialogViewModel : ObservableObject, IDisposable, ISupportInitializeNotification
 {
+    private enum State
+    {
+        Uninitialized,
+        Initializing,
+        Initialized
+    }
+
     /// <summary>How long a type-ahead buffer survives without a keystroke before the next one starts fresh —
     /// the same one second <c>TextSearchController</c> uses, so the two feel identical.</summary>
     public static readonly TimeSpan TypeAheadIdleTimeout = TimeSpan.FromSeconds(1);
@@ -49,17 +57,17 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// directories; the cap exists so a long-lived dialog over a deep tree cannot grow without bound.</summary>
     private const int ListingCacheCapacity = 32;
 
-    private readonly IFileSystemProvider _fileSystem;
+    private IFileSystemProvider _fileSystem = null!;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly List<string> _back = [];
     private readonly List<string> _forward = [];
     private readonly List<FileDialogEntry> _allEntries = [];
     private readonly Dictionary<string, IReadOnlyList<FileSystemEntry>> _listingCache = new(StringComparer.Ordinal);
     private readonly Queue<string> _listingCacheOrder = new();
-    private readonly TimeProvider _timeProvider;
-    private readonly bool _mustExist;
-    private readonly string? _defaultExtension;
-    private readonly bool _confirmOverwrite;
+    private bool _mustExist;
+    private string? _defaultExtension;
+    private bool _confirmOverwrite;
+    private State _state;
 
     private CancellationTokenSource? _navigation;
     private string _currentDirectory = "";
@@ -69,16 +77,18 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     private FileDialogFilter? _selectedFilter;
     private FileDialogSortKey _sortKey = FileDialogSortKey.Name;
     private ListViewSortDirection _sortDirection = ListViewSortDirection.Ascending;
-    private ListViewViewMode _viewMode = ListViewViewMode.Details;
     private bool _showHiddenEntries;
     private int _busyDepth;
-    private string? _errorMessage;
-    private bool _isCreatingFolder;
     private string _newFolderName = "";
     private string _typeAheadBuffer = "";
     private DateTimeOffset _lastTypeAheadAt;
-    private IReadOnlyList<FileDialogPlaceGroup> _placeGroups = [];
     private bool _disposed;
+
+    /// <summary>
+    /// Creates a new view model for a dialog type to be determined post-initialization by the presence
+    /// of exactly one of <see cref="OpenRequest"/> or <see cref="SaveRequest"/>.
+    /// </summary>
+    public FileDialogViewModel() {}
 
     /// <summary>Creates the view-model for an Open dialog.</summary>
     /// <param name="request">The caller's request; <see cref="FileOpenDialogRequest.FileSystem"/> is the
@@ -89,18 +99,13 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <see cref="TimeProvider.System"/>.
     /// </param>
     public FileDialogViewModel(FileOpenDialogRequest request, TimeProvider? timeProvider = null)
-        : this(request.FileSystem, request.Filters, request.SelectedFilterIndex, timeProvider)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        IsSaveDialog = false;
-        _mustExist = request.MustExist;
-        _confirmOverwrite = false;
-        _showHiddenEntries = request.ShowHiddenEntries;
-        _viewMode = request.View;
-        _fileName = request.InitialFileName ?? "";
-        InitialDirectory = request.InitialDirectory;
-        CanCreateDirectories = false;
+        
+        BeginInit();
+        OpenRequest = request;
+        TimeProvider = timeProvider ?? TimeProvider.System;
+        EndInit();
     }
 
     /// <summary>Creates the view-model for a Save As dialog.</summary>
@@ -108,33 +113,73 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// hierarchy every operation goes through.</param>
     /// <param name="timeProvider">See the Open overload — the type-ahead clock.</param>
     public FileDialogViewModel(FileSaveDialogRequest request, TimeProvider? timeProvider = null)
-        : this(request.FileSystem, request.Filters, request.SelectedFilterIndex, timeProvider)
     {
         ArgumentNullException.ThrowIfNull(request);
-
-        IsSaveDialog = true;
-        _mustExist = false;
-        _confirmOverwrite = request.ConfirmOverwrite;
-        _defaultExtension = request.DefaultExtension;
-        _showHiddenEntries = request.ShowHiddenEntries;
-        _viewMode = request.View;
-        _fileName = request.InitialFileName ?? "";
-        InitialDirectory = request.InitialDirectory;
-        CanCreateDirectories = request.CanCreateDirectories;
+        
+        BeginInit();
+        SaveRequest = request;
+        TimeProvider = timeProvider ?? TimeProvider.System;
+        EndInit();
     }
 
-    private FileDialogViewModel(IFileSystemProvider fileSystem,
-                                IReadOnlyList<FileDialogFilter> filters,
-                                int selectedFilterIndex,
-                                TimeProvider? timeProvider)
-    {
-        ArgumentNullException.ThrowIfNull(fileSystem);
+    public FileOpenDialogRequest? OpenRequest {
+        get; 
+        set
+        {
+            VerifyInitializing();
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
 
-        _fileSystem = fileSystem;
-        _timeProvider = timeProvider ?? TimeProvider.System;
+    public FileSaveDialogRequest? SaveRequest {
+        get;
+        set
+        {
+            VerifyInitializing();
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
+
+    public TimeProvider TimeProvider
+    {
+        get => field ?? TimeProvider.System;
+        set
+        {
+            VerifyInitializing();
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    }
+
+    private void VerifyInitializing()
+    {
+        if (_state is State.Initializing) return;
+
+        throw new InvalidOperationException($"Operation may only be performed during initialization " +
+                                            $"(between {nameof(BeginInit)} and {nameof(EndInit)}.");
+    }
+
+    private void Build()
+    {
+        if (OpenRequest is null && SaveRequest is null)
+        {
+            throw new InvalidOperationException($"Either {nameof(OpenRequest)} or {nameof(SaveRequest)} " +
+                                                "must be set during initialization.");
+        }
+
+        _fileSystem = OpenRequest?.FileSystem ?? SaveRequest!.FileSystem;
+
+        var filters = OpenRequest?.Filters ?? SaveRequest!.Filters;
+        var selectedFilterIndex = OpenRequest?.SelectedFilterIndex ?? SaveRequest!.SelectedFilterIndex;
 
         Filters = filters is { Count: > 0 } ? filters : [FileDialogFilter.AllFiles];
+
         _selectedFilter = Filters[Math.Clamp(selectedFilterIndex, 0, Filters.Count - 1)];
+        _mustExist = OpenRequest?.MustExist is true;
+        _defaultExtension = SaveRequest?.DefaultExtension;
+        _confirmOverwrite = SaveRequest?.ConfirmOverwrite is true;
 
         NavigateCommand = new DelegateCommand(parameter => Run(NavigateAsync(ResolveNavigationTarget(parameter))),
                                               parameter => ResolveNavigationTarget(parameter) is { Length: > 0 });
@@ -163,7 +208,7 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
                     ViewMode = viewMode;
                 }
 
-                SetViewModeCommand?.RaiseCanExecuteChanged();
+                SetViewModeCommand.RaiseCanExecuteChanged();
             },
             parameter =>
             {
@@ -196,11 +241,11 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <summary>Whether this is the Save As variant — the write-side affordances (New Folder, the overwrite
     /// confirmation, extension completion) are gated on it, and Accept means "name a file" rather than
     /// "choose an existing one".</summary>
-    public bool IsSaveDialog { get; }
+    public bool IsSaveDialog => SaveRequest is not null;
 
     /// <summary>Whether the New Folder affordance is offered (Save As only, and only when the request allows
     /// it — a read-only provider says no).</summary>
-    public bool CanCreateDirectories { get; }
+    public bool CanCreateDirectories => SaveRequest?.CanCreateDirectories ?? false;
 
     /// <summary>The hierarchy every operation goes through.</summary>
     public IFileSystemProvider FileSystem => _fileSystem;
@@ -255,11 +300,11 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
 
     /// <summary>The type-filter rows, in selector order. Never empty — an empty request list becomes a lone
     /// <see cref="FileDialogFilter.AllFiles"/>.</summary>
-    public IReadOnlyList<FileDialogFilter> Filters { get; }
+    public IReadOnlyList<FileDialogFilter> Filters { get; private set; } = null!;
 
     /// <summary>The directory the request asked to open in, before resolution (<see langword="null"/> ⇒ let
     /// <see cref="InitializeAsync"/> pick the home place or the first root).</summary>
-    public string? InitialDirectory { get; }
+    public string? InitialDirectory { get; set; }
 
     /// <summary>The result the dialog should close with, or <see langword="null"/> while it is still open.
     /// Set exactly once, immediately before <see cref="Completed"/> is raised.</summary>
@@ -310,9 +355,9 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <see cref="InitializeAsync"/>. Bands the provider has nothing for are omitted entirely.</summary>
     public IReadOnlyList<FileDialogPlaceGroup> PlaceGroups
     {
-        get => _placeGroups;
-        private set => SetProperty(ref _placeGroups, value);
-    }
+        get;
+        private set => SetProperty(ref field, value);
+    } = [];
 
     /// <summary>
     /// The highlighted row. Selecting a FILE mirrors its name into <see cref="FileName"/> (the design page's
@@ -402,13 +447,13 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <summary>The listing's presentation mode — the design page's <c>▤ ▥ ▦</c> switcher.</summary>
     public ListViewViewMode ViewMode
     {
-        get => _viewMode;
+        get;
         set
         {
             using var busyScope = EnterBusyScope();
-            SetProperty(ref _viewMode, value);
+            SetProperty(ref field, value);
         }
-    }
+    } = ListViewViewMode.Details;
 
     /// <summary>Whether entries the provider marks hidden are listed.</summary>
     public bool ShowHiddenEntries
@@ -431,8 +476,8 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// created), or <see langword="null"/> when the footer's error line is hidden.</summary>
     public string? ErrorMessage
     {
-        get => _errorMessage;
-        private set => SetProperty(ref _errorMessage, value);
+        get;
+        private set => SetProperty(ref field, value);
     }
 
     /// <summary>Whether a listing is in flight. Bound to nothing load-bearing yet; exposed because a slow
@@ -442,10 +487,10 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
     /// <summary>Whether the New Folder row is showing its editor (the design page's inline green row).</summary>
     public bool IsCreatingFolder
     {
-        get => _isCreatingFolder;
+        get;
         private set
         {
-            if (!SetProperty(ref _isCreatingFolder, value))
+            if (!SetProperty(ref field, value))
                 return;
 
             RequeryCommands();
@@ -501,48 +546,48 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
 
     /// <summary>Navigates to a directory. Parameter: a path <see cref="string"/>, a
     /// <see cref="FileDialogPathSegment"/>, a <see cref="FileDialogEntry"/> or a <see cref="FileSystemEntry"/>.</summary>
-    public IRequeryCommand NavigateCommand { get; }
+    public IRequeryCommand NavigateCommand { get; private set; } = null!;
 
     /// <summary>Goes back through the navigation history (the design page's <c>◂</c>, <c>Alt+←</c>).</summary>
-    public IRequeryCommand BackCommand { get; }
+    public IRequeryCommand BackCommand { get; private set; } = null!;
 
     /// <summary>Goes forward through the navigation history (<c>▸</c>, <c>Alt+→</c>).</summary>
-    public IRequeryCommand ForwardCommand { get; }
+    public IRequeryCommand ForwardCommand { get; private set; } = null!;
 
     /// <summary>Goes to the containing directory (<c>▴</c>, <c>Alt+↑</c>, and <c>Backspace</c> when no
     /// type-ahead is running).</summary>
-    public IRequeryCommand UpCommand { get; }
+    public IRequeryCommand UpCommand { get; private set; } = null!;
 
     /// <summary>Re-reads the current directory (<c>↻</c>, <c>F5</c>).</summary>
-    public IRequeryCommand RefreshCommand { get; }
+    public IRequeryCommand RefreshCommand { get; private set; } = null!;
 
     /// <summary>Opens the New Folder editor (<c>Alt+N</c>; Save As only).</summary>
-    public IRequeryCommand NewFolderCommand { get; }
+    public IRequeryCommand NewFolderCommand { get; private set; } = null!;
 
     /// <summary>Creates the folder named in <see cref="NewFolderName"/> and refreshes.</summary>
-    public IRequeryCommand CommitNewFolderCommand { get; }
+    public IRequeryCommand CommitNewFolderCommand { get; private set; } = null!;
 
     /// <summary>Abandons the New Folder editor.</summary>
-    public IRequeryCommand CancelNewFolderCommand { get; }
+    public IRequeryCommand CancelNewFolderCommand { get; private set; } = null!;
 
     /// <summary>Resolves <see cref="FileName"/> and finishes the dialog (<c>Open</c> / <c>Save</c>,
     /// <c>Alt+O</c>). A name that turns out to be a DIRECTORY navigates into it instead — that is what typing
     /// a folder name into the field means everywhere else, too.</summary>
-    public IRequeryCommand AcceptCommand { get; }
+    public IRequeryCommand AcceptCommand { get; private set; } = null!;
 
     /// <summary>Finishes the dialog with <see cref="FileDialogResult.Dismissed"/> (<c>Cancel</c>,
     /// <c>Alt+C</c>, <c>Esc</c> at the dialog's top level).</summary>
-    public IRequeryCommand CancelCommand { get; }
+    public IRequeryCommand CancelCommand { get; private set; } = null!;
 
     /// <summary>Switches the listing's presentation. Parameter: a <see cref="ListViewViewMode"/>.</summary>
-    public IRequeryCommand SetViewModeCommand { get; }
+    public IRequeryCommand SetViewModeCommand { get; private set; } = null!;
 
     /// <summary>Cycles the sort. Parameter: a <see cref="FileDialogSortKey"/>, or the member-path string a
     /// <see cref="Controls.ListViewSortingEventArgs"/> carries (<c>"Name"</c>, <c>"SizeText"</c>, …).</summary>
-    public IRequeryCommand SortCommand { get; }
+    public IRequeryCommand SortCommand { get; private set; } = null!;
 
     /// <summary>Invokes a row — Enter or a double-click. Parameter: the <see cref="FileDialogEntry"/>.</summary>
-    public IRequeryCommand ActivateCommand { get; }
+    public IRequeryCommand ActivateCommand { get; private set; } = null!;
 
     // ───────────────────────────── lifecycle ─────────────────────────────
 
@@ -740,7 +785,7 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(typed) || Entries.Count == 0)
             return false;
 
-        var now = _timeProvider.GetUtcNow();
+        var now = TimeProvider.GetUtcNow();
 
         // The idle window is measured, not timed: a UITimer here would make the view-model host-affine and
         // untestable, and an injected TimeProvider gives a headless test exact control over the boundary.
@@ -769,7 +814,7 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
             return false;
 
         var candidate = _typeAheadBuffer[..^1];
-        _lastTypeAheadAt = _timeProvider.GetUtcNow();
+        _lastTypeAheadAt = TimeProvider.GetUtcNow();
         TypeAheadBuffer = candidate;
 
         if (candidate.Length > 0 && FindByPrefix(candidate) is { } match)
@@ -1466,4 +1511,33 @@ internal sealed class FileDialogViewModel : ObservableObject, IDisposable
                 owner.ExitBusyScopeOnce();
         }
     }
+
+    public void BeginInit()
+    {
+        var state = Interlocked.CompareExchange(ref _state, State.Initializing, State.Uninitialized);
+
+        if (state is State.Initializing)
+            throw new InvalidOperationException($"{nameof(BeginInit)} has already been called.");
+
+        if (state is State.Initialized)
+            throw new InvalidOperationException($"{nameof(FileDialogView)} is already initialized.");
+    }
+
+    public void EndInit()
+    {
+        var state = Interlocked.CompareExchange(ref _state, State.Initialized, State.Initializing);
+
+        if (state is State.Uninitialized)
+            throw new InvalidOperationException($"{nameof(BeginInit)} must be called before {nameof(EndInit)}.");
+
+        if (state is State.Initialized)
+            throw new InvalidOperationException($"{nameof(FileDialogView)} is already initialized.");
+
+        Build();
+        Initialized?.Invoke(this, EventArgs.Empty);
+    }
+
+    public bool IsInitialized => _state is State.Initialized;
+
+    public event EventHandler? Initialized;
 }

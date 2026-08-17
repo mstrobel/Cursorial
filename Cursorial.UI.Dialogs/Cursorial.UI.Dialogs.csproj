@@ -32,4 +32,8 @@
     <InternalsVisibleTo Include="Cursorial.UI.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Calculator\" />
+  </ItemGroup>
+
 </Project>

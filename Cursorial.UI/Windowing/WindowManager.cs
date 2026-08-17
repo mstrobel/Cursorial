@@ -1319,7 +1319,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
             Math.Clamp(desired.Columns, 0, _viewport.Columns),
             Math.Clamp(desired.Rows, 0, _viewport.Rows));
 
-        surface.Size = size;
+        surface.Size = size with
+                       {
+                           Columns = Math.Clamp(size.Columns, popup.MinWidth, popup.MaxWidth),
+                           Rows = Math.Clamp(size.Rows, popup.MinHeight, popup.MaxHeight)
+                       };
 
         var anchor = AnchorRect(popup);
 

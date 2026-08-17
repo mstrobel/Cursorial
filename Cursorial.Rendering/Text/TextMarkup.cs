@@ -337,7 +337,7 @@ public static class TextMarkup
                 throw Error(token.Position, $"[/{token.Name}] with no matching opening tag.");
 
             var top = _styleStack.Pop();
-            if (top.Name != token.Name)
+            if (top.Name != token.Name && token.Name is { Length: > 0 })
                 throw Error(token.Position, $"Mismatched closing tag: expected [/{top.Name}], got [/{token.Name}].");
 
             top.Scope.Dispose();

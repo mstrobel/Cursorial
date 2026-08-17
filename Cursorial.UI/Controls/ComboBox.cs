@@ -267,6 +267,7 @@ public class ComboBox : SelectingItemsControl
             return;
 
         PseudoClasses.Set(":open", value); // DirectProperty-backed, so the :open class is set imperatively (cf. MenuItem)
+        _popup?.SetCurrentValue(MinWidthProperty, Bounds.Columns);
         _popup?.SetCurrentValue(Popup.IsOpenProperty, value);
 
         if (!value)

@@ -47,7 +47,6 @@ public sealed class FileOpenDialog : Window
         Content = _view;
 
         model.Completed += (_, result) => Close(result);
-        ContentRendered += OnContentRendered;
     }
 
     internal static void ApplyDialogAppearance(Window w)
@@ -144,16 +143,5 @@ public sealed class FileOpenDialog : Window
         {
             model.Dispose();
         }
-    }
-
-    private void OnContentRendered(object? sender, EventArgs e)
-    {
-        ContentRendered -= OnContentRendered;
-
-        if (_view.FocusFileList())
-            return;
-
-        if (UIApplication.Current is { Dispatcher.ShutdownToken.IsCancellationRequested: false } app)
-            app.Dispatcher.InvokeAsync(() => _view.FocusFileList());
     }
 }

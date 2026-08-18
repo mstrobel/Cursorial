@@ -103,8 +103,17 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable, ISuppor
         ArgumentNullException.ThrowIfNull(request);
         
         BeginInit();
+
         OpenRequest = request;
         TimeProvider = timeProvider ?? TimeProvider.System;
+
+        _mustExist = request.MustExist;
+        _confirmOverwrite = false;
+        _showHiddenEntries = request.ShowHiddenEntries;
+        ViewMode = request.View;
+        _fileName = request.InitialFileName ?? "";
+        InitialDirectory = request.InitialDirectory;
+
         EndInit();
     }
 
@@ -115,10 +124,20 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable, ISuppor
     public FileDialogViewModel(FileSaveDialogRequest request, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        
+
         BeginInit();
+
         SaveRequest = request;
         TimeProvider = timeProvider ?? TimeProvider.System;
+        
+        _mustExist = false;
+        _confirmOverwrite = request.ConfirmOverwrite;
+        _defaultExtension = request.DefaultExtension;
+        _showHiddenEntries = request.ShowHiddenEntries;
+        ViewMode = request.View;
+        _fileName = request.InitialFileName ?? "";
+        InitialDirectory = request.InitialDirectory;
+
         EndInit();
     }
 
@@ -1451,6 +1470,8 @@ public sealed class FileDialogViewModel : ObservableObject, IDisposable, ISuppor
 
     private void RequeryCommands()
     {
+        if (_state is not State.Initialized) return;
+
         BackCommand.RaiseCanExecuteChanged();
         ForwardCommand.RaiseCanExecuteChanged();
         UpCommand.RaiseCanExecuteChanged();

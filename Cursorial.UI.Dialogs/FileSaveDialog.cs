@@ -39,7 +39,6 @@ public sealed class FileSaveDialog : Window
         FileOpenDialog.ApplyDialogAppearance(this);
 
         model.Completed += (_, result) => Close(result);
-        ContentRendered += OnContentRendered;
     }
 
     /// <summary>
@@ -156,18 +155,5 @@ public sealed class FileSaveDialog : Window
 
         if (!e.Handled && _view.HandleKey(e))
             e.Handled = true;
-    }
-
-    private void OnContentRendered(object? sender, EventArgs e)
-    {
-        ContentRendered -= OnContentRendered;
-
-        // Save opens with the NAME field focused and its stem selected — the user is here to type a name, and
-        // the listing is context. (Open focuses the listing, where its user is here to pick.)
-        if (_view.FocusFileName())
-            return;
-
-        if (UIApplication.Current is { Dispatcher.ShutdownToken.IsCancellationRequested: false } app)
-            app.Dispatcher.InvokeAsync(() => _view.FocusFileName());
     }
 }

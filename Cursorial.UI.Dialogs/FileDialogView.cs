@@ -942,6 +942,9 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         try
         {
             _listView.SelectedItem = Model.SelectedEntry;
+
+            if (_listView.SelectedItem is {})
+                FocusSelectedRow();
         }
         finally
         {
@@ -1339,20 +1342,20 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
 
     private bool HandleEscape()
     {
-        if (Child!.IsKeyboardFocusWithin &&
-            UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus &&
-            focus.RestoreRetainedFocus(focused))
-        {
-            return true;
-        }
+        // if (Child!.IsKeyboardFocusWithin &&
+        //     UIApplication.Current?.FocusManager is { FocusedElement: {} focused } focus &&
+        //     focus.RestoreRetainedFocus(focused))
+        // {
+        //     return true;
+        // }
 
         if (Model.IsCreatingFolder)
         {
             Model.CancelNewFolderCommand.Execute(null);
             return true;
         }
-
-        if (_listView.IsKeyboardFocusWithin is false)
+        
+        if (_listView.IsKeyboardFocusWithin is false && _fileNameBox.IsKeyboardFocusWithin is false)
         {
             FocusFileList();
             return true;
@@ -1373,6 +1376,9 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
     /// committed path edit.</summary>
     public bool FocusFileList()
     {
+        if (_listView.IsKeyboardFocusWithin)
+            return true;
+
         if (Model.SelectedEntry is not null && FocusSelectedRow())
             return true;
 
@@ -1385,6 +1391,21 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
             return first.Focus(FocusNavigationMethod.Programmatic);
 
         return _listView.Focus(FocusNavigationMethod.Programmatic);
+    }
+
+    protected override void OnAttachedToTree(in TreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToTree(in e);
+
+        if (SetInitialFocus()) return;
+
+        if (UIApplication.Current is { Dispatcher.ShutdownToken.IsCancellationRequested: false } app)
+            app.Dispatcher.Post(() => SetInitialFocus());
+    }
+
+    private bool SetInitialFocus()
+    {
+        return Model.IsSaveDialog ? FocusFileName() : FocusFileList();
     }
 
     /// <summary>Moves focus to the File name field and selects its text — where a Save dialog opens, because

@@ -1,0 +1,21 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+            xmlns:x="https://cursorial.dev/xaml"
+            xmlns:d="https://cursorial.dev/xaml/design"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            xmlns:vm="clr-namespace:Cursorial.CLI.Commandlets;assembly=curio"
+            mc:Ignorable="d"
+            x:Class="Cursorial.CLI.Views.ConfirmView"
+            x:DataType="vm:ConfirmViewModel"
+            HorizontalAlignment="Left">
+  <d:DataContext>
+    <vm:ConfirmViewModel Prompt="[y/N]" 
+                         Message="Are you sure you want to drink the purple vial? Are you sure you want to drink the purple vial? Are you sure you want to drink the purple vial? Are you sure you want to drink the purple vial?" />
+  </d:DataContext>
+  <StackPanel.InputBindings>
+    <KeyBinding Gesture="Y" Command="{Binding YesCommand}" />
+    <KeyBinding Gesture="Enter" Command="{Binding DefaultCommand}" />
+    <KeyBinding Gesture="N" Command="{Binding NoCommand}" />
+  </StackPanel.InputBindings>
+  <TextBlock Text="{Binding Prompt}" DockPanel.Dock="Left" VerticalAlignment="Top" />
+  <TextBlock Text="{Binding Message}" Margin="1,0,0,0" HorizontalAlignment="Left" />
+</DockPanel>

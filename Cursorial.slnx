@@ -97,6 +97,7 @@
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Cursorial.Animation.Tests/Cursorial.Animation.Tests.csproj" />
+    <Project Path="Cursorial.CLI.Tests/Cursorial.CLI.Tests.csproj" />
     <Project Path="Cursorial.Core.Tests/Cursorial.Core.Tests.csproj" />
     <Project Path="Cursorial.Drawing.Tests/Cursorial.Drawing.Tests.csproj" />
     <Project Path="Cursorial.Rendering.Tests/Cursorial.Rendering.Tests.csproj" />
@@ -113,6 +114,9 @@
   </Folder>
   <Folder Name="/Templates/">
     <Project Path="Cursorial.Templates/Cursorial.Templates.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="Cursorial.CLI/Cursorial.CLI.csproj" />
   </Folder>
   <Project Path="Cursorial.Animation/Cursorial.Animation.csproj" />
   <Project Path="Cursorial.Core/Cursorial.Core.csproj" />

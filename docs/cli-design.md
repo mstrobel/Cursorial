@@ -361,10 +361,10 @@ timeout, `curio serve --stop`, and session-death cleanup. Windows ships direct m
 
 | # | Item | Size |
 |---|---|---|
-| FW-1 | Capability cache seed: `TerminalSessionOptions.CachedCapabilities` + negotiator apply-without-probe fast path (opt-in enables + restore-sequence parity, no DA1 waits) | M |
-| FW-2 | Curated minimal `NegotiationOptions` preset for prompt-sized apps | S |
-| FW-3 | Shared-session multi-run support hardening: document/package BYO-session sequential apps (signal net stays with the owned session; per-app UI-mode enter/leave audit) | S |
-| FW-4 | Cancel exit-code hook: builder option to make unhandled Ctrl+C call `Shutdown(130)` (today: 0) | S |
+| FW-1 | ~~Capability cache seed~~ **DONE**: `TerminalSessionOptions.CachedCapabilities` + `VtTerminalNegotiator.ApplyCachedAsync` (opt-in enables via the same `DecideOptIns`/`EmitOptInEnables` producers, restore-sequence parity, no DA1 waits / DECRQM / OSC probes) + hand-rolled `TerminalCapabilitiesSerializer` (Utf8JsonWriter/JsonDocument, AOT-clean); CLI side: `CapabilityCache` at `$XDG_CACHE_HOME/curio/caps/<key>.json`, `--no-caps-cache` / `CURIO_NO_CAPS_CACHE` kill-switches, corrupt entries delete-and-renegotiate | M |
+| FW-2 | ~~Minimal preset~~ **DONE**: `NegotiationOptions.MinimalPrompt` — mouse + Kitty push off, focus/paste/Win32/sync per flags; trims the opt-in and DECRQM batches, does NOT reduce probe-round count (trade-offs documented on the property) | S |
+| FW-3 | ~~Shared-session multi-run~~ **DONE**: `VtInputDevice` supports sequential re-enumeration (one active enumerator; events buffer between consumers); contracts updated | S |
+| FW-4 | ~~Cancel exit-code hook~~ **DONE (CLI-side)**: the runner disables `ExitOnUnhandledCtrlC` and maps Ctrl+C→130 / Esc→1 in `PreProcessInput`; no framework change needed | S |
 | FW-5 | Core helpers: `IsInteractive` predicate, safe stdin-pipe reader, post-teardown fd-1 result writer | S |
 | FW-6 | `ApplicationModel.InlineWithSwitching`: window-driven alt-screen escalation with buffer/renderer swap and CPR re-anchor on return | L |
 | FW-7 | Inline-hostable `MessageBox`/`TaskDialog` (overlay-layer modal lane under inline models) | M |
@@ -376,6 +376,14 @@ FW-1/2/4/5 unblock M0–M1 and are individually small; FW-6/7/8 land with M2.
 ---
 
 ## 10. Milestones
+
+> **Status (2026-08-18):** M0 COMPLETE and verified — 3 commandlets (lowered XAML, zero CURG2002),
+> pipeline runner on one shared session, receipts, 14 MB AOT binary, sub-10 ms non-interactive start.
+> M1 PARTIAL: `--emit env|json` (+`CURIO_EMIT`), the non-interactive `--default` policy, and the stdin
+> item feed are done and E2E-verified; `filter`/`write` in flight; the capability cache (FW-1/2) is
+> DONE and E2E-verified (warm pty run interactive at 600 ms where the cold probe budget alone is
+> ~1.5 s on a mute terminal); `spin`/`style` remain. The Setter.Value custom-extension lift landed
+> as a THREE-lane change (frontend + loader + emitter).
 
 - **M0 — proof of the spine.** `Cursorial.CLI` csproj (strict-AOT gate), `choose`/`input`/
   `confirm` as lowered-XAML views, standalone + `++` pipeline with shared session, receipts,

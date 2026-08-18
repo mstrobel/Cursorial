@@ -1,0 +1,24 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           xmlns:d="https://cursorial.dev/xaml/design"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+           xmlns:vm="clr-namespace:Cursorial.CLI.Commandlets;assembly=curio"
+           mc:Ignorable="d"
+           x:Class="Cursorial.CLI.Views.WriteView"
+           x:DataType="vm:WriteViewModel"
+           HorizontalAlignment="Left">
+  <d:DataContext>
+    <vm:WriteViewModel Prompt="Describe your changes:" Lines="5" Placeholder="Write here" />
+  </d:DataContext>
+  <!-- Ctrl+Enter never arrives here: the editor's AcceptsReturn arm swallows it as a newline
+       (TextBox.OnKeyDown matches Key.Enter regardless of Ctrl), and legacy terminals send plain CR
+       for it anyway — Ctrl+D is the accept chord that reliably bubbles out of the editor. -->
+  <DockPanel.InputBindings>
+    <KeyBinding Gesture="Ctrl+D" Command="{Binding AcceptCommand}" />
+  </DockPanel.InputBindings>
+  <TextBlock DockPanel.Dock="Top" Text="{Binding Prompt}" HorizontalAlignment="Left" />
+  <TextBlock DockPanel.Dock="Bottom" Text="ctrl+d to accept" TextWeight="Faint" HorizontalAlignment="Left" />
+  <TextBox x:Name="Editor" Text="{Binding Text, Mode=TwoWay}" Placeholder="{Binding Placeholder}" Width="40"
+           MinLines="{Binding Lines}" MaxLines="{Binding Lines}" AcceptsReturn="True"
+           VerticalAlignment="Top" HorizontalAlignment="Left" />
+</DockPanel>

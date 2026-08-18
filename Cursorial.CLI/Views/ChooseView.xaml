@@ -1,0 +1,26 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           xmlns:d="https://cursorial.dev/xaml/design"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+           xmlns:vm="clr-namespace:Cursorial.CLI.Commandlets;assembly=curio"
+           mc:Ignorable="d"
+           x:Class="Cursorial.CLI.Views.ChooseView"
+           x:DataType="vm:ChooseViewModel"
+           HorizontalAlignment="Left">
+  <d:DataContext>
+    <vm:ChooseViewModel Prompt="Choose an item.">
+      <vm:ChooseViewModel.Items>
+        <x:Array Type="x:String">
+          <x:String>One</x:String>
+          <x:String>Two</x:String>
+          <x:String>Three</x:String>
+        </x:Array>
+      </vm:ChooseViewModel.Items>
+    </vm:ChooseViewModel>
+  </d:DataContext>
+  <DockPanel.InputBindings>
+    <KeyBinding Gesture="Enter" Command="{Binding AcceptCommand}" />
+  </DockPanel.InputBindings>
+  <TextBlock DockPanel.Dock="Top" Text="{Binding Prompt}" HorizontalAlignment="Left" />
+  <ListBox x:Name="List" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected, Mode=TwoWay}" />
+</DockPanel>

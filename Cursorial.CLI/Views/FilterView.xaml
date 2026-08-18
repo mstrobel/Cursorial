@@ -1,0 +1,33 @@
+<DockPanel xmlns="https://cursorial.dev/ui"
+           xmlns:x="https://cursorial.dev/xaml"
+           xmlns:d="https://cursorial.dev/xaml/design"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+           xmlns:vm="clr-namespace:Cursorial.CLI.Commandlets;assembly=curio"
+           mc:Ignorable="d"
+           x:Class="Cursorial.CLI.Views.FilterView"
+           x:DataType="vm:FilterViewModel"
+           HorizontalAlignment="Left">
+  <d:DataContext>
+    <vm:FilterViewModel Prompt="Filter:" Query="">
+      <vm:FilterViewModel.Items>
+        <x:Array Type="x:String">
+          <x:String>feature/cursorial-cli</x:String>
+          <x:String>develop</x:String>
+          <x:String>main</x:String>
+        </x:Array>
+      </vm:FilterViewModel.Items>
+    </vm:FilterViewModel>
+  </d:DataContext>
+  <DockPanel.InputBindings>
+    <KeyBinding Gesture="Enter" Command="{Binding AcceptCommand}" />
+    <KeyBinding Gesture="Down" Command="{Binding MoveDownCommand}" />
+    <KeyBinding Gesture="Up" Command="{Binding MoveUpCommand}" />
+  </DockPanel.InputBindings>
+  <DockPanel DockPanel.Dock="Top" HorizontalAlignment="Left">
+    <TextBlock DockPanel.Dock="Left" Margin="0,0,1,0" Text="{Binding Prompt}"
+               HorizontalAlignment="Left" VerticalAlignment="Top" />
+    <TextBox x:Name="QueryBox" Text="{Binding Query, Mode=TwoWay}" Width="40"
+             HorizontalAlignment="Left" VerticalAlignment="Top" />
+  </DockPanel>
+  <ListBox x:Name="List" ItemsSource="{Binding Matches}" SelectedItem="{Binding Selected, Mode=TwoWay}" />
+</DockPanel>

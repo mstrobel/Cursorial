@@ -17,6 +17,12 @@ internal static class ValueConversion
     /// Converts <paramref name="value"/> to <paramref name="targetType"/>. Returns
     /// <see cref="Failed"/> when no conversion succeeds (the caller traces and unsets / drops the write).
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "The TypeDescriptor ladder is the LAST resort: assignability, enums, and " +
+                        "IConvertible primitives all resolve on the RUC-free paths above it. It serves " +
+                        "custom-TypeConverter types in the reflective lane only; an AOT/trimmed app " +
+                        "converts through the generated XamlConverters ladder instead, and a trimmed " +
+                        "converter here degrades to Failed (the binding's unset path), never a crash.")]
     public static object? Convert(object? value, Type targetType, CultureInfo culture)
     {
         // Null: legal for reference / nullable target types only.
@@ -35,6 +41,8 @@ internal static class ValueConversion
         if (underlying.IsInstanceOfType(value))
             return value;
 
+        var sourceType = value.GetType();
+
         // Enum parse from a string or an integral value.
         if (underlying.IsEnum)
         {
@@ -43,7 +51,7 @@ internal static class ValueConversion
 
             try
             {
-                if (value.GetType().IsIntegralType())
+                if (sourceType.IsIntegralType())
                     return Enum.ToObject(underlying, value);
             }
             catch (ArgumentException)
@@ -79,11 +87,25 @@ internal static class ValueConversion
             }
         }
 
-        if (converter.CanConvertFrom(value.GetType()))
+        if (converter.CanConvertFrom(sourceType))
         {
             try
             {
                 return converter.ConvertFrom(null, culture, value);
+            }
+            catch (Exception ex) when (ex is FormatException or NotSupportedException or ArgumentException)
+            {
+                return Failed;
+            }
+        }
+
+        var sourceConverter = TypeDescriptor.GetConverter(sourceType);
+
+        if (sourceConverter.CanConvertTo(underlying))
+        {
+            try
+            {
+                return sourceConverter.ConvertTo(null, culture, value, underlying);
             }
             catch (Exception ex) when (ex is FormatException or NotSupportedException or ArgumentException)
             {

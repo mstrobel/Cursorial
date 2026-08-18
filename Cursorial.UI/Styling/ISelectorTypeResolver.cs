@@ -90,6 +90,10 @@ internal sealed class DefaultSelectorTypeResolver : ISelectorTypeResolver
         candidates.Add(type);
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "Selector resolution only needs element types that exist in the RUNNING app: a " +
+                        "trimmed-away control type cannot appear in a visual tree, so its absence from " +
+                        "this scan is correct behavior, not breakage.")]
     private static Type[] ExportedElementTypes
         => _exportedElementTypes ??= [.. typeof(UIElement).Assembly.GetExportedTypes()
             .Where(static t => typeof(UIElement).IsAssignableFrom(t))];

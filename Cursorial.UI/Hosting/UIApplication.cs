@@ -140,6 +140,7 @@ public sealed partial class UIApplication : IAsyncDisposable
     internal UIApplication(UIApplicationOptions options)
     {
         _options = options;
+        ApplicationModel = _options.Inline ? ApplicationModel.Inline : ApplicationModel.FullScreen;
         Dispatcher = new UIDispatcher();
         _syncContext = new UISynchronizationContext(Dispatcher);
         _guard = new UserCodeGuard(this);
@@ -203,6 +204,13 @@ public sealed partial class UIApplication : IAsyncDisposable
     /// the accepted result's frame, clear on cancel); the value is read once, at teardown.
     /// </summary>
     public InlineExitBehavior InlineExitBehavior { get; set; }
+
+    /// <summary>
+    /// The applications presentation model — either <c>FullScreen</c> or <c>Inline</c> (see
+    /// <see cref="UIApplicationBuilder.UseInline"/>). Initialized from the builder and fixed
+    /// for the lifetime of the application.
+    /// </summary>
+    public ApplicationModel ApplicationModel { get; private set; }
 
     /// <summary>
     /// S3's input dispatcher (design doc §7.4) — the application's routing surface: capture,

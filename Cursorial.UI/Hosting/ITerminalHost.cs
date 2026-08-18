@@ -18,8 +18,9 @@ public interface ITerminalHost : IAsyncDisposable
     TerminalCapabilities Capabilities { get; }
 
     /// <summary>
-    /// The input device. <b>Single-shot per host lifetime</b> — exactly one
-    /// <see cref="IAsyncInputDevice.ReadAllAsync"/> enumeration, owned by the application's pump.
+    /// The input device. One <see cref="IAsyncInputDevice.ReadAllAsync"/> enumeration at a time,
+    /// owned by the running application's pump; a shared host (one session, sequential
+    /// applications — the pipeline pattern) re-enumerates after the previous app's pump unwinds.
     /// </summary>
     IAsyncInputDevice Input { get; }
 

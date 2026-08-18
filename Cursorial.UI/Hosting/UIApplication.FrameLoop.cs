@@ -287,8 +287,9 @@ public sealed partial class UIApplication
 
     private void StartPump()
     {
-        // Exactly one ReadAllAsync enumeration per session (single-shot contract). EOF ⇒ shutdown;
-        // faults land in the Interlocked slot, surfaced ONCE on the UI thread (Phase 1).
+        // One ReadAllAsync enumeration at a time (this app's pump owns it; a shared session's next
+        // app re-enumerates after this pump unwinds). EOF ⇒ shutdown; faults land in the Interlocked
+        // slot, surfaced ONCE on the UI thread (Phase 1).
         _pumpCts = new CancellationTokenSource();
 
         var token = _pumpCts.Token;

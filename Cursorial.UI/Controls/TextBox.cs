@@ -50,7 +50,10 @@ public class TextBox : Control
 {
     /// <summary>The field text. Two-way by default with per-change source push; <c>:empty</c> when blank. AffectsMeasure.</summary>
     public static readonly StyledProperty<string> TextProperty =
-        UIProperty.Register<TextBox, string>(nameof(Text), defaultValue: "", changed: OnTextChanged);
+        UIProperty.Register<TextBox, string>(nameof(Text),
+                                             defaultValue: "",
+                                             changed: OnTextChanged,
+                                             coerce: (_, v) => v ?? "");
 
     /// <summary>Whether the field rejects edits (typing/delete/cut) while staying navigable + copyable (<c>:readonly</c>).</summary>
     public static readonly StyledProperty<bool> IsReadOnlyProperty =
@@ -238,7 +241,7 @@ public class TextBox : Control
 
     /// <summary>Whether the field lays out as multi-line: hard newlines accepted, soft wrap, or both.
     /// Single-line (the default) keeps the existing horizontal-scroll behavior.</summary>
-    internal bool IsMultiLine => AcceptsReturn || TextWrapping != WrapMode.NoWrap;
+    internal bool IsMultiLine => AcceptsReturn || TextWrapping != WrapMode.NoWrap || MinLines > 1;
 
     /// <summary>CLR sugar over <see cref="TextChangedEvent"/>.</summary>
     public event EventHandler<RoutedEventArgs>? TextChanged { add => AddHandler(TextChangedEvent, value!); remove => RemoveHandler(TextChangedEvent, value!); }
@@ -442,6 +445,8 @@ public class TextBox : Control
             case Key.PageDown when IsMultiLine && _presenter is { } pd:
                 MoveVertical(Math.Max(1, pd.ViewportRows), shift);
                 break;
+            case Key.Character when ctrl && IsLetter(e, 'j') && !IsReadOnly:
+            case Key.Enter when shift && !IsReadOnly:
             case Key.Enter when AcceptsReturn && !IsReadOnly:
                 ReplaceCore("\n", UndoKind.Other); // a real newline (its own undo unit); single-line leaves Enter unhandled (§13)
                 break;
@@ -1009,7 +1014,7 @@ public class TextBox : Control
             var c = input[i];
             if (c is '\r' or '\n')
             {
-                if (AcceptsReturn)
+                if (IsMultiLine)
                     builder.Append('\n');      // keep newlines (normalizing \r / \r\n / \n → \n)
                 else if (fromPaste)
                     builder.Append(' ');        // single-line: flatten a newline to a space on paste

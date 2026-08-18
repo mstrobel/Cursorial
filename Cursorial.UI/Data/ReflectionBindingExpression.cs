@@ -189,6 +189,8 @@ internal sealed class ReflectionBindingExpression : BindingExpressionCore
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050",
+        Justification = "TArgs is the changed-event's EventArgs-derived parameter — always a reference type, and reference-type generic instantiations run on shared code that is always available under AOT.")]
     private Delegate SubscribeChangedEvent(EventInfo changedEvent, object instance, int index)
     {
         // The discovered event is EventHandler or EventHandler<EventArgs>-compatible (2-arg

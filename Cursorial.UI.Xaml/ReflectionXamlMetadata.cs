@@ -266,7 +266,16 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         // boxed instance the builder holds, which mutates the box in place (boxed-struct-safe).
         if (clrType.IsValueType || clrType.GetConstructor(Type.EmptyTypes) is not null)
             return () => Activator.CreateInstance(clrType)!;
-        return null;
+
+        // DESIGNER contexts only: materialize without running any constructor — design instances
+        // describe their visible state through property assignment, and view-model constructors
+        // routinely demand runtime services (a UIApplication, a session). Runtime loading keeps the
+        // strict contract: no public parameterless constructor ⇒ not element-activatable (null).
+        // Decided at activator-build time: the design host enables the ambient switch at startup,
+        // before any type is touched (XamlDesignerContext remarks).
+        return XamlDesignerContext.IsDesignMode
+            ? () => RuntimeHelpers.GetUninitializedObject(clrType)
+            : null;
     }
 
     // ── Collections / dictionaries ─────────────────────────────────────────────────────────────────

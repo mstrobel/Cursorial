@@ -143,4 +143,96 @@ public sealed class Section20_MarkupCompatibility : XamlTestBase
         Assert.Empty(doc.Diagnostics);
         Assert.Null(doc.DesignInfo);
     }
+
+    // ── d:DataContext, ELEMENT form: a root-level <d:Owner.DataContext> captures its single object
+    //    child as a DETACHED fragment document on DesignInfo.DataContextContent — never entering the
+    //    runtime graph. Designer hosts materialize the fragment with the ordinary loader. ──────────
+
+    [Fact] // the element form is captured as a fragment document, diagnostics-free
+    public void X213_DesignDataContextElement_CapturedAsFragment()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"",
+            "<d:StackPanel.DataContext><Button/></d:StackPanel.DataContext><TextBlock/>"));
+
+        Assert.Empty(doc.Diagnostics);
+        var fragment = doc.DesignInfo?.DataContextContent;
+        Assert.NotNull(fragment);
+        Assert.True(fragment!.HasObjects);
+        Assert.True(fragment.HasRootType); // Button resolved through the same provider/xmlns scope
+    }
+
+    [Fact] // the fragment inherits the ROOT's xmlns scope (a prefix declared on the root resolves inside)
+    public void X214_DesignDataContextElement_InheritsRootXmlnsScope()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} xmlns:vm=\"using:DemoApp\" mc:Ignorable=\"d\"",
+            "<d:StackPanel.DataContext><vm:MyControl/></d:StackPanel.DataContext>"));
+
+        Assert.Empty(doc.Diagnostics);
+        Assert.True(doc.DesignInfo?.DataContextContent?.HasRootType);
+    }
+
+    [Fact] // when both forms are declared the element form wins, with a warning naming the conflict
+    public void X215_DesignDataContextElement_WinsOverAttribute()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} xmlns:vm=\"using:DemoApp\" mc:Ignorable=\"d\" d:DataContext=\"vm:MyControl\"",
+            "<d:StackPanel.DataContext><Button/></d:StackPanel.DataContext>"),
+            mode: XamlDiagnosticMode.CollectAll);
+
+        Assert.NotNull(doc.DesignInfo?.DataContextContent);
+        Assert.Contains(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Warning);
+    }
+
+    [Fact] // an empty element is a soft warning, never an error — design data must not break a parse
+    public void X216_DesignDataContextElement_Empty_WarnsAndIgnores()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"", "<d:StackPanel.DataContext/>"),
+                           mode: XamlDiagnosticMode.CollectAll);
+
+        Assert.Null(doc.DesignInfo?.DataContextContent);
+        Assert.Contains(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Warning);
+    }
+
+    [Fact] // a second object child is ignored with a warning; the first wins
+    public void X217_DesignDataContextElement_ExtraChildren_WarnFirstWins()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"",
+            "<d:StackPanel.DataContext><Button/><TextBlock/></d:StackPanel.DataContext>"),
+            mode: XamlDiagnosticMode.CollectAll);
+
+        Assert.NotNull(doc.DesignInfo?.DataContextContent);
+        Assert.Contains(doc.Diagnostics, d => d.Severity == XamlDiagnosticSeverity.Warning);
+    }
+
+    [Fact] // the element form on a NON-root element stays designer-skipped, silently
+    public void X218_DesignDataContextElement_OnNonRoot_IgnoredSilently()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"",
+            "<Border><d:Border.DataContext><Button/></d:Border.DataContext></Border>"));
+
+        Assert.Empty(doc.Diagnostics);
+        Assert.Null(doc.DesignInfo);
+    }
+
+    [Fact] // the bare directive spelling <d:DataContext> captures the same as the dotted form
+    public void X219_DesignDataContextElement_BareSpelling_Captured()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"",
+            "<d:DataContext><Button/></d:DataContext>"));
+
+        Assert.Empty(doc.Diagnostics);
+        Assert.True(doc.DesignInfo?.DataContextContent?.HasObjects);
+    }
+
+    [Fact] // an unresolvable type INSIDE the fragment never breaks the outer ThrowOnFirstError parse:
+           // the fragment always parses CollectAll, carrying its misses in its own Diagnostics
+    public void X220_DesignDataContextElement_FragmentErrors_NeverThrowThroughMainParse()
+    {
+        var doc = ParseRaw(Root($"{Mc} {D} mc:Ignorable=\"d\"",
+            "<d:DataContext><NoSuchDesignViewModel/></d:DataContext><Button/>"));
+
+        Assert.Empty(doc.Diagnostics); // the MAIN document is clean
+        var fragment = doc.DesignInfo?.DataContextContent;
+        if (fragment is not null)
+            Assert.NotEmpty(fragment.Diagnostics); // the miss lives on the fragment for the designer to surface
+    }
 }

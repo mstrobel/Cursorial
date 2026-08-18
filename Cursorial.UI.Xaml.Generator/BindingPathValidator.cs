@@ -83,6 +83,9 @@ internal static class BindingPathValidator
             return; // binds to the DataContext itself — nothing to walk
 
         // Conservative: indexers / attached-property / method-call paths are not walked (reflective at runtime).
+        // Indexers and type-qualified `(Type.Member)` segments aren't validated here: indexers need runtime
+        // shapes, and a qualified segment resolves against its OWN owner type, not the x:DataType walk below
+        // (the lowering emitter resolves qualified hops itself and names its own CURG2002 reasons).
         if (path!.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
             return;
 

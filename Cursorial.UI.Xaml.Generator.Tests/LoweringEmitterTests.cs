@@ -1558,4 +1558,172 @@ namespace TestApp { public partial class ClassesTemplateView : ContentControl { 
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
     }
+
+    [Fact] // Lift (T2) — {Binding Converter={g:CustomExtension}} now rides the COMPILED lane: the converter is the
+           // extension's ProvideValue result guarded by RequireConverter (a null/non-converter throws like the
+           // loader's ResolveConverter), and live conversion runs through the compiled chain.
+    public void Lowered_Binding_CustomExtensionConverter_CompilesAndConvertsLive()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" xmlns:g=\"clr-namespace:TestApp;assembly=LoweringHost\" " +
+            "x:Class=\"TestApp.ConvView\" x:DataType=\"t:ConvVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption, Converter={g:Upper}}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System;
+using System.ComponentModel;
+using System.Globalization;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
+using Cursorial.UI.Xaml;
+namespace TestApp
+{
+    public sealed class UpperConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => (value as string)?.ToUpperInvariant();
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
+    }
+    public sealed class UpperExtension : MarkupExtension
+    {
+        public override object? ProvideValue(IServiceProvider sp) => new UpperConverter();
+    }
+    public sealed class ConvVm : INotifyPropertyChanged
+    {
+        private string _caption = string.Empty;
+        public string Caption
+        {
+            get => _caption;
+            set { _caption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Caption))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public partial class ConvView : StackPanel { public ConvView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The compiled lane was taken WITH the converter — never a reflective decline, never a silent drop.
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.ConvVm, string>", lowered);
+        Assert.Contains("global::Cursorial.UI.ResourceScopes.RequireConverter(", lowered);
+        Assert.Contains("new global::TestApp.UpperExtension", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.ConvView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var vmType = assembly.GetType("TestApp.ConvVm")!;
+        var vm = Activator.CreateInstance(vmType)!;
+        var caption = vmType.GetProperty("Caption")!;
+        caption.SetValue(vm, "hello");
+
+        view.DataContext = vm;
+        Assert.Equal("HELLO", label.Text); // the custom-extension converter ran through the compiled chain
+
+        caption.SetValue(vm, "goodbye");
+        Assert.Equal("GOODBYE", label.Text); // …and stays live on INPC
+    }
+
+    [Fact] // Lift-guard (T3) — {Binding Converter={StaticResource key}} whose key CANNOT be lowered at this site
+           // (defined only in a sibling element's scope — the forward/fenced-key guard blocks the eager resolve)
+           // DECLINES the compiled lane and fences with the ACCURATE converter message. Pins two things: the
+           // compiled lane never installs with the converter silently dropped, and the ConverterInit custom arm's
+           // name guard never chases a phantom 'StaticResourceExtension' ("custom markup extension 'StaticResource'
+           // could not be resolved" must appear nowhere).
+    public void Lowered_Binding_UnlowerableStaticResourceConverter_DeclinesWithAccurateFence()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" xmlns:g=\"clr-namespace:TestApp;assembly=LoweringHost\" " +
+            "x:Class=\"TestApp.LateConvView\" x:DataType=\"t:LateVm\">" +
+            "<Border>" +
+              "<Border.Resources>" +
+                "<g:PassConverter x:Key=\"LateConv\"/>" + // visible only inside the Border's scope — fenced at the sibling
+              "</Border.Resources>" +
+            "</Border>" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption, Converter={StaticResource LateConv}}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System;
+using System.Globalization;
+using Cursorial.UI.Controls;
+using Cursorial.UI.Data;
+namespace TestApp
+{
+    public sealed class PassConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value;
+    }
+    public sealed class LateVm { public string Caption { get; set; } = string.Empty; }
+    public partial class LateConvView : StackPanel { public LateConvView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // Declined + fenced — never a CompiledBinding minus its converter, never a reflective Binding carrying none.
+        Assert.DoesNotContain("CompiledBinding", lowered);
+        Assert.DoesNotContain("RequireConverter", lowered);
+        Assert.Contains("Converter", lowered);
+        Assert.Contains("could not be lowered in this position", lowered); // the accurate CURG3001
+        // The name guard: a fenced BUILT-IN never reaches the custom-extension lane's bogus resolve error.
+        Assert.DoesNotContain("custom markup extension", lowered);
+
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles
+    }
+
+    [Fact] // Lift (T4) — StringFormat / FallbackValue no longer bail the compiled lane: both ride the
+           // CompiledBinding install as emitted inits, and StringFormat formats live through the compiled chain.
+    public void Lowered_Binding_StringFormatAndFallback_CompileAndFormatLive()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.FmtView\" x:DataType=\"t:FmtVm\">" +
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Caption, StringFormat='fmt: {0}', FallbackValue=none}\"/>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using System.ComponentModel;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class FmtVm : INotifyPropertyChanged
+    {
+        private string _caption = string.Empty;
+        public string Caption
+        {
+            get => _caption;
+            set { _caption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Caption))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public partial class FmtView : StackPanel { public FmtView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.FmtVm, string>", lowered);
+        Assert.Contains("StringFormat = \"fmt: {0}\"", lowered);
+        Assert.Contains("FallbackValue = \"none\"", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered); // not the reflective lane
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.FmtView")!)!;
+        var label = Assert.IsType<TextBlock>(view.Children[0]);
+
+        var vmType = assembly.GetType("TestApp.FmtVm")!;
+        var vm = Activator.CreateInstance(vmType)!;
+        vmType.GetProperty("Caption")!.SetValue(vm, "hi");
+
+        view.DataContext = vm;
+        Assert.Equal("fmt: hi", label.Text); // StringFormat applied through the compiled chain
+    }
 }

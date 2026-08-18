@@ -90,10 +90,12 @@ public static class XamlConverters
         if (underlying == typeof(TimeSpan)) return TimeSpanConverter.Instance;
         if (underlying == typeof(Margins)) return MarginsConverter.Instance;
         if (underlying == typeof(GridLength)) return GridLengthConverter.Instance;
+        if (underlying == typeof(Size)) return SizeConverter.Instance;
         if (underlying == typeof(RelativePoint)) return RelativePointConverter.Instance;
         if (underlying == typeof(Color)) return ColorConverter.Instance;
         if (underlying == typeof(TextAttributes)) return TextAttributesConverter.Instance;
         if (underlying == typeof(KeyGesture)) return KeyGestureConverter.Instance;
+        if (underlying == typeof(InputGesture)) return KeyGestureConverter.Instance;
         if (underlying == typeof(Pen)) return PenConverter.Instance;
         if (underlying == typeof(Selector)) return SelectorConverter.Instance;
         if (underlying == typeof(Themes.GlyphSetCarrier)) return GlyphSetCarrierConverter.Instance;
@@ -427,6 +429,28 @@ public static class XamlConverters
             if (double.TryParse(text, NumberStyles.Float, ctx.Culture, out _))
                 throw Fail($"Cells are atomic; '{text}' is not an integer cell count.", ctx);
             throw Fail($"'{text}' is not a valid grid length.", ctx);
+        }
+    }
+
+    private sealed class SizeConverter : ITypeConverter
+    {
+        public static readonly SizeConverter Instance = new();
+        private static readonly char[] Delimiters = [',', 'x'];
+        public bool IsContextFree => true;
+
+        public object ConvertFromString(string text, in XamlValueContext ctx)
+        {
+            // ctx.Culture like every sibling (Int32CellConverter), and Size documents non-negative
+            // components — "-1x-2" is as invalid as "80x".
+            if (text.Split(Delimiters, StringSplitOptions.TrimEntries) is not { Length: 2 } parts ||
+                !int.TryParse(parts[0], NumberStyles.Integer, ctx.Culture, out var columns) ||
+                !int.TryParse(parts[1], NumberStyles.Integer, ctx.Culture, out var rows) ||
+                columns < 0 || rows < 0)
+            {
+                throw Fail($"'{text}' is not a valid {nameof(Size)}.", ctx);
+            }
+
+            return new Size(columns, rows);
         }
     }
 

@@ -28,7 +28,7 @@ try
                                                    args.Handled = true;
                                                }
                                            };
-    await app.RunAsync(() => new StrictView());
+    await app.RunAsync(() => new StrictView { DataContext = new StrictViewModel() });
 }
 catch (Exception e)
 {

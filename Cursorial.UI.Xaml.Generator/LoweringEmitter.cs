@@ -605,9 +605,12 @@ internal static class LoweringEmitter
         ref readonly var childRecord = ref c.Doc.Objects[childIndex];
         if (childRecord.HasFlag(ObjectFlags.IsMarkupExtension))
         {
-            if (MarkupExtensionEntryExpr(c, in childRecord) is not { } entryExpr)
+            if (MarkupExtensionEntryExpr(c, in childRecord, out var reported) is not { } entryExpr)
             {
-                c.Todo("element-form markup-extension dictionary entry (only x:Null/x:Type/x:Static and DynamicResource) not yet lowered");
+                // A fenced CUSTOM entry already carries its own specific Todo/Error (reported) — a second,
+                // generic CURG3001 here would double-report the member with a message naming the wrong thing.
+                if (!reported)
+                    c.Todo("element-form markup-extension dictionary entry of this shape is not lowered (x:Null/x:Type/x:Static/DynamicResource and custom extensions are)");
                 return;
             }
 
@@ -1211,7 +1214,8 @@ internal static class LoweringEmitter
 
     // A <DataCondition> inside <Style.When> → styleVar.When.Add(new DataCondition { Binding = <descriptor>,
     // Value = <v>, Negate = <b> }). Binding is a {Binding} DESCRIPTOR (ReflectiveBindingExpr — the object, not a
-    // live install); Value is a typed element (<x:Boolean>…</> → an object local), a folded {x:Null}, or a literal;
+    // live install); Value is a typed element (<x:Boolean>…</> → an object local), a folded {x:Null}, an eagerly
+    // resolved {StaticResource}, a custom extension's ProvideValue, or a literal;
     // A style the lowering must DROP (fail closed) still declares its pre-allocated var as an EMPTY,
     // selector-less placeholder: callers reference the var unconditionally (entry .Add / Styles.Add), and a
     // zero-setter style emits zero compiled rules — inert in every channel, exactly as absent would behave
@@ -1270,7 +1274,7 @@ internal static class LoweringEmitter
             valueExpr = DataConditionValueExpr(c, in c.Doc.Members[valueMember]);
             if (valueExpr is null)
             {
-                c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} supported)");
+                c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} / custom extension supported)");
                 return false;
             }
         }
@@ -1296,9 +1300,9 @@ internal static class LoweringEmitter
 
     // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
     // object local), a folded {x:Null} (→ null) / {x:Static}, a same-dictionary {StaticResource} resolved eagerly
-    // (matching the loader's AttachStaticResource onto the object slot), or a literal string kept verbatim (object
-    // slot, no conversion). Null ⇒ the caller emits a // TODO (a {DynamicResource} — which the loader REJECTS on a
-    // non-styled slot — or any other unlowerable form).
+    // (matching the loader's AttachStaticResource onto the object slot), a CUSTOM extension's ProvideValue, or a
+    // literal string kept verbatim (object slot, no conversion). Null ⇒ the caller emits a // TODO (a
+    // {DynamicResource} — which the loader REJECTS on a non-styled slot — or any other unlowerable form).
     private static string? DataConditionValueExpr(Context c, in MemberRecord member) => member.Kind switch
     {
         XamlValueKind.Object => EmitObjectToLocal(c, member.ValueIndex),
@@ -1306,6 +1310,15 @@ internal static class LoweringEmitter
         XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
         XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.StaticResource
             => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
+        // A CUSTOM extension: the runtime builds <DataCondition> through the GENERIC object path, so its Value
+        // goes through ApplyExtension → AttachCustom — well-defined provide-value semantics this reproduces.
+        // Value is init-only ({ get; init; }), so the lowering must provide it inside the construction
+        // initializer, BEFORE the DataCondition instance exists — the services carry a null TargetObject (the
+        // loader's reflective Pass-2 set passes the instance; the one divergence of the initializer route).
+        // The slot is object-typed, so no cast/Coerce.
+        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.Custom &&
+                                     c.Doc.ParsedExtensions[c.Doc.Extensions[member.ValueIndex].Payload] is { } node
+            => CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null),
         _ => null,
     };
 
@@ -1350,6 +1363,12 @@ internal static class LoweringEmitter
                        : null;
         }
 
+        // A CUSTOM extension: eager target-less ProvideValue, mirroring the loader's BuildSetter
+        // Custom arm (Setter.Value is object-typed — no cast/Coerce). A fenced custom returns null
+        // and the caller's fail-closed DropStyle keeps lane parity.
+        if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } customNode)
+            return CustomExtensionExpr(c, customNode, targetObjectExpr: null, targetPropertyExpr: null);
+
         return ResourceValueExpr(c, in ext);
     }
 
@@ -1378,8 +1397,10 @@ internal static class LoweringEmitter
     // extensions (Binding) or an unresolvable key → null (unsupported).
     private static string? ResourceValueExpr(Context c, in ExtensionRecord ext)
     {
+        // The DynamicResource carrier's key: a literal / nested {x:Static}/{x:Type}, or a nested CUSTOM extension
+        // provided eagerly (the ResourceReference key slot is an opaque object — see CustomResourceKeyExpr).
         if (ext.Kind == ExtensionKind.DynamicResource)
-            return ResourceKeyArgExpr(c, in ext) is { } keyExpr
+            return (ResourceKeyArgExpr(c, in ext) ?? CustomResourceKeyExpr(c, in ext)) is { } keyExpr
                 ? $"new global::Cursorial.UI.ResourceReference({keyExpr})"
                 : null;
 
@@ -1423,6 +1444,21 @@ internal static class LoweringEmitter
 
         return null;
     }
+
+    // A {DynamicResource} key that is a nested CUSTOM extension: the key VALUE is just an opaque object handed to
+    // SetResourceReference / ResourceReference (never compared or canonicalized at compile time), so an eager
+    // target-less ProvideValue — the loader's ResolveResourceKey → ResolveNestedExtension shape — IS the key.
+    // Null for a nested BUILT-IN key (ResourceKeyArgExpr owns {x:Static}/{x:Type}; the rest stay fenced) or a
+    // custom extension CustomExtensionExpr itself fenced (its own specific Todo was emitted).
+    // {StaticResource} keys deliberately do NOT take this route: their key value must be KNOWN at compile time
+    // for the same-dict entry-var lookup, lexical shadowing, and the forward-key/deferred-dict guards to apply —
+    // a runtime-computed key cannot be proven not to hit an unreachable/deferred/forward scope.
+    private static string? CustomResourceKeyExpr(Context c, in ExtensionRecord ext)
+        => ext.PayloadIsParsedExtension &&
+           c.Doc.ParsedExtensions[ext.Payload] is { } node &&
+           !IsBuiltInNestedExtensionName(node.Name)
+            ? CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null)
+            : null;
 
     // A Style's BasedOn: a direct nested <Style> (built + referenced), or a {StaticResource key} resolving to a
     // same-dictionary keyed Style built before this use (the entry's var — its load-time snapshot; the key may be a
@@ -1718,19 +1754,21 @@ internal static class LoweringEmitter
         // CURG3001 note with a null placeholder so the emitted C# still compiles.
         if (obj.HasFlag(ObjectFlags.IsMarkupExtension))
         {
-            var expr = MarkupExtensionEntryExpr(c, in obj);
+            var expr = MarkupExtensionEntryExpr(c, in obj, out var reported);
             if (expr is null)
             {
                 // A standalone element-form <Binding>/<TemplateBinding> is input the LOADER hard-rejects
                 // (XamlObjectGraphBuilder.Assign Fatal) — the lowered build must fail as loudly, not ship a
-                // null placeholder the runtime would never have produced. Other extensions (custom, resource
-                // refs) are valid XAML with no standalone lowering yet — a warning-level gap.
+                // null placeholder the runtime would never have produced. A fenced CUSTOM extension already
+                // emitted its own specific Todo/Error (reported) — never stack a second, generic one on it. What
+                // genuinely remains unlowered here: {x:Reference}, and a *Resource whose key is
+                // forward/fenced or an unsupported nested form.
                 var extValue = ExtensionValueMember(c, in obj);
                 if (extValue.Kind == XamlValueKind.Extension &&
                     c.Doc.Extensions[extValue.ValueIndex].Kind is ExtensionKind.Binding or ExtensionKind.TemplateBinding)
                     c.Error("a standalone element-form <Binding>/<TemplateBinding> in a value position is invalid XAML (the runtime loader rejects it)");
-                else
-                    c.Todo("element-form markup extension in this position (custom/resource entry) not yet lowered");
+                else if (!reported)
+                    c.Todo("element-form {x:Reference} — or a *Resource entry with a forward/fenced or unsupported key — in this value position not yet lowered");
                 expr = "default(object)";
             }
 
@@ -2151,7 +2189,8 @@ internal static class LoweringEmitter
         {
             ref readonly var member = ref c.Doc.Members[m];
             // An init-only CLR member arrives as an attribute (Text/Folded), a property element (a single Object),
-            // or a markup extension ({StaticResource} — e.g. <SolidColorBrush Color="{StaticResource Accent}"/>).
+            // or a markup extension — {StaticResource} (e.g. <SolidColorBrush Color="{StaticResource Accent}"/>)
+            // or a CUSTOM extension (whose ProvideValue call is a pure expression, valid in the initializer).
             if (member.Kind is not (XamlValueKind.Text or XamlValueKind.Folded or XamlValueKind.Object or XamlValueKind.Extension))
                 continue;
 
@@ -2164,18 +2203,19 @@ internal static class LoweringEmitter
 
             // A property element builds its child subtree into a local FIRST (emitted before the enclosing
             // `new T { Member = <var> }` that references it); an attribute converts its literal/folded value inline;
-            // a {StaticResource} resolves to the entry var / an eager ResolveStatic, cast to the slot type.
+            // a {StaticResource} resolves to the entry var / an eager ResolveStatic, cast to the slot type; a
+            // custom extension's ProvideValue expression sits directly in the initializer.
             var expr = member.Kind switch
             {
                 XamlValueKind.Text => ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex]),
                 XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
                 XamlValueKind.Object => BuildInitOnlyObjectChild(c, member.ValueIndex, hasScope, dataType),
-                XamlValueKind.Extension => hasOwnResources ? null : InitOnlyStaticResourceExpr(c, in member, xm),
+                XamlValueKind.Extension => hasOwnResources ? null : InitOnlyExtensionExpr(c, in member, xm, scan, m),
                 _ => null,
             };
 
-            if (expr is null) // unresolved — let the member loop TODO it (don't skip)
-                continue;
+            if (expr is null) // unresolved — let the member loop TODO it (don't skip; a custom extension that
+                continue;     // fenced with its own Todo already added itself to Indices — consumed, not re-fenced)
 
             scan.Entries.Add($"{xm.Name} = {expr}");
             scan.Indices.Add(m);
@@ -2192,6 +2232,43 @@ internal static class LoweringEmitter
         var childVar = c.NextVar();
         EmitObject(c, childIndex, childVar, isRoot: false, hasScope, dataType);
         return childVar;
+    }
+
+    // An init-only CLR slot fed by an extension — the initializer-route dispatch. A CUSTOM extension lowers HERE
+    // (not the member loop's post-construction assign, which would be CS8852): CustomExtensionExpr is a pure
+    // expression, so it sits directly in the construction object initializer — `this`, __scope, and the enclosing
+    // dict locals it references are all in scope there. The loader sets this slot via reflection in Pass 2 with
+    // the constructed instance as the provide-value TargetObject; the initializer runs BEFORE the instance
+    // exists, so the services carry a null TargetObject (TargetProperty still carries the member's type) — the
+    // standalone-provide shape, the one unavoidable divergence of this route. Coerce/cast mirror
+    // EmitCustomExtension's CLR arms. A custom extension CustomExtensionExpr FENCED (its own specific Todo) is
+    // marked consumed — skipped by the member loop — so the failure surfaces as ONE CURG3001, not that Todo plus
+    // the loop's generic init-only fence. Everything else delegates to the {StaticResource} route.
+    private static string? InitOnlyExtensionExpr(Context c, in MemberRecord member, XamlMember xm, InitOnlyScan scan, int memberIndex)
+    {
+        if (c.Doc.Extensions[member.ValueIndex] is not { Kind: ExtensionKind.Custom } ext)
+            return InitOnlyStaticResourceExpr(c, in member, xm);
+
+        if (c.Doc.ParsedExtensions[ext.Payload] is not { } node)
+            return null;
+
+        var valueType = ValueTypeSymbol(xm.ValueType);
+        var targetPropExpr = valueType is { } vt ? $"typeof({Global(vt)})" : "null";
+        if (CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: targetPropExpr) is not { } provideValue)
+        {
+            scan.Indices.Add(memberIndex); // fenced with its own specific Todo — never double-fence in the loop
+            return null;
+        }
+
+        // A string ProvideValue result destined for a typed (non-string/object) slot runs the converter ladder
+        // (the loader's AssignResolvedValue twin), and the initializer entry casts the object? expression to the
+        // concrete slot type — exactly EmitCustomExtension's CLR-assignment rules.
+        var value = valueType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_String) }
+            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType)}))"
+            : provideValue;
+        return valueType is { SpecialType: not SpecialType.System_Object } ct
+            ? $"({Global(ct)}){value}!"
+            : value;
     }
 
     // An init-only CLR slot fed by a {StaticResource} (e.g. <SolidColorBrush Color="{StaticResource Accent}"/>): the
@@ -2420,12 +2497,15 @@ internal static class LoweringEmitter
 
     /// <summary>
     /// The C# value expression for an element-form markup extension used as a dictionary/collection ENTRY
-    /// (resource aliasing): a folded constant, or a <c>DynamicResource</c> carrier
-    /// (<c>new ResourceReference(key)</c>). Null when the extension has no standalone lowering yet (a
-    /// StaticResource/Binding/custom entry), which the caller degrades to a CURG3001 note.
+    /// (resource aliasing): a folded constant, a custom extension's standalone ProvideValue, a
+    /// <c>DynamicResource</c> carrier (<c>new ResourceReference(key)</c>), or a resolvable
+    /// <c>StaticResource</c>. Null when the extension has no standalone lowering here; <paramref name="reported"/>
+    /// is true when the failure ALREADY emitted its own specific Todo/Error (a fenced custom extension), so the
+    /// caller must not add a second, generic CURG3001 over it.
     /// </summary>
-    private static string? MarkupExtensionEntryExpr(Context c, in ObjectRecord extObject)
+    private static string? MarkupExtensionEntryExpr(Context c, in ObjectRecord extObject, out bool reported)
     {
+        reported = false;
         var value = ExtensionValueMember(c, in extObject);
         if (value.Kind == XamlValueKind.Folded)
             return FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]);
@@ -2433,14 +2513,19 @@ internal static class LoweringEmitter
         ref readonly var ext = ref c.Doc.Extensions[value.ValueIndex];
 
         // A custom extension standalone (a dictionary/collection entry) provides its value with a null target —
-        // the loader's ProvideStandaloneCustomValue shape.
+        // the loader's ProvideStandaloneCustomValue shape. On failure CustomExtensionExpr emits its own specific
+        // Todo/Error naming the actual problem — flag it so the caller doesn't double-report generically.
         if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } node)
-            return CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null);
+        {
+            var custom = CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null);
+            reported = custom is null;
+            return custom;
+        }
 
         // Reuse the same *Resource value lowering the curly Setter.Value form uses: a DynamicResource
-        // carrier (literal OR a nested {x:Static}/{x:Type} key — the common theme-key alias), and a
-        // same-dictionary StaticResource (the already-built entry's var). Binding/TemplateBinding
-        // have no standalone value expression and return null (the caller degrades to CURG3001).
+        // carrier (literal OR a nested {x:Static}/{x:Type}/custom key — the common theme-key alias), and a
+        // same-dictionary/external StaticResource. Binding/TemplateBinding/{x:Reference} and a forward-or-fenced
+        // resource key have no standalone value expression and return null (the caller degrades to CURG3001).
         return ResourceValueExpr(c, in ext);
     }
 
@@ -2520,8 +2605,19 @@ internal static class LoweringEmitter
             : ValueTypeSymbol(xm.ValueType) is { } vt ? $"typeof({Global(vt)})"
             : "null";
 
+        // An init-only / read-only CLR member can't be assigned post-construction (CS8852/CS0200 — non-compiling
+        // generated code, the same fence every sibling assign path carries). A non-root init-only slot normally
+        // never reaches here — ScanInitOnlyMembers routes it into the construction object initializer — so this
+        // catches the un-routable cases: the root (`this`, already constructed) and an object whose own
+        // <X.Resources> shadow-guards the initializer route.
+        if (owner is null && ClrSetBlocked(c, xm.Name))
+        {
+            c.Todo($"custom markup extension target '{xm.Name}' is init-only/read-only — can't be assigned post-construction (set on the root, or an own-Resources scope blocks the initializer route)");
+            return;
+        }
+
         if (CustomExtensionExpr(c, node, varExpr, targetPropExpr) is not { } provideValue)
-            return; // a specific TODO was emitted
+            return; // a specific Todo/Error was emitted
 
         // A string ProvideValue result destined for a typed (non-string/object) slot runs the converter ladder
         // — the loader's AssignResolvedValue (X121). A no-op for object/string targets, so only wrapped when
@@ -2541,14 +2637,17 @@ internal static class LoweringEmitter
     }
 
     // Builds `new FooExtension { named/positional args }.ProvideValue(new LoweredExtensionServices(…))` for a
-    // custom extension node, or null (a specific TODO was emitted). targetObjectExpr/targetPropertyExpr are null
-    // for a standalone entry (the loader's ProvideStandaloneCustomValue passes a null target).
+    // custom extension node, or null (a specific Todo — or, for input the loader hard-rejects, an error-level
+    // marker — was emitted). targetObjectExpr/targetPropertyExpr are null for a standalone entry (the loader's
+    // ProvideStandaloneCustomValue passes a null target).
     private static string? CustomExtensionExpr(Context c, MarkupExtensionNode node, string? targetObjectExpr, string? targetPropertyExpr)
     {
         var extType = ResolveCustomExtensionType(c, node);
         if (extType is null || !DerivesFromMarkupExtension(extType))
         {
-            c.Todo($"custom markup extension '{node.Name}' could not be resolved to a MarkupExtension type");
+            // Input the LOADER hard-rejects (ResolveExtensionType Fatal: TypeNotFound) — error-level, so the
+            // lowered build fails the way the loader does instead of warn-and-skipping an invalid document.
+            c.Error($"custom markup extension '{node.Name}' does not resolve to a MarkupExtension type (the runtime loader rejects it)");
             return null;
         }
 
@@ -2566,26 +2665,30 @@ internal static class LoweringEmitter
         var inits = new List<string>();
 
         // Positional args → writable public properties by the WPF [ConstructorArgument] convention (the only
-        // ordering that lowers PARITY-safe; declaration order is not guaranteed to match reflection's, so an
-        // unannotated positional extension fences rather than risk a wrong mapping).
+        // GENERAL ordering that lowers PARITY-safe; declaration order is not guaranteed to match reflection's,
+        // so an unannotated positional extension fences rather than risk a wrong mapping — except the provably
+        // order-irrelevant subset: one positional, one candidate property (SinglePositionalFallback).
         if (node.PositionalArguments.Count > 0)
         {
-            var order = ConstructorArgumentOrder(extType, node.PositionalArguments.Count);
+            var order = ConstructorArgumentOrder(extType, node.PositionalArguments.Count)
+                        ?? SinglePositionalFallback(extType, node.PositionalArguments.Count);
             if (order is null)
             {
-                c.Todo($"custom markup extension '{node.Name}' has positional args without the [ConstructorArgument] convention — not yet lowered");
+                c.Todo($"custom markup extension '{node.Name}' has positional args without the [ConstructorArgument] convention — not yet lowered (annotate each ctor parameter's matching property with [ConstructorArgument(\"paramName\")] so both lanes map positionals identically)");
                 return null;
             }
             for (int i = 0; i < order.Length; i++)
             {
                 if (!IsInitializerSettable(order[i]))
                 {
-                    c.Todo($"custom markup extension '{node.Name}' positional arg {i} targets a read-only member — not lowered");
+                    // A get-only property / readonly field has no setter in EITHER lane (CS0200/CS0191 here; the
+                    // loader's Assign raises its hard "no setter" diagnostic) — error-level for lane parity.
+                    c.Error($"custom markup extension '{node.Name}' positional arg {i} targets a read-only member (the runtime loader rejects it: no setter)");
                     return null;
                 }
                 if (CustomExtensionArgValue(c, node.PositionalArguments[i], XamlDataTypeScope.MemberType(order[i])) is not { } v)
                 {
-                    c.Todo($"custom markup extension '{node.Name}' positional arg {i} value not lowerable");
+                    FenceUnlowerableArgValue(c, node, $"positional arg {i}", node.PositionalArguments[i]);
                     return null;
                 }
                 inits.Add($"{order[i].Name} = {v}");
@@ -2602,14 +2705,15 @@ internal static class LoweringEmitter
             }
             if (!IsInitializerSettable(memberSym))
             {
-                // A get-only property / readonly field can't be set in the object initializer (CS0200/CS0191);
-                // the loader raises a clean "no setter" diagnostic — fence rather than emit non-compiling C#.
-                c.Todo($"custom markup extension '{node.Name}' arg '{named.Name}' targets a read-only member — not lowered");
+                // A get-only property / readonly field can't be set in the object initializer (CS0200/CS0191),
+                // AND the loader's Assign raises its hard "no setter" diagnostic on the identical document —
+                // error-level, so the lowered build fails the way the loader does.
+                c.Error($"custom markup extension '{node.Name}' arg '{named.Name}' targets a read-only member (the runtime loader rejects it: no setter)");
                 return null;
             }
             if (CustomExtensionArgValue(c, named.Value, XamlDataTypeScope.MemberType(memberSym)) is not { } v)
             {
-                c.Todo($"custom markup extension '{node.Name}' arg '{named.Name}' value not lowerable");
+                FenceUnlowerableArgValue(c, node, $"arg '{named.Name}'", named.Value);
                 return null;
             }
             inits.Add($"{named.Name} = {v}");
@@ -2639,8 +2743,9 @@ internal static class LoweringEmitter
         return $"{ctor}.ProvideValue({services})";
     }
 
-    // A custom-extension argument value as a C# expression: a nested {x:Static}/{x:Type}/{x:Null}/same-dict
-    // {StaticResource}, or a text value converted to the member type (the converter ladder). Null = not lowerable.
+    // A custom-extension argument value as a C# expression: a nested {x:Static}/{x:Type}/{x:Null}/{StaticResource},
+    // a nested CUSTOM extension (recursive composition — the runtime's ResolveNestedExtension default arm), or a
+    // text value converted to the member type (the converter ladder). Null = not lowerable.
     private static string? CustomExtensionArgValue(Context c, MarkupExtensionArgumentValue arg, ITypeSymbol? memberType)
     {
         if (arg.IsNested)
@@ -2664,6 +2769,28 @@ internal static class LoweringEmitter
                 if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyExpr) is { } resolve)
                     return memberType is { SpecialType: not SpecialType.System_Object } ? $"({Global(memberType)}){resolve}!" : resolve;
             }
+
+            // A nested CUSTOM extension COMPOSES recursively: since the runtime's nested-custom parity pass
+            // (7bdf71e1), ResolveNestedExtension's default arm is ProvideStandaloneCustomValue — an eager
+            // target-less ProvideValue, exactly the standalone shape CustomExtensionExpr emits — so recursion
+            // reproduces the loader bit-for-bit. Only a genuinely NON-built-in name recurses: a built-in that
+            // fell through its own arm above (a fenced/forward {StaticResource}, a live/deferred
+            // {Binding}/{DynamicResource}/…) must not chase a phantom '<Name>Extension' type — it stays
+            // declined and the caller fences with its accurate message.
+            if (!IsBuiltInNestedExtensionName(nested.Name) &&
+                CustomExtensionExpr(c, nested, targetObjectExpr: null, targetPropertyExpr: null) is { } customValue)
+            {
+                // Mirror EmitCustomExtension's Coerce/cast rules for the typed member slot: a string result runs
+                // the converter ladder at runtime (Coerce — the loader's AssignResolvedValue twin), and the
+                // object?-typed expression casts to the concrete member type (string included — object? → string
+                // is not implicit). An object/untyped slot takes the raw provide-value expression.
+                if (memberType is null || memberType.SpecialType is SpecialType.System_Object)
+                    return customValue;
+                if (memberType.SpecialType is SpecialType.System_String)
+                    return $"(string){customValue}!";
+                return $"({Global(memberType)})global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({customValue}, typeof({Global(memberType)}))!";
+            }
+
             return null; // {Binding} / nested-key {StaticResource} / a forward-or-unreachable key — no value here
         }
 
@@ -2677,6 +2804,37 @@ internal static class LoweringEmitter
 
         c.UsesConverter = true;
         return $"({Global(memberType)})__ConvertXamlValue(typeof({Global(memberType)}), \"{Escape(text)}\")!";
+    }
+
+    // The nested-position BUILT-IN extension name set (the frontend's ClassifyExtension names plus the bare
+    // aliases the emitter's own nested arms accept). Nested argument nodes carry no ExtensionKind, so custom-lane
+    // guards check the NAME: a built-in that fell through its own arm (a fenced/forward {StaticResource}, a
+    // live/deferred {Binding}/{DynamicResource}/…) must never reach CustomExtensionExpr, which would chase a
+    // phantom '<Name>Extension' type and emit a misleading "could not be resolved" Todo.
+    private static bool IsBuiltInNestedExtensionName(string name)
+        => name is "x:Null" or "Null" or "x:Static" or "Static" or "x:Type" or "Type"
+            or "StaticResource" or "DynamicResource" or "Binding" or "TemplateBinding"
+            or "x:Reference" or "Reference";
+
+    // The nested names the LOADER hard-rejects as extension-argument values (ResolveNestedExtension Fatal):
+    // {Binding}/{DynamicResource}/{TemplateBinding}/{x:Reference} each produce a LIVE or DEFERRED result (a
+    // binding, a resource producer, a template pull, a namescope reference) rather than a plain value, so no
+    // eager argument value exists in EITHER lane. Returns the name (for the diagnostic), else null.
+    private static string? LiveNestedArgName(MarkupExtensionArgumentValue arg)
+        => arg.IsNested && arg.Nested!.Name is "Binding" or "DynamicResource" or "TemplateBinding" or "Reference" or "x:Reference"
+               ? arg.Nested.Name
+               : null;
+
+    // A custom-extension argument value CustomExtensionArgValue declined. A nested live/deferred extension is
+    // input the runtime loader Fatals on — error-level for lane parity (the lowered build must fail as loudly).
+    // Everything else (a fenced/forward {StaticResource} key, an unresolvable nested value) is a genuine
+    // lowering gap over possibly-valid input: warning-level Todo.
+    private static void FenceUnlowerableArgValue(Context c, MarkupExtensionNode node, string argLabel, MarkupExtensionArgumentValue arg)
+    {
+        if (LiveNestedArgName(arg) is { } live)
+            c.Error($"custom markup extension '{node.Name}' {argLabel} nests {{{live}}}, which produces a live/deferred value and cannot be a nested extension argument (the runtime loader rejects it)");
+        else
+            c.Todo($"custom markup extension '{node.Name}' {argLabel} value not lowerable");
     }
 
     // Resolves a custom extension's type symbol (mirrors the loader's ResolveExtensionType): the name binds
@@ -2752,6 +2910,35 @@ internal static class LoweringEmitter
         return result;
     }
 
+    // The provably-safe UNANNOTATED positional subset: ONE positional arg and EXACTLY ONE candidate property
+    // on the whole extension — with a single candidate, the loader's reflection-declaration-order fallback
+    // (ApplyPositionalArguments) and this mapping agree trivially, so the ordering hazard that fences the
+    // general unannotated case vanishes. The candidate count mirrors the loader's GetProperties(Public|Instance)
+    // + CanWrite walk: public instance PROPERTIES with any setter (fields never participate — the loader's
+    // fallback walks properties and [ConstructorArgument] is property-only), an override/shadow counted once.
+    // The single candidate must also be an initializer-settable non-indexer here, else the fence stays.
+    private static ISymbol[]? SinglePositionalFallback(INamedTypeSymbol extType, int count)
+    {
+        if (count != 1)
+            return null;
+
+        IPropertySymbol? single = null;
+        HashSet<string>? seen = null;
+        for (INamedTypeSymbol? t = extType; t is not null && t.SpecialType != SpecialType.System_Object; t = t.BaseType)
+            foreach (var member in t.GetMembers())
+            {
+                if (member is not IPropertySymbol { IsStatic: false, DeclaredAccessibility: Accessibility.Public, SetMethod: not null } prop)
+                    continue;
+                if (!(seen ??= new HashSet<string>()).Add(prop.Name))
+                    continue; // an override/shadow of a base property — one reflection slot, counted once
+                if (single is not null)
+                    return null; // two candidates — the mapping is order-dependent again
+                single = prop;
+            }
+
+        return single is { IsIndexer: false } p && IsInitializerSettable(p) ? new ISymbol[] { p } : null;
+    }
+
     // {x:Reference Name} → a deferred assignment from the ACTIVE name scope, emitted after every x:Name in
     // that scope is registered so a forward reference resolves: the document scope at end-of-
     // InitializeComponent, or — inside a template factory — the per-build template scope flushed before the
@@ -2777,7 +2964,8 @@ internal static class LoweringEmitter
     // producer that re-resolves against the element's ancestor chain on attach (no eager-resolution timing
     // problem — works inline AND inside templates). Requires a registered NON-DIRECT styled property target — a
     // StyledProperty<T> or its AttachedProperty<T> subclass (the loader's IsDirect:false gate); only a DIRECT
-    // property is rejected. A literal / {x:Static} key (a nested-extension key is deferred to a later cut).
+    // property is rejected. The key: a literal, a nested {x:Static}/{x:Type}, or a nested CUSTOM extension
+    // (eager target-less ProvideValue — the key is an opaque object to SetResourceReference).
     private static void EmitDynamicResource(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext)
     {
         if (!XamlDataTypeScope.IsUIElement(c.CurrentObjectType))
@@ -2792,8 +2980,10 @@ internal static class LoweringEmitter
             return;
         }
 
-        // The key: a literal string, or a nested {x:Static} member (SetResourceReference's key param is object).
-        if (ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
+        // The key: a literal string, a nested {x:Static}/{x:Type} member, or a nested CUSTOM extension providing
+        // the key object eagerly (SetResourceReference's key param is object — the value is opaque to lowering,
+        // matching the loader's ResolveResourceKey → ResolveNestedExtension).
+        if ((ResourceKeyArgExpr(c, in ext) ?? CustomResourceKeyExpr(c, in ext)) is not { } keyExpr)
         {
             c.Todo($"{{DynamicResource}} with an unsupported markup-extension key for '{xm.Name}' not yet lowered");
             return;
@@ -2994,9 +3184,15 @@ internal static class LoweringEmitter
             reason = "it has an explicit Source/ElementName/RelativeSource (not DataContext-relative)";
             return false;
         }
-        if (HasNamed(node, "Converter") || HasNamed(node, "StringFormat") || HasNamed(node, "FallbackValue"))
+
+        // A PRESENT Converter this position can't lower (a fenced/forward resource, an unresolvable static, a
+        // fenced custom extension) must DECLINE the whole compiled lane — installing a CompiledBinding with the
+        // converter silently dropped would change conversion semantics. The reflective lane shares ConverterInit
+        // and owns the accurate CURG3001 fence. ("" = no Converter named — filtered out of the inits below.)
+        var converterInit = ConverterInit(c, node);
+        if (converterInit is null)
         {
-            reason = "it has a Converter/StringFormat/FallbackValue";
+            reason = "its Converter is not lowerable in this position";
             return false;
         }
 
@@ -3004,11 +3200,20 @@ internal static class LoweringEmitter
         if (string.IsNullOrEmpty(path) || path == ".")
             return false; // a whole-DataContext binding has no compiled leaf — not an actionable info (reason stays null)
 
-        // Indexers / method calls never compile here (the engine supports constant-index hops, but the generator's
-        // path-walk is member-access only) — they stay reflective.
-        if (path!.IndexOf('[') >= 0 || path.IndexOf('(') >= 0)
+        // Indexers never compile here (the engine supports constant-index hops, but the generator's path-walk
+        // is member-access only) — they stay reflective.
+        if (path!.IndexOf('[') >= 0)
         {
-            reason = "its path uses an indexer or a method call";
+            reason = "its path uses an indexer";
+            return false;
+        }
+
+        // Parentheses are NOT method calls (binding paths have none — BindingPath's grammar is
+        // `step := identifier | '(' Type '.' identifier ')'`): they are TYPE-QUALIFIED segments, lowered
+        // below as cast-qualified member hops. Only a malformed paren form declines here.
+        if (!TryParsePathHops(path, out var hops))
+        {
+            reason = "its path is not a member-access chain this lane can parse";
             return false;
         }
 
@@ -3018,15 +3223,19 @@ internal static class LoweringEmitter
             return false;
         }
 
-        // Walk the (single- or multi-hop) dotted path against the x:DataType, threading the running owner type.
+        // Walk the (single- or multi-hop) path against the x:DataType, threading the running owner type.
         // Every hop must be a readable INSTANCE property/field (a static-named hop can't be `prev.Member`, CS0176);
-        // an intermediate must be a named type to continue the walk.
-        var hops = path.Split('.');
-        var owners = new INamedTypeSymbol[hops.Length]; // the type each hop is accessed ON
-        var types = new ITypeSymbol[hops.Length];       // each hop's value type
+        // an intermediate must be a named type to continue the walk. A type-qualified hop `(Type.Member)` resolves
+        // its member ON the qualifier type and lowers as an `as`-cast access — mirroring the runtime's
+        // qualified-CLR lane (AccessorCache.ResolvePropertyCore: parse-time PropertyInfo guarded by
+        // declaring-type compatibility, else by-name on the runtime type; an incompatible instance degrades
+        // gracefully — here, the `as` yields null and the null-safe chain reads default(leaf)).
+        var owners = new INamedTypeSymbol[hops.Count]; // the type each hop is accessed ON
+        var types = new ITypeSymbol[hops.Count];       // each hop's value type
+        var qualified = new bool[hops.Count];          // hop is a `(Type.Member)` cast-qualified access
         var leafWritable = false;
         var current = dataType;
-        for (int h = 0; h < hops.Length; h++)
+        for (int h = 0; h < hops.Count; h++)
         {
             // A member accessed ON a Nullable<T> (the path walks through .Value/.HasValue) isn't compiled: the
             // typed whole-chain read would NRE on a null intermediate, and the per-hop `is T? __t` step pattern
@@ -3037,19 +3246,60 @@ internal static class LoweringEmitter
                 return false;
             }
 
-            if (XamlDataTypeScope.FindMember(current, hops[h]) is not { IsStatic: false } member ||
+            var accessOn = current;
+            if (hops[h].Qualifier is { } qualifierToken)
+            {
+                if (XamlDataTypeScope.ResolveToken(c.Doc, qualifierToken, c.Resolver) is not { } qualifierType)
+                {
+                    reason = $"a type-qualified segment's type '{qualifierToken}' does not resolve";
+                    return false;
+                }
+                // The runtime prefers a registered UIProperty for a qualified member on a UIObject instance
+                // (UIPropertyAccessor — observer-based change tracking the compiled step model does not
+                // reproduce); those stay reflective, accurately named.
+                if (DerivesFromUIObject(qualifierType))
+                {
+                    reason = "a type-qualified segment targets a UIObject owner (UIProperty hops are not compiled)";
+                    return false;
+                }
+                if (!qualifierType.IsReferenceType)
+                {
+                    reason = "a type-qualified segment's type is not a reference type";
+                    return false;
+                }
+                var prevIsReference = h == 0 ? dataType.IsReferenceType : types[h - 1].IsReferenceType;
+                if (!prevIsReference)
+                {
+                    reason = "a type-qualified segment follows a value-typed hop";
+                    return false;
+                }
+                // Unrelated types can never match at runtime — the `as` would be null always; the runtime's
+                // by-name fallback could still bind a same-named property, so leave that to the reflective lane.
+                if (!AreRelatedTypes(current, qualifierType))
+                {
+                    reason = $"a type-qualified segment's type '{qualifierToken}' is unrelated to the hop's static type";
+                    return false;
+                }
+                accessOn = qualifierType;
+                qualified[h] = true;
+            }
+
+            if (XamlDataTypeScope.FindMember(accessOn, hops[h].Member) is not { IsStatic: false } member ||
                 !XamlDataTypeScope.IsReadable(member) ||
                 XamlDataTypeScope.MemberType(member) is not { } hopType)
             {
                 // A not-found member is the path validator's CURG2001 (don't also raise the "works-but-reflective"
                 // CURG2002); a static / write-only member won't resolve through an instance DataContext either, so
-                // no "It works" info — leave reason null. The reflective fallback still emits a (possibly inert) binding.
+                // no "It works" info — leave reason null. The reflective fallback still emits a (possibly inert)
+                // binding. A qualified miss names itself: the validator skips paren paths, so CURG2001 never fires.
+                if (hops[h].Qualifier is { } q)
+                    reason = $"the type-qualified member '{hops[h].Member}' was not found on '{q}'";
                 return false;
             }
 
-            owners[h] = current;
+            owners[h] = accessOn;
             types[h] = hopType;
-            if (h == hops.Length - 1)
+            if (h == hops.Count - 1)
                 leafWritable = XamlDataTypeScope.IsWritable(member);
             else if (hopType is INamedTypeSymbol named)
                 current = named;
@@ -3060,7 +3310,7 @@ internal static class LoweringEmitter
             }
         }
 
-        var leafType = types[hops.Length - 1];
+        var leafType = types[hops.Count - 1];
         string data = Global(dataType);
         string value = Global(leafType);
 
@@ -3068,51 +3318,164 @@ internal static class LoweringEmitter
         // default(leaf), never an NRE. The pinned full-lowering compiled-multi-hop null semantics (B188) — safer
         // than Binding.Compiled's path.Compile() (which throws on a null intermediate); it matches the reflective
         // lane for the non-null reads B156 pins (a null intermediate is default(leaf) here vs the reflective
-        // UnsetValue — the documented, opt-in-via-full-lowering difference).
+        // UnsetValue — the documented, opt-in-via-full-lowering difference). That difference now
+        // EXTENDS to Converter/StringFormat/FallbackValue on multi-hop chains: the reflective lane's
+        // mid-chain UnsetValue short-circuits BEFORE the converter and applies FallbackValue, while the
+        // compiled default(TValue) flows THROUGH the converter and FallbackValue never triggers mid-chain
+        // (root-null and source-type-mismatch still honor it). Same opt-in, same rationale.
         // Member-access positions @-escape a hop that collides with a C# reserved keyword (a member name on a
         // VB/F# VM can be `event`/`class`/…); the CompiledPathStep string label stays the raw name (the runtime
         // resolves by name).
-        var chain = new StringBuilder("__s");
+        var chain = "__s";
         var conditional = false;
-        for (int h = 0; h < hops.Length; h++)
+        for (int h = 0; h < hops.Count; h++)
         {
-            var accessor = h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".");
-            if (accessor == "?.") conditional = true;
-            chain.Append(accessor).Append(EscapeId(hops[h]));
+            if (qualified[h])
+            {
+                // A qualified hop reads through an `as`-cast: an incompatible runtime instance yields null and
+                // the conditional chain reads default(leaf) — the compiled analog of the runtime's graceful
+                // degrade. The paren wraps only the receiver; later plain hops continue the conditional access.
+                chain = $"({chain} as {Global(owners[h])})?.{EscapeId(hops[h].Member)}";
+                conditional = true;
+            }
+            else
+            {
+                var accessor = h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".");
+                if (accessor == "?.") conditional = true;
+                chain += accessor + EscapeId(hops[h].Member);
+            }
         }
         var getter = conditional ? $"static __s => ({chain}) ?? default({value})" : $"static __s => {chain}";
 
         // One CompiledPathStep per hop — an object-typed reader for INPC/INCC subscription rewiring (null-safe; the
         // typed Getter does the value read). The reader casts to the type the hop is accessed on.
-        var steps = new List<string>(hops.Length);
-        for (int h = 0; h < hops.Length; h++)
-            steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h])}\", " +
-                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{EscapeId(hops[h])} : null)");
+        var steps = new List<string>(hops.Count);
+        for (int h = 0; h < hops.Count; h++)
+            steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h].Member)}\", " +
+                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{EscapeId(hops[h].Member)} : null)");
 
         // Setter (TwoWay) — only when the leaf is writable AND its owner is a reference type (writing through a
         // value-typed owner mutates a copy ⇒ a no-op, so degrade to OneWay/null, matching the reflective lane —
         // B152). Multi-hop is null-guarded (a broken chain is a no-op write).
         var setter = "null";
-        if (leafWritable && owners[hops.Length - 1].IsReferenceType)
+        if (leafWritable && owners[hops.Count - 1].IsReferenceType)
         {
-            if (hops.Length == 1)
+            var last = hops.Count - 1;
+            // A qualified LEAF writes through the qualifier type: the `is QT __o` pattern both null-guards the
+            // chain and casts the receiver, so an incompatible instance is a no-op write (runtime parity).
+            var leafPattern = qualified[last] ? Global(owners[last]) : "{ }";
+            if (hops.Count == 1)
             {
-                setter = $"static (__s, __v) => __s.{EscapeId(hops[0])} = __v";
+                setter = qualified[0]
+                    ? $"static (__s, __v) => {{ if (__s is {Global(owners[0])} __o) __o.{EscapeId(hops[0].Member)} = __v; }}"
+                    : $"static (__s, __v) => __s.{EscapeId(hops[0].Member)} = __v";
             }
             else
             {
-                var ownerChain = new StringBuilder("__s");
-                for (int h = 0; h < hops.Length - 1; h++)
-                    ownerChain.Append(h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")).Append(EscapeId(hops[h]));
-                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {{ }} __o) __o.{EscapeId(hops[hops.Length - 1])} = __v; }}";
+                var ownerChain = "__s";
+                for (int h = 0; h < last; h++)
+                {
+                    if (qualified[h])
+                        ownerChain = $"({ownerChain} as {Global(owners[h])})?.{EscapeId(hops[h].Member)}";
+                    else
+                        ownerChain += (h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")) + EscapeId(hops[h].Member);
+                }
+                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(hops[last].Member)} = __v; }}";
             }
         }
+
+        var inits = new List<string>(ModeInit(modeName))
+                    {
+                        converterInit, // non-null — a null (present-but-unlowerable) declined the lane above
+                        StringInit("StringFormat", NamedText(node, "StringFormat")),
+                        StringInit("FallbackValue", NamedText(node, "FallbackValue"))
+                    };
 
         c.Line(
             $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
             $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
-            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(ModeInit(modeName))});");
+            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(inits)});");
+
         return true;
+    }
+
+    /// <summary>One hop of a compilable binding path: a plain member, or a type-qualified member
+    /// (<c>(Type.Member)</c>) whose owner resolves at generation time.</summary>
+    private readonly record struct PathHop(string Member, string? Qualifier);
+
+    // Parses BindingPath's step grammar (`step := identifier | '(' Type '.' identifier ')'`, '.'-joined) into
+    // hops. The qualifier is everything before the LAST dot inside the parens (`(t:Grid.Row)` → "t:Grid" + "Row";
+    // dotted CLR names work the same way). Indexers are rejected by the caller before this runs. Returns false
+    // for malformed input — the caller degrades to the reflective lane, whose runtime parser owns the real error.
+    private static bool TryParsePathHops(string path, out List<PathHop> hops)
+    {
+        hops = new List<PathHop>();
+        int i = 0;
+        while (i < path.Length)
+        {
+            if (hops.Count > 0)
+            {
+                if (path[i] != '.')
+                    return false;
+                i++;
+            }
+
+            if (i < path.Length && path[i] == '(')
+            {
+                int close = path.IndexOf(')', i + 1);
+                if (close < 0)
+                    return false;
+                var inner = path.Substring(i + 1, close - i - 1);
+                int lastDot = inner.LastIndexOf('.');
+                if (lastDot <= 0 || lastDot == inner.Length - 1)
+                    return false;
+                var qualifier = inner.Substring(0, lastDot).Trim();
+                var member = inner.Substring(lastDot + 1).Trim();
+                if (qualifier.Length == 0 || member.Length == 0)
+                    return false;
+                hops.Add(new PathHop(member, qualifier));
+                i = close + 1;
+            }
+            else
+            {
+                int j = i;
+                while (j < path.Length && path[j] is not ('.' or '(' or ')'))
+                    j++;
+                if (j == i || (j < path.Length && path[j] is '(' or ')'))
+                    return false; // empty hop, or a paren spliced mid-identifier
+                hops.Add(new PathHop(path.Substring(i, j - i).Trim(), null));
+                i = j;
+            }
+        }
+
+        return hops.Count > 0;
+    }
+
+    // Identity or an inheritance/interface relationship in either direction. An UPCAST qualifier (base or
+    // interface of the hop's static type) always matches at runtime; a DOWNCAST qualifier matches conditionally —
+    // both lower to the same `as`-cast, whose null degrades through the conditional chain. Unrelated types can
+    // never match and stay reflective (the runtime's by-name fallback could still bind a same-named member).
+    private static bool AreRelatedTypes(ITypeSymbol a, ITypeSymbol b)
+        => SymbolEqualityComparer.Default.Equals(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);
+
+    private static bool IsAssignableTo(ITypeSymbol target, ITypeSymbol from)
+    {
+        for (var t = from; t is not null; t = t.BaseType)
+            if (SymbolEqualityComparer.Default.Equals(t, target))
+                return true;
+        if (target.TypeKind == TypeKind.Interface)
+            foreach (var i in from.AllInterfaces)
+                if (SymbolEqualityComparer.Default.Equals(i, target))
+                    return true;
+        return false;
+    }
+
+    private static bool DerivesFromUIObject(ITypeSymbol type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+            if (t.ToDisplayString() == "Cursorial.UI.UIObject")
+                return true;
+        return false;
     }
 
     // The reflective fallback (B3b) — a faithful `new Binding(path) { … }` mirroring the runtime handler's
@@ -3184,7 +3547,7 @@ internal static class LoweringEmitter
 
         if (ConverterInit(c, node) is not { } converterInit)
         {
-            c.Todo($"{{Binding}} Converter {diagName} is not a same-dictionary {{StaticResource}} / {{x:Static}} (cross-dict / custom not yet lowered)");
+            c.Todo($"{{Binding}} Converter {diagName} could not be lowered in this position (fenced/forward resource, unresolvable static, or a fenced custom extension)");
             return null;
         }
 
@@ -3247,6 +3610,14 @@ internal static class LoweringEmitter
         if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key &&
             ResolveVisibleResourceVar(c, $"\"{Escape(key)}\"", out _) is { } srcVar)
             return srcVar;
+
+        // A CUSTOM extension as the Source — eager target-less ProvideValue, the runtime's
+        // ResolveNestedExtension default arm. Built-ins that fell through above stay declined.
+        if (nested.Name is not ("x:Null" or "Null" or "x:Static" or "Static" or "x:Type" or "Type"
+                or "StaticResource" or "DynamicResource" or "Binding" or "TemplateBinding"
+                or "x:Reference" or "Reference") &&
+            CustomExtensionExpr(c, nested, targetObjectExpr: null, targetPropertyExpr: null) is { } customSource)
+            return customSource;
 
         return null;
     }
@@ -3460,33 +3831,48 @@ internal static class LoweringEmitter
 
     // {Binding Converter={StaticResource Conv}} → the same-dictionary converter resource's built var; {Binding
     // Converter={x:Static M}} → the static converter instance. Empty when there's no Converter; null (bail to the
-    // reflective fallback) for any other Converter form (cross-dictionary {StaticResource}, a custom extension).
+    // reflective fallback) for a Converter form it cannot lower HERE (fenced/forward {StaticResource},
+    // unresolvable {x:Static}); a CUSTOM extension converter lowers via ProvideValue + RequireConverter.
     private static string? ConverterInit(Context c, MarkupExtensionNode node)
     {
         if (node.FindNamed("Converter") is not { } arg)
             return string.Empty;
 
-        if (arg.IsNested && arg.Nested is { } inner &&
-            inner.PositionalArguments.Count > 0 && inner.PositionalArguments[0].Text is { } first)
+        if (arg.IsNested && arg.Nested is {} inner)
         {
-            // {StaticResource Key} — a converter resource. A same-dictionary visible entry → its var; an
-            // external key → an eager ResolveStatic (cast to IValueConverter). The loader's ResolveConverter
-            // resolves the same nested {StaticResource}. A forward intra-document / in-template key falls
-            // through (the caller degrades to the reflective binding lane).
-            if (inner.Name is "StaticResource")
+            if (inner.PositionalArguments.Count > 0 && inner.PositionalArguments[0].Text is { } first)
             {
-                var keyExpr = $"\"{Escape(first)}\""; // a plain-string key is its own canonical identity
-                if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
-                    return $"Converter = {srcVar}";
-                if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyExpr) is { } resolve)
-                    // RequireConverter (not a bare cast): a null/non-converter resource must throw like the
-                    // loader's ResolveConverter, never a silent null converter binding unconverted.
-                    return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({resolve}, {keyExpr})";
+                // {StaticResource Key} — a converter resource. A same-dictionary visible entry → its var; an
+                // external key → an eager ResolveStatic (cast to IValueConverter). The loader's ResolveConverter
+                // resolves the same nested {StaticResource}. A forward intra-document / in-template key falls
+                // through (the caller degrades to the reflective binding lane).
+                if (inner.Name is "StaticResource")
+                {
+                    var keyExpr = $"\"{Escape(first)}\""; // a plain-string key is its own canonical identity
+                    if (ResolveVisibleResourceVar(c, keyExpr, out var fenceRequired) is { } srcVar)
+                        return $"Converter = {srcVar}";
+                    if (!fenceRequired && ExternalStaticResolveExpr(c, keyExpr, keyExpr) is { } resolve)
+                        // RequireConverter (not a bare cast): a null/non-converter resource must throw like the
+                        // loader's ResolveConverter, never a silent null converter binding unconverted.
+                        return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({resolve}, {keyExpr})";
+                }
+
+                // {x:Static Member} — the static converter instance.
+                if (inner.Name is "x:Static" or "Static" && ResolveStaticPath(c, first) is { } expr)
+                    return $"Converter = {expr}";
             }
 
-            // {x:Static Member} — the static converter instance.
-            if (inner.Name is "x:Static" or "Static" && ResolveStaticPath(c, first) is { } expr)
-                return $"Converter = {expr}";
+            // Only a genuinely CUSTOM nested extension reaches the ProvideValue lane. A built-in that
+            // fell through above (a fenced/forward {StaticResource}, an unresolvable {x:Static}) must
+            // decline to the reflective lane with the caller's accurate reason — not chase a phantom
+            // 'StaticResourceExtension' type; live/deferred forms ({Binding}/{DynamicResource}/
+            // {TemplateBinding}/{x:Reference}) can never be converters (the loader Fatals on them).
+            if (inner.Name is "x:Null" or "Null" or "x:Static" or "Static" or "x:Type" or "StaticResource"
+                or "DynamicResource" or "Binding" or "TemplateBinding" or "x:Reference" or "Reference")
+                return null;
+
+            if (CustomExtensionExpr(c, inner, null, null) is {} customExpr)
+                return $"Converter = global::Cursorial.UI.ResourceScopes.RequireConverter({customExpr}, \"Converter\")";
         }
 
         return null;

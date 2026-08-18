@@ -31,8 +31,9 @@
              with NO runtime XAML loader at all. (The X4.6 generated-provider path still routes through the runtime
              loader, whose generic-collection-add / reflective-binding / value-conversion reflection is NOT behind
              the metadata-provider feature switch — so it is not fully trim-clean. Full lowering avoids the loader
-             entirely.) The view here is literal-only (no bindings/converters), so the lowered code touches only
-             Cursorial.UI construction. -->
+             entirely.) The view here carries a COMPILED {Binding} (x:DataType-typed, zero-reflection
+             CompiledBinding install) alongside literal construction, and remains the strict gate: the lowered
+             code must stay IL2026/IL3050-clean. -->
         <CursorialXamlLowering>full</CursorialXamlLowering>
         <!-- Lowering never runtime-loads the .xaml, so don't embed it. -->
         <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>

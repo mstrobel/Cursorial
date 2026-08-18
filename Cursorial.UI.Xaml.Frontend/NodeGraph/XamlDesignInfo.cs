@@ -11,11 +11,13 @@ namespace Cursorial.UI.Xaml;
 /// </summary>
 public sealed class XamlDesignInfo
 {
-    internal XamlDesignInfo(int? designWidth, int? designHeight, XamlType? dataContextType)
+    internal XamlDesignInfo(int? designWidth, int? designHeight, XamlType? dataContextType,
+                            XamlDocument? dataContextContent = null)
     {
         DesignWidth = designWidth;
         DesignHeight = designHeight;
         DataContextType = dataContextType;
+        DataContextContent = dataContextContent;
     }
 
     /// <summary>The preview surface width in cells (<c>d:DesignWidth</c>), when declared.</summary>
@@ -30,4 +32,12 @@ public sealed class XamlDesignInfo
     /// Roslyn provider it exists symbolically (build-time validation without executing user code).
     /// </summary>
     public XamlType? DataContextType { get; }
+
+    /// <summary>
+    /// The element-form design data context (<c>&lt;d:Owner.DataContext&gt;</c> on the root): its single
+    /// object child, parsed as a DETACHED fragment document — never part of the runtime graph. A designer
+    /// host materializes it with the ordinary loader (<c>XamlLoader.Load(document)</c>) and assigns the
+    /// instance as the preview's DataContext. When both forms are declared, the element form wins.
+    /// </summary>
+    public XamlDocument?  DataContextContent { get; }
 }

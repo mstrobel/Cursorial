@@ -34,6 +34,23 @@ public sealed class XamlSchemaContext
     private readonly Dictionary<string, List<string>> _namespaceMap = new(StringComparer.Ordinal);
     private readonly List<Assembly> _defaultAssemblies;
     private readonly List<Assembly> _additionalAssemblies = [];
+    private readonly List<string> _probePaths = [];
+    // Resolver/probe hits keyed by the REQUESTED simple name: a resolver may map an alias to an
+    // assembly whose real simple name differs, which the registered-by-name fast path can never
+    // match — without this cache such a hit would re-consult the resolver on every lookup.
+    private readonly Dictionary<string, Assembly> _resolvedByRequestedName = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A resolution hook consulted for an <c>assembly=</c> simple name that is neither registered nor
+    /// found on a probe path — BEFORE the <see cref="Assembly.Load(string)"/> fallback. A design-time
+    /// host (the Rider previewer) sets this to load the target project's output through its OWN
+    /// <see cref="System.Runtime.Loader.AssemblyLoadContext"/> (typically collectible, so a rebuild can
+    /// reload), resolving the project's local assemblies itself and letting <c>Cursorial.*</c> fall
+    /// through to the host's loaded copies so type identity unifies. A resolved assembly is registered,
+    /// so subsequent lookups (and its <c>[assembly: XmlnsDefinition]</c> declarations) hit the fast path.
+    /// Return <see langword="null"/> to decline.
+    /// </summary>
+    public Func<string, Assembly?>? AssemblyResolver { get; set; }
 
     /// <summary>The process-wide default context (the Cursorial UI/Controls/Data map).</summary>
     public static XamlSchemaContext Default { get; } = new();
@@ -54,6 +71,9 @@ public sealed class XamlSchemaContext
             typeof(Drawing.Media.Pen).Assembly,             // Cursorial.Drawing (Drawing.Media)
             typeof(MarkupExtension).Assembly                // Cursorial.UI.Xaml — only its Markup namespace ({Icon …})
         ];
+
+        if (GetType() is { Assembly.Location: { Length: > 0 } location } && Path.GetDirectoryName(location) is {} path)
+            AddProbePath(path);
 
         foreach (var assembly in _defaultAssemblies)
             DiscoverNamespaces(assembly, _namespaceMap);
@@ -128,6 +148,25 @@ public sealed class XamlSchemaContext
     {
         ArgumentNullException.ThrowIfNull(typeInAssembly);
         RegisterAssembly(typeInAssembly.Assembly);
+    }
+
+    /// <summary>
+    /// Adds a directory probed for <c>&lt;simple-name&gt;.dll</c> / <c>.exe</c> when an <c>assembly=</c>
+    /// name is not already registered (and before the <see cref="Assembly.Load(string)"/> fallback, which
+    /// only sees the host's own load context — a design-time host's base directory, never the target
+    /// project's bin). A probed file loads into the DEFAULT load context for the process lifetime — the
+    /// right tool for tools and one-shot hosts; a designer that reloads on rebuild should use
+    /// <see cref="AssemblyResolver"/> with a collectible context instead.
+    /// </summary>
+    public void AddProbePath(string directory)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(directory);
+        var full = Path.GetFullPath(directory);
+        lock (_gate)
+        {
+            if (!_probePaths.Contains(full, StringComparer.Ordinal))
+                _probePaths.Add(full);
+        }
     }
 
     /// <summary>
@@ -304,6 +343,39 @@ public sealed class XamlSchemaContext
         if (match is not null)
             return [match];
 
+        lock (_gate)
+        {
+            if (_resolvedByRequestedName.TryGetValue(assemblyName, out var cached))
+                return [cached];
+        }
+
+        // Design-time seams, in order of control: the host's resolver hook (its own load context, its own
+        // identity rules), then the registered probe directories. Both run OUTSIDE the gate — arbitrary
+        // user code and file IO have no business under the registration monitor — and a hit is registered
+        // (its [assembly: XmlnsDefinition] declarations join the map) AND cached under the requested name,
+        // which may be an alias the assembly's real simple name would never match.
+        if (AssemblyResolver is { } resolver && SafeResolve(resolver, assemblyName) is { } resolved)
+        {
+            RegisterAssembly(resolved);
+            lock (_gate)
+                _resolvedByRequestedName[assemblyName] = resolved;
+            return [resolved];
+        }
+
+        string[] probeSnapshot;
+        lock (_gate)
+            probeSnapshot = [.. _probePaths];
+        foreach (var directory in probeSnapshot)
+        {
+            if (TryLoadFromDirectory(directory, assemblyName) is { } probed)
+            {
+                RegisterAssembly(probed);
+                lock (_gate)
+                    _resolvedByRequestedName[assemblyName] = probed;
+                return [probed];
+            }
+        }
+
         // Try to load the named assembly by simple name from the load context.
         try
         {
@@ -313,6 +385,38 @@ public sealed class XamlSchemaContext
         {
             return AllAssemblies();
         }
+    }
+
+    private static Assembly? SafeResolve(Func<string, Assembly?> resolver, string assemblyName)
+    {
+        try
+        {
+            return resolver(assemblyName);
+        }
+        catch
+        {
+            return null; // a faulting resolver declines; the probe/Load ladder still runs
+        }
+    }
+
+    private static Assembly? TryLoadFromDirectory(string directory, string assemblyName)
+    {
+        foreach (var extension in (ReadOnlySpan<string>)["dll", "exe"])
+        {
+            var candidate = Path.Combine(directory, $"{assemblyName}.{extension}");
+            if (!File.Exists(candidate))
+                continue;
+            try
+            {
+                return System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(candidate);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or BadImageFormatException or FileLoadException)
+            {
+                // fall through to the next candidate / the Assembly.Load ladder
+            }
+        }
+
+        return null;
     }
 
     private static IEnumerable<Type> SafeGetExportedTypes(Assembly assembly)

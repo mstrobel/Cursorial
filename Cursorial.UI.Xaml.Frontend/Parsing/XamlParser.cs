@@ -37,16 +37,24 @@ internal sealed class XamlParser
     private int? _designWidth;
     private int? _designHeight;
     private XamlType? _designDataContextType;
+    private XamlDocument? _designDataContextContent;
 
     // The lexical Style.TargetType stack: a Style pushes its resolved target type before its body is
     // walked so an enclosed Setter can resolve Property/Value against it (matrix X64/X66).
     private readonly Stack<XamlType?> _styleTargetStack = new();
 
-    private XamlParser(XmlReader reader, XamlParseOptions options, Uri? source)
+    // Fragment mode (a design-data subtree re-parsed through XmlReader.ReadSubtree): the subtree
+    // reader SYNTHESIZES in-scope xmlns declarations lazily — a prefix first used on a NESTED
+    // element gets its declaration emitted there, which the top-level-only policy (CUR2004) would
+    // reject even though no user wrote it. Fragment parsing records such declarations instead.
+    private readonly bool _isFragment;
+
+    private XamlParser(XmlReader reader, XamlParseOptions options, Uri? source, bool isFragment = false)
     {
         _reader = reader;
         _lineInfo = reader as IXmlLineInfo ?? throw new InvalidOperationException("XmlReader must implement IXmlLineInfo.");
         _options = options;
+        _isFragment = isFragment;
         _builder = new XamlDocumentBuilder(options.DiagnosticMode, source);
     }
 
@@ -137,7 +145,85 @@ internal sealed class XamlParser
         return _builder.Build(
             _rootType,
             _rootClassName,
-            _hasDesignInfo ? new XamlDesignInfo(_designWidth, _designHeight, _designDataContextType) : null);
+            _hasDesignInfo
+                ? new XamlDesignInfo(_designWidth, _designHeight, _designDataContextType, _designDataContextContent)
+                : null);
+    }
+
+    /// <summary>
+    /// Captures a ROOT-level <c>&lt;d:Owner.DataContext&gt;</c> property element: its single object child
+    /// parses as a DETACHED fragment document (the subtree reader keeps the ancestor xmlns scope), so
+    /// design data never enters the runtime graph, the loader, or the lowering generator — a designer
+    /// host materializes the fragment with the ordinary <c>XamlLoader.Load(document)</c> path. All
+    /// failure modes are soft warnings (design data must never break a parse), matching
+    /// <see cref="CaptureDesignAttribute"/>.
+    /// </summary>
+    private void CaptureDesignDataContextElement(int line, int column)
+    {
+        if (_reader.IsEmptyElement)
+        {
+            _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                             "d:DataContext (element form) needs a single object element child; the empty element is ignored.",
+                             line, column);
+            return;
+        }
+
+        XamlDocument? fragment = null;
+        var sawChild = false;
+        int propertyDepth = _reader.Depth;
+        while (_reader.Read() && _reader.Depth > propertyDepth)
+        {
+            if (_reader.NodeType != XmlNodeType.Element)
+                continue;
+
+            if (sawChild)
+            {
+                _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                                 "d:DataContext (element form) takes a single object element; additional elements are ignored.",
+                                 _lineInfo.LineNumber, CurrentElementColumn());
+                SkipCurrentSubtree();
+                continue;
+            }
+
+            sawChild = true;
+            try
+            {
+                // The fragment ALWAYS parses in CollectAll mode, whatever the outer parse uses: an
+                // unresolvable design-time type under ThrowOnFirstError would otherwise throw
+                // XamlParseException THROUGH the main parse — design data must never break a document.
+                // The fragment's own Diagnostics carry any misses for the designer host to surface.
+                var fragmentOptions = new XamlParseOptions
+                {
+                    MetadataProvider = _options.MetadataProvider,
+                    DiagnosticMode = XamlDiagnosticMode.CollectAll,
+                    FoldConstants = _options.FoldConstants,
+                    ConverterCulture = _options.ConverterCulture,
+                };
+                using var subtree = _reader.ReadSubtree();
+                fragment = new XamlParser(subtree, fragmentOptions, _builder.Source, isFragment: true).Run();
+            }
+            catch (Exception)
+            {
+                fragment = null; // whatever went wrong, the design lane degrades to a warning below
+            }
+        }
+
+        if (fragment is { HasObjects: true })
+        {
+            if (_designDataContextType is not null)
+                _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                                 "Both the d:DataContext attribute and element form are declared; the element form wins.",
+                                 line, column);
+
+            _hasDesignInfo = true;
+            _designDataContextContent = fragment;
+        }
+        else
+        {
+            _builder.Warning(XamlDiagnosticCodes.DesignValueInvalid,
+                             "d:DataContext (element form) did not yield a loadable object; the design-time data context is ignored.",
+                             line, column);
+        }
     }
 
     /// <summary>
@@ -369,7 +455,8 @@ internal sealed class XamlParser
                              members,
                              inDeferred: parentInDeferred || contentDefers,
                              inResourceDictionary: isResourceDictionary && !contentDefers,
-                             ownerObjectIndex: objectIndex);
+                             ownerObjectIndex: objectIndex,
+                             isRoot: isRoot);
         }
 
         if (pushedStyleTarget)
@@ -432,7 +519,9 @@ internal sealed class XamlParser
 
                 if (attrPrefix == "xmlns" || (attrPrefix.Length == 0 && attrLocal == "xmlns"))
                 {
-                    if (!isRoot)
+                    if (_isFragment)
+                        _builder.AddNamespaceDeclaration(attrPrefix == "xmlns" ? attrLocal : string.Empty, value);
+                    else if (!isRoot)
                         _builder.Error(XamlDiagnosticCodes.NamespaceNotOnRoot,
                                        "xmlns declarations are only allowed on the root element.", attrLine, attrColumn);
                     continue;
@@ -608,8 +697,10 @@ internal sealed class XamlParser
             // (Avalonia parity) that keeps the table unambiguous.
             if (attrPrefix == "xmlns" || (attrPrefix.Length == 0 && attrLocal == "xmlns"))
             {
-                if (isRoot)
+                if (isRoot || _isFragment)
                 {
+                    // Fragment mode records non-root declarations too: the subtree reader synthesizes
+                    // in-scope declarations lazily onto the first element that USES a prefix.
                     _builder.AddNamespaceDeclaration(attrPrefix == "xmlns" ? attrLocal : string.Empty, value);
                 }
                 else
@@ -1448,7 +1539,8 @@ internal sealed class XamlParser
         List<MemberRecord> members,
         bool inDeferred,
         bool inResourceDictionary,
-        int ownerObjectIndex)
+        int ownerObjectIndex,
+        bool isRoot = false)
     {
         var textBuffer = new StringBuilder();
         var contentChildren = new List<int>();
@@ -1471,9 +1563,29 @@ internal sealed class XamlParser
                     int elemLineInfo = LineInfo.Pack(elemLine, elemColumn);
 
                     // Design-time or mc:Ignorable-marked child elements are designer data, not
-                    // content — skip the whole subtree without disturbing the sibling walk.
-                    if (XmlnsNamespaces.IsDesignTime(elemNs) ||
-                        (_ignorableNamespaces is { } ignorableNs && ignorableNs.Contains(elemNs)))
+                    // content — skip the whole subtree without disturbing the sibling walk. The one
+                    // designer-data form the parser DOES capture: a ROOT-level property element whose
+                    // member is DataContext (`<d:Owner.DataContext>`) — its single object child parses
+                    // as a detached fragment document for XamlDesignInfo (never entering this graph).
+                    if (XmlnsNamespaces.IsDesignTime(elemNs))
+                    {
+                        // Both spellings capture: the property-element form (<d:Owner.DataContext>) and the
+                        // bare directive form (<d:DataContext>) — designers write either.
+                        int designDot = elemLocal.IndexOf('.');
+                        bool isDataContext = designDot > 0
+                            ? string.Equals(elemLocal.Substring(designDot + 1), "DataContext", StringComparison.Ordinal)
+                            : string.Equals(elemLocal, "DataContext", StringComparison.Ordinal);
+                        if (isRoot && isDataContext)
+                        {
+                            CaptureDesignDataContextElement(elemLine, elemColumn);
+                            continue;
+                        }
+
+                        SkipCurrentSubtree();
+                        continue;
+                    }
+
+                    if (_ignorableNamespaces is { } ignorableNs && ignorableNs.Contains(elemNs))
                     {
                         SkipCurrentSubtree();
                         continue;
@@ -1845,6 +1957,13 @@ internal sealed class XamlParser
             return null;
         }
 
+        // Stamp resolved namespaces NOW — end-of-object still has the reader's live xmlns scope, and
+        // the build-time resolvers (loader and generator alike) re-resolve prefixed extension names
+        // ({g:Custom}, a prefixed nested converter) off the stamp; without it a prefixed name falls
+        // back to the default UI xmlns and fails resolution. The eager attribute path stamps at
+        // classification; this deferred path must do the same.
+        StampResolvedNamespaces(node);
+
         // The rewritten member keeps the original Setter.Value MemberId (Name "Value").
         var kind = ClassifyExtension(node.Name);
 
@@ -1895,6 +2014,17 @@ internal sealed class XamlParser
             {
                 int c = _builder.AddConstant(null);
                 return new MemberRecord(valueMemberId, XamlValueKind.Folded, c, 0, LineInfo.Pack(line, column));
+            }
+
+            case ExtensionKind.Custom:
+            {
+                // A CUSTOM extension setter value rides through structurally (the Binding precedent):
+                // both build lanes provide it eagerly and target-less — the loader's BuildSetter Custom
+                // arm and the lowered SetterExtensionValueExpr Custom arm. (Retires the v1 restriction.)
+                int customExt = _builder.AddExtension(
+                    new ExtensionRecord(kind, _builder.AddParsedExtension(node), LineInfo.Pack(node.Line, node.Column)));
+
+                return new MemberRecord(valueMemberId, XamlValueKind.Extension, customExt, 0, LineInfo.Pack(line, column));
             }
 
             default:

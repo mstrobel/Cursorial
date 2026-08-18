@@ -1,6 +1,12 @@
 <StackPanel xmlns="https://cursorial.dev/ui"
             xmlns:x="https://cursorial.dev/xaml"
-            x:Class="Cursorial.Demo.XamlAotStrict.StrictView">
-    <Button x:Name="Ok" Content="Strict AOT"/>
-    <TextBlock x:Name="Label" Text="loaded via the generated provider"/>
+            xmlns:d="https://cursorial.dev/xaml/design"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            xmlns:l="clr-namespace:Cursorial.Demo.XamlAotStrict;assembly=cursorial-strict"
+            mc:Ignorable="d"
+            x:Class="Cursorial.Demo.XamlAotStrict.StrictView"
+            d:DataContext="l:StrictViewModel"
+            x:DataType="l:StrictViewModel">
+  <Button x:Name="Ok" Content="Strict AOT"/>
+  <TextBlock x:Name="Label" Text="{Binding Path=Text}"/>
 </StackPanel>

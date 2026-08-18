@@ -1607,6 +1607,12 @@ internal sealed class XamlObjectGraphBuilder
                         // styling engine installs it per element from StyleRuleFrame.OnInstalled.
                         else if (ext.Kind == ExtensionKind.Binding)
                             value = _extensionHandler.BuildBindingDescriptor(this, _doc.ParsedExtensions[ext.Payload]!, line, column);
+                        // A CUSTOM extension provides its value eagerly and target-less (the standalone
+                        // dictionary-entry / DataCondition precedent): the Setter is construction-immutable
+                        // and one value serves every match. Previously this fell through to a silent
+                        // valueless setter — the v1 restriction retired with the lowered lane's lift.
+                        else if (ext.Kind == ExtensionKind.Custom && _doc.ParsedExtensions[ext.Payload] is { } customNode)
+                            value = _extensionHandler.ProvideStandaloneCustomValue(this, customNode, line, column);
                         break;
                     }
                 }

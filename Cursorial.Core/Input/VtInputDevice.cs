@@ -33,9 +33,12 @@ namespace Cursorial.Input;
 /// an idle pump parks on the pipe read alone and never wakes on the quiet window.
 /// </para>
 /// <para>
-/// <b>Single-shot.</b> The device is single-shot: <see cref="ReadAllAsync"/> may be called
-/// once. A second call throws <see cref="InvalidOperationException"/>; calling after disposal
-/// throws <see cref="ObjectDisposedException"/>.
+/// <b>One enumerator at a time.</b> <see cref="ReadAllAsync"/> supports SEQUENTIAL re-enumeration
+/// (a pipeline host runs several applications over one session — the previous enumeration must have
+/// completed or been disposed); the interior pump and channel persist across enumerations, so events
+/// arriving between consumers buffer for the next one. A CONCURRENT second call throws
+/// <see cref="InvalidOperationException"/>; calling after disposal throws
+/// <see cref="ObjectDisposedException"/>.
 /// </para>
 /// </remarks>
 public sealed class VtInputDevice : IAsyncInputDevice
@@ -169,14 +172,23 @@ public sealed class VtInputDevice : IAsyncInputDevice
         if (Interlocked.Exchange(ref _enumerationStarted, 1) != 0)
         {
             throw new InvalidOperationException(
-                "ReadAllAsync was already called on this device. " +
-                "VtInputDevice is single-shot; create a new instance to re-enumerate.");
+                "ReadAllAsync is already being enumerated on this device. Concurrent enumeration is not " +
+                "supported; sequential re-enumeration (after the previous enumerator completes) is.");
         }
 
-        EnsurePumpStarted();
+        try
+        {
+            EnsurePumpStarted();
 
-        await foreach (var inputEvent in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            yield return inputEvent;
+            await foreach (var inputEvent in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                yield return inputEvent;
+        }
+        finally
+        {
+            // Sequential re-enumeration: the next consumer (a pipeline host's next application) takes
+            // over the same channel; events that arrived in between are waiting for it.
+            Volatile.Write(ref _enumerationStarted, 0);
+        }
     }
 
     /// <summary>

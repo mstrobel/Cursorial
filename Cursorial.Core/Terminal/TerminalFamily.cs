@@ -98,6 +98,12 @@ public enum TerminalFamily
     /// <summary>An all-in-one terminal and remote computing tool for Windows.</summary>
     MobaXTerm,
 
+    /// <summary>The classic built-in terminal emulator used by the JetBrains IntelliJ family of IDEs.</summary>
+    JetBrainsClassic,
+
+    /// <summary>The reworked built-in terminal emulator used by the JetBrains IntelliJ family of IDEs.</summary>
+    JetBrainsReworked,
+
     /// <summary>tmux, acting as a terminal multiplexer between the real terminal and the application.</summary>
     Tmux,
 

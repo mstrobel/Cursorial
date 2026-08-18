@@ -213,6 +213,107 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         }
     }
 
+    /// <summary>
+    /// Seed the negotiator from a previously negotiated capability snapshot, skipping the wire
+    /// handshake entirely — no identification probes (XTVERSION / CSI 16 t / CSI 18 t / DA1),
+    /// no DECRQM verification, no OSC color probes, and therefore no reads from the input
+    /// source at all. The opt-in <b>enable</b> sequences are still emitted: the applied set is
+    /// decided by the same pure <see cref="DecideOptIns"/> the full negotiation's opt-in round
+    /// uses (from <paramref name="options"/> + the snapshot's identification, family-gated
+    /// identically) and emitted by the same single producer (<see cref="EmitOptInEnables"/>),
+    /// so the bytes are identical to what a full negotiation would write in that round. The
+    /// applied set is recorded exactly as the full path records it, so
+    /// <see cref="RestoreAsync"/> / <see cref="BuildRestoreSequence"/> emit the matching
+    /// disables — signal-path restore parity is preserved unconditionally.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Counts as this instance's single negotiation: a subsequent <see cref="NegotiateAsync"/>
+    /// (or second <see cref="ApplyCachedAsync"/>) throws, and restore behaves exactly as after
+    /// a full negotiation.
+    /// </para>
+    /// <para>
+    /// The returned snapshot is <paramref name="cached"/> itself when opt-ins are allowed —
+    /// the caller vouches that the snapshot was captured under equivalent
+    /// <see cref="NegotiationOptions"/> (see
+    /// <see cref="TerminalSessionOptions.CachedCapabilities"/>). Under
+    /// <see cref="OptInPolicy.Ignored"/> nothing is applied, and the opt-in-derived capability
+    /// blocks are cleared from the returned snapshot (mirroring what a full negotiation under
+    /// <see cref="OptInPolicy.Ignored"/> reports) so the fast path never claims protocols it
+    /// did not enable.
+    /// </para>
+    /// <para>
+    /// One honest divergence from a full negotiation: the cold path's DECRQM verification can
+    /// drop an applied bit the terminal silently refused; the seeded path re-emits that enable
+    /// (the terminal ignores it again) and its matching disable at restore (also ignored).
+    /// Bounded, harmless wire noise — never a state leak, because enable and disable always
+    /// travel as a pair.
+    /// </para>
+    /// </remarks>
+    public async Task<TerminalCapabilities> ApplyCachedAsync(
+        TerminalCapabilities cached,
+        NegotiationOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(cached);
+        ArgumentNullException.ThrowIfNull(options);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        if (Interlocked.Exchange(ref _negotiated, 1) != 0)
+        {
+            throw new InvalidOperationException(
+                "NegotiateAsync was already called on this instance. Negotiator instances are single-shot; " +
+                "create a new VtTerminalNegotiator for a fresh negotiation.");
+        }
+
+        var identification = cached.Terminal;
+
+        // Same family gate the probe path applies after identification (see NegotiateAsync).
+        _emitKittyExtraCursorClear = identification.Family is TerminalFamily.Kitty or TerminalFamily.Ghostty;
+
+        // Seed the shared mode bag's geometry from the snapshot — the probe path fills these
+        // from the CSI 16 t / CSI 18 t responses. Sizes may be stale relative to the live
+        // window (the snapshot is from an earlier run); the session's resize monitor and the
+        // first ResizeEvent correct them, exactly as they would after a mid-run resize.
+        var window = cached.Output.Window;
+        _mode.CellPixelWidth = window.CellPixelWidth;
+        _mode.CellPixelHeight = window.CellPixelHeight;
+        _mode.TextAreaColumns = window.TextAreaColumns;
+        _mode.TextAreaRows = window.TextAreaRows;
+
+        if (options.OptIns != OptInPolicy.Allowed)
+        {
+            // Nothing applied — report it that way. Mirrors what a full negotiation under
+            // OptInPolicy.Ignored resolves: opt-in-derived input capabilities and output
+            // protocol enables cleared, family-gated passive bits (clipboard, passthrough,
+            // pointer-shape) retained.
+            var none = default(AppliedOptIns);
+            return cached with
+            {
+                Input = ResolveInputCapabilities(identification, in none),
+                Output = cached.Output with { Protocol = ResolveOutputProtocol(identification, in none) },
+            };
+        }
+
+        // The opt-in round, verbatim: decide (pure, family-gated), emit via the shared
+        // single-producer, record for restore, reflect on the shared input-mode bag. This is
+        // ApplyOptInsAsync + ApplyToInputMode with the identification taken from the snapshot
+        // instead of a probe round.
+        var applied = DecideOptIns(options, identification);
+
+        EmitOptInEnables(in applied);
+
+        if (!applied.IsEmpty)
+        {
+            await _sink.Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        _applied = applied;
+        ApplyToInputMode(in applied);
+
+        return cached;
+    }
+
     public async Task RestoreAsync(CancellationToken cancellationToken = default)
     {
         // Idempotent and best-effort: a second call after a successful restore is a no-op,
@@ -1357,6 +1458,17 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (rawTermProgram is { Length: > 0 } && ClassifyByName(rawTermProgram) is var family and not TerminalFamily.Unknown)
             return family;
 
+        // Check IDE-embedded terminals first, because they may have been launched from a terminal and
+        // therefore carry its env identifiers.
+        if (environment.GetVariable("TERMINAL_EMULATOR") is "JetBrains-JediTerm")
+            return TerminalFamily.JetBrainsClassic;
+
+        if (environment.GetVariable("INTELLIJ_TERMINAL_COMMAND_BLOCKS_REWORKED") is not null)
+            return TerminalFamily.JetBrainsReworked;
+
+        if (environment.GetVariable("VSCODE_PID") is { Length: > 0 } ||
+            environment.GetVariable("VSCODE_INJECTION") is { Length: > 0 }) return TerminalFamily.VisualStudioCode;
+
         // First chance rawTerm match (ignore common values like xterm, vt100, etc.)
         if (rawTerm is { Length: > 0 })
         {
@@ -1390,8 +1502,6 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         if (environment.GetVariable("ITERM_SESSION_ID") is { Length: > 0 }) return TerminalFamily.ITerm2;
         if (environment.GetVariable("TERMUX_VERSION") is { Length: > 0 }) return TerminalFamily.Termux;
         if (environment.GetVariable("ZELLIJ") is { Length: > 0 }) return TerminalFamily.Zellij;
-        if (environment.GetVariable("VSCODE_PID") is { Length: > 0 } ||
-            environment.GetVariable("VSCODE_INJECTION") is { Length: > 0 }) return TerminalFamily.VisualStudioCode;
         if (environment.GetVariable("WAVETERM") is { Length: > 0 } ||
             environment.GetVariable("WAVETERM_VERSION") is { Length: > 0 }) return TerminalFamily.WaveTerminal;
 
@@ -1492,7 +1602,29 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
         var graphics = ResolveGraphics(identification);
         var cursor = ResolveCursor(identification);
         var window = ResolveWindow(identification);
+        var protocol = ResolveOutputProtocol(identification, in applied);
 
+        return new OutputCapabilities(
+            Color: color,
+            Styling: styling,
+            TextSizing: textSizing,
+            Graphics: graphics,
+            Cursor: cursor,
+            Window: window,
+            Protocol: protocol);
+    }
+
+    /// <summary>
+    /// Resolve the output-protocol capability block from the identification and the applied
+    /// opt-in set. Pure. Factored out of <see cref="ResolveOutputCapabilities"/> so the
+    /// cache-seeded path (<see cref="ApplyCachedAsync"/>) can produce an honest protocol block
+    /// for an opt-in set that differs from the snapshot's (notably
+    /// <see cref="OptInPolicy.Ignored"/>, where nothing is applied at all).
+    /// </summary>
+    private static OutputProtocolCapabilities ResolveOutputProtocol(
+        TerminalIdentification identification,
+        in AppliedOptIns applied)
+    {
         // Tmux is the only multiplexer we wrap for today — its DCS passthrough envelope has a
         // well-defined wire format. screen has a similar mechanism (DCS through screen's own
         // multiplexer), but the syntax differs; deferred until someone needs it. Zellij is flagged
@@ -1502,7 +1634,7 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
                                       (identification.InsideMultiplexer &&
                                        identification.Family is not (TerminalFamily.GnuScreen or TerminalFamily.Zellij));
 
-        var protocol = new OutputProtocolCapabilities(
+        return new OutputProtocolCapabilities(
             BracketedPasteEnable: applied.BracketedPaste,
             FocusReportingEnable: applied.FocusEvents,
             SgrMouseEnable: applied.ExtendedMouseTracking,
@@ -1527,15 +1659,6 @@ public sealed class VtTerminalNegotiator : ITerminalNegotiator
             SynchronizedOutput: applied.SynchronizedOutput,
             MultiplexerPassthrough: multiplexerPassthrough,
             MouseCursorShape: TerminalSupportsMouseCursorShape(identification.Family));
-
-        return new OutputCapabilities(
-            Color: color,
-            Styling: styling,
-            TextSizing: textSizing,
-            Graphics: graphics,
-            Cursor: cursor,
-            Window: window,
-            Protocol: protocol);
     }
 
     /// <summary>

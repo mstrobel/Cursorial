@@ -274,6 +274,15 @@ public sealed class TerminalSession : IAsyncDisposable
                 // responses verbatim, so DA1 / XTVERSION / OSC color queries all work.
                 capabilities = BuildWindowsConsoleCapabilities();
             }
+            else if (options.CachedCapabilities is { } cached)
+            {
+                // Capability-cache seed (docs/cli-design.md §6, FW-1): skip the probe rounds
+                // entirely and apply the same opt-in enables the full negotiation's opt-in
+                // round would emit, recorded so restore emits the matching disables. See
+                // TerminalSessionOptions.CachedCapabilities for the caller contract.
+                capabilities = await negotiator.ApplyCachedAsync(cached, options.Negotiation, cancellationToken)
+                                               .ConfigureAwait(false);
+            }
             else
             {
                 capabilities = await negotiator.NegotiateAsync(options.Negotiation, cancellationToken)
@@ -457,6 +466,10 @@ public sealed class TerminalSession : IAsyncDisposable
                 // Build a fresh negotiator over the SAME source / sink / mode. The mode is a
                 // shared mutable bag that both the negotiator and the device's interpreter read
                 // — updates propagate to ongoing decoding once the device pump resumes.
+                // Deliberately a FULL re-probe even when the session was opened from a cached
+                // snapshot (TerminalSessionOptions.CachedCapabilities): renegotiation is a
+                // recovery path, and recovering from clobbered state with a cache replay would
+                // just replay whatever assumption already failed.
                 var newNegotiator = new VtTerminalNegotiator(_source, _output, _mode);
                 TerminalCapabilities newCapabilities;
                 try

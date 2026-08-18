@@ -116,6 +116,47 @@ public class VtInputDeviceTests
         // No hang — enumeration completes naturally without timeout.
     }
 
+    // ---- Sequential re-enumeration (the shared-session pipeline pattern) ----
+
+    [Fact]
+    public async Task SequentialReEnumeration_ContinuesAcrossConsumers()
+    {
+        await using var device = BuildDevice();
+
+        // Consumer 1 (pipeline step 1's pump): takes one event and unwinds.
+        _source.Enqueue("a");
+        var first = await CollectAsync(device, 1, TimeSpan.FromSeconds(2));
+        Assert.Equal("a", new string(((KeyEvent)Assert.Single(first)).Text.Span));
+
+        // Between consumers: input keeps flowing into the device's channel — it must buffer.
+        _source.Enqueue("b");
+
+        // Consumer 2 (step 2's pump): re-enumerates the SAME device and receives the buffered event.
+        var second = await CollectAsync(device, 1, TimeSpan.FromSeconds(2));
+        Assert.Equal("b", new string(((KeyEvent)Assert.Single(second)).Text.Span));
+    }
+
+    [Fact]
+    public async Task ConcurrentEnumeration_Throws()
+    {
+        await using var device = BuildDevice();
+
+        using var cts = new CancellationTokenSource();
+        var enumerator = device.ReadAllAsync(cts.Token).GetAsyncEnumerator(cts.Token);
+        var pending = enumerator.MoveNextAsync(); // parks on the empty channel, holding the enumeration
+        await Task.Delay(50);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in device.ReadAllAsync(CancellationToken.None))
+                break;
+        });
+
+        cts.Cancel();
+        try { await pending; } catch (OperationCanceledException) { }
+        await enumerator.DisposeAsync();
+    }
+
     // ---- Bare-ESC ambiguity ----
 
     [Fact]
@@ -235,8 +276,11 @@ public class VtInputDeviceTests
     // ---- Lifecycle ----
 
     [Fact]
-    public async Task ReadAllAsync_TwiceThrows()
+    public async Task ReadAllAsync_AfterCompletion_ReEnumeratesEmpty()
     {
+        // Sequential re-enumeration is legal (the shared-session pipeline pattern); after the source
+        // completed, a follow-up enumeration ends immediately and cleanly. Concurrent misuse is the
+        // case that throws — ConcurrentEnumeration_Throws pins it.
         _source.Enqueue("x");
         _source.CompleteWriter();
 
@@ -245,10 +289,9 @@ public class VtInputDeviceTests
         // Drain the first enumeration.
         await foreach (var _ in device.ReadAllAsync()) { }
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-        {
-            await foreach (var _ in device.ReadAllAsync()) { }
-        });
+        var again = 0;
+        await foreach (var _ in device.ReadAllAsync()) { again++; }
+        Assert.Equal(0, again);
     }
 
     [Fact]

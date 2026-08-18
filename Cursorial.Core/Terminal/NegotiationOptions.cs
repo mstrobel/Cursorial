@@ -44,6 +44,48 @@ public sealed record NegotiationOptions
     public static TimeSpan DefaultProbeTimeout { get; } = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
+    /// A curated low-latency profile for prompt-sized applications (FW-2, docs/cli-design.md
+    /// §6) — a short-lived inline prompt, confirm, or picker on a COLD run (no capability
+    /// cache). Relative to the defaults: every mouse mode is off and the Kitty keyboard push
+    /// is off; focus events, bracketed paste, Win32 input mode, and synchronized output stay
+    /// on per their individual flags (paste correctness and tear-free inline repaints matter
+    /// even for a one-line prompt, and none of them adds a probe round).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What it saves.</b> The opt-in enable round shrinks from up to six sequences to two
+    /// or three, the DECRQM verification batch shrinks to the modes actually applied
+    /// (1004 / 2004 / 2026 instead of also 1000 / 1002 / 1003 / 1006), and restore has
+    /// correspondingly fewer disables to emit — less wire traffic and less for a slow
+    /// terminal to chew on. Skipping mouse tracking also avoids the per-event decode cost of
+    /// motion reporting for apps that never consume it.
+    /// </para>
+    /// <para>
+    /// <b>What it does NOT save.</b> The probe ROUND count is unchanged — identification,
+    /// verification, and color probes still cost their sentinel round-trips (the color round
+    /// still runs because truecolor detection is the difference between a styled and an
+    /// unstyled prompt). The big cold-run lever is the capability cache
+    /// (<see cref="TerminalSessionOptions.CachedCapabilities"/>); this preset trims the cold
+    /// run the cache cannot avoid.
+    /// </para>
+    /// <para>
+    /// <b>Trade-offs.</b> No mouse interaction (no click-to-select, no wheel scroll in
+    /// lists) and no Kitty key-release / repeat fidelity (key-up gestures and repeat-aware
+    /// widgets degrade to plain key-downs). Prompt-sized commandlets accept both; full-screen
+    /// interactive applications should stay on the defaults.
+    /// </para>
+    /// </remarks>
+    public static NegotiationOptions MinimalPrompt { get; } = new()
+    {
+        EnableMouseButtons = false,
+        EnableMouseButtonTracking = false,
+        EnableMouseTracking = false,
+        EnableExtendedMouseTracking = false,
+        EnableSgrPixelsMouse = false,
+        EnableKittyKeyboard = false,
+    };
+
+    /// <summary>
     /// Master policy. When <see cref="OptInPolicy.Allowed"/> (the default), individual
     /// <c>Enable…</c> flags are honored. When <see cref="OptInPolicy.Ignored"/>, the negotiator
     /// probes for identification and passive capabilities only — no 'enable' sequences are

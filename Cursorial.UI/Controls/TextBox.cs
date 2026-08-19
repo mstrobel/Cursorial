@@ -110,6 +110,11 @@ public class TextBox : Control
     public static readonly StyledProperty<int> UndoLimitProperty =
         UIProperty.Register<TextBox, int>(nameof(UndoLimit), defaultValue: -1, changed: OnUndoLimitChanged);
 
+    /// <summary>The text cursor (caret) shape to display when focused.</summary>
+    public static readonly StyledProperty<CursorShape> CaretShapeProperty =
+        UIProperty.Register<TextBox, CursorShape>(nameof(CaretShape), defaultValue: CursorShape.BlinkingBar,
+                                                  changed: OnCaretShapeChanged);
+
     /// <summary>The bubbling event raised whenever <see cref="Text"/> changes.</summary>
     public static readonly RoutedEvent<RoutedEventArgs> TextChangedEvent =
         RoutedEvent<RoutedEventArgs>.Register(nameof(TextChanged), RoutingStrategy.Bubble, typeof(TextBox));
@@ -227,6 +232,9 @@ public class TextBox : Control
 
     /// <inheritdoc cref="UndoLimitProperty"/>
     public int UndoLimit { get => GetValue(UndoLimitProperty); set => SetValue(UndoLimitProperty, value); }
+
+    /// <inheritdoc cref="CaretShapeProperty"/>
+    public CursorShape CaretShape { get => GetValue(CaretShapeProperty); set => SetValue(CaretShapeProperty, value); }
 
     /// <summary>Whether edits are captured into the undo history. <see cref="PasswordBox"/> hard-overrides this to
     /// <see langword="false"/> (mirroring its Copy/Cut suppression) so no plaintext is ever retained, regardless of
@@ -1118,6 +1126,12 @@ public class TextBox : Control
             box.ClearUndoHistory(); // 0 = recording disabled
         else
             box.TrimUndoLimit();    // a tighter cap drops the oldest units now
+    }
+
+    private static void OnCaretShapeChanged(UIObject sender, CursorShape oldValue, CursorShape newValue)
+    {
+        if (sender is TextBox { _presenter: {} presenter })
+            presenter.RefreshCaretAndScroll();
     }
 
     private static void OnPlaceholderChanged(UIObject sender, string? oldValue, string? newValue)

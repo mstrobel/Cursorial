@@ -791,6 +791,7 @@ internal static class ControlThemes
         // that argument to protect and DOES light-dismiss, like every other chooser. What is set here is only the
         // initial value, and a custom template cannot accidentally settle the question either way.
         var popup = new Popup { Child = content, StaysOpen = true };
+        popup.SetBinding(Popup.ShadowProperty, new TemplateBinding(CompletionPopup.ShadowProperty));
         ctx.RegisterName("PART_Popup", popup);
 
         // The Popup adds no layout (0x0), so the control is a zero-size overlay anchor — but a Grid STRETCHES

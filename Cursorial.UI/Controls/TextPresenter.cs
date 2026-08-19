@@ -316,10 +316,12 @@ public sealed class TextPresenter : UIElement
         // and drops it on detach.
         int lineRows = LineRows;
         int localRow = localLine * lineRows + (lineRows - 1);
-        var visible = IsAttachedToTree && Owner is { IsFocused: true }
-            && localLine >= 0 && localRow < Math.Max(1, _viewportRows);
+
+        bool visible = IsAttachedToTree && Owner is { IsFocused: true } && localLine >= 0 &&
+                       localRow < Math.Max(1, _viewportRows);
+
         if (visible)
-            service.Publish(this, localColumn, localRow, CursorShape.BlinkingBar, rows: lineRows);
+            service.Publish(this, localColumn, localRow, Owner?.CaretShape ?? CursorShape.BlinkingBar, rows: lineRows);
         else
             service.Clear(this);
     }

@@ -1,0 +1,4 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui" xmlns:x="https://cursorial.dev/xaml"
+                    xmlns:input="using:Cursorial.UI.Input">
+
+</ResourceDictionary>

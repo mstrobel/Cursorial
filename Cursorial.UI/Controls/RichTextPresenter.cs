@@ -13,6 +13,7 @@ namespace Cursorial.UI.Controls;
 /// A primitive (design doc §12 / CD-P2L-1) that hosts <see cref="RichText"/>, painted via
 /// <see cref="RenderContext.DrawFormattedText(FormattedText, in Rect, in BrushedStyle)"/>.
 /// </summary>
+
 public sealed class RichTextPresenter : DrawnContentPresenter, ITrimmedTextSource
 {
     /// <summary>The <see cref="RichText">rich text</see> to render or <see cref="TextMarkup.Parse(string)">markup

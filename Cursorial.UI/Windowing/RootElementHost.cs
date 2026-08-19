@@ -115,7 +115,11 @@ public sealed class RootElementHost : UIElement
     {
         base.Render(context);
 
-        if (GetValue(BackgroundProperty) is not {} bg) return;
+        if (GetValue(BackgroundProperty) is not {} bg ||
+            UIApplication.Current is { ApplicationModel: ApplicationModel.Inline})
+        {
+            return;
+        }
 
         context.PaintRectangle(context.Bounds, BrushedStyle.Identity.WithBackground(bg), overwrite: false);
     }

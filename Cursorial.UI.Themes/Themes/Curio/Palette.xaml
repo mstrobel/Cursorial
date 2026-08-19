@@ -1,0 +1,26 @@
+<ResourceDictionary xmlns="https://cursorial.dev/ui"
+                    xmlns:x="https://cursorial.dev/xaml">
+
+  <ResourceDictionary.ThemeDictionaries>
+    <!-- ──────────────────────────── Dark · TrueColor (RGB, Tokyo Night) ──────────────────────────── -->
+    <ResourceDictionary x:Key="Dark+Truecolor"></ResourceDictionary>
+
+    <!-- ──────────────────────────── Light · TrueColor (RGB, Tokyo Night) ─────────────────────────── -->
+    <ResourceDictionary x:Key="Light+Truecolor"></ResourceDictionary>
+
+    <!-- ───────────────────────────── Dark · Ansi256 (RGB, Tokyo Night) ───────────────────────────── -->
+    <ResourceDictionary x:Key="Dark+Ansi256"></ResourceDictionary>
+
+    <!-- ───────────────────────────── Light · Ansi256 (RGB) ───────────────────────────── -->
+    <ResourceDictionary x:Key="Light+Ansi256"></ResourceDictionary>
+
+    <!-- ───────────────────────────── Dark · Ansi16 (palette indices) ───────────────────────────── -->
+    <ResourceDictionary x:Key="Dark+Ansi16"></ResourceDictionary>
+
+    <!-- ───────────────────────────── Light · Ansi16 (palette indices) ───────────────────────────── -->
+    <ResourceDictionary x:Key="Light+Ansi16"></ResourceDictionary>
+
+    <!-- ───────────────────────────── NoColor (every color role → Default; ASCII pens) ───────────────────────────── -->
+    <ResourceDictionary x:Key="NoColor"></ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

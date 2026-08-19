@@ -928,7 +928,7 @@ namespace TestApp
 
         // The multi-hop binding COMPILED (typed CompiledBinding over the OuterVm root) with a null-safe getter +
         // per-hop steps — not a reflective Binding, not a silent TODO.
-        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.OuterVm, string>", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.OuterVm, string?>", lowered);
         Assert.Contains("static __s => (__s.Inner?.Caption)", lowered);       // null-safe whole-chain getter
         Assert.Contains("new global::Cursorial.UI.Data.CompiledPathStep(\"Inner\"", lowered);  // per-hop step
         Assert.Contains("new global::Cursorial.UI.Data.CompiledPathStep(\"Caption\"", lowered);
@@ -952,6 +952,111 @@ namespace TestApp
         // INPC on the leaf hop (InnerVm.Caption) pushes through the compiled chain's per-hop subscription.
         caption.SetValue(inner, "Updated");
         Assert.Equal("Updated", label.Text);
+    }
+
+    [Fact] // NRT flow-through — an annotated leaf types TValue (`string?`), so the typed getter/setter lambdas
+    // compile CLEAN under the generated file's `#nullable enable` (the historic CS8603 on `string?` TwoWay).
+    public void Lowered_Binding_NullableLeaf_TypesTValueNullable_NoNullableWarnings()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.NrtView\" x:DataType=\"t:NrtVm\">" +
+            "<TextBox x:Name=\"Box\" Text=\"{Binding Note, Mode=TwoWay}\"/>" +
+            "</StackPanel>";
+        const string codeBehind = @"#nullable enable
+using System.ComponentModel;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class NrtVm : INotifyPropertyChanged
+    {
+        private string? _note;
+        public string? Note
+        {
+            get => _note;
+            set { _note = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Note))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public partial class NrtView : StackPanel { public NrtView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // TValue carries the leaf's own annotation; the natural-`?` setter writes plain `__v` (no forgiveness).
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.NrtVm, string?>", lowered);
+        Assert.Contains("static (__s, __v) => __s.Note = __v,", lowered); // expression-bodied: no forgiveness, no braces
+        Assert.DoesNotContain("__v!", lowered);
+
+        var loweredTree = CSharpSyntaxTree.ParseText(lowered);
+        var full = compilation.AddSyntaxTrees(loweredTree);
+        Assert.Empty(full.GetDiagnostics().Where(d => d.Location.SourceTree == loweredTree &&
+                                                      d.Id.StartsWith("CS86", StringComparison.Ordinal)));
+
+        var assembly = GeneratorHarness.EmitAndLoad(full);
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.NrtView")!)!;
+        var box = Assert.IsType<TextBox>(view.Children[0]);
+
+        var vm = Activator.CreateInstance(assembly.GetType("TestApp.NrtVm")!)!;
+        vm.GetType().GetProperty("Note")!.SetValue(vm, "hello");
+        view.DataContext = vm;
+        Assert.Equal("hello", box.Text); // the nullable-typed compiled lane still binds live
+    }
+
+    [Fact] // NRT forcing — a conditional chain's `?? default(TValue)` arm can read null for a NON-nullable
+    // leaf, so TValue gains a forced `?` (CS8603 otherwise) and the TwoWay setter forgives it back with
+    // `__v!` (the write is chain-guarded; pushing a target-produced null into a non-null leaf is the
+    // reflective lane's un-analyzable behavior too).
+    public void Lowered_Binding_ConditionalChain_ForcesNullableTValue_NoNullableWarnings()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.ForcedView\" x:DataType=\"t:ForcedVm\">" +
+            "<TextBox x:Name=\"Box\" Text=\"{Binding (t:ForcedVm.Caption), Mode=TwoWay}\"/>" + // qualified ⇒ conditional chain
+            "</StackPanel>";
+        const string codeBehind = @"#nullable enable
+using System.ComponentModel;
+using Cursorial.UI.Controls;
+namespace TestApp
+{
+    public sealed class ForcedVm : INotifyPropertyChanged
+    {
+        private string _caption = ""seed"";
+        public string Caption
+        {
+            get => _caption;
+            set { _caption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Caption))); }
+        }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    public partial class ForcedView : StackPanel { public ForcedView() => InitializeComponent(); }
+}";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = Lower(xaml, compilation);
+
+        // The leaf is `string`, but the as-cast chain made null reachable: TValue is FORCED nullable, the
+        // getter's default matches, and the setter carries the forgiveness.
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.ForcedVm, string?>", lowered);
+        Assert.Contains("?? default(string?)", lowered);
+        Assert.Contains("__o.Caption = __v!;", lowered);
+
+        var loweredTree = CSharpSyntaxTree.ParseText(lowered);
+        var full = compilation.AddSyntaxTrees(loweredTree);
+        Assert.Empty(full.GetDiagnostics().Where(d => d.Location.SourceTree == loweredTree &&
+                                                      d.Id.StartsWith("CS86", StringComparison.Ordinal)));
+
+        var assembly = GeneratorHarness.EmitAndLoad(full);
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("TestApp.ForcedView")!)!;
+        var box = Assert.IsType<TextBox>(view.Children[0]);
+
+        var vm = Activator.CreateInstance(assembly.GetType("TestApp.ForcedVm")!)!;
+        view.DataContext = vm;
+        Assert.Equal("seed", box.Text); // get side reads through the qualified chain
+
+        box.SetCurrentValue(TextBox.TextProperty, "pushed");
+        Assert.Equal("pushed", vm.GetType().GetProperty("Caption")!.GetValue(vm)); // TwoWay write-back through `__v!`
     }
 
     [Fact] // B3b — a genuinely-uncompilable path (an indexer hop) still gracefully falls back to a faithful

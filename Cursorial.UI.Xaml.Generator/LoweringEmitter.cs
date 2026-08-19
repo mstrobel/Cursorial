@@ -713,7 +713,7 @@ internal static class LoweringEmitter
         // {x:Type T} → typeof(global::T).
         if (TryExtractIntrinsic(raw, "x:Type", out var typeToken) &&
             XamlDataTypeScope.ResolveToken(c.Doc, typeToken, c.Resolver) is { } typeSym)
-            return $"typeof({Global(typeSym)})";
+            return $"typeof({Global(typeSym, false)})";
 
         return null;
     }
@@ -732,7 +732,7 @@ internal static class LoweringEmitter
             return $"\"Style:{Escape(targetText)}\"";
 
         if (IsDataTemplateSymbol(type) && DataTemplateDataType(c, in obj) is { } dataType)
-            return $"new global::Cursorial.UI.DataTemplateKey(typeof({Global(dataType)}))";
+            return $"new global::Cursorial.UI.DataTemplateKey(typeof({Global(dataType, false)}))";
 
         return null;
     }
@@ -946,7 +946,7 @@ internal static class LoweringEmitter
         }
         else if (targetType is { } tt)
         {
-            ctor = $"new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof({Global(tt)})))";
+            ctor = $"new global::Cursorial.UI.Style(global::Cursorial.UI.Selectors.OfType(null, typeof({Global(tt, false)})))";
         }
         else
         {
@@ -1384,11 +1384,11 @@ internal static class LoweringEmitter
 
         if (IsSystemType(propValueType))
             return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved
-                ? $"typeof({Global(resolved)})"
+                ? $"typeof({Global(resolved, false)})"
                 : null;
 
         c.UsesConverter = true;
-        return $"__ConvertXamlValue(typeof({Global(propValueType)}), \"{Escape(text)}\")";
+        return $"__ConvertXamlValue(typeof({Global(propValueType, false)}), \"{Escape(text)}\")";
     }
 
     // A *Resource extension as a Setter.Value expression: {DynamicResource key} → a ResourceReference carrier (the
@@ -1439,7 +1439,7 @@ internal static class LoweringEmitter
 
             if (node.Name is "x:Type" or "Type" &&
                 XamlDataTypeScope.ResolveToken(c.Doc, arg, c.Resolver) is { } typeSym)
-                return $"typeof({Global(typeSym)})";
+                return $"typeof({Global(typeSym, false)})";
         }
 
         return null;
@@ -1710,8 +1710,8 @@ internal static class LoweringEmitter
 
         var method = isAssignable ? "Is" : "OfType";
         return started
-                   ? $"{prev}.{method}(typeof({Global(type)}))"
-                   : $"global::Cursorial.UI.Selectors.{method}({(prev is null ? "null" : prev)}, typeof({Global(type)}))";
+                   ? $"{prev}.{method}(typeof({Global(type, false)}))"
+                   : $"global::Cursorial.UI.Selectors.{method}({(prev is null ? "null" : prev)}, typeof({Global(type, false)}))";
     }
 
     private static bool IsFencedPseudo(string name)
@@ -2016,6 +2016,13 @@ internal static class LoweringEmitter
         "Int64", "UInt16", "UInt32", "UInt64", "String", "TimeSpan", "Uri",
     ];
 
+    private static readonly SymbolDisplayFormat NullableDisplayFormat =
+        SymbolDisplayFormat
+           .FullyQualifiedFormat
+           .AddMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
+
+    private static readonly SymbolDisplayFormat StandardDisplayFormat = SymbolDisplayFormat.FullyQualifiedFormat;
+
     private static bool IsBuiltInPrimitive(INamedTypeSymbol s)
         => s.ContainingNamespace is { Name: "System", ContainingNamespace.IsGlobalNamespace: true }
            && BuiltInPrimitiveLocalNames.Contains(s.Name);
@@ -2071,7 +2078,7 @@ internal static class LoweringEmitter
         else
         {
             c.UsesConverter = true;
-            expr = $"({Global(primType)})__ConvertXamlValue(typeof({Global(primType)}), \"{Escape(text)}\")!";
+            expr = $"({Global(primType)})__ConvertXamlValue(typeof({Global(primType, false)}), \"{Escape(text)}\")!";
         }
 
         c.Line($"var {varExpr} = {expr};");
@@ -2253,7 +2260,7 @@ internal static class LoweringEmitter
             return null;
 
         var valueType = ValueTypeSymbol(xm.ValueType);
-        var targetPropExpr = valueType is { } vt ? $"typeof({Global(vt)})" : "null";
+        var targetPropExpr = valueType is { } vt ? $"typeof({Global(vt, false)})" : "null";
         if (CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: targetPropExpr) is not { } provideValue)
         {
             scan.Indices.Add(memberIndex); // fenced with its own specific Todo — never double-fence in the loop
@@ -2264,7 +2271,7 @@ internal static class LoweringEmitter
         // (the loader's AssignResolvedValue twin), and the initializer entry casts the object? expression to the
         // concrete slot type — exactly EmitCustomExtension's CLR-assignment rules.
         var value = valueType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_String) }
-            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType)}))"
+            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType, false)}))"
             : provideValue;
         return valueType is { SpecialType: not SpecialType.System_Object } ct
             ? $"({Global(ct)}){value}!"
@@ -2361,11 +2368,11 @@ internal static class LoweringEmitter
             // same gap — ConvertText would pass the raw string), so the converter ladder can't handle it.
             if (IsSystemType(valueType))
                 return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved
-                    ? $"typeof({Global(resolved)})"
+                    ? $"typeof({Global(resolved, false)})"
                     : null;
 
             c.UsesConverter = true;
-            return $"__ConvertXamlValue(typeof({Global(valueType)}), \"{Escape(text)}\")";
+            return $"__ConvertXamlValue(typeof({Global(valueType, false)}), \"{Escape(text)}\")";
         }
 
         return null;
@@ -2602,7 +2609,7 @@ internal static class LoweringEmitter
         // extensions' Type arm read it the same way).
         var owner = RegisteredOwner(xm);
         string targetPropExpr = owner is { } o ? $"{Global(o)}.{xm.Name}Property"
-            : ValueTypeSymbol(xm.ValueType) is { } vt ? $"typeof({Global(vt)})"
+            : ValueTypeSymbol(xm.ValueType) is { } vt ? $"typeof({Global(vt, false)})"
             : "null";
 
         // An init-only / read-only CLR member can't be assigned post-construction (CS8852/CS0200 — non-compiling
@@ -2625,7 +2632,7 @@ internal static class LoweringEmitter
         var valueType = ValueTypeSymbol(xm.ValueType);
         var coerceTyped = valueType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_String) };
         var value = coerceTyped
-            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType!)}))"
+            ? $"global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({provideValue}, typeof({Global(valueType!, false)}))"
             : provideValue;
 
         if (owner is { } owner2)
@@ -2755,7 +2762,7 @@ internal static class LoweringEmitter
                 return ResolveStaticPath(c, sp);
             if (nested.Name is "x:Type" or "Type" && FirstPositionalText(nested) is { Length: > 0 } tt &&
                 XamlDataTypeScope.ResolveToken(c.Doc, tt, c.Resolver) is { } ts)
-                return $"typeof({Global(ts)})";
+                return $"typeof({Global(ts, false)})";
             if (nested.Name is "x:Null" or "Null")
                 return "null";
             if (nested.Name is "StaticResource" && FirstPositionalText(nested) is { Length: > 0 } key)
@@ -2788,7 +2795,7 @@ internal static class LoweringEmitter
                     return customValue;
                 if (memberType.SpecialType is SpecialType.System_String)
                     return $"(string){customValue}!";
-                return $"({Global(memberType)})global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({customValue}, typeof({Global(memberType)}))!";
+                return $"({Global(memberType)})global::Cursorial.UI.Xaml.LoweredExtensionServices.Coerce({customValue}, typeof({Global(memberType, false)}))!";
             }
 
             return null; // {Binding} / nested-key {StaticResource} / a forward-or-unreachable key — no value here
@@ -2800,10 +2807,10 @@ internal static class LoweringEmitter
         if (memberType is null || memberType.SpecialType is SpecialType.System_String or SpecialType.System_Object)
             return $"\"{Escape(text)}\"";
         if (IsSystemType(memberType))
-            return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved ? $"typeof({Global(resolved)})" : null;
+            return XamlDataTypeScope.ResolveToken(c.Doc, text, c.Resolver) is { } resolved ? $"typeof({Global(resolved, false)})" : null;
 
         c.UsesConverter = true;
-        return $"({Global(memberType)})__ConvertXamlValue(typeof({Global(memberType)}), \"{Escape(text)}\")!";
+        return $"({Global(memberType)})__ConvertXamlValue(typeof({Global(memberType, false)}), \"{Escape(text)}\")!";
     }
 
     // The nested-position BUILT-IN extension name set (the frontend's ClassifyExtension names plus the bare
@@ -3335,7 +3342,7 @@ internal static class LoweringEmitter
                 // A qualified hop reads through an `as`-cast: an incompatible runtime instance yields null and
                 // the conditional chain reads default(leaf) — the compiled analog of the runtime's graceful
                 // degrade. The paren wraps only the receiver; later plain hops continue the conditional access.
-                chain = $"({chain} as {Global(owners[h])})?.{EscapeId(hops[h].Member)}";
+                chain = $"({chain} as {Global(owners[h], false)})?.{EscapeId(hops[h].Member)}";
                 conditional = true;
             }
             else
@@ -3345,6 +3352,16 @@ internal static class LoweringEmitter
                 chain += accessor + EscapeId(hops[h].Member);
             }
         }
+        // A conditional chain can read null for a leaf whose type says it can't — the `?? default(TValue)`
+        // null-intermediate arm — so TValue gains a forced `?` (CS8603 in the getter otherwise). The TwoWay
+        // setter forgives it back with `__v!` below: the write is null-guarded by the chain pattern, and
+        // pushing a null the TARGET produced into a non-null-annotated leaf is the reflective lane's
+        // (un-analyzable) behavior too. Value-typed leaves keep their exact TValue: the `??` arm UNWRAPS the
+        // chain's lifted `T?` back to `T`.
+        var forcedNullable = conditional && leafType.IsReferenceType && !value.EndsWith("?", StringComparison.Ordinal);
+        if (forcedNullable)
+            value += "?";
+
         var getter = conditional ? $"static __s => ({chain}) ?? default({value})" : $"static __s => {chain}";
 
         // One CompiledPathStep per hop — an object-typed reader for INPC/INCC subscription rewiring (null-safe; the
@@ -3352,7 +3369,7 @@ internal static class LoweringEmitter
         var steps = new List<string>(hops.Count);
         for (int h = 0; h < hops.Count; h++)
             steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h].Member)}\", " +
-                      $"static __o => __o is {Global(owners[h])} __t ? (object?)__t.{EscapeId(hops[h].Member)} : null)");
+                      $"static __o => __o is {Global(owners[h], false)} __t ? (object?)__t.{EscapeId(hops[h].Member)} : null)");
 
         // Setter (TwoWay) — only when the leaf is writable AND its owner is a reference type (writing through a
         // value-typed owner mutates a copy ⇒ a no-op, so degrade to OneWay/null, matching the reflective lane —
@@ -3363,12 +3380,13 @@ internal static class LoweringEmitter
             var last = hops.Count - 1;
             // A qualified LEAF writes through the qualifier type: the `is QT __o` pattern both null-guards the
             // chain and casts the receiver, so an incompatible instance is a no-op write (runtime parity).
-            var leafPattern = qualified[last] ? Global(owners[last]) : "{ }";
+            var leafPattern = qualified[last] ? Global(owners[last], false) : "{ }";
+            var write = forcedNullable ? "__v!" : "__v";
             if (hops.Count == 1)
             {
                 setter = qualified[0]
-                    ? $"static (__s, __v) => {{ if (__s is {Global(owners[0])} __o) __o.{EscapeId(hops[0].Member)} = __v; }}"
-                    : $"static (__s, __v) => __s.{EscapeId(hops[0].Member)} = __v";
+                    ? $"static (__s, __v) => {{ if (__s is {Global(owners[0], false)} __o) __o.{EscapeId(hops[0].Member)} = {write}; }}"
+                    : $"static (__s, __v) => __s.{EscapeId(hops[0].Member)} = {write}";
             }
             else
             {
@@ -3376,11 +3394,11 @@ internal static class LoweringEmitter
                 for (int h = 0; h < last; h++)
                 {
                     if (qualified[h])
-                        ownerChain = $"({ownerChain} as {Global(owners[h])})?.{EscapeId(hops[h].Member)}";
+                        ownerChain = $"({ownerChain} as {Global(owners[h], false)})?.{EscapeId(hops[h].Member)}";
                     else
                         ownerChain += (h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")) + EscapeId(hops[h].Member);
                 }
-                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(hops[last].Member)} = __v; }}";
+                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(hops[last].Member)} = {write}; }}";
             }
         }
 
@@ -3770,7 +3788,7 @@ internal static class LoweringEmitter
         if (owners.Count == 0)
             return string.Empty;
 
-        var pairs = string.Join(", ", owners.Select(o => $"(\"{Escape(o.Token)}\", typeof({Global(o.Owner)}))"));
+        var pairs = string.Join(", ", owners.Select(o => $"(\"{Escape(o.Token)}\", typeof({Global(o.Owner, false)}))"));
         return $"TypeResolver = new global::Cursorial.UI.Data.LookupPathTypeResolver({pairs})";
     }
 
@@ -3894,7 +3912,7 @@ internal static class LoweringEmitter
 
         var level = NamedText(node, "AncestorLevel") is { } lvl && int.TryParse(lvl, out var n) && n > 0 ? n : 1;
         return $"RelativeSource = new global::Cursorial.UI.Data.RelativeSource {{ Mode = global::Cursorial.UI.Data.RelativeSourceMode.FindAncestor, " +
-               $"AncestorType = typeof({Global(typeSym)}), AncestorLevel = {level} }}";
+               $"AncestorType = typeof({Global(typeSym, false)}), AncestorLevel = {level} }}";
     }
 
     // Joins non-empty object-initializer member assignments into a ` { a, b }` suffix, or "" when none.
@@ -3957,7 +3975,8 @@ internal static class LoweringEmitter
     private static INamedTypeSymbol? TypeSymbolOf(XamlDocument document, int typeId)
         => typeId >= 0 && document.ResolvedTypes[typeId]?.ClrType is RoslynXamlType { Symbol: INamedTypeSymbol s } ? s : null;
 
-    private static string Global(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+    private static string Global(ITypeSymbol type, bool includeNullableAnnotations = true)
+        => type.ToDisplayString(includeNullableAnnotations ? NullableDisplayFormat : StandardDisplayFormat);
 
     // A payload for a NON-verbatim C# string literal ("…"): the backslash + quote escapes, plus the control
     // characters that would otherwise break the literal (CR/LF → CS1010 "newline in constant"; tab/NUL). Every

@@ -889,7 +889,7 @@ namespace GenApp { public partial class ClrStrView : StackPanel { public ClrStrV
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains(".Label = (string)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered); // cast, not a bare object?
+        Assert.Contains(".Label = (string?)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered); // cast, not a bare object?
 
         GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered))); // compiles (no CS0266)
     }
@@ -913,7 +913,7 @@ namespace GenApp { public partial class ClrRoView : StackPanel { public ClrRoVie
 
         Assert.DoesNotContain("TODO X5", lowered);
         // Set in the object initializer (init-only), cast to the slot type — not a post-construction assign (CS8852).
-        Assert.Contains("RoLabel = (string)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered);
+        Assert.Contains("RoLabel = (string?)global::Cursorial.UI.ResourceScopes.ResolveStatic(\"S\"", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
         using var host = UIHeadlessHost.Create();
@@ -1005,7 +1005,7 @@ namespace GenApp { public partial class SameDictInitView : StackPanel { public S
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("RoLabel = (string)((object?)", lowered);   // object? cast, never a direct (string)var CS0030
+        Assert.Contains("RoLabel = (string?)((object?)", lowered);   // object? cast, never a direct (string)var CS0030
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
 
         var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.SameDictInitView")!)!;

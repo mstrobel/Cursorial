@@ -69,7 +69,7 @@ namespace TestApp
     {
         var (lowered, compilation) = LowerWithVms("(t:QualVm.Caption)", "QualView1");
 
-        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string>", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string?>", lowered);
         Assert.Contains("as global::TestApp.QualVm)?.Caption", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
@@ -90,7 +90,7 @@ namespace TestApp
     {
         var (lowered, compilation) = LowerWithVms("(t:IHasTitle.Title)", "QualView2");
 
-        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string>", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string?>", lowered);
         Assert.Contains("as global::TestApp.IHasTitle)?.Title", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
@@ -106,7 +106,7 @@ namespace TestApp
     {
         var (lowered, compilation) = LowerWithVms("Inner.(t:InnerVm.Name)", "QualView3");
 
-        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string>", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<global::TestApp.QualVm, string?>", lowered);
         Assert.Contains("as global::TestApp.InnerVm)?.Name", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));

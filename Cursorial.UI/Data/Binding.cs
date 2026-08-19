@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -78,7 +79,20 @@ public sealed class Binding : AnchoredBinding
 /// </summary>
 internal static class CompiledBindingFactory
 {
-    public static CompiledBinding<TSource, TValue> Analyze<TSource, TValue>(Expression<Func<TSource, TValue>> path)
+    public static CompiledBinding<TSource, TValue> Analyze<TSource, TValue>(
+        Expression<Func<TSource, TValue>> path,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
     {
         var steps = new List<CompiledPathStep>();
         var members = new List<string>();
@@ -89,7 +103,21 @@ internal static class CompiledBindingFactory
         var getter = path.Compile();
         var setter = BuildSetter<TSource, TValue>(path.Body);
         var pathText = string.Join(".", members);
-        return new CompiledBinding<TSource, TValue>(getter, setter, steps.ToArray(), pathText);
+        return new CompiledBinding<TSource, TValue>(getter, setter, steps.ToArray(), pathText)
+               {
+                   Mode =  mode,
+                   Source = source,
+                   ElementName = elementName,
+                   Converter = converter,
+                   ConverterParameter = converterParameter,
+                   FallbackValue = BindingBase.ResolveFallbackValue(fallbackValue),
+                   RelativeSource = relativeSource,
+                   ConverterCulture = converterCulture,
+                   StringFormat = stringFormat,
+                   TargetNullValue = BindingBase.ResolveFallbackValue(targetNullValue),
+                   UpdateSourceTrigger =  updateSourceTrigger,
+                   Trace = trace
+               };
     }
 
     private static void Analyze(Expression node, ParameterExpression root, List<CompiledPathStep> steps, List<string> members)
@@ -127,10 +155,23 @@ internal static class CompiledBindingFactory
                 Analyze(call.Object!, root, steps, members);
                 return;
             }
+            // A property-system read: GetValue(SomeClass.SomeProperty) — typed or untyped overload.
+            // The hop carries the UIProperty identity itself, so subscription observes it directly
+            // (and attached/no-wrapper properties become bindable without a CLR twin).
+            case MethodCallExpression { Method.Name: "GetValue", Object: {} receiver } call
+                when typeof(UIObject).IsAssignableFrom(receiver.Type) &&
+                     call.Arguments is [var propertyArg, ..] &&
+                     EvaluatePropertyArgument(propertyArg) is { } uiProperty:
+            {
+                steps.Add(new CompiledPathStep(uiProperty.Name, BuildUIPropertyStep(uiProperty)) { UIProperty = uiProperty });
+                members.Add(uiProperty.Name);
+                Analyze(receiver, root, steps, members);
+                return;
+            }
             case MethodCallExpression call:
                 throw new FormatException(
-                    $"Compiled binding path may contain member-access and constant-index hops only; " +
-                    $"the method call '{call.Method.Name}' is not supported (design doc §6.7).");
+                    $"Compiled binding path may contain member-access, constant-index, and UIObject " +
+                    $"GetValue hops only; the method call '{call.Method.Name}' is not supported (design doc §6.7).");
             case BinaryExpression binary:
                 throw new FormatException(
                     $"Compiled binding path may contain member-access and constant-index hops only; " +
@@ -164,6 +205,11 @@ internal static class CompiledBindingFactory
         {
             MemberExpression { Member: PropertyInfo { CanWrite: true } } => CompileSetter<TSource, TValue>(body),
             MemberExpression { Member: FieldInfo { IsInitOnly: false } } => CompileSetter<TSource, TValue>(body),
+            MethodCallExpression { Method.Name: "GetValue", Object: {} receiver } call
+                when typeof(UIObject).IsAssignableFrom(receiver.Type) &&
+                     call.Arguments is [var propertyArg, ..] &&
+                     EvaluatePropertyArgument(propertyArg) is { IsReadOnly: false } uiProperty
+                => CompileUIPropertySetter<TSource, TValue>(receiver, uiProperty),
             _ => null
         };
     }
@@ -178,6 +224,46 @@ internal static class CompiledBindingFactory
             var rebased = Rebase(body, sourceParam);
             var assign = Expression.Assign(rebased, valueParam);
             return Expression.Lambda<Action<TSource, TValue>>(assign, sourceParam, valueParam).Compile();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static Func<object?, object?> BuildUIPropertyStep(UIProperty property) =>
+        instance => instance is null ? null : ((UIObject)instance).GetValue(property);
+
+    /// <summary>
+    /// Evaluates a <c>GetValue</c> argument to its <see cref="UIProperty"/>: the static registration
+    /// field or property (<c>TextBox.TextProperty</c>), or a closure-captured local. Anything else is
+    /// not a compile-time property identity, and the call falls through to the unsupported-hop error.
+    /// </summary>
+    private static UIProperty? EvaluatePropertyArgument(Expression argument) => argument switch
+    {
+        ConstantExpression { Value: UIProperty constant } => constant,
+        MemberExpression { Member: FieldInfo { IsStatic: true } field } => field.GetValue(null) as UIProperty,
+        MemberExpression { Member: PropertyInfo { GetMethod.IsStatic: true } property } => property.GetValue(null) as UIProperty,
+        MemberExpression { Member: FieldInfo field, Expression: ConstantExpression { Value: {} closure } } => field.GetValue(closure) as UIProperty,
+        _ => null,
+    };
+
+    private static Action<TSource, TValue>? CompileUIPropertySetter<TSource, TValue>(Expression receiver, UIProperty property)
+    {
+        try
+        {
+            // Compile only the RECEIVER chain; the write goes through the untyped SetValue — no
+            // MethodInfo lookup, and the boxing matches what any object-typed property write costs.
+            var sourceParam = Expression.Parameter(typeof(TSource), "s");
+            var rebased = Rebase(receiver, sourceParam);
+            var receiverGetter = Expression.Lambda<Func<TSource, object?>>(
+                Expression.Convert(rebased, typeof(object)), sourceParam).Compile();
+
+            return (source, value) =>
+            {
+                if (receiverGetter(source) is UIObject target)
+                    target.SetValue(property, value);
+            };
         }
         catch (InvalidOperationException)
         {

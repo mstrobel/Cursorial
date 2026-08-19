@@ -231,6 +231,17 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         ref var sub = ref _subs[index];
         sub.Instance = instance;
 
+        // UIObject hop → the property system's observer channel (the reflective ladder's rule 1):
+        // UIObject does not implement INPC, so without this a compiled hop on a control property
+        // reads correctly (the CLR wrapper IS GetValue) but never sees a change. The property system
+        // is the hop's sole notifier — the INPC/INCC branches below serve plain CLR hops.
+        if (instance is UIObject uiObject &&
+            (step.UIProperty ?? UIPropertyRegistry.Find(instance.GetType(), step.MemberName)) is { } uiProperty)
+        {
+            sub.UIToken = uiObject.AddObserver(uiProperty, new UIPropertyHopObserver(this, index));
+            return;
+        }
+
         // Constant-index hop ("Item[]") → INotifyCollectionChanged (+ the "Item[]" INPC convention below).
         if (step.MemberName == "Item[]" && instance is INotifyCollectionChanged incc)
         {
@@ -270,6 +281,7 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         for (var i = _subs.Length - 1; i >= index; i--)
         {
             ref var sub = ref _subs[i];
+            sub.UIToken?.Dispose();
             if (sub.Instance is INotifyPropertyChanged inpc && sub.Inpc is { } h)
                 inpc.PropertyChanged -= h;
             if (sub.Instance is INotifyCollectionChanged incc && sub.Incc is { } ih)
@@ -298,5 +310,12 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         public object? Instance;
         public PropertyChangedEventHandler? Inpc;
         public NotifyCollectionChangedEventHandler? Incc;
+        public IDisposable? UIToken;
+    }
+
+    private sealed class UIPropertyHopObserver(CompiledBindingExpression<TSource, TValue> owner, int index) : IUntypedValueObserver
+    {
+        public void OnPropertyChanged(UIObject source, UIProperty property, object? oldValue, object? newValue, BindingPriority priority)
+            => owner.DispatchSourceChange(index);
     }
 }

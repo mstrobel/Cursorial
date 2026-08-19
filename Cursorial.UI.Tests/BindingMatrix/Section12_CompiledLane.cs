@@ -39,6 +39,66 @@ public class Section12_CompiledLane
         Assert.False(a.Flag);
     }
 
+    [Fact] // the reflective ladder's rule 1, compiled: a UIObject hop notifies through the property
+    // system's observer channel — UIObject implements no INPC, so without the AddObserver subscription
+    // a compiled hop on a control property reads correctly but never pushes a change.
+    public void CompiledLane_UIObjectHop_NotifiesThroughThePropertySystem()
+    {
+        var source = new BindWidget { Flag = true };
+        var (root, a) = Tree(new Vm());
+        root.DataContext = source; // the source chain hops through a UIObject, not an INPC view-model
+
+        a.SetBinding(BindWidget.FlagProperty, Binding.Compiled(static (BindWidget w) => w.Flag));
+        Assert.True(a.Flag);
+
+        source.Flag = false; // CLR wrapper → SetValue → the property system fires the hop observer
+        Assert.False(a.Flag);
+
+        source.Flag = true;
+        Assert.True(a.Flag);
+    }
+
+    [Fact] // GetValue(SomeClass.SomeProperty) is a first-class hop: the step carries the UIProperty
+    // identity, subscription observes it directly, and no CLR wrapper is involved anywhere.
+    public void CompiledLane_GetValueHop_AnalyzesAndNotifies()
+    {
+        var source = new BindWidget { Flag = true };
+        var (root, a) = Tree(new Vm());
+        root.DataContext = source;
+
+        a.SetBinding(BindWidget.FlagProperty,
+                     Binding.Compiled(static (BindWidget w) => w.GetValue(BindWidget.FlagProperty)));
+        Assert.True(a.Flag);
+
+        source.SetValue(BindWidget.FlagProperty, false); // pure property-system write — no wrapper
+        Assert.False(a.Flag);
+
+        source.SetValue(BindWidget.FlagProperty, true);
+        Assert.True(a.Flag);
+    }
+
+    [Fact] // the GetValue leaf synthesizes a SetValue write-back — TwoWay without a CLR wrapper
+    public void CompiledLane_GetValueHop_TwoWay_WritesBackThroughSetValue()
+    {
+        var source = new BindWidget { Flag = false };
+        var (root, a) = Tree(new Vm());
+        root.DataContext = source;
+
+        a.SetBinding(BindWidget.FlagProperty,
+                     CompiledBinding.From(static (BindWidget w) => w.GetValue(BindWidget.FlagProperty),
+                                          mode: BindingMode.TwoWay));
+        Assert.False(a.Flag);
+
+        a.Flag = true; // target-side write pushes back through the synthesized SetValue
+        Assert.True(source.GetValue(BindWidget.FlagProperty));
+    }
+
+    [Fact] // arbitrary method calls still refuse analysis — only GetValue joined the hop grammar
+    public void CompiledLane_ArbitraryMethodCall_StillThrows()
+    {
+        Assert.Throws<FormatException>(() => Binding.Compiled(static (Vm m) => m.ToString()));
+    }
+
     [Fact] // B147 — OneWay typed StyledProperty<T> target, no converter/format ⇒ 0 B steady-state push
     public void B147_CompiledLane_TypedPush_ZeroSteadyStateAllocation()
     {

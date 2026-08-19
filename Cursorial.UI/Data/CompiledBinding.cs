@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq.Expressions;
 
 namespace Cursorial.UI.Data;
@@ -16,10 +17,36 @@ public static class CompiledBinding
     /// contract). Each call re-analyzes the tree — cache the result in a <c>static readonly</c> field.
     /// </summary>
     /// <seealso cref="Binding.Compiled{TSource,TValue}"/>
-    public static CompiledBinding<TSource, TValue> From<TSource, TValue>(Expression<Func<TSource, TValue>> path)
+    public static CompiledBinding<TSource, TValue> From<TSource, TValue>(
+        Expression<Func<TSource, TValue>> path,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return CompiledBindingFactory.Analyze(path);
+
+        return CompiledBindingFactory.Analyze(path,
+                                              mode,
+                                              source,
+                                              elementName,
+                                              converter,
+                                              converterParameter,
+                                              converterCulture,
+                                              stringFormat,
+                                              fallbackValue,
+                                              relativeSource,
+                                              targetNullValue,
+                                              updateSourceTrigger,
+                                              trace);
     }
 }
 
@@ -32,7 +59,15 @@ public static class CompiledBinding
 /// </summary>
 /// <param name="MemberName">The member name (or <c>"Item[]"</c> for indexer hops).</param>
 /// <param name="GetStep">An object-typed reader for subscription rewiring.</param>
-public readonly record struct CompiledPathStep(string MemberName, Func<object?, object?> GetStep);
+public readonly record struct CompiledPathStep(string MemberName, Func<object?, object?> GetStep)
+{
+    /// <summary>
+    /// The property-system identity for a <c>GetValue(SomeClass.SomeProperty)</c> hop: subscription
+    /// observes it directly, no registry lookup. Hops written through CLR wrappers carry only
+    /// <see cref="MemberName"/> — the expression's runtime name-based registry probe covers those.
+    /// </summary>
+    public UIProperty? UIProperty { get; init; }
+}
 
 /// <summary>
 /// The second producer of the engine contract (design doc §6.7): typed end-to-end, zero reflection,

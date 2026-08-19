@@ -10,6 +10,14 @@ namespace Cursorial.UI.Data;
 /// </summary>
 public abstract class BindingBase
 {
+    /// <summary>
+    /// The value that should be used to specify a true <c>null</c> value for optional method arguments
+    /// corresponding to <see cref="BindingBase.FallbackValue"/> and <see cref="BindingBase.TargetNullValue"/>.
+    /// Passing a literal <c>null</c> is indistinguishable from leaving the argument unspecified, and will
+    /// result in the default value of <see cref="UIProperty.UnsetValue"/> being used instead. 
+    /// </summary>
+    public static readonly object NullValue = new UIProperty.SentinelValue($"{nameof(BindingBase)}.{nameof(NullValue)}");
+
     /// <summary>The value-flow direction. <see cref="BindingMode.Default"/> resolves at install (BD10).</summary>
     public BindingMode Mode { get; init; } = BindingMode.Default;
 
@@ -45,4 +53,16 @@ public abstract class BindingBase
     /// expression shape. Internal — installation goes through <see cref="BindingOperations"/>.
     /// </summary>
     internal abstract BindingExpressionBase CreateExpression(in BindingActivationContext context);
+
+    /// <summary>
+    /// Resolves the actual effective value to use for <see cref="FallbackValue"/> or <see cref="TargetNullValue"/>.
+    /// A <c>null</c> literal resolves to the default <see cref="UIProperty.UnsetValue"/>, and <see cref="NullValue"/>
+    /// resolves to a true <c>null</c> value.
+    /// </summary>
+    protected internal static object? ResolveFallbackValue(object? value)
+    {
+        if (value is null) return UIProperty.UnsetValue;
+        if (ReferenceEquals(value, NullValue)) return null;
+        return value;
+    }
 }

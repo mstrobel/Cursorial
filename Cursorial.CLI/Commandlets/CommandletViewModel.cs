@@ -4,12 +4,14 @@ using Cursorial.UI;
 namespace Cursorial.CLI.Commandlets;
 
 /// <summary>
-/// Base view-model for a commandlet step. The VM owns the outcome: <see cref="Accept"/> retains the inline
-/// receipt and shuts the step's app down accepted; <see cref="Cancel"/> clears the region and exits with the
-/// canceled code. The app is injected (created per step by the <see cref="Runner"/>), keeping VMs
-/// headless-testable without thread-local lookups.
+/// Base view-model for a commandlet step. The VM owns the outcome CODES: <see cref="Accept"/> completes
+/// the step accepted, <see cref="Cancel"/> completes it canceled. Whether an accepted step's inline
+/// receipt stays on screen is the RUNNER's call — the <c>--retain</c> policy is baked into each step's
+/// app at build time; only Cancel overrides it (a canceled step always clears). The app is injected
+/// (created per step by the <see cref="Runner"/>), keeping VMs headless-testable without thread-local
+/// lookups.
 /// </summary>
-public abstract class CommandletViewModel(UIApplication app) : Cursorial.UI.Data.ObservableObject
+public abstract class CommandletViewModel(UIApplication app) : UI.Data.ObservableObject
 {
     protected UIApplication App { get; } = app;
 
@@ -17,11 +19,10 @@ public abstract class CommandletViewModel(UIApplication app) : Cursorial.UI.Data
     /// headless-observable seam (the runner reads the app's exit code instead).</summary>
     public int? CompletedCode { get; private set; }
 
-    /// <summary>Retain the receipt and complete the step accepted.</summary>
+    /// <summary>Complete the step accepted; the app's baked-in <c>--retain</c> policy decides the receipt.</summary>
     protected void Accept()
     {
         CompletedCode = ExitCodes.Accepted;
-        App.InlineExitBehavior = InlineExitBehavior.Retain;
         App.Shutdown(ExitCodes.Accepted);
     }
 

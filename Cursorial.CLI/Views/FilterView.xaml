@@ -3,10 +3,12 @@
            xmlns:d="https://cursorial.dev/xaml/design"
            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
            xmlns:vm="clr-namespace:Cursorial.CLI.Commandlets;assembly=curio"
+           xmlns:views="clr-namespace:Cursorial.CLI.Views;assembly=curio"
            mc:Ignorable="d"
            x:Class="Cursorial.CLI.Views.FilterView"
            x:DataType="vm:FilterViewModel"
-           HorizontalAlignment="Left">
+           HorizontalAlignment="Left"
+           LastChildFill="False">
   <d:DataContext>
     <vm:FilterViewModel Prompt="Filter:" Query="">
       <vm:FilterViewModel.Items>
@@ -18,16 +20,24 @@
       </vm:FilterViewModel.Items>
     </vm:FilterViewModel>
   </d:DataContext>
-  <DockPanel.InputBindings>
-    <KeyBinding Gesture="Enter" Command="{Binding AcceptCommand}" />
-    <KeyBinding Gesture="Down" Command="{Binding MoveDownCommand}" />
-    <KeyBinding Gesture="Up" Command="{Binding MoveUpCommand}" />
-  </DockPanel.InputBindings>
+  <!-- The popup's band is reserved by the code-behind (MinHeight while the popup is open): an inline
+       region sizes to ROOT content and the popup is an overlay the measure never sees — but a STATIC
+       reserve would keep the retained receipt popup-tall after the accept dismisses the list. -->
   <DockPanel DockPanel.Dock="Top" HorizontalAlignment="Left">
-    <TextBlock DockPanel.Dock="Left" Margin="0,0,1,0" Text="{Binding Prompt}"
+    <TextBlock DockPanel.Dock="Left"
+               Margin="{Binding Prompt, Converter={NullValueConverter IfNull={x:Static Margins.Zero},
+                                                                      Else={x:Static XamlConstants.MarginsRight1}}}"
+               Markup="{Binding Prompt, Converter={NullValueConverter IfNull='[fg Theme.MutedBrush]>[/]'}}"
+               Text="{Binding Prompt}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"
                HorizontalAlignment="Left" VerticalAlignment="Top" />
-    <TextBox x:Name="QueryBox" Text="{Binding Query, Mode=TwoWay}" Width="40"
-             HorizontalAlignment="Left" VerticalAlignment="Top" />
+    <Grid HorizontalAlignment="Left">
+      <TextBox x:Name="QueryBox" Text="{Binding Query, Mode=TwoWay}" Width="40"
+               HorizontalAlignment="Left" VerticalAlignment="Top" Placeholder="{Binding Placeholder}" />
+      <!-- The overlay is layout-free: it shares the box's Grid cell and displaces nothing. Target mode
+           keeps StaysOpen; CloseOnEscape=False leaves Esc to the runner's abort binding. -->
+      <views:AutoOpenCompletionPopup x:Name="Popup" Target="{x:Reference QueryBox}"
+                                     Provider="{Binding Provider}" CloseOnEscape="False"
+                                     ShowFooter="True" MaxVisibleItems="8" Shadow="{x:Static WindowShadow.None}" />
+    </Grid>
   </DockPanel>
-  <ListBox x:Name="List" ItemsSource="{Binding Matches}" SelectedItem="{Binding Selected, Mode=TwoWay}" />
 </DockPanel>

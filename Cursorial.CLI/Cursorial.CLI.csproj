@@ -42,4 +42,8 @@
 
     <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="Cursorial.CLI.Tests" />
+    </ItemGroup>
+
 </Project>

@@ -6,7 +6,9 @@
            mc:Ignorable="d"
            x:Class="Cursorial.CLI.Views.WriteView"
            x:DataType="vm:WriteViewModel"
-           HorizontalAlignment="Left">
+           HorizontalAlignment="Left" 
+           VerticalAlignment="Top" 
+           d:DesignHeight="7">
   <d:DataContext>
     <vm:WriteViewModel Prompt="Describe your changes:" Lines="5" Placeholder="Write here" />
   </d:DataContext>
@@ -17,7 +19,10 @@
     <KeyBinding Gesture="Ctrl+D" Command="{Binding AcceptCommand}" />
   </DockPanel.InputBindings>
   <TextBlock DockPanel.Dock="Top" Text="{Binding Prompt}" HorizontalAlignment="Left" />
-  <TextBlock DockPanel.Dock="Bottom" Text="ctrl+d to accept" TextWeight="Faint" HorizontalAlignment="Left" />
+  <TextBlock DockPanel.Dock="Bottom" Markup="[fg Theme.TextDimBrush]ctrl+d[/] [fg Theme.MutedBrush]to accept[/]"
+             TextWeight="Faint" HorizontalAlignment="Left" Margin="1,0,0,0" />
+  <GlyphPresenter DockPanel.Dock="Left" Orientation="Vertical" Glyph="▐" Fill="True"
+                  Foreground="{DynamicResource {x:Static ThemeKeys.AccentBrush}}" />
   <TextBox x:Name="Editor" Text="{Binding Text, Mode=TwoWay}" Placeholder="{Binding Placeholder}" Width="40"
            MinLines="{Binding Lines}" MaxLines="{Binding Lines}" AcceptsReturn="True"
            VerticalAlignment="Top" HorizontalAlignment="Left" />

@@ -8,14 +8,13 @@
            x:DataType="vm:InputViewModel"
            HorizontalAlignment="Left">
   <d:DataContext>
-    <vm:InputViewModel Prompt="Describe your changes:" Lines="4" Placeholder="Write here" />
+    <vm:InputViewModel Prompt="Describe your changes:" Placeholder="Write here" />
   </d:DataContext>
   <StackPanel.InputBindings>
     <KeyBinding Gesture="Enter" Command="{Binding AcceptCommand}" />
   </StackPanel.InputBindings>
-  <TextBlock DockPanel.Dock="{Binding Lines, Converter={MatchConverter 1, Left, Top}}" Margin="0,0,1,0"
+  <TextBlock DockPanel.Dock="Left" Margin="0,0,1,0"
              Text="{Binding Prompt}" HorizontalAlignment="Left" VerticalAlignment="Top" />
   <TextBox x:Name="Editor" Text="{Binding Text, Mode=TwoWay}" Placeholder="{Binding Placeholder}" Width="40"
-           MinLines="{Binding Lines}" MaxLines="{Binding Lines}" AcceptsReturn="False"
            VerticalAlignment="Top" HorizontalAlignment="Left" />
 </DockPanel>

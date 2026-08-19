@@ -4,6 +4,7 @@ using Cursorial.CLI.Wire;
 using Cursorial.Input;
 using Cursorial.Terminal;
 using Cursorial.UI;
+using Cursorial.UI.Configuration;
 using Cursorial.UI.Input;
 
 namespace Cursorial.CLI;
@@ -34,17 +35,24 @@ public static class Runner
         }
 
         IReadOnlyList<string[]> steps;
-        EmitFormat emitFormat;
-        bool noCapsCache;
+
+        GlobalArgs globals;
+       
         try
         {
-            argv = TakeGlobalOptions(argv, out emitFormat, out noCapsCache);
+            argv = TakeGlobalOptions(argv, out globals);
             steps = PipelineParser.Split(argv);
         }
         catch (UsageException ex)
         {
             Console.Error.WriteLine($"curio: {ex.Message}");
             return ExitCodes.Usage;
+        }
+
+        if (globals.Debug)
+        {
+            while (System.Diagnostics.Debugger.IsAttached is false)
+                await Task.Delay(50);
         }
 
         // Steps that feed on piped stdin data read it BEFORE the session opens (the session owns the
@@ -56,7 +64,7 @@ public static class Runner
         // probe rounds entirely; cold key → normal negotiation, then persist the realized snapshot
         // for next time. Kill-switches: --no-caps-cache and CURIO_NO_CAPS_CACHE (checked inside
         // CapabilityCache too — belt and braces for future call sites).
-        bool capsCacheEnabled = !noCapsCache && !CapabilityCache.IsDisabledByEnvironment;
+        bool capsCacheEnabled = !globals.NoCapsCache && !CapabilityCache.IsDisabledByEnvironment;
         var cachedCaps = capsCacheEnabled ? CapabilityCache.TryLoad() : null;
 
         TerminalSession session;
@@ -68,7 +76,7 @@ public static class Runner
         {
             // No controlling terminal (CI/cron/ssh-without-t): the documented non-interactive policy —
             // a step with --default resolves to it (exit 0); any step without one is a usage failure.
-            return RunNonInteractive(steps, stdinItems, emitFormat, ex.Message);
+            return RunNonInteractive(steps, stdinItems, globals.Format, ex.Message);
         }
 
         // Cold run: persist what negotiation just realized, post-open so it never delays first paint.
@@ -77,6 +85,8 @@ public static class Runner
 
         var vars = new VariableBag();
         var exit = ExitCodes.Accepted;
+        Variable? linesResult = null;
+        string? usageError = null;
         try
         {
             foreach (var rawStep in steps)
@@ -84,7 +94,8 @@ public static class Runner
                 StepArgs args;
                 CommandletViewModel vm;
                 Func<UIElement> viewFactory;
-                var app = BuildStepApp();
+                var final = ReferenceEquals(rawStep, steps[^1]);
+                var app = BuildStepApp(final);
                 try
                 {
                     args = StepArgs.Parse(Interpolator.Apply(rawStep, vars));
@@ -93,7 +104,7 @@ public static class Runner
                 catch (UsageException ex)
                 {
                     await app.DisposeAsync();
-                    Console.Error.WriteLine($"curio: {ex.Message}");
+                    usageError = ex.Message; // stderr can be this same RAW tty — written after the teardown
                     exit = ExitCodes.Usage;
                     break;
                 }
@@ -114,8 +125,8 @@ public static class Runner
                     var variable = vm.BuildResult(args.Var ?? args.CommandletName);
                     if (args.Var is not null)
                         BindVariable(vars, variable);
-                    if (emitFormat == EmitFormat.Lines)
-                        Emit.WriteLines(Console.Out, variable); // lines stream per accepted step
+                    if (globals.Format == EmitFormat.Lines && final)
+                        linesResult = variable; // written AFTER the session teardown with the other formats
                     continue;
                 }
 
@@ -131,25 +142,41 @@ public static class Runner
             await session.DisposeAsync();
         }
 
-        // Buffered formats emit ONLY on full success: the pipeline either completes and hands the
-        // shell its variables, or fails with a meaningful code and no partial state.
+        if (usageError is not null)
+            Console.Error.WriteLine($"curio: {usageError}");
+
+        // EVERY format emits here, after the session teardown, and only on full success. Beyond the
+        // buffered formats' only-on-success rule there is a terminal reason: the session holds the tty
+        // RAW (output post-processing off), so a `\n` written while it is open is a bare LF — the cursor
+        // keeps its column, and the shell prompt lands indented by the emitted width.
         if (exit == ExitCodes.Accepted)
         {
-            if (emitFormat == EmitFormat.Env) Emit.WriteEnv(Console.Out, vars);
-            else if (emitFormat == EmitFormat.Json) Emit.WriteJson(Console.Out, vars);
+            if (globals.Format == EmitFormat.Lines && linesResult is not null) Emit.WriteLines(Console.Out, linesResult);
+            else if (globals.Format == EmitFormat.Env) Emit.WriteEnv(Console.Out, vars);
+            else if (globals.Format == EmitFormat.Json) Emit.WriteJson(Console.Out, vars);
         }
 
         return exit;
 
-        UIApplication BuildStepApp() =>
-            UIApplication.CreateBuilder()
-                         .WithFrameRate(60)
-                         .WithKeyReleaseSynthesis()
-                         .WithNumpadKeyTranslation()
-                         .UseInline(maxHeight: InlineMaxHeight)
-                         .WithSession(session)
-                         .ExitOnUnhandledCtrlC(false) // curio owns cancel codes: Ctrl+C is 130, not 0
-                         .Build();
+        UIApplication BuildStepApp(bool final)
+        {
+            var exitBehavior = globals.Retain switch
+                               {
+                                   RetainMode.All              => InlineExitBehavior.Retain,
+                                   RetainMode.Final when final => InlineExitBehavior.Retain,
+                                   _                           => InlineExitBehavior.Clear
+                               };
+
+            return UIApplication.CreateBuilder()
+                                .WithFrameRate(60)
+                                .WithUserConfiguration(new UserConfigurationOptions { ShowFirstRunWizard = false })
+                                .WithKeyReleaseSynthesis()
+                                .WithNumpadKeyTranslation()
+                                .UseInline(maxHeight: InlineMaxHeight, exitBehavior)
+                                .WithSession(session)
+                                .ExitOnUnhandledCtrlC(false) // curio owns cancel codes: Ctrl+C is 130, not 0
+                                .Build();
+        }
     }
 
     private static void BindVariable(VariableBag vars, Variable variable)
@@ -186,8 +213,7 @@ public static class Runner
             {
                 var placeholder = args.GetOption("placeholder") ?? "";
                 var prompt = args.GetOption("prompt") ?? (string.IsNullOrWhiteSpace(placeholder) ? ">" : "");
-                var lines = args.GetOption("lines") is {} l && int.TryParse(l, out int c) ? c : 1;
-                var vm = new InputViewModel(app, prompt, args.GetOption("value") ?? "", placeholder, lines);
+                var vm = new InputViewModel(app, prompt, args.GetOption("value") ?? "", placeholder);
                 return (() => new InputView { DataContext = vm }, vm);
             }
             case "filter":
@@ -197,7 +223,7 @@ public static class Runner
                     items = stdinItems; // `git branch | curio filter` — the piped feed, same as choose
                 if (items.Count == 0)
                     throw new UsageException("filter needs at least one item (curio filter <item>... or pipe items on stdin)");
-                var vm = new FilterViewModel(app, args.GetOption("prompt") ?? "Filter:", items);
+                var vm = new FilterViewModel(app, args.GetOption("prompt"), items, args.GetOption("placeholder"));
                 return (() => new FilterView { DataContext = vm }, vm);
             }
             case "write":
@@ -256,23 +282,57 @@ public static class Runner
     // is the environment default; buffered formats emit only on full pipeline success) and
     // --no-caps-cache (skip the capability cache for this run; CURIO_NO_CAPS_CACHE is the
     // environment kill-switch).
-    private static string[] TakeGlobalOptions(string[] argv, out EmitFormat format, out bool noCapsCache)
+    internal static string[] TakeGlobalOptions(string[] argv, out GlobalArgs globals)
     {
-        format = Environment.GetEnvironmentVariable("CURIO_EMIT") switch
-        {
-            "env" => EmitFormat.Env,
-            "json" => EmitFormat.Json,
-            _ => EmitFormat.Lines,
-        };
-        noCapsCache = false;
+        var format = Environment.GetEnvironmentVariable("CURIO_EMIT") switch
+                     {
+                         "env"  => EmitFormat.Env,
+                         "json" => EmitFormat.Json,
+                         _      => EmitFormat.Lines,
+                     };
+
+        var noCapsCache = false;
+        var debug = false;
+
+        // The env twin is LENIENT (unknown → the default) like CURIO_EMIT above; the FLAG is strict —
+        // a typo on the command line is a usage error, a stale environment variable is not.
+        var retainMode = Environment.GetEnvironmentVariable("CURIO_RETAIN")?.ToLowerInvariant() switch
+                         {
+                             "a" or "all"   => RetainMode.All,
+                             "f" or "final" => RetainMode.Final,
+                             _              => RetainMode.None,
+                         };
 
         var index = 0;
+
         while (index < argv.Length)
         {
-            string? value = null;
+            string? value;
+
             if (argv[index] == "--no-caps-cache")
             {
                 noCapsCache = true;
+                argv = [.. argv[..index], .. argv[(index + 1)..]];
+                continue;
+            }
+
+            if (argv[index] == "--debug")
+            {
+                debug = true;
+                argv = [.. argv[..index], .. argv[(index + 1)..]];
+                continue;
+            }
+            
+            if (argv[index] == "--retain" && index + 1 < argv.Length)
+            {
+                retainMode = ParseRetain(argv[index + 1]);
+                argv = [.. argv[..index], .. argv[(index + 2)..]];
+                continue;
+            }
+
+            if (argv[index].StartsWith("--retain=", StringComparison.Ordinal))
+            {
+                retainMode = ParseRetain(argv[index]["--retain=".Length..]);
                 argv = [.. argv[..index], .. argv[(index + 1)..]];
                 continue;
             }
@@ -287,27 +347,44 @@ public static class Runner
                 value = argv[index]["--emit=".Length..];
                 argv = [.. argv[..index], .. argv[(index + 1)..]];
             }
+            else if (argv[index] is "--retain" or "--emit")
+            {
+                // The bare flag at the end of the leading globals: without this arm it would fall to the
+                // break and surface as the step parser's baffling "Expected a commandlet name, got '--…'".
+                throw new UsageException(argv[index] == "--retain"
+                    ? "--retain requires a value (none, all, or final)"
+                    : "--emit requires a value (lines, env, or json)");
+            }
             else
             {
                 break; // only leading global options are curio's; everything after belongs to steps
             }
 
             format = value switch
-            {
-                "lines" => EmitFormat.Lines,
-                "env" => EmitFormat.Env,
-                "json" => EmitFormat.Json,
-                _ => throw new UsageException($"--emit must be lines, env, or json (got '{value}')"),
-            };
+                     {
+                         "lines" => EmitFormat.Lines,
+                         "env"   => EmitFormat.Env,
+                         "json"  => EmitFormat.Json,
+                         _       => throw new UsageException($"--emit must be lines, env, or json (got '{value}')"),
+                     };
         }
 
+        globals = new GlobalArgs(debug, format, noCapsCache, retainMode);
         return argv;
     }
 
+    private static RetainMode ParseRetain(string value) => value.ToLowerInvariant() switch
+    {
+        "n" or "none"  => RetainMode.None,
+        "a" or "all"   => RetainMode.All,
+        "f" or "final" => RetainMode.Final,
+        _              => throw new UsageException($"--retain must be none, all, or final (got '{value}')"),
+    };
+
     // The non-interactive policy (no controlling terminal): a step with --default resolves to it as an
-    // accepted result; any step without one fails the run with a usage error naming the step. Buffered
-    // emits behave exactly as interactively.
-    private static int RunNonInteractive(IReadOnlyList<string[]> steps, IReadOnlyList<string>? stdinItems,
+    // accepted result; any step without one fails the run with a usage error naming the step. Emits
+    // behave exactly as interactively — lines carries the FINAL step's value, buffered formats the bag.
+    internal static int RunNonInteractive(IReadOnlyList<string[]> steps, IReadOnlyList<string>? stdinItems,
                                          EmitFormat emitFormat, string reason)
     {
         var vars = new VariableBag();
@@ -332,17 +409,17 @@ public static class Runner
             }
 
             var variable = args.CommandletName switch
-            {
-                "confirm" => new Variable(args.Var ?? args.CommandletName, VariableKind.Bool,
-                                          [IsAffirmative(fallback) ? "true" : "false"], []),
-                "choose" or "filter" => BuildDefaultSelection(args, stdinItems, fallback),
-                _ => new Variable(args.Var ?? args.CommandletName, VariableKind.Text, [fallback], []),
-            };
+                           {
+                               "confirm" => new Variable(args.Var ?? args.CommandletName, VariableKind.Bool,
+                                                         [IsAffirmative(fallback) ? "true" : "false"], []),
+                               "choose" or "filter" => BuildDefaultSelection(args, stdinItems, fallback),
+                               _ => new Variable(args.Var ?? args.CommandletName, VariableKind.Text, [fallback], []),
+                           };
 
             if (args.Var is not null)
                 BindVariable(vars, variable);
-            if (emitFormat == EmitFormat.Lines)
-                Emit.WriteLines(Console.Out, variable);
+            if (emitFormat == EmitFormat.Lines && ReferenceEquals(rawStep, steps[^1]))
+                Emit.WriteLines(Console.Out, variable); // the FINAL step only — the same shape a tty run emits
         }
 
         if (emitFormat == EmitFormat.Env) Emit.WriteEnv(Console.Out, vars);
@@ -362,6 +439,15 @@ public static class Runner
                             [fallback], [index < items.Count ? index : 0]);
     }
 
+    internal readonly record struct GlobalArgs(bool Debug, EmitFormat Format, bool NoCapsCache, RetainMode Retain);
+
+    internal enum RetainMode
+    {
+        None,
+        Final,
+        All
+    }
+
     private static void PrintHelp(TextWriter writer)
     {
         writer.WriteLine("curio — Cursorial commandlets for shell scripts");
@@ -370,7 +456,8 @@ public static class Runner
         writer.WriteLine();
         writer.WriteLine("commandlets:");
         writer.WriteLine("  choose <item>...      pick an item (arrows + Enter); --prompt <text>");
-        writer.WriteLine("  filter <item>...      fuzzy-pick an item (type to narrow, arrows + Enter); --prompt <text>");
+        writer.WriteLine("  filter <item>...      fuzzy-pick an item (type to narrow, arrows + Enter); --prompt <text>,");
+        writer.WriteLine("                        --placeholder <text>");
         writer.WriteLine("  input                 line prompt; --prompt <text>, --value <initial>");
         writer.WriteLine("  write                 multiline prompt (Enter = newline, Ctrl+D accepts);");
         writer.WriteLine("                        --prompt <text>, --value <initial>, --placeholder <text>, --lines <n>");
@@ -380,11 +467,16 @@ public static class Runner
         writer.WriteLine("  --var NAME            capture a step's result; later steps interpolate {NAME} / {NAME.index}");
         writer.WriteLine("  --optional            a canceled step unbinds its variable and the pipeline continues");
         writer.WriteLine("  --sep TOK             use TOK instead of ++ (first argument only)");
-        writer.WriteLine("  --emit lines|env|json wire format (lines streams; env/json emit on success; CURIO_EMIT)");
+        writer.WriteLine("  --emit lines|env|json wire format (default lines; all emit after the final step, on success; CURIO_EMIT)");
+        writer.WriteLine("  --retain none|all|final keep inline receipts on screen: no step (default), every accepted");
+        writer.WriteLine("                        step, or only the final one (CURIO_RETAIN)");
         writer.WriteLine("  --no-caps-cache       skip the terminal capability cache for this run (CURIO_NO_CAPS_CACHE)");
         writer.WriteLine("  --default VALUE       non-interactive fallback (no tty): the step resolves to VALUE");
         writer.WriteLine();
         writer.WriteLine("stdin: pipe items to choose/filter (git branch | curio filter); keys always read from the tty");
+        writer.WriteLine();
+        writer.WriteLine("env emit: a child process cannot set your shell's variables — eval the output:");
+        writer.WriteLine("  eval \"$(curio --emit env choose --var branch main develop)\"    # then: $BRANCH, $BRANCH_INDEX");
         writer.WriteLine();
         writer.WriteLine("exit codes: 0 accepted · 1 canceled/declined · 2 usage · 130 Ctrl+C");
     }

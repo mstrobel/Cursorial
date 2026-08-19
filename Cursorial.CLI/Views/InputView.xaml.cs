@@ -10,5 +10,6 @@ public partial class InputView
     {
         base.OnAttachedToTree(e);
         Editor.Focus(); // type-immediately, no click-first
+        Editor.CaretIndex = Editor.Text.Length;
     }
 }

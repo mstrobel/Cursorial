@@ -8,17 +8,13 @@ namespace Cursorial.CLI.Commandlets;
 /// <summary>`curio input` — a single-line text prompt.</summary>
 public sealed class InputViewModel : CommandletViewModel
 {
-    public InputViewModel(UIApplication app, string prompt, string initialValue, string placeholder = "",
-                          int lines = 1) : base(app)
+    public InputViewModel(UIApplication app, string prompt, string initialValue, string placeholder = "") : base(app)
     {
         Prompt = prompt;
         Placeholder = placeholder;
-        Lines = lines;
         Text = initialValue;
         AcceptCommand = new DelegateCommand(Accept);
     }
-
-    public int Lines { get; init => SetProperty(ref field, value); }
 
     public string Prompt { get; init => SetProperty(ref field, value); }
 

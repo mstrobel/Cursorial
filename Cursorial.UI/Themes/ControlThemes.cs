@@ -1726,7 +1726,7 @@ internal static class ControlThemes
                      submenuIndicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
 
                      submenuIndicator.SetBinding(UIElement.VisibilityProperty,
-                                                 new Binding(nameof(MenuItem.HasItems))
+                                                 new Binding(MenuItem.HasItemsProperty)
                                                  {
                                                      RelativeSource = RelativeSource.TemplatedParent,
                                                      Converter = BooleanToVisibilityConverter.Instance
@@ -2226,12 +2226,15 @@ internal static class ControlThemes
                    {
                        var icon = new Icon();
 
-                       icon.SetBinding(Icon.GlyphProperty, new Binding(nameof(IconCarrier.Glyph)));
-                       icon.SetBinding(Icon.GlyphWidthProperty, new Binding(nameof(IconCarrier.GlyphWidth)));
-                       icon.SetBinding(Icon.ImageUriProperty, new Binding(nameof(IconCarrier.ImageUri)));
-                       icon.SetBinding(Icon.EmojiProperty, new Binding(nameof(IconCarrier.Emoji)));
-                       icon.SetBinding(Icon.TextProperty, new Binding(nameof(IconCarrier.Text)));
-                       icon.SetBinding(Icon.IconBrushProperty, new Binding(nameof(IconCarrier.IconBrush)) { TargetNullValue = Binding.DoNothing });
+                       icon.SetBinding(Icon.GlyphProperty, CompiledBinding.From((IconCarrier c) => c.Glyph));
+                       icon.SetBinding(Icon.GlyphWidthProperty, CompiledBinding.From((IconCarrier c) => c.GlyphWidth));
+                       icon.SetBinding(Icon.ImageUriProperty, CompiledBinding.From((IconCarrier c) => c.ImageUri));
+                       icon.SetBinding(Icon.EmojiProperty, CompiledBinding.From((IconCarrier c) => c.Emoji));
+                       icon.SetBinding(Icon.TextProperty, CompiledBinding.From((IconCarrier c) => c.Text));
+
+                       icon.SetBinding(Icon.IconBrushProperty,
+                                       CompiledBinding.From((IconCarrier c) => c.IconBrush,
+                                                            targetNullValue: Binding.DoNothing));
                        
                        return icon;
                    })
@@ -2367,7 +2370,7 @@ internal static class ControlThemes
                                 };
 
                 titleText.SetBinding(ContentPresenter.ContentProperty,
-                                     new Binding(nameof(Window.Title)) { Source = window });
+                                     new Binding(Window.TitleProperty) { Source = window });
 
                 titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
                 ctx.RegisterName("PART_Title", titleText);
@@ -2524,7 +2527,7 @@ internal static class ControlThemes
                       .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationDialog),
                    new Style(Selectors.Nesting().OfType<Window>())
                        {
-                           When = { new DataCondition(new Binding(nameof(Window.IsActive)) { RelativeSource = RelativeSource.Self}, false) },
+                           When = { new DataCondition(new Binding(Window.IsActiveProperty) { RelativeSource = RelativeSource.Self}, false) },
                            Setters =
                            {
                                new Setter(Transition.TransitionsProperty,

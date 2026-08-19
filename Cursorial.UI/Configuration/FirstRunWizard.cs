@@ -104,14 +104,16 @@ public sealed class FirstRunWizard : Window
         // Header: page title + progress.
         var headerRow = new DockPanel { LastChildFill = true, Margin = new Margins(0, 0, 0, 1) };
         var progress = new TextBlock { Opacity = 0.6 };
-        progress.SetBinding(TextBlock.TextProperty, new Binding(nameof(FirstRunWizardViewModel.ProgressText)));
+        progress.SetBinding(TextBlock.TextProperty,
+                            CompiledBinding.From((FirstRunWizardViewModel vm) => vm.ProgressText));
         DockPanel.SetDock(progress, Dock.Right);
         headerRow.Children.Add(progress);
 
         var pageTitle = new TextBlock();
         pageTitle.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
         pageTitle.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
-        pageTitle.SetBinding(TextBlock.TextProperty, new Binding("CurrentPage.Title"));
+        pageTitle.SetBinding(TextBlock.TextProperty,
+                             CompiledBinding.From((FirstRunWizardViewModel m) => m.CurrentPage.Title));
         headerRow.Children.Add(pageTitle);
         DockPanel.SetDock(headerRow, Dock.Top);
         root.Children.Add(headerRow);

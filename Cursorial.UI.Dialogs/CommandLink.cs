@@ -64,26 +64,23 @@ internal class CommandLink : Button
 
         _boundDefinition = newDefinition;
 
-        BindingOperations.SetBinding(this,
-                                     ContentProperty,
-                                     new Binding(nameof(ButtonDefinition.Label))
-                                     {
-                                         Source = newDefinition
-                                     });
+        BindingOperations.SetBinding(
+            this,
+            ContentProperty,
+            CompiledBinding.From((TaskDialogButton b) => b.Label, source: newDefinition)
+        );
 
-        BindingOperations.SetBinding(this,
-                                     ExplanationProperty,
-                                     new Binding(nameof(ButtonDefinition.Explanation))
-                                     {
-                                         Source = newDefinition
-                                     });
+        BindingOperations.SetBinding(
+            this,
+            ExplanationProperty,
+            CompiledBinding.From((TaskDialogButton b) => b.Explanation, source: newDefinition)
+        );
 
-        BindingOperations.SetBinding(this,
-                                     ExplanationContainsMarkupProperty,
-                                     new Binding(nameof(ButtonDefinition.ExplanationContainsMarkup))
-                                     {
-                                         Source = newDefinition
-                                     });
+        BindingOperations.SetBinding(
+            this,
+            ExplanationContainsMarkupProperty,
+            CompiledBinding.From((TaskDialogButton b) => b.ExplanationContainsMarkup, source: newDefinition)
+        );
     }
 
     protected void RemoveButtonDefinitionBindings()

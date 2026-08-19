@@ -36,7 +36,7 @@
       <!-- The overlay is layout-free: it shares the box's Grid cell and displaces nothing. Target mode
            keeps StaysOpen; CloseOnEscape=False leaves Esc to the runner's abort binding. -->
       <views:AutoOpenCompletionPopup x:Name="Popup" Target="{x:Reference QueryBox}"
-                                     Provider="{Binding Provider}" CloseOnEscape="False"
+                                     Provider="{Binding Provider}" CloseOnEscape="False" AutoOpenOnTargetFocus="True"
                                      ShowFooter="True" MaxVisibleItems="8" Shadow="{x:Static WindowShadow.None}" />
     </Grid>
   </DockPanel>

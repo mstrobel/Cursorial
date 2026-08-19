@@ -145,6 +145,14 @@ public class CompletionPopup : Control
     public static readonly StyledProperty<bool> CloseOnEscapeProperty =
         UIProperty.Register<CompletionPopup, bool>(nameof(CloseOnEscape), defaultValue: true);
 
+    /// <summary>
+    /// Whether the popup automatically opens when the <see cref="Target"/> receives focus. OPT-IN
+    /// (<see langword="false"/> by default): "open a completion list the user did not ask for" is not
+    /// a gesture a text field has — a filter-style surface where the list IS the prompt turns it on.
+    /// </summary>
+    public static readonly StyledProperty<bool> AutoOpenOnTargetFocusProperty =
+        UIProperty.Register<CompletionPopup, bool>(nameof(AutoOpenOnTargetFocus), defaultValue: false);
+
     /// <summary>The key-hint footer's text.</summary>
     public static readonly StyledProperty<object?> FooterContentProperty =
         UIProperty.Register<CompletionPopup, object?>(nameof(FooterContent), defaultValue: DefaultFooterText, changed: OnFooterContentChanged);
@@ -247,6 +255,9 @@ public class CompletionPopup : Control
 
     /// <inheritdoc cref="CloseOnEscapeProperty"/>
     public bool CloseOnEscape { get => GetValue(CloseOnEscapeProperty); set => SetValue(CloseOnEscapeProperty, value); }
+
+    /// <inheritdoc cref="AutoOpenOnTargetFocusProperty"/>
+    public bool AutoOpenOnTargetFocus { get => GetValue(AutoOpenOnTargetFocusProperty); set => SetValue(AutoOpenOnTargetFocusProperty, value); }
 
     /// <inheritdoc cref="FooterContentProperty"/>
     public object? FooterContent { get => GetValue(FooterContentProperty); set => SetValue(FooterContentProperty, value); }
@@ -606,7 +617,8 @@ public class CompletionPopup : Control
 
         target.TextChanged += OnTargetTextChanged;
         target.SelectionChanged += OnTargetSelectionChanged;
-        target.LostFocus += OnTargetLostFocus;
+        target.LostFocus += OnTargetFocusChanged;
+        target.GotFocus += OnTargetFocusChanged;
 
         // PreviewKeyDown is a TUNNEL event, so a handler on the target runs before the TextBox's own
         // OnKeyDown class stage (which guards on e.Handled) and before the dispatcher's unhandled
@@ -622,7 +634,8 @@ public class CompletionPopup : Control
 
         target.TextChanged -= OnTargetTextChanged;
         target.SelectionChanged -= OnTargetSelectionChanged;
-        target.LostFocus -= OnTargetLostFocus;
+        target.LostFocus -= OnTargetFocusChanged;
+        target.GotFocus -= OnTargetFocusChanged;
         target.PreviewKeyDown -= OnTargetPreviewKeyDown;
     }
 
@@ -656,15 +669,20 @@ public class CompletionPopup : Control
     // starts one — clicking into a word should not pop a completion list at someone.
     private void OnTargetSelectionChanged(object? sender, RoutedEventArgs e) => Update(CompletionTrigger.CaretMoved, allowOpen: false);
 
-    private void OnTargetLostFocus(object? sender, FocusChangedEventArgs e)
+    private void OnTargetFocusChanged(object? sender, FocusChangedEventArgs e)
     {
         // The popup content is non-focusable, so focus can never be "inside" it — but the guard is
         // still the right one: it keeps a host that DOES make something in a custom footer focusable
         // from closing the session out from under itself (the ComboBox.OnLostFocus idiom).
         if (Target is { IsKeyboardFocusWithin: true })
-            return;
-
-        CloseSession();
+        {
+            if (IsOpen is false && AutoOpenOnTargetFocus is true)
+                Refresh();
+        }
+        else
+        {
+            CloseSession();
+        }
     }
 
     private void OnTargetPreviewKeyDown(object? sender, KeyEventArgs e)

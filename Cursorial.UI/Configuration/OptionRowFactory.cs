@@ -34,7 +34,8 @@ internal static class OptionRowFactory
 
         // Inheritance badge (docked right, dimmed): "inherited from global" / "default".
         var badge = new TextBlock { Margin = new Margins(1, 0), Opacity = 0.6 };
-        badge.SetBinding(TextBlock.TextProperty, new Binding(nameof(OptionViewModel.InheritanceLabel)));
+        badge.SetBinding(TextBlock.TextProperty,
+                         CompiledBinding.From<OptionViewModel, string>(source => source.InheritanceLabel));
         DockPanel.SetDock(badge, Dock.Right);
         header.Children.Add(badge);
 
@@ -71,7 +72,7 @@ internal static class OptionRowFactory
                 var check = new CheckBox { Content = option.DisplayName, TabIndex = nextTabIndex++ };
                 check.DataContext = boolean;
                 check.SetBinding(ToggleButton.IsCheckedProperty,
-                                 new Binding(nameof(BooleanOptionViewModel.IsChecked)) { Mode = BindingMode.TwoWay });
+                                 CompiledBinding.From((BooleanOptionViewModel vm) => vm.IsChecked, BindingMode.TwoWay));
                 return check;
             }
 
@@ -83,9 +84,10 @@ internal static class OptionRowFactory
                 panel.Children.Add(label);
 
                 var combo = new ComboBox { DataContext = choice, MinWidth = 24, TabIndex = nextTabIndex++ };
-                combo.SetBinding(ItemsControl.ItemsSourceProperty, new Binding(nameof(ChoiceOptionViewModel.Items)));
+                combo.SetBinding(ItemsControl.ItemsSourceProperty, 
+                                 CompiledBinding.From((ChoiceOptionViewModel vm) => vm.Items));
                 combo.SetBinding(SelectingItemsControl.SelectedIndexProperty,
-                                 new Binding(nameof(ChoiceOptionViewModel.SelectedIndex)) { Mode = BindingMode.TwoWay });
+                                 CompiledBinding.From((ChoiceOptionViewModel vm) => vm.SelectedIndex, BindingMode.TwoWay));
                 panel.Children.Add(combo);
                 return panel;
             }

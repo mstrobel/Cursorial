@@ -276,12 +276,12 @@ public class Icon : Control
             var text = new TextBlock { TextAlignment = TextAlignment.Center, Width = GlyphWidth, TextWrapping = WrapMode.NoWrap };
 
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(MinWidthProperty, new Binding(nameof(GlyphWidth)) { Source = this });
+            text.SetBinding(MinWidthProperty, new Binding(GlyphWidthProperty) { Source = this });
 
             if (GlyphWidth > 1)
-                text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this, StringFormat = "{0}" + new string(' ', GlyphWidth - 1)});
+                text.SetBinding(TextBlock.TextProperty, new Binding(GlyphProperty) { Source = this, StringFormat = "{0}" + new string(' ', GlyphWidth - 1)});
             else
-                text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Glyph)) { Source = this });
+                text.SetBinding(TextBlock.TextProperty, new Binding(GlyphProperty) { Source = this });
     
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
@@ -298,8 +298,8 @@ public class Icon : Control
                                 Height = 1
                             };
 
-            presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(nameof(Image)) { Source = this });
-            presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(nameof(ImageUri)) { Source = this });
+            presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(ImageProperty) { Source = this });
+            presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(ImageUriProperty) { Source = this });
 
             ResolvedContent = presenter;
         }
@@ -313,7 +313,7 @@ public class Icon : Control
                        };
 
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Emoji)) { Source = this });
+            text.SetBinding(TextBlock.TextProperty, new Binding(EmojiProperty) { Source = this });
 
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
@@ -324,7 +324,7 @@ public class Icon : Control
             var text = new TextBlock { TextAlignment = TextAlignment.Center, TextWrapping = WrapMode.NoWrap };
 
             text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(Text)) { Source = this });
+            text.SetBinding(TextBlock.TextProperty, new Binding(TextProperty) { Source = this });
 
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;

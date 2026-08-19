@@ -341,7 +341,7 @@ internal static class CursorialBarsTheme
                 BindingOperations.SetBinding(
                     caret,
                     DockPanel.DockProperty,
-                    new Binding(nameof(BarPopupButton.DropDownPlacement))
+                    new Binding(BarDropDownButton.DropDownPlacementProperty)
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
                         Converter = ValueConverter.Create((value, _, _, _) =>
@@ -421,7 +421,7 @@ internal static class CursorialBarsTheme
                 BindingOperations.SetBinding(
                     dropZone,
                     DockPanel.DockProperty,
-                    new Binding(nameof(BarSplitButton.DropDownPlacement))
+                    new Binding(BarDropDownButton.DropDownPlacementProperty)
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
                         Converter = ValueConverter.Create((value, _, _, _) =>
@@ -526,13 +526,13 @@ internal static class CursorialBarsTheme
                 // drop-opener buttons. (The caret is added FIRST so it is not the LastChildFill child and its Dock is
                 // honored; faceContent is the fill.)
                 BindingOperations.SetBinding(caret, DockPanel.DockProperty,
-                    new Binding(nameof(ComboBox.DropDownPlacement))
+                    new Binding(ComboBox.DropDownPlacementProperty)
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
                         Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? Dock.Left : Dock.Right)
                     });
                 BindingOperations.SetBinding(caret, ContentControl.ContentProperty,
-                    new Binding(nameof(ComboBox.DropDownPlacement))
+                    new Binding(ComboBox.DropDownPlacementProperty)
                     {
                         RelativeSource = RelativeSource.TemplatedParent,
                         Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾")

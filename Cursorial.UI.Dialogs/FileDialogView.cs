@@ -280,8 +280,9 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         _searchBox.Width = 16;
         _searchBox.TabIndex = 2;
         // _searchBox.Margin = new Margins(1, 0);
-        _searchBox.SetBinding(TextBox.TextProperty,
-                              new Binding(nameof(FileDialogViewModel.SearchText)) { Source = Model, Mode = BindingMode.TwoWay });
+        _searchBox.SetBinding(
+            TextBox.TextProperty,
+            CompiledBinding.From((FileDialogViewModel m) => m.SearchText, mode: BindingMode.TwoWay));
         _searchBox.KeyDown += OnSearchBoxKeyDown;
         DockPanel.SetDock(_searchBox, Dock.Right);
         toolbar.Children.Add(_searchBox);
@@ -405,8 +406,17 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
 
                         var pattern = new TextBlock();
 
-                        label.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogFilter.Label)));
-                        pattern.SetBinding(TextBlock.TextProperty, new Binding(nameof(FileDialogFilter.Pattern)));
+                        // Display-only (the reflective originals carried no mode): TwoWay here would
+                        // compile a LIVE setter — init-only record properties report CanWrite == true,
+                        // and Expression.Assign ignores the IsExternalInit modreq — so a target-side
+                        // write would mutate the FileDialogFilter record, including the shared
+                        // AllFiles singleton whose value-equality identity callers compare against.
+                        label.SetBinding(TextBlock.TextProperty,
+                                         CompiledBinding.From((FileDialogFilter f) => f.Label));
+
+                        pattern.SetBinding(TextBlock.TextProperty,
+                                           CompiledBinding.From((FileDialogFilter f) => f.Pattern));
+
                         TextElement.SetTextWeight(pattern, TextWeight.Faint);
                         DockPanel.SetDock(pattern, Dock.Right);
 
@@ -422,11 +432,8 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
             };
 
         filterBox.SetBinding(SelectingItemsControl.SelectedItemProperty,
-                             new Binding(nameof(FileDialogViewModel.SelectedFilter))
-                             {
-                                 Source = Model,
-                                 Mode = BindingMode.TwoWay
-                             });
+                             CompiledBinding.From((FileDialogViewModel m) => m.SelectedFilter, 
+                                                  mode: BindingMode.TwoWay));
 
         var filterLabel = new Label
                           {
@@ -440,8 +447,10 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         Grid.SetRow(filterLabel, filterLabelPosition.r);
 
         _fileNameBox.TabIndex = 6;
+
         _fileNameBox.SetBinding(TextBox.TextProperty,
-                                new Binding(nameof(FileDialogViewModel.FileName)) { Source = Model, Mode = BindingMode.TwoWay });
+                                CompiledBinding.From((FileDialogViewModel m) => m.FileName,
+                                                     mode: BindingMode.TwoWay));
 
         Grid.SetColumn(_fileNameBox, nameEditorPosition.c);
         Grid.SetColumnSpan(_fileNameBox, nameEditorPosition.span);
@@ -525,7 +534,9 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         var listArea = new DockPanel { LastChildFill = true };
 
         _newFolderBox.SetBinding(TextBox.TextProperty,
-                                 new Binding(nameof(FileDialogViewModel.NewFolderName)) { Source = Model, Mode = BindingMode.TwoWay });
+                                 CompiledBinding.From((FileDialogViewModel m) => m.NewFolderName,
+                                                      mode: BindingMode.TwoWay));
+
         _newFolderBox.KeyDown += OnNewFolderKeyDown;
 
         var newFolderContent = new DockPanel { LastChildFill = true };
@@ -613,7 +624,9 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
                              var row = new DockPanel { Background = Brushes.Transparent, Occludes = true };
                              var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
 
-                             icon.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Icon)));
+                             icon.SetBinding(ContentPresenter.ContentProperty,
+                                             CompiledBinding.From((FileDialogEntry e) => e.Icon));
+
                              TextElement.ForwardInverse(icon, row);
                              DockPanel.SetDock(icon, Dock.Left);
 
@@ -624,7 +637,8 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
                              TextElement.ForwardInverse(host, row);
                              host.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
                              host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
-                             host.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(FileDialogEntry.Name)));
+                             host.SetBinding(ContentPresenter.ContentProperty,
+                                             CompiledBinding.From((FileDialogEntry e) => e.Name));
 
                              row.Children.Add(icon);
                              row.Children.Add(host); // last child fills — the name gets the rest of the column
@@ -710,7 +724,7 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         var icon = new ContentPresenter { Margin = new Margins(0, 0, 1, 0) };
 
         icon.SetBinding(ContentPresenter.ContentProperty,
-                        new Binding(nameof(FileDialogEntry.Icon)));
+                        CompiledBinding.From((FileDialogEntry e) => e.Icon));
 
         TextElement.ForwardInverse(icon, head);
         DockPanel.SetDock(icon, Dock.Left);
@@ -724,7 +738,7 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
         host.SetValue(TextBlock.TextWrappingProperty, WrapMode.NoWrap);
 
         host.SetBinding(ContentPresenter.ContentProperty,
-                        new Binding(nameof(FileDialogEntry.Name)));
+                        CompiledBinding.From((FileDialogEntry e) => e.Name));
 
         head.Children.Add(icon);
         head.Children.Add(host); // last child fills — the name gets the rest of the column
@@ -758,11 +772,11 @@ public sealed class FileDialogView : Decorator, ISupportInitializeNotification
                         });
 
                     tip.SetBinding(SuperTip.DescriptionProperty,
-                                   new Binding(nameof(FileDialogEntry.Name)));
+                                   CompiledBinding.From((FileDialogEntry e) => e.Name));
 
                     tip.SetBinding(SuperTip.FooterProperty,
-                                   new Binding(nameof(FileDialogEntry.ModifiedText))
-                                   { StringFormat = "Last Modified {0}" });
+                                   CompiledBinding.From((FileDialogEntry e) => e.ModifiedText,
+                                                        stringFormat: "Last Modified {0}"));
 
                     return tip;
                 }));

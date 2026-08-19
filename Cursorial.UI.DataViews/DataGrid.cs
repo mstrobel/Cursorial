@@ -1368,19 +1368,19 @@ public class DataGrid : Control
         {
             _header.Owner = this;
             _header.SetBinding(DataGridHeaderPresenter.HorizontalOffsetProperty,
-                               new Binding(nameof(HorizontalOffset)) { Source = this });
+                               new Binding(HorizontalOffsetProperty) { Source = this });
         }
         if (AutoFilterRow is not null)
         {
             AutoFilterRow.Owner = this;
             AutoFilterRow.SetBinding(DataGridAutoFilterRow.HorizontalOffsetProperty,
-                                     new Binding(nameof(HorizontalOffset)) { Source = this });
+                                     new Binding(HorizontalOffsetProperty) { Source = this });
         }
         if (footer is not null)
         {
             footer.Owner = this;
             footer.SetBinding(DataGridSummaryPresenter.HorizontalOffsetProperty,
-                              new Binding(nameof(HorizontalOffset)) { Source = this });
+                              new Binding(HorizontalOffsetProperty) { Source = this });
             UpdateSummaryFooterVisibility();
         }
 

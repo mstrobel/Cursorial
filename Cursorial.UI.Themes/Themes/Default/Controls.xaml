@@ -553,7 +553,7 @@
       <Border x:Name="PART_Face" Padding="1,0" Background="{TemplateBinding Background}">
         <DockPanel>
           <Border x:Name="PART_IconTray" DockPanel.Dock="Left" Width="2" Height="1" Margin="0,0,1,0"
-                  Visibility="{Binding Path=IsIconTrayVisible, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}">
+                  Visibility="{Binding Path=(MenuItem.IsIconTrayVisible), RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}">
             <ContentPresenter x:Name="PART_Icon" Visibility="Collapsed" />
           </Border>
           <TextBlock x:Name="PART_SubmenuIndicator"
@@ -561,7 +561,7 @@
                      RenderOffsetColumn="1"
                      Text="▸"
                      Foreground="{DynamicResource {x:Static ThemeKeys.MenuAcceleratorForeground}}"
-                     Visibility="{Binding Path=HasItems, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}"/>
+                     Visibility="{Binding Path=(MenuItem.HasItems), RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BooleanToVisibilityConverter.Instance}}"/>
           <TextBlock x:Name="PART_GestureText"
                      DockPanel.Dock="Right"
                      Margin="2,0,0,0"

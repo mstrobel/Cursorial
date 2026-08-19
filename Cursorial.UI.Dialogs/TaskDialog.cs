@@ -268,7 +268,8 @@ public static class TaskDialog
                               };
 
             verificationBox.SetBinding(ToggleButton.IsCheckedProperty,
-                                       new Binding(nameof(TaskDialogRequest.VerificationChecked)) { Source = request });
+                                       CompiledBinding.From((TaskDialogRequest r) => r.VerificationChecked,
+                                                            source: request));
 
             DockPanel.SetDock(verificationBox, Dock.Left);
 

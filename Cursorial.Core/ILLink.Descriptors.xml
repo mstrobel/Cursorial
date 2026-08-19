@@ -1,0 +1,8 @@
+<!-- Cursorial.UI.Xaml's NamedColors builds its name→Color table by reflecting these public statics
+     (Conversion/NamedColors.cs); nothing else references the palette wholesale, and an embedded
+     descriptor can only root members of its OWN assembly — so the root lives here, with the type. -->
+<linker>
+  <assembly fullname="Cursorial.Core">
+    <type fullname="Cursorial.Media.Colors" preserve="all" />
+  </assembly>
+</linker>

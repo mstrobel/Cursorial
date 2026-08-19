@@ -1,0 +1,8 @@
+<!-- Cursorial.UI.Xaml's NamedBrushes builds its singleton-brush table by reflecting these public
+     statics (Conversion/NamedColors.cs); nothing else references them wholesale, and an embedded
+     descriptor can only root members of its OWN assembly — so the root lives here, with the type. -->
+<linker>
+  <assembly fullname="Cursorial.Rendering">
+    <type fullname="Cursorial.Rendering.Media.Brushes" preserve="all" />
+  </assembly>
+</linker>

@@ -183,6 +183,10 @@ public class StyledProperty<T> : UIProperty
     internal override IValueEntry CreateStyleEntry(object? boxedValue, bool hasValue)
         => new StyleSetterEntry<T>(this, hasValue ? (T)boxedValue! : default!, hasValue);
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2059",
+        Justification = "forType is the runtime type of a live UIObject (or a registered owner walking its base chain): " +
+                        "a type that exists in the running app keeps its static constructor — the trimmer removes " +
+                        "cctors only together with their types.")]
     private PropertyMetadata<T> ResolveMetadata(Type forType)
     {
         // Force the inheritance chain's static ctors FIRST — a type registers its OverrideMetadata/OverrideDefaultValue

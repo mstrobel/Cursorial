@@ -116,6 +116,10 @@ public static class XamlConverters
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2057:TypeGetType", Justification = "Late-bound converter type name is consumer-provided.")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance", Justification = "Converter type is consumer-provided; preserved by the consumer for trimming.")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Converter activation is an opt-in consumer reflection seam.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "The converter type is named BY an attribute instance already materialized on the member being " +
+                        "converted — a type referenced from an attribute blob is preserved together with the attribute, " +
+                        "and a miss falls through to the built-in ladder.")]
     private static ITypeConverter? ConverterFromAttribute(System.Reflection.MemberInfo target)
     {
         foreach (var attr in target.GetCustomAttributes(inherit: true))
@@ -156,6 +160,10 @@ public static class XamlConverters
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2057:TypeGetType", Justification = "Late-bound serializer type name is consumer-provided.")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance", Justification = "Serializer type is consumer-provided; preserved by the consumer for trimming.")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Serializer activation is an opt-in consumer reflection seam.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "The serializer type is named BY an attribute instance already materialized on the member being " +
+                        "converted — a type referenced from an attribute blob is preserved together with the attribute, " +
+                        "and a miss falls through to the built-in ladder.")]
     private static ITypeConverter? SerializerFromAttribute(System.Reflection.MemberInfo target)
     {
         foreach (var attr in target.GetCustomAttributes(inherit: true))
@@ -240,6 +248,14 @@ public static class XamlConverters
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072:CreateInstance",
         Justification = "BCL converter type is consumer-provided; preserved by the consumer for trimming.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "BCL TypeConverter adaptation is the reflective ladder's last rung: the converter type arrives " +
+                        "from a preserved attribute reference, and a constructor the trimmer removed yields null — the " +
+                        "ladder reports no converter, not a crash.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2067",
+        Justification = "BCL TypeConverter adaptation is the reflective ladder's last rung: the converter type arrives " +
+                        "from a preserved attribute reference, and a constructor the trimmer removed yields null — the " +
+                        "ladder reports no converter, not a crash.")]
     private static ITypeConverter? AdaptBcl(Type? converterType, Type targetType)
     {
         if (converterType is null || !typeof(System.ComponentModel.TypeConverter).IsAssignableFrom(converterType))
@@ -620,7 +636,7 @@ public static class XamlConverters
             var bits = ToBits(value);
             ulong all = 0;
 
-            foreach (var defined in Enum.GetValues(_enumType))
+            foreach (var defined in Enum.GetValuesAsUnderlyingType(_enumType))
                 all |= ToBits(defined);
 
             return bits != 0 && (bits & ~all) == 0;

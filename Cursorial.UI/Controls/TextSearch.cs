@@ -54,6 +54,9 @@ public sealed class TextSearch
     }
 
     /// <summary>Resolves a dotted property path against <paramref name="item"/> (the <see cref="TextPathProperty"/> lookup).</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "TextPath evaluates dotted members against LIVE items by runtime type; a member the trimmer " +
+                        "removed yields null — the item simply contributes no searchable text.")]
     internal static string? EvaluatePath(object? item, string path)
     {
         var current = item;

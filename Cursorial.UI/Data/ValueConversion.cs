@@ -11,7 +11,7 @@ namespace Cursorial.UI.Data;
 internal static class ValueConversion
 {
     /// <summary>The sentinel meaning "conversion failed" (distinct from a legitimately produced null).</summary>
-    public static readonly object Failed = new();
+    public static readonly object Failed = new UIProperty.SentinelValue($"{nameof(ValueConversion)}.{nameof(Failed)}");
 
     /// <summary>
     /// Converts <paramref name="value"/> to <paramref name="targetType"/>. Returns
@@ -23,6 +23,14 @@ internal static class ValueConversion
                         "custom-TypeConverter types in the reflective lane only; an AOT/trimmed app " +
                         "converts through the generated XamlConverters ladder instead, and a trimmed " +
                         "converter here degrades to Failed (the binding's unset path), never a crash.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2067",
+        Justification = "The ladder instantiates BCL converter shapes for the reflective lane only; a constructor the " +
+                        "trimmer removed converts as Failed (a traced unset), and lowered builds convert through the " +
+                        "generated XamlConverters ladder instead.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072",
+        Justification = "The ladder instantiates BCL converter shapes for the reflective lane only; a constructor the " +
+                        "trimmer removed converts as Failed (a traced unset), and lowered builds convert through the " +
+                        "generated XamlConverters ladder instead.")]
     public static object? Convert(object? value, Type targetType, CultureInfo culture)
     {
         // Null: legal for reference / nullable target types only.

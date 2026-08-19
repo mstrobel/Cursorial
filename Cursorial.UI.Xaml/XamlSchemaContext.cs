@@ -56,6 +56,10 @@ public sealed class XamlSchemaContext
     public static XamlSchemaContext Default { get; } = new();
 
     /// <summary>Creates a schema context seeded with the default Cursorial map.</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("SingleFile", "IL3000",
+        Justification = "Guarded: a bundled/AOT assembly returns an EMPTY Location, which the `Length: > 0` " +
+                        "pattern skips — the probe-path seed only serves hosts with a real on-disk assembly " +
+                        "(the designer).")]
     public XamlSchemaContext()
     {
         // The seed assemblies that form the default https://cursorial.dev/ui map. Their CLR namespaces are NOT

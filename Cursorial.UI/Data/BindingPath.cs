@@ -254,7 +254,7 @@ public sealed class BindingPath
         return _toString = sb.ToString();
     }
 
-    private ref struct Parser(string text, IPathTypeResolver resolver)
+    internal ref struct Parser(string text, IPathTypeResolver resolver)
     {
         private const BindingFlags ClrPropertyFlags = BindingFlags.Public |
                                                       BindingFlags.NonPublic |
@@ -387,6 +387,10 @@ public sealed class BindingPath
             return PathSegment.TypeQualified(ownerType, member, ResolvedProperty.Unresolved);
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+            Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
         private static PropertyInfo? FindClrProperty(Type ownerType, string member)
         {
             try

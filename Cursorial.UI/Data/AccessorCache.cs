@@ -77,6 +77,10 @@ internal static class AccessorCache
     /// and <c>Item[SomeEnum]</c> indexers, whose token is coerced to the enum key (design doc §6.3). Not
     /// type-cached (the key varies).
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     public static PropertyAccessor? ResolveStringIndexer(object instance, string key)
     {
         var instanceType = instance.GetType();
@@ -112,6 +116,10 @@ internal static class AccessorCache
     /// parsed case-insensitively. Returns null when the type exposes no enum indexer whose member the
     /// token names (so the path stays unresolved rather than binding to a wrong key).
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     private static PropertyAccessor? ResolveEnumIndexer(Type instanceType, string token)
     {
         // [Status.Active] → "Active"; a bare [Active] is used as-is. (Integer tokens never reach here —
@@ -147,6 +155,10 @@ internal static class AccessorCache
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     private static PropertyAccessor ResolvePropertyCore(object instance, Type instanceType, in PathSegment segment)
     {
         // Type-qualified segment (Owner.Member): a registered UIProperty on the owner (attached OR a regular
@@ -205,6 +217,10 @@ internal static class AccessorCache
         return new ClrPropertyAccessor(property, rung, changedEvent);
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     private static EventInfo? FindChangedEvent(Type type, string propertyName)
     {
         var changed = type.GetEvent(propertyName + "Changed", BindingFlags.Public | BindingFlags.Instance);
@@ -226,6 +242,10 @@ internal static class AccessorCache
         return changed;
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     private static PropertyAccessor ResolveIntIndexerCore(object instance, Type instanceType, int index)
     {
         // Fast path: IList / IReadOnlyList<T>.
@@ -243,6 +263,10 @@ internal static class AccessorCache
         return new UnresolvableAccessor($"[{index}]");
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
+                        "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
+                        "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
     private static Type? FindEnumerableElementType(Type type)
     {
         foreach (var iface in type.GetInterfaces())

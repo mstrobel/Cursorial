@@ -114,8 +114,11 @@ public interface IXamlResourceProvider
 /// </summary>
 public sealed class EmbeddedXamlResourceProvider : IXamlResourceProvider
 {
+    // No RequiresUnreferencedCode: every probe in here DEGRADES to a clean miss (`false`) — an assembly
+    // or manifest resource the trimmer removed is indistinguishable from one that never existed, and
+    // lowered builds do not embed XAML at all. (RUC here also mismatched the un-annotated interface
+    // member — IL2046.)
     /// <inheritdoc/>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Resolves an embedded XAML resource by manifest name.")]
     public bool TryGetXaml(Uri uri, out string? xaml)
     {
         xaml = null;

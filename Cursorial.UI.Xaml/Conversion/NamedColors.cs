@@ -39,8 +39,18 @@ internal static class NamedColors
 
     // Lazily built and thread-safe: BrushConverter.IsContextFree == true, so the converter may run on
     // multiple threads during concurrent parses (P6 review P2-12).
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Named-color lookup over a known type; X5 generator supplies the trim-clean table.")]
     private static readonly Lazy<Dictionary<string, Color>> Table = new(Build, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    // The field initializer above compiles INTO this cctor — which is where ILC attributes Build's RUC
+    // call, so a suppression on the field never covered it. What makes the suppression TRUE is the
+    // ILLink.Descriptors.xml embedded in Cursorial.Core (an embedded descriptor roots only its OWN
+    // assembly's members): it preserves Colors wholesale, so the table stays complete under trimming.
+    // (An attribute-based DynamicDependency would say the same thing, but naming the
+    // DynamicallyAccessedMemberTypes enum here collides with the frontend's netstandard2.0 polyfill of
+    // it, which InternalsVisibleTo puts in scope — CS0433.)
+    [UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "The ILLink.Descriptors.xml embedded in Cursorial.Core preserves every Colors member Build reflects — the table is complete under trimming.")]
+    static NamedColors() { }
 
     public static bool TryGet(string name, out Color color)
         => Table.Value.TryGetValue(name, out color);
@@ -76,8 +86,14 @@ internal static class NamedBrushes
     }
 
     // Lazily built and thread-safe (the converter is context-free — see NamedColors, P6 review P2-12).
-    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Named-brush lookup over a known type; allocation discipline only.")]
     private static readonly Lazy<Dictionary<Color, IBrush>> Singletons = new(Build, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    // Same cctor-scope story as NamedColors: the ILLink.Descriptors.xml embedded in Cursorial.Rendering
+    // preserves the Brushes statics Build reflects, so the singleton-brush table stays complete under
+    // trimming.
+    [UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "The ILLink.Descriptors.xml embedded in Cursorial.Rendering preserves every Brushes member Build reflects — the table is complete under trimming.")]
+    static NamedBrushes() { }
 
     public static IBrush ForOrCreate(Color color)
     {

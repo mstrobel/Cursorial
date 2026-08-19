@@ -801,6 +801,7 @@ internal sealed class XamlObjectGraphBuilder
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Runtime collection filling in the RequiresUnreferencedCode loader.")]
     private static bool IsGenericList(object instance)
     {
         foreach (var iface in instance.GetType().GetInterfaces())
@@ -811,6 +812,7 @@ internal sealed class XamlObjectGraphBuilder
         return false;
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Runtime collection filling in the RequiresUnreferencedCode loader.")]
     private static void InvokeGenericAdd(object collection, object? item)
     {
         foreach (var iface in collection.GetType().GetInterfaces())

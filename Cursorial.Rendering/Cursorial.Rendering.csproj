@@ -50,4 +50,10 @@
     <ItemGroup>
       <None Remove="Fonts\Embedded\.phm-leds.flf.swp" />
     </ItemGroup>
+    <ItemGroup>
+        <EmbeddedResource Include="ILLink.Descriptors.xml">
+            <LogicalName>ILLink.Descriptors.xml</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+
 </Project>

@@ -116,7 +116,7 @@ public sealed class RootElementHost : UIElement
         base.Render(context);
 
         if (GetValue(BackgroundProperty) is not {} bg ||
-            UIApplication.Current is { ApplicationModel: ApplicationModel.Inline})
+            UIApplication.Current is { IsPresentingInline: true }) // live side, not the configured model — InlineWithSwitching paints fullscreen backgrounds only while escalated
         {
             return;
         }

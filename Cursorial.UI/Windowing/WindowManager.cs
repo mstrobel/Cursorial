@@ -802,6 +802,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (DeferIfLocked(() => ShowWindow(window)))
             return;
 
+        // A deferred Show replays AFTER the drain — if the window was closed in the meantime
+        // (Close nulls Manager), replaying would re-add a zombie the close can never remove,
+        // permanently pinning an InlineWithSwitching app fullscreen.
+        if (!ReferenceEquals(window.Manager, this))
+            return;
+
         AddWindowSurface(window);
         ComputeBlockedSet();
         FinishShow(_blocked.Contains(window) ? TopmostModal : window);
@@ -876,6 +882,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (!_windows.Remove(window))
             return;
 
+        if (_windows.Count == 0)
+            WindowCountBecameZeroOrOne?.Invoke(); // the InlineWithSwitching seam's 1→0 half
+
         var wasActive = ReferenceEquals(_activeWindow, window);
         _modalStack.Remove(window);
         _blocked.Remove(window);
@@ -947,6 +956,11 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         window.HostSurface = surface;
         _windows.Add(window);
         SizeAndPositionWindow(window, surface);
+
+        // The InlineWithSwitching seam (design doc §3.1): only the REAL add site reports — MoveToTop's
+        // remove+re-add shuffle stays invisible, so the count can never appear to cross zero mid-raise.
+        if (_windows.Count == 1)
+            WindowCountBecameZeroOrOne?.Invoke();
     }
 
     private void FinishShow(Window? active)
@@ -959,6 +973,12 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         SetActive(active);
         SurfacesChanged?.Invoke();
     }
+
+    /// <summary>Any real window open? Popups live in their own list and never count (§3.1).</summary>
+    internal bool HasOpenWindows => _windows.Count > 0;
+
+    /// <summary>Fires when the window count crosses 0↔1 — the InlineWithSwitching escalation trigger.</summary>
+    internal Action? WindowCountBecameZeroOrOne;
 
     private void MoveToTop(Window window)
     {

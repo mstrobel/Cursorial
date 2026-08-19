@@ -277,6 +277,9 @@ public sealed partial class UIApplication
         // its default button. (The single-root WireRoot still does the initial app-root activation below.)
         _windowManager.ActiveWindowChanged += (_, _) => OnActiveWindowFocusChanged();
 
+        if (ApplicationModel == ApplicationModel.InlineWithSwitching)
+            _windowManager.WindowCountBecameZeroOrOne = () => _presentationSwitchPending = true;
+
         _windowManager.OnViewportResized(new Size(_buffer!.Columns, _buffer.Rows));
         _inputDispatcher.SetWindowTopology(_windowManager); // S4 is the real topology now (replaces SingleRootWindowTopology)
         _systemsReady = true;
@@ -347,7 +350,10 @@ public sealed partial class UIApplication
                                    // An outstanding inline DSR-CPR query gated Phase 6 — keep the
                                    // loop ticking at frame pace so its timeout fallback can fire
                                    // even when the terminal never replies (no wake would come).
-                                   _inlineCpr != InlineCprState.None;
+                                   _inlineCpr != InlineCprState.None ||
+                                   // A window-count transition deferred past a renegotiation must
+                                   // retry next frame, not wait for the next input.
+                                   _presentationSwitchPending;
 
                 if (workPending || (AnimationDriver?.HasActiveAnimations ?? false))
                 {
@@ -420,7 +426,7 @@ public sealed partial class UIApplication
                     // Inline: mouse events arrive in SCREEN coordinates; the UI lives in REGION
                     // coordinates. Translate by the region origin — or swallow the event when it
                     // falls outside the region (that's the shell's screen estate, not ours).
-                    if (_options.Inline && inputEvent is MouseEvent mouse)
+                    if (IsPresentingInline && inputEvent is MouseEvent mouse)
                     {
                         if (TranslateInlineMouse(mouse) is not {} translated)
                             break;
@@ -479,6 +485,25 @@ public sealed partial class UIApplication
             }
         }
 
+        // PHASE 2.5 — InlineWithSwitching (design doc §3.1, FW-7): consume a pending window-count
+        // transition BEFORE styling/layout, so a show/close from input, a dispatcher job, or the
+        // topology drain renders THIS frame on the new screen at the new geometry. (A show from a
+        // later phase's callback — a Phase-4 animation handler, say — lands next frame: transitions
+        // happen at frame pace, never mid-frame.) Gated on !_renegotiating (the negotiator owns the
+        // pipe); the flag stays set and Phase 7's workPending keeps the loop ticking until it lands.
+        // The decision reads the CURRENT truth, not the notification: a window that opened and
+        // closed within one frame nets to no transition at all.
+        if (_presentationSwitchPending && !_renegotiating)
+        {
+            _presentationSwitchPending = false;
+
+            if (ApplicationModel == ApplicationModel.InlineWithSwitching &&
+                _windowManager is {} switchWm && switchWm.HasOpenWindows == IsPresentingInline)
+            {
+                SwitchPresentation(toInline: !switchWm.HasOpenWindows);
+            }
+        }
+
         // PHASE 3 — styling activation flush (Fork B, P3): phase-1/2 pseudo/class flips reach
         // fixpoint BEFORE animation/layout/render (invariant 1).
         if (StyleHooks is {} styling)
@@ -530,7 +555,7 @@ public sealed partial class UIApplication
             // full-redraw erase also wipes the extent a shrink leaves behind). The region only ever
             // grows/shrinks at its BOTTOM edge — the origin doesn't move here (growth past the
             // terminal bottom scrolls at render time, in PrepareInlineRegion).
-            if (_options.Inline && _windowManager is {} wmInline && (resized || wmInline.HasPendingLayout))
+            if (IsPresentingInline && _windowManager is {} wmInline && (resized || wmInline.HasPendingLayout))
             {
                 var maxRows = Math.Clamp(_options.InlineMaxHeight ?? _screenSize.Rows, 1, Math.Max(1, _screenSize.Rows));
                 var fitted = wmInline.MeasureRootContentHeight(_screenSize.Columns, maxRows);
@@ -593,7 +618,7 @@ public sealed partial class UIApplication
             // startup / post-resize DSR-CPR reply (or its timeout fallback) says where the region
             // is. Queued control sequences simply wait a frame — the origin resolves in
             // milliseconds (or at the fallback deadline) and nothing is lost.
-            if (!_renegotiating && (!_options.Inline || EnsureInlineOrigin()))
+            if (!_renegotiating && (!IsPresentingInline || EnsureInlineOrigin()))
             {
                 // Consume the request flag unconditionally (no short-circuit): leaving it set when
                 // visuals are already dirty would buy one wasted empty-diff render next frame.
@@ -654,7 +679,7 @@ public sealed partial class UIApplication
                         // Inline: make physical room for the region before the delta — scroll the
                         // shell history up when the region's bottom would pass the terminal's last
                         // row — and hand the renderer its (possibly moved) origin.
-                        if (_options.Inline)
+                        if (IsPresentingInline)
                             PrepareInlineRegion(_scratch);
 
                         _renderer!.Render(_buffer!, _scratch);
@@ -765,7 +790,7 @@ public sealed partial class UIApplication
 
     private void ApplyResize(ResizeEvent resize)
     {
-        if (_options.Inline)
+        if (IsPresentingInline)
         {
             // The terminal resized under an inline region. Width lands now (height re-fits before
             // Phase 5 — the resized flag drives the probe); the height only CLAMPS here, in case
@@ -793,6 +818,142 @@ public sealed partial class UIApplication
         _windowManager?.OnViewportResized(size);
     }
 
+    // ───────────────────── InlineWithSwitching (design doc §3.1, FW-7) ─────────────────────
+
+    /// <summary>Set by the WindowManager's 0↔1 seam; consumed at the Phase-2.5 checkpoint.</summary>
+    private bool _presentationSwitchPending;
+
+    /// <summary>
+    /// The inline region's buffer, parked across a fullscreen excursion: the return path restores it
+    /// (rather than building fresh) because the DSR-CPR re-anchor derives the region origin from the
+    /// buffer's believed cursor row — geometry AND cursor state must survive the round trip.
+    /// </summary>
+    private CellBuffer? _parkedInlineBuffer;
+
+    /// <summary>
+    /// The InlineWithSwitching transition: inline ⇄ fullscreen, on the frame-loop thread, between
+    /// frames (the Phase-2.5 checkpoint) — the single-writer pipe is shared with the session's
+    /// push/pop, so nothing here may run concurrently with Phase 6 or a renegotiation. The shape is
+    /// <see cref="ChangeCapabilities"/>'s proven rebuild: close the old renderer under the OLD screen
+    /// state, swap buffer + renderer, refit the viewport, restamp — the fresh renderer's
+    /// NeedsFullRedraw makes the same frame's Phase 6 a full paint.
+    /// </summary>
+    private void SwitchPresentation(bool toInline, bool forTeardown = false)
+    {
+        var host = _host!;
+        var writer = host.Output.Writer;
+
+        // Close the CURRENT renderer while its screen is still active: DECAWM (autowrap re-enable)
+        // is GLOBAL terminal state — not per-screen — and a standing caret band was emitted under
+        // this screen and must be cleared on it. (Same rule ChangeCapabilities follows.)
+        try
+        {
+            _scratch.ResetWrittenCount();
+
+            // Fragments (images, sized text) are erased only when LEAVING the fullscreen side — its
+            // raster dies with DECRST 1049 but the protocol state is global. Going fullscreen keeps
+            // the inline region's fragments standing in the main-screen raster, so the 1049 restore
+            // brings the region back whole (and a Retain teardown while escalated keeps its receipt).
+            _renderer!.Close(_scratch, eraseFragments: toInline);
+
+            if (_emittedCaretBand is not null)
+            {
+                CursorWriter.WriteClearExtraCursors(_scratch);
+                _emittedCaretBand = null;
+            }
+
+            if (_scratch.WrittenCount > 0)
+            {
+                writer.Write(_scratch.WrittenSpan);
+                writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+            }
+        }
+        catch
+        {
+            // best-effort — the swap must proceed
+        }
+
+        if (!toInline)
+        {
+            // 0 → 1 windows: onto the alternate screen. No cancellation token — a cancel landing
+            // after the session's depth increment (mid-reapply) would strand the ref-count with
+            // DECSET 1049 already on the wire. The push itself may NOT flush (a cached-capability
+            // session's opt-in reapply early-returns before its FlushAsync), so flush explicitly.
+            if (_capabilities.Output.Window.AlternateScreenBuffer)
+                _altScreenScope = host.PushAltScreenAsync().AsTask().GetAwaiter().GetResult();
+            else
+                ScreenWriter.WriteClearScreen(writer); // degrade: no alt buffer — the shell history takes the hit, exactly as a FullScreen app would
+
+            writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+
+            // A CPR round outstanding at escalation (startup, or a resize re-anchor) must not resolve
+            // against the fullscreen buffer — its reply would clamp the origin to 0, and an escalated
+            // teardown would then erase the whole screen from row 0. The return path re-anchors
+            // unconditionally, so the round is simply abandoned.
+            _inlineCpr = InlineCprState.None;
+
+            _parkedInlineBuffer = _buffer;
+            _buffer = new CellBuffer(_screenSize.Columns, _screenSize.Rows, _capabilities) { CursorVisible = false };
+            _renderer = new FrameRenderer(_capabilities.Output,
+                                          new FrameRendererOptions(OrderedDither: _options.OrderedDither,
+                                                                   Inline: false));
+            IsPresentingInline = false;
+            _windowManager!.OnViewportResized(new Size(_screenSize.Columns, _screenSize.Rows));
+        }
+        else
+        {
+            // 1 → 0 windows: back to the inline region. Disposing the scope pops the Kitty push
+            // while still on the alt buffer, then DECRST 1049 — the main screen's raster AND the
+            // push-time cursor come back for free (the session owns that ordering and flushes).
+            var restoredMainRaster = false;
+
+            if (_altScreenScope is {} altScope)
+            {
+                _altScreenScope = null;
+                altScope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                restoredMainRaster = true;
+            }
+            else
+                ScreenWriter.WriteClearScreen(writer); // the no-alt-buffer degrade: the region redraws below, but the surrounding scrollback is gone
+
+            var parked = _parkedInlineBuffer!;
+            _parkedInlineBuffer = null;
+
+            if (parked.Columns != _screenSize.Columns || parked.Rows > _screenSize.Rows)
+            {
+                // The terminal resized during the excursion: width lands now, height only clamps
+                // (Phase 5's content fit re-grows it) — ApplyResize's inline rules.
+                var maxRows = Math.Clamp(_options.InlineMaxHeight ?? _screenSize.Rows, 1, Math.Max(1, _screenSize.Rows));
+                parked.Resize(_screenSize.Columns, Math.Min(parked.Rows, maxRows));
+            }
+
+            _buffer = parked;
+            _renderer = new FrameRenderer(_capabilities.Output,
+                                          new FrameRendererOptions(OrderedDither: _options.OrderedDither,
+                                                                   Inline: true));
+            IsPresentingInline = true;
+            _windowManager!.OnViewportResized(new Size(_buffer.Columns, _buffer.Rows));
+
+            // The 1049-saved cursor is stale if the terminal resized while fullscreen (terminals
+            // clamp/rewrap the saved position), so the region origin is re-derived from a fresh
+            // DSR-CPR round — the resize path's machinery; Phase 6 holds until it resolves. The
+            // re-anchor math only means anything when DECRST 1049 restored the cursor that rode the
+            // region: in the no-alt-buffer degrade the screen was just CLEARED and the cursor sits
+            // wherever the last fullscreen frame parked it, so the region deterministically
+            // re-materializes at the top instead. At teardown there are no more frames to gate and
+            // the exit writes position absolutely.
+            if (!forTeardown && restoredMainRaster)
+                BeginInlineReanchor();
+            else if (!restoredMainRaster)
+                _inlineOrigin = 0;
+        }
+
+        // app-inline/app-fullscreen flip through the restamp fan-out (§3.3) — same tick, so the
+        // styling phase that follows the checkpoint re-matches before this frame lays out.
+        if (!forTeardown)
+            StyleEngineInternal?.RestampCapabilityClasses();
+    }
+
     // ───────────────────────────── inline presentation (UseInline) ─────────────────────────────
 
     /// <summary>
@@ -812,6 +973,9 @@ public sealed partial class UIApplication
     {
         if (response.Kind != DeviceResponseKind.CursorPositionReport || _inlineCpr == InlineCprState.None)
             return;
+
+        if (!IsPresentingInline)
+            return; // a stale reply draining mid-excursion would resolve against the fullscreen buffer
 
         if (!TryParseCursorReport(response.Payload.Span, out var row, out var column))
             return;
@@ -1118,9 +1282,24 @@ public sealed partial class UIApplication
 
             _buffer = new CellBuffer(columns, rows, effective) { CursorVisible = false };
 
+            // A renegotiation while ESCALATED must not leave the parked inline buffer on the old
+            // capability snapshot — restored verbatim after the excursion, it would blend against the
+            // old terminal defaults for the rest of the app's life. Geometry and cursor state carry
+            // over (the return path's re-anchor derives the origin from CursorRow); content does not
+            // need to (the fresh inline renderer full-redraws).
+            if (_parkedInlineBuffer is {} parked)
+            {
+                _parkedInlineBuffer = new CellBuffer(parked.Columns, parked.Rows, effective)
+                {
+                    CursorVisible = false,
+                    CursorRow = parked.CursorRow,
+                    CursorColumn = parked.CursorColumn,
+                };
+            }
+
             _renderer = new FrameRenderer(effective.Output,
                                           new FrameRendererOptions(OrderedDither: _options.OrderedDither,
-                                                                   Inline: _options.Inline));
+                                                                   Inline: IsPresentingInline)); // the LIVE side — a renegotiation while escalated must rebuild a fullscreen renderer
 
             _effectiveInputCapabilities = ApplyDecorationProjections(effective.Input);
             _supportsAltKeyTracking = ComputeAltKeyTracking(effective.Input);
@@ -1222,6 +1401,13 @@ public sealed partial class UIApplication
         {
             try
             {
+                // Exiting while ESCALATED (InlineWithSwitching with a window still open): return to
+                // the inline side first — close the fullscreen renderer and pop the alt scope while
+                // its screen is still current — so the ordinary inline teardown below (WriteInlineExit
+                // against the region the DECRST 1049 pop just restored) applies unchanged.
+                if (_options.Inline && !IsPresentingInline)
+                    SwitchPresentation(toInline: true, forTeardown: true);
+
                 _scratch.ResetWrittenCount();
 
                 // Retain-mode inline exit keeps the last frame standing — fragment payloads

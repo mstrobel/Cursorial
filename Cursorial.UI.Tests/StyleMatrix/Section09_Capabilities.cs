@@ -46,7 +46,9 @@ public class Section09_Capabilities
         // Injecting the reader is what makes this ENVIRONMENT-INDEPENDENT: the assertion holds even when the
         // suite runs over SSH (the old SSH-sensitivity gap). Local is the sole member of its axis — an SSH run
         // simply drops caps-local (there is no caps-remote class).
-        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode", "caps-local"], tree.Root.Classes.ToArray());
+        // app-fullscreen closes the set: the §3.3 presentation pair rides the same stamp builder, and a
+        // headless host presents fullscreen (ApplicationModel.FullScreen) unless built inline.
+        Assert.Equal(["caps-ansi16", "caps-emoji", "caps-unicode", "caps-local", "app-fullscreen"], tree.Root.Classes.ToArray());
     }
 
     [Theory]

@@ -63,7 +63,23 @@ public enum StyleCapabilities
     /// <summary>
     /// Indicates, as best as the framework can determine, that an application is running locally and not through
     /// an SSH tunnel. This is the sole member of the locality axis: present means the process is local, absent
-    /// means it is remote (e.g., an SSH session). The top declared flag.
+    /// means it is remote (e.g., an SSH session).
     /// </summary>
-    Local = 1 << 13
+    Local = 1 << 13,
+
+    /// <summary>
+    /// Frames currently present into the inline region (<see cref="PresentationClasses.Inline"/>).
+    /// The presentation axis always carries exactly one of this pair; under
+    /// <see cref="ApplicationModel.InlineWithSwitching"/> the pair flips at each window-count
+    /// transition — a style requiring it detaches/reattaches with the switch, same tick as the
+    /// <c>app-inline</c> class.
+    /// </summary>
+    Inline = 1 << 14,
+
+    /// <summary>
+    /// Frames currently present to the full (alternate) screen
+    /// (<see cref="PresentationClasses.FullScreen"/>). The other half of the presentation axis;
+    /// the top declared flag.
+    /// </summary>
+    FullScreen = 1 << 15
 }

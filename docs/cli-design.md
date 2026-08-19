@@ -90,6 +90,13 @@ tidy transcript afterward regardless of how many steps went fullscreen.
 
 ## 3. Presentation: `ApplicationModel` and `InlineWithSwitching`
 
+> **STATUS (2026-08-19):** §3.1 + §3.3 IMPLEMENTED (FW-7): `ApplicationModel.InlineWithSwitching`,
+> `UIApplicationBuilder.UseInlineWithSwitching`, `UIApplication.IsPresentingInline`, the
+> WindowManager 0↔1 seam, the Phase-2.5 transition checkpoint with parked inline buffer + DSR-CPR
+> re-anchor on return, and the `app-inline`/`app-fullscreen` stamp pair (`PresentationClasses`)
+> through the capability-restamp fan-out. curio's runner builds every step with it. §3.2 (the
+> inline-hostable MessageBox/TaskDialog lane, FW-8) remains open.
+
 ### 3.1 The third model
 
 ```csharp

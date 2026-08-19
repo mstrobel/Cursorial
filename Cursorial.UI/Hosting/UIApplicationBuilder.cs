@@ -144,8 +144,24 @@ public sealed class UIApplicationBuilder
             throw new ArgumentOutOfRangeException(nameof(maxHeight), maxHeight, "The inline region height cap must be at least one row.");
 
         _options.Inline = true;
+        _options.Model = ApplicationModel.Inline;
         _options.InlineMaxHeight = maxHeight;
         _options.InlineExitBehavior = exitBehavior;
+        return this;
+    }
+
+    /// <summary>
+    /// Presents inline like <see cref="UseInline"/>, but escalates to the alternate screen while any
+    /// <b>window</b> is open and returns to the inline region when the last one closes
+    /// (<see cref="ApplicationModel.InlineWithSwitching"/>, design doc §3.1). Popups never escalate.
+    /// </summary>
+    /// <param name="maxHeight">Optional cap on the region height in rows (≥ 1); the terminal
+    /// height always caps regardless. <see langword="null"/> = terminal height only.</param>
+    /// <param name="exitBehavior">The initial <see cref="UIApplication.InlineExitBehavior"/>.</param>
+    public UIApplicationBuilder UseInlineWithSwitching(int? maxHeight = null, InlineExitBehavior exitBehavior = InlineExitBehavior.Clear)
+    {
+        UseInline(maxHeight, exitBehavior);
+        _options.Model = ApplicationModel.InlineWithSwitching;
         return this;
     }
 
@@ -212,6 +228,9 @@ internal sealed class UIApplicationOptions
     public (TimeSpan? UpTimeout, TimeSpan? RepeatTimeout)? KeyReleaseSynthesis;
     public bool UseAlternateScreen = true;
     public bool Inline;
+
+    /// <summary>The presentation model; <see cref="ApplicationModel.FullScreen"/> unless a UseInline* call says otherwise.</summary>
+    public ApplicationModel Model = ApplicationModel.FullScreen;
     public int? InlineMaxHeight;
     public InlineExitBehavior InlineExitBehavior = InlineExitBehavior.Clear;
     public bool OrderedDither;

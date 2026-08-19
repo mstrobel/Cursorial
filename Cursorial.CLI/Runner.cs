@@ -169,10 +169,14 @@ public static class Runner
 
             return UIApplication.CreateBuilder()
                                 .WithFrameRate(60)
-                                .WithUserConfiguration(new UserConfigurationOptions { ShowFirstRunWizard = false })
+                                .WithUserConfiguration(new UserConfigurationOptions
+                                                       {
+                                                           ApplicationId = "curio",
+                                                           ShowFirstRunWizard = false
+                                                       })
                                 .WithKeyReleaseSynthesis()
                                 .WithNumpadKeyTranslation()
-                                .UseInline(maxHeight: InlineMaxHeight, exitBehavior)
+                                .UseInlineWithSwitching(maxHeight: InlineMaxHeight, exitBehavior)
                                 .WithSession(session)
                                 .ExitOnUnhandledCtrlC(false) // curio owns cancel codes: Ctrl+C is 130, not 0
                                 .Build();
@@ -258,7 +262,7 @@ public static class Runner
     {
         app.InputDispatcher.PreProcessInput += (_, e) =>
         {
-            if (e is not KeyEventArgs key)
+            if (e is not KeyEventArgs { Device.Kind: KeyEventKind.Down } key)
                 return;
 
             if (key is { Key: Key.Character, Text.Length: > 0 } &&
@@ -269,7 +273,14 @@ public static class Runner
                 app.Shutdown(ExitCodes.CtrlC);
                 key.Handled = true;
             }
-            else if (key.Key == Key.Escape)
+        };
+
+        app.InputDispatcher.PostProcessInput += (_, e) =>
+        {
+            if (e is not KeyEventArgs { Device.Kind: KeyEventKind.Down, Handled: false } key)
+                return;
+
+            if (key.Key == Key.Escape)
             {
                 app.InlineExitBehavior = InlineExitBehavior.Clear;
                 app.Shutdown(ExitCodes.Canceled);

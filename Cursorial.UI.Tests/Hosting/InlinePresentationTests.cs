@@ -8,6 +8,7 @@ using System.Text;
 using Cursorial.Rendering;
 using Cursorial.Tests.UI.LayoutMatrix;
 using Cursorial.UI;
+using Cursorial.UI.Controls;
 using Cursorial.UI.Hosting.Headless;
 
 using InputProbe = Cursorial.Tests.UI.InputMatrix.Probe;
@@ -327,5 +328,130 @@ public sealed class InlinePresentationTests
 
         // Clear this thread's thread-local Current (teardown cleared the loop thread's only).
         app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    // ───────────────── InlineWithSwitching (design doc §3.1, FW-7) ─────────────────
+
+    private static UIHeadlessHost CreateSwitching(int? maxHeight = null)
+        => UIHeadlessHost.Create(new UIHeadlessHostOptions
+                                 {
+                                     InitialSize = new Size(40, 12),
+                                     CaptureFrameBytes = true,
+                                     ConfigureBuilder = b => b.UseInlineWithSwitching(maxHeight),
+                                 });
+
+    [Fact]
+    public void Switching_StartsInline_WithTheInlineStamp()
+    {
+        using var host = CreateSwitching();
+        var probe = new Probe(10, 3) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.Equal(ApplicationModel.InlineWithSwitching, host.Application.ApplicationModel);
+        Assert.True(host.Application.IsPresentingInline);
+        Assert.Contains(PresentationClasses.Inline, probe.Classes);
+        Assert.DoesNotContain(PresentationClasses.FullScreen, probe.Classes);
+    }
+
+    [Fact]
+    public void Switching_WindowOpens_Escalates_AndLastCloseReturnsInline()
+    {
+        using var host = CreateSwitching();
+        var probe = new Probe(10, 3) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+        Assert.True(host.Application.IsPresentingInline);
+
+        var window = host.NewWindow(content: new Probe(8, 2) { FillGlyph = "W" }, left: 4, top: 2);
+        window.Show(host.Application.WindowManager!);
+        host.RunFrame();
+
+        Assert.False(host.Application.IsPresentingInline); // window ⇒ escalate (§3.1)
+        Assert.Contains(PresentationClasses.FullScreen, probe.Classes); // the pair flipped through the restamp fan-out...
+        Assert.DoesNotContain(PresentationClasses.Inline, probe.Classes);
+        var escalation = Encoding.ASCII.GetString(host.LastFrameBytes.ToArray());
+        Assert.Contains("\x1b[?1049h", escalation); // ...and the transition frame entered the alt buffer
+
+        window.Close();
+        host.RunFrame(); // the transition frame consumes the pending 1→0 switch and pops the scope...
+        ReplyCursorPosition(host, row: 5); // ...then the return path re-derives the origin via a fresh CPR round
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.IsPresentingInline);
+        Assert.Contains(PresentationClasses.Inline, probe.Classes);
+        Assert.DoesNotContain(PresentationClasses.FullScreen, probe.Classes);
+    }
+
+    [Fact]
+    public void Switching_PopupNeverEscalates()
+    {
+        using var host = CreateSwitching();
+        var box = new TextBox { Width = 12, Height = 1 };
+        var popup = new CompletionPopup { Target = box, Provider = new DelegateCompletionProvider(q => new CompletionContext(0, q.Text.Length, q.Text, [new CompletionItem("alpha"), new CompletionItem("beta")])) };
+        var root = new Grid();
+        root.Children.Add(box);
+        root.Children.Add(popup);
+        host.ShowRoot(root);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 3);
+        Assert.True(host.RunUntilIdle());
+        box.Focus();
+        host.SendText("a");
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(popup.IsOpen); // a popup is up...
+        Assert.True(host.Application.IsPresentingInline); // ...and the presentation did not move (§3.1: popup ⇒ inline)
+    }
+
+    [Fact] // the presentation axis lives in the capability MASK: Style.RequiresCapabilities gates on the
+    // same single derivation as the app-inline/app-fullscreen classes, and flips with the switch.
+    public void Switching_RequiresCapabilitiesGate_FollowsThePresentationAxis()
+    {
+        using var host = CreateSwitching();
+        var probe = new Probe(10, 3) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        var inlineOnly = new Style(Selectors.Is<Probe>()) { RequiresCapabilities = StyleCapabilities.Inline };
+        inlineOnly.Setters.Add(new Setter(UIElement.MinWidthProperty, 7));
+        host.Application.Styles.Add(inlineOnly);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(7, probe.MinWidth); // presenting inline — the Inline-requiring rule applies
+
+        var window = host.NewWindow(content: new Probe(8, 2) { FillGlyph = "W" }, left: 4, top: 2);
+        window.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+        Assert.NotEqual(7, probe.MinWidth); // escalated — the gate detached the rule, same tick as the stamp
+
+        window.Close();
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+        Assert.Equal(7, probe.MinWidth); // back inline — reattached
+    }
+
+    [Fact]
+    public void PlainInline_WindowOpen_DoesNotEscalate()
+    {
+        using var host = CreateInline();
+        var probe = new Probe(10, 3) { FillGlyph = "X" };
+        host.ShowRoot(probe);
+        host.RunFrame();
+        ReplyCursorPosition(host, row: 5);
+        Assert.True(host.RunUntilIdle());
+
+        var window = host.NewWindow(content: new Probe(8, 2) { FillGlyph = "W" }, left: 4, top: 2);
+        window.Show(host.Application.WindowManager!);
+        Assert.True(host.RunUntilIdle());
+
+        Assert.True(host.Application.IsPresentingInline); // Inline never switches — InlineWithSwitching is the opt-in
+        Assert.Equal(ApplicationModel.Inline, host.Application.ApplicationModel);
     }
 }

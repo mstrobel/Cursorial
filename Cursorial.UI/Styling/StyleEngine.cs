@@ -1613,6 +1613,8 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         (StyleCapabilities.Unicode, CapabilityClasses.Unicode),
         (StyleCapabilities.TextSizing, CapabilityClasses.TextSizing),
         (StyleCapabilities.Local, CapabilityClasses.Local),
+        (StyleCapabilities.Inline, PresentationClasses.Inline),
+        (StyleCapabilities.FullScreen, PresentationClasses.FullScreen),
     ];
 
     /// <summary>
@@ -1637,6 +1639,13 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         // app's injectable IEnvironmentReader — the seam that keeps this deterministic under test regardless
         // of where the suite runs (e.g., over SSH). Local is the sole member of the axis: present = local,
         // absent = remote.
+        // The presentation axis (§3.3): exactly one of the pair, mirroring the LIVE side — this is the
+        // one derivation both the app-inline/app-fullscreen stamps (CapabilityClassMap) and the
+        // Style.RequiresCapabilities gate consume, so a required style and a class selector can never
+        // disagree about which screen the frame is on. InlineWithSwitching transitions re-run this
+        // fold via the restamp fan-out; the mask change is what re-matches every surface root.
+        mask |= _app.IsPresentingInline ? StyleCapabilities.Inline : StyleCapabilities.FullScreen;
+
         if (_app.EnvironmentReader.IsSSH() is false)
             mask |= StyleCapabilities.Local;
 
@@ -1706,8 +1715,11 @@ internal sealed class StyleEngine : IStyleFrameHooks, IInteractionStateObserver
         {
             foreach (var name in existing)
             {
-                if (!name.StartsWith("caps-", StringComparison.Ordinal))
-                    replacement.Add(name); // app-added classes are preserved; only the caps-* subset is replaced
+                if (!name.StartsWith("caps-", StringComparison.Ordinal) &&
+                    name is not (PresentationClasses.Inline or PresentationClasses.FullScreen))
+                {
+                    replacement.Add(name); // app-added classes are preserved; the caps-* subset and the presentation pair are replaced
+                }
             }
         }
 

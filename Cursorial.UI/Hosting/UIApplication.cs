@@ -140,7 +140,8 @@ public sealed partial class UIApplication : IAsyncDisposable
     internal UIApplication(UIApplicationOptions options)
     {
         _options = options;
-        ApplicationModel = _options.Inline ? ApplicationModel.Inline : ApplicationModel.FullScreen;
+        ApplicationModel = _options.Model;
+        IsPresentingInline = _options.Inline; // Inline + InlineWithSwitching start inline; FullScreen never is
         Dispatcher = new UIDispatcher();
         _syncContext = new UISynchronizationContext(Dispatcher);
         _guard = new UserCodeGuard(this);
@@ -206,11 +207,22 @@ public sealed partial class UIApplication : IAsyncDisposable
     public InlineExitBehavior InlineExitBehavior { get; set; }
 
     /// <summary>
-    /// The applications presentation model — either <c>FullScreen</c> or <c>Inline</c> (see
-    /// <see cref="UIApplicationBuilder.UseInline"/>). Initialized from the builder and fixed
-    /// for the lifetime of the application.
+    /// The application's presentation model (see <see cref="UIApplicationBuilder.UseInline"/> /
+    /// <see cref="UIApplicationBuilder.UseInlineWithSwitching"/>). Initialized from the builder and
+    /// fixed for the lifetime of the application; the side currently PRESENTED is
+    /// <see cref="IsPresentingInline"/>, which only <see cref="ApplicationModel.InlineWithSwitching"/>
+    /// ever flips.
     /// </summary>
     public ApplicationModel ApplicationModel { get; private set; }
+
+    /// <summary>
+    /// Whether frames are currently presented into the inline region (as opposed to the full screen).
+    /// Fixed for <see cref="ApplicationModel.FullScreen"/> (<see langword="false"/>) and
+    /// <see cref="ApplicationModel.Inline"/> (<see langword="true"/>); flips at each window-count
+    /// escalation under <see cref="ApplicationModel.InlineWithSwitching"/>. The
+    /// <c>app-inline</c>/<c>app-fullscreen</c> style stamps mirror this exactly.
+    /// </summary>
+    public bool IsPresentingInline { get; private set; }
 
     /// <summary>
     /// S3's input dispatcher (design doc §7.4) — the application's routing surface: capture,
@@ -539,6 +551,7 @@ public sealed partial class UIApplication : IAsyncDisposable
            StyleHooks is not { HasPendingActivations: true } &&
            AnimationDriver is not { HasActiveAnimations: true } &&
            Volatile.Read(ref _renderRequested) == 0 &&
+           !_presentationSwitchPending && // a deferred InlineWithSwitching transition is pending work
            _controlSequences.IsEmpty;
 
     internal bool HasFatalException => _fatalException is not null;

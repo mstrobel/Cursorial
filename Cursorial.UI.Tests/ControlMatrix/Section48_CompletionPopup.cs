@@ -935,4 +935,62 @@ public sealed class Section48_CompletionPopup
         Assert.Equal(["inner-a", "inner-b"], popup.Entries.Select(e => e.Item.Display));
         Assert.Equal(CompletionTrigger.Continued, provider.LastTrigger);
     }
+
+    // ───────────────── C46.21 — CloseOnEscape=false: the host owns the Esc gesture ─────────────────
+
+    [Fact] // C46.21: text mode — Esc neither closes the session nor is handled; the host's handler sees it
+    public void C46_21_CloseOnEscapeFalse_TextMode_EscapeBubbles_AndTheSessionStays()
+    {
+        var provider = PickerProvider("alpha", "amber", "beta"); // the whole-text shape serves text mode too
+        var (host, box, popup) = Show(provider);
+        using var _ = host;
+
+        popup.CloseOnEscape = false;
+
+        var reachedHost = 0;
+        box.VisualParent!.KeyDown += (_, e) => { if (e.Key == Key.Escape) reachedHost++; };
+
+        host.SendText("a");
+        host.RunUntilIdle();
+        Assert.True(popup.IsOpen);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.True(popup.IsOpen); // the session survived: Esc means "cancel the SURFACE" to this host
+        Assert.Equal(1, reachedHost); // and the key actually arrived — nothing marked it handled on the way
+        Assert.Equal("a", box.Text); // the field kept what was typed, same as a normal dismiss would
+
+        popup.CloseOnEscape = true; // the default contract is unchanged: Esc closes and is consumed
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.False(popup.IsOpen);
+        Assert.Equal(1, reachedHost); // handled — the host never saw the second Esc
+    }
+
+    [Fact] // C46.21b: picker mode — with CloseOnEscape=false not even the pattern peel may eat the key
+    public void C46_21_CloseOnEscapeFalse_Picker_SkipsThePatternPeel_AndBubbles()
+    {
+        var provider = PickerProvider("docs", "downloads");
+        var (host, anchor, popup) = ShowPicker(provider);
+        using var _ = host;
+
+        popup.CloseOnEscape = false;
+
+        var reachedHost = 0;
+        anchor.VisualParent!.KeyDown += (_, e) => { if (e.Key == Key.Escape) reachedHost++; };
+
+        popup.Open();
+        host.SendText("do");
+        host.RunUntilIdle();
+        Assert.Equal("do", popup.Pattern);
+
+        host.SendKey(Key.Escape);
+        host.RunUntilIdle();
+
+        Assert.True(popup.IsOpen);
+        Assert.Equal("do", popup.Pattern); // the peel is Esc behaviour too, and Esc is not ours to spend
+        Assert.Equal(1, reachedHost);
+    }
 }

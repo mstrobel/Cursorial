@@ -132,6 +132,19 @@ public class CompletionPopup : Control
     public static readonly StyledProperty<bool> ShowFooterProperty =
         UIProperty.Register<CompletionPopup, bool>(nameof(ShowFooter), defaultValue: true, changed: OnChromeVisibilityChanged);
 
+    /// <summary>The popup's drop shadow (default <see cref="WindowShadow.Default"/>).</summary>
+    public static readonly StyledProperty<WindowShadow> ShadowProperty =
+        Window.ShadowProperty.AddOwner<CompletionPopup>();
+
+    /// <summary>
+    /// Whether the popup handles <c>Esc</c> — closing the session (a picker first peels its typed
+    /// pattern back to the full list). <see langword="false"/> leaves the key unhandled so it bubbles
+    /// to the host, for surfaces where Esc means "cancel the whole prompt" rather than "dismiss the
+    /// hint": curio's <c>filter</c> IS the popup, and Esc must reach the pipeline's abort binding.
+    /// </summary>
+    public static readonly StyledProperty<bool> CloseOnEscapeProperty =
+        UIProperty.Register<CompletionPopup, bool>(nameof(CloseOnEscape), defaultValue: true);
+
     /// <summary>The key-hint footer's text.</summary>
     public static readonly StyledProperty<object?> FooterContentProperty =
         UIProperty.Register<CompletionPopup, object?>(nameof(FooterContent), defaultValue: DefaultFooterText, changed: OnFooterContentChanged);
@@ -228,6 +241,12 @@ public class CompletionPopup : Control
 
     /// <inheritdoc cref="ShowFooterProperty"/>
     public bool ShowFooter { get => GetValue(ShowFooterProperty); set => SetValue(ShowFooterProperty, value); }
+
+    /// <inheritdoc cref="ShadowProperty"/>
+    public WindowShadow Shadow { get => GetValue(ShadowProperty); set => SetValue(ShadowProperty, value); }
+
+    /// <inheritdoc cref="CloseOnEscapeProperty"/>
+    public bool CloseOnEscape { get => GetValue(CloseOnEscapeProperty); set => SetValue(CloseOnEscapeProperty, value); }
 
     /// <inheritdoc cref="FooterContentProperty"/>
     public object? FooterContent { get => GetValue(FooterContentProperty); set => SetValue(FooterContentProperty, value); }
@@ -678,6 +697,7 @@ public class CompletionPopup : Control
             case Key.UpArrow: MoveSelection(-1); break;
             case Key.PageDown: MoveSelection(page); break;
             case Key.PageUp: MoveSelection(-page); break;
+            case Key.Escape when !CloseOnEscape: return; // the host owns Esc — skip e.Handled so it bubbles
             case Key.Escape: CloseSession(); break;
 
             case Key.Enter:
@@ -755,6 +775,7 @@ public class CompletionPopup : Control
             // this popup's header, so an Escape that always closed would leave a user who mistyped one
             // character choosing between backspacing blind and losing the list — and the state that most
             // provokes an Escape ("no matches") is exactly the one where the pattern is the problem.
+            case Key.Escape when !CloseOnEscape: return; // the host owns Esc — not even the pattern peel may eat it
             case Key.Escape when _pattern.Length > 0: Pattern = ""; break;
             case Key.Escape: CloseSession(); break;
 

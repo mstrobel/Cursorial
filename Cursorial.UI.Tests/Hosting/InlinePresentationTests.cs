@@ -250,9 +250,11 @@ public sealed class InlinePresentationTests
         host.Dispose();
 
         // Region rows 4..6 (0-based) → park on the line below the bottom row (terminal row 7),
-        // sweep anything staler below it, and leave the frame's rows untouched.
+        // sweep anything staler below it, and leave the frame's rows untouched. The CHA (`[1G`) after
+        // the LF is the exit invariant made explicit: the session is still raw (no ONLCR), so the LF
+        // alone keeps its column — whoever writes next must start flush-left by CONTRACT, not luck.
         var teardown = Encoding.ASCII.GetString(host.TeardownBytes.Span);
-        Assert.Contains("\x1b[7;1H\n\x1b[0J", teardown);
+        Assert.Contains("\x1b[7;1H\n\x1b[1G\x1b[0J", teardown);
         Assert.DoesNotContain("\x1b[5;1H\x1b[0J", teardown);
         Assert.DoesNotContain("\x1b[2J", teardown);
     }

@@ -1010,6 +1010,11 @@ public sealed partial class UIApplication
             lf[0] = (byte) '\n';
             output.Advance(1);
 
+            // The session is still RAW here (no ONLCR), so that LF kept whatever column the terminal was
+            // in — column 0 only because the WriteMoveTo above says so. Make the exit invariant explicit
+            // rather than inherited: whoever writes next (an emit, the shell prompt) starts flush-left.
+            CursorWriter.WriteColumnAbsolute(output, 0);
+
             ScreenWriter.WriteClearScreenAfter(output);
         }
     }

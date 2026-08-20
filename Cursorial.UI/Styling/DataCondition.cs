@@ -21,9 +21,9 @@ namespace Cursorial.UI;
 /// <b>Namespace note:</b> <see cref="DataCondition"/> lives in <c>Cursorial.UI</c> (beside
 /// <c>Style</c>), but its constructors take a <see cref="BindingBase"/> from
 /// <c>Cursorial.UI.Data</c>. Authoring a <c>When</c> condition therefore needs both
-/// <c>using Cursorial.UI;</c> and <c>using Cursorial.UI.Data;</c> in scope. Only reflection-lane
-/// <see cref="Binding"/> descriptors are accepted in v1 (validated at construction); compiled-lane
-/// conditions are deferred.
+/// <c>using Cursorial.UI;</c> and <c>using Cursorial.UI.Data;</c> in scope. Both reflection-lane
+/// <see cref="Binding"/> and compiled-lane <c>CompiledBinding&lt;,&gt;</c> descriptors are accepted —
+/// <c>BindingOperations.Watch</c> arms either through the shared <c>CreateExpression</c> contract.
 /// </para>
 /// <para>
 /// <b>Pinned semantics</b> (doc §3.1 / §3.3 / ledger B16): an unknown or
@@ -89,20 +89,12 @@ public sealed class DataCondition
         _predicate = predicate;
     }
 
-    // A DataCondition arms one BindingOperations.Watch per condition, and Watch is reflection-lane
-    // only in v1 (compiled-lane watches are deferred). Validate at construction so an unsupported
-    // descriptor fails at the authoring site, not deep inside style arming. The Binding property
-    // stays BindingBase so the deferred compiled-lane support can widen this without a break.
+    // A DataCondition arms one BindingOperations.Watch per condition; Watch builds either lane's
+    // expression through the shared CreateExpression contract, so any BindingBase descriptor is
+    // acceptable (the v1 reflection-lane restriction is lifted — the widening the BindingBase-typed
+    // property was designed for).
     private static void RequireReflectionLane(BindingBase binding)
-    {
-        ArgumentNullException.ThrowIfNull(binding);
-        if (binding is not Cursorial.UI.Data.Binding)
-        {
-            throw new ArgumentException(
-                $"DataCondition currently requires a reflection-lane Binding; got {binding.GetType().Name}.",
-                nameof(binding));
-        }
-    }
+        => ArgumentNullException.ThrowIfNull(binding);
 
     /// <summary>The data binding whose delivered value drives the condition (the S2 source half).</summary>
     public required BindingBase Binding { get; init; } = null!;

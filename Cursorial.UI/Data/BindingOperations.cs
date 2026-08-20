@@ -126,13 +126,6 @@ public static class BindingOperations
         ArgumentNullException.ThrowIfNull(onValueChanged);
         anchor.VerifyAccess();
 
-        if (binding is not Binding watchBinding)
-        {
-            throw new ArgumentException(
-                $"Watch does not yet support {binding.GetType().Name}; use a reflection-lane Binding descriptor instead.",
-                nameof(binding));
-        }
-
         var watch = new BindingWatch();
         var context = new BindingActivationContext(
             anchor, UIProperty.UnsetTargetProperty, anchor, hostFrame: null,
@@ -142,7 +135,9 @@ public static class BindingOperations
                 onValueChanged(value);
             });
 
-        watch.Expression = watchBinding.CreateExpression(in context);
+        // CreateExpression is the single engine contract (BindingBase): reflective and compiled
+        // descriptors both build watch-mode expressions — the shared core delivers to the callback.
+        watch.Expression = binding.CreateExpression(in context);
         return watch;
     }
 

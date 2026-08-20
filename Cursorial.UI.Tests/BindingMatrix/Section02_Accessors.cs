@@ -168,6 +168,24 @@ public class Section02_Accessors
         Assert.Null(AccessorCache.ResolveStringIndexer(box, "Bogus"));
     }
 
+    [Fact] // a COLD qualified parse must not depend on load order: the owner's registrations live in
+    // its static ctor, and nothing else ever touches a pure attached-behavior class — the parse forces
+    // the cctor chain before the registry probe (the compiled lane is immune by construction: its baked
+    // static field reference runs the cctor on first touch).
+    public void B024e_TypeQualified_ColdAttachedOwner_ForcesRegistrations()
+    {
+        // typeof(...) alone runs NO static ctor (beforefieldinit) — this parse is the type's first touch.
+        var segment = BindingPath.Parse("(ColdAttachedHost.Marker)",
+                                        new LookupPathTypeResolver(("ColdAttachedHost", typeof(ColdAttachedHost)))).Segments[0];
+
+        Assert.Equal(PathSegmentKind.TypeQualified, segment.Kind);
+        Assert.NotNull(segment.QualifiedProperty.UIProperty); // the registration was seen, not skipped cold
+
+        var target = new BindWidget();
+        target.SetValue(segment.QualifiedProperty.UIProperty!, 7);
+        Assert.Equal(7, AccessorCache.ResolveProperty(target, in segment).GetValue(target));
+    }
+
     [Fact]
     public void B024c_TypeQualifiedClr_MismatchedRuntimeInstance_FallsBackToByName()
     {
@@ -279,3 +297,14 @@ public class Section02_Accessors
         internal sealed class Q;
     }
 }
+
+/// <summary>A pure attached-behavior owner NOTHING else references — its cctor (the field initializer)
+/// runs only if the qualified parse forces it (B024e). Do not touch from any other test.</summary>
+internal sealed class ColdAttachedHost
+{
+    private ColdAttachedHost() { }
+
+    public static readonly AttachedProperty<int> MarkerProperty =
+        UIProperty.RegisterAttached<ColdAttachedHost, UIElement, int>("Marker");
+}
+

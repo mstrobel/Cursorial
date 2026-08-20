@@ -373,6 +373,15 @@ public sealed class BindingPath
             if (_resolver.Resolve(typeToken) is not {} ownerType)
                 throw Fail(typeStart, $"the type token '{typeToken}' could not be resolved.");
 
+            // A type registers its UIProperties in its static ctor — a COLD qualified parse (an owner
+            // nothing else ever touched: a pure attached-behavior class handed in by a resolver) would
+            // miss the registration below and silently degrade to by-name runtime resolution, making
+            // the binding load-order-dependent. Force the chain first, exactly as
+            // StyledProperty.ResolveMetadata does for metadata overrides; same-thread re-entrant
+            // RunClassConstructor is a CLR no-op. (The compiled lane is immune by construction — its
+            // baked static field reference runs the cctor on first touch.)
+            ForceRegistrations(ownerType);
+
             // A registered UIProperty on the owner (attached OR regular) if one exists; else a CLR property found
             // statically on the owner. Only the OWNER type must resolve at parse time: when neither lookup finds
             // the member, the segment stays unresolved here and the member resolves by name on the runtime source
@@ -391,6 +400,16 @@ public sealed class BindingPath
             Justification = "The reflective binding lane resolves members on live DataContext instances by RUNTIME type. A " +
                         "fully-lowered app binds through CompiledBinding and never enters it; where it does run, a " +
                         "member the trimmer removed resolves as an unresolvable/no-op segment (traced), not a crash.")]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2059",
+            Justification = "ownerType is a live type a path resolver handed back: a type that exists in the " +
+                            "running app keeps its static constructor — the trimmer removes cctors only " +
+                            "together with their types.")]
+        private static void ForceRegistrations(Type ownerType)
+        {
+            for (var t = ownerType; t is not null && t != typeof(object); t = t.BaseType)
+                System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(t.TypeHandle);
+        }
+
         private static PropertyInfo? FindClrProperty(Type ownerType, string member)
         {
             try

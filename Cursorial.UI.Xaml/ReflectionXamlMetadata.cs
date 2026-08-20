@@ -2,7 +2,9 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Runtime.CompilerServices;
 
 using Cursorial.UI.Controls;
@@ -429,32 +431,188 @@ public sealed class ReflectionXamlMetadata : IXamlTypeMetadataProvider, IXamlSta
         if (type is null)
             return false;
 
-        var members = memberPath.Substring(firstDot + 1).Split('.');
+        // Bracket-aware segmentation: members split at dots, an [indexer] binds to the PRECEDING member
+        // (never after a dot). Kept byte-identical in shape to XamlPathParser.TryTokenize (X174).
+        if (!TryTokenizeStaticMembers(memberPath.Substring(firstDot + 1), out var segments))
+            return false;
 
         // (1) The first member: a public static field or readable property directly on the type.
+        if (segments.Count == 0 || segments[0].Key is not null)
+            return false;
+
         object? current;
-        if (type.GetField(members[0], BindingFlags.Public | BindingFlags.Static) is { } staticField)
+        if (type.GetField(segments[0].Name!, BindingFlags.Public | BindingFlags.Static) is { } staticField)
             current = staticField.GetValue(null);
-        else if (type.GetProperty(members[0], BindingFlags.Public | BindingFlags.Static) is { CanRead: true } staticProp)
+        else if (type.GetProperty(segments[0].Name!, BindingFlags.Public | BindingFlags.Static) is { CanRead: true } staticProp)
             current = staticProp.GetValue(null);
         else
             return false;
 
-        // (2) Any remaining members: a public instance readable property / field on the running value.
-        for (int i = 1; i < members.Length; i++)
+        // (2) Any remaining segments: public instance members on the running value; indexer segments walk
+        // the shared ladder — (a) an unquoted int-parsable key takes Item[int], (b) a key whose last
+        // dot-segment names a constant of an Item[TEnum]'s key type (case-insensitive) takes it, (c)
+        // anything else takes Item[string] (else Item[object]). Same order as the generator's
+        // XamlPathParser.TryResolveIndexer, so the baked and reflected lanes cannot drift. A key the
+        // collection does not hold throws in the BAKED lane too — a data error either way — but here it
+        // degrades to the standard member-not-found so the loader reports CUR2102 instead of unwinding.
+        for (int i = 1; i < segments.Count; i++)
         {
             if (current is null)
                 return false;
+
             var runtimeType = current.GetType();
-            if (runtimeType.GetProperty(members[i], BindingFlags.Public | BindingFlags.Instance) is { CanRead: true } instanceProp)
-                current = instanceProp.GetValue(current);
-            else if (runtimeType.GetField(members[i], BindingFlags.Public | BindingFlags.Instance) is { } instanceField)
-                current = instanceField.GetValue(current);
-            else
-                return false;
+            var segment = segments[i];
+
+            if (segment.Key is null)
+            {
+                if (runtimeType.GetProperty(segment.Name!, BindingFlags.Public | BindingFlags.Instance) is { CanRead: true } instanceProp)
+                    current = instanceProp.GetValue(current);
+                else if (runtimeType.GetField(segment.Name!, BindingFlags.Public | BindingFlags.Instance) is { } instanceField)
+                    current = instanceField.GetValue(current);
+                else
+                    return false;
+                continue;
+            }
+
+            try
+            {
+                if (!segment.KeyWasQuoted &&
+                    int.TryParse(segment.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intKey) &&
+                    runtimeType.GetProperty("Item", [typeof(int)]) is { CanRead: true } intIndexer)
+                {
+                    current = intIndexer.GetValue(current, [intKey]);
+                    continue;
+                }
+
+                if (!segment.KeyWasQuoted && TryEnumIndexer(runtimeType, segment.Key, out var enumIndexer, out var enumKey))
+                {
+                    current = enumIndexer!.GetValue(current, [enumKey]);
+                    continue;
+                }
+
+                var textual = runtimeType.GetProperty("Item", [typeof(string)])
+                              ?? runtimeType.GetProperty("Item", [typeof(object)]);
+                if (textual is not { CanRead: true })
+                    return false;
+
+                current = textual.GetValue(current, [segment.Key]);
+            }
+            catch (TargetInvocationException)
+            {
+                return false; // an absent key degrades to member-not-found (CUR2102), not an unwind
+            }
         }
 
         value = current;
         return true;
+    }
+
+    private readonly record struct StaticSegment(string? Name, string? Key, bool KeyWasQuoted);
+
+    private static bool TryTokenizeStaticMembers(string text, out List<StaticSegment> segments)
+    {
+        segments = [];
+        int i = 0, n = text.Length;
+        var expectMember = true;
+
+        while (i < n)
+        {
+            if (expectMember)
+            {
+                int start = i;
+                while (i < n && text[i] != '.' && text[i] != '[')
+                    i++;
+                if (i == start)
+                    return false;
+                segments.Add(new StaticSegment(text.Substring(start, i - start), null, false));
+                expectMember = false;
+                continue;
+            }
+
+            if (text[i] == '.')
+            {
+                if (i + 1 < n && text[i + 1] == '[')
+                    return false; // an indexer never follows a dot
+                i++;
+                expectMember = true;
+                continue;
+            }
+
+            if (text[i] == '[')
+            {
+                i++;
+                string key;
+                bool quoted = false;
+
+                if (i < n && text[i] == '\'')
+                {
+                    quoted = true;
+                    i++;
+                    var sb = new StringBuilder();
+                    while (i < n && text[i] != '\'')
+                    {
+                        if (text[i] == '\\' && i + 1 < n)
+                            i++;
+                        sb.Append(text[i]);
+                        i++;
+                    }
+                    if (i >= n)
+                        return false;
+                    i++;
+                    if (i >= n || text[i] != ']')
+                        return false;
+                    key = sb.ToString();
+                }
+                else
+                {
+                    int start = i;
+                    while (i < n && text[i] != ']')
+                    {
+                        if (text[i] == ',')
+                            return false;
+                        i++;
+                    }
+                    if (i >= n || i == start)
+                        return false;
+                    key = text.Substring(start, i - start).Trim();
+                    if (key.Length == 0)
+                        return false;
+                }
+
+                i++;
+                segments.Add(new StaticSegment(null, key, quoted));
+                continue;
+            }
+
+            return false;
+        }
+
+        return !expectMember && segments.Count > 0;
+    }
+
+    private static bool TryEnumIndexer(Type runtimeType, string key, out PropertyInfo? indexer, out object? enumKey)
+    {
+        indexer = null;
+        enumKey = null;
+
+        var lastDot = key.LastIndexOf('.');
+        var lastSegment = lastDot >= 0 ? key.Substring(lastDot + 1) : key;
+
+        foreach (var property in runtimeType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.Name != "Item" || !property.CanRead)
+                continue;
+            var parameters = property.GetIndexParameters();
+            if (parameters.Length != 1 || !parameters[0].ParameterType.IsEnum)
+                continue;
+            if (!Enum.TryParse(parameters[0].ParameterType, lastSegment, ignoreCase: true, out var parsed))
+                continue;
+
+            indexer = property;
+            enumKey = parsed;
+            return true;
+        }
+
+        return false;
     }
 }

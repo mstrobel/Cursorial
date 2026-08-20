@@ -125,6 +125,43 @@ public class ClosedTypeSetTests
         Assert.Null(ResolveStaticOf(resolver, "Brushes.Nonexistent.Color"));
     }
 
+    [Fact] // the shared XamlPathParser ladder: int / enum / string indexer segments in an x:Static chain
+    public void ResolveStaticExpr_IndexerSegments_BakeTypedKeys()
+    {
+        const string statics = @"
+using System.Collections.Generic;
+namespace TestStatics
+{
+    public enum Kind { First, Second }
+    public sealed class KindMap { public string this[Kind kind] => kind.ToString(); }
+    public static class Host
+    {
+        public static List<string> Items { get; } = new() { ""zero"", ""one"" };
+        public static Dictionary<string, int> Map { get; } = new() { [""a""] = 1 };
+        public static KindMap Kinds { get; } = new();
+    }
+}";
+        var compilation = GeneratorHarness.ReferencedCompilation()
+            .AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(statics));
+        var resolver = new XamlSymbolResolver(compilation);
+        const string ns = "using:TestStatics";
+
+        // int key -> Item[int]; the baked expression indexes with the literal.
+        Assert.EndsWith("Host.Items[1]", ClosedTypeSet.ResolveStaticExpr(resolver, ns, "Host.Items[1]"));
+
+        // string key (unquoted, non-int) -> Item[string]; baked quoted.
+        Assert.EndsWith("Host.Map[\"a\"]", ClosedTypeSet.ResolveStaticExpr(resolver, ns, "Host.Map[a]"));
+
+        // enum key -> Item[Kind], case-insensitive last-segment constant match, baked as the enum member.
+        var enumExpr = ClosedTypeSet.ResolveStaticExpr(resolver, ns, "Host.Kinds[second]");
+        Assert.NotNull(enumExpr);
+        Assert.EndsWith("Host.Kinds[global::TestStatics.Kind.Second]", enumExpr);
+
+        // an indexer chain continues with instance members; a key with no matching indexer is a clean null.
+        Assert.EndsWith("Host.Items[0].Length", ClosedTypeSet.ResolveStaticExpr(resolver, ns, "Host.Items[0].Length"));
+        Assert.Null(ClosedTypeSet.ResolveStaticExpr(resolver, ns, "Host.Items[not-an-int]")); // List<string> has no string indexer
+    }
+
     private static string? ResolveStaticOf(XamlSymbolResolver resolver, string path)
         => ClosedTypeSet.ResolveStaticExpr(resolver, XamlSymbolResolver.CursorialUiNamespace, path);
 }

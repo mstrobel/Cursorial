@@ -131,12 +131,15 @@ namespace TestApp
         Assert.Contains("new global::Cursorial.UI.Data.Binding", lowered); // faithful reflective fallback
     }
 
-    [Fact] // a UIObject-owned qualifier resolves to a UIProperty at runtime — accurately not compiled
-    public void Lowered_QualifiedHop_UIObjectOwner_StaysReflective()
+    [Fact] // a UIObject-owned qualifier COMPILES through the property lane now (WS-PP): the registration
+    // fully determines the access; a non-UIObject runtime source degrades through the `as` cast exactly
+    // as the reflective UIPropertyAccessor's receiver check would.
+    public void Lowered_QualifiedHop_UIObjectOwner_CompilesThroughThePropertyLane()
     {
         var (lowered, _) = LowerWithVms("(TextBlock.Text)", "QualView5");
 
-        Assert.DoesNotContain("CompiledBinding", lowered);
-        Assert.Contains("new global::Cursorial.UI.Data.Binding", lowered);
+        Assert.Contains("as global::Cursorial.UI.UIObject)?.GetValue(global::Cursorial.UI.Controls.TextBlock.TextProperty)", lowered);
+        Assert.Contains("{ UIProperty = global::Cursorial.UI.Controls.TextBlock.TextProperty }", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
     }
 }

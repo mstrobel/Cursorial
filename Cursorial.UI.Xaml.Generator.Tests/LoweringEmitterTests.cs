@@ -569,16 +569,19 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
         var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
         var lowered = Lower(xaml, compilation);
 
+        // WS-PP2: Source={x:Reference} COMPILES — the named element's document type roots the walk,
+        // anchored through the runtime name scope (ElementName semantics), so the FORWARD reference
+        // needs no deferred install at all. The Text hop carries its registration field.
         Assert.DoesNotContain("TODO X5", lowered);
-        Assert.Contains("NameScopeExtensions.Require(__scope, \"Src\")", lowered);
-        // The Install embedding the scope lookup comes AFTER the name registration.
-        Assert.True(lowered.IndexOf("__scope.Register(\"Src\"", StringComparison.Ordinal) <
-                    lowered.IndexOf("NameScopeExtensions.Require(__scope, \"Src\")", StringComparison.Ordinal));
+        Assert.Contains("CompiledBinding<global::Cursorial.UI.Controls.TextBox, string>", lowered);
+        Assert.Contains("ElementName = \"Src\"", lowered);
+        Assert.Contains("{ UIProperty = global::Cursorial.UI.Controls.TextBox.TextProperty }", lowered);
 
-        // And the emitted view compiles + instantiates.
+        // And the emitted view compiles, instantiates, and the forward-referenced binding RESOLVES.
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
-        Assert.NotNull(Activator.CreateInstance(assembly.GetType("GenApp.SrcRefView")!));
+        var view = (StackPanel) Activator.CreateInstance(assembly.GetType("GenApp.SrcRefView")!)!;
+        Assert.Equal("hello", ((TextBlock) view.Children[0]).Text);
     }
 
     [Fact] // {Binding Source={x:Static …}} resolves eagerly to the member reference (the loader's
@@ -616,7 +619,10 @@ namespace GenApp { public partial class SrcRefView : StackPanel { public SrcRefV
 
         Assert.DoesNotContain("TODO X5", lowered);
         Assert.Contains("HeaderProperty", lowered);
-        Assert.Contains("TemplateBinding", lowered);
+        // WS-PP3: {TemplateBinding} lowers as a COMPILED TemplatedParent binding (the runtime
+        // TemplateBinding descriptor rides the reflection lane).
+        Assert.Contains("RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.TemplateBinding(", lowered);
     }
 
     [Fact] // A standalone element-form <Binding> in a value position is input the runtime LOADER rejects
@@ -1059,13 +1065,15 @@ namespace TestApp
         Assert.Equal("pushed", vm.GetType().GetProperty("Caption")!.GetValue(vm)); // TwoWay write-back through `__v!`
     }
 
-    [Fact] // B3b — a genuinely-uncompilable path (an indexer hop) still gracefully falls back to a faithful
-    // reflective `new Binding(...)` (not a silent drop) and resolves live through the engine.
-    public void Lowered_Binding_IndexerPath_FallsBackToReflectiveBinding()
+    [Fact] // B3b (rewritten for the shared path parser) — an int-indexer hop COMPILES: the chain reads
+    // `?[0]`, the step carries the "Item[]" INPC label, and the value resolves live. A key with no
+    // matching indexer still gracefully falls back to a faithful reflective `new Binding(...)`.
+    public void Lowered_Binding_IndexerPath_CompilesWithItemStep()
     {
         var xaml =
             $"<StackPanel {Ns} xmlns:t=\"using:TestApp\" x:Class=\"TestApp.IndexerView\" x:DataType=\"t:ListVm\">" +
-            "<TextBlock x:Name=\"Label\" Text=\"{Binding Tags[0], Mode=OneWay}\"/>" + // indexer ⇒ reflective fallback
+            "<TextBlock x:Name=\"Label\" Text=\"{Binding Tags[0], Mode=OneWay}\"/>" + // Item[int] ⇒ compiled
+            "<TextBlock x:Name=\"Missed\" Text=\"{Binding Tags[abc]}\"/>" +           // no Item[string] on List<string> ⇒ reflective
             "</StackPanel>";
 
         const string codeBehind = @"
@@ -1081,10 +1089,12 @@ namespace TestApp
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = Lower(xaml, compilation);
 
-        // The reflective fallback was emitted (a faithful new Binding with the carried Mode), NOT compiled, NOT a TODO.
-        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Tags[0]\")", lowered);
-        Assert.Contains("Mode = global::Cursorial.UI.Data.BindingMode.OneWay", lowered);
-        Assert.DoesNotContain("CompiledBinding", lowered);
+        // The int-keyed hop compiled: null-safe indexer chain + the "Item[]" INPC-convention step label.
+        Assert.Contains("CompiledBinding<global::TestApp.ListVm, string?>", lowered); // conditional chain forces `?`
+        Assert.Contains("?[0]", lowered);
+        Assert.Contains("CompiledPathStep(\"Item[]\"", lowered);
+        // The unmatched key stayed reflective (List<string> has no string indexer), faithfully, no TODO.
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Tags[abc]\")", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
@@ -1093,13 +1103,14 @@ namespace TestApp
 
         var vmType = assembly.GetType("TestApp.ListVm")!;
         view.DataContext = Activator.CreateInstance(vmType)!;
-        Assert.Equal("first", label.Text); // the reflective indexer binding resolves Tags[0]
+        Assert.Equal("first", label.Text); // the COMPILED indexer binding resolves Tags[0]
     }
 
-    [Fact] // #153 — a namespace-PREFIXED type-qualified binding path `(ui:Grid.Row)` in the reflective lane: the
-    // emitted `new Binding("...")` carries no xmlns resolver, so the generator bakes the resolved owner into a
-    // LookupPathTypeResolver so it binds `(ui:Grid.Row)` identically to the loader's xmlns-aware resolver.
-    public void Lowered_PrefixedBindingPath_BakesResolvedOwnerResolver()
+    [Fact] // #153, superseded by WS-PP: a namespace-prefixed qualified UIProperty path `(ui:Grid.Row)`
+    // COMPILES with no x:DataType at all — the qualifier + registration field fully determine the
+    // access, so the walk roots at UIObject itself (the runtime `root is UIObject` check stands in for
+    // the type knowledge the document doesn't have). No reflective Binding, no baked path resolver.
+    public void Lowered_PrefixedBindingPath_CompilesRootedAtUIObject()
     {
         var xaml =
             "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
@@ -1109,11 +1120,11 @@ namespace TestApp
 
         var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("PrefixRewriteHost"));
 
-        // The raw prefixed path is preserved AND a resolver baking the resolved owner (Grid) is emitted.
-        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"(ui:Grid.Row)\")", lowered);
-        Assert.Contains(
-            "TypeResolver = new global::Cursorial.UI.Data.LookupPathTypeResolver((\"ui:Grid\", typeof(global::Cursorial.UI.Controls.Grid)))",
-            lowered);
+        Assert.Contains("CompiledBinding<global::Cursorial.UI.UIObject, int>", lowered);
+        Assert.Contains(".GetValue(global::Cursorial.UI.Controls.Grid.RowProperty)", lowered);
+        Assert.Contains("{ UIProperty = global::Cursorial.UI.Controls.Grid.RowProperty }", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
+        Assert.DoesNotContain("LookupPathTypeResolver", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
     }
 
@@ -1364,7 +1375,7 @@ namespace TestApp { public partial class AncView : StackPanel { public AncView()
     }
 
     private static RelativeSource RelSource(Border border)
-        => ((Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!).RelativeSource!;
+        => ((AnchoredBinding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!).RelativeSource!;
 
     [Fact] // {x:Reference Name} lowers to a name-scope resolution matching the runtime loader (forward reference)
     public void Lowered_XReference_MatchesRuntimeLoader()
@@ -1419,9 +1430,13 @@ namespace TestApp {
         var view = (StackPanel) Activator.CreateInstance(assembly.GetType("TestApp.ConvView")!)!;
 
         var border = (Border) view.Children[0];
-        var binding = (Binding) BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
-        Assert.NotNull(binding.Converter);                            // the Converter was lowered + set (not dropped to a TODO)
-        Assert.Same(view.Resources["conv"], binding.Converter);       // …and it is the same-dictionary resource instance
+        // The Self-anchored binding COMPILES now (WS-PP2) — Converter is CompiledBinding's own slot,
+        // read reflectively so the assert holds for either lane's shape.
+        var binding = BindingOperations.GetBindingExpression(border, UIElement.WidthProperty)!.ParentBinding!;
+        var converter = binding.GetType().GetProperty("Converter")!.GetValue(binding);
+        Assert.NotNull(converter);                                    // the Converter was lowered + set (not dropped to a TODO)
+        Assert.Same(view.Resources["conv"], converter);               // …and it is the same-dictionary resource instance
+        Assert.StartsWith("Cursorial.UI.Data.CompiledBinding`2", binding.GetType().FullName); // the compiled lane took it
     }
 
     [Fact] // XD27/XD28 — <x:Array Type="x:String"> with <x:String> items lowers to new string[]{…}, matching the loader

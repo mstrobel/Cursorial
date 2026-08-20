@@ -214,7 +214,7 @@ public class ResourceDictionaryLoweringTests
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
         Assert.Contains("typeof(global::Cursorial.UI.Controls.Button)", lowered);  // TargetType = a typeof token, not a converter call
-        Assert.Contains("new global::Cursorial.UI.Data.TemplateBinding(", lowered);
+        Assert.Contains("RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent", lowered); // compiled TemplatedParent form (WS-PP3)
         Assert.Contains(".BackgroundProperty)", lowered);                          // resolved against the template target
         Assert.DoesNotContain("TODO X5", lowered);
 

@@ -312,6 +312,10 @@ internal static class LoweringEmitter
         public int FactoryId { get; } = factoryId;
         public Dictionary<string, string> KeyExprToVar { get; } = new(System.StringComparer.Ordinal);
 
+        /// <summary>The built entry's constructed TYPE, keyed like <see cref="KeyExprToVar"/> — what lets a
+        /// backward-visible {StaticResource} Source root a compiled binding walk (WS-PP2).</summary>
+        public Dictionary<string, INamedTypeSymbol> KeyExprToType { get; } = new(System.StringComparer.Ordinal);
+
         // The dictionary is populated from a Source (an external RD load): its own entries are NOT fully known at
         // compile time (KeyExprToVar holds only the inline entries). A {StaticResource} whose key we can't find
         // inline can't be proven absent from this scope, so if it is UNREACHABLE (dropped from the ResolveStatic
@@ -402,13 +406,18 @@ internal static class LoweringEmitter
     // over): the loader resolves that hop, so the lowered code must fence loudly — never skip past it to a farther
     // reachable match, which would silently bind the wrong (shadowed) value.
     private static string? ResolveVisibleResourceVar(Context c, string keyIdentity, out bool fenceRequired)
+        => ResolveVisibleResourceVar(c, keyIdentity, out fenceRequired, out _);
+
+    private static string? ResolveVisibleResourceVar(Context c, string keyIdentity, out bool fenceRequired, out INamedTypeSymbol? resourceType)
     {
         fenceRequired = false;
+        resourceType = null;
         for (int i = c.AmbientScopeStack.Count - 1; i >= 0; i--)
         {
             var scope = c.AmbientScopeStack[i];
             if (!scope.KeyExprToVar.TryGetValue(keyIdentity, out var v))
                 continue;
+            scope.KeyExprToType.TryGetValue(keyIdentity, out resourceType);
             // First (innermost) scope that holds the key — this is the hop the loader resolves.
             if (!IsScopeReachable(c, scope))
             {
@@ -655,7 +664,12 @@ internal static class LoweringEmitter
         // resolves to this var, and an outer/sibling scope does NOT see it (lexical shadowing). The canonical form
         // (const-string {x:Static} → its value) matches the lookup across the plain-string / {x:Static} forms.
         if (c.AmbientScopeStack.Count > 0 && ResourceKeyExpr(c, childIndex, canonical: true) is { } keyIdentity)
-            c.AmbientScopeStack[c.AmbientScopeStack.Count - 1].KeyExprToVar[keyIdentity] = childVar;
+        {
+            var scope = c.AmbientScopeStack[c.AmbientScopeStack.Count - 1];
+            scope.KeyExprToVar[keyIdentity] = childVar;
+            if (TypeSymbolOf(c.Doc, c.Doc.Objects[childIndex].TypeId) is { } resourceType)
+                scope.KeyExprToType[keyIdentity] = resourceType;
+        }
     }
 
     // The object indices of a member's value run (Items → each; Object → the one), else empty.
@@ -1258,7 +1272,17 @@ internal static class LoweringEmitter
             ref readonly var bm = ref c.Doc.Members[bindingMember];
             if (bm.Kind == XamlValueKind.Extension &&
                 c.Doc.ParsedExtensions[c.Doc.Extensions[bm.ValueIndex].Payload] is { } node)
-                bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
+            {
+                // The compiled lane first (WS-PP3): the control styles' shape — Self-anchored
+                // `(Owner.Property)` conditions — compiles against the UIObject root; the watch arms
+                // at style apply through the shared CreateExpression contract, so the defer flag is
+                // irrelevant here. Anything the lane declines stays faithfully reflective.
+                if (TryBuildCompiledBindingExpr(c, node, dataType: null, selfAnchorType: null,
+                                                out var compiledExpr, out _, out _))
+                    bindingExpr = compiledExpr;
+                else
+                    bindingExpr = ReflectiveBindingExpr(c, node, "in a DataCondition");
+            }
         }
         if (bindingExpr is null)
         {
@@ -3180,17 +3204,70 @@ internal static class LoweringEmitter
     private static bool TryEmitCompiledBinding(
         Context c, string varExpr, INamedTypeSymbol owner, XamlMember xm, MarkupExtensionNode node, INamedTypeSymbol? dataType, out string? reason)
     {
-        reason = null;
-        if (dataType is null)
-            return false; // no x:DataType ⇒ never a compiled candidate ⇒ no info
+        if (!TryBuildCompiledBindingExpr(c, node, dataType, selfAnchorType: owner, out var expression, out var deferInstall, out reason))
+            return false;
 
-        // Only a plain DataContext-relative binding is x:DataType-rooted; an anchor/converter/format/fallback arg
-        // changes semantics this lane doesn't reproduce — bail to the reflective fallback.
-        if (HasNamed(node, "Source") || HasNamed(node, "ElementName") || HasNamed(node, "RelativeSource"))
+        var install = $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {expression});";
+
+        // Name- and ancestor-anchored installs defer to the end-of-tree flush: a forward-referenced
+        // name registers after this element initializes, and a FindAncestor chain only exists once the
+        // tree is fully linked. (Self and Source anchors resolve from the install site and stay inline.)
+        if (deferInstall)
+            c.DeferredScopeLines.Add(install);
+        else
+            c.Line(install);
+
+        return true;
+    }
+
+    /// <summary>
+    /// The descriptor half of the compiled lane (WS-PP3): builds the full
+    /// <c>new CompiledBinding&lt;…&gt;(…){…}</c> EXPRESSION — everything except the Install — so
+    /// non-install positions (a <c>DataCondition.Binding</c>, armed through
+    /// <c>BindingOperations.Watch</c>) share the exact same lane. <paramref name="deferInstall"/>
+    /// tells an INSTALLING caller the anchor resolves against end-of-tree state; watch-armed callers
+    /// may ignore it (a watch arms at style apply, when the scope is complete).
+    /// </summary>
+    private static bool TryBuildCompiledBindingExpr(
+        Context c, MarkupExtensionNode node, INamedTypeSymbol? dataType, INamedTypeSymbol? selfAnchorType,
+        out string? expression, out bool deferInstall, out string? reason)
+    {
+        expression = null;
+        deferInstall = false;
+        reason = null;
+
+        // Anchored roots (WS-PP2): the shared parser plus typed anchors make several previously-
+        // reflective forms compilable — ElementName (the named element's document type; DataContext
+        // drilling through its x:DataType), Source={x:Reference} (the same, by name), Source={x:Static}
+        // (the chain's resolved value type), and RelativeSource Self / FindAncestor-with-AncestorType.
+        // Exactly one anchor may be present; anything unresolvable stays reflective, accurately named.
+        INamedTypeSymbol? anchorRootType = null;
+        string? anchorInit = null;
+        INamedTypeSymbol? sourceElementDataType = null;
+
+        var anchorCount = (HasNamed(node, "Source") ? 1 : 0) +
+                          (HasNamed(node, "ElementName") ? 1 : 0) +
+                          (HasNamed(node, "RelativeSource") ? 1 : 0);
+        if (anchorCount > 1)
         {
-            reason = "it has an explicit Source/ElementName/RelativeSource (not DataContext-relative)";
+            reason = "it has more than one of Source/ElementName/RelativeSource";
             return false;
         }
+        var deferAnchoredInstall = false;
+        var anchorUntyped = false;
+        if (anchorCount == 1 &&
+            !TryResolveAnchoredRoot(c, node, selfAnchorType, out anchorRootType, out anchorInit, out sourceElementDataType,
+                                    out deferAnchoredInstall, out reason))
+        {
+            return false;
+        }
+
+        // An anchor whose ROOT TYPE could not be determined is still perfectly expressible (the same
+        // inits the reflective lane emits) — and a `(Owner.Property)` first segment needs no root type
+        // at all: any UIObject answers GetValue. The walk roots at UIObject; a path that needs real
+        // type knowledge declines there instead.
+        if (anchorCount == 1 && anchorRootType is null)
+            anchorUntyped = true;
 
         // A PRESENT Converter this position can't lower (a fenced/forward resource, an unresolvable static, a
         // fenced custom extension) must DECLINE the whole compiled lane — installing a CompiledBinding with the
@@ -3207,20 +3284,12 @@ internal static class LoweringEmitter
         if (string.IsNullOrEmpty(path) || path == ".")
             return false; // a whole-DataContext binding has no compiled leaf — not an actionable info (reason stays null)
 
-        // Indexers never compile here (the engine supports constant-index hops, but the generator's path-walk
-        // is member-access only) — they stay reflective.
-        if (path!.IndexOf('[') >= 0)
+        // The shared tokenizer (XamlPathParser) handles member, type-qualified, and INDEXER segments —
+        // the last-dot qualifier split is the compiled-lane superset (dotted CLR names allowed). Only a
+        // malformed path declines here.
+        if (!XamlPathParser.TryTokenize(path!, XamlQualifiedSplit.LastDot, out var tokens))
         {
-            reason = "its path uses an indexer";
-            return false;
-        }
-
-        // Parentheses are NOT method calls (binding paths have none — BindingPath's grammar is
-        // `step := identifier | '(' Type '.' identifier ')'`): they are TYPE-QUALIFIED segments, lowered
-        // below as cast-qualified member hops. Only a malformed paren form declines here.
-        if (!TryParsePathHops(path, out var hops))
-        {
-            reason = "its path is not a member-access chain this lane can parse";
+            reason = "its path is not a member/indexer chain this lane can parse";
             return false;
         }
 
@@ -3230,175 +3299,416 @@ internal static class LoweringEmitter
             return false;
         }
 
-        // Walk the (single- or multi-hop) path against the x:DataType, threading the running owner type.
-        // Every hop must be a readable INSTANCE property/field (a static-named hop can't be `prev.Member`, CS0176);
-        // an intermediate must be a named type to continue the walk. A type-qualified hop `(Type.Member)` resolves
-        // its member ON the qualifier type and lowers as an `as`-cast access — mirroring the runtime's
-        // qualified-CLR lane (AccessorCache.ResolvePropertyCore: parse-time PropertyInfo guarded by
-        // declaring-type compatibility, else by-name on the runtime type; an incompatible instance degrades
-        // gracefully — here, the `as` yields null and the null-safe chain reads default(leaf)).
-        var owners = new INamedTypeSymbol[hops.Count]; // the type each hop is accessed ON
-        var types = new ITypeSymbol[hops.Count];       // each hop's value type
-        var qualified = new bool[hops.Count];          // hop is a `(Type.Member)` cast-qualified access
-        var leafWritable = false;
-        var current = dataType;
-        for (int h = 0; h < hops.Count; h++)
+        // Walk the path against the x:DataType (or a STATIC ROOT), threading the running owner type
+        // through the shared segment model. Every member hop must be a readable INSTANCE property/field
+        // (a static-named hop can't be `prev.Member`, CS0176) — except a `(Type.Member)` FIRST segment
+        // whose member only resolves as a public static directly-declared member (the x:Static rule):
+        // that is a STATIC-ROOTED chain, compiled with a RelativeSource-Self anchor so it works with no
+        // DataContext at all. A type-qualified instance hop resolves its member ON the qualifier type
+        // and lowers as an `as`-cast access; an indexer hop resolves through the shared int/enum/string
+        // ladder (XamlPathParser.TryResolveIndexer — the same order the reflective AccessorCache walks).
+        // Member hops on UIProperty-registered owners carry the registration FIELD onto their step, so
+        // the runtime observes the property system directly instead of probing the registry by name.
+        var segments = new List<XamlPathSegment>(tokens.Count);
+        var staticRoot = false;
+        var walkRoot = anchorUntyped ? null : (ITypeSymbol?)anchorRootType ?? dataType;
+        ITypeSymbol? runningType = walkRoot;
+        INamedTypeSymbol? castNextTo = null; // set after a DataContext hop on an element-rooted walk
+
+        for (int t = 0; t < tokens.Count; t++)
         {
-            // A member accessed ON a Nullable<T> (the path walks through .Value/.HasValue) isn't compiled: the
-            // typed whole-chain read would NRE on a null intermediate, and the per-hop `is T? __t` step pattern
-            // doesn't even parse (the `?` reads as a ternary). Bail to the reflective lane, which reflects it.
-            if (current is { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
+            var token = tokens[t];
+            var segment = new XamlPathSegment { Kind = token.Kind };
+
+            if (token.Kind == XamlPathTokenKind.Indexer)
+            {
+                if (t == 0 || runningType is null)
+                {
+                    reason = "an indexer segment has nothing to index";
+                    return false;
+                }
+                if (runningType is { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
+                {
+                    reason = "a path hop accesses a Nullable<T> member";
+                    return false;
+                }
+                if (!XamlPathParser.TryResolveIndexer(runningType, token.Key!, token.KeyWasQuoted,
+                                                      out var indexer, out var keyKind, out var typedKey, out var keyExpr))
+                {
+                    reason = $"no matching indexer for key '[{token.Key}]' on '{runningType.ToDisplayString()}'";
+                    return false;
+                }
+
+                segment.Member = indexer;
+                segment.AccessedOn = runningType as INamedTypeSymbol;
+                segment.ValueType = indexer!.Type;
+                segment.KeyKind = keyKind;
+                segment.Key = typedKey;
+                segment.KeyExpression = keyExpr;
+                segments.Add(segment);
+                runningType = indexer.Type;
+                continue;
+            }
+
+            // A member accessed ON a Nullable<T> isn't compiled: the typed whole-chain read would NRE and
+            // the per-hop `is T? __t` step pattern doesn't parse. Bail to the reflective lane.
+            if (runningType is { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T })
             {
                 reason = "a path hop accesses a Nullable<T> member";
                 return false;
             }
 
-            var accessOn = current;
-            if (hops[h].Qualifier is { } qualifierToken)
+            INamedTypeSymbol accessOn;
+
+            if (token.Kind == XamlPathTokenKind.QualifiedMember)
             {
-                if (XamlDataTypeScope.ResolveToken(c.Doc, qualifierToken, c.Resolver) is not { } qualifierType)
+                if (XamlDataTypeScope.ResolveToken(c.Doc, token.TypeToken!, c.Resolver) is not { } qualifierType)
                 {
-                    reason = $"a type-qualified segment's type '{qualifierToken}' does not resolve";
+                    reason = $"a type-qualified segment's type '{token.TypeToken}' does not resolve";
                     return false;
                 }
-                // The runtime prefers a registered UIProperty for a qualified member on a UIObject instance
-                // (UIPropertyAccessor — observer-based change tracking the compiled step model does not
-                // reproduce); those stay reflective, accurately named.
-                if (DerivesFromUIObject(qualifierType))
+
+                // ANY registration on the qualifier — attached, wrapper-less, or CLR-wrapped alike —
+                // takes the property-system lane: `(Owner.Property)` names the registration, which
+                // applies to ANY UIObject receiver (no relatedness, no qualifier cast; the reflective
+                // UIPropertyAccessor is receiver-type-blind the same way). Reads go through the typed
+                // GetValue with the field itself (AttachedProperty<T> derives StyledProperty<T>, so
+                // overload resolution types the chain), and a null walk root falls back to UIObject.
+                if (XamlPathParser.FindRegisteredPropertyField(qualifierType, token.Member!) is { } attachedField &&
+                    XamlPathParser.StyledRegistrationValueType(attachedField) is { } attachedValue)
                 {
-                    reason = "a type-qualified segment targets a UIObject owner (UIProperty hops are not compiled)";
+                    // The qualifier + registration field fully determine the access — the receiver's
+                    // STATIC type contributes nothing (GetValue works on any UIObject). With no
+                    // x:DataType at all the walk roots at UIObject itself: the runtime `root is TSource`
+                    // check stands in for the type knowledge we don't have, and a non-UIObject
+                    // DataContext leaves the binding inert. (The runtime's by-name fallback could bind a
+                    // same-named CLR member on a POCO there — the `(Owner.Property)` spelling explicitly
+                    // names the property system, so that divergence is the accepted qualified-cast family.)
+                    if (runningType is null)
+                    {
+                        if (c.Resolver.Resolve(XamlSymbolResolver.CursorialUiNamespace, "UIObject", out _) is not { } uiObjectType)
+                        {
+                            reason = "the UIObject root type does not resolve";
+                            return false;
+                        }
+                        walkRoot = uiObjectType;
+                        runningType = uiObjectType;
+                    }
+
+                    segment.MemberName = token.Member;
+                    segment.Member = attachedField;
+                    segment.AccessedOn = qualifierType;
+                    segment.ValueType = attachedValue;
+                    segment.UIPropertyField = attachedField;
+                    segment.UIPropertyOnly = true;
+                    segments.Add(segment);
+                    runningType = attachedValue;
+                    continue;
+                }
+
+                // FIRST segment only: when the member does not resolve as an instance member of a
+                // qualifier related to the data type, try the STATIC interpretation (x:Static rule 1 —
+                // public static, directly declared). `(media:Palette.Default).Name` roots the chain at
+                // the static value; no DataContext is consulted.
+                var instanceViable =
+                    t > 0 ||
+                    (runningType is not null &&
+                     qualifierType.IsReferenceType &&
+                     runningType.IsReferenceType &&
+                     AreRelatedTypes(runningType, qualifierType) &&
+                     XamlDataTypeScope.FindMember(qualifierType, token.Member!) is { IsStatic: false });
+
+                if (!instanceViable)
+                {
+                    if (t == 0 && anchorInit is null && XamlPathParser.StaticMemberType(qualifierType, token.Member!) is { } staticType)
+                    {
+                        staticRoot = true;
+                        segment.Qualified = true;
+                        segment.IsStaticRoot = true;
+                        segment.MemberName = token.Member;
+                        segment.AccessedOn = qualifierType;
+                        segment.ValueType = staticType;
+                        segments.Add(segment);
+                        runningType = staticType;
+                        continue;
+                    }
+
+                    reason = runningType is null
+                        ? "the walk has no typed root (no x:DataType, or an untypeable anchor), and the first segment is not a static member or registered property"
+                        : $"a type-qualified segment's type '{token.TypeToken}' is unrelated to the hop's static type";
                     return false;
                 }
+
                 if (!qualifierType.IsReferenceType)
                 {
                     reason = "a type-qualified segment's type is not a reference type";
                     return false;
                 }
-                var prevIsReference = h == 0 ? dataType.IsReferenceType : types[h - 1].IsReferenceType;
-                if (!prevIsReference)
-                {
-                    reason = "a type-qualified segment follows a value-typed hop";
-                    return false;
-                }
-                // Unrelated types can never match at runtime — the `as` would be null always; the runtime's
-                // by-name fallback could still bind a same-named property, so leave that to the reflective lane.
-                if (!AreRelatedTypes(current, qualifierType))
-                {
-                    reason = $"a type-qualified segment's type '{qualifierToken}' is unrelated to the hop's static type";
-                    return false;
-                }
+
                 accessOn = qualifierType;
-                qualified[h] = true;
+                segment.Qualified = true;
+            }
+            else if (castNextTo is { } drillTarget)
+            {
+                // The hop after a DataContext hop on an element-rooted walk: resolve against the source
+                // element's declared x:DataType and emit as a cast-qualified access — the compiled twin
+                // of "the runtime binds whatever the DataContext turns out to be".
+                castNextTo = null;
+                accessOn = drillTarget;
+                segment.Qualified = true;
+            }
+            else
+            {
+                if (runningType is not INamedTypeSymbol named)
+                {
+                    reason = runningType is null
+                        ? "the walk has no typed root (no x:DataType, or an untypeable anchor), so only a static-, anchor-, or UIProperty-rooted path can compile"
+                        : "an intermediate path hop is not a named type";
+                    return false;
+                }
+                accessOn = named;
             }
 
-            if (XamlDataTypeScope.FindMember(accessOn, hops[h].Member) is not { IsStatic: false } member ||
+            if (XamlDataTypeScope.FindMember(accessOn, token.Member!) is not { IsStatic: false } member ||
                 !XamlDataTypeScope.IsReadable(member) ||
                 XamlDataTypeScope.MemberType(member) is not { } hopType)
             {
-                // A not-found member is the path validator's CURG2001 (don't also raise the "works-but-reflective"
-                // CURG2002); a static / write-only member won't resolve through an instance DataContext either, so
-                // no "It works" info — leave reason null. The reflective fallback still emits a (possibly inert)
-                // binding. A qualified miss names itself: the validator skips paren paths, so CURG2001 never fires.
-                if (hops[h].Qualifier is { } q)
-                    reason = $"the type-qualified member '{hops[h].Member}' was not found on '{q}'";
+                // A wrapper-less registration on the running type itself compiles the same way an
+                // attached hop does: through GetValue with the field.
+                if (!segment.Qualified &&
+                    XamlPathParser.FindRegisteredPropertyField(accessOn, token.Member!) is { } regField &&
+                    XamlPathParser.StyledRegistrationValueType(regField) is { } regValue &&
+                    DerivesFromUIObjectChain(accessOn))
+                {
+                    segment.MemberName = token.Member;
+                    segment.Member = regField;
+                    segment.AccessedOn = accessOn;
+                    segment.ValueType = regValue;
+                    segment.UIPropertyField = regField;
+                    segment.UIPropertyOnly = true;
+                    segments.Add(segment);
+                    runningType = regValue;
+                    continue;
+                }
+
+                // A not-found member is the path validator's CURG2001 (don't also raise CURG2002); a
+                // qualified miss names itself (the validator skips paren paths, so CURG2001 never fires).
+                if (segment.Qualified)
+                    reason = $"the type-qualified member '{token.Member}' was not found on '{token.TypeToken}'";
                 return false;
             }
 
-            owners[h] = accessOn;
-            types[h] = hopType;
-            if (h == hops.Count - 1)
-                leafWritable = XamlDataTypeScope.IsWritable(member);
-            else if (hopType is INamedTypeSymbol named)
-                current = named;
-            else
+            segment.MemberName = token.Member;
+            segment.Member = member;
+            segment.AccessedOn = accessOn;
+            segment.ValueType = hopType;
+            segment.UIPropertyField = XamlPathParser.FindRegisteredPropertyField(accessOn, token.Member!);
+
+            // The property SYSTEM is the contract: any styled/attached-registered member reads and writes
+            // through GetValue/SetValue even when a CLR wrapper exists — a wrapper is convenience and may
+            // coerce, cache, or drift from the store; GetValue cannot. (DirectProperty wrappers ARE the
+            // implementation — no store behind them to bypass — and stay CLR-emitted.) The registration's
+            // type parameter is the value-type truth the chain continues on.
+            if (segment.UIPropertyField is { } styledField &&
+                XamlPathParser.StyledRegistrationValueType(styledField) is { } styledValue &&
+                DerivesFromUIObjectChain(accessOn))
             {
-                reason = "an intermediate path hop is not a named type";
-                return false;
+                segment.UIPropertyOnly = true;
+                segment.ValueType = styledValue;
+                runningType = styledValue;
+                segments.Add(segment);
+
+                if (sourceElementDataType is not null && t + 1 < tokens.Count &&
+                    token.Kind == XamlPathTokenKind.Member && token.Member == "DataContext")
+                {
+                    castNextTo = sourceElementDataType;
+                }
+
+                continue;
+            }
+
+            segments.Add(segment);
+            runningType = hopType;
+
+            // A DataContext hop on an element-rooted walk types the NEXT hop from the source element's
+            // declared x:DataType (the object-typed DataContext itself carries no members to walk).
+            if (sourceElementDataType is not null && t + 1 < tokens.Count &&
+                token.Kind == XamlPathTokenKind.Member && token.Member == "DataContext")
+            {
+                castNextTo = sourceElementDataType;
             }
         }
 
-        var leafType = types[hops.Count - 1];
-        string data = Global(dataType);
+        var last = segments.Count - 1;
+        var leaf = segments[last];
+        var leafWritable = leaf.Kind != XamlPathTokenKind.Indexer &&
+                           !leaf.IsStaticRoot &&
+                           (leaf.UIPropertyOnly || (leaf.Member is not null && XamlDataTypeScope.IsWritable(leaf.Member)));
+
+        var leafType = leaf.ValueType;
+        string data = staticRoot ? "object" : Global(walkRoot!);
         string value = Global(leafType);
 
-        // Getter — a null-safe whole-chain read: `?.` after each reference-typed hop so a null intermediate yields
-        // default(leaf), never an NRE. The pinned full-lowering compiled-multi-hop null semantics (B188) — safer
-        // than Binding.Compiled's path.Compile() (which throws on a null intermediate); it matches the reflective
-        // lane for the non-null reads B156 pins (a null intermediate is default(leaf) here vs the reflective
-        // UnsetValue — the documented, opt-in-via-full-lowering difference). That difference now
-        // EXTENDS to Converter/StringFormat/FallbackValue on multi-hop chains: the reflective lane's
-        // mid-chain UnsetValue short-circuits BEFORE the converter and applies FallbackValue, while the
-        // compiled default(TValue) flows THROUGH the converter and FallbackValue never triggers mid-chain
-        // (root-null and source-type-mismatch still honor it). Same opt-in, same rationale.
-        // Member-access positions @-escape a hop that collides with a C# reserved keyword (a member name on a
-        // VB/F# VM can be `event`/`class`/…); the CompiledPathStep string label stays the raw name (the runtime
-        // resolves by name).
-        var chain = "__s";
+        // Getter — a null-safe whole-chain read: `?.` after each reference-typed hop so a null
+        // intermediate yields default(leaf), never an NRE (the pinned B188 semantics). Indexer hops use
+        // `?[key]` the same way — but a key the collection does not HOLD throws, exactly as the runtime
+        // lambda-analysis factory's constant-index steps do: the same opt-in divergence family from the
+        // reflective lane's degrade-to-unset. A static-rooted chain starts at the static member itself
+        // and ignores the (RelativeSource-Self) root argument entirely.
+        var chain = staticRoot
+            ? $"{Global(segments[0].AccessedOn!, false)}.{EscapeId(segments[0].MemberName!)}"
+            : "__s";
         var conditional = false;
-        for (int h = 0; h < hops.Count; h++)
+
+        for (int h = staticRoot ? 1 : 0; h < segments.Count; h++)
         {
-            if (qualified[h])
+            var seg = segments[h];
+            var prevIsReference = h == 0 ? walkRoot!.IsReferenceType : segments[h - 1].ValueType.IsReferenceType;
+
+            if (seg.Kind == XamlPathTokenKind.Indexer)
             {
-                // A qualified hop reads through an `as`-cast: an incompatible runtime instance yields null and
-                // the conditional chain reads default(leaf) — the compiled analog of the runtime's graceful
-                // degrade. The paren wraps only the receiver; later plain hops continue the conditional access.
-                chain = $"({chain} as {Global(owners[h], false)})?.{EscapeId(hops[h].Member)}";
+                if (prevIsReference) conditional = true;
+                chain += prevIsReference ? $"?[{seg.KeyExpression}]" : $"[{seg.KeyExpression}]";
+            }
+            else if (seg.UIPropertyOnly)
+            {
+                var fieldRef = $"{Global(seg.UIPropertyField!.ContainingType, false)}.{seg.UIPropertyField.Name}";
+                var prevType = h == 0 ? walkRoot! : segments[h - 1].ValueType;
+
+                if (seg.Qualified && seg.Member is not IFieldSymbol)
+                {
+                    // A CLR-wrapped registered member on a qualifier type: the qualifier cast supplies
+                    // the receiver; an incompatible instance degrades through the null-conditional.
+                    chain = $"({chain} as {Global(seg.AccessedOn!, false)})?.GetValue({fieldRef})";
+                    conditional = true;
+                }
+                else if (!DerivesFromUIObjectChain(prevType))
+                {
+                    // The receiver's static type is not a UIObject (an object-typed hop, an untyped
+                    // DataContext): GetValue needs one, and `as UIObject` degrades null-gracefully.
+                    chain = $"({chain} as global::Cursorial.UI.UIObject)?.GetValue({fieldRef})";
+                    conditional = true;
+                }
+                else
+                {
+                    var accessor = h == 0 ? "." : (prevIsReference ? "?." : ".");
+                    if (accessor == "?.") conditional = true;
+                    chain += accessor + $"GetValue({fieldRef})";
+                }
+            }
+            else if (seg.Qualified)
+            {
+                // A qualified hop reads through an `as`-cast: an incompatible runtime instance yields
+                // null and the conditional chain reads default(leaf) — the runtime's graceful degrade.
+                chain = $"({chain} as {Global(seg.AccessedOn!, false)})?.{EscapeId(seg.MemberName!)}";
                 conditional = true;
             }
             else
             {
-                var accessor = h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".");
+                var accessor = h == 0 ? "." : (prevIsReference ? "?." : ".");
                 if (accessor == "?.") conditional = true;
-                chain += accessor + EscapeId(hops[h].Member);
+                chain += accessor + EscapeId(seg.MemberName!);
             }
         }
+
         // A conditional chain can read null for a leaf whose type says it can't — the `?? default(TValue)`
         // null-intermediate arm — so TValue gains a forced `?` (CS8603 in the getter otherwise). The TwoWay
-        // setter forgives it back with `__v!` below: the write is null-guarded by the chain pattern, and
-        // pushing a null the TARGET produced into a non-null-annotated leaf is the reflective lane's
-        // (un-analyzable) behavior too. Value-typed leaves keep their exact TValue: the `??` arm UNWRAPS the
-        // chain's lifted `T?` back to `T`.
+        // setter forgives it back with `__v!` below. Value-typed leaves keep their exact TValue: the `??`
+        // arm UNWRAPS the chain's lifted `T?` back to `T`.
         var forcedNullable = conditional && leafType.IsReferenceType && !value.EndsWith("?", StringComparison.Ordinal);
         if (forcedNullable)
             value += "?";
 
         var getter = conditional ? $"static __s => ({chain}) ?? default({value})" : $"static __s => {chain}";
 
-        // One CompiledPathStep per hop — an object-typed reader for INPC/INCC subscription rewiring (null-safe; the
-        // typed Getter does the value read). The reader casts to the type the hop is accessed on.
-        var steps = new List<string>(hops.Count);
-        for (int h = 0; h < hops.Count; h++)
-            steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(hops[h].Member)}\", " +
-                      $"static __o => __o is {Global(owners[h], false)} __t ? (object?)__t.{EscapeId(hops[h].Member)} : null)");
-
-        // Setter (TwoWay) — only when the leaf is writable AND its owner is a reference type (writing through a
-        // value-typed owner mutates a copy ⇒ a no-op, so degrade to OneWay/null, matching the reflective lane —
-        // B152). Multi-hop is null-guarded (a broken chain is a no-op write).
-        var setter = "null";
-        if (leafWritable && owners[hops.Count - 1].IsReferenceType)
+        // One CompiledPathStep per segment — an object-typed reader for subscription rewiring (the typed
+        // Getter does the value reads). Member steps on UIProperty-registered owners CARRY the
+        // registration field, so the runtime observes the property system without a name probe; indexer
+        // steps use the "Item[]" INPC-convention label; a static root reads the static afresh each rewire.
+        var steps = new List<string>(segments.Count);
+        for (int h = 0; h < segments.Count; h++)
         {
-            var last = hops.Count - 1;
-            // A qualified LEAF writes through the qualifier type: the `is QT __o` pattern both null-guards the
-            // chain and casts the receiver, so an incompatible instance is a no-op write (runtime parity).
-            var leafPattern = qualified[last] ? Global(owners[last], false) : "{ }";
-            var write = forcedNullable ? "__v!" : "__v";
-            if (hops.Count == 1)
+            var seg = segments[h];
+
+            if (seg.IsStaticRoot)
             {
-                setter = qualified[0]
-                    ? $"static (__s, __v) => {{ if (__s is {Global(owners[0], false)} __o) __o.{EscapeId(hops[0].Member)} = {write}; }}"
-                    : $"static (__s, __v) => __s.{EscapeId(hops[0].Member)} = {write}";
+                steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\", " +
+                          $"static __o => (object?){Global(seg.AccessedOn!, false)}.{EscapeId(seg.MemberName!)})");
+            }
+            else if (seg.Kind == XamlPathTokenKind.Indexer)
+            {
+                steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"Item[]\", " +
+                          $"static __o => __o is {Global(seg.AccessedOn!, false)} __t ? (object?)__t[{seg.KeyExpression}] : null)");
+            }
+            else if (seg.UIPropertyOnly)
+            {
+                var fieldRef = $"{Global(seg.UIPropertyField!.ContainingType, false)}.{seg.UIPropertyField.Name}";
+                var pattern = seg.Qualified ? Global(seg.AccessedOn!, false) : "global::Cursorial.UI.UIObject";
+                steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\", " +
+                          $"static __o => __o is {pattern} __t ? (object?)__t.GetValue({fieldRef}) : null)" +
+                          $" {{ UIProperty = {fieldRef} }}");
             }
             else
             {
-                var ownerChain = "__s";
-                for (int h = 0; h < last; h++)
+                var carry = seg.UIPropertyField is { } field
+                    ? $" {{ UIProperty = {Global(field.ContainingType, false)}.{field.Name} }}"
+                    : "";
+                steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\", " +
+                          $"static __o => __o is {Global(seg.AccessedOn!, false)} __t ? (object?)__t.{EscapeId(seg.MemberName!)} : null){carry}");
+            }
+        }
+
+        // Setter (TwoWay) — only when the leaf is a writable member whose owner is a reference type
+        // (writing through a value-typed owner mutates a copy — degrade to OneWay/null, B152). Indexer
+        // and static-root leaves never write. Multi-hop is null-guarded (a broken chain is a no-op write).
+        //
+        // UIProperty leaves write SetValue (LocalValue), NOT SetCurrentValue — deliberately (2026-08-19):
+        // a write-back is a DATA push and must be as durable as a ViewModel write, or a style reflow
+        // would strip the graft, reclaim the source, and push the reclaimed value back over the user's
+        // edit — breaking the TwoWay equality contract on an unrelated lane pulse. The WPF footgun that
+        // motivates SetCurrentValue there does not exist here: SetValue never kills a binding entry (A9),
+        // so a source whose property carries its own binding keeps producing and reclaims on its next
+        // push. SetCurrentValue stays a control-authoring mouth for presentation-state grafts.
+        var setter = "null";
+        if (leafWritable && leaf.AccessedOn is { IsReferenceType: true })
+        {
+            var leafPattern = leaf.UIPropertyOnly
+                ? (leaf.Qualified ? Global(leaf.AccessedOn, false) : "global::Cursorial.UI.UIObject")
+                : leaf.Qualified ? Global(leaf.AccessedOn, false) : "{ }";
+            var write = forcedNullable ? "__v!" : "__v";
+            var leafFieldRef = leaf.UIPropertyOnly
+                ? $"{Global(leaf.UIPropertyField!.ContainingType, false)}.{leaf.UIPropertyField.Name}"
+                : null;
+            if (segments.Count == 1 && !staticRoot)
+            {
+                setter = leaf.UIPropertyOnly
+                    ? (leaf.Qualified
+                        ? $"static (__s, __v) => {{ if (__s is {Global(leaf.AccessedOn, false)} __o) __o.SetValue({leafFieldRef}, {write}); }}"
+                        : $"static (__s, __v) => __s.SetValue({leafFieldRef}, {write})")
+                    : leaf.Qualified
+                        ? $"static (__s, __v) => {{ if (__s is {Global(leaf.AccessedOn, false)} __o) __o.{EscapeId(leaf.MemberName!)} = {write}; }}"
+                        : $"static (__s, __v) => __s.{EscapeId(leaf.MemberName!)} = {write}";
+            }
+            else
+            {
+                var ownerChain = staticRoot
+                    ? $"{Global(segments[0].AccessedOn!, false)}.{EscapeId(segments[0].MemberName!)}"
+                    : "__s";
+                for (int h = staticRoot ? 1 : 0; h < last; h++)
                 {
-                    if (qualified[h])
-                        ownerChain = $"({ownerChain} as {Global(owners[h], false)})?.{EscapeId(hops[h].Member)}";
+                    var seg = segments[h];
+                    var prevIsReference = h == 0 ? walkRoot!.IsReferenceType : segments[h - 1].ValueType.IsReferenceType;
+
+                    if (seg.Kind == XamlPathTokenKind.Indexer)
+                        ownerChain += prevIsReference ? $"?[{seg.KeyExpression}]" : $"[{seg.KeyExpression}]";
+                    else if (seg.Qualified)
+                        ownerChain = $"({ownerChain} as {Global(seg.AccessedOn!, false)})?.{EscapeId(seg.MemberName!)}";
                     else
-                        ownerChain += (h == 0 ? "." : (types[h - 1].IsReferenceType ? "?." : ".")) + EscapeId(hops[h].Member);
+                        ownerChain += (h == 0 ? "." : (prevIsReference ? "?." : ".")) + EscapeId(seg.MemberName!);
                 }
-                setter = $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(hops[last].Member)} = {write}; }}";
+                setter = leaf.UIPropertyOnly
+                    ? $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.SetValue({leafFieldRef}, {write}); }}"
+                    : $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(leaf.MemberName!)} = {write}; }}";
             }
         }
 
@@ -3409,70 +3719,220 @@ internal static class LoweringEmitter
                         StringInit("FallbackValue", NamedText(node, "FallbackValue"))
                     };
 
-        c.Line(
-            $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, " +
-            $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
-            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(inits)});");
+        // A static-rooted chain anchors on the TARGET element (RelativeSource Self): the root argument is
+        // ignored by the getter, and the binding works with no DataContext at all. An anchored root
+        // carries its own init (ElementName / Source / RelativeSource) — mutually exclusive by the gate.
+        if (staticRoot)
+            inits.Add("RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self");
+        else if (anchorInit is not null)
+            inits.Add(anchorInit);
 
+        expression =
+            $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
+            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(inits)}";
+        deferInstall = deferAnchoredInstall;
         return true;
     }
 
-    /// <summary>One hop of a compilable binding path: a plain member, or a type-qualified member
-    /// (<c>(Type.Member)</c>) whose owner resolves at generation time.</summary>
-    private readonly record struct PathHop(string Member, string? Qualifier);
-
-    // Parses BindingPath's step grammar (`step := identifier | '(' Type '.' identifier ')'`, '.'-joined) into
-    // hops. The qualifier is everything before the LAST dot inside the parens (`(t:Grid.Row)` → "t:Grid" + "Row";
-    // dotted CLR names work the same way). Indexers are rejected by the caller before this runs. Returns false
-    // for malformed input — the caller degrades to the reflective lane, whose runtime parser owns the real error.
-    private static bool TryParsePathHops(string path, out List<PathHop> hops)
+    /// <summary>
+    /// Resolves a single-anchor binding's ROOT type + its emitted anchor init (WS-PP2). ElementName and
+    /// Source={x:Reference} type the walk from the named element's document record (and surface its
+    /// declared x:DataType for DataContext drilling); Source={x:Static} types it from the chain's value;
+    /// RelativeSource Self uses the target property's owner and FindAncestor its resolved AncestorType.
+    /// False = stay reflective; <paramref name="reason"/> is set when actionable.
+    /// </summary>
+    private static bool TryResolveAnchoredRoot(
+        Context c, MarkupExtensionNode node, INamedTypeSymbol? selfAnchorType,
+        out INamedTypeSymbol? rootType, out string? anchorInit, out INamedTypeSymbol? elementDataType,
+        out bool deferInstall, out string? reason)
     {
-        hops = new List<PathHop>();
-        int i = 0;
-        while (i < path.Length)
+        rootType = null;
+        anchorInit = null;
+        elementDataType = null;
+        deferInstall = false;
+        reason = null;
+
+        // Template bodies are separate name scopes — a name-anchored binding inside a factory could
+        // resolve against the wrong scope's element, so those stay reflective.
+        if (NamedText(node, "ElementName") is { Length: > 0 } elementName)
         {
-            if (hops.Count > 0)
+            if (c.CurrentFactoryId != 0)
             {
-                if (path[i] != '.')
+                reason = "an ElementName anchor inside a template body resolves against the template name scope";
+                return false;
+            }
+            // An unresolvable/ambiguous name still anchors at RUNTIME through the scope — the init is
+            // expressible; only the TYPE is unknown (a UIProperty-rooted path can still compile).
+            TryResolveNamedElement(c, elementName, out rootType, out elementDataType);
+            anchorInit = $"ElementName = \"{Escape(elementName)}\"";
+            deferInstall = true; // the name scope completes at end-of-tree (forward references)
+            return true;
+        }
+
+        if (node.FindNamed("Source") is { } source)
+        {
+            if (source.IsNested && source.Nested!.Name is "x:Reference" or "Reference" &&
+                FirstPositionalText(source.Nested!) is { Length: > 0 } referenceName)
+            {
+                if (c.CurrentFactoryId != 0)
+                {
+                    reason = "an x:Reference anchor inside a template body resolves against the template name scope";
                     return false;
-                i++;
+                }
+
+                // The runtime name-scope anchor gives x:Reference-as-Source the same semantics with no
+                // ordering constraint; an unresolvable name leaves only the TYPE unknown.
+                TryResolveNamedElement(c, referenceName, out rootType, out elementDataType);
+                anchorInit = $"ElementName = \"{Escape(referenceName)}\"";
+                deferInstall = true;
+                return true;
             }
 
-            if (i < path.Length && path[i] == '(')
+            if (source.IsNested && source.Nested!.Name is "x:Static" or "Static" &&
+                FirstPositionalText(source.Nested!) is { Length: > 0 } staticPath &&
+                SplitStaticPath(c, staticPath, out var staticNs, out var staticMembers) &&
+                XamlPathParser.TryResolveStaticChain(c.Resolver, staticNs, staticMembers, out var staticExpr, out var staticType))
             {
-                int close = path.IndexOf(')', i + 1);
-                if (close < 0)
+                if (staticType is not INamedTypeSymbol namedStatic)
+                {
+                    reason = "the Source={x:Static} value type is not a named type";
                     return false;
-                var inner = path.Substring(i + 1, close - i - 1);
-                int lastDot = inner.LastIndexOf('.');
-                if (lastDot <= 0 || lastDot == inner.Length - 1)
-                    return false;
-                var qualifier = inner.Substring(0, lastDot).Trim();
-                var member = inner.Substring(lastDot + 1).Trim();
-                if (qualifier.Length == 0 || member.Length == 0)
-                    return false;
-                hops.Add(new PathHop(member, qualifier));
-                i = close + 1;
+                }
+
+                rootType = namedStatic;
+                anchorInit = $"Source = {staticExpr}";
+                return true;
             }
-            else
+
+            // A backward-visible same-document {StaticResource}: the emitter CONSTRUCTED the resource, so
+            // its type is known and the local var itself anchors the binding — inline install, the var is
+            // in scope and already built by ordering. Forward/fenced/cross-scope keys keep declining.
+            if (source.IsNested && source.Nested!.Name is "StaticResource" &&
+                FirstPositionalText(source.Nested!) is { Length: > 0 } resourceKey &&
+                ResolveVisibleResourceVar(c, $"\"{Escape(resourceKey)}\"", out _, out var resourceType) is { } resourceVar)
             {
-                int j = i;
-                while (j < path.Length && path[j] is not ('.' or '(' or ')'))
-                    j++;
-                if (j == i || (j < path.Length && path[j] is '(' or ')'))
-                    return false; // empty hop, or a paren spliced mid-identifier
-                hops.Add(new PathHop(path.Substring(i, j - i).Trim(), null));
-                i = j;
+                rootType = resourceType; // may be null — the var still anchors, UIProperty paths still compile
+                anchorInit = $"Source = {resourceVar}";
+                return true;
+            }
+
+            // The reflective lane's own source shapes (a custom extension, a fenced form NestedSourceExpr
+            // can express) anchor the binding without a static type.
+            if (source.IsNested && NestedSourceExpr(c, source.Nested!) is { } sourceExpr)
+            {
+                anchorInit = $"Source = {sourceExpr}";
+                return true;
+            }
+
+            reason = "its Source is not expressible in this position";
+            return false;
+        }
+
+        // RelativeSource: Self roots at the target property's owner when installing (the element IS-A
+        // owner for a non-attached target; mismatches degrade through the runtime root check).
+        if (node.FindNamed("RelativeSource") is { } relative)
+        {
+            string? mode = relative.IsNested
+                ? FirstPositionalText(relative.Nested!) ?? NamedText(relative.Nested!, "Mode")
+                : relative.Text;
+
+            if (mode == "Self")
+            {
+                // Null in non-install positions (a DataCondition): expressible-but-untypeable — a
+                // UIProperty-rooted path still compiles against the UIObject root.
+                rootType = selfAnchorType;
+                anchorInit = "RelativeSource = global::Cursorial.UI.Data.RelativeSource.Self";
+                return true;
+            }
+
+            // Inside a control/items-panel template the templated parent's type IS the statically-known
+            // TargetType (the same fact {TemplateBinding} lowers against); the anchor itself resolves at
+            // template application/attach, exactly as TemplateBinding does — inline install.
+            if (mode == "TemplatedParent")
+            {
+                rootType = c.TemplatedParentType; // null outside a template — UIProperty-rooted paths still compile
+                anchorInit = "RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent";
+                return true;
+            }
+
+            if (mode == "FindAncestor" && relative.IsNested &&
+                relative.Nested!.FindNamed("AncestorType") is { } ancestorArg)
+            {
+                var typeName = ancestorArg.IsNested
+                    ? (ancestorArg.Nested!.PositionalArguments.Count > 0 ? ancestorArg.Nested.PositionalArguments[0].Text : null)
+                    : ancestorArg.Text;
+
+                if (!string.IsNullOrEmpty(typeName) &&
+                    XamlDataTypeScope.ResolveToken(c.Doc, typeName!, c.Resolver) is { } ancestorType &&
+                    FindAncestorInit(c, relative.Nested!) is { } init)
+                {
+                    rootType = ancestorType;
+                    anchorInit = init;
+                    deferInstall = true; // the ancestor chain only exists once the tree is fully linked
+                    return true;
+                }
+
+                reason = "the FindAncestor AncestorType does not resolve";
+                return false;
+            }
+
+            reason = "its RelativeSource mode is not compilable (Self and FindAncestor-with-AncestorType are)";
+            return false;
+        }
+
+        return false; // unreachable under the anchorCount == 1 gate
+    }
+
+    /// <summary>
+    /// The document element named <paramref name="name"/>: its type symbol and (when declared) its direct
+    /// x:DataType. Exactly-one matching: a duplicated name declines rather than guessing which element the
+    /// runtime scope would hand back.
+    /// </summary>
+    private static bool TryResolveNamedElement(
+        Context c, string name, out INamedTypeSymbol? type, out INamedTypeSymbol? dataType)
+    {
+        type = null;
+        dataType = null;
+
+        int found = -1;
+        for (int o = 0; o < c.Doc.Objects.Length; o++)
+        {
+            ref readonly var obj = ref c.Doc.Objects[o];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref c.Doc.Members[m];
+                if (member.Kind == XamlValueKind.Directive &&
+                    member.DirectiveKind == (int)XamlDirectiveKind.Name &&
+                    c.Doc.Strings[member.ValueIndex] == name)
+                {
+                    if (found >= 0)
+                        return false; // duplicate names (e.g. a template-local shadow) — stay reflective
+                    found = o;
+                }
             }
         }
 
-        return hops.Count > 0;
+        if (found < 0 || TypeSymbolOf(c.Doc, c.Doc.Objects[found].TypeId) is not { } symbol)
+            return false;
+
+        type = symbol;
+        dataType = XamlDataTypeScope.ForObject(c.Doc, in c.Doc.Objects[found], c.Resolver);
+        return true;
     }
 
-    // Identity or an inheritance/interface relationship in either direction. An UPCAST qualifier (base or
-    // interface of the hop's static type) always matches at runtime; a DOWNCAST qualifier matches conditionally —
-    // both lower to the same `as`-cast, whose null degrades through the conditional chain. Unrelated types can
-    // never match and stay reflective (the runtime's by-name fallback could still bind a same-named member).
+    /// <summary>Whether <paramref name="type"/>'s base chain reaches <c>Cursorial.UI.UIObject</c> —
+    /// the receiver requirement for a GetValue-emitted (wrapper-less/attached) hop.</summary>
+    private static bool DerivesFromUIObjectChain(ITypeSymbol type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+        {
+            if (t.ToDisplayString() == "Cursorial.UI.UIObject")
+                return true;
+        }
+
+        return false;
+    }
+
     private static bool AreRelatedTypes(ITypeSymbol a, ITypeSymbol b)
         => SymbolEqualityComparer.Default.Equals(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);
 
@@ -3671,6 +4131,9 @@ internal static class LoweringEmitter
         // xmlns, else the templated parent's type, the target part's type, and finally the target property
         // itself when the name matches (Background→Background).
         var sourceName = rawSourceName.Trim();
+        // The authored spelling IS the diagnostic pathText — often already type-qualified (`Owner.Prop`),
+        // sometimes WPF-parenthesized; preserve it verbatim rather than re-deriving a spelling.
+        var pathText = sourceName;
         if (sourceName.Length > 1 && sourceName[0] == '(' && sourceName[sourceName.Length - 1] == ')')
             sourceName = sourceName.Substring(1, sourceName.Length - 2).Trim();
 
@@ -3699,6 +4162,48 @@ internal static class LoweringEmitter
         if (sourceOwner is null)
         {
             c.Todo($"{{TemplateBinding {rawSourceName}}} — '{sourceName}' is not a registered property on '{parentType.Name}'");
+            return;
+        }
+
+        // The compiled TemplatedParent form (WS-PP3): the runtime TemplateBinding descriptor rides the
+        // REFLECTION lane over its anchor — with the parent type and the registration statically known,
+        // the same one-way reach lowers as a compiled GetValue chain: property-system-pure, AOT-clean,
+        // and the carried field observes without a registry probe. A registration without the typed
+        // GetValue shape (DirectProperty) keeps the runtime descriptor.
+        if (XamlPathParser.FindRegisteredPropertyField(sourceOwner, sourceName) is { } sourceField &&
+            XamlPathParser.StyledRegistrationValueType(sourceField) is { } sourceValueType)
+        {
+            var fieldRef = $"{Global(sourceField.ContainingType, false)}.{sourceField.Name}";
+            c.Line(
+                $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
+                $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(sourceValueType)}>(" +
+                $"static __s => __s.GetValue({fieldRef}), null, " +
+                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\", " +
+                $"static __o => __o is global::Cursorial.UI.UIObject __t ? (object?)__t.GetValue({fieldRef}) : null) {{ UIProperty = {fieldRef} }} }}, " +
+                $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
+                $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
+            return;
+        }
+
+        // A DirectProperty source: its CLR wrapper IS the implementation (the standing exemption from
+        // the always-GetValue rule), so the compiled form reads the wrapper — the carried field still
+        // observes through the property system. Taken only when the parent IS the owner (or derives
+        // from it), so the typed member access needs no cast; anything else keeps the runtime descriptor.
+        if (XamlPathParser.FindRegisteredPropertyField(sourceOwner, sourceName) is { } directField &&
+            IsAssignableTo(parentType, sourceOwner) &&
+            XamlDataTypeScope.FindMember(sourceOwner, sourceName) is { IsStatic: false } directMember &&
+            XamlDataTypeScope.IsReadable(directMember) &&
+            XamlDataTypeScope.MemberType(directMember) is { } directValueType)
+        {
+            var directFieldRef = $"{Global(directField.ContainingType, false)}.{directField.Name}";
+            c.Line(
+                $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
+                $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(directValueType)}>(" +
+                $"static __s => __s.{EscapeId(sourceName)}, null, " +
+                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\", " +
+                $"static __o => __o is {Global(sourceOwner, false)} __t ? (object?)__t.{EscapeId(sourceName)} : null) {{ UIProperty = {directFieldRef} }} }}, " +
+                $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
+                $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
             return;
         }
 

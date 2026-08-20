@@ -80,9 +80,10 @@ namespace GenApp { public partial class TbView : StackPanel { public TbView() =>
             .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
         var lowered = GeneratorHarness.LowerView(compilation, xaml);
 
-        // The source property resolved against the template target (Button → Control.BackgroundProperty).
-        Assert.Contains("new global::Cursorial.UI.Data.TemplateBinding(", lowered);
-        Assert.Contains("BackgroundProperty));", lowered);
+        // The source property resolved against the template target (Button → Control.BackgroundProperty),
+        // lowered as a COMPILED TemplatedParent binding (WS-PP3).
+        Assert.Contains("RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent", lowered);
+        Assert.Contains("BackgroundProperty)", lowered);
         Assert.DoesNotContain("TODO X5", lowered);
 
         var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));

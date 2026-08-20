@@ -181,13 +181,14 @@ namespace GenApp { public partial class GapView : StackPanel { public GapView() 
         Assert.Contains("// TODO X5", GeneratedView(compilation, "GapView"));
     }
 
-    [Fact] // B3 — an x:DataType {Binding} that stays reflective (here an indexer path) emits a CURG2002 INFO naming
-           // why; a compilable single-hop sibling compiles and gets no info; both still work (no CURG3001 gap).
+    [Fact] // B3 — an x:DataType {Binding} that stays reflective (here a TemplatedParent anchor — every
+           // statically-typeable anchor COMPILES now, including backward-visible StaticResource sources)
+           // emits a CURG2002 INFO naming why; a compilable single-hop sibling compiles and gets no info.
     public void LoweringOptIn_ReflectiveFallback_EmitsCurg2002Info()
     {
         var xaml =
             $"<StackPanel {Ns} xmlns:t=\"using:GenApp\" x:Class=\"GenApp.InfoView\" x:DataType=\"t:InfoVm\">" +
-            "<Button x:Name=\"Indexed\" Content=\"{Binding Tags[0]}\"/>" + // indexer ⇒ reflective ⇒ CURG2002
+            "<Button x:Name=\"Anchored\" Content=\"{Binding Title, RelativeSource={RelativeSource TemplatedParent}}\"/>" + // untypeable anchor ⇒ reflective ⇒ CURG2002
             "<Button x:Name=\"Flat\" Content=\"{Binding Title}\"/>" +      // single-hop ⇒ compiled ⇒ no info
             "</StackPanel>";
 
@@ -203,16 +204,16 @@ namespace GenApp
         var (compilation, diagnostics) = GeneratorHarness.RunWithCodeBehind(codeBehind, loweringFull: true, ("InfoView.xaml", xaml));
         Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
 
-        // Exactly one CURG2002 Info (the indexer Indexed button), naming the reason.
+        // Exactly one CURG2002 Info (the ElementName-anchored button), naming the reason.
         var info = Assert.Single(diagnostics, d => d.Id == "CURG2002");
         Assert.Equal(DiagnosticSeverity.Info, info.Severity);
         Assert.Contains("stays reflective", info.GetMessage());
-        Assert.Contains("indexer", info.GetMessage());
+        Assert.Contains("no typed root", info.GetMessage()); // the anchor is expressible but untypeable, and Title is not a registered property
 
-        // The single-hop binding compiled; the indexer one still works reflectively (no CURG3001 dropped-member gap).
+        // The single-hop binding compiled; the anchored one still works reflectively (no CURG3001 dropped-member gap).
         var view = GeneratedView(compilation, "InfoView");
         Assert.Contains("new global::Cursorial.UI.Data.CompiledBinding<", view);        // Flat → compiled
-        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Tags[0]\")", view);    // Indexed → reflective, working
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(\"Title\")", view);      // Source-anchored → reflective, working
         Assert.DoesNotContain(diagnostics, d => d.Id == "CURG3001");
     }
 

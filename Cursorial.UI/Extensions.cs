@@ -2,12 +2,27 @@ using Cursorial.Rendering.Media;
 using Cursorial.Text;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Input;
-using Cursorial.UI.Media;
 
 namespace Cursorial.UI;
 
 public static class Extensions
 {
+    extension<THost>(THost host) where THost : UIObject
+    {
+        public TValue GetDirect<TValue>(DirectProperty<THost, TValue> property) => property.Getter(host);
+
+        public void SetDirect<TValue>(DirectProperty<THost, TValue> property, TValue value)
+        {
+            if (property.Setter is not {} setter)
+            {
+                throw new InvalidOperationException($"Direct property {property.HostType.Name}." +
+                                                    $"{property.Name} has no setter.");
+            }
+
+            setter(host, value);
+        }
+    }
+
     extension(Type type)
     {
         internal Type UnwrapNullable()

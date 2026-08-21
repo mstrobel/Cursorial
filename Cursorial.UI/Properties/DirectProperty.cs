@@ -35,6 +35,8 @@ public sealed class DirectProperty<TOwner, T> : UIProperty
     /// </summary>
     public new T UnsetValue { get; }
 
+    public override Type HostType => typeof(TOwner);
+
     internal override object? GetDefaultValueUntyped(Type forType) => UnsetValue;
 
     internal override object? GetValueUntyped(UIObject host) => Getter((TOwner)host);

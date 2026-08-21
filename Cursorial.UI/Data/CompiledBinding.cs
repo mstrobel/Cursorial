@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Linq.Expressions;
+using System.Text;
 
 namespace Cursorial.UI.Data;
 
@@ -48,6 +49,298 @@ public static class CompiledBinding
                                               updateSourceTrigger,
                                               trace);
     }
+    
+    /// <summary>
+    /// Builds the descriptor for a single styled/attached-property read on the source — directly,
+    /// with no expression tree and no reflection: the getter closes over
+    /// <paramref name="property"/> and reads through <c>GetValue</c> (the always-GetValue rule —
+    /// no trust in CLR wrappers), the step carries the registration for observer subscription, and
+    /// a writable property gets a <c>SetValue</c> write-back (LocalValue — the durable data push).
+    /// Fully AOT-native: nothing here compiles at runtime or needs trim analysis.
+    /// </summary>
+    public static CompiledBinding<UIObject, TValue> For<TValue>(
+        StyledProperty<TValue> property,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        // Setter presence is decided by WRITABILITY, not by predicting the effective mode: Default
+        // resolves per the TARGET property's BindsTwoWayByDefault at install (ResolveEffectiveMode
+        // consults the SetBinding target, which this factory cannot see), so a writable source keeps
+        // its setter for every mode that could use one — an unused setter is harmless, a missing one
+        // silently strips write-back. Read-only registrations get null (BD10/B152 wire-time degrade).
+        var needsSetter = !property.IsReadOnly && mode is not (BindingMode.OneWay or BindingMode.OneTime);
+
+        return Build<UIObject, TValue>(
+                   o => o.GetValue(property),
+                   needsSetter ? (o, v) => o.SetValue(property, v) : null,
+                   mode: mode,
+                   source: source,
+                   elementName: elementName,
+                   converter: converter,
+                   converterParameter: converterParameter,
+                   fallbackValue: fallbackValue, // raw — Build() resolves ONCE (double-resolve turned NullValue into UnsetValue)
+                   relativeSource: relativeSource,
+                   converterCulture: converterCulture,
+                   stringFormat: stringFormat,
+                   targetNullValue: targetNullValue,
+                   updateSourceTrigger: updateSourceTrigger,
+                   trace: trace)
+              .Step(property)
+              .Build();
+    }
+
+    /// <summary>
+    /// Builds the descriptor for a single direct-property read on the source. A direct property's
+    /// wrapper IS the implementation (the standing exemption from the always-GetValue rule), so the
+    /// registration's own <see cref="DirectProperty{TOwner,T}.Getter"/> and
+    /// <see cref="DirectProperty{TOwner,T}.Setter"/> delegates serve verbatim as the descriptor's
+    /// accessors — a registered setter makes the binding two-way capable. No expression tree, no
+    /// reflection; fully AOT-native.
+    /// </summary>
+    public static CompiledBinding<TSource, TValue> For<TSource, THost, TValue>(
+        DirectProperty<THost, TValue> property,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false) where THost : UIObject where TSource : THost
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        // The registration's OWN setter is the write-back (the direct-wrapper exemption); a
+        // getter-only DirectProperty yields null and the engine degrades TwoWay→OneWay at wire
+        // (BD10/B152). Mode only gates whether a setter could ever be used — never the TARGET-side
+        // Default resolution, which this factory cannot see.
+        var setter = mode is BindingMode.OneWay or BindingMode.OneTime ? null : property.Setter;
+
+        return Build<TSource, TValue>(
+                   property.Getter,
+                   setter,
+                   mode: mode,
+                   source: source,
+                   elementName: elementName,
+                   converter: converter,
+                   converterParameter: converterParameter,
+                   fallbackValue: fallbackValue, // raw — Build() resolves ONCE (double-resolve turned NullValue into UnsetValue)
+                   relativeSource: relativeSource,
+                   converterCulture: converterCulture,
+                   stringFormat: stringFormat,
+                   targetNullValue: targetNullValue,
+                   updateSourceTrigger: updateSourceTrigger,
+                   trace: trace)
+              .Step(property)
+              .Build();
+    }
+
+    /// <summary>
+    /// Builds the descriptor for a single direct-property read on the source. A direct property's
+    /// wrapper IS the implementation (the standing exemption from the always-GetValue rule), so the
+    /// registration's own <see cref="DirectProperty{TOwner,T}.Getter"/> and
+    /// <see cref="DirectProperty{TOwner,T}.Setter"/> delegates serve verbatim as the descriptor's
+    /// accessors — a registered setter makes the binding two-way capable. No expression tree, no
+    /// reflection; fully AOT-native.
+    /// </summary>
+    public static CompiledBinding<THost, TValue> For<THost, TValue>(
+        DirectProperty<THost, TValue> property,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false) where THost : UIObject
+    {
+        ArgumentNullException.ThrowIfNull(property);
+
+        // The registration's OWN setter is the write-back (the direct-wrapper exemption); a
+        // getter-only DirectProperty yields null and the engine degrades TwoWay→OneWay at wire
+        // (BD10/B152). Mode only gates whether a setter could ever be used — never the TARGET-side
+        // Default resolution, which this factory cannot see.
+        var setter = mode is BindingMode.OneWay or BindingMode.OneTime ? null : property.Setter;
+
+        return Build(property.Getter,
+                     setter,
+                     mode: mode,
+                     source: source,
+                     elementName: elementName,
+                     converter: converter,
+                     converterParameter: converterParameter,
+                     fallbackValue: fallbackValue, // raw — Build() resolves ONCE (double-resolve turned NullValue into UnsetValue)
+                     relativeSource: relativeSource,
+                     converterCulture: converterCulture,
+                     stringFormat: stringFormat,
+                     targetNullValue: targetNullValue,
+                     updateSourceTrigger: updateSourceTrigger,
+                     trace: trace)
+              .Step(property)
+              .Build();
+    }
+
+    public static CompiledPathStep Step(string clrMemberName) => new(clrMemberName);
+
+    public static CompiledPathStep Step(UIProperty property)
+        => new(property.IsAttached || property.IsDirect ? $"({property.OwnerType.Name}.{property.Name})" : property.Name)
+           { UIProperty = property };
+    
+    /// <summary>
+    /// Produces a compiled binding builder using the provided getter and setter closures directly.
+    /// Every step in the property access chain must be described with a <c>Step()</c> that includes
+    /// the step's corresponding <see cref="UIProperty"/> descriptor or the name of the CLR member.
+    /// </summary>
+    /// <seealso cref="Binding.Compiled{TSource,TValue}"/>
+    /// <seealso cref="From{TSource,TValue}"/>
+    /// <remarks>
+    /// It is generally far more convenient to use the <seealso cref="From{TSource,TValue}"/> method,
+    /// which does not require manually describing steps in the access chain. Reserve the use of this
+    /// method only when performance is critical: when runtime code generation is unavailable (e.g., AOT)
+    /// and the cost of the LINQ expression interpreter is too high. Useful for control authors and
+    /// extremely binding-heavy applications, but likely a premature optimization for most.
+    /// </remarks>
+    public static CompiledBindingBuilder<TSource, TValue> Build<TSource, TValue>(
+        Func<TSource, TValue> getter,
+        Action<TSource, TValue>? setter = null,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
+    {
+        ArgumentNullException.ThrowIfNull(getter);
+
+        // No setter validation here: a null setter under TwoWay/OneWayToSource degrades to OneWay at
+        // wire (BD10/B152) — the engine-wide contract; throwing at build would give the builder lane a
+        // third behavior distinct from both Analyze and the wire-time degrade.
+
+        return new CompiledBindingBuilder<TSource, TValue>(getter,
+                                                           setter,
+                                                           mode,
+                                                           source,
+                                                           elementName,
+                                                           converter,
+                                                           converterParameter,
+                                                           converterCulture,
+                                                           stringFormat,
+                                                           fallbackValue,
+                                                           relativeSource,
+                                                           targetNullValue,
+                                                           updateSourceTrigger,
+                                                           trace);
+    }
+}
+
+public sealed class CompiledBindingBuilder<TSource, TValue>(Func<TSource, TValue> getter,
+                                                            Action<TSource, TValue>? setter,
+                                                            BindingMode mode,
+                                                            object? source,
+                                                            string? elementName,
+                                                            IValueConverter? converter,
+                                                            object? converterParameter,
+                                                            CultureInfo? converterCulture,
+                                                            string? stringFormat,
+                                                            object? fallbackValue,
+                                                            RelativeSource? relativeSource,
+                                                            object? targetNullValue,
+                                                            UpdateSourceTrigger updateSourceTrigger,
+                                                            bool trace)
+{
+    private readonly List<CompiledPathStep> _steps = [];
+
+
+    public CompiledBindingBuilder<TSource, TValue> Step(string clrMemberName)
+    {
+        _steps.Add(new(clrMemberName));
+        return this;
+    }
+
+    /// <summary>
+    /// A CLR-member hop with an explicit object-typed accessor. Required for every hop EXCEPT the
+    /// last: rewiring materializes each intermediate through its step to subscribe the hop below it,
+    /// and a bare name cannot read a value (the leaf is exempt — the typed whole-chain getter reads
+    /// it, so a leaf step only needs its name for INPC matching).
+    /// </summary>
+    public CompiledBindingBuilder<TSource, TValue> Step(string clrMemberName, Func<object?, object?> getStep)
+    {
+        ArgumentNullException.ThrowIfNull(getStep);
+        _steps.Add(new(clrMemberName, getStep));
+        return this;
+    }
+
+    public CompiledBindingBuilder<TSource, TValue> Step(UIProperty property)
+    {
+        if (property.IsAttached || property.IsDirect)
+            _steps.Add(new($"({property.OwnerType.Name}.{property.Name})") { UIProperty = property });
+        else
+            _steps.Add(new(property.Name) { UIProperty = property });
+
+        return this;
+    }
+
+    public CompiledBinding<TSource, TValue> Build()
+    {
+        // Every INTERIOR hop must be materializable (a closure or a carried UIProperty): rewiring
+        // walks step-by-step to subscribe each hop's host, and an accessor-less interior hop would
+        // silently kill change tracking for everything below it (stale UI, no error).
+        for (int i = 0; i < _steps.Count - 1; i++)
+        {
+            if (_steps[i] is { GetStep: null, UIProperty: null })
+                throw new InvalidOperationException(
+                    $"Interior step '{_steps[i].MemberName}' has no accessor — use Step(name, getStep) or " +
+                    "Step(UIProperty) so the chain below it can re-subscribe on change.");
+        }
+
+        return new CompiledBinding<TSource, TValue>(
+                   getter,
+                   setter,
+                   _steps.ToArray(),
+                   _steps.Aggregate(new StringBuilder(),
+                                    (sb, step) => (sb.Length > 0 ? sb.Append('.') : sb).Append(step.MemberName),
+                                    sb => sb.ToString()))
+               {
+                   Converter = converter,
+                   ConverterParameter = converterParameter,
+                   ConverterCulture = converterCulture,
+                   StringFormat = stringFormat,
+                   UpdateSourceTrigger = updateSourceTrigger,
+                   FallbackValue = BindingBase.ResolveFallbackValue(fallbackValue),
+                   Mode = mode,
+                   Source = source,
+                   ElementName = elementName,
+                   TargetNullValue = BindingBase.ResolveFallbackValue(targetNullValue),
+                   Trace = trace,
+                   RelativeSource = relativeSource
+               };
+    }
 }
 
 /// <summary>
@@ -58,9 +351,19 @@ public static class CompiledBinding
 /// convention) and <see cref="GetStep"/> applies the captured index.
 /// </summary>
 /// <param name="MemberName">The member name (or <c>"Item[]"</c> for indexer hops).</param>
-/// <param name="GetStep">An object-typed reader for subscription rewiring.</param>
-public readonly record struct CompiledPathStep(string MemberName, Func<object?, object?> GetStep)
+/// <param name="GetStep">An object-typed reader for subscription rewiring; <see langword="null"/>
+/// for a descriptor-only hop, materialized through <see cref="UIProperty"/> instead (the
+/// <c>HostType</c> guard reproduces the closure's receiver pattern, including a direct property's
+/// owner constraint).</param>
+public readonly record struct CompiledPathStep(string MemberName, Func<object?, object?>? GetStep)
 {
+    /// <summary>
+    /// A descriptor-only hop: no step closure at all — subscription rewiring reads the intermediate
+    /// through the carried <see cref="UIProperty"/> (property-store dispatch, no reflection, and no
+    /// boxing for the reference-typed intermediates a UIObject chain produces).
+    /// </summary>
+    public CompiledPathStep(string memberName) : this(memberName, null) {}
+
     /// <summary>
     /// The property-system identity for a <c>GetValue(SomeClass.SomeProperty)</c> hop: subscription
     /// observes it directly, no registry lookup. Hops written through CLR wrappers carry only

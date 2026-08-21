@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Linq.Expressions;
+
 namespace Cursorial.UI.Data;
 
 /// <summary>
@@ -66,5 +69,129 @@ public sealed class TemplateBinding : BindingBase
                       };
 
         return binding.CreateExpression(in context);
+    }
+
+    public static CompiledBinding<UIObject, TValue> From<TValue>(
+        StyledProperty<TValue> property,
+        BindingMode mode = BindingMode.Default,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
+    {
+        // BD15: a template binding is ONE-WAY, always — two-way template wiring belongs to
+        // CompiledBinding.For with relativeSource: RelativeSource.TemplatedParent. Mirrors the
+        // runtime descriptor's CreateExpression guards.
+        if (mode is not (BindingMode.Default or BindingMode.OneWay))
+            throw new InvalidOperationException(
+                $"TemplateBinding is one-way only (BD15); mode '{mode}' is not supported — use " +
+                "CompiledBinding.For with RelativeSource.TemplatedParent for two-way template wiring.");
+        if (updateSourceTrigger is not UpdateSourceTrigger.Default)
+            throw new InvalidOperationException(
+                "TemplateBinding never writes back (BD15); UpdateSourceTrigger has no effect here.");
+
+        return CompiledBinding.Build(getter: (UIObject source) => source.GetValue(property),
+                                     setter: null,
+                                     BindingMode.OneWay, // forced — the runtime descriptor does the same
+                                     source: null,
+                                     elementName: null,
+                                     converter,
+                                     converterParameter,
+                                     converterCulture,
+                                     stringFormat,
+                                     fallbackValue,
+                                     RelativeSource.TemplatedParent,
+                                     targetNullValue,
+                                     updateSourceTrigger,
+                                     trace)
+                              .Step(property)
+                              .Build();
+    }
+
+    public static CompiledBinding<TSource, TValue> From<TSource, TValue>(
+        StyledProperty<TValue> property,
+        BindingMode mode = BindingMode.Default,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false) where TSource : UIObject
+    {
+        // BD15: a template binding is ONE-WAY, always — two-way template wiring belongs to
+        // CompiledBinding.For with relativeSource: RelativeSource.TemplatedParent. Mirrors the
+        // runtime descriptor's CreateExpression guards.
+        if (mode is not (BindingMode.Default or BindingMode.OneWay))
+            throw new InvalidOperationException(
+                $"TemplateBinding is one-way only (BD15); mode '{mode}' is not supported — use " +
+                "CompiledBinding.For with RelativeSource.TemplatedParent for two-way template wiring.");
+        if (updateSourceTrigger is not UpdateSourceTrigger.Default)
+            throw new InvalidOperationException(
+                "TemplateBinding never writes back (BD15); UpdateSourceTrigger has no effect here.");
+
+        return CompiledBinding.Build(getter: (TSource source) => source.GetValue(property),
+                                     setter: null,
+                                     BindingMode.OneWay, // forced — the runtime descriptor does the same
+                                     source: null,
+                                     elementName: null,
+                                     converter,
+                                     converterParameter,
+                                     converterCulture,
+                                     stringFormat,
+                                     fallbackValue,
+                                     RelativeSource.TemplatedParent,
+                                     targetNullValue,
+                                     updateSourceTrigger,
+                                     trace)
+                              .Step(property)
+                              .Build();
+    }
+
+    public static CompiledBinding<THost, TValue> From<THost, TValue>(
+        DirectProperty<THost, TValue> property,
+        BindingMode mode = BindingMode.Default,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false) where THost : UIObject
+    {
+        // BD15: a template binding is ONE-WAY, always — two-way template wiring belongs to
+        // CompiledBinding.For with relativeSource: RelativeSource.TemplatedParent. Mirrors the
+        // runtime descriptor's CreateExpression guards.
+        if (mode is not (BindingMode.Default or BindingMode.OneWay))
+            throw new InvalidOperationException(
+                $"TemplateBinding is one-way only (BD15); mode '{mode}' is not supported — use " +
+                "CompiledBinding.For with RelativeSource.TemplatedParent for two-way template wiring.");
+        if (updateSourceTrigger is not UpdateSourceTrigger.Default)
+            throw new InvalidOperationException(
+                "TemplateBinding never writes back (BD15); UpdateSourceTrigger has no effect here.");
+
+        return CompiledBinding.Build<THost, TValue>(
+                                   o => o.GetDirect(property),
+                                   setter: null,
+                                   BindingMode.OneWay, // forced — the runtime descriptor does the same
+                                   source: null,
+                                   elementName: null,
+                                   converter,
+                                   converterParameter,
+                                   converterCulture,
+                                   stringFormat,
+                                   fallbackValue,
+                                   RelativeSource.TemplatedParent,
+                                   targetNullValue,
+                                   updateSourceTrigger,
+                                   trace)
+                              .Step(property)
+                              .Build();
     }
 }

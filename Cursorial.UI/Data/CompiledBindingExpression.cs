@@ -113,7 +113,8 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         for (var i = 0; i < steps.Length && instance is not null; i++)
         {
             SubscribeStep(i, instance, in steps[i]);
-            instance = steps[i].GetStep(instance);
+            if (i + 1 < steps.Length) // the leaf hop is never materialized — the typed Getter reads it
+                instance = MaterializeStep(in steps[i], instance);
         }
 
         PushValue(_compiled.Getter(source)); // BD17: one whole-chain typed read (struct intermediates copy)
@@ -146,11 +147,12 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
         UnsubscribeFrom(index + 1);
         if (index + 1 < steps.Length)
         {
-            object? instance = steps[index].GetStep(_subs[index].Instance);
+            object? instance = MaterializeStep(in steps[index], _subs[index].Instance!);
             for (var i = index + 1; i < steps.Length && instance is not null; i++)
             {
                 SubscribeStep(i, instance, in steps[i]);
-                instance = steps[i].GetStep(instance);
+                if (i + 1 < steps.Length)
+                    instance = MaterializeStep(in steps[i], instance);
             }
         }
 
@@ -219,6 +221,19 @@ internal sealed class CompiledBindingExpression<TSource, TValue> : BindingExpres
 
         base.ProduceUnsetOrFallback(); // boxed: honors FallbackValue
     }
+
+    /// <summary>
+    /// Materializes a hop's intermediate for subscription rewiring: the step closure when present,
+    /// else the carried <see cref="CompiledPathStep.UIProperty"/> read directly (property-store
+    /// dispatch — the <c>HostType</c> guard reproduces the closure's receiver pattern, including a
+    /// direct property's owner constraint, and keeps <c>GetValueUntyped</c>'s cast safe).
+    /// </summary>
+    private static object? MaterializeStep(in CompiledPathStep step, object instance)
+        => step.GetStep is { } getStep
+            ? getStep(instance)
+            : step.UIProperty is { } property && instance is UIObject host && property.HostType.IsInstanceOfType(host)
+                ? host.GetValue(property)
+                : null;
 
     // ───────────────────────────── Steps subscription ─────────────────────────────
 

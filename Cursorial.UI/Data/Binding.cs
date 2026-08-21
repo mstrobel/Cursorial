@@ -55,10 +55,37 @@ public sealed class Binding : AnchoredBinding
     /// </summary>
     /// <seealso cref="CompiledBinding{TSource,TValue}"/>
     /// <seealso cref="CompiledBinding.From{TSource,TValue}"/>
-    public static CompiledBinding<TSource, TValue> Compiled<TSource, TValue>(Expression<Func<TSource, TValue>> path)
+    /// <seealso cref="CompiledBinding.Build"/>
+    public static CompiledBinding<TSource, TValue> Compiled<TSource, TValue>(
+        Expression<Func<TSource, TValue>> path,
+        BindingMode mode = BindingMode.Default,
+        object? source = null,
+        string? elementName = null,
+        IValueConverter? converter = null,
+        object? converterParameter = null,
+        CultureInfo? converterCulture = null,
+        string? stringFormat = null,
+        object? fallbackValue = null,
+        RelativeSource? relativeSource = null,
+        object? targetNullValue = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default,
+        bool trace = false)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return CompiledBindingFactory.Analyze(path);
+
+        return CompiledBindingFactory.Analyze(path,
+                                              mode,
+                                              source,
+                                              elementName,
+                                              converter,
+                                              converterParameter,
+                                              converterCulture,
+                                              stringFormat,
+                                              fallbackValue,
+                                              relativeSource,
+                                              targetNullValue,
+                                              updateSourceTrigger,
+                                              trace);
     }
 
     /// <summary>The parsed path (the <see cref="PropertyPath"/> caches per resolver; matrix B16). A path
@@ -168,6 +195,30 @@ internal static class CompiledBindingFactory
                 Analyze(receiver, root, steps, members);
                 return;
             }
+            case MethodCallExpression { Method.Name: "GetValue" or "GetDirect", Object: null } call
+                when call.Arguments is [var receiver, var propertyArg, ..] &&
+                     typeof(UIObject).IsAssignableFrom(receiver.Type) &&
+                     EvaluatePropertyArgument(propertyArg) is { } uiProperty:
+            {
+                steps.Add(new CompiledPathStep(uiProperty.Name, BuildUIPropertyStep(uiProperty)) { UIProperty = uiProperty });
+                members.Add(uiProperty.Name);
+                Analyze(receiver, root, steps, members);
+                return;
+            }
+            case MethodCallExpression { Method.Name: "GetValue", Object: {} receiver } call
+                when typeof(UIProperty).IsAssignableFrom(receiver.Type) &&
+                     receiver.Type.IsGenericType &&
+                     receiver.Type.GetGenericTypeDefinition() == typeof(DirectProperty<,>) &&
+                     call.Arguments is [var targetObj, ..] &&
+                     EvaluatePropertyArgument(receiver) is { } uiProperty:
+            {
+                // property.GetValue(target): the RECEIVER is the property identity, the ARGUMENT is
+                // the chain to keep walking (the arm was originally inverted — and thus unreachable).
+                steps.Add(new CompiledPathStep(uiProperty.Name, BuildUIPropertyStep(uiProperty)) { UIProperty = uiProperty });
+                members.Add(uiProperty.Name);
+                Analyze(targetObj, root, steps, members);
+                return;
+            }
             case MethodCallExpression call:
                 throw new FormatException(
                     $"Compiled binding path may contain member-access, constant-index, and UIObject " +
@@ -208,6 +259,12 @@ internal static class CompiledBindingFactory
             MethodCallExpression { Method.Name: "GetValue", Object: {} receiver } call
                 when typeof(UIObject).IsAssignableFrom(receiver.Type) &&
                      call.Arguments is [var propertyArg, ..] &&
+                     EvaluatePropertyArgument(propertyArg) is { IsReadOnly: false } uiProperty
+                => CompileUIPropertySetter<TSource, TValue>(receiver, uiProperty),
+            MethodCallExpression { Method.Name: "GetValue" or "GetDirect", Object: null } call
+                // ReSharper disable once MergeIntoPattern
+                when call.Arguments is [var receiver, var propertyArg, ..] &&
+                     typeof(UIObject).IsAssignableFrom(receiver.Type) &&
                      EvaluatePropertyArgument(propertyArg) is { IsReadOnly: false } uiProperty
                 => CompileUIPropertySetter<TSource, TValue>(receiver, uiProperty),
             _ => null

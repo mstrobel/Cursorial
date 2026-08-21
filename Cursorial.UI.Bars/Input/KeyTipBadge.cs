@@ -1,3 +1,4 @@
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Controls;
 using Cursorial.UI.Data;
 using Cursorial.UI.Themes;
@@ -59,7 +60,8 @@ public sealed class KeyTipBadge : Control
         var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { matched, rest } };
 
         var border = new Border { Occludes = true, Child = row };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(BackgroundProperty));
+        border.SetBinding(Border.BackgroundProperty,
+                          TemplateBinding.From(BackgroundProperty)); // UIObject-rooted: the templated parent is the BADGE, not the Border
 
         TextElement.ForwardAllAxes(matched);
         TextElement.ForwardAllAxes(rest);

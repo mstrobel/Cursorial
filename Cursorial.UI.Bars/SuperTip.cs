@@ -185,11 +185,11 @@ public class SuperTip : Control
 
         if (PopulateFromAnchor && Anchor is {} anchor)
         {
-            this.SetBinding(TitleProperty, new Binding(TitleProperty) { Source = anchor });
-            this.SetBinding(InputGestureTextProperty, new Binding(InputGestureTextProperty) { Source = anchor });
-            this.SetBinding(DescriptionProperty, new Binding(DescriptionProperty) { Source = anchor });
-            this.SetBinding(FooterProperty, new Binding(FooterProperty) { Source = anchor });
-            this.SetBinding(KeyTipSequenceProperty, new Binding(KeyTipSequenceProperty) { Source = anchor });
+            this.SetBinding(TitleProperty, CompiledBinding.For(TitleProperty, source: anchor));
+            this.SetBinding(InputGestureTextProperty, CompiledBinding.For(InputGestureTextProperty, source: anchor));
+            this.SetBinding(DescriptionProperty, CompiledBinding.For(DescriptionProperty, source: anchor));
+            this.SetBinding(FooterProperty, CompiledBinding.For(FooterProperty, source: anchor));
+            this.SetBinding(KeyTipSequenceProperty, CompiledBinding.For(KeyTipSequenceProperty, source: anchor));
         }
     }
 

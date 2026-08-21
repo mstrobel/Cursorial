@@ -28,13 +28,13 @@ internal static class CursorialBarsTheme
     // state (no resting border) — :pointerover/:pressed flip the Background, :checked flips to the accent fill, and
     // the label/icon inherit Foreground. The label ContentPresenter auto-aliases the button's Content (access-key
     // literals folded); the icon presenter shows the (shared-identity) Icon property.
-    private static ControlTemplate BarItemTemplate() => new(ctx =>
+    private static ControlTemplate BarItemTemplate<T>() where T : UIElement => new(ctx =>
     {
         var border = new Border { Occludes = true };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From<T, IBrush?>(Control.BackgroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From<T, Margins>(Control.PaddingProperty));
         // The bar face forwards the Inverse cue axis (non-inheriting; the labels ride the presenter forwards).
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From<T, bool>(TextElement.InverseProperty));
 
         // Medium / Small (the default): the horizontal [icon][label] face — the Toolbar bar-button face verbatim.
         // With no ribbon size context this is the ONLY visible face (the large face collapses via the size-cascade rules), so a
@@ -50,12 +50,12 @@ internal static class CursorialBarsTheme
 
         DockPanel.SetDock(icon, Dock.Left);
 
-        icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarButton.IconProperty));
-        // icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From<T, object?>(BarButton.IconProperty));
+        // icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         icon.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
 
         var label = new ContentPresenter { RecognizesAccessKey = true };
-        label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<T, IBrush?>(Control.ForegroundProperty));
         
         row.Children.Add(icon);
         row.Children.Add(label);
@@ -123,7 +123,7 @@ internal static class CursorialBarsTheme
                    .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
                    .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
                    .Set(Control.PaddingProperty, new Margins(1, 0))
-                   .Set(Control.TemplateProperty, BarItemTemplate());
+                   .Set(Control.TemplateProperty, BarItemTemplate<BarButton>());
 
         theme.Children.Add(new Style("^:pointerover")
                           .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
@@ -152,7 +152,7 @@ internal static class CursorialBarsTheme
             .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentBrush)
             .SetResource(Control.ForegroundProperty, ThemeKeys.ButtonForegroundNormal)
             .Set(Control.PaddingProperty, new Margins(1, 0))
-            .Set(Control.TemplateProperty, BarItemTemplate());
+            .Set(Control.TemplateProperty, BarItemTemplate<BarToggleButton>());
         theme.Children.Add(new Style("^:pointerover")
                               .SetResource(Icon.IconBrushProperty, ThemeKeys.AccentInverseBrush)
                               .SetResource(Control.BackgroundProperty, ThemeKeys.ButtonBackgroundHover)
@@ -195,9 +195,15 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var border = new Border();
-                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+
+                border.SetBinding(Border.PaddingProperty,
+                                  TemplateBinding.From<BarLabel, Margins>(Control.PaddingProperty));
+
                 var label = new ContentPresenter { RecognizesAccessKey = true }; // auto-aliases the caption Content
-                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+
+                label.SetBinding(TextElement.ForegroundProperty,
+                                 TemplateBinding.From<BarLabel, IBrush?>(Control.ForegroundProperty));
+
                 border.Child = label;
                 return border;
             }));
@@ -214,11 +220,14 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var border = new Border();
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                border.SetBinding(Border.BackgroundProperty,
+                                  TemplateBinding.From<Button, IBrush?>(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty,
+                                  TemplateBinding.From<Button, Margins>(Control.PaddingProperty));
                 TextElement.ForwardInverse(border); // the shared .caps-nocolor Button:focus cue is non-inheriting now — the face forwards it (audit fix)
                 var label = new ContentPresenter(); // auto-aliases the button's Content ("»")
-                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                label.SetBinding(TextElement.ForegroundProperty,
+                                 TemplateBinding.From<Button, IBrush?>(Control.ForegroundProperty));
                 border.Child = label;
                 return border;
             }));
@@ -284,7 +293,8 @@ internal static class CursorialBarsTheme
                 grid.Children.Add(popup);
 
                 var border = new Border { Child = grid };
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetBinding(Border.BackgroundProperty,
+                                  TemplateBinding.From<Toolbar, IBrush?>(Control.BackgroundProperty));
                 return border;
             }));
 
@@ -305,11 +315,11 @@ internal static class CursorialBarsTheme
         return popup;
     }
 
-    private static ContentPresenter BuildIcon()
+    private static ContentPresenter BuildIcon<T>() where T : UIElement
     {
         var icon = new ContentPresenter();
-        icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(BarDropDownButton.IconProperty));
-        icon.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From<T, object?>(BarDropDownButton.IconProperty));
+        icon.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<T, IBrush?>(Control.ForegroundProperty));
         return icon;
     }
 
@@ -322,38 +332,35 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var border = new Border();
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From<BarPopupButton, IBrush?>(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, TemplateBinding.From<BarPopupButton, Margins>(Control.PaddingProperty));
                 TextElement.ForwardInverse(border); // whole-face NoColor cue (audit fix)
 
                 var row = new DockPanel { LastChildFill = true };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
-                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From<BarPopupButton, IBrush?>(Control.ForegroundProperty));
                 var caret = new TextBlock { Margin = new Margins(1, 0, 0, 0) }; // leading gap (was the space in " ▾")
-                caret.SetBinding(TextBlock.TextProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
-                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                caret.SetBinding(TextBlock.TextProperty, TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
+                caret.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
                 TextElement.ForwardInverse(caret); // the ▾ caret is a GLYPH — Inverse only, so it inverts in unison with the face (owner rule)
 
-                var icon = BuildIcon();
+                var icon = BuildIcon<BarPopupButton>();
                 
                 DockPanel.SetDock(icon, Dock.Left);
 
                 BindingOperations.SetBinding(
                     caret,
                     DockPanel.DockProperty,
-                    new Binding(BarDropDownButton.DropDownPlacementProperty)
-                    {
-                        RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) =>
-                                                          {
-                                                              return value switch
-                                                                     {
-                                                                         PlacementMode.Left => Dock.Left,
-                                                                         _                  => Dock.Right
-                                                                     };
-                                                          })
-                    }
-                );
+                    TemplateBinding.From(BarDropDownButton.DropDownPlacementProperty,
+                                         converter: ValueConverter.Create((value, _, _, _) =>
+                                                                          {
+                                                                              return value switch
+                                                                                     {
+                                                                                         PlacementMode.Left =>
+                                                                                             Dock.Left,
+                                                                                         _ => Dock.Right
+                                                                                     };
+                                                                          })));
 
                 // Order matters with LastChildFill: the LAST child FILLS the remaining space and its Dock is IGNORED.
                 // The caret must therefore NOT be last (that's why its placement-driven Dock never applied on the popup
@@ -395,12 +402,12 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var primary = new Border { Padding = new Margins(1, 0) };
-                primary.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                primary.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
                 TextElement.ForwardInverse(primary); // the primary zone's whole-face NoColor cue (audit fix)
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
                 var label = new ContentPresenter { RecognizesAccessKey = true };
-                label.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-                row.Children.Add(BuildIcon());
+                label.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
+                row.Children.Add(BuildIcon<BarSplitButton>());
                 row.Children.Add(label);
                 primary.Child = row;
 
@@ -410,7 +417,7 @@ internal static class CursorialBarsTheme
                     Theme = DropZoneStyle(),
                     VerticalAlignment = VerticalAlignment.Stretch
                 };
-                dropZone.SetBinding(ContentControl.ContentProperty, new TemplateBinding(BarDropDownButton.CaretGlyphProperty));
+                dropZone.SetBinding(ContentControl.ContentProperty, TemplateBinding.From(BarDropDownButton.CaretGlyphProperty));
                 // The ▾ zone is a BARRED template part; forward Inverse so it swaps in unison with the
                 // inverted primary face on a NoColor focus (the ▾ glyph is a symbol — Inverse only, owner rule).
                 TextElement.ForwardInverse(dropZone);
@@ -421,19 +428,16 @@ internal static class CursorialBarsTheme
                 BindingOperations.SetBinding(
                     dropZone,
                     DockPanel.DockProperty,
-                    new Binding(BarDropDownButton.DropDownPlacementProperty)
-                    {
-                        RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) =>
-                                                          {
-                                                              return value switch
-                                                                     {
-                                                                         PlacementMode.Left => Dock.Left,
-                                                                         _                  => Dock.Right
-                                                                     };
-                                                          })
-                    }
-                );
+                    TemplateBinding.From(BarDropDownButton.DropDownPlacementProperty,
+                                         converter: ValueConverter.Create((value, _, _, _) =>
+                                                                          {
+                                                                              return value switch
+                                                                                     {
+                                                                                         PlacementMode.Left =>
+                                                                                             Dock.Left,
+                                                                                         _ => Dock.Right
+                                                                                     };
+                                                                          })));
 
                 band.Children.Add(dropZone);
                 band.Children.Add(primary);
@@ -468,12 +472,12 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var border = new Border();
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
                 TextElement.ForwardInverse(border); // the ▾ zone (an exact Button) gets Inverse from the caps
                                                     // hover rule — its face must invert in unison with the caret (audit fix)
                 var caret = new ContentPresenter();
-                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                caret.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
                 border.Child = caret;
                 return border;
             }));
@@ -507,13 +511,13 @@ internal static class CursorialBarsTheme
             {
                 var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true }; // the read-only face value (visible when !IsEditable)
                 ctx.RegisterName("PART_ContentSite", selected);
-                selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
-                selected.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                selected.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(ComboBox.SelectionBoxItemProperty));
+                selected.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
 
                 var editable = new TextBox { Visibility = Visibility.Collapsed }; // the editable face (visible when IsEditable)
                 ctx.RegisterName("PART_EditableTextBox", editable);
-                editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
-                editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
+                editable.SetBinding(TextBox.PlaceholderProperty, TemplateBinding.From(ComboBox.PlaceholderTextProperty));
+                editable.SetBinding(TextBox.IsReadOnlyProperty, TemplateBinding.From(ComboBox.IsReadOnlyProperty));
 
                 var faceContent = new Grid { Margin = new Margins(1, 0) }; // the two faces overlap; the collapsed one is 0-wide
                 faceContent.Children.Add(selected);
@@ -525,32 +529,41 @@ internal static class CursorialBarsTheme
                 // vertical overflow menu (DropDownPlacement == Left), pointing toward its side flyout — matching the
                 // drop-opener buttons. (The caret is added FIRST so it is not the LastChildFill child and its Dock is
                 // honored; faceContent is the fill.)
-                BindingOperations.SetBinding(caret, DockPanel.DockProperty,
-                    new Binding(ComboBox.DropDownPlacementProperty)
-                    {
-                        RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? Dock.Left : Dock.Right)
-                    });
-                BindingOperations.SetBinding(caret, ContentControl.ContentProperty,
-                    new Binding(ComboBox.DropDownPlacementProperty)
-                    {
-                        RelativeSource = RelativeSource.TemplatedParent,
-                        Converter = ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾")
-                    });
+                BindingOperations.SetBinding(
+                    caret,
+                    DockPanel.DockProperty,
+                    TemplateBinding.From(
+                        ComboBox.DropDownPlacementProperty,
+                        converter: ValueConverter.Create((value, _, _, _) =>
+                                                         {
+                                                             return value switch
+                                                                    {
+                                                                        PlacementMode.Left => Dock.Left,
+                                                                        _                  => Dock.Right
+                                                                    };
+                                                         })));
+
+                BindingOperations.SetBinding(
+                    caret,
+                    ContentControl.ContentProperty,
+                    TemplateBinding.From(
+                        ComboBox.DropDownPlacementProperty,
+                        converter: ValueConverter.Create((value, _, _, _) => value is PlacementMode.Left ? "◂" : "▾"))
+                );
 
                 var row = new DockPanel();
                 row.Children.Add(caret);        // docked right (Bottom) / left (Left placement) — the ▾ / ◂ toggle
                 row.Children.Add(faceContent);  // fills the remaining width
 
                 var face = new Border { Child = row }; // FLAT: no BorderPen
-                face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                face.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
 
                 var host = new ItemsPresenter();
                 ctx.RegisterName("PART_ItemsHost", host);
                 var list = new Border { Child = host };
                 list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
                 list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-                list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty));
+                list.SetBinding(UIElement.MaxHeightProperty, TemplateBinding.From(ComboBox.MaxDropDownHeightProperty));
                 var popup = new Popup { Child = list };
                 ctx.RegisterName("PART_Popup", popup);
 
@@ -579,7 +592,7 @@ internal static class CursorialBarsTheme
             .Set(Control.TemplateProperty, new ControlTemplate(ctx =>
             {
                 var caret = new ContentPresenter();
-                caret.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                caret.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
                 return caret;
             }));
 
@@ -596,8 +609,8 @@ internal static class CursorialBarsTheme
                 var host = new ItemsPresenter();
                 ctx.RegisterName("PART_ItemsHost", host);
                 var border = new Border { Child = host };
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
                 return border;
             }));
 
@@ -691,8 +704,8 @@ internal static class CursorialBarsTheme
             // ── Body (the selected tab's band) ──
             var content = new ContentPresenter();
             ctx.RegisterName("PART_ContentHost", content);
-            content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
-            content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+            content.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(TabControl.SelectedContentProperty));
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, TemplateBinding.From(TabControl.ContentTemplateProperty));
             content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
             var body = new Border { Padding = new Margins(1, 0), Child = content, Occludes = true };
             ctx.RegisterName("PART_Body", body);
@@ -782,7 +795,7 @@ internal static class CursorialBarsTheme
 
             var header = new ContentPresenter { RecognizesAccessKey = true };
             ctx.RegisterName("PART_ContentPresenter", header);
-            header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+            header.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedContentControl.HeaderProperty));
             TextElement.ForwardInverse(header);
 
             // A LEFT MARGIN, not a leading space: TextBlock drops leading whitespace (its paragraph packs WordWrap), so
@@ -804,7 +817,7 @@ internal static class CursorialBarsTheme
                                  Occludes = true
                              };
             TextElement.ForwardInverse(headerHost);
-            // headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+            // headerHost.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
             ctx.RegisterName("PART_HeaderSite", headerHost);
 
             var underline = new Separator { Margin = new Margins(1, 0, 1, 0) };
@@ -897,7 +910,7 @@ internal static class CursorialBarsTheme
 
             var name = new ContentPresenter { HorizontalAlignment = HorizontalAlignment.Center };
             ctx.RegisterName("PART_GroupName", name);
-            name.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+            name.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
             name.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
 
             var launcher = new BarButton { Content = "⋰", Focusable = false, IsTabStop = false };
@@ -937,7 +950,7 @@ internal static class CursorialBarsTheme
             // Bottom-aligned so the collapsed [name ▾] opener lands on the band's bottom row, matching the inline
             // column's Bottom alignment (#151) — a collapsed group's label shares the same baseline as its neighbors' names.
             var collapsedButton = new BarPopupButton { DropDownContent = collapsedPopupSurface, VerticalAlignment = VerticalAlignment.Bottom };
-            collapsedButton.SetBinding(ContentControl.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+            collapsedButton.SetBinding(ContentControl.ContentProperty, TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
             ctx.RegisterName("PART_CollapsedButton", collapsedButton);
 
             var separator = new BarSeparator { Orientation = Orientation.Vertical };
@@ -1017,8 +1030,8 @@ internal static class CursorialBarsTheme
             // The detail pane: the selected destination's Content (the rail persists across a swap).
             var detail = new ContentPresenter { Margin = new Margins(2, 1) };
             ctx.RegisterName("PART_ContentHost", detail);
-            detail.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
-            detail.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+            detail.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(TabControl.SelectedContentProperty));
+            detail.SetBinding(ContentPresenter.ContentTemplateProperty, TemplateBinding.From(TabControl.ContentTemplateProperty));
             detail.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
             var detailBorder = new Border { Child = detail, Occludes = true };
             detailBorder.SetResourceReference(Border.BackgroundProperty, ThemeKeys.SurfaceBrush);
@@ -1064,11 +1077,11 @@ internal static class CursorialBarsTheme
             {
                 var header = new ContentPresenter { RecognizesAccessKey = true };
                 ctx.RegisterName("PART_ContentPresenter", header);
-                header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
-                header.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                header.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedContentControl.HeaderProperty));
+                header.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
                 var border = new Border { Child = header };
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
                 return border;
             }));
         theme.Children.Add(new Style("^")
@@ -1100,7 +1113,7 @@ internal static class CursorialBarsTheme
                 title.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
 
                 title.SetBinding(TextBlock.TextProperty,
-                                 new TemplateBinding(SuperTip.TitleProperty));
+                                 TemplateBinding.From(SuperTip.TitleProperty));
 
                 title.SetResourceReference(TextElement.ForegroundProperty,
                                            ThemeKeys.TextBrush);
@@ -1108,24 +1121,16 @@ internal static class CursorialBarsTheme
                 var gesture = new TextBlock { Margin = new Margins(1, 0, 1, 0) };
 
                 gesture.SetBinding(TextBlock.TextProperty,
-                                   new TemplateBinding(SuperTip.InputGestureTextProperty)
-                                   { StringFormat = "({0})" });
+                                   TemplateBinding.From(SuperTip.InputGestureTextProperty,
+                                                        stringFormat: "({0})"));
 
                 gesture.SetResourceReference(
                     TextElement.ForegroundProperty, ThemeKeys.MutedBrush);
 
                 gesture.SetBinding(UIElement.VisibilityProperty,
-                                   new TemplateBinding(SuperTip.InputGestureTextProperty)
-                                   {
-                                       Converter = ValueConverter.Create(
-                                           convert: (value, _, _, _) =>
-                                                        value switch
-                                                        {
-                                                            "" or null => Visibility
-                                                                .Collapsed,
-                                                            _ => Visibility.Visible
-                                                        })
-                                   });
+                                   TemplateBinding.From(
+                                       SuperTip.InputGestureTextProperty,
+                                       converter: ContentToVisibilityConverter.Instance));
 
                 titlePanel.Children.Add(title);
                 titlePanel.Children.Add(gesture);
@@ -1135,7 +1140,7 @@ internal static class CursorialBarsTheme
                 var hops = new TextBlock();
 
                 hops.SetBinding(TextBlock.TextProperty,
-                                new TemplateBinding(SuperTip.KeyTipSequenceProperty));
+                                TemplateBinding.From(SuperTip.KeyTipSequenceProperty));
 
                 hops.SetResourceReference(TextElement.ForegroundProperty,
                                           ThemeKeys.MutedBrush);
@@ -1157,44 +1162,27 @@ internal static class CursorialBarsTheme
                 description.SetValue(TextBlock.TextWrappingProperty, WrapMode.CharacterWrap);
 
                 description.SetBinding(ContentPresenter.ContentProperty,
-                                       new TemplateBinding(SuperTip.DescriptionProperty));
+                                       TemplateBinding.From(SuperTip.DescriptionProperty));
 
                 description.SetResourceReference(
                     TextElement.ForegroundProperty, ThemeKeys.TextDimBrush);
 
                 description.SetBinding(UIElement.VisibilityProperty,
-                                       new TemplateBinding(SuperTip.DescriptionProperty)
-                                       {
-                                           Converter = ValueConverter.Create(
-                                               convert: (value, _, _, _) =>
-                                                            value switch
-                                                            {
-                                                                "" or null => Visibility
-                                                                    .Collapsed,
-                                                                _ => Visibility.Visible
-                                                            })
-                                       });
+                                       TemplateBinding.From(
+                                           SuperTip.DescriptionProperty,
+                                           converter: ContentToVisibilityConverter.Instance));
 
                 var footer = new ContentPresenter { Margin = new Margins(0, 1, 0, 0) };
 
                 footer.SetBinding(ContentPresenter.ContentProperty,
-                                  new TemplateBinding(SuperTip.FooterProperty));
+                                  TemplateBinding.From(SuperTip.FooterProperty));
 
                 footer.SetResourceReference(TextElement.ForegroundProperty,
                                             ThemeKeys.FaintBrush);
 
                 footer.SetBinding(UIElement.VisibilityProperty,
-                                  new TemplateBinding(SuperTip.FooterProperty)
-                                  {
-                                      Converter = ValueConverter.Create(
-                                          convert: (value, _, _, _) =>
-                                                       value switch
-                                                       {
-                                                           "" or null => Visibility
-                                                               .Collapsed,
-                                                           _ => Visibility.Visible
-                                                       })
-                                  });
+                                  TemplateBinding.From(SuperTip.FooterProperty,
+                                                       converter: ContentToVisibilityConverter.Instance));
 
                 ctx.RegisterName("PART_KeyTips", hops);
                 ctx.RegisterName("PART_Footer", footer);
@@ -1214,19 +1202,17 @@ internal static class CursorialBarsTheme
                 {
                     new DataCondition
                     {
-                        Binding = new Binding(SuperTip.UseCompactLayoutProperty)
-                                  {
-                                      RelativeSource = RelativeSource.Ancestor<SuperTip>()
-                                  },
+                        Binding = CompiledBinding.For(SuperTip.UseCompactLayoutProperty,
+                                                      relativeSource: RelativeSource.Ancestor<SuperTip>()),
                         Value = true
                     }
                 },
                 Children =
                 {
                     new Style(Selectors.Nesting().Template().Name("PART_Description"))
-                        .Set(UIElement.MarginProperty, Margins.Zero),
+                       .Set(UIElement.MarginProperty, Margins.Zero),
                     new Style(Selectors.Nesting().Template().Name("PART_Footer"))
-                        .Set(UIElement.MarginProperty, Margins.Zero)
+                       .Set(UIElement.MarginProperty, Margins.Zero)
                 }
             });
 

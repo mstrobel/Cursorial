@@ -96,6 +96,7 @@ public static class Runner
                 Func<UIElement> viewFactory;
                 var final = ReferenceEquals(rawStep, steps[^1]);
                 var app = BuildStepApp(final);
+                UIElement? stepRoot = null;
                 try
                 {
                     args = StepArgs.Parse(Interpolator.Apply(rawStep, vars));
@@ -113,12 +114,23 @@ public static class Runner
                 try
                 {
                     WireCancelKeys(app);
-                    code = await app.RunAsync(viewFactory);
+                    // Capture the step's root so it can be permanently torn down once the step's app is
+                    // gone. curio is RootElement-hosted (not window-hosted), so the window-close teardown
+                    // sweep never runs here — each stage's view is a discarded subtree whose bindings to
+                    // its commandlet view-model must be released, or every stage in a pipeline accumulates
+                    // a live view-model until process exit (Element-Lifecycle-and-Teardown wiki: discarding
+                    // a subtree yourself).
+                    code = await app.RunAsync(() => stepRoot = viewFactory());
                 }
                 finally
                 {
                     await app.DisposeAsync(); // stdout writes are only safe after teardown
                 }
+
+                // DisposeAsync detached the root (reversible); this is the permanent sweep — same UI
+                // thread, so VerifyAccess (thread-affinity only) is satisfied. Idempotent + re-entrancy
+                // guarded, so a no-op on a never-built root is free.
+                stepRoot?.TearDown();
 
                 if (code == ExitCodes.Accepted)
                 {

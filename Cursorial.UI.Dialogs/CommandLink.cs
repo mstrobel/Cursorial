@@ -67,19 +67,25 @@ internal class CommandLink : Button
         BindingOperations.SetBinding(
             this,
             ContentProperty,
-            CompiledBinding.From((TaskDialogButton b) => b.Label, source: newDefinition)
+            CompiledBinding.Build((TaskDialogButton b) => b.Label, source: newDefinition)
+                           .Step(nameof(TaskDialogButton.Label))
+                           .Build()
         );
 
         BindingOperations.SetBinding(
             this,
             ExplanationProperty,
-            CompiledBinding.From((TaskDialogButton b) => b.Explanation, source: newDefinition)
+            CompiledBinding.Build((TaskDialogButton b) => b.Explanation, source: newDefinition)
+                           .Step(nameof(TaskDialogButton.Explanation))
+                           .Build()
         );
 
         BindingOperations.SetBinding(
             this,
             ExplanationContainsMarkupProperty,
-            CompiledBinding.From((TaskDialogButton b) => b.ExplanationContainsMarkup, source: newDefinition)
+            CompiledBinding.Build((TaskDialogButton b) => b.ExplanationContainsMarkup, source: newDefinition)
+                           .Step(nameof(TaskDialogButton.ExplanationContainsMarkup))
+                           .Build()
         );
     }
 

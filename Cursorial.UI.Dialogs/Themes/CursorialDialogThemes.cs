@@ -112,10 +112,10 @@ public static class CursorialDialogThemes
         var panel = new DockPanel { LastChildFill = true };
         var border = new Border { Child = panel };
 
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         TextElement.ForwardAllAxes(icon); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
         TextElement.ForwardInverse(border); // the NoColor focus/pressed cue reverse-videos the WHOLE face (audit fix)
 
@@ -144,10 +144,10 @@ public static class CursorialDialogThemes
         ctx.RegisterName("PART_Explanation", explanation);
 
         explanation.SetBinding(ContentPresenter.ContentProperty,
-                               new TemplateBinding(CommandLink.ExplanationProperty));
+                               TemplateBinding.From(CommandLink.ExplanationProperty));
 
         explanation.SetBinding(ContentPresenter.RecognizesMarkupProperty,
-                               new TemplateBinding(CommandLink.ExplanationContainsMarkupProperty));
+                               TemplateBinding.From(CommandLink.ExplanationContainsMarkupProperty));
 
         explanation.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
 

@@ -14,7 +14,7 @@ namespace Cursorial.Tests.Rendering;
 /// <c>GlyphStyleProvider</c> callback that existed only because <see cref="IBrush"/> used to live above this
 /// assembly. Two things follow, and both are pinned here: a delta states only the channels it owns — the
 /// rest fall through to the destination cells, and a caller with a whole-style base restates it under the
-/// delta via <see cref="BrushedStyle.From"/> / <see cref="BrushedStyle.FromInk"/> — and
+/// delta via <see cref="BrushedStyle.From(in CellStyle)"/> / <see cref="BrushedStyle.FromInk"/> — and
 /// <see cref="BrushedStyle.IsUniform"/> is READABLE — a callback was opaque, so every cell had to call it.
 /// </summary>
 public class GlyphBrushedStylePaintTests
@@ -82,7 +82,7 @@ public class GlyphBrushedStylePaintTests
     /// The operation the old signature could not express: state ONE channel and leave the rest. A
     /// <c>CellStyle</c>-returning provider had to rebuild the base to avoid wiping it — and any channel it
     /// forgot was silently reset. The base rides UNDER the delta now, restated via
-    /// <see cref="BrushedStyle.From"/> + <see cref="BrushedStyle.Then"/>.
+    /// <see cref="BrushedStyle.From(in CellStyle)"/> + <see cref="BrushedStyle.Then"/>.
     /// </summary>
     [Fact]
     public void Monospace_ForegroundOnlyBrushedStyleKeepsEveryOtherChannel()

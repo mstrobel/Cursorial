@@ -8,7 +8,7 @@ using Cursorial.Rendering.Media;
 namespace Cursorial.Tests.Drawing;
 
 /// <summary>
-/// The <b>negative-origin sampling invariant</b>: <see cref="IBrush.ColorAt"/> reads
+/// The <b>negative-origin sampling invariant</b>: <see cref="IBrush.ColorAt(int,int,Cursorial.Rendering.Rect)"/> reads
 /// <c>bounds.Column</c>/<c>bounds.Row</c> only as a <em>subtrahend</em>, so sampling cell
 /// (<c>c</c>, <c>r</c>) against a bounds whose origin is negative is identical to sampling
 /// (<c>c − bounds.Column</c>, <c>r − bounds.Row</c>) against the same rectangle shifted to a zero
@@ -19,7 +19,7 @@ namespace Cursorial.Tests.Drawing;
 /// </summary>
 /// <remarks>
 /// This used to be guaranteed <em>by construction</em> by an internal signed carrier that shifted both
-/// the sample point and the rect to a zero origin before calling <see cref="IBrush.ColorAt"/>. The
+/// the sample point and the rect to a zero origin before calling <see cref="IBrush.ColorAt(int,int,Cursorial.Rendering.Rect)"/>. The
 /// carrier is gone (<see cref="Rect"/> is <see cref="int"/>-backed and carries a signed origin fine), so
 /// the property is pinned here instead — it must hold for every brush added later.
 /// </remarks>

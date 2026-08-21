@@ -99,6 +99,15 @@ public sealed class MiniToolbar : ItemsControl
         base.OnDetachedFromTree(in e);
     }
 
+    /// <inheritdoc/>
+    protected override void OnTearDown()
+    {
+        base.OnTearDown();
+        // Field-held popup (Child == this): off-tree from the window root, so the sweep never reaches it.
+        // The re-entrancy guard absorbs the Child == this recursion.
+        _popup?.TearDown();
+    }
+
     private Popup CreatePopup()
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant

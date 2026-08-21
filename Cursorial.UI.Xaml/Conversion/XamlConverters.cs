@@ -98,6 +98,7 @@ public static class XamlConverters
         if (underlying == typeof(InputGesture)) return KeyGestureConverter.Instance;
         if (underlying == typeof(Pen)) return PenConverter.Instance;
         if (underlying == typeof(Selector)) return SelectorConverter.Instance;
+        if (underlying == typeof(Cursorial.UI.Data.PropertyPath)) return new Cursorial.UI.Data.PropertyPathConverter();
         if (underlying == typeof(Themes.GlyphSetCarrier)) return GlyphSetCarrierConverter.Instance;
         if (underlying == typeof(Type)) return null; // x:Type handles this; no plain text converter
         if (typeof(IBrush).IsAssignableFrom(underlying)) return BrushConverter.Instance;

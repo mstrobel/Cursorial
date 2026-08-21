@@ -103,6 +103,80 @@ namespace GenApp { public partial class CapsView : StackPanel { public CapsView(
         Assert.Equal(StyleCapabilities.NoColor | StyleCapabilities.Motion, loweredStyle.RequiresCapabilities);
     }
 
+    [Fact] // <Style.Enter> lowers: edge actions (BeginStoryboard → Storyboard → tracks) build through
+    // the general object emitter, single children POPULATE the get-only IList<T> Children (the
+    // loader's collection-member lane), and the action lands via Enter.Add.
+    public void Lowered_StyleEnterStoryboard_BuildsEdgeActions()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.EnterView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Pulse\" Selector=\":is(Border)\">" +
+                "<Style.Enter>" +
+                  "<BeginStoryboard>" +
+                    "<BeginStoryboard.Storyboard>" +
+                      "<Storyboard>" +
+                        "<Storyboard.Children>" +
+                          "<DoubleTrack TargetPath=\"(UIElement.Opacity)\" From=\"0.0\" To=\"1.0\" Duration=\"0:0:1\" " +
+                                       "Repeat=\"{x:Static RepeatBehavior.Forever}\"/>" +
+                        "</Storyboard.Children>" +
+                      "</Storyboard>" +
+                    "</BeginStoryboard.Storyboard>" +
+                  "</BeginStoryboard>" +
+                "</Style.Enter>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "</StackPanel>";
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class EnterView : StackPanel { public EnterView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost");
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("new global::Cursorial.UI.BeginStoryboard()", lowered);
+        Assert.Contains(".Children.Add(", lowered); // the single track POPULATES the get-only IList<AnimationTrack>
+        Assert.Contains(".Enter.Add(", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(codeBehind), CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)Activator.CreateInstance(assembly.GetType("GenApp.EnterView")!)!;
+        var style = Assert.IsType<Style>(view.Resources["Pulse"]);
+        var begin = Assert.IsType<BeginStoryboard>(Assert.Single(style.Enter));
+        var track = Assert.IsType<DoubleTrack>(Assert.Single(begin.Storyboard!.Children));
+        Assert.Equal(RepeatBehavior.Forever, track.Repeat);
+    }
+
+    [Fact] // fail-CLOSED: one unloweable member inside an edge action drops the WHOLE style — a rule
+    // that applies without its authored enter behavior is silent drift (the When/BasedOn discipline).
+    public void Lowered_StyleEnter_UnloweableAction_DropsWholeStyle()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.EnterDropView\">" +
+            "<StackPanel.Resources>" +
+              "<Style x:Key=\"Broken\" Selector=\":is(Border)\">" +
+                "<Style.Enter>" +
+                  "<BeginStoryboard>" +
+                    "<BeginStoryboard.Storyboard>" +
+                      "<Storyboard>" +
+                        "<Storyboard.Children>" +
+                          "<DoubleTrack Duration=\"{DynamicResource Nope}\"/>" + // a DynamicResource on a plain CLR member — unloweable
+                        "</Storyboard.Children>" +
+                      "</Storyboard>" +
+                    "</BeginStoryboard.Storyboard>" +
+                  "</BeginStoryboard>" +
+                "</Style.Enter>" +
+              "</Style>" +
+            "</StackPanel.Resources>" +
+            "</StackPanel>";
+
+        var lowered = Lower(xaml, GeneratorHarness.ReferencedCompilation("LoweringHost"));
+
+        Assert.Contains("edge actions ship whole or not at all", lowered);
+        Assert.DoesNotContain(".Enter.Add(", lowered); // nothing partial shipped
+    }
+
     [Fact] // {x:Static} RequiresCapabilities lowers without evaluation: the frontend folds a const enum
            // member (→ the typed cast), and an unfolded static bakes as a member-access REFERENCE the C#
            // compiler resolves — reading a static field is neither parsing nor reflection.

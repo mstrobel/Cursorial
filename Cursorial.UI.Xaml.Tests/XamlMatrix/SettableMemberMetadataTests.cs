@@ -255,7 +255,9 @@ public sealed class SettableMemberMetadataTests
         public int SettableDirect { get => _direct; set => _direct = value; }
 
         // read-only DirectProperty (no setter), get-only wrapper
+#pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
         private readonly int _readOnlyDirect;
+#pragma warning restore CS0649 // Field is never assigned to, and will always have its default value
         public static readonly DirectProperty<MetadataFixture, int> ReadOnlyDirectProperty =
             UIProperty.RegisterDirect<MetadataFixture, int>(nameof(ReadOnlyDirect), o => o._readOnlyDirect);
         public int ReadOnlyDirect => _readOnlyDirect;

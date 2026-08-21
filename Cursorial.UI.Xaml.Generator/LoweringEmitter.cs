@@ -64,6 +64,7 @@ internal static class LoweringEmitter
             ctx.Line("var __scope = new global::Cursorial.UI.NameScopeDictionary();");
             ctx.Line("global::Cursorial.UI.NameScope.SetNameScope(this, __scope);");
         }
+
         EmitObject(ctx, objectIndex: 0, varExpr: "this", isRoot: true, hasScope: named.Count > 0, dataType: null);
 
         EmitDeferredReferences(ctx); // {x:Reference} — resolved at end-of-tree, once the name scope is complete
@@ -843,6 +844,8 @@ internal static class LoweringEmitter
         int settersMember = -1;
         int childrenMember = -1;
         int whenMember = -1;
+        int enterMember = -1;
+        int exitMember = -1;
 
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
@@ -896,6 +899,12 @@ internal static class LoweringEmitter
                 case "When":
                     whenMember = m;
                     break;
+                case "Enter":
+                    enterMember = m;
+                    break;
+                case "Exit":
+                    exitMember = m;
+                    break;
                 case "RequiresCapabilities" when member.Kind == XamlValueKind.Text:
                     requiresExpr = BakeCapabilities(c, c.Doc.Strings[member.ValueIndex]);
                     if (requiresExpr is null)
@@ -936,9 +945,9 @@ internal static class LoweringEmitter
                 default:
                     if (xm is not null)
                     {
-                        // A future XAML-authorable Style member (an Enter/Exit action collection, say) must
-                        // fence, never silently drop — the style would apply with different behavior than
-                        // authored. Unknown-name members surface the frontend's own diagnostics.
+                        // A future XAML-authorable Style member must fence, never silently drop — the
+                        // style would apply with different behavior than authored. Unknown-name members
+                        // surface the frontend's own diagnostics.
                         DropStyle(c, varExpr, $"<Style> member '{xm.Name}' not yet lowered — style dropped");
                         return;
                     }
@@ -999,6 +1008,42 @@ internal static class LoweringEmitter
             }
         }
 
+        // <Style.Enter>/<Style.Exit> — the edge-action collections (BeginStoryboard &c). Buffered
+        // fail-CLOSED like When: an edge action ships whole or the style doesn't ship at all — a rule
+        // that applies without its authored enter/exit behavior is the silent-drift failure class.
+        // Failure detection is the Unlowered count: any nested member that Todo'd inside the buffer
+        // means the action graph is incomplete.
+        StringBuilder? edgeBuf = null;
+        if (enterMember >= 0 || exitMember >= 0)
+        {
+            edgeBuf = new StringBuilder();
+            var savedBuffer = c.SwapBuffer(edgeBuf);
+            var savedRefs = c.References.Count;
+            var savedScopeLines = c.DeferredScopeLines.Count;
+            var savedUnlowered = c.Unlowered.Count;
+
+            foreach (var (edgeIdx, collection) in new[] { (enterMember, "Enter"), (exitMember, "Exit") })
+            {
+                if (edgeIdx < 0)
+                    continue;
+                foreach (int idx in ResourceItems(c, c.Doc.Members[edgeIdx]))
+                {
+                    var actionVar = c.NextVar();
+                    EmitObject(c, idx, actionVar, isRoot: false, hasScope: false, dataType: null);
+                    c.Line($"{varExpr}.{collection}.Add({actionVar});");
+                }
+            }
+
+            c.SwapBuffer(savedBuffer);
+            if (c.Unlowered.Count > savedUnlowered)
+            {
+                Truncate(c.References, savedRefs);
+                Truncate(c.DeferredScopeLines, savedScopeLines);
+                DropStyle(c, varExpr, "<Style> dropped: an Enter/Exit edge action is not fully lowerable (edge actions ship whole or not at all)");
+                return;
+            }
+        }
+
         var inits = new List<string>();
         if (basedOnExpr is not null) inits.Add($"BasedOn = {basedOnExpr}");
         if (keyExpr is not null) inits.Add($"Key = {keyExpr}");
@@ -1007,6 +1052,9 @@ internal static class LoweringEmitter
 
         if (whenBuf is not null)
             c.Flush(whenBuf); // condition locals precede their When.Add within the buffer; all follow the ctor here
+
+        if (edgeBuf is not null)
+            c.Flush(edgeBuf); // action locals precede their Enter/Exit Add within the buffer
 
         if (settersMember >= 0)
             foreach (int idx in ResourceItems(c, c.Doc.Members[settersMember]))
@@ -1857,6 +1905,15 @@ internal static class LoweringEmitter
             c.Line($"var {varExpr} = new {Global(objType)}{initializer};");
             if (bracketInit)
                 c.Line($"((global::System.ComponentModel.ISupportInitialize){varExpr}).BeginInit();");
+
+            // A data-template slice root carries its name scope FROM CONSTRUCTION (set by
+            // EmitTemplateFactory): stamped before any member emits, so every install in the body —
+            // deferred or inline, reflective fallbacks included — resolves against it immediately.
+            if (c.StampScopeForObject == objectIndex)
+            {
+                c.StampScopeForObject = -1;
+                c.Line($"global::Cursorial.UI.NameScope.SetNameScope({varExpr}, __ctx.NameScope);");
+            }
         }
 
         // This object's <X.Resources> (pushed by EmitResourcesMember) is visible to its whole subtree, then
@@ -1887,6 +1944,7 @@ internal static class LoweringEmitter
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
         {
             ref readonly var member = ref c.Doc.Members[m];
+
             c.CurrentLineInfo = member.PackedLineInfo;
             c.CurrentObjectType = objType; // re-assert per member (child recursion clobbers it)
 
@@ -1995,7 +2053,8 @@ internal static class LoweringEmitter
                     var target = ResolveTemplateTargetType(c, in obj) ?? c.TemplatedParentType;
                     if (target is null && objType is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" })
                         target = c.Control;
-                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target);
+                    var isControlTemplate = objType is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" };
+                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target, stampRootScope: !isControlTemplate);
                     var content = $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})";
                     if (RegisteredOwner(xm) is { } owner)
                         c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {content});");
@@ -2138,7 +2197,8 @@ internal static class LoweringEmitter
     // registering x:Name parts into __ctx's template name scope. Returns the factory name (wrapped in a
     // FuncTemplateContent by the caller). The factory is accumulated and appended at the end of InitializeComponent
     // (a local function is hoisted, so the forward reference resolves). Nested templates flatten into sibling factories.
-    private static string EmitTemplateFactory(Context c, int sliceHead, bool hasScope, INamedTypeSymbol? templatedParentType)
+    private static string EmitTemplateFactory(Context c, int sliceHead, bool hasScope, INamedTypeSymbol? templatedParentType,
+                                              bool stampRootScope = false)
     {
         var factoryName = c.NextFactory();
         var rootVar = c.NextVar();
@@ -2156,13 +2216,23 @@ internal static class LoweringEmitter
         var savedReferences = c.References.Count;       // {x:Reference} recorded inside this factory flush HERE,
         var savedScopeLines = c.DeferredScopeLines.Count; // against ITS scope — never the document's (isolation)
         var savedFactoryId = c.CurrentFactoryId;         // this factory's own body dicts get a fresh factory id;
+        var savedSliceHead = c.CurrentFactorySliceHead;
         c.CurrentFactoryId = c.NextFactoryScopeId();     // document dicts (id 0) stay reachable (captured as closures)
+        c.CurrentFactorySliceHead = sliceHead;
         c.InTemplate = true;
         c.TemplateContextVar = "__ctx";
         c.TemplatedParentType = templatedParentType;
         c.CurrentFactoryCaptures = false;
 
+        // DATA-template roots carry their scope from CONSTRUCTION (a ControlTemplate's scope attaches
+        // to the OWNER at apply — stamping its root would shadow the part scope): the stamp is armed
+        // here and emitted by EmitObject immediately after the root's ctor, BEFORE its members, so
+        // every install in the body — inline reflective fallbacks included — resolves immediately;
+        // only chained (enclosing-scope) lookups park until attach.
+        if (stampRootScope)
+            c.StampScopeForObject = sliceHead;
         EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: null);
+        c.StampScopeForObject = -1; // defensive: an exotic root (primitive/style) skips the ctor hook
 
         // {x:Reference} + scope-embedding Installs recorded in this factory body resolve against the
         // per-build template scope, after the whole slice registered its names — the loader's end-of-slice
@@ -2186,6 +2256,7 @@ internal static class LoweringEmitter
         // factory that contains a capturing one must itself be non-static.
         c.CurrentFactoryCaptures = savedCaptures || captures;
         c.CurrentFactoryId = savedFactoryId;
+        c.CurrentFactorySliceHead = savedSliceHead;
         c.SwapBuffer(savedBuffer);
 
         var fn = new StringBuilder();
@@ -2395,8 +2466,58 @@ internal static class LoweringEmitter
                     ? $"typeof({Global(resolved, false)})"
                     : null;
 
+            // [TypeConverter]-attributed value types convert through their DECLARED converter, baked at
+            // compile time (the attribute seam is reflective at runtime; here the SYMBOL carries it, so
+            // the lowered lane honors it AOT-clean and generally — no per-type special cases).
+            if (AttributedConverterExpr(valueType, text) is { } attributed)
+                return attributed;
+
             c.UsesConverter = true;
             return $"__ConvertXamlValue(typeof({Global(valueType, false)}), \"{Escape(text)}\")";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The compile-time [TypeConverter] seam: when the member's value TYPE declares a converter —
+    /// Cursorial's <c>[Cursorial.Markup.TypeConverter]</c> (an <c>ITypeConverter</c>) or the BCL
+    /// <c>[System.ComponentModel.TypeConverter]</c> (a <c>TypeConverter</c> subclass) — bake its
+    /// construction and invocation directly. Mirrors the reflective provider's ForMember precedence
+    /// (type attribute beats the built-in ladder) without any runtime attribute reflection. The
+    /// converter ctor is probed at generation time: a public <c>(Type)</c> ctor receives the closed
+    /// value type (the <c>NullableConverter</c>/<c>OptionalConverter</c> pattern), else parameterless.
+    /// </summary>
+    private static string? AttributedConverterExpr(ITypeSymbol valueType, string text)
+    {
+        foreach (var attr in valueType.GetAttributes())
+        {
+            var attrName = attr.AttributeClass?.ToDisplayString();
+            if (attrName is not ("Cursorial.Markup.TypeConverterAttribute" or "System.ComponentModel.TypeConverterAttribute"))
+                continue;
+            if (attr.ConstructorArguments.Length == 0 || attr.ConstructorArguments[0].Value is not INamedTypeSymbol conv)
+                continue; // the string-named form is reflection-only — leave it to the ladder/runtime
+
+            var hasTypeCtor = conv.InstanceConstructors.Any(
+                k => k.DeclaredAccessibility == Accessibility.Public && k.Parameters.Length == 1 && IsSystemType(k.Parameters[0].Type));
+            var hasDefaultCtor = conv.InstanceConstructors.Any(
+                k => k.DeclaredAccessibility == Accessibility.Public && k.Parameters.Length == 0);
+            var ctorExpr = hasTypeCtor
+                ? $"new {Global(conv, false)}(typeof({Global(valueType, false)}))"
+                : hasDefaultCtor ? $"new {Global(conv, false)}()" : null;
+            if (ctorExpr is null)
+                continue;
+
+            for (var b = conv.BaseType; b is not null; b = b.BaseType)
+            {
+                if (b.ToDisplayString() == "System.ComponentModel.TypeConverter")
+                    return $"{ctorExpr}.ConvertFromInvariantString(\"{Escape(text)}\")";
+            }
+
+            if (conv.AllInterfaces.Any(i => i.Name == "ITypeConverter"))
+                return $"{ctorExpr}.ConvertFromString(\"{Escape(text)}\", " +
+                       "new global::Cursorial.UI.Xaml.XamlValueContext(global::System.Globalization.CultureInfo.InvariantCulture, null, " +
+                       $"typeof({Global(valueType, false)}), null, 0, 0))";
         }
 
         return null;
@@ -2433,6 +2554,17 @@ internal static class LoweringEmitter
         if (RegisteredOwner(xm) is { } owner)
         {
             c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {childVar});");
+            return;
+        }
+
+        // A single child under a COLLECTION-typed member POPULATES the collection (read-only or not) —
+        // the loader's generic collection-member lane (<Storyboard.Children> with one track, say) —
+        // unless the child IS the collection type itself, which is the author replacing the instance.
+        if (ValueTypeSymbol(xm.ValueType) is { } memberType && SymbolXamlModel.IsCollectionType(memberType) &&
+            !(TypeSymbolOf(c.Doc, c.Doc.Objects[childObjectIndex].TypeId) is { } childType &&
+              IsAssignableTo(childType, memberType)))
+        {
+            c.Line($"{varExpr}.{xm.Name}.Add({childVar});");
             return;
         }
 
@@ -3183,9 +3315,12 @@ internal static class LoweringEmitter
             return;
         }
 
+        if (c.CurrentObjectType is {} current && IsAssignableTo(owner, current))
+            owner = current;
+
         if (TryEmitCompiledBinding(c, varExpr, owner, xm, node, dataType, out var reason))
             return;
-
+    
         var reflectiveEmitted = EmitReflectiveBinding(c, varExpr, owner, xm, node);
 
         // B3 — the reflective-fallback INFO (CURG2002): a binding that WAS a compiled-lane candidate (x:DataType in
@@ -3643,10 +3778,14 @@ internal static class LoweringEmitter
             else if (seg.UIPropertyOnly)
             {
                 var fieldRef = $"{Global(seg.UIPropertyField!.ContainingType, false)}.{seg.UIPropertyField.Name}";
-                var pattern = seg.Qualified ? Global(seg.AccessedOn!, false) : "global::Cursorial.UI.UIObject";
-                steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\", " +
-                          $"static __o => __o is {pattern} __t ? (object?)__t.GetValue({fieldRef}) : null)" +
-                          $" {{ UIProperty = {fieldRef} }}");
+                if (seg.Qualified)
+                    steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\", " +
+                              $"static __o => __o is {Global(seg.AccessedOn!, false)} __t ? (object?)__t.GetValue({fieldRef}) : null)" +
+                              $" {{ UIProperty = {fieldRef} }}");
+                else
+                    // Descriptor-only: the runtime materializes through the carried registration
+                    // (HostType-guarded property-store read) — no step closure to emit at all.
+                    steps.Add($"new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(seg.MemberName!)}\") {{ UIProperty = {fieldRef} }}");
             }
             else
             {
@@ -3729,7 +3868,7 @@ internal static class LoweringEmitter
 
         expression =
             $"new global::Cursorial.UI.Data.CompiledBinding<{data}, {value}>({getter}, {setter}, " +
-            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path)}\"){Initializers(inits)}";
+            $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ {string.Join(", ", steps)} }}, \"{Escape(path!)}\"){Initializers(inits)}";
         deferInstall = deferAnchoredInstall;
         return true;
     }
@@ -3752,15 +3891,12 @@ internal static class LoweringEmitter
         deferInstall = false;
         reason = null;
 
-        // Template bodies are separate name scopes — a name-anchored binding inside a factory could
-        // resolve against the wrong scope's element, so those stay reflective.
+        // Name anchors compile in ANY scope: the runtime resolves the string against the target's
+        // enclosing scope (FindEnclosing — the template's own scope inside a factory, the document
+        // scope outside; no chaining), and the STATIC typing below is scoped the same way, so the
+        // typed root always matches the element the runtime would find.
         if (NamedText(node, "ElementName") is { Length: > 0 } elementName)
         {
-            if (c.CurrentFactoryId != 0)
-            {
-                reason = "an ElementName anchor inside a template body resolves against the template name scope";
-                return false;
-            }
             // An unresolvable/ambiguous name still anchors at RUNTIME through the scope — the init is
             // expressible; only the TYPE is unknown (a UIProperty-rooted path can still compile).
             TryResolveNamedElement(c, elementName, out rootType, out elementDataType);
@@ -3774,12 +3910,6 @@ internal static class LoweringEmitter
             if (source.IsNested && source.Nested!.Name is "x:Reference" or "Reference" &&
                 FirstPositionalText(source.Nested!) is { Length: > 0 } referenceName)
             {
-                if (c.CurrentFactoryId != 0)
-                {
-                    reason = "an x:Reference anchor inside a template body resolves against the template name scope";
-                    return false;
-                }
-
                 // The runtime name-scope anchor gives x:Reference-as-Source the same semantics with no
                 // ordering constraint; an unresolvable name leaves only the TYPE unknown.
                 TryResolveNamedElement(c, referenceName, out rootType, out elementDataType);
@@ -3894,30 +4024,135 @@ internal static class LoweringEmitter
         type = null;
         dataType = null;
 
-        int found = -1;
-        for (int o = 0; o < c.Doc.Objects.Length; o++)
+        // Scope-CHAIN matching (full lowered/runtime parity): the runtime consults the binding
+        // site's own scope first, then — for data-template scopes only — chains outward through the
+        // host's enclosing scopes (NameScopeDictionary's lazy chain; PD24). Control-template scopes
+        // stay isolated (BD21). The scan mirrors that exactly: nearest scope with a match wins;
+        // a duplicate within the WINNING scope is ambiguous (untyped); names in sibling scopes never
+        // collide.
+        if (c.NameScopeRoots is null)
         {
-            ref readonly var obj = ref c.Doc.Objects[o];
-            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
-            {
-                ref readonly var member = ref c.Doc.Members[m];
-                if (member.Kind == XamlValueKind.Directive &&
-                    member.DirectiveKind == (int)XamlDirectiveKind.Name &&
-                    c.Doc.Strings[member.ValueIndex] == name)
-                {
-                    if (found >= 0)
-                        return false; // duplicate names (e.g. a template-local shadow) — stay reflective
-                    found = o;
-                }
-            }
+            var (roots, slices) = BuildNameScopeMap(c.Doc);
+            c.NameScopeRoots = roots;
+            c.NameScopeSliceInfo = slices;
         }
 
-        if (found < 0 || TypeSymbolOf(c.Doc, c.Doc.Objects[found].TypeId) is not { } symbol)
+        var scopes = c.NameScopeRoots;
+        var sliceInfo = c.NameScopeSliceInfo!;
+
+        int found = -1;
+
+        for (var searchScope = c.CurrentFactorySliceHead;;)
+        {
+            for (int o = 0; o < c.Doc.Objects.Length; o++)
+            {
+                if (scopes[o] != searchScope)
+                    continue;
+
+                ref readonly var obj = ref c.Doc.Objects[o];
+
+                for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+                {
+                    ref readonly var member = ref c.Doc.Members[m];
+
+                    if (member.Kind == XamlValueKind.Directive &&
+                        member.DirectiveKind == (int) XamlDirectiveKind.Name &&
+                        c.Doc.Strings[member.ValueIndex] == name)
+                    {
+                        if (found >= 0)
+                            return false; // duplicate within the winning scope — ambiguous, stay untyped
+
+                        found = o;
+                    }
+                }
+            }
+
+            if (found >= 0 || searchScope < 0)
+                break;
+
+            if (!sliceInfo.TryGetValue(searchScope, out var info) || !info.Chains)
+                break; // an isolated (control-template) scope ends the search — runtime parity
+
+            searchScope = info.Parent;
+        }
+
+        if (found < 0 || TypeSymbolOf(c.Doc, c.Doc.Objects[found].TypeId) is not {} symbol)
             return false;
 
         type = symbol;
         dataType = XamlDataTypeScope.ForObject(c.Doc, in c.Doc.Objects[found], c.Resolver);
         return true;
+    }
+
+    /// <summary>
+    /// Computes each object's name-scope root: the slice-head object index of the innermost
+    /// <see cref="XamlValueKind.Deferred"/> template content containing it, or -1 for the document
+    /// scope. Order-independent: every Deferred member seeds a subtree walk, and a nested template's
+    /// own walk overwrites its subtree with the inner head (innermost wins), no matter which member
+    /// the outer iteration visits first.
+    /// </summary>
+    private static int[] BuildNameScopeRoots(XamlDocument doc)
+        => BuildNameScopeMap(doc).Scopes;
+
+    private static (int[] Scopes, Dictionary<int, (int Parent, bool Chains)> Slices) BuildNameScopeMap(XamlDocument doc)
+    {
+        var scopes = new int[doc.Objects.Length];
+        for (int i = 0; i < scopes.Length; i++)
+            scopes[i] = -1;
+
+        for (int o = 0; o < doc.Objects.Length; o++)
+        {
+            ref readonly var obj = ref doc.Objects[o];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref doc.Members[m];
+                if (member.Kind == XamlValueKind.Deferred)
+                    MarkScope(doc, scopes, member.ValueIndex, member.ValueIndex);
+            }
+        }
+
+        // Second pass (marks are final): each Deferred slice's ENCLOSING scope is its template
+        // OBJECT's scope, and chaining mirrors the runtime — a ControlTemplate's per-apply scope is
+        // isolated (BD21 part contract); every other deferred body (DataTemplate &c.) chains to its
+        // host's enclosing scopes (PD24 — inline-authoring equivalence).
+        var slices = new Dictionary<int, (int Parent, bool Chains)>();
+        for (int o = 0; o < doc.Objects.Length; o++)
+        {
+            ref readonly var obj = ref doc.Objects[o];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref doc.Members[m];
+                if (member.Kind != XamlValueKind.Deferred)
+                    continue;
+                var isControlTemplate = TypeSymbolOf(doc, obj.TypeId) is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" };
+                slices[member.ValueIndex] = (scopes[o], !isControlTemplate);
+            }
+        }
+
+        return (scopes, slices);
+
+        static void MarkScope(XamlDocument doc, int[] scopes, int objectIndex, int head)
+        {
+            scopes[objectIndex] = head;
+            ref readonly var obj = ref doc.Objects[objectIndex];
+            for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)
+            {
+                ref readonly var member = ref doc.Members[m];
+                switch (member.Kind)
+                {
+                    case XamlValueKind.Object:
+                        MarkScope(doc, scopes, member.ValueIndex, head);
+                        break;
+                    case XamlValueKind.Items:
+                        for (int i = 0; i < member.ItemCount; i++)
+                            MarkScope(doc, scopes, member.ValueIndex + i, head);
+                        break;
+                    case XamlValueKind.Deferred:
+                        MarkScope(doc, scopes, member.ValueIndex, member.ValueIndex); // inner template = its own scope
+                        break;
+                }
+            }
+        }
     }
 
     /// <summary>Whether <paramref name="type"/>'s base chain reaches <c>Cursorial.UI.UIObject</c> —
@@ -3933,26 +4168,42 @@ internal static class LoweringEmitter
         return false;
     }
 
+    private static bool AreSameType(ITypeSymbol a, ITypeSymbol b)
+        => SymbolEqualityComparer.Default.Equals(a, b);
+
     private static bool AreRelatedTypes(ITypeSymbol a, ITypeSymbol b)
-        => SymbolEqualityComparer.Default.Equals(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);
+        => AreSameType(a, b) || IsAssignableTo(a, b) || IsAssignableTo(b, a);
 
     private static bool IsAssignableTo(ITypeSymbol target, ITypeSymbol from)
     {
+        if (ReferenceEquals(target, from)) return true;
+
         for (var t = from; t is not null; t = t.BaseType)
-            if (SymbolEqualityComparer.Default.Equals(t, target))
+        {
+            if (AreSameType(t, target))
                 return true;
+        }
+
         if (target.TypeKind == TypeKind.Interface)
+        {
             foreach (var i in from.AllInterfaces)
-                if (SymbolEqualityComparer.Default.Equals(i, target))
+            {
+                if (AreSameType(i, target))
                     return true;
+            }
+        }
+
         return false;
     }
 
     private static bool DerivesFromUIObject(ITypeSymbol type)
     {
         for (var t = type; t is not null; t = t.BaseType)
+        {
             if (t.ToDisplayString() == "Cursorial.UI.UIObject")
                 return true;
+        }
+
         return false;
     }
 
@@ -4178,8 +4429,7 @@ internal static class LoweringEmitter
                 $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
                 $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(sourceValueType)}>(" +
                 $"static __s => __s.GetValue({fieldRef}), null, " +
-                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\", " +
-                $"static __o => __o is global::Cursorial.UI.UIObject __t ? (object?)__t.GetValue({fieldRef}) : null) {{ UIProperty = {fieldRef} }} }}, " +
+                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\") {{ UIProperty = {fieldRef} }} }}, " +
                 $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
                 $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
             return;
@@ -4200,8 +4450,7 @@ internal static class LoweringEmitter
                 $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
                 $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(directValueType)}>(" +
                 $"static __s => __s.{EscapeId(sourceName)}, null, " +
-                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\", " +
-                $"static __o => __o is {Global(sourceOwner, false)} __t ? (object?)__t.{EscapeId(sourceName)} : null) {{ UIProperty = {directFieldRef} }} }}, " +
+                $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\") {{ UIProperty = {directFieldRef} }} }}, " +
                 $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
                 $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
             return;
@@ -4581,6 +4830,23 @@ internal static class LoweringEmitter
         /// document/own-factory scope from an unreachable sibling-factory one (see <c>IsScopeReachable</c>).
         /// Save/restored around a template factory.</summary>
         public int CurrentFactoryId { get; set; } // 0 = document level; a template factory's body scopes get a fresh id
+
+        // The STRUCTURAL identity of the current name scope: the slice-head object index of the
+        // template factory being emitted, -1 at document level. Unlike CurrentFactoryId (an emission-
+        // order counter), this matches the per-object map NameScopeRoots computes, so name-anchored
+        // bindings resolve against exactly the scope the runtime's FindEnclosing would consult.
+        public int CurrentFactorySliceHead { get; set; } = -1;
+
+        public int[]? NameScopeRoots { get; set; } // lazy, per-document (BuildNameScopeRoots)
+
+        // One-shot: the object index whose CONSTRUCTION should be followed immediately by the
+        // template-scope stamp (a data-template slice head) — consumed by EmitObject post-ctor,
+        // BEFORE any member emits, so inline installs in the body resolve against the scope.
+        public int StampScopeForObject { get; set; } = -1;
+
+        // Per-slice chain info keyed by slice head: the ENCLOSING scope (-1 = document) and whether
+        // lookups CHAIN outward (data-template doctrine) or stay isolated (control-template parts).
+        public Dictionary<int, (int Parent, bool Chains)>? NameScopeSliceInfo { get; set; }
         private int _factoryScopeCounter;
         public int NextFactoryScopeId() => ++_factoryScopeCounter;
         public XamlSymbolResolver Resolver { get; } = resolver;

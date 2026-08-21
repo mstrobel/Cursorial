@@ -36,7 +36,8 @@ namespace System.Diagnostics.CodeAnalysis
     /// trimmer preserves them. Polyfill for netstandard2.0.</summary>
     [AttributeUsage(
         AttributeTargets.Field | AttributeTargets.ReturnValue | AttributeTargets.GenericParameter |
-        AttributeTargets.Parameter | AttributeTargets.Property | AttributeTargets.Method,
+        AttributeTargets.Parameter | AttributeTargets.Property | AttributeTargets.Method |
+        AttributeTargets.Class | AttributeTargets.Interface | AttributeTargets.Struct,
         Inherited = false)]
     internal sealed class DynamicallyAccessedMembersAttribute : Attribute
     {

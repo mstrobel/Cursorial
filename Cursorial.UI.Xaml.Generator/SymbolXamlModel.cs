@@ -16,21 +16,24 @@ namespace Cursorial.UI.Xaml.Generator;
 internal static class SymbolXamlModel
 {
     /// <summary>One XAML-settable member resolved from symbols (a property, an event, or an attached property).</summary>
-    public readonly record struct MemberModel(
-        string Name,
-        ITypeSymbol ValueType,
-        bool CanWrite,
-        bool CanRead,
-        bool IsEvent,
-        INamedTypeSymbol? RegisteredFieldOwner,
-        bool IsAttached = false,
-        // An init-only CLR property setter (settable in an object initializer, not post-construction). The
-        // generated provider can't emit a compiled `t.Prop = v` for it (CS8852) — it sets it reflectively.
-        bool IsInitOnly = false,
-        // True when the member OR its value type carries a Cursorial.Markup [TypeConverter]/[ValueSerializer]. The
-        // emitter then emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider, so
-        // zero drift + no baking accessibility traps) instead of the AOT-clean pure-ladder For(typeof(T)).
-        bool UsesAttributeConverter = false);
+    public readonly record struct MemberModel(string Name,
+                                              ITypeSymbol ValueType,
+                                              bool CanWrite,
+                                              bool CanRead,
+                                              bool IsEvent,
+                                              INamedTypeSymbol DeclaringType,
+                                              INamedTypeSymbol? RegisteredFieldOwner,
+                                              bool IsAttached = false,
+                                              // An init-only CLR property setter (settable in an object initializer, not post-construction). The
+                                              // generated provider can't emit a compiled `t.Prop = v` for it (CS8852) — it sets it reflectively.
+                                              bool IsInitOnly = false,
+                                              // True when the member OR its value type carries a Cursorial.Markup [TypeConverter]/[ValueSerializer]. The
+                                              // emitter then emits a runtime XamlConverters.ForMember(...) call (identical to the reflection provider, so
+                                              // zero drift + no baking accessibility traps) instead of the AOT-clean pure-ladder For(typeof(T)).
+                                              bool UsesAttributeConverter = false)
+    {
+        public bool HasClrMember => RegisteredFieldOwner is null;
+    }
 
     /// <summary>
     /// The XAML-settable members of a type (most-derived first, deduped by name): public instance properties
@@ -61,10 +64,11 @@ internal static class SymbolXamlModel
 
                     yield return new MemberModel(prop.Name,
                                                  prop.Type,
+                                                 DeclaringType: t,
                                                  CanWrite: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public },
                                                  CanRead: prop.GetMethod is { DeclaredAccessibility: Accessibility.Public },
                                                  IsEvent: false,
-                                                 registeredOwner,
+                                                 RegisteredFieldOwner: registeredOwner,
                                                  IsInitOnly: prop.SetMethod is { DeclaredAccessibility: Accessibility.Public, IsInitOnly: true },
                                                  UsesAttributeConverter: MemberHasConverterAttribute(prop) || TypeHasMarkupConverterAttribute(prop.Type));
                 }
@@ -72,6 +76,7 @@ internal static class SymbolXamlModel
                 {
                     yield return new MemberModel(evt.Name,
                                                  evt.Type,
+                                                 DeclaringType: t,
                                                  CanWrite: false,
                                                  CanRead: false,
                                                  IsEvent: true,
@@ -94,6 +99,7 @@ internal static class SymbolXamlModel
                 {
                     yield return new MemberModel(memberName,
                                                  valueType,
+                                                 DeclaringType: t,
                                                  CanWrite: true,
                                                  CanRead: true,
                                                  IsEvent: false,
@@ -349,6 +355,10 @@ internal static class SymbolXamlModel
 
     private static bool ImplementsIList(ITypeSymbol type)
     {
+        // The type may BE the interface (a member declared `IList<T> Children`), not just implement it.
+        if (type.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IList_T)
+            return true;
+
         foreach (var iface in type.AllInterfaces)
         {
             if (iface.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IList_T)

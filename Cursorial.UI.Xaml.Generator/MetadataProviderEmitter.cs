@@ -80,6 +80,15 @@ internal sealed class MetadataProviderEmitter
         sb.AppendLine();
         sb.AppendLine("namespace Cursorial.UI.Xaml.Generated");
         sb.AppendLine("{");
+        // The generated member-set delegates assign a boxed `object` value into the target property/field.
+        // When that member carries [DynamicallyAccessedMembers], the untyped set can never satisfy the DAM:
+        // an init-only member is set reflectively (GetProperty().SetValue → IL2111), a writable one via a
+        // compiled `t.Prop = (T)v` (IL2067) — same root either way. The requirement is instead met at the
+        // LOWERED baked-construction site (`new T(typeof(E))` roots E's members), and this reflective
+        // metadata seam trims away under full lowering, so the warnings are on dead code. Suppressed
+        // class-wide (this generated provider has no other source of these codes).
+        sb.AppendLine("    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"Trimming\", \"IL2111\", Justification = \"Reflective member-set seam; DAM met at lowered baked sites, trims under AOT.\")]");
+        sb.AppendLine("    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"Trimming\", \"IL2067\", Justification = \"Reflective member-set seam; DAM met at lowered baked sites, trims under AOT.\")]");
         sb.AppendLine($"    internal sealed class __GeneratedXamlMetadata : {Frontend}.IXamlTypeMetadataProvider, {Frontend}.IXamlStaticResolver");
         sb.AppendLine("    {");
         sb.AppendLine("        public static readonly __GeneratedXamlMetadata Instance = new();");

@@ -47,7 +47,20 @@ internal static class XamlDataTypeScope
         if (!document.Namespaces.TryGetValue(prefix, out var ns))
             ns = prefix.Length == 0 ? XamlSymbolResolver.CursorialUiNamespace : null!;
 
-        return ns is null ? null : resolver.Resolve(ns, local, out _);
+        var result = ns is null ? null : resolver.Resolve(ns, local, out _);
+        if (result is not null)
+            return result;
+
+        const string xType = "{x:Type ";
+
+        if (token.StartsWith(xType) && token.EndsWith("}"))
+        {
+            return ResolveToken(document,
+                                token.Substring(xType.Length, token.Length - xType.Length - 1).Trim(),
+                                resolver);
+        }
+
+        return null;
     }
 
     /// <summary>Finds a public property/field member by name, walking base types (stops at <see cref="object"/>).</summary>

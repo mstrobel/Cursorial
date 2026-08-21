@@ -2,9 +2,9 @@ namespace Cursorial.UI.Themes;
 
 public static class CurioTheme
 {
-    // /// <summary>The XAML control themes (templates + glyphs) — the build-lowered <c>Themes/Controls.xaml</c>.</summary>
-    // public static ResourceDictionary LoadControls()
-    //     => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildThemesCurioControls();
+    /// <summary>The XAML control themes (templates + glyphs) — the build-lowered <c>Themes/Controls.xaml</c>.</summary>
+    public static ResourceDictionary LoadControls()
+        => global::Cursorial.UI.Xaml.Generated.GeneratedXamlLoaders.BuildThemesCurioControls();
 
     /// <summary>The XAML palette spine — the (ThemeBase × ColorDepth) <c>ThemeDictionaries</c> of role-token brushes
     /// + chrome pens (the data twin of <see cref="CursorialTheme"/>'s tier palette).</summary>

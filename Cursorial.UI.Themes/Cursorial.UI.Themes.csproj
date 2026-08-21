@@ -22,8 +22,16 @@
         <CursorialXamlLowering>full</CursorialXamlLowering>
         <CursorialXamlEmbedResources>true</CursorialXamlEmbedResources>
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-<!--        <CompilerGeneratedFilesOutputPath>generated</CompilerGeneratedFilesOutputPath>-->
+        <!--<CompilerGeneratedFilesOutputPath>generated</CompilerGeneratedFilesOutputPath>-->
     </PropertyGroup>
+
+<!--
+    <ItemGroup>
+        &lt;!&ndash; The generated/ snapshots are for INSPECTION — the live generator output is what compiles;
+             without this exclude the default glob compiles both and every generated member doubles. &ndash;&gt;
+        <Compile Remove="generated/**/*.cs" />
+    </ItemGroup>
+-->
 
     <!-- NuGet packaging. Shared metadata lives in ../Directory.Build.props; this carries per-package fields only.
          The generated XAML builders are compiled into the assembly, so the package is a normal library. -->

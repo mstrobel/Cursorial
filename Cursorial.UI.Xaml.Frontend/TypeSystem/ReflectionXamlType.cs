@@ -38,6 +38,8 @@ public sealed class ReflectionXamlType : IXamlType
             return false;
         if (typeof(IList).IsAssignableFrom(type))
             return true;
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IList<>))
+            return true; // the member may be DECLARED as the interface itself (IList<T> Children)
         if (string.Equals(type.Name, "ResourceDictionary", StringComparison.Ordinal))
             return true;
         foreach (var iface in type.GetInterfaces())

@@ -279,6 +279,132 @@ namespace TestApp
         Assert.NotNull(Activator.CreateInstance(assembly.GetType("TestApp.UntypedAnchorView")!)); // inert anchors, no crash
     }
 
+    [Fact] // WS-PP4 — full scope parity, template-local direction: a name anchor INSIDE a template
+    // body types against the TEMPLATE-LOCAL element (the single scope FindEnclosing consults at
+    // runtime) for both ElementName and Source={x:Reference}, and the install defers until the
+    // factory's names have registered.
+    public void TemplateBody_NameAnchors_CompileTypedAgainstTemplateScope()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.TplScopeView\">" +
+            "<Button><Button.Template><ControlTemplate>" +
+            "<StackPanel>" +
+            "<TextBox x:Name=\"Input\" Text=\"seed\"/>" +
+            "<TextBlock Text=\"{Binding Text, ElementName=Input}\"/>" +
+            "<TextBlock Text=\"{Binding Text, Source={x:Reference Input}}\"/>" +
+            "</StackPanel>" +
+            "</ControlTemplate></Button.Template></Button>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "namespace TestApp { public partial class TplScopeView : Cursorial.UI.Controls.StackPanel { public TplScopeView() => InitializeComponent(); } }"));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(lowered, @"CompiledBinding<global::Cursorial\.UI\.Controls\.TextBox, string>").Count);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(lowered, "ElementName = \"Input\"").Count);
+        Assert.True(lowered.IndexOf("__ctx.RegisterName(\"Input\"", StringComparison.Ordinal) <
+                    lowered.IndexOf("ElementName = \"Input\"", StringComparison.Ordinal)); // install after the scope registers
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+    }
+
+    [Fact] // WS-PP4 — scope isolation, document→template direction: a DOCUMENT-scope name is
+    // invisible to a template-body anchor (no scope chaining), so the binding must NOT type against
+    // the outer element: a bare CLR path has no typed root (reflective fallback — runtime parity:
+    // the name resolves NameNotFound there too), while a UIProperty-rooted path compiles UNTYPED.
+    public void TemplateBody_DocumentName_IsInvisible()
+    {
+        var xaml =
+            $"<StackPanel {Ns} xmlns:ui=\"https://cursorial.dev/ui\" x:Class=\"TestApp.TplIsolationView\">" +
+            "<TextBox x:Name=\"Outer\" Text=\"doc\"/>" +
+            "<Button><Button.Template><ControlTemplate>" +
+            "<StackPanel>" +
+            "<TextBlock Text=\"{Binding Text, ElementName=Outer}\"/>" +
+            "<TextBlock Width=\"{Binding (ui:Grid.Row), ElementName=Outer, Mode=OneWay}\"/>" +
+            "</StackPanel>" +
+            "</ControlTemplate></Button.Template></Button>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "namespace TestApp { public partial class TplIsolationView : Cursorial.UI.Controls.StackPanel { public TplIsolationView() => InitializeComponent(); } }"));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.DoesNotContain("CompiledBinding<global::Cursorial.UI.Controls.TextBox", lowered); // never typed against Outer
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(", lowered);                       // the bare path fell back
+        Assert.Contains("CompiledBinding<global::Cursorial.UI.UIObject, int>", lowered);          // the qualified path compiled untyped
+    }
+
+    [Fact] // WS-PP4 — sibling templates reusing a part name: each anchor resolves within ITS OWN
+    // scope (previously a document-global "duplicate" declined typing for both).
+    public void SiblingTemplates_SamePartName_EachTypesOwnScope()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.TplSiblingView\">" +
+            "<Button><Button.Template><ControlTemplate>" +
+            "<StackPanel><TextBox x:Name=\"Input\"/><TextBlock Text=\"{Binding Text, ElementName=Input}\"/></StackPanel>" +
+            "</ControlTemplate></Button.Template></Button>" +
+            "<Button><Button.Template><ControlTemplate>" +
+            "<StackPanel><TextBox x:Name=\"Input\"/><TextBlock Text=\"{Binding Text, ElementName=Input}\"/></StackPanel>" +
+            "</ControlTemplate></Button.Template></Button>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "namespace TestApp { public partial class TplSiblingView : Cursorial.UI.Controls.StackPanel { public TplSiblingView() => InitializeComponent(); } }"));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(lowered, @"CompiledBinding<global::Cursorial\.UI\.Controls\.TextBox, string>").Count);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
+    }
+
+    [Fact] // WS-PP4 — the DATA-template chain: unlike a ControlTemplate (isolated part scope), a
+    // DataTemplate body's name anchor CHAINS outward (PD24 — inline-authoring equivalence), so a
+    // document-level name resolves TYPED from inside the template body, mirroring the runtime's
+    // lazily-chained NameScopeDictionary.
+    public void DataTemplateBody_DocumentName_ResolvesThroughChain()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.DtChainView\">" +
+            "<TextBox x:Name=\"Outer\" Text=\"doc\"/>" +
+            "<ContentPresenter><ContentPresenter.ContentTemplate><DataTemplate>" +
+            "<TextBlock Text=\"{Binding Text, ElementName=Outer}\"/>" +
+            "</DataTemplate></ContentPresenter.ContentTemplate></ContentPresenter>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "namespace TestApp { public partial class DtChainView : Cursorial.UI.Controls.StackPanel { public DtChainView() => InitializeComponent(); } }"));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.Contains("CompiledBinding<global::Cursorial.UI.Controls.TextBox, string>", lowered); // typed against Outer
+        Assert.Contains("ElementName = \"Outer\"", lowered);
+        Assert.DoesNotContain("new global::Cursorial.UI.Data.Binding(", lowered);
+    }
+
+    [Fact] // WS-PP4 — scope isolation, template→document direction: a template-LOCAL name is
+    // invisible at document level — the document binding no longer types against an element the
+    // runtime's document scope would never find.
+    public void DocumentAnchor_TemplateLocalName_IsInvisible()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"TestApp.DocIsolationView\">" +
+            "<TextBlock Text=\"{Binding Text, ElementName=PART_Inner}\"/>" +
+            "<Button><Button.Template><ControlTemplate>" +
+            "<TextBox x:Name=\"PART_Inner\"/>" +
+            "</ControlTemplate></Button.Template></Button>" +
+            "</StackPanel>";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "namespace TestApp { public partial class DocIsolationView : Cursorial.UI.Controls.StackPanel { public DocIsolationView() => InitializeComponent(); } }"));
+        var lowered = Lower(xaml, compilation);
+
+        Assert.DoesNotContain("CompiledBinding<global::Cursorial.UI.Controls.TextBox", lowered);
+        Assert.Contains("new global::Cursorial.UI.Data.Binding(", lowered); // parity: the runtime scope can't see it either
+    }
+
     [Fact] // WS-PP3 — a Style.When DataCondition in the control styles' shape (Self anchor +
     // `(Owner.Property)`) carries a COMPILED descriptor through the shared builder: the last
     // reflective Binding instantiations in the theme XAML are gone.

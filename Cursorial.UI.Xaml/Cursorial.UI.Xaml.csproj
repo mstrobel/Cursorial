@@ -24,7 +24,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" />
+        <ProjectReference Include="..\Cursorial.UI.Xaml.Frontend\Cursorial.UI.Xaml.Frontend.csproj" Aliases="global,frontend" />
         <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
         <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
         <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />

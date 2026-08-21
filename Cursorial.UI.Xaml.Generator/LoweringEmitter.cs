@@ -4503,12 +4503,41 @@ internal static class LoweringEmitter
             return;
         }
 
+        // Value-shaping properties, shared by all three lanes below — the divergence this closes: a
+        // {TemplateBinding …, Converter=…, StringFormat=…, FallbackValue=…} carries the same shaping a
+        // {Binding} does (the runtime TemplateBinding/BindingBase support them; the lowering dropped them).
+        // A present-but-unlowerable Converter (a forward/fenced resource) fails CLOSED, exactly as {Binding}.
+        var converterInit = ConverterInit(c, node);
+        if (converterInit is null)
+        {
+            c.Todo($"{{TemplateBinding}} for '{xm.Name}' has a Converter that is not lowerable in this position (a forward/fenced resource)");
+            return;
+        }
+
+        var shaping = new[]
+        {
+            converterInit,
+            StringInit("StringFormat", NamedText(node, "StringFormat")),
+            StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+        };
+        // The compiled lanes are CompiledBindings anchored on the templated parent — they carry Mode/RelativeSource
+        // plus the shaping; the descriptor lane (TemplateBinding) is inherently OneWay/TemplatedParent, shaping only.
+        var compiledInits = Initializers(new List<string>
+        {
+            "Mode = global::Cursorial.UI.Data.BindingMode.OneWay",
+            "RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent",
+        }.Concat(shaping));
+
         // The compiled TemplatedParent form (WS-PP3): the runtime TemplateBinding descriptor rides the
         // REFLECTION lane over its anchor — with the parent type and the registration statically known,
         // the same one-way reach lowers as a compiled GetValue chain: property-system-pure, AOT-clean,
-        // and the carried field observes without a registry probe. A registration without the typed
-        // GetValue shape (DirectProperty) keeps the runtime descriptor.
+        // and the carried field observes without a registry probe. A DirectProperty is EXCLUDED here — it
+        // has no typed GetValue overload (the untyped one returns object?, which can't type the getter), so
+        // it falls through to the CLR-wrapper lane below (or the runtime descriptor). This exclusion was
+        // implicit while the value-type helper returned null for DirectProperty; it now handles both, so
+        // the guard is explicit (a TemplateBinding DirectProperty source otherwise emitted non-compiling code).
         if (XamlPathParser.FindRegisteredPropertyField(sourceOwner, sourceName) is { } sourceField &&
+            !XamlPathParser.IsDirectUIPropertyType(sourceField.Type) &&
             XamlPathParser.UIPropertyRegistrationValueType(sourceField) is { } sourceValueType)
         {
             var fieldRef = $"{Global(sourceField.ContainingType, false)}.{sourceField.Name}";
@@ -4517,8 +4546,7 @@ internal static class LoweringEmitter
                 $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(sourceValueType)}>(" +
                 $"static __s => __s.GetValue({fieldRef}), null, " +
                 $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\") {{ UIProperty = {fieldRef} }} }}, " +
-                $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
-                $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
+                $"\"{Escape(pathText)}\"){compiledInits});");
             return;
         }
 
@@ -4538,14 +4566,13 @@ internal static class LoweringEmitter
                 $"new global::Cursorial.UI.Data.CompiledBinding<{Global(parentType)}, {Global(directValueType)}>(" +
                 $"static __s => __s.{EscapeId(sourceName)}, null, " +
                 $"new global::Cursorial.UI.Data.CompiledPathStep[] {{ new global::Cursorial.UI.Data.CompiledPathStep(\"{Escape(sourceName)}\") {{ UIProperty = {directFieldRef} }} }}, " +
-                $"\"{Escape(pathText)}\") {{ Mode = global::Cursorial.UI.Data.BindingMode.OneWay, " +
-                $"RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent }});");
+                $"\"{Escape(pathText)}\"){compiledInits});");
             return;
         }
 
         c.Line(
             $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(targetOwner)}.{xm.Name}Property, " +
-            $"new global::Cursorial.UI.Data.TemplateBinding({Global(sourceOwner)}.{sourceName}Property));");
+            $"new global::Cursorial.UI.Data.TemplateBinding({Global(sourceOwner)}.{sourceName}Property){Initializers(shaping)});");
     }
 
     // The binding path: the first positional argument, else the Path= named argument (mirrors the runtime handler).

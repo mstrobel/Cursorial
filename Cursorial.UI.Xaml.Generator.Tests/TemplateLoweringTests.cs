@@ -98,4 +98,73 @@ namespace GenApp { public partial class TbView : StackPanel { public TbView() =>
         var border = Assert.IsType<Border>(instance.Root);
         Assert.Same(brush, border.Background);
     }
+
+    [Fact] // {TemplateBinding …, Converter=…} carries the Converter through the lowered binding — the emitter
+    // used to drop it (and StringFormat/FallbackValue), diverging from {Binding}. bool source → Visibility target.
+    public void Lowered_TemplateBinding_Converter_IsEmitted_AndConverts()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.TbConvView\">" +
+            "<Button x:Name=\"Btn\">" +
+              "<Button.Template>" +
+                "<ControlTemplate><Border x:Name=\"PART_Chrome\" " +
+                  "Visibility=\"{TemplateBinding IsEnabled, Converter={x:Static BooleanToVisibilityConverter.Instance}}\"/></ControlTemplate>" +
+              "</Button.Template>" +
+            "</Button>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class TbConvView : StackPanel { public TbConvView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // The Converter is emitted (previously dropped), alongside the TemplatedParent tracking.
+        Assert.Contains("Converter = global::Cursorial.UI.Data.BooleanToVisibilityConverter.Instance", lowered);
+        Assert.Contains("RelativeSource = global::Cursorial.UI.Data.RelativeSource.TemplatedParent", lowered);
+        Assert.DoesNotContain("TODO X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var view = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.TbConvView")!)!;
+        var button = Assert.IsType<Button>(view.Children[0]);
+
+        button.IsEnabled = false;
+        var border = Assert.IsType<Border>(button.Template!.Instantiate(button).Root);
+        Assert.Equal(Cursorial.UI.Visibility.Collapsed, border.Visibility); // false → Collapsed via the converter
+    }
+
+    [Fact] // a DirectProperty {TemplateBinding} source is EXCLUDED from the typed-GetValue lane (which would
+    // emit object? where the getter needs T — non-compiling) and reads its CLR wrapper instead. Regression
+    // guard: UIPropertyRegistrationValueType now returns non-null for DirectProperty, so the exclusion is explicit.
+    public void Lowered_TemplateBinding_DirectPropertySource_ReadsWrapper_NotGetValue()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.TbDirectView\">" +
+            "<ComboBox x:Name=\"Cb\">" +
+              "<ComboBox.Template>" +
+                "<ControlTemplate><Border x:Name=\"PART_Chrome\" " +
+                  "Visibility=\"{TemplateBinding IsDropDownOpen, Converter={x:Static BooleanToVisibilityConverter.Instance}}\"/></ControlTemplate>" +
+              "</ComboBox.Template>" +
+            "</ComboBox>" +
+            "</StackPanel>";
+
+        const string codeBehind = @"
+using Cursorial.UI.Controls;
+namespace GenApp { public partial class TbDirectView : StackPanel { public TbDirectView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("LoweringHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(codeBehind));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        // Lane 2 (CLR wrapper), NOT lane 1's typed GetValue on a DirectProperty (which returns object? — invalid).
+        Assert.Contains("static __s => __s.IsDropDownOpen", lowered);
+        Assert.DoesNotContain("GetValue(global::Cursorial.UI.Controls.ComboBox.IsDropDownOpenProperty)", lowered);
+        Assert.Contains("Converter = global::Cursorial.UI.Data.BooleanToVisibilityConverter.Instance", lowered);
+
+        // The strongest proof: BOTH partial halves compile. Before the fix, lane 1 emitted
+        // GetValue(directField) → object? assigned to Func<ComboBox, bool> → CS0266, and this would throw.
+        GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+    }
 }

@@ -146,4 +146,15 @@ public sealed class Section18_MarkupExtensionElementForm : LoaderTestBase
         var setter = ((Style)dict["S"]!).Setters[0];
         Assert.Equal("A", Assert.IsType<ResourceReference>(setter.Value).Key);
     }
+
+    [Fact] // X56m — <x:Static Member="…"/> standing ALONE as a keyed dictionary entry (no target member)
+    // resolves to the member's VALUE, not the parse-time XamlStaticReference placeholder. The has-a-target
+    // path finalizes the fold in Assign; a standalone entry never reaches Assign, so ProvideExtensionEntryValue
+    // must finalize it too (the runtime twin of the generator's element-form x:Static entry lowering).
+    public void X56m_XStatic_ElementForm_StandaloneDictionaryEntry_ResolvesValue()
+    {
+        var dict = (ResourceDictionary)LoadRaw(
+            $"<ResourceDictionary{Pre}><x:Static x:Key=\"Red\" Member=\"Colors.Red\"/></ResourceDictionary>");
+        Assert.Equal((object)Colors.Red, dict["Red"]); // the resolved Color, NOT a XamlStaticReference
+    }
 }

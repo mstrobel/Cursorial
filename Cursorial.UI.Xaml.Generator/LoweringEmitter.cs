@@ -242,8 +242,24 @@ internal static class LoweringEmitter
                 case "MergedDictionaries":
                     foreach (int idx in ResourceItems(c, member))
                     {
+                        // An element-form markup extension as a merged child — <x:Static Member="Theme.X"/>
+                        // providing a ResourceDictionary — is its standalone value, not an inline dict to
+                        // build. (This path bypasses EmitObject, so it must funnel the extension itself.)
+                        ref readonly var mergedChild = ref c.Doc.Objects[idx];
+                        if (mergedChild.HasFlag(ObjectFlags.IsMarkupExtension))
+                        {
+                            if (MarkupExtensionEntryExpr(c, in mergedChild, out var reported) is { } entryExpr)
+                                c.Line($"{dictVar}.MergedDictionaries.Add({entryExpr});");
+                            else if (!reported)
+                                c.Todo("element-form markup-extension MergedDictionaries entry of this shape is not lowered");
+                            continue;
+                        }
+
+                        // Construct the child's ACTUAL type (a ResourceDictionary subclass stays that subclass,
+                        // mirroring the runtime's (ResourceDictionary)InstantiateObject — a hardcoded base type
+                        // silently downcast it).
                         var sub = c.NextVar();
-                        c.Line($"var {sub} = new global::Cursorial.UI.ResourceDictionary();");
+                        c.Line($"var {sub} = new {(TypeSymbolOf(c.Doc, mergedChild.TypeId) is { } mt ? Global(mt, false) : "global::Cursorial.UI.ResourceDictionary")}();");
                         EmitSubDictionaryBody(c, sub, idx);
                         c.Line($"{dictVar}.MergedDictionaries.Add({sub});");
                     }
@@ -257,8 +273,20 @@ internal static class LoweringEmitter
                             c.Todo("ThemeDictionaries entry without a plain-string variant x:Key not yet lowered");
                             continue;
                         }
+
+                        // Same as MergedDictionaries: an element-form extension provides the variant's dict.
+                        ref readonly var themeChild = ref c.Doc.Objects[idx];
+                        if (themeChild.HasFlag(ObjectFlags.IsMarkupExtension))
+                        {
+                            if (MarkupExtensionEntryExpr(c, in themeChild, out var reported) is { } entryExpr)
+                                c.Line($"{dictVar}.ThemeDictionaries[\"{Escape(variantKey)}\"] = {entryExpr}; // ThemeVariantKey.Parse");
+                            else if (!reported)
+                                c.Todo("element-form markup-extension ThemeDictionaries entry of this shape is not lowered");
+                            continue;
+                        }
+
                         var sub = c.NextVar();
-                        c.Line($"var {sub} = new global::Cursorial.UI.ResourceDictionary();");
+                        c.Line($"var {sub} = new {(TypeSymbolOf(c.Doc, themeChild.TypeId) is { } tt ? Global(tt, false) : "global::Cursorial.UI.ResourceDictionary")}();");
                         EmitSubDictionaryBody(c, sub, idx);
                         c.Line($"{dictVar}.ThemeDictionaries[\"{Escape(variantKey)}\"] = {sub}; // ThemeVariantKey.Parse");
                     }
@@ -1193,6 +1221,19 @@ internal static class LoweringEmitter
         ref readonly var setter = ref c.Doc.Objects[setterIndex];
         c.CurrentLineInfo = setter.PackedLineInfo;
 
+        // An element-form markup extension as a <Style.Setters> item (<StaticResource ResourceKey="SharedSetter"/>,
+        // <x:Static Member="…"/>): its standalone value IS the Setter — add it, matching the runtime's
+        // InstantiateObject → ApplyItems path. A Binding / forward-or-fenced key has no standalone value and
+        // fails closed with a CURG3001 (never a silently-dropped setter).
+        if (setter.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            if (MarkupExtensionEntryExpr(c, in setter, out var reported) is { } entryExpr)
+                c.Line($"{styleVar}.Setters.Add((global::Cursorial.UI.Setter)({entryExpr}));");
+            else if (!reported)
+                c.Todo("element-form markup-extension <Style.Setters> item of this shape is not lowered");
+            return;
+        }
+
         string? propExpr = null;
         ITypeSymbol? propValueType = null;
         int valueMember = -1;
@@ -1295,6 +1336,21 @@ internal static class LoweringEmitter
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
         c.CurrentLineInfo = obj.PackedLineInfo;
+
+        // Same as <Style.Setters>: an element-form markup extension provides the DataCondition standalone.
+        // No standalone value → fail closed (return false → the caller's DropStyle), matching today's discipline.
+        if (obj.HasFlag(ObjectFlags.IsMarkupExtension))
+        {
+            if (MarkupExtensionEntryExpr(c, in obj, out var reported) is { } entryExpr)
+            {
+                c.Line($"{styleVar}.When.Add((global::Cursorial.UI.DataCondition)({entryExpr}));");
+                return true;
+            }
+
+            if (!reported)
+                c.Todo("element-form markup-extension <Style.When> item of this shape is not lowered");
+            return false;
+        }
 
         int bindingMember = -1, valueMember = -1, negateMember = -1;
         for (int m = obj.MemberStart; m < obj.MemberStart + obj.MemberCount; m++)

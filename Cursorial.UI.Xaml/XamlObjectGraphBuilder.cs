@@ -879,7 +879,11 @@ internal sealed class XamlObjectGraphBuilder
     {
         ref readonly var value = ref ExtensionValueMember(in record);
         if (value.Kind == XamlValueKind.Folded)
-            return _doc.Constants[value.ValueIndex];
+            // A folded intrinsic standing alone (a collection item, collection content, or dictionary
+            // entry — no target member) must still finalize an x:Static placeholder to its member value:
+            // the has-a-target path resolves it in Assign, but a standalone entry never reaches Assign.
+            // x:Null (a null constant) and x:Type (a System.Type constant) pass through unchanged.
+            return ResolveStaticReference(_doc.Constants[value.ValueIndex], line, column);
 
         ref readonly var ext = ref _doc.Extensions[value.ValueIndex];
         switch (ext.Kind)

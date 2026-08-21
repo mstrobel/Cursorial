@@ -1367,6 +1367,21 @@ public sealed partial class UIApplication
         }
         catch {}
 
+        // 1b. Tear down the CURRENT root element (punch #39 / lifecycle contract): a root the app
+        //     swapped OUT during the run is the author's to tear down (see the Lifecycle & Teardown
+        //     guide — curio's per-stage roots), but the one still mounted at shutdown is the app's.
+        //     Detach its surface (reversible), then the permanent sweep releases its bindings and
+        //     view-model subscriptions. Best-effort + idempotent like every step here.
+        try
+        {
+            if (RootElement is {} appRoot)
+            {
+                _windowManager?.SetRootSurface(null);
+                appRoot.TearDown();
+            }
+        }
+        catch {}
+
         // 2. Animation shutdown — handles released, values revert to base (P8 seam).
         try
         {

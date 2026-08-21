@@ -906,10 +906,17 @@ public class ListView : SelectingItemsControl
 
             // Bound (not copied) so a runtime ItemWidth/ItemHeight change reaches the live panel without a
             // second panel swap — a swap would tear down and re-adopt every container for a sizing tweak.
-            panel.SetBinding(UniformWrapPanel.ItemMaxHeightProperty, new Binding(ItemMaxHeightProperty) { Source = ctx.TemplatedParent });
-            panel.SetBinding(UniformWrapPanel.ItemMaxWidthProperty, new Binding(ItemMaxWidthProperty) { Source = ctx.TemplatedParent });
-            panel.SetBinding(UniformWrapPanel.ItemWidthProperty, new Binding(ItemWidthProperty) { Source = ctx.TemplatedParent });
-            panel.SetBinding(UniformWrapPanel.ItemHeightProperty, new Binding(ItemHeightProperty) { Source = ctx.TemplatedParent });
+            panel.SetBinding(UniformWrapPanel.ItemMaxHeightProperty,
+                             CompiledBinding.For(ItemMaxHeightProperty, source: ctx.TemplatedParent));
+
+            panel.SetBinding(UniformWrapPanel.ItemMaxWidthProperty,
+                             CompiledBinding.For(ItemMaxWidthProperty, source: ctx.TemplatedParent));
+
+            panel.SetBinding(UniformWrapPanel.ItemWidthProperty,
+                             CompiledBinding.For(ItemWidthProperty, source: ctx.TemplatedParent));
+
+            panel.SetBinding(UniformWrapPanel.ItemHeightProperty,
+                             CompiledBinding.For(ItemHeightProperty, source: ctx.TemplatedParent));
 
             return ConfigureItemsHost(panel);
         });

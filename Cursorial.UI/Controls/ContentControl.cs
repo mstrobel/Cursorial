@@ -169,9 +169,9 @@ public class ContentControl : Control
 /// </summary>
 public class HeaderedContentControl : ContentControl
 {
-    /// <summary>The header content (<c>AffectsMeasure</c>).</summary>
+    /// <summary>The header content (<c>AffectsMeasure</c>; a UIElement value is logically adopted, like Content).</summary>
     public static readonly StyledProperty<object?> HeaderProperty =
-        UIProperty.Register<HeaderedContentControl, object?>(nameof(Header));
+        UIProperty.Register<HeaderedContentControl, object?>(nameof(Header), changed: OnHeaderChanged);
 
     /// <summary>The explicit template for the header (<c>AffectsMeasure</c>).</summary>
     public static readonly StyledProperty<DataTemplate?> HeaderTemplateProperty =
@@ -180,6 +180,24 @@ public class HeaderedContentControl : ContentControl
     static HeaderedContentControl()
     {
         AffectsMeasure<HeaderedContentControl>(HeaderProperty, HeaderTemplateProperty);
+    }
+
+    private static void OnHeaderChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is not HeaderedContentControl control)
+            return;
+
+        // A UIElement header is a logical child of the host, exactly like Content (chain ③ / doc
+        // §12.3): without adoption an element-form header is logically ORPHANED — DataContext never
+        // inherits, and FindEnclosing dead-ends below every scope, so an ElementName anchor inside
+        // <X.Header> content could not resolve even though its name registered correctly.
+        if (oldValue is UIElement oldElement && ReferenceEquals(oldElement.LogicalParent, control))
+            control.RemoveLogicalChild(oldElement);
+
+        if (newValue is UIElement newElement && newElement.LogicalParent is null)
+            control.AddLogicalChild(newElement);
+
+        control.OnContentRefreshedForAccessKey(); // Header is this shape's mnemonic source (§12.5 ③)
     }
 
     /// <inheritdoc cref="HeaderProperty"/>

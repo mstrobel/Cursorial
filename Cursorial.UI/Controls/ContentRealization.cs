@@ -61,7 +61,7 @@ internal static class ContentRealization
         // ①/② a resolved template builds the data subtree (DataContext = content, TemplatedParent null). The
         // string format applies only to the TEXT fallbacks below — a template owns its own formatting (WPF parity).
         if (template is not null)
-            return ForwardTextAttributeAxes(host, template.Build(content/*, host.TemplatedParent*/));
+            return ForwardTextAttributeAxes(host, template.Build(content, host));
 
         switch (content)
         {
@@ -179,18 +179,12 @@ internal static class ContentRealization
         // LocalValue the forward would occlude even conditional rules (LocalValue > StyleTrigger).
         using (TemplateInstantiationScope.Enter())
         {
-            foreach (var axis in TextElement.AllAxisProperties)
-            {
-                if (host.ForwardTextInverse || axis != TextElement.InverseProperty)
-                    leaf.SetBinding(axis, new Binding(axis) { Source = source });
-            }
+            TextElement.ForwardAllAxes(leaf, source, host.ForwardTextInverse);
 
-            if (leaf is TextBlock)
+            if (leaf is IRichTextCapable)
             {
-                foreach (var property in TextElement.AllFormattingProperties)
-                    leaf.SetBinding(property, new Binding(property) { Source = source });
-                foreach (var property in TextElement.AllTypographyProperties)
-                    leaf.SetBinding(property, new Binding(property) { Source = source });
+                TextElement.ForwardFormatting(leaf, source);
+                TextElement.ForwardTypography(leaf, source);
             }
         }
 
@@ -203,10 +197,12 @@ internal static class ContentRealization
     // teardown — a source-anchored binding on borrowed content would otherwise leak the Icon.
     internal static BindingExpressionBase ForwardInverseOnly(ContentPresenter host, UIElement glyph)
     {
-        var source = /*host.TemplatedParent ?? */(UIObject)host;
+        var source = ForwardSource(host);
+
         using (TemplateInstantiationScope.Enter())
-            return glyph.SetBinding(TextElement.InverseProperty,
-                             new Binding(TextElement.InverseProperty) { Source = source });
+        {
+            return TextElement.ForwardInverse(glyph, source);
+        }
     }
 
     // Applies a composite format to content (null format ⇒ Convert.ToString, the prior behavior). A MALFORMED

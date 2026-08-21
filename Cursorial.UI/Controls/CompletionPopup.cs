@@ -519,8 +519,8 @@ public class CompletionPopup : Control
         if (_popup is not null)
         {
             UpdateDismissPolicy();
-            _popup.SetBinding(MaxWidthProperty, new Binding(MaxWidthProperty) { Source = this });
-            _popup.SetBinding(MaxHeightProperty, new Binding(MaxHeightProperty) { Source = this });
+            _popup.SetBinding(MaxWidthProperty, CompiledBinding.For(MaxWidthProperty, source: this));
+            _popup.SetBinding(MaxHeightProperty, CompiledBinding.For(MaxHeightProperty, source: this));
             _popup.PlacementTarget = AnchorElement;
             _popup.Closed += OnPopupClosed;
         }

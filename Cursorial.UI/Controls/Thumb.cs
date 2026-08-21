@@ -84,9 +84,13 @@ public class Thumb : Control
             return;
 
         e.Handled = true;
+
         if (!CaptureMouse())
             return;
 
+        if ((Focusable ? this : TemplatedParent) is {} focusTarget)
+            focusTarget.Focus(FocusNavigationMethod.Pointer);
+        
         _dragging = true;
         _origin = e.ScreenPosition;
         Raise(DragStartedEvent, 0, 0);

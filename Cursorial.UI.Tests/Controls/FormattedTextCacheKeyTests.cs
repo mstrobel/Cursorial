@@ -12,7 +12,7 @@ namespace Cursorial.Tests.UI.Controls;
 
 /// <summary>
 /// The shared <see cref="FormattedTextCache"/>'s freshness key, one kill test per TERM in the
-/// <see cref="ScaledTextCacheKeyTests"/> style: a dropped term shows up as a missed rebuild (a
+/// <c>ScaledTextCacheKeyTests</c> style: a dropped term shows up as a missed rebuild (a
 /// stale hit where a miss was due), a broken comparison as a spurious rebuild (a miss where a hit
 /// was due). This is the mutation census for the key the RTP/Figlet hand copies degraded (doc
 /// defect 3 — the photocopied cache lost its freshness terms because nothing observed them).

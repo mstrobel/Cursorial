@@ -28,12 +28,19 @@ public class DataTemplate
     /// name scope is attached via <see cref="NameScope.SetNameScope"/>; <c>DataContext = data</c> on
     /// the root; <c>TemplatedParent</c> stays null (data content is app-styleable, CD18).
     /// </summary>
-    public UIElement Build(object? data)
+    /// <param name="data">The content the built tree presents (becomes the root's DataContext).</param>
+    /// <param name="host">
+    /// The element hosting the realized content, when known: the build scope then CHAINS to the
+    /// host's enclosing scopes (lazily, at Find time), so template-local lookups see enclosing
+    /// names exactly as inline-authored content would (PD24) — the fix for ElementName/x:Reference
+    /// anchors inside data templates reaching page-level names.
+    /// </param>
+    public UIElement Build(object? data, UIElement? host = null)
     {
         if (Content is null)
             throw new InvalidOperationException("This DataTemplate has no Content to build.");
 
-        var scope = new NameScopeDictionary();
+        var scope = host is null ? new NameScopeDictionary() : new NameScopeDictionary(host);
         var context = new TemplateBuildContext(null, scope);
 
         // Values authored inside data-template content land at LOCAL priority — the template-

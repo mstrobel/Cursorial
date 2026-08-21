@@ -30,7 +30,7 @@ namespace Cursorial.UI.Controls;
 /// replace the hand-rolled single-line truncation. Column math stays grapheme-aware throughout.
 /// </para>
 /// </remarks>
-public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource
+public sealed class AccessTextPresenter : UIElement, ITrimmedTextSource, IRichTextCapable
 {
     /// <summary>The access-key label (<c>AffectsMeasure | AffectsRender</c> — a same-width label swap must repaint; see <see cref="TextBlock"/>).</summary>
     public static readonly StyledProperty<AccessText> TextProperty =

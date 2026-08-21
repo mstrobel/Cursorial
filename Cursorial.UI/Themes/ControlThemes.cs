@@ -101,22 +101,22 @@ internal static class ControlThemes
     private static ControlTemplate ButtonContentTemplate() => new(ctx =>
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
-        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         TextElement.ForwardInverse(presenter);
         var border = new Border { Child = presenter, Occludes = true };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         // The face consumes the Inverse AXIS for its fill (non-inheriting — "flows like Background"):
         // a live per-axis forward, the brush idiom verbatim (proposal §4.2; was the aggregate forward).
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
         // The face fill follows Button.Background (the WPF default-template wiring): a TemplateBinding
         // makes the resting SurfaceBrush + the per-state brush-pair flips paint the face, quantized per
         // the negotiated tier. No resting pen ⇒ no frame ⇒ a 1-row button (content at row 0).
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         // Opt-in border: the BorderPen binding is retained (unset by the default theme), so a consumer
         // that sets Control.BorderPen gets a framed button without a custom template.
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -144,11 +144,11 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         
         var border = new Border { Child = presenter };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
 
         return border;
     });
@@ -170,12 +170,12 @@ internal static class ControlThemes
     {
         var border = new Border();
         var presenter = new ContentPresenter();
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         ctx.RegisterName("PART_ContentPresenter", presenter);
         border.Child = presenter;
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         return border;
     });
 
@@ -198,8 +198,8 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -216,29 +216,19 @@ internal static class ControlThemes
                 var virtualizingStackPanel = new VirtualizingStackPanel { IsItemsHost = true };
 
                 virtualizingStackPanel.SetBinding(
-                        VirtualizingPanel.IsVirtualizingProperty,
-                        new Binding
-                        {
-                            Path = "(VirtualizingPanel.IsVirtualizing)",
-                            Source = ctx.TemplatedParent
-                        })
-                    ;
+                    VirtualizingPanel.IsVirtualizingProperty,
+                    CompiledBinding.For(VirtualizingPanel.IsVirtualizingProperty,
+                                         source: ctx.TemplatedParent));
 
                 virtualizingStackPanel.SetBinding(
                     VirtualizingPanel.VirtualizationModeProperty,
-                    new Binding
-                    {
-                        Path = "(VirtualizingPanel.VirtualizationMode)",
-                        Source = ctx.TemplatedParent
-                    });
+                    CompiledBinding.For(VirtualizingPanel.VirtualizationModeProperty,
+                                         source: ctx.TemplatedParent));
 
                 virtualizingStackPanel.SetBinding(
                     VirtualizingPanel.ScrollUnitProperty,
-                    new Binding
-                    {
-                        Path = "(VirtualizingPanel.ScrollUnit)",
-                        Source = ctx.TemplatedParent
-                    });
+                    CompiledBinding.For(VirtualizingPanel.ScrollUnitProperty,
+                                         source: ctx.TemplatedParent));
 
                 virtualizingStackPanel.SetValue(KeyboardNavigation.TabNavigationProperty, KeyboardNavigationMode.Once);
 
@@ -269,15 +259,15 @@ internal static class ControlThemes
                                   }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
 
                      scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty,
-                                       new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+                                       TemplateBinding.From(ScrollViewer.VerticalScrollBarVisibilityProperty));
 
                      scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty,
-                                       new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+                                       TemplateBinding.From(ScrollViewer.HorizontalScrollBarVisibilityProperty));
 
                      ctx.RegisterName("PART_ScrollViewer", scroll);
                      var border = new Border { Child = scroll };
-                     border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                     border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                     border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                     border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
                      return border;
                  });
 
@@ -307,11 +297,11 @@ internal static class ControlThemes
                      var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
                      ctx.RegisterName("PART_ContentPresenter", presenter);
                      var border = new Border { Child = presenter };
-                     border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-                     border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+                     border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
                      // The row face forwards the Inverse axis (the NoColor selection/focus-row cue paints the
                      // WHOLE bar via the opaque NoColor fill); the label rides the presenter forward.
-                     border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+                     border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
 
                      var selectionIndicator = new GlyphPresenter
                                               {
@@ -329,10 +319,8 @@ internal static class ControlThemes
 
                      selectionIndicator.SetBinding(
                          UIElement.VisibilityProperty,
-                         new TemplateBinding(ListBoxItem.IsSelectedProperty)
-                         {
-                             Converter = BooleanToVisibilityConverter.Instance
-                         });
+                         TemplateBinding.From(ListBoxItem.IsSelectedProperty,
+                                            converter: BooleanToVisibilityConverter.Instance));
 
                      panel.Children.Add(border);
                      panel.Children.Add(selectionIndicator);
@@ -361,9 +349,9 @@ internal static class ControlThemes
 
         var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the UIParent bridge
         scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty,
-                          new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
+                          TemplateBinding.From(ScrollViewer.VerticalScrollBarVisibilityProperty));
         scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty,
-                          new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+                          TemplateBinding.From(ScrollViewer.HorizontalScrollBarVisibilityProperty));
         ctx.RegisterName("PART_ScrollViewer", scroll);
 
         var layout = new DockPanel(); // LastChildFill: the scroll band takes everything under the header
@@ -371,8 +359,8 @@ internal static class ControlThemes
         layout.Children.Add(scroll);
 
         var border = new Border { Child = layout };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -391,10 +379,10 @@ internal static class ControlThemes
         ctx.RegisterName("PART_Cells", cells);
 
         var border = new Border { Child = cells };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         // The row face forwards the Inverse axis so the NoColor selection/focus cue paints the WHOLE bar.
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
         TextElement.ForwardInverse(cells);
         return border;
     });
@@ -435,16 +423,16 @@ internal static class ControlThemes
 
         var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
 
         var row = new DockPanel();
         row.Children.Add(indicator); // docked right
         row.Children.Add(presenter); // fills the rest
 
         var border = new Border { Child = row };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
         TextElement.ForwardInverse(presenter);
         return border;
     });
@@ -479,16 +467,18 @@ internal static class ControlThemes
         // must show the unwrapped content, never the live container element (which belongs to the drop-down).
         var selected = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentSite", selected);
-        selected.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(ComboBox.SelectionBoxItemProperty));
+
+        selected.SetBinding(ContentPresenter.ContentProperty,
+                            TemplateBinding.From(ComboBox.SelectionBoxItemProperty));
 
         // Editable face: a text box (visible when IsEditable). Placeholder + read-only flow from the ComboBox.
         var editable = new TextBox { Visibility = Visibility.Collapsed };
         ctx.RegisterName("PART_EditableTextBox", editable);
-        editable.SetBinding(TextBox.PlaceholderProperty, new TemplateBinding(ComboBox.PlaceholderTextProperty));
-        editable.SetBinding(TextBox.IsReadOnlyProperty, new TemplateBinding(ComboBox.IsReadOnlyProperty));
+        editable.SetBinding(TextBox.PlaceholderProperty, TemplateBinding.From(ComboBox.PlaceholderTextProperty));
+        editable.SetBinding(TextBox.IsReadOnlyProperty, TemplateBinding.From(ComboBox.IsReadOnlyProperty));
 
         var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
-        content.SetBinding(UIElement.MarginProperty, new TemplateBinding(Control.PaddingProperty));
+        content.SetBinding(UIElement.MarginProperty, TemplateBinding.From(Control.PaddingProperty));
         content.Children.Add(selected);
         content.Children.Add(editable);
 
@@ -503,15 +493,15 @@ internal static class ControlThemes
         row.Children.Add(content); // fills the remaining width (the face)
 
         var face = new Border { Child = row };
-        face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        face.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        face.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        face.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
 
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var list = new Border { /*Occludes = true, */Child = host };
         list.SetResourceReference(Border.BackgroundProperty, ThemeKeys.ElevationPopup);
         list.SetResourceReference(Border.BorderPenProperty, ThemeKeys.BorderPen);
-        list.SetBinding(UIElement.MaxHeightProperty, new TemplateBinding(ComboBox.MaxDropDownHeightProperty)); // MaxDropDownHeight cap
+        list.SetBinding(UIElement.MaxHeightProperty, TemplateBinding.From(ComboBox.MaxDropDownHeightProperty)); // MaxDropDownHeight cap
         var popup = new Popup { Child = list };
         ctx.RegisterName("PART_Popup", popup);
 
@@ -566,8 +556,8 @@ internal static class ControlThemes
         var presenter = new ContentPresenter { ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Padding = new Margins(1, 0), Child = presenter };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty)); // the row-face cue axis
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty)); // the row-face cue axis
         return border;
     });
 
@@ -663,9 +653,9 @@ internal static class ControlThemes
         content.Children.Add(dropDown);
 
         var root = new Border { Child = content, Occludes = true };
-        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        root.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        root.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        root.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+        root.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         return root;
     });
 
@@ -691,14 +681,14 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         TextElement.ForwardInverse(presenter);
 
         var chip = new Border { Child = presenter, Occludes = true };
-        chip.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        chip.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        chip.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        chip.SetBinding(TextElement.InverseProperty, new TemplateBinding(TextElement.InverseProperty));
+        chip.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        chip.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        chip.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+        chip.SetBinding(TextElement.InverseProperty, TemplateBinding.From(TextElement.InverseProperty));
 
         var separator = new TextBlock { Text = "▸" };
         separator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MutedBrush);
@@ -791,7 +781,7 @@ internal static class ControlThemes
         // that argument to protect and DOES light-dismiss, like every other chooser. What is set here is only the
         // initial value, and a custom template cannot accidentally settle the question either way.
         var popup = new Popup { Child = content, StaysOpen = true };
-        popup.SetBinding(Popup.ShadowProperty, new TemplateBinding(CompletionPopup.ShadowProperty));
+        popup.SetBinding(Popup.ShadowProperty, TemplateBinding.From(CompletionPopup.ShadowProperty));
         ctx.RegisterName("PART_Popup", popup);
 
         // The Popup adds no layout (0x0), so the control is a zero-size overlay anchor — but a Grid STRETCHES
@@ -856,7 +846,7 @@ internal static class ControlThemes
         row.Children.Add(display);
 
         var border = new Border { Padding = new Margins(1, 0), Child = row };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         TextElement.ForwardInverse(border);
         return border;
     });
@@ -889,12 +879,12 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var scroll = new ScrollViewer { Content = host }; // the ItemsPresenter resolves its owner up the visual tree (CD-P9-17)
-        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.VerticalScrollBarVisibilityProperty));
-        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty, new TemplateBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.VerticalScrollBarVisibilityProperty, TemplateBinding.From(ScrollViewer.VerticalScrollBarVisibilityProperty));
+        scroll.SetBinding(ScrollViewer.HorizontalScrollBarVisibilityProperty, TemplateBinding.From(ScrollViewer.HorizontalScrollBarVisibilityProperty));
         ctx.RegisterName("PART_ScrollViewer", scroll);
         var border = new Border { Child = scroll };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -918,8 +908,8 @@ internal static class ControlThemes
         // NOT RecognizesAccessKey — a tree node has no access-key activation, and an underscore in data (e.g. "my_file") must render literally.
         var header = new ContentPresenter { ShowTrimmedContentInToolTip = true }; 
         ctx.RegisterName("PART_HeaderPresenter", header);
-        header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedItemsControl.HeaderProperty));
-        header.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
+        header.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
+        header.SetBinding(ContentPresenter.ContentTemplateProperty, TemplateBinding.From(HeaderedItemsControl.HeaderTemplateProperty)); // HDT renders the header
 
         var headerFace = new Border { Child = header };
         var headerRow = new DockPanel();
@@ -928,8 +918,8 @@ internal static class ControlThemes
         var bar = new Border { Child = headerRow };
 
         TextElement.ForwardInverse(headerFace);
-        headerFace.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        headerFace.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        headerFace.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        headerFace.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         headerFace.SetValue(UIElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
 
         var host = new ItemsPresenter { Margin = new Margins(2, 0, 0, 0) }; // recursive indent
@@ -1002,9 +992,9 @@ internal static class ControlThemes
         KeyboardNavigation.SetTabNavigation(root, KeyboardNavigationMode.Once); // the whole calendar is one tab stop
 
         var border = new Border { /*Padding = new Margins(1, 0), */Child = root };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -1026,8 +1016,8 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { Child = presenter };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         return border;
     });
 
@@ -1066,10 +1056,10 @@ internal static class ControlThemes
     {
         var presenter = new ImagePresenter();
         ctx.RegisterName("PART_ImagePresenter", presenter);
-        presenter.SetBinding(ImagePresenter.SourceProperty, new TemplateBinding(Image.SourceProperty));
-        presenter.SetBinding(ImagePresenter.SourceUriProperty, new TemplateBinding(Image.SourceUriProperty));
-        presenter.SetBinding(ImagePresenter.PlaceholderContentProperty, new TemplateBinding(Image.PlaceholderContentProperty));
-        presenter.SetBinding(ImagePresenter.PlaceholderTemplateProperty, new TemplateBinding(Image.PlaceholderTemplateProperty));
+        presenter.SetBinding(ImagePresenter.SourceProperty, TemplateBinding.From(Image.SourceProperty));
+        presenter.SetBinding(ImagePresenter.SourceUriProperty, TemplateBinding.From(Image.SourceUriProperty));
+        presenter.SetBinding(ImagePresenter.PlaceholderContentProperty, TemplateBinding.From(Image.PlaceholderContentProperty));
+        presenter.SetBinding(ImagePresenter.PlaceholderTemplateProperty, TemplateBinding.From(Image.PlaceholderTemplateProperty));
         return presenter;
     });
 
@@ -1083,8 +1073,8 @@ internal static class ControlThemes
     {
         var presenter = new ContentPresenter();
         var border = new Border { Child = presenter, Occludes = true, Background = Brushes.Transparent };
-        presenter.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Icon.ResolvedContentProperty));
-        presenter.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        presenter.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(Icon.ResolvedContentProperty));
+        presenter.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         TextElement.ForwardInverse(presenter);
         return border;
     });
@@ -1105,9 +1095,9 @@ internal static class ControlThemes
     {
         var presenter = new ChartPresenter();
         ctx.RegisterName("PART_ChartPresenter", presenter);
-        presenter.SetBinding(ChartPresenter.SourceProperty, new TemplateBinding(Chart.SourceProperty));
-        presenter.SetBinding(ChartPresenter.PlaceholderContentProperty, new TemplateBinding(Chart.PlaceholderContentProperty));
-        presenter.SetBinding(ChartPresenter.PlaceholderTemplateProperty, new TemplateBinding(Chart.PlaceholderTemplateProperty));
+        presenter.SetBinding(ChartPresenter.SourceProperty, TemplateBinding.From(Chart.SourceProperty));
+        presenter.SetBinding(ChartPresenter.PlaceholderContentProperty, TemplateBinding.From(Chart.PlaceholderContentProperty));
+        presenter.SetBinding(ChartPresenter.PlaceholderTemplateProperty, TemplateBinding.From(Chart.PlaceholderTemplateProperty));
         return presenter;
     });
 
@@ -1139,7 +1129,7 @@ internal static class ControlThemes
                      ctx.RegisterName("PART_EditableTextBox", editable);
 
                      editable.SetBinding(TextBox.PlaceholderProperty,
-                                         new TemplateBinding(DatePicker.WatermarkProperty));
+                                         TemplateBinding.From(DatePicker.WatermarkProperty));
 
                      var content = new Grid(); // the two faces overlap in one cell; the collapsed one takes no space
                      content.Children.Add(text);
@@ -1155,9 +1145,9 @@ internal static class ControlThemes
                      row.Children.Add(content); // fills the remaining width (the face)
 
                      var field = new Border { Child = row };
-                     field.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                     field.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-                     field.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+                     field.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                     field.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+                     field.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
 
                      // No BorderPen literal: the popup surface Border carries the themed border; a literal here
                      // would be the part's resting truth under the amended lattice (§20, 2026-07-12) and the
@@ -1219,8 +1209,11 @@ internal static class ControlThemes
                     {
                         When =
                         {
-                            new DataCondition(new Binding(DatePicker.IsEditableProperty) { RelativeSource = RelativeSource.Self }, value: false),
-                            new DataCondition(new Binding(DatePicker.SelectedDateProperty) { RelativeSource = RelativeSource.Self, FallbackValue = null }, value: null)
+                            new DataCondition(CompiledBinding.For(DatePicker.IsEditableProperty,
+                                                                  relativeSource: RelativeSource.Self), value: false),
+                            new DataCondition(CompiledBinding.For(DatePicker.SelectedDateProperty,
+                                                                  relativeSource: RelativeSource.Self,
+                                                                  fallbackValue: BindingBase.NullValue), value: null)
                         }
                     }
                    .SetResource(Control.ForegroundProperty, ThemeKeys.FaintBrush)
@@ -1240,7 +1233,7 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
         return border;
     });
 
@@ -1282,8 +1275,8 @@ internal static class ControlThemes
         var presenter = new ContentPresenter();
         ctx.RegisterName("PART_ContentPresenter", presenter);
         var border = new Border { /*Occludes = true, */Padding = new Margins(1, 0), Child = presenter };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -1312,27 +1305,27 @@ internal static class ControlThemes
                                 IsRenderBoundary = true
                             };
 
-                // strip.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                // strip.SetBinding(Border.BackgroundProperty, TemplateBinding.From<TabControl, IBrush?>(Control.BackgroundProperty));
                 
                 ctx.RegisterName("PART_TabStrip", strip);
                 DockPanel.SetDock(strip, Dock.Top);
 
                 var content = new ContentPresenter();
                 ctx.RegisterName("PART_ContentHost", content);
-                content.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(TabControl.SelectedContentProperty));
-                content.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(TabControl.ContentTemplateProperty));
+                content.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(TabControl.SelectedContentProperty));
+                content.SetBinding(ContentPresenter.ContentTemplateProperty, TemplateBinding.From(TabControl.ContentTemplateProperty));
                 content.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.TextBrush);
                 var body = new Border { Child = content };
-                body.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-                // body.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+                body.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+                // strip.SetBinding(Border.BorderPenProperty, TemplateBinding.From<TabControl, Pen?>(Control.BorderPenProperty));
 
                 var panel = new DockPanel();
                 panel.Children.Add(strip); // docked top (the header row)
                 panel.Children.Add(body);  // fills the rest (the selected tab's body)
 
                 var border = new Border();
-                border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-                border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+                border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
 
                 var root = new Grid { Children = { border, panel } };
                 return root;
@@ -1355,11 +1348,11 @@ internal static class ControlThemes
            {
                var header = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                ctx.RegisterName("PART_ContentPresenter", header);
-               header.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(HeaderedContentControl.HeaderProperty));
+               header.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(HeaderedContentControl.HeaderProperty));
                // The fill rides the HEADER row only — not the underline row (which sits on the page like the gallery bar).
                var headerHost = new Border { Padding = new Margins(1, 0), Child = header, Background = Brushes.Transparent, Occludes = true };
-               headerHost.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-               headerHost.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+               headerHost.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+               headerHost.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
                // The header face forwards the Inverse axis: the NoColor selection rule now targets the
                // TABITEM (control-level — non-inheriting axes cannot leak into the page content), and
                // this forward + the header presenter's leaf forward deliver it to fill + label.
@@ -1466,7 +1459,7 @@ internal static class ControlThemes
         {
             var thumb = new Thumb();
             ctx.RegisterName("PART_Thumb", thumb);
-            thumb.SetBinding(Control.BackgroundProperty, new TemplateBinding(Control.ForegroundProperty));
+            thumb.SetBinding(Control.BackgroundProperty, TemplateBinding.From(Control.ForegroundProperty));
             return thumb;
         });
         // template.Styles.Add(new Style(Selectors.Nesting().Template().OfType<Thumb>())
@@ -1500,9 +1493,9 @@ internal static class ControlThemes
         var host = new ItemsPresenter();
         ctx.RegisterName("PART_ItemsHost", host);
         var border = new Border { Child = host };
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
         return border;
     });
 
@@ -1526,9 +1519,9 @@ internal static class ControlThemes
         var presenter = new ContentPresenter{ ShowTrimmedContentInToolTip = true };
         var root = new Border { Child = presenter };
         ctx.RegisterName("PART_ContentPresenter", presenter);
-        root.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-        root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        root.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+        root.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+        root.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        root.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
         return root;
     });
 
@@ -1550,15 +1543,14 @@ internal static class ControlThemes
                var header = new ToggleButton { Name = "PART_Header" };
 
                header.SetBinding(ContentControl.ContentProperty, 
-                                 new TemplateBinding(HeaderedContentControl.HeaderProperty));
+                                 TemplateBinding.From(HeaderedContentControl.HeaderProperty));
 
+               // TwoWay is outside TemplateBinding's contract (BD15) — the compiled TemplatedParent
+               // form carries it: the GetValue leaf synthesizes the SetValue write-back.
                header.SetBinding(ToggleButton.IsCheckedProperty,
-                                 new Binding
-                                 {
-                                     RelativeSource = RelativeSource.TemplatedParent,
-                                     Path = nameof(Expander.IsExpanded),
-                                     Mode = BindingMode.TwoWay
-                                 });
+                                 CompiledBinding.For(Expander.IsExpandedProperty,
+                                                      mode: BindingMode.TwoWay,
+                                                      source: ctx.TemplatedParent));
 
                DockPanel.SetDock(header, Dock.Top);
                
@@ -1567,10 +1559,10 @@ internal static class ControlThemes
                var content = new ContentPresenter(); // auto-aliases to the Expander's Content (A22)
                
                content.SetBinding(UIElement.HorizontalAlignmentProperty, 
-                                  new TemplateBinding(ContentControl.HorizontalContentAlignmentProperty));
+                                  TemplateBinding.From(ContentControl.HorizontalContentAlignmentProperty));
 
                content.SetBinding(UIElement.VerticalAlignmentProperty, 
-                                  new TemplateBinding(ContentControl.VerticalContentAlignmentProperty));
+                                  TemplateBinding.From(ContentControl.VerticalContentAlignmentProperty));
                
                ctx.RegisterName("PART_Content", content);
 
@@ -1587,26 +1579,23 @@ internal static class ControlThemes
                    {
                        var border = new Border();
 
-                       border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
-                       border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-                       border.SetBinding(TextElement.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                       border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
+                       border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+                       border.SetBinding(TextElement.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
 
                        var glyph = new TextBlock { Margin = new(0, 0, 1, 0) }; // collapsed caret (U+25B8); Expander flips to ▾ when expanded
 
                        var headerPresenter = new ContentPresenter { RecognizesAccessKey = true, ShowTrimmedContentInToolTip = true };
                        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(1, 0) };
 
-                       glyph.SetBinding(TextBlock.ForegroundProperty, new TemplateBinding(Control.ForegroundProperty));
+                       glyph.SetBinding(TextBlock.ForegroundProperty, TemplateBinding.From(Control.ForegroundProperty));
 
                        glyph.SetBinding(
                            TextBlock.TextProperty,
-                           new Binding
-                           {
-                               Path = nameof(ToggleButton.IsChecked),
-                               Converter = new ExpandedToGlyphConverter(),
-                               Mode = BindingMode.OneWay,
-                               RelativeSource = RelativeSource.TemplatedParent
-                           }
+                           CompiledBinding.For(ToggleButton.IsCheckedProperty,
+                                               mode: BindingMode.OneWay,
+                                               converter: new ExpandedToGlyphConverter(),
+                                               relativeSource: RelativeSource.TemplatedParent)
                        );
 
                        tbCtx.RegisterName("PART_Glyph", glyph);
@@ -1661,9 +1650,9 @@ internal static class ControlThemes
         var presenter = new TextPresenter();
         ctx.RegisterName("PART_TextPresenter", presenter);
         var border = new Border { Child = presenter };
-        border.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
-        border.SetBinding(Border.BorderPenProperty, new TemplateBinding(Control.BorderPenProperty));
-        border.SetBinding(Border.PaddingProperty, new TemplateBinding(Control.PaddingProperty));
+        border.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
+        border.SetBinding(Border.BorderPenProperty, TemplateBinding.From(Control.BorderPenProperty));
+        border.SetBinding(Border.PaddingProperty, TemplateBinding.From(Control.PaddingProperty));
         TextElement.ForwardInverse(border);
         TextElement.ForwardAllAxes(presenter);
         TextElement.ForwardTypography(presenter);
@@ -1702,7 +1691,7 @@ internal static class ControlThemes
                      ctx.RegisterName("PART_ContentPresenter", header);
 
                      header.SetBinding(ContentPresenter.ContentProperty,
-                                       new TemplateBinding(HeaderedItemsControl.HeaderProperty));
+                                       TemplateBinding.From(HeaderedItemsControl.HeaderProperty));
 
                      var icon = new ContentPresenter
                                 {
@@ -1718,7 +1707,9 @@ internal static class ControlThemes
                      DockPanel.SetDock(iconTray, Dock.Left);
 
                      iconTray.SetBinding(UIElement.VisibilityProperty,
-                                         new TemplateBinding(MenuItem.IsIconTrayVisibleProperty) { Converter = BooleanToVisibilityConverter.Instance });
+                                         TemplateBinding.From(
+                                             MenuItem.IsIconTrayVisibleProperty,
+                                             converter: BooleanToVisibilityConverter.Instance));
                      
                      var submenuIndicator = new TextBlock { RenderOffsetColumn = 1, Text = "▸" };
                      ctx.RegisterName("PART_SubmenuIndicator", submenuIndicator);
@@ -1726,18 +1717,16 @@ internal static class ControlThemes
                      submenuIndicator.SetResourceReference(TextBlock.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
 
                      submenuIndicator.SetBinding(UIElement.VisibilityProperty,
-                                                 new Binding(MenuItem.HasItemsProperty)
-                                                 {
-                                                     RelativeSource = RelativeSource.TemplatedParent,
-                                                     Converter = BooleanToVisibilityConverter.Instance
-                                                 });
+                                                 CompiledBinding.For(MenuItem.HasItemsProperty,
+                                                                     relativeSource: RelativeSource.TemplatedParent,
+                                                                     converter: BooleanToVisibilityConverter.Instance));
 
                      DockPanel.SetDock(submenuIndicator, Dock.Right);
 
                      var gesture = new TextBlock { Margin = new Margins(2, 0, 0, 0) };
                      ctx.RegisterName("PART_GestureText", gesture);
 
-                     gesture.SetBinding(TextBlock.TextProperty, new TemplateBinding(MenuItem.InputGestureTextProperty));
+                     gesture.SetBinding(TextBlock.TextProperty, TemplateBinding.From(MenuItem.InputGestureTextProperty));
                      gesture.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.MenuAcceleratorForeground);
 
                      DockPanel.SetDock(gesture, Dock.Right);
@@ -1749,7 +1738,7 @@ internal static class ControlThemes
                      row.Children.Add(header);           // fills the remaining width
 
                      var face = new Border { Padding = new Margins(1, 0), Child = row };
-                     face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                     face.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
                      
                      TextElement.ForwardInverse(face);
                      TextElement.ForwardInverse(gesture);
@@ -2075,7 +2064,7 @@ internal static class ControlThemes
                    // stays so a consumer that sets Background still paints. Focus is the in-box caret, not a fill.
                    var face = new Border { Child = row };
                    TextElement.ForwardInverse(face);
-                   face.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                   face.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
                    return face;
                });
         
@@ -2194,7 +2183,7 @@ internal static class ControlThemes
     private static ControlTemplate ScrollViewerTemplate() => new(ctx =>
     {
         var dock = new DockPanel();
-        dock.SetBinding(Panel.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+        dock.SetBinding(Panel.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
 
         var vBar = new ScrollBar { Orientation = Orientation.Vertical };
         ctx.RegisterName("PART_VerticalScrollBar", vBar);
@@ -2226,15 +2215,36 @@ internal static class ControlThemes
                    {
                        var icon = new Icon();
 
-                       icon.SetBinding(Icon.GlyphProperty, CompiledBinding.From((IconCarrier c) => c.Glyph));
-                       icon.SetBinding(Icon.GlyphWidthProperty, CompiledBinding.From((IconCarrier c) => c.GlyphWidth));
-                       icon.SetBinding(Icon.ImageUriProperty, CompiledBinding.From((IconCarrier c) => c.ImageUri));
-                       icon.SetBinding(Icon.EmojiProperty, CompiledBinding.From((IconCarrier c) => c.Emoji));
-                       icon.SetBinding(Icon.TextProperty, CompiledBinding.From((IconCarrier c) => c.Text));
+                       icon.SetBinding(Icon.GlyphProperty,
+                                       CompiledBinding.Build((IconCarrier c) => c.Glyph)
+                                                      .Step(nameof(IconCarrier.Glyph))
+                                                      .Build());
+
+                       icon.SetBinding(Icon.GlyphWidthProperty,
+                                       CompiledBinding.Build((IconCarrier c) => c.GlyphWidth)
+                                                      .Step(nameof(IconCarrier.GlyphWidth))
+                                                      .Build());
+
+                       icon.SetBinding(Icon.ImageUriProperty,
+                                       CompiledBinding.Build((IconCarrier c) => c.ImageUri)
+                                                      .Step(nameof(IconCarrier.ImageUri))
+                                                      .Build());
+
+                       icon.SetBinding(Icon.EmojiProperty,
+                                       CompiledBinding.Build((IconCarrier c) => c.Emoji)
+                                                      .Step(nameof(IconCarrier.Emoji))
+                                                      .Build());
+
+                       icon.SetBinding(Icon.TextProperty,
+                                       CompiledBinding.Build((IconCarrier c) => c.Text)
+                                                      .Step(nameof(IconCarrier.Text))
+                                                      .Build());
 
                        icon.SetBinding(Icon.IconBrushProperty,
-                                       CompiledBinding.From((IconCarrier c) => c.IconBrush,
-                                                            targetNullValue: Binding.DoNothing));
+                                       CompiledBinding.Build((IconCarrier c) => c.IconBrush,
+                                                             targetNullValue: Binding.DoNothing)
+                                                      .Step(nameof(IconCarrier.IconBrush))
+                                                      .Build());
                        
                        return icon;
                    })
@@ -2264,14 +2274,14 @@ internal static class ControlThemes
                 ctx.RegisterName("PART_ContentPresenter", presenter);
 
                 presenter.SetBinding(UIElement.MarginProperty,
-                                     new TemplateBinding(Control.PaddingProperty)); // opt-in frame only
+                                     TemplateBinding.From(Control.PaddingProperty)); // opt-in frame only
 
                 var root = new Border();
                 ctx.RegisterName("PART_Root", root);
-                root.SetBinding(Border.BackgroundProperty, new TemplateBinding(Control.BackgroundProperty));
+                root.SetBinding(Border.BackgroundProperty, TemplateBinding.From(Control.BackgroundProperty));
 
                 root.SetBinding(Border.BorderPenProperty,
-                                new TemplateBinding(Control.BorderPenProperty)); // opt-in frame only
+                                TemplateBinding.From(Control.BorderPenProperty)); // opt-in frame only
 
                 if (window.WindowStyle == WindowStyle.None)
                 {
@@ -2305,7 +2315,7 @@ internal static class ControlThemes
                                    false // we toggle the icon's inverse directly; see `IconToggleStyle()`.
                            };
 
-                icon.SetBinding(ContentPresenter.ContentProperty, new TemplateBinding(Window.IconProperty));
+                icon.SetBinding(ContentPresenter.ContentProperty, TemplateBinding.From(Window.IconProperty));
                 ctx.RegisterName("PART_Icon", icon);
                 DockPanel.SetDock(icon, Dock.Left);
                 titleBarContent.Children.Add(icon);
@@ -2316,10 +2326,8 @@ internal static class ControlThemes
                 var closeButton = new Button { Focusable = false, IsTabStop = false, Content = "✕" };
 
                 closeButton.SetBinding(UIElement.VisibilityProperty,
-                                       new TemplateBinding(Window.CanCloseProperty)
-                                       {
-                                           Converter = BooleanToVisibilityConverter.Instance
-                                       });
+                                       TemplateBinding.From(Window.CanCloseProperty,
+                                                          converter: BooleanToVisibilityConverter.Instance));
 
                 WindowChrome.SetHitTestRole(closeButton, WindowHitTestRole.Close);
 
@@ -2342,10 +2350,9 @@ internal static class ControlThemes
                     maximizeButton = new Button { Focusable = false, IsTabStop = false };
 
                     maximizeButton.SetBinding(ContentControl.ContentProperty,
-                                              new TemplateBinding(Window.WindowStateProperty)
-                                              {
-                                                  Converter = new WindowStateToGlyphConverter()
-                                              });
+                                              TemplateBinding.From(
+                                                  Window.WindowStateProperty,
+                                                  converter: new WindowStateToGlyphConverter()));
 
                     // WindowChrome.SetHitTestRole(maximizeGlyph, WindowHitTestRole.Maximize);
                     DockPanel.SetDock(maximizeButton, Dock.Right);
@@ -2370,7 +2377,7 @@ internal static class ControlThemes
                                 };
 
                 titleText.SetBinding(ContentPresenter.ContentProperty,
-                                     new Binding(Window.TitleProperty) { Source = window });
+                                     CompiledBinding.For(Window.TitleProperty, source: window));
 
                 titleBarContent.Children.Add(titleText); // last child → fills the drag area, shows the title
                 ctx.RegisterName("PART_Title", titleText);
@@ -2527,7 +2534,9 @@ internal static class ControlThemes
                       .SetResource(Control.BackgroundProperty, ThemeKeys.ElevationDialog),
                    new Style(Selectors.Nesting().OfType<Window>())
                        {
-                           When = { new DataCondition(new Binding(Window.IsActiveProperty) { RelativeSource = RelativeSource.Self}, false) },
+                           When = { new DataCondition(CompiledBinding.For(Window.IsActiveProperty,
+                                                                          relativeSource: RelativeSource.Self),
+                                                      false) },
                            Setters =
                            {
                                new Setter(Transition.TransitionsProperty,

@@ -237,12 +237,14 @@ public sealed class Section07_ContentPresenter
     public void ContentStringFormat_Malformed_DegradesInsteadOfThrowing()
     {
         var cp = new ContentPresenter { Content = 42, ContentStringFormat = "Total: {0" }; // unbalanced brace
+        string? text = null;
         var ex = Record.Exception(() =>
         {
             using var host = Attach(cp);
+            text = Assert.IsType<TextBlock>(cp.Child).Text;
         });
         Assert.Null(ex);                                                  // no crash
-        Assert.Equal("42", Assert.IsType<TextBlock>(cp.Child).Text);     // fell back to the unformatted content
+        Assert.Equal("42", text);     // fell back to the unformatted content
     }
 
     [Fact] // ContentStringFormat is ignored when a DataTemplate handles the content (WPF parity)

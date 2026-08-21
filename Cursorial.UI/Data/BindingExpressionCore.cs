@@ -275,7 +275,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         if (_anchorElement is null)
             return;
 
-        if (_anchorKind == AnchorKind.FindAncestor)
+        if (_anchorKind is AnchorKind.FindAncestor or AnchorKind.ElementName)
             SubscribeVisualTreeEvents();
 
         _anchorElement.AttachedToLogicalTree += OnAnchorLogicalTreeChanged;
@@ -352,7 +352,7 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
         // only time we maintain a visual tree subscription is for 'FindAncestor' bindings. If we made
         // it this far, the anchor element is attached, so unsubscribe from visual tree events EXCEPT
         // for the 'FindAncestor' case.
-        if (_anchorKind is not AnchorKind.FindAncestor)
+        if (_anchorKind is not (AnchorKind.FindAncestor or AnchorKind.ElementName))
             UnsubscribeVisualTreeEvents();
 
         var resolved = ResolveRoot(out var newRoot, out var failure);
@@ -380,7 +380,9 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
             // parent arrives (a non-UIElement gesture target re-anchors on its owner element, BD13). Other
             // failures, and any unresolved watch-only binding, trace a warning.
             if (failure is not (BindingFailureKind.SourceMissing or BindingFailureKind.None) || _watchCallback is {})
+            {
                 MaybeTrace(failure, BindingTraceLevel.Warning, FailureMessage(failure));
+            }
 
             ProduceUnsetOrFallback();
             return;
@@ -453,22 +455,23 @@ internal abstract class BindingExpressionCore : BindingExpressionBase, IValueEvi
                 return root is not null;
 
             case AnchorKind.ElementName:
-                // Name scopes live on the LOGICAL tree (FindEnclosing walks LogicalParent), so resolve
-                // once the anchor is logically attached — not gated on visual attachment, which lands a
-                // step later (AdoptChild raises AttachedToLogicalTree before AddVisualChild sets the
-                // visual root). A forward reference during build (no logical parent yet) parks
-                // SourceMissing without a trace; a name unresolved after attach traces NameNotFound (B123).
-                if (_anchorElement?.LogicalParent is null)
-                {
-                    root = null;
-                    failure = BindingFailureKind.SourceMissing;
-                    return false;
-                }
-
-                root = NameScope.FindEnclosing(_anchorElement)?.Find(_binding.ElementName!);
+                // Try-first, park-on-unattached-miss: resolution always ATTEMPTS (a template fragment
+                // whose root scope was stamped at build resolves inline, pre-attach), but a MISS while
+                // unattached parks SourceMissing without a trace — the scope chain may simply not exist
+                // yet (the root stamp lands as the build completes; a CHAINED data-template lookup
+                // walks the host's ancestry, which exists only once attached). The tree-attach
+                // re-anchor retries. A miss while ATTACHED is the real authoring error and keeps its
+                // crisp NameNotFound trace (B123/B125).
+                root = _anchorElement is null
+                    ? null
+                    : NameScope.FindEnclosing(_anchorElement)?.Find(_binding.ElementName!);
 
                 if (root is null)
-                    failure = BindingFailureKind.NameNotFound;
+                {
+                    failure = _anchorElement is { IsAttachedToTree: true }
+                        ? BindingFailureKind.NameNotFound
+                        : BindingFailureKind.SourceMissing;
+                }
 
                 return root is not null;
 

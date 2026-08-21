@@ -35,7 +35,9 @@ internal static class OptionRowFactory
         // Inheritance badge (docked right, dimmed): "inherited from global" / "default".
         var badge = new TextBlock { Margin = new Margins(1, 0), Opacity = 0.6 };
         badge.SetBinding(TextBlock.TextProperty,
-                         CompiledBinding.From<OptionViewModel, string>(source => source.InheritanceLabel));
+                         CompiledBinding.Build((OptionViewModel source) => source.InheritanceLabel)
+                                        .Step(nameof(OptionViewModel.InheritanceLabel))
+                                        .Build());
         DockPanel.SetDock(badge, Dock.Right);
         header.Children.Add(badge);
 
@@ -72,7 +74,11 @@ internal static class OptionRowFactory
                 var check = new CheckBox { Content = option.DisplayName, TabIndex = nextTabIndex++ };
                 check.DataContext = boolean;
                 check.SetBinding(ToggleButton.IsCheckedProperty,
-                                 CompiledBinding.From((BooleanOptionViewModel vm) => vm.IsChecked, BindingMode.TwoWay));
+                                 CompiledBinding.Build((BooleanOptionViewModel vm) => vm.IsChecked,
+                                                       (vm, value) => vm.IsChecked = value,
+                                                       mode :BindingMode.TwoWay)
+                                                .Step(nameof(BooleanOptionViewModel.IsChecked))
+                                                .Build());
                 return check;
             }
 
@@ -85,9 +91,15 @@ internal static class OptionRowFactory
 
                 var combo = new ComboBox { DataContext = choice, MinWidth = 24, TabIndex = nextTabIndex++ };
                 combo.SetBinding(ItemsControl.ItemsSourceProperty, 
-                                 CompiledBinding.From((ChoiceOptionViewModel vm) => vm.Items));
+                                 CompiledBinding.Build((ChoiceOptionViewModel vm) => vm.Items)
+                                                .Step(nameof(ChoiceOptionViewModel.Items))
+                                                .Build());
                 combo.SetBinding(SelectingItemsControl.SelectedIndexProperty,
-                                 CompiledBinding.From((ChoiceOptionViewModel vm) => vm.SelectedIndex, BindingMode.TwoWay));
+                                 CompiledBinding.Build((ChoiceOptionViewModel vm) => vm.SelectedIndex,
+                                                       (vm, value) => vm.SelectedIndex = value,
+                                                       mode: BindingMode.TwoWay)
+                                                .Step(nameof(ChoiceOptionViewModel.SelectedIndex))
+                                                .Build());
                 panel.Children.Add(combo);
                 return panel;
             }

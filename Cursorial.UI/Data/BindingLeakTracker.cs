@@ -6,8 +6,9 @@ namespace Cursorial.UI.Data;
 /// The DEBUG-only binding leak tracker (design doc §6.5/§6.10; BD4/BD19). "Strong handlers cannot
 /// leak" is a <em>contract</em> enforced by the teardown sweep; this tracker is the DEBUG backstop
 /// that proves the contract held. On install it captures the binding path + install site + a weak
-/// reference to the target; on dispose it forgets the expression. <see cref="Sweep"/> — invoked on
-/// window close in the canonical teardown order — reports every expression whose target is still
+/// reference to the target; on dispose it forgets the expression. <see cref="Sweep"/> — run in a
+/// DEBUG leak gate AFTER a teardown sweep (window close tears the tree down; tests then sweep) —
+/// reports every expression whose target is still
 /// <em>alive</em> yet was never disposed (a real leak: a missed teardown sweep). Release builds
 /// compile the whole tracker out (no <see cref="Track"/> / <see cref="Forget"/> calls are emitted,
 /// so there is zero release-build cost); the matrix's release rows assert the sweep does not run.

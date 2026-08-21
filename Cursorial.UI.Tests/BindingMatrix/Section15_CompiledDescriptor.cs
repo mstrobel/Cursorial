@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Cursorial.UI;
 using Cursorial.UI.Data;
 
 // ReSharper disable InconsistentNaming
@@ -154,6 +155,175 @@ public class Section15_CompiledDescriptor
 
         w.RemoveFrame(frame);
         Assert.True(expr.IsDisposed); // evicted with the frame
+    }
+
+    [Fact] // B187 — For(StyledProperty): tree-free descriptor — carried registration, qualified PathText, live observer updates
+    public void B187_ForStyled_DescriptorShape_And_LiveUpdate()
+    {
+        var src = new BindWidget { Num = 5 };
+        var descriptor = CompiledBinding.For(BindWidget.NumProperty, source: src);
+        Assert.Same(BindWidget.NumProperty, descriptor.Steps.Span[0].UIProperty); // observer channel, no registry probe
+        Assert.Equal("Num", descriptor.PathText); // builder convention: bare for plain styled, qualified for attached/direct
+
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.NumProperty, descriptor);
+        Assert.Equal(5, target.Num);
+
+        src.Num = 9; // property-store change delivered through the carried-registration observer
+        Assert.Equal(9, target.Num);
+    }
+
+    [Fact] // B188 — For(StyledProperty) TwoWay: a target write pushes back through SetValue (durable LocalValue)
+    public void B188_ForStyled_TwoWay_WritesBack()
+    {
+        var src = new BindWidget { Num = 1 };
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.NumProperty,
+                          CompiledBinding.For(BindWidget.NumProperty, source: src, mode: BindingMode.TwoWay));
+        Assert.Equal(1, target.Num);
+
+        target.Num = 42;
+        Assert.Equal(42, src.GetValue(BindWidget.NumProperty));
+    }
+
+    [Fact] // B189 — For on a read-only styled registration: null Setter ⇒ TwoWay degrades to OneWay (BD10)
+    public void B189_ForStyled_ReadOnly_IsOneWay()
+    {
+        Assert.Null(CompiledBinding.For(BindWidget.RoProperty, mode: BindingMode.TwoWay).Setter);
+    }
+
+    [Fact] // B190 — For(DirectProperty): the registration's own delegates serve verbatim — a registered setter makes TwoWay real
+    public void B190_ForDirect_TwoWay_WritesThroughRegistrationSetter()
+    {
+        var src = new BindWidget();
+        var descriptor = CompiledBinding.For(BindWidget.DirProperty, source: src, mode: BindingMode.TwoWay);
+        Assert.NotNull(descriptor.Setter); // the tree-based factory dropped this silently
+        Assert.Same(BindWidget.DirProperty, descriptor.Steps.Span[0].UIProperty);
+        Assert.Equal("(BindWidget.Dir)", descriptor.PathText);
+
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.NumProperty, descriptor);
+        target.Num = 7;
+        Assert.Equal(7, BindWidget.DirProperty.Getter(src)); // reached the backing field through the registration setter
+    }
+
+    [Fact] // B191 — For on a getter-only DirectProperty stays one-way, matching its registration
+    public void B191_ForDirect_ReadOnly_IsOneWay()
+    {
+        Assert.Null(CompiledBinding.For(Cursorial.UI.Controls.MenuItem.HasItemsProperty).Setter);
+    }
+
+    [Fact] // B192 — descriptor-only steps (null GetStep): rewiring materializes intermediates through the carried registration
+    public void B192_DescriptorOnlySteps_MaterializeAndRewire()
+    {
+        var root = new ChainHost();
+        var mid = new ChainHost();
+        root.SetValue(ChainHost.NextProperty, mid);
+        mid.SetValue(ChainHost.NumProperty, 3);
+
+        var descriptor = new CompiledBinding<ChainHost, int>(
+            static r => r.GetValue(ChainHost.NextProperty)?.GetValue(ChainHost.NumProperty) ?? 0,
+            null,
+            new[]
+            {
+                new CompiledPathStep("Next") { UIProperty = ChainHost.NextProperty },
+                new CompiledPathStep("Num") { UIProperty = ChainHost.NumProperty },
+            },
+            "(ChainHost.Next).(ChainHost.Num)") { Source = root };
+        Assert.Null(descriptor.Steps.Span[0].GetStep); // descriptor-only — no closure anywhere in the chain
+
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.NumProperty, descriptor);
+        Assert.Equal(3, target.Num);
+
+        mid.SetValue(ChainHost.NumProperty, 8);       // leaf hop change → observer push
+        Assert.Equal(8, target.Num);
+
+        var other = new ChainHost();
+        other.SetValue(ChainHost.NumProperty, 21);
+        root.SetValue(ChainHost.NextProperty, other); // hop-0 change → the tail re-materializes descriptor-only
+        Assert.Equal(21, target.Num);
+
+        mid.SetValue(ChainHost.NumProperty, 99);      // the abandoned intermediate must be unsubscribed
+        Assert.Equal(21, target.Num);
+
+        other.SetValue(ChainHost.NumProperty, 34);    // the new intermediate must be live
+        Assert.Equal(34, target.Num);
+    }
+
+    private sealed class ChainHost : UIObject
+    {
+        public static readonly StyledProperty<ChainHost?> NextProperty =
+            UIProperty.Register<ChainHost, ChainHost?>("Next");
+
+        public static readonly StyledProperty<int> NumProperty =
+            UIProperty.Register<ChainHost, int>("Num");
+    }
+
+    [Fact] // B193 — For(styled, Default) keeps its setter for a writable source: Default resolves per
+    // the TARGET property (BindsTwoWayByDefault), which the factory cannot see — so predicting the
+    // mode source-side would silently strip write-back (the rework regression this pins against).
+    public void B193_ForStyled_DefaultMode_TargetTwoWayByDefault_WritesBack()
+    {
+        var src = new BindWidget { Flag = false };
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.FlagProperty, CompiledBinding.For(BindWidget.FlagProperty, source: src));
+
+        target.Flag = true; // Flag is BindsTwoWayByDefault on the TARGET ⇒ effective TwoWay ⇒ setter must exist
+        Assert.True(src.GetValue(BindWidget.FlagProperty));
+    }
+
+    [Fact] // B194 — For(getter-only DirectProperty, explicit TwoWay) degrades at wire (BD10/B152),
+    // never throws at build: the engine-wide null-setter contract, one lane, one behavior.
+    public void B194_ForDirect_ReadOnly_TwoWay_DegradesInsteadOfThrowing()
+    {
+        var descriptor = CompiledBinding.For(Cursorial.UI.Controls.MenuItem.HasItemsProperty, mode: BindingMode.TwoWay);
+        Assert.Null(descriptor.Setter);
+
+        var target = new BindWidget();
+        target.SetBinding(BindWidget.FlagProperty, descriptor); // wires OneWay-degraded, no throw
+    }
+
+    [Fact] // B195 — a builder chain with an accessor-less INTERIOR step is rejected at Build() (it
+    // would silently kill subscription below it); the closure-carrying Step overload satisfies it,
+    // and an accessor-less LEAF stays legal (the typed getter reads the leaf).
+    public void B195_Builder_InteriorStepNeedsAccessor()
+    {
+        var builder = CompiledBinding.Build((Vm m) => m.Name!.Length)
+                                     .Step(nameof(Vm.Name))       // interior, no accessor
+                                     .Step(nameof(string.Length));
+        Assert.Throws<InvalidOperationException>(() => builder.Build());
+
+        var ok = CompiledBinding.Build((Vm m) => m.Name!.Length)
+                                .Step(nameof(Vm.Name), static o => o is Vm m ? m.Name : null)
+                                .Step(nameof(string.Length))
+                                .Build();
+        Assert.Equal(2, ok.Steps.Length);
+    }
+
+    [Fact] // B196 — an explicit-null fallback (BindingBase.NullValue) survives For(): resolved ONCE
+    // to null (set), never double-resolved into UnsetValue (unset).
+    public void B196_ForStyled_NullValueFallback_SurvivesSingleResolve()
+    {
+        var descriptor = CompiledBinding.For(BindWidget.TextProperty, source: new BindWidget(),
+                                             fallbackValue: BindingBase.NullValue);
+        Assert.Null(descriptor.FallbackValue);
+        Assert.NotEqual(UIProperty.UnsetValue, descriptor.FallbackValue);
+    }
+
+    [Fact] // B197 — TemplateBinding.From enforces BD15 exactly like the runtime descriptor: one-way
+    // only, no UpdateSourceTrigger, and the produced descriptor is FORCED OneWay with a null setter.
+    public void B197_TemplateBindingFrom_EnforcesBD15()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => TemplateBinding.From(BindWidget.FlagProperty, mode: BindingMode.TwoWay));
+        Assert.Throws<InvalidOperationException>(
+            () => TemplateBinding.From(BindWidget.FlagProperty, updateSourceTrigger: UpdateSourceTrigger.Explicit));
+
+        var descriptor = TemplateBinding.From(BindWidget.FlagProperty); // Flag is BindsTwoWayByDefault — must NOT leak a setter
+        Assert.Equal(BindingMode.OneWay, descriptor.Mode);
+        Assert.Null(descriptor.Setter);
+        Assert.Equal(RelativeSource.TemplatedParent, descriptor.RelativeSource);
     }
 
     private sealed class TimesTen : IValueConverter

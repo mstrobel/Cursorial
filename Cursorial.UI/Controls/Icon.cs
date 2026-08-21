@@ -273,16 +273,41 @@ public class Icon : Control
 
         if (tier is IconTier.Glyph)
         {
-            var text = new TextBlock { TextAlignment = TextAlignment.Center, Width = GlyphWidth, TextWrapping = WrapMode.NoWrap };
+            var text = new TextBlock
+                       {
+                           TextAlignment = TextAlignment.Center,
+                           Width = GlyphWidth,
+                           TextWrapping = WrapMode.NoWrap
+                       };
 
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(MinWidthProperty, new Binding(GlyphWidthProperty) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty,
+                            CompiledBinding.Build((Icon source) => source.EffectiveIconBrush, source: this)
+                                           .Step(EffectiveIconBrushProperty)
+                                           .Build());
+
+            text.SetBinding(MinWidthProperty,
+                            CompiledBinding.Build((Icon o) => o.GetValue(GlyphWidthProperty), source: this)
+                                           .Step(GlyphWidthProperty)
+                                           .Build());
 
             if (GlyphWidth > 1)
-                text.SetBinding(TextBlock.TextProperty, new Binding(GlyphProperty) { Source = this, StringFormat = "{0}" + new string(' ', GlyphWidth - 1)});
+            {
+                text.SetBinding(TextBlock.TextProperty,
+
+                                CompiledBinding.Build((Icon o) => o.GetValue(GlyphProperty),
+                                                      source: this,
+                                                      stringFormat: "{0}" + new string(' ', GlyphWidth - 1))
+                                               .Step(GlyphProperty)
+                                               .Build());
+            }
             else
-                text.SetBinding(TextBlock.TextProperty, new Binding(GlyphProperty) { Source = this });
-    
+            {
+                text.SetBinding(TextBlock.TextProperty,
+                                CompiledBinding.Build((Icon o) => o.GetValue(GlyphProperty), source: this)
+                                               .Step(GlyphProperty)
+                                               .Build());
+            }
+
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
         }
@@ -298,8 +323,15 @@ public class Icon : Control
                                 Height = 1
                             };
 
-            presenter.SetBinding(ImagePresenter.SourceProperty, new Binding(ImageProperty) { Source = this });
-            presenter.SetBinding(ImagePresenter.SourceUriProperty, new Binding(ImageUriProperty) { Source = this });
+            presenter.SetBinding(ImagePresenter.SourceProperty,
+                                 CompiledBinding.Build((Icon o) => o.GetValue(ImageProperty), source: this)
+                                                .Step(ImageProperty)
+                                                .Build());
+
+            presenter.SetBinding(ImagePresenter.SourceUriProperty,
+                                 CompiledBinding.Build((Icon o) => o.GetValue(ImageUriProperty), source: this)
+                                                .Step(ImageUriProperty)
+                                                .Build());
 
             ResolvedContent = presenter;
         }
@@ -312,8 +344,15 @@ public class Icon : Control
                            TextWrapping = WrapMode.NoWrap
                        };
 
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(EmojiProperty) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty,
+                            CompiledBinding.Build((Icon o) => o.GetDirect(EffectiveIconBrushProperty), source: this)
+                                           .Step(EffectiveIconBrushProperty)
+                                           .Build());
+
+            text.SetBinding(TextBlock.TextProperty,
+                            CompiledBinding.Build((Icon o) => o.GetValue(EmojiProperty), source: this)
+                                           .Step(EmojiProperty)
+                                           .Build());
 
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
@@ -323,8 +362,15 @@ public class Icon : Control
             // The unicode floor — also the resting tier on a terminal with no Nerd Font and no graphics protocol.
             var text = new TextBlock { TextAlignment = TextAlignment.Center, TextWrapping = WrapMode.NoWrap };
 
-            text.SetBinding(TextBlock.ForegroundProperty, new Binding(EffectiveIconBrushProperty) { Source = this });
-            text.SetBinding(TextBlock.TextProperty, new Binding(TextProperty) { Source = this });
+            text.SetBinding(TextBlock.ForegroundProperty,
+                            CompiledBinding.Build((Icon o) => o.GetDirect(EffectiveIconBrushProperty), source: this)
+                                           .Step(EffectiveIconBrushProperty)
+                                           .Build());
+
+            text.SetBinding(TextBlock.TextProperty,
+                            CompiledBinding.Build((Icon o) => o.GetValue(TextProperty), source: this)
+                                           .Step(TextProperty)
+                                           .Build());
 
             ForwardTextAxesToGlyph(text);
             ResolvedContent = text;
@@ -337,8 +383,7 @@ public class Icon : Control
     // Inverse via the presenting template's forward (or ContentRealization's chain-③-Icon forward).
     private void ForwardTextAxesToGlyph(TextBlock glyph)
     {
-        foreach (var axis in TextElement.AllAxisProperties)
-            glyph.SetBinding(axis, new Binding(axis) { Source = this });
+        TextElement.ForwardAllAxes(glyph, source: this);
     }
 
     // Whether the EFFECTIVE capabilities (negotiated ∘ user overrides — FB-5) include a graphics protocol that can

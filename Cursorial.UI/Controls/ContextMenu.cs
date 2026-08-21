@@ -150,6 +150,17 @@ public sealed class ContextMenu : ItemsControl
         base.OnDetachedFromTree(in e);
     }
 
+    /// <inheritdoc/>
+    protected override void OnTearDown()
+    {
+        base.OnTearDown();
+        // The context menu lives ONLY on its own WM-owned light-dismiss surface (new Popup { Child = this }),
+        // never in a host visual/logical tree, so the window-close sweep never reaches it — tear the popup
+        // down here or its content's bindings/resource-refs leak. The _tornDown guard absorbs the recursion
+        // back through Child == this (Element-Lifecycle-and-Teardown wiki: field-held pop-ups).
+        _popup?.TearDown();
+    }
+
     // The owner (placement target) lives in the host tree; if it detaches while the menu is open, nothing else
     // would close the separate popup surface. Watch its logical-tree detach and close on it.
     private void WatchTarget(UIElement target)
@@ -176,8 +187,8 @@ public sealed class ContextMenu : ItemsControl
     {
         var popup = new Popup { Child = this, StaysOpen = false }; // StaysOpen=false ⇒ light-dismiss participant
         popup.SetValue(MenuItem.IsWithinMenuPropertyKey, true);
-        popup.SetBinding(MaxWidthProperty, new Binding(MaxWidthProperty) { Source = this });
-        popup.SetBinding(MaxHeightProperty, new Binding(MaxHeightProperty) { Source = this });
+        popup.SetBinding(MaxWidthProperty, CompiledBinding.For(MaxWidthProperty, source: this));
+        popup.SetBinding(MaxHeightProperty, CompiledBinding.For(MaxHeightProperty, source: this));
         popup.Closed += OnPopupClosed;
         return popup;
     }

@@ -366,12 +366,20 @@ public class Popup : UIElement
         {
             if (newChild.LogicalParent is null)
                 popup.AddLogicalChild(newChild);
-            
+
             if (newChild.GetValueSource(MaxWidthProperty) is { Kind: ValueSourceKind.Default })
-                BindingOperations.Install(newChild, MaxWidthProperty, new Binding(MaxWidthProperty) { Source = popup });
+            {
+                BindingOperations.Install(newChild,
+                                          MaxWidthProperty,
+                                          CompiledBinding.For(MaxWidthProperty, source: popup));
+            }
 
             if (newChild.GetValueSource(MaxHeightProperty) is { Kind: ValueSourceKind.Default })
-                BindingOperations.Install(newChild, MaxHeightProperty, new Binding(MaxHeightProperty) { Source = popup });
+            {
+                BindingOperations.Install(newChild,
+                                          MaxHeightProperty,
+                                          CompiledBinding.For(MaxHeightProperty, source: popup));
+            }
         }
 
         // Content swap while open: W4-a re-hosts the new child (scene-reusing swap is W4-b). Clearing the

@@ -1,4 +1,5 @@
 using Cursorial.Input;
+using Cursorial.Rendering.Media;
 using Cursorial.UI.Data;
 using Cursorial.UI.Input;
 
@@ -188,7 +189,8 @@ public class BreadcrumbBar : ItemsControl
             static _ =>
             {
                 var panel = new BreadcrumbBarPanel { Occludes = true };
-                panel.SetBinding(Panel.BackgroundProperty, new TemplateBinding(BackgroundProperty));
+                panel.SetBinding(Panel.BackgroundProperty,
+                                 TemplateBinding.From<BreadcrumbBar, IBrush?>(BackgroundProperty));
                 return panel;
             });
 

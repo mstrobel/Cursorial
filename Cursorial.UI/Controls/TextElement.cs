@@ -1,3 +1,4 @@
+
 using Cursorial.Output;
 using Cursorial.Rendering.Fonts;
 using Cursorial.Rendering.Media;
@@ -96,12 +97,12 @@ public abstract class TextElement
     // ─────────────────────────────────────── text formatting properties ────────────────────────────────────────
 
     /// <summary>The wrap mode (<c>AffectsMeasure | AffectsRender</c>).</summary>
-    public static readonly StyledProperty<WrapMode> TextWrappingProperty =
+    public static readonly AttachedProperty<WrapMode> TextWrappingProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, WrapMode>("TextWrapping",
                                                                       defaultValue: WrapMode.NoWrap);
 
     /// <summary>The trimming mode for overflowing lines (<c>AffectsRender</c>).</summary>
-    public static readonly StyledProperty<TextTrimming> TextTrimmingProperty =
+    public static readonly AttachedProperty<TextTrimming> TextTrimmingProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, TextTrimming>(nameof(TextTrimming),
                                                                           defaultValue: TextTrimming.CharacterEllipsis);
 
@@ -134,7 +135,7 @@ public abstract class TextElement
     /// like any setter value, including via bindings (B15). <c>AffectsMeasure</c> semantics are
     /// the consumer's: text controls re-measure on change via the changed callback.
     /// </summary>
-    public static readonly StyledProperty<TextSizing> SizingProperty =
+    public static readonly AttachedProperty<TextSizing> SizingProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, TextSizing>("Sizing", inherits: false);
 
     /// <summary>
@@ -144,7 +145,7 @@ public abstract class TextElement
     /// <see cref="SizingProperty"/>: a sizing that the terminal supports wins, with the font as
     /// its fallback face.
     /// </summary>
-    public static readonly StyledProperty<IGlyphFont?> FontProperty =
+    public static readonly AttachedProperty<IGlyphFont?> FontProperty =
         UIProperty.RegisterAttached<TextElement, UIElement, IGlyphFont?>("Font", inherits: false);
 
     /// <summary>Reads the glyph font attached to <paramref name="element"/>.</summary>
@@ -420,6 +421,7 @@ public abstract class TextElement
     /// </summary>
     internal static readonly UIProperty[] AllAxisProperties =
     [
+        // NOTE: IF YOU ADD TO THESE, UPDATE THE FORWARDING METHODS!
         TextWeightProperty, TextStyleProperty, UnderlineProperty, StrikethroughProperty,
         OverlineProperty, InverseProperty, BlinkProperty, ConcealedProperty, UnderlineBrushProperty
     ];
@@ -432,6 +434,7 @@ public abstract class TextElement
     /// </summary>
     internal static readonly UIProperty[] AllFormattingProperties =
     [
+        // NOTE: IF YOU ADD TO THESE, UPDATE THE FORWARDING METHODS!
         TextTrimmingProperty, TextWrappingProperty
     ];
 
@@ -442,6 +445,7 @@ public abstract class TextElement
     /// </summary>
     internal static readonly UIProperty[] AllTypographyProperties =
     [
+        // NOTE: IF YOU ADD TO THESE, UPDATE THE FORWARDING METHODS!
         FontProperty, SizingProperty
     ];
 
@@ -452,16 +456,72 @@ public abstract class TextElement
     /// PD26). Call INSIDE the control-template build. Faces honor only <see cref="InverseProperty"/>
     /// (the fill's one flag), so a face forwards Inverse alone via <see cref="ForwardInverse"/>.
     /// </summary>
-    public static void ForwardAllAxes(UIElement part, UIElement? source = null)
+    public static void ForwardAllAxes(UIObject part, UIObject? source = null, bool forwardInverse = true)
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        foreach (var axis in AllAxisProperties)
+        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
+
+        #if DEBUG
+        System.Diagnostics.Debug.Assert(AllAxisProperties.Length == 9,
+                                        $"{nameof(AllAxisProperties)} was updated without updating ForwardAllAxes!");
+        #endif
+
+        part.SetBinding(
+            TextWeightProperty,
+            CompiledBinding.For(TextWeightProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            TextStyleProperty,
+            CompiledBinding.For(TextStyleProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            UnderlineProperty,
+            CompiledBinding.For(UnderlineProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            StrikethroughProperty,
+            CompiledBinding.For(StrikethroughProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            OverlineProperty,
+            CompiledBinding.For(OverlineProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            BlinkProperty,
+            CompiledBinding.For(BlinkProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            ConcealedProperty,
+            CompiledBinding.For(ConcealedProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        part.SetBinding(
+            UnderlineBrushProperty,
+            CompiledBinding.For(UnderlineBrushProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
+        if (forwardInverse)
         {
-            part.SetBinding(axis,
-                            source is null
-                                ? new TemplateBinding(axis)
-                                : new Binding(axis) { Source = source });
+            part.SetBinding(
+                InverseProperty,
+                CompiledBinding.For(InverseProperty,
+                                    source: source,
+                                    relativeSource: relativeSource));
         }
     }
 
@@ -471,17 +531,28 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardFormatting(UIElement part, UIElement? source = null)
+    public static void ForwardFormatting(UIObject part, UIObject? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        foreach (var axis in AllFormattingProperties)
-        {
-            part.SetBinding(axis,
-                            source is null
-                                ? new TemplateBinding(axis)
-                                : new Binding(axis) { Source = source });
-        }
+        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
+
+#if DEBUG
+        System.Diagnostics.Debug.Assert(AllFormattingProperties.Length == 2,
+                                        $"{nameof(AllFormattingProperties)} was updated without updating ForwardFormatting!");
+#endif
+        
+        part.SetBinding(
+            TextTrimmingProperty,
+            CompiledBinding.For(TextTrimmingProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+        part.SetBinding(
+            TextWrappingProperty,
+            CompiledBinding.For(TextWrappingProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+
     }
 
     /// <summary>
@@ -490,27 +561,40 @@ public abstract class TextElement
     /// a control-level cue reaches the part at the Template lane (pierceable by conditional rules, PD26).
     /// Call INSIDE the control-template build.
     /// </summary>
-    public static void ForwardTypography(UIElement part, UIElement? source = null)
+    public static void ForwardTypography(UIObject part, UIObject? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        foreach (var axis in AllTypographyProperties)
-        {
-            part.SetBinding(axis,
-                            source is null
-                                ? new TemplateBinding(axis)
-                                : new Binding(axis) { Source = source });
-        }
+        ArgumentNullException.ThrowIfNull(part);
+
+        var relativeSource = source is null ? RelativeSource.TemplatedParent : null;
+
+#if DEBUG
+        System.Diagnostics.Debug.Assert(AllTypographyProperties.Length == 2,
+                                        $"{nameof(AllTypographyProperties)} was updated without updating ForwardTypography!");
+#endif
+        
+        part.SetBinding(
+            FontProperty,
+            CompiledBinding.For(FontProperty,
+                                source: source,
+                                relativeSource: relativeSource));
+        part.SetBinding(
+            SizingProperty,
+            CompiledBinding.For(SizingProperty,
+                                source: source,
+                                relativeSource: relativeSource));
     }
 
     /// <summary>Forwards <see cref="InverseProperty"/> alone from the templated parent onto a face part (the fill's one flag).</summary>
-    public static void ForwardInverse(UIElement part, UIElement? source = null)
+    public static BindingExpressionBase ForwardInverse(UIObject part, UIObject? source = null)
     {
         ArgumentNullException.ThrowIfNull(part);
 
-        part.SetBinding(InverseProperty,
-                        source is null
-                            ? new TemplateBinding(InverseProperty)
-                            : new Binding(InverseProperty) { Source = source });
+        return part.SetBinding(
+            InverseProperty,
+            CompiledBinding.For(InverseProperty,
+                                source: source,
+                                relativeSource: source is null ? RelativeSource.TemplatedParent : null));
     }
 }

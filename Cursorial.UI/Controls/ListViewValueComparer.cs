@@ -19,6 +19,8 @@ internal sealed class ListViewValueComparer(string? memberPath, ListViewSortDire
 
     public int Compare(object? x, object? y) => _sign * CompareKeys(KeyOf(x), KeyOf(y));
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reflective value-path over a runtime object's properties (ItemsSource sort/compare); a trimmed member yields a null key — degrade, not crash.")]
+
     private object? KeyOf(object? item)
     {
         if (item is null || memberPath is not { Length: > 0 } path)

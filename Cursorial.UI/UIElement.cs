@@ -565,6 +565,8 @@ public abstract partial class UIElement : UIObject
         NotifyInputServicesDetached(element, detachingRoot);
     }
 
+    private bool _tornDown; // set once by TearDown() — permanent-detach is one-shot (idempotent + re-entrancy safe)
+
     // ───────────────────────────── permanent detach (teardown sweep) ─────────────────────────────
 
     /// <summary>
@@ -593,6 +595,15 @@ public abstract partial class UIElement : UIObject
     public void TearDown()
     {
         VerifyAccess();
+
+        // Idempotence + re-entrancy guard: teardown is permanent and one-shot. The flag is set BEFORE
+        // the child sweep so a child's OnTearDown that tears down a subtree referencing THIS element
+        // (the canonical case: a control owning a field-held Popup whose Child == the control — see the
+        // Lifecycle & Teardown authoring guide) short-circuits the re-entrant call instead of looping.
+        // Also absorbs a double teardown (window-close sweep + a defensive owner sweep of the same tree).
+        if (_tornDown)
+            return;
+        _tornDown = true;
 
         if (_visualChildren is { } children)
         {
@@ -634,6 +645,13 @@ public abstract partial class UIElement : UIObject
     /// </summary>
     protected virtual void OnTearDown()
     {
+        // A UIProperty is not ownership-enforced — the ContextMenu.Menu ATTACHED property can be set on
+        // ANY UIElement, not just a Control, and its value roots its OWN light-dismiss surface (an
+        // off-tree subtree the window-close sweep never reaches). UIElement owns this check so every
+        // element — Control or not — releases an attached context menu with itself. Idempotent, so a
+        // menu shared across owners disposes once (give a pooled/shared menu an explicit lifetime).
+        // See the Lifecycle & Teardown authoring guide.
+        Controls.ContextMenu.GetMenu(this)?.TearDown();
     }
 
     // ───────────────────────────── effective IsEnabled (S1-owned) ─────────────────────────────

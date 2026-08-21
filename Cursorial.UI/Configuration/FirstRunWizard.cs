@@ -105,7 +105,9 @@ public sealed class FirstRunWizard : Window
         var headerRow = new DockPanel { LastChildFill = true, Margin = new Margins(0, 0, 0, 1) };
         var progress = new TextBlock { Opacity = 0.6 };
         progress.SetBinding(TextBlock.TextProperty,
-                            CompiledBinding.From((FirstRunWizardViewModel vm) => vm.ProgressText));
+                            CompiledBinding.Build((FirstRunWizardViewModel vm) => vm.ProgressText)
+                                           .Step(nameof(FirstRunWizardViewModel.ProgressText))
+                                           .Build());
         DockPanel.SetDock(progress, Dock.Right);
         headerRow.Children.Add(progress);
 
@@ -113,7 +115,11 @@ public sealed class FirstRunWizard : Window
         pageTitle.SetValue(TextElement.TextWeightProperty, TextWeight.Bold);
         pageTitle.SetResourceReference(TextElement.ForegroundProperty, ThemeKeys.AccentBrush);
         pageTitle.SetBinding(TextBlock.TextProperty,
-                             CompiledBinding.From((FirstRunWizardViewModel m) => m.CurrentPage.Title));
+                             CompiledBinding.Build((FirstRunWizardViewModel m) => m.CurrentPage.Title)
+                                            .Step(nameof(FirstRunWizardViewModel.CurrentPage),
+                                                  static o => o is FirstRunWizardViewModel m ? m.CurrentPage : null)
+                                            .Step(nameof(FirstRunWizardViewModel.CurrentPage.Title))
+                                            .Build());
         headerRow.Children.Add(pageTitle);
         DockPanel.SetDock(headerRow, Dock.Top);
         root.Children.Add(headerRow);

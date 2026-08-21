@@ -373,26 +373,37 @@ public sealed class WindowSizeToContentTests
         Assert.Equal(before.Rows + 3, w.ActualSize.Rows); // … until asked
     }
 
-    [Fact] // stale fitted memory must not override Manual semantics when a window is re-shown non-tracking
-    public void ReshownAsManual_IgnoresStaleFittedMemory()
+    [Fact] // a closed window is terminal (torn down); a FRESH Manual window reusing SAVED content must
+    // never inherit the dead incarnation's fit. (Close is terminal — the content is rescued via the
+    // documented Closed-handler save path; re-showing the same window is no longer a thing.)
+    public void FreshManualWindow_ReusingSavedContent_IgnoresStaleFit()
     {
         var (host, wm) = ShownRoot();
         using var hostScope = host;
 
         var content = new UIControls.StackPanel { Children = { Block(20, 2) } };
         var w = TrackedWindow(content, SizeToContentMode.Once);
+        w.Closed += (_, _) => w.Content = null; // save the content before the teardown sweep reaches it
         w.Show(wm);
         Assert.True(host.RunUntilIdle());
         Assert.True(w.ActualSize.Columns < 60); // content-fit, not viewport
 
-        w.Close();
+        w.Close(); // terminal: w is torn down; content was rescued above
         Assert.True(host.RunUntilIdle());
 
-        w.SizeToContent = SizeToContent.Manual; // no longer tracks; null Width/Height ⇒ viewport-sized
-        w.Show(wm);
+        var manual = new Window
+        {
+            Content = content,
+            SizeToContent = SizeToContent.Manual,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 10,
+            Top = 3,
+        };
+        manual.Show(wm);
         Assert.True(host.RunUntilIdle());
 
-        Assert.Equal(new Size(60, 20), w.ActualSize); // never snapped back to the dead incarnation's fit
+        Assert.Equal(new Size(60, 20), manual.ActualSize); // viewport-sized; no stale fit carried over
+        manual.Close();
     }
 
     [Fact] // a tracked window first shown Collapsed must fit its content when revealed (never stuck at 0×0)

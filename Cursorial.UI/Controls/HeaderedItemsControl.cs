@@ -7,15 +7,31 @@ namespace Cursorial.UI.Controls;
 /// </summary>
 public class HeaderedItemsControl : ItemsControl
 {
-    /// <summary>The header content (an access-key literal slot for <c>MenuItem</c>; AffectsMeasure).</summary>
+    /// <summary>The header content (an access-key literal slot for <c>MenuItem</c>; AffectsMeasure; a
+    /// UIElement value is logically adopted, like <c>ContentControl.Content</c>).</summary>
     public static readonly StyledProperty<object?> HeaderProperty =
-        UIProperty.Register<HeaderedItemsControl, object?>(nameof(Header));
+        UIProperty.Register<HeaderedItemsControl, object?>(nameof(Header), changed: OnHeaderChanged);
 
     /// <summary>The template applied to the <see cref="Header"/> (null ⇒ the by-type <see cref="DataTemplate"/> chain).</summary>
     public static readonly StyledProperty<DataTemplate?> HeaderTemplateProperty =
         UIProperty.Register<HeaderedItemsControl, DataTemplate?>(nameof(HeaderTemplate));
 
     static HeaderedItemsControl() => AffectsMeasure<HeaderedItemsControl>(HeaderProperty, HeaderTemplateProperty);
+
+    private static void OnHeaderChanged(UIObject sender, object? oldValue, object? newValue)
+    {
+        if (sender is not HeaderedItemsControl control)
+            return;
+
+        // Mirrors HeaderedContentControl.OnHeaderChanged (chain ③ / doc §12.3): an element-form
+        // header must be a logical child — else DataContext doesn't inherit and name-scope walks
+        // from inside it dead-end.
+        if (oldValue is UIElement oldElement && ReferenceEquals(oldElement.LogicalParent, control))
+            control.RemoveLogicalChild(oldElement);
+
+        if (newValue is UIElement newElement && newElement.LogicalParent is null)
+            control.AddLogicalChild(newElement);
+    }
 
     /// <inheritdoc cref="HeaderProperty"/>
     public object? Header { get => GetValue(HeaderProperty); set => SetValue(HeaderProperty, value); }

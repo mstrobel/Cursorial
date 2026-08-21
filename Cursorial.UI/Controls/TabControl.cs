@@ -38,8 +38,9 @@ public class TabControl : SelectingItemsControl
                                                 FocusManager.SetIsFocusScope(panel, true);
                                                 FocusManager.SetRetainsFocus(panel, true);
 
-                                                panel.SetBinding(TabIndexProperty,
-                                                                 new TemplateBinding(TabIndexProperty));
+                                                panel.SetBinding(
+                                                    TabIndexProperty,
+                                                    TemplateBinding.From(TabIndexProperty));
 
                                                 return panel;
                                             });

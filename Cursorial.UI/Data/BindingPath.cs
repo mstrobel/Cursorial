@@ -410,6 +410,7 @@ public sealed class BindingPath
                 System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(t.TypeHandle);
         }
 
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "String-path binding resolves members on a runtime DataContext type; a trimmed member resolves as an unresolvable segment (traced), not a crash — the reflective-lane degrade contract.")]
         private static PropertyInfo? FindClrProperty(Type ownerType, string member)
         {
             try

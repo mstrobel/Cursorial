@@ -24,7 +24,8 @@ namespace Cursorial.Tests.UI.Controls;
 /// layout for the same input into twin buffers and asserting cell-for-cell equality, across a
 /// matrix of eligible inputs (ASCII / wide / combining / emoji graphemes, every alignment,
 /// varying bounds, two document-default carriers) and through BOTH paint lanes (the raw
-/// <see cref="FormattedText.Paint"/> walk, and <see cref="DrawingContext.DrawFormattedText"/>
+/// <see cref="FormattedText.Paint"/> walk, and
+/// <see cref="DrawingContext.DrawFormattedText(FormattedText, in Rect, OutputCapabilities, in BrushedStyle)"/>
 /// under an element-style preference — the presenters' route, gradient foreground included so the
 /// resolver ladder's sampling geometry is exercised). Eligibility ROUTING is observable through
 /// the cache's internal counters; the negative pins nail the conservative predicate.

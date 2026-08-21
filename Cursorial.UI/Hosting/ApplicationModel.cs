@@ -12,7 +12,7 @@ public enum ApplicationModel
 
     /// <summary>
     /// Inline until a <b>window</b> opens (MessageBox, TaskDialog, a tool window — anything the
-    /// <see cref="Windowing.WindowManager"/> tracks as a window), fullscreen on the alternate buffer
+    /// <see cref="WindowManager"/> tracks as a window), fullscreen on the alternate buffer
     /// until the last window closes, then back to the inline region. Popups (drop-downs, completion,
     /// context menus) never escalate: <c>window ⇒ escalate, popup ⇒ inline</c>.
     /// <see cref="UIApplication.IsPresentingInline"/> reports the live side; the

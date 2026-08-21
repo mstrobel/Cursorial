@@ -14,6 +14,12 @@ namespace Cursorial.UI;
 /// </summary>
 /// <typeparam name="T">The wrapped value type.</typeparam>
 [TypeConverter(typeof(OptionalConverter))]
+[UnconditionalSuppressMessage("Trimming", "IL2111",
+    Justification = "The DAM-annotated converter ctor is reflection-reached only by the REFLECTIVE " +
+                    "metadata provider (the RUC-annotated runtime-XAML lane); the AOT lane bakes " +
+                    "`new OptionalConverter(typeof(...))` literals that satisfy the annotation statically.")]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
+                            DynamicallyAccessedMemberTypes.PublicConstructors)]
 public readonly struct Optional<T>
 {
     /// <summary>Whether a value was explicitly set.</summary>
@@ -44,6 +50,8 @@ public readonly struct Optional<T>
 
 public sealed class OptionalConverter : TypeConverter
 {
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
+                                DynamicallyAccessedMemberTypes.PublicConstructors)]
     private readonly Type _targetType;
     private readonly Type _innerType;
     private readonly TypeConverter _innerConverter;
@@ -51,7 +59,22 @@ public sealed class OptionalConverter : TypeConverter
     private readonly PropertyInfo _hasValue;
     private readonly PropertyInfo _value;
 
-    public OptionalConverter(Type targetType)
+    /// <param name="targetType">The closed <see cref="Optional{T}"/> instantiation. The DAM
+    /// annotation is the AOT contract: the ctor reflects over the target's properties and ctors, and
+    /// every baked call site (`new OptionalConverter(typeof(Optional&lt;double&gt;))` in lowered
+    /// output) is a `typeof` literal, so ILC's dataflow roots exactly what this ctor resolves —
+    /// without it, trimming strips HasValue/Value and the ctor throws at startup.</param>
+    [UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = "TypeDescriptor.GetConverter runs over the INNER type — a primitive/value type " +
+                        "whose intrinsic converter is statically available; an exotic inner type whose " +
+                        "custom converter was trimmed degrades to a failed string parse, never a crash.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2077",
+        Justification = "The inner type is a generic argument of the DAM-annotated target — its members " +
+                        "ride along with the closed instantiation the baked typeof literal roots.")]
+    public OptionalConverter(
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties |
+                                    DynamicallyAccessedMemberTypes.PublicConstructors)]
+        Type targetType)
     {
         if (targetType.IsGenericType is false || targetType.GetGenericTypeDefinition() != typeof(Optional<>))
             throw new ArgumentException("Target type must be an Optional<T> instantiation.", nameof(targetType));

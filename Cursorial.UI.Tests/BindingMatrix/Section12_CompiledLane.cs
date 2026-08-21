@@ -85,8 +85,27 @@ public class Section12_CompiledLane
         root.DataContext = source;
 
         a.SetBinding(BindWidget.FlagProperty,
-                     CompiledBinding.From(static (BindWidget w) => w.GetValue(BindWidget.FlagProperty),
+                     Binding.Compiled(static (BindWidget w) => w.GetValue(BindWidget.FlagProperty),
                                           mode: BindingMode.TwoWay));
+        Assert.False(a.Flag);
+
+        a.Flag = true; // target-side write pushes back through the synthesized SetValue
+        Assert.True(source.GetValue(BindWidget.FlagProperty));
+    }
+
+    [Fact] // the GetValue leaf synthesizes a SetValue write-back — TwoWay without a CLR wrapper
+    public void CompiledLane_FromBuilder_GetValueHop_TwoWay_WritesBackThroughSetValue()
+    {
+        var source = new BindWidget { Flag = false };
+        var (root, a) = Tree(new Vm());
+        root.DataContext = source;
+
+        a.SetBinding(BindWidget.FlagProperty,
+                     CompiledBinding.Build(static (BindWidget w) => w.GetValue(BindWidget.FlagProperty),
+                                           static (w, value) => w.SetValue(BindWidget.FlagProperty, value),
+                                           mode: BindingMode.TwoWay)
+                                    .Step(BindWidget.FlagProperty)
+                                    .Build());
         Assert.False(a.Flag);
 
         a.Flag = true; // target-side write pushes back through the synthesized SetValue

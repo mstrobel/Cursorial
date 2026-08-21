@@ -22,6 +22,25 @@ public interface INameScope
 public sealed class NameScopeDictionary : INameScope
 {
     private readonly Dictionary<string, object> _names = [];
+    private readonly UIElement? _chainHost;
+
+    /// <summary>An isolated scope (the control-template contract — part names never leak, BD21).</summary>
+    public NameScopeDictionary() {}
+
+    /// <summary>
+    /// A CHAINING scope: a local miss continues through <paramref name="chainHost"/>'s enclosing
+    /// scope chain, resolved LAZILY at <see cref="Find"/> time (robust to attach order — the host's
+    /// ancestry may complete after this scope is created). This is the data-template doctrine (PD24):
+    /// template content is authoring-equivalent to inline elements at the use site, so enclosing
+    /// names stay visible; nearest scope wins because the local dictionary is consulted first, and
+    /// nesting chains naturally (the enclosing scope may itself chain).
+    /// </summary>
+    /// <param name="chainHost">The element hosting this scope's content (the presenter).</param>
+    public NameScopeDictionary(UIElement chainHost)
+    {
+        ArgumentNullException.ThrowIfNull(chainHost);
+        _chainHost = chainHost;
+    }
 
     /// <inheritdoc/>
     public void Register(string name, object element)
@@ -35,7 +54,10 @@ public sealed class NameScopeDictionary : INameScope
     public object? Find(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return _names.GetValueOrDefault(name);
+        if (_names.GetValueOrDefault(name) is { } local)
+            return local;
+
+        return _chainHost is not null ? NameScope.FindEnclosing(_chainHost)?.Find(name) : null;
     }
 }
 

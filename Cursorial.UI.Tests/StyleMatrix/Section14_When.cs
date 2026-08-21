@@ -266,9 +266,35 @@ public class Section14_When
         using var tree = ShowTree();
         tree.App.Styles.Add(RWhen("Widget", [(Widget.P, 5)],
             new DataCondition(
-                Cursorial.UI.Data.CompiledBinding.From(static (Widget w) => w.GetValue(Widget.Q),
-                                                       relativeSource: Cursorial.UI.Data.RelativeSource.Self),
+                Binding.Compiled(static (Widget w) => w.GetValue(Widget.Q),
+                                 relativeSource: RelativeSource.Self),
                 value: 9)));
+        tree.Host.ShowRoot(tree.Root);
+
+        Assert.Equal(0, tree.A.GetValue(Widget.P)); // unmet: Q is 0, not 9
+
+        tree.A.SetValue(Widget.Q, 9); // a pure property-system write
+        Assert.True(tree.Host.RunUntilIdle());
+        Assert.Equal(5, tree.A.GetValue(Widget.P)); // the compiled watch delivered — the rule activated
+
+        tree.A.SetValue(Widget.Q, 0);
+        Assert.True(tree.Host.RunUntilIdle());
+        Assert.Equal(0, tree.A.GetValue(Widget.P)); // and deactivated
+    }
+
+    [Fact] // a COMPILED descriptor arms a When condition through the same Watch contract: the widened
+    // DataCondition accepts it, values deliver through the shared core's watch callback, and the
+    // UIProperty-carried step observes the property system (a pure SetValue flips the rule live).
+    public void When_CompiledDescriptor_FromBuilder_ArmsAndFlipsLive()
+    {
+        using var tree = ShowTree();
+        tree.App.Styles.Add(RWhen("Widget", [(Widget.P, 5)],
+                                  new DataCondition(
+                                      CompiledBinding.Build(static (Widget w) => w.GetValue(Widget.Q),
+                                                            relativeSource: RelativeSource.Self)
+                                                     .Step(Widget.Q)
+                                                     .Build(),
+                                      value: 9)));
         tree.Host.ShowRoot(tree.Root);
 
         Assert.Equal(0, tree.A.GetValue(Widget.P)); // unmet: Q is 0, not 9

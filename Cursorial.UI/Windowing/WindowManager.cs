@@ -856,6 +856,9 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
         if (!_windows.Contains(window))
             return false;
 
+        if (!window.IsEffectivelyVisible)
+            return false; // a hidden/Collapsed window cannot become the active window (§8.6)
+
         if (_blocked.Contains(window))
         {
             if (TopmostModal is {} gate && !ReferenceEquals(gate, window))
@@ -1072,19 +1075,32 @@ public sealed class WindowManager : ILayoutSystem, IRenderSystem, IWindowSystem,
 
     private Window? ResolveHandoff(Window closed)
     {
-        if (closed.Owner is {} owner && _windows.Contains(owner) && !_blocked.Contains(owner))
+        // Activation only ever lands on a VISIBLE window — a hidden/Collapsed one is not an eligible
+        // target (it cannot render or take focus, §8.6).
+        if (closed.Owner is {} owner && _windows.Contains(owner) && !_blocked.Contains(owner) && owner.IsEffectivelyVisible)
             return owner;
 
-        if (TopmostModal is {} gate)
+        if (TopmostModal is { IsEffectivelyVisible: true } gate)
             return gate;
 
         for (var i = _windows.Count - 1; i >= 0; i--)
         {
-            if (!_blocked.Contains(_windows[i]))
+            if (!_blocked.Contains(_windows[i]) && _windows[i].IsEffectivelyVisible)
                 return _windows[i];
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// A window's effective visibility changed (Hide()/Show() or an ancestor collapse). If the ACTIVE
+    /// window just became non-visible it cannot stay active — hand activation off to the topmost visible
+    /// window (§8.6). Revealing a window does not auto-activate; the caller's <c>Show</c> does that.
+    /// </summary>
+    internal void NotifyWindowVisibilityChanged(Window window)
+    {
+        if (ReferenceEquals(_activeWindow, window) && !window.IsEffectivelyVisible)
+            SetActive(ResolveHandoff(window));
     }
 
     private void SetActive(Window? window)

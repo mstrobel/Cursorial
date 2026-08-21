@@ -89,6 +89,87 @@ public class Section10_NameScope
         Assert.Contains(BindingDiagnostics.RecentEvents, e => e.Kind == BindingFailureKind.NameNotFound);
     }
 
+    [Fact] // B127 — an ElementName MISS in a built-but-unattached fragment parks silently: the
+    // anchor HAS a LogicalParent (the old parentage guard proceeded and hard-failed here), but
+    // attachment is the readiness signal — the scope arrives late (build-end stamp / chained host
+    // ancestry) and the attach re-anchor resolves. NameNotFound stays attached-and-missing (B123).
+    public void B127_ElementName_UnattachedFragmentMiss_ParksThenResolvesOnAttach()
+    {
+        using var host = UIHeadlessHost.Create();
+        var fragment = new StackPanel();
+        var src = new BindWidget { Num = 5 };
+        var tgt = new BindWidget();
+        fragment.Children.Add(src);
+        fragment.Children.Add(tgt);
+        // NO scope on the fragment yet — the miss must park, not trace.
+
+        BindingDiagnostics.Level = BindingTraceLevel.Warning;
+        var expr = tgt.SetBinding(BindWidget.TextProperty, new Binding("Num") { ElementName = "src" });
+        Assert.Equal(BindingStatus.SourceMissing, expr.Status); // parked — not PathError
+        Assert.DoesNotContain(BindingDiagnostics.RecentEvents, e => e.Kind == BindingFailureKind.NameNotFound);
+
+        var scope = new NameScopeDictionary();
+        scope.Register("src", src);
+        NameScope.SetNameScope(fragment, scope); // the late stamp (DataTemplate.Build's ordering)
+
+        var root = new StackPanel();
+        host.ShowRoot(root);
+        root.Children.Add(fragment);
+        host.RunFrame();
+
+        Assert.Equal(BindingStatus.Active, expr.Status);
+        Assert.Equal("5", tgt.Text);
+    }
+
+    [Fact] // B128 — try-first: a fragment whose scope is ALREADY stamped (the lowered factory stamps
+    // data-template roots at construction) resolves ElementName INLINE, before any attachment.
+    public void B128_ElementName_PreStampedFragment_ResolvesInlineBeforeAttach()
+    {
+        var fragment = new StackPanel();
+        var src = new BindWidget { Num = 7 };
+        var tgt = new BindWidget();
+        fragment.Children.Add(src);
+        fragment.Children.Add(tgt);
+        var scope = new NameScopeDictionary();
+        scope.Register("src", src);
+        NameScope.SetNameScope(fragment, scope); // stamped BEFORE install — the factory ordering
+
+        var expr = tgt.SetBinding(BindWidget.TextProperty, new Binding("Num") { ElementName = "src" });
+        Assert.Equal(BindingStatus.Active, expr.Status); // resolved inline, unattached
+        Assert.Equal("7", tgt.Text);
+    }
+
+    [Fact] // B129 — an ELEMENT-FORM Header is logically adopted (like Content), so an ElementName
+    // anchor inside <X.Header> content can walk to the enclosing scope: registration was never the
+    // problem — the orphaned header subtree dead-ended FindEnclosing below every scope (the Gallery
+    // ribbon File-tab regression).
+    public void B129_ElementName_InsideElementFormHeader_Resolves()
+    {
+        using var host = UIHeadlessHost.Create();
+        var root = new StackPanel();
+        var scope = new NameScopeDictionary();
+        NameScope.SetNameScope(root, scope);
+
+        var headerPanel = new StackPanel();
+        var src = new BindWidget { Num = 3 };
+        var tgt = new BindWidget();
+        headerPanel.Children.Add(src);
+        headerPanel.Children.Add(tgt);
+        scope.Register("hdrSrc", src);
+
+        var tab = new TabItem { Header = headerPanel };
+        Assert.Same(tab, headerPanel.LogicalParent); // the adoption itself
+
+        root.Children.Add(tab);
+        var expr = tgt.SetBinding(BindWidget.TextProperty, new Binding("Num") { ElementName = "hdrSrc" });
+
+        host.ShowRoot(root);
+        host.RunFrame();
+
+        Assert.Equal(BindingStatus.Active, expr.Status);
+        Assert.Equal("3", tgt.Text);
+    }
+
     [Fact]
     public void B124_GuardedWalk_TemplatePart_SeesTemplateNames()
     {

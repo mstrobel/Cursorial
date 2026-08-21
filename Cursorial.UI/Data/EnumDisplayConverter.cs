@@ -15,7 +15,7 @@ public sealed class EnumDisplayConverter : TypeConverter, ITypeConverter, IValue
 
     public EnumDisplayConverter() {}
 
-    public EnumDisplayConverter(Type enumType)
+    public EnumDisplayConverter([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] Type enumType)
     {
         ArgumentNullException.ThrowIfNull(enumType);
         
@@ -23,6 +23,8 @@ public sealed class EnumDisplayConverter : TypeConverter, ITypeConverter, IValue
 
         EnumType = enumType;
     }
+    
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)]
     public required Type? EnumType { get; init; }
 
     object ITypeConverter.ConvertFromString(string text, in XamlValueContext context)

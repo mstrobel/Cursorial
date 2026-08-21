@@ -171,7 +171,8 @@ public class ComboBox : SelectingItemsControl
         // a runtime ItemTemplate change, wired here rather than in the control template so every ComboBox template
         // gets it without repeating the binding. SelectionBoxItem stays the ITEM; the presenter builds the display
         // copy (never the drop-down's live container).
-        _contentSite?.SetBinding(ContentPresenter.ContentTemplateProperty, new TemplateBinding(ItemTemplateProperty));
+        _contentSite?.SetBinding(ContentPresenter.ContentTemplateProperty,
+                                 TemplateBinding.From(ItemTemplateProperty));
 
         if (_dropDown is not null)
             _dropDown.Click += OnDropDownClick;

@@ -108,6 +108,7 @@ public partial class Window : ContentControl
 
     private Window? _owner;
     private bool _closing; // reentrancy guard
+    private bool _closed;  // terminal: a closed window is permanently torn down and cannot be re-shown (WPF parity)
     private TaskCompletionSource<object?>? _dialogTcs;
     private CancellationToken _dialogCancellation;
     private CancellationTokenRegistration _dialogRegistration;
@@ -364,8 +365,15 @@ public partial class Window : ContentControl
     {
         ArgumentNullException.ThrowIfNull(manager);
 
+        if (_closed)
+            throw new InvalidOperationException("Cannot show a window that has been closed — its element tree was torn down on close.");
+
         if (IsShown)
         {
+            // Hidden-but-unclosed fast path: a window hidden via Hide() (Visibility.Collapsed) is still
+            // alive and hosted — reveal it and (re)activate, no re-host and no rebuild. A plain re-Show
+            // of an already-visible window just re-activates (WPF parity).
+            SetValue(VisibilityProperty, Visibility.Visible);
             Activate();
             return;
         }
@@ -392,6 +400,9 @@ public partial class Window : ContentControl
     /// </summary>
     public Task<object?> ShowDialogAsync(CancellationToken cancellationToken = default)
     {
+        if (_closed)
+            throw new InvalidOperationException("Cannot show a window that has been closed — its element tree was torn down on close.");
+
         if (IsShown)
             throw new InvalidOperationException("The window is already shown.");
 
@@ -447,6 +458,16 @@ public partial class Window : ContentControl
     /// <summary>Closes the window (a cancelable <see cref="WindowCloseReason.Programmatic"/> close).</summary>
     public void Close() => Close(WindowCloseReason.Programmatic);
 
+    /// <summary>
+    /// Hides the window without closing it — semantic sugar for <c>Visibility = Visibility.Collapsed</c>.
+    /// The window stays fully ALIVE (tree, bindings, view-model subscriptions, and state all intact) and
+    /// re-appears on the next <see cref="Show(WindowManager)"/>. Contrast <see cref="Close()"/>, which is
+    /// TERMINAL — it tears the element tree down and cannot be re-shown. Input and focus already gate on
+    /// effective visibility, so a hidden window neither renders nor receives input. Use <c>Hide</c> for a
+    /// window you will show again (a reusable palette/dialog); use <c>Close</c> when you are done with it.
+    /// </summary>
+    public void Hide() => SetValue(VisibilityProperty, Visibility.Collapsed);
+
     /// <summary>Sets <see cref="DialogResult"/> and closes the window.</summary>
     public void Close(object? dialogResult)
     {
@@ -492,6 +513,25 @@ public partial class Window : ContentControl
                 else
                     tcs.TrySetResult(DialogResult);
             }
+
+            // Permanent-detach teardown (design doc §5.1 CONTRACT / punch #39): CloseWindow ran the
+            // REVERSIBLE detach walk (styles/resources/animations/scenes released, re-hostable); this
+            // is the terminal sweep that evicts the value store and disposes S2's binding expressions
+            // — the strong INPC subscriptions to long-lived viewmodels that a reversible detach leaves
+            // live. Runs LAST, after every window-state write above (SetActiveInternal, the dialog TCS)
+            // and after Closed handlers, so none of them touch an evicted store. The window IS its
+            // surface root, so this sweeps the whole subtree bottom-up — including hosted popups
+            // (structural in this tree; their logical-only Child is swept too) which
+            // CloseOwnedAndHostedOf already closed+detached above. Owned windows tore down via their
+            // own Close. A closed window is terminal (the _closed guard fails a re-show).
+            //
+            // ESCAPE HATCH — save the content for reuse: because this sweep runs AFTER Closed, a
+            // Closed handler that removes the content (e.g. `Content = null`) disowns that subtree
+            // before the sweep reaches it, so it is spared (its store + bindings stay intact and it
+            // re-hosts on a fresh window). Closed, not Closing: the window is already off-display, so
+            // pulling the content never flashes an empty frame.
+            _closed = true;
+            TearDown();
         }
         finally
         {
@@ -534,6 +574,11 @@ public partial class Window : ContentControl
         {
             FitToContentPending = true;
         }
+
+        // A window that just became non-visible cannot remain the active window — let the WM hand
+        // activation off to a visible peer (§8.6). Revealing is handled by Show(), not here.
+        if (ReferenceEquals(args.Property, VisibilityProperty) && IsShown)
+            Manager!.NotifyWindowVisibilityChanged(this);
     }
 
     /// <inheritdoc/>

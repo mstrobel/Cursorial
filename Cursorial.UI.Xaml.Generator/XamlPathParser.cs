@@ -102,6 +102,12 @@ internal sealed class XamlPathSegment
     /// and writes go through <c>GetValue</c>/<c>SetValue</c> with <see cref="UIPropertyField"/>.</summary>
     public bool UIPropertyOnly { get; set; }
 
+    /// <summary>The registration is a <c>DirectProperty&lt;TOwner, T&gt;</c>: reads/writes go through the
+    /// typed, no-box <c>Extensions.GetDirect</c>/<c>SetDirect</c> (DirectProperty has no typed
+    /// <c>GetValue</c> overload — the untyped one returns <c>object?</c> and won't type the compiled
+    /// getter). Implies <see cref="UIPropertyOnly"/>; <see cref="UIPropertyField"/> is the registration.</summary>
+    public bool IsDirect { get; set; }
+
     // ── indexer segments ──
 
     public XamlIndexKeyKind KeyKind { get; set; }
@@ -460,13 +466,15 @@ internal static class XamlPathParser
     }
 
     /// <summary>
-    /// The registration field's VALUE type when the field is StyledProperty/AttachedProperty-shaped —
-    /// the shapes whose typed <c>GetValue&lt;T&gt;</c>/<c>SetValue&lt;T&gt;</c> overloads C# resolves
-    /// from the field reference alone (AttachedProperty&lt;T&gt; derives StyledProperty&lt;T&gt;).
-    /// Null for DirectProperty / plain-UIProperty registrations, whose wrapper-less form would read
-    /// as <c>object</c> — those decline rather than emit an untyped chain.
+    /// The registration field's VALUE type when the field is a typed UIProperty shape whose value the
+    /// emitter can name without an untyped chain: StyledProperty/AttachedProperty (value =
+    /// <c>TypeArguments[0]</c>; AttachedProperty&lt;T&gt; derives StyledProperty&lt;T&gt;, so C# resolves
+    /// its typed <c>GetValue&lt;T&gt;</c>/<c>SetValue&lt;T&gt;</c> from the field reference alone) and
+    /// <c>DirectProperty&lt;TOwner, T&gt;</c> (value = <c>TypeArguments[1]</c>; read/written through the
+    /// typed no-box <c>Extensions.GetDirect</c>/<c>SetDirect</c> — see the IsDirect lane in LoweringEmitter).
+    /// Null for a plain UIProperty with no typed shape — that declines rather than emit an untyped chain.
     /// </summary>
-    public static ITypeSymbol? StyledRegistrationValueType(IFieldSymbol field)
+    public static ITypeSymbol? UIPropertyRegistrationValueType(IFieldSymbol field)
     {
         for (var t = field.Type as INamedTypeSymbol; t is not null; t = t.BaseType)
         {
@@ -474,6 +482,16 @@ internal static class XamlPathParser
                 t.OriginalDefinition.ToDisplayString().StartsWith("Cursorial.UI.StyledProperty", StringComparison.Ordinal))
             {
                 return t.TypeArguments[0];
+            }
+
+            // DirectProperty<TOwner, TValue> derives straight from UIProperty (not StyledProperty), so
+            // its value type is the SECOND type argument — the walk continues on it exactly as a styled
+            // registration's does. Emission routes the hop through GetDirect/SetDirect (a DirectProperty
+            // has no typed GetValue overload); see the IsDirect lane in LoweringEmitter.
+            if (t.TypeArguments.Length == 2 &&
+                t.OriginalDefinition.ToDisplayString().StartsWith("Cursorial.UI.DirectProperty", StringComparison.Ordinal))
+            {
+                return t.TypeArguments[1];
             }
         }
 
@@ -493,6 +511,19 @@ internal static class XamlPathParser
             {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    internal static bool IsDirectUIPropertyType(ITypeSymbol type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+        {
+            var name = t.OriginalDefinition.ToDisplayString();
+
+            if (name.StartsWith("Cursorial.UI.DirectProperty", StringComparison.Ordinal))
+                return true;
         }
 
         return false;

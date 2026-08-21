@@ -3510,7 +3510,7 @@ internal static class LoweringEmitter
                 // GetValue with the field itself (AttachedProperty<T> derives StyledProperty<T>, so
                 // overload resolution types the chain), and a null walk root falls back to UIObject.
                 if (XamlPathParser.FindRegisteredPropertyField(qualifierType, token.Member!) is { } attachedField &&
-                    XamlPathParser.StyledRegistrationValueType(attachedField) is { } attachedValue)
+                    XamlPathParser.UIPropertyRegistrationValueType(attachedField) is { } attachedValue)
                 {
                     // The qualifier + registration field fully determine the access — the receiver's
                     // STATIC type contributes nothing (GetValue works on any UIObject). With no
@@ -3536,6 +3536,7 @@ internal static class LoweringEmitter
                     segment.ValueType = attachedValue;
                     segment.UIPropertyField = attachedField;
                     segment.UIPropertyOnly = true;
+                    segment.IsDirect = XamlPathParser.IsDirectUIPropertyType(attachedField.Type);
                     segments.Add(segment);
                     runningType = attachedValue;
                     continue;
@@ -3612,7 +3613,7 @@ internal static class LoweringEmitter
                 // attached hop does: through GetValue with the field.
                 if (!segment.Qualified &&
                     XamlPathParser.FindRegisteredPropertyField(accessOn, token.Member!) is { } regField &&
-                    XamlPathParser.StyledRegistrationValueType(regField) is { } regValue &&
+                    XamlPathParser.UIPropertyRegistrationValueType(regField) is { } regValue &&
                     DerivesFromUIObjectChain(accessOn))
                 {
                     segment.MemberName = token.Member;
@@ -3621,6 +3622,7 @@ internal static class LoweringEmitter
                     segment.ValueType = regValue;
                     segment.UIPropertyField = regField;
                     segment.UIPropertyOnly = true;
+                    segment.IsDirect = XamlPathParser.IsDirectUIPropertyType(regField.Type);
                     segments.Add(segment);
                     runningType = regValue;
                     continue;
@@ -3641,14 +3643,17 @@ internal static class LoweringEmitter
 
             // The property SYSTEM is the contract: any styled/attached-registered member reads and writes
             // through GetValue/SetValue even when a CLR wrapper exists — a wrapper is convenience and may
-            // coerce, cache, or drift from the store; GetValue cannot. (DirectProperty wrappers ARE the
-            // implementation — no store behind them to bypass — and stay CLR-emitted.) The registration's
-            // type parameter is the value-type truth the chain continues on.
+            // coerce, cache, or drift from the store; GetValue cannot. A DirectProperty rides the same
+            // lane (its wrapper, if any, is bypassed too), but reads/writes route through the typed no-box
+            // GetDirect/SetDirect instead of GetValue — DirectProperty has no typed GetValue overload; the
+            // IsDirect flag carries that to emission. The registration's type parameter is the value-type
+            // truth the chain continues on.
             if (segment.UIPropertyField is { } styledField &&
-                XamlPathParser.StyledRegistrationValueType(styledField) is { } styledValue &&
+                XamlPathParser.UIPropertyRegistrationValueType(styledField) is { } styledValue &&
                 DerivesFromUIObjectChain(accessOn))
             {
                 segment.UIPropertyOnly = true;
+                segment.IsDirect = XamlPathParser.IsDirectUIPropertyType(styledField.Type);
                 segment.ValueType = styledValue;
                 runningType = styledValue;
                 segments.Add(segment);
@@ -3700,10 +3705,32 @@ internal static class LoweringEmitter
             var seg = segments[h];
             var prevIsReference = h == 0 ? walkRoot!.IsReferenceType : segments[h - 1].ValueType.IsReferenceType;
 
+            // A preceding direct hop yields the nullable-lifted T? (its `is Owner ? GetDirect : default`
+            // ternary), so THIS hop must chain with `?.` even off a value-typed direct value — `?.` lifts
+            // through Nullable<T> where `.` would not compile. (A reference-typed prior hop is already
+            // nullable; this only adds the value-typed direct case.)
+            var prevNullable = prevIsReference || (h > 0 && segments[h - 1].IsDirect);
+
             if (seg.Kind == XamlPathTokenKind.Indexer)
             {
-                if (prevIsReference) conditional = true;
-                chain += prevIsReference ? $"?[{seg.KeyExpression}]" : $"[{seg.KeyExpression}]";
+                if (prevNullable) conditional = true;
+                chain += prevNullable ? $"?[{seg.KeyExpression}]" : $"[{seg.KeyExpression}]";
+            }
+            else if (seg.IsDirect)
+            {
+                // A DirectProperty<TOwner, T> read: its only GetValue overload is the untyped one (returns
+                // object?), which won't type the Func<TSource, TValue> chain. Route the typed no-box
+                // Extensions.GetDirect instead — invoked STATICALLY, because an extension member cannot be
+                // null-conditional (`?.GetDirect` is illegal). The `is TOwner __d` pattern does the work a
+                // `(chain as TOwner)?.` would: it null-checks AND type-checks, binding the exact invariant
+                // TOwner the property demands; a null-or-wrong receiver falls to the default arm (the
+                // qualified-hop graceful degrade). The ternary lifts to T?, so the chain stays conditional.
+                var fieldRef = $"{Global(seg.UIPropertyField!.ContainingType, false)}.{seg.UIPropertyField.Name}";
+                var owner = Global(((INamedTypeSymbol)seg.UIPropertyField.Type).TypeArguments[0], false);
+                var nullableValue = Global(seg.ValueType, false);
+                if (!nullableValue.EndsWith("?", StringComparison.Ordinal)) nullableValue += "?";
+                chain = $"({chain} is {owner} __d{h} ? global::Cursorial.UI.Extensions.GetDirect(__d{h}, {fieldRef}) : default({nullableValue}))";
+                conditional = true;
             }
             else if (seg.UIPropertyOnly)
             {
@@ -3726,7 +3753,7 @@ internal static class LoweringEmitter
                 }
                 else
                 {
-                    var accessor = h == 0 ? "." : (prevIsReference ? "?." : ".");
+                    var accessor = h == 0 ? "." : (prevNullable ? "?." : ".");
                     if (accessor == "?.") conditional = true;
                     chain += accessor + $"GetValue({fieldRef})";
                 }
@@ -3740,7 +3767,7 @@ internal static class LoweringEmitter
             }
             else
             {
-                var accessor = h == 0 ? "." : (prevIsReference ? "?." : ".");
+                var accessor = h == 0 ? "." : (prevNullable ? "?." : ".");
                 if (accessor == "?.") conditional = true;
                 chain += accessor + EscapeId(seg.MemberName!);
             }
@@ -3820,7 +3847,9 @@ internal static class LoweringEmitter
                 : null;
             if (segments.Count == 1 && !staticRoot)
             {
-                setter = leaf.UIPropertyOnly
+                setter = leaf.IsDirect
+                    ? $"static (__s, __v) => {{ if (__s is {Global(((INamedTypeSymbol)leaf.UIPropertyField!.Type).TypeArguments[0], false)} __o) global::Cursorial.UI.Extensions.SetDirect(__o, {leafFieldRef}, {write}); }}"
+                    : leaf.UIPropertyOnly
                     ? (leaf.Qualified
                         ? $"static (__s, __v) => {{ if (__s is {Global(leaf.AccessedOn, false)} __o) __o.SetValue({leafFieldRef}, {write}); }}"
                         : $"static (__s, __v) => __s.SetValue({leafFieldRef}, {write})")
@@ -3845,7 +3874,9 @@ internal static class LoweringEmitter
                     else
                         ownerChain += (h == 0 ? "." : (prevIsReference ? "?." : ".")) + EscapeId(seg.MemberName!);
                 }
-                setter = leaf.UIPropertyOnly
+                setter = leaf.IsDirect
+                    ? $"static (__s, __v) => {{ if (({ownerChain}) is {Global(((INamedTypeSymbol)leaf.UIPropertyField!.Type).TypeArguments[0], false)} __o) global::Cursorial.UI.Extensions.SetDirect(__o, {leafFieldRef}, {write}); }}"
+                    : leaf.UIPropertyOnly
                     ? $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.SetValue({leafFieldRef}, {write}); }}"
                     : $"static (__s, __v) => {{ if (({ownerChain}) is {leafPattern} __o) __o.{EscapeId(leaf.MemberName!)} = {write}; }}";
             }
@@ -4422,7 +4453,7 @@ internal static class LoweringEmitter
         // and the carried field observes without a registry probe. A registration without the typed
         // GetValue shape (DirectProperty) keeps the runtime descriptor.
         if (XamlPathParser.FindRegisteredPropertyField(sourceOwner, sourceName) is { } sourceField &&
-            XamlPathParser.StyledRegistrationValueType(sourceField) is { } sourceValueType)
+            XamlPathParser.UIPropertyRegistrationValueType(sourceField) is { } sourceValueType)
         {
             var fieldRef = $"{Global(sourceField.ContainingType, false)}.{sourceField.Name}";
             c.Line(

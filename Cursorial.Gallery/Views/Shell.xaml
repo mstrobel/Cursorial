@@ -1,4 +1,5 @@
-<DockPanel xmlns="https://cursorial.dev/ui"
+<DockPanel x:Class="Cursorial.Gallery.Views.Shell"
+           xmlns="https://cursorial.dev/ui"
            xmlns:x="https://cursorial.dev/xaml"
            xmlns:d="https://cursorial.dev/xaml/design"
            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -14,7 +15,8 @@
            Background="{DynamicResource {x:Static ThemeKeys.PanelBrush}}"
            TextElement.Foreground="{DynamicResource {x:Static ThemeKeys.TextBrush}}"
            mc:Ignorable="d"
-           d:DataContext="vm:ShellViewModel">
+           d:DataContext="vm:ShellViewModel" 
+           x:DataType="vm:ShellViewModel">
   <UIElement.InputBindings>
       <KeyBinding Gesture="Alt+T" Command="{Binding CycleColorTier}" />
       <KeyBinding Gesture="Alt+D" Command="{Binding CycleThemeVariant}" />
@@ -26,7 +28,7 @@
     <DockPanel.Resources>
 
         <DataTemplate DataType="vm:DialogsViewModel">
-          <DockPanel>
+          <DockPanel x:DataType="vm:DialogsViewModel">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -46,7 +48,7 @@
                            Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}"/>
                     <ComboBox x:Name="SeveritySelector"
                               MinWidth="18"
-                              ItemsSource="{i:EnumValuesSource EnumType={x:Type TaskDialogSeverity}}"
+                              ItemsSource="{Binding SeverityLevels}"
                               SelectedItem="{Binding TaskDialogSeverity, Mode=TwoWay}"/>
                   </StackPanel>
                   <Button Command="{Binding ShowTaskDialogCommand}"
@@ -64,22 +66,22 @@
                         BorderPen="{DynamicResource {x:Static ThemeKeys.BorderPen}}">
                   <StackPanel Spacing="1" Orientation="Vertical">
                     <UniformWrapPanel Orientation="Horizontal">
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
                         <RadioButton.CommandParameter>
                           <CheckableCommandParameter Tag="{x:Static MessageBoxButton.Ok}" />
                         </RadioButton.CommandParameter>
                       </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
                         <RadioButton.CommandParameter>
                           <CheckableCommandParameter Tag="{x:Static MessageBoxButton.OkCancel}" />
                         </RadioButton.CommandParameter>
                       </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
                         <RadioButton.CommandParameter>
                           <CheckableCommandParameter Tag="{x:Static MessageBoxButton.YesNo}" />
                         </RadioButton.CommandParameter>
                       </RadioButton>
-                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.Tag', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
+                      <RadioButton GroupName="MessageBoxButtonsGroup" Content="{Binding RelativeSource={RelativeSource Self}, Path='CommandParameter.(ICheckableCommandParameter.Tag)', Converter={EnumDisplayConverterExtension EnumType={x:Type MessageBoxButton}}}" Command="{Binding ToggleMessageBoxButtonCommand}">
                         <RadioButton.CommandParameter>
                           <CheckableCommandParameter Tag="{x:Static MessageBoxButton.SaveDontSave}" />
                         </RadioButton.CommandParameter>
@@ -112,7 +114,7 @@
         </DataTemplate>
 
         <DataTemplate DataType="vm:WelcomeViewModel">
-          <DockPanel>
+          <DockPanel x:DataType="vm:WelcomeViewModel">
             <DockPanel.Resources>
               <PhaseShiftedBrush x:Key="WelcomeBrush">
                 <PhaseShiftedBrush.Brush>
@@ -200,7 +202,7 @@
         </DataTemplate>
 
         <DataTemplate DataType="vm:ScrollViewerPageViewModel">
-          <TabControl Margin="0,1,0,0">
+          <TabControl x:DataType="vm:ScrollViewerPageViewModel" Margin="0,1,0,0">
             <TabItem Header="_Normal Scrolling">
               <DockPanel>
                 <Border  DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
@@ -214,19 +216,13 @@
                   </StackPanel>
                 </Border>
 
-                <!--
-                <Border DockPanel.Dock="Bottom" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
-                    <TextBlock Text="{Binding Status}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
-                </Border>
-                -->
-
                 <ScrollViewer VerticalScrollBarVisibility="{Binding VerticalScrollBarVisibility}"
                               HorizontalScrollBarVisibility="{Binding HorizontalScrollBarVisibility}"
                               Focusable="True">
                   <ItemsControl ItemsSource="{Binding Rows}" Width="{Binding ContentWidth}">
                     <ItemsControl.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
+                      <DataTemplate DataType="vm:RowViewModel" x:DataType="vm:RowViewModel">
+                        <TextBlock x:DataType="vm:RowViewModel" Text="{Binding Label}" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"/>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
@@ -248,13 +244,13 @@
         </DataTemplate>
 
       <DataTemplate DataType="vm:EventRoutingViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel LastChildFill="True" x:DataType="vm:EventRoutingViewModel">
           <pages:EventRoutingView Margin="0,1,0,0" />
         </DockPanel>
       </DataTemplate>
 
       <DataTemplate DataType="vm:InputsPageViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:InputsPageViewModel" LastChildFill="True">
           <Grid Margin="2,1">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
@@ -295,8 +291,8 @@
                       x:Name="ColorSelector" Width="22" IsEditable="False" ItemsSource="{Binding Colors}"
                       SelectedItem="{Binding SelectedColor, Mode=TwoWay}" PlaceholderText="Select a color...">
               <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:ColorInfo">
-                  <DockPanel x:Name="TemplateRoot">
+                <DataTemplate DataType="vm:ColorInfo">
+                  <DockPanel x:Name="TemplateRoot" x:DataType="vm:ColorInfo">
                     <Border DockPanel.Dock="Left" Width="2" Background="{Binding Color}" Margin="0,0,1,0" />
                     <TextBlock Text="{Binding Name}"
                                TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"/>
@@ -307,7 +303,7 @@
             
             <TextBlock Grid.Column="6" Grid.Row="1"
                        Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}"
-                       Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.Name, StringFormat='Selected: {0}'}"/>
+                       Text="{Binding Source={x:Reference ColorSelector}, Path=SelectionBoxItem.(vm:ColorInfo.Name), TargetNullValue='No Selection', StringFormat='Selected: {0}'}"/>
 
             <CheckBox Grid.Column="2" Grid.Row="3" HorizontalAlignment="Left" TabIndex="3"
                       Content="_Reveal password" Margin="0,1,0,0" IsChecked="{Binding ShowPassword, Mode=TwoWay}" />
@@ -346,8 +342,8 @@
                 <ComboBox x:Name="FontSelector" MinWidth="28" ItemsSource="{Binding GlyphSources}"
                           SelectedItem="{Binding SelectedGlyphSource, Mode=TwoWay}" TabIndex="11">
                   <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="{x:Type ff:GlyphSource}">
-                      <DockPanel x:Name="TemplateRoot" LastChildFill="True">
+                    <DataTemplate DataType="ff:GlyphSource">
+                      <DockPanel x:Name="TemplateRoot" x:DataType="ff:GlyphSource" LastChildFill="True">
                         <TextBlock DockPanel.Dock="Right" Text="figlet" TextStyle="Italic" TextWeight="Faint"
                                    TextElement.Inverse="{Binding Source={x:Reference TemplateRoot}, Path=(TextElement.Inverse)}"
                                    Visibility="{Binding IsFiglet, Converter={BooleanConverter TrueValue=Visible, FalseValue=Collapsed}}"/>
@@ -368,7 +364,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:MenusViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:MenusViewModel" LastChildFill="True">
           <Menu Margin="2,1" DockPanel.Dock="Top">
             <MenuItem Header="_File">
               <MenuItem Header="_New"  InputGestureText="Ctrl+N" Icon="📄" />
@@ -439,7 +435,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:BarsViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:BarsViewModel" LastChildFill="True">
           <!-- The Toolbar (Surface A): one BarCommand set, define-once. Docked top so it stretches to the page width
                and overflows as the window narrows. "Settings" is pinned to the overflow popup (OverflowMode=Always). -->
           <bars:Toolbar DockPanel.Dock="Top" Margin="2,1">
@@ -515,21 +511,21 @@
            app hosts one surface at a time. Large Paste/Find (glyph-over-label); small B/I/U; switch tabs by click or
            Left/Right; the File tab opens Backstage (a stub); Clipboard's ⋰ is the dialog launcher. -->
       <DataTemplate DataType="vm:RibbonViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:RibbonViewModel" LastChildFill="True">
           <!-- GalleryRibbon self-populates the Quick Access Toolbar (caption row) from the view-model; the QAT
                customize ▾ toggles membership, and the ⌃ pin (or double-clicking a tab) minimizes the ribbon. -->
           <gallery:GalleryRibbon DockPanel.Dock="Top" Margin="2,1" LayoutMode="{Binding LayoutMode}">
             <bars:RibbonTab IsFileTab="True">
-              <bars:RibbonTab.Header>
-                <StackPanel x:Name="FileTabContent"
-                            Orientation="Horizontal"
-                            TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
-                  <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
-                        TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
-                  <ContentPresenter Content="_File" RecognizesAccessKey="True"
-                                    TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
-                </StackPanel>
-              </bars:RibbonTab.Header>
+            <bars:RibbonTab.Header>
+              <StackPanel x:Name="FileTabContent"
+                          Orientation="Horizontal"
+                          TextElement.Inverse="{Binding (TextElement.Inverse), RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type bars:RibbonTab}}}">
+                <Icon Glyph="&#xf035c;" Text="≡" Margin="0,0,1,0"
+                      TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+                <ContentPresenter Content="_File" RecognizesAccessKey="True"
+                                  TextElement.Inverse="{Binding (TextElement.Inverse), ElementName=FileTabContent}" />
+              </StackPanel>
+            </bars:RibbonTab.Header>
             </bars:RibbonTab>
             <bars:RibbonTab Header="_Home">
               <bars:RibbonGroup Header="Clipboard" HasDialogLauncher="True">
@@ -605,7 +601,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:TabControlViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:TabControlViewModel" LastChildFill="True">
           <TabControl Margin="2,1">
             <TabItem Header="F_irst Tab">
               <TabItem.Content>
@@ -677,7 +673,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:DataGridViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:DataGridViewModel" LastChildFill="True">
           <Button DockPanel.Dock="Top" Margin="2,1,2,0" HorizontalAlignment="Left"
                   Content="{Binding FeedLabel}" Command="{Binding ToggleFeed}" />
 
@@ -690,7 +686,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:TreeViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:TreeViewModel" LastChildFill="True">
           <TreeView Margin="2,1">
             <TreeViewItem Header="Item 1">
               <TreeViewItem Header="Item 1.1" />
@@ -713,7 +709,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:DateControlsViewModel">
-        <Grid Margin="2,1">
+        <Grid x:DataType="vm:DateControlsViewModel" Margin="2,1">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -731,16 +727,10 @@
             <ComboBox x:Name="SelectionModeSelector"
                       HorizontalAlignment="Left"
                       MinWidth="20"
-                      ItemsSource="{i:EnumItemsSource EnumType={x:Type CalendarSelectionMode}}"
-                      SelectedItem="{Binding ElementName=DemoCalendar, Path=SelectionMode, Mode=TwoWay, Converter={i:EnumItemConverter EnumType={x:Type CalendarSelectionMode}}}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate DataType="{x:Type i:EnumItem}">
-                  <TextBlock Text="{Binding Name}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
+                      ItemsSource="{Binding CalendarSelectionModes}"
+                      SelectedItem="{Binding SelectedCalendarSelectionMode, Mode=TwoWay}" />
             <Calendar x:Name="DemoCalendar" VerticalAlignment="Top" Margin="0,1,0,0"
-                      SelectionMode="MultipleRange"
+                      SelectionMode="{Binding SelectedCalendarSelectionMode.Value}"
                       SelectedDates="{Binding Path=SelectedDates, Mode=OneWayToSource}"
                       HorizontalAlignment="Left" />
             <TextBlock Text="selected dates:" Foreground="{DynamicResource {x:Static ThemeKeys.TextDimBrush}}"
@@ -795,7 +785,7 @@
       </DataTemplate>
 
       <DataTemplate DataType="vm:ButtonsViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:ButtonsViewModel" LastChildFill="True">
           <Grid Margin="2,1">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" />
@@ -882,7 +872,7 @@
       <DataTemplate DataType="vm:CompletionViewModel">
         <!-- LastChildFill is OFF: the two stacks dock to the edges and the band between them is left empty on
              purpose — see the note on the bottom stack. -->
-        <DockPanel LastChildFill="False">
+        <DockPanel x:DataType="vm:CompletionViewModel" LastChildFill="False">
           <StackPanel DockPanel.Dock="Top" Orientation="Vertical" Margin="2,1">
             <TextBlock Text="Try: inpc → INotifyPropertyChanged · hban → hero_banner.png · gmap → gradient-map.json"
                        Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
@@ -930,20 +920,14 @@
            in one write. IsBuiltInSortEnabled lets the control reorder the page's own ObservableCollection; the
            view-model still listens on Sorting, purely to report. -->
       <DataTemplate DataType="vm:ListViewPageViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:ListViewPageViewModel" LastChildFill="True">
           <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
             <WrapPanel Orientation="Horizontal">
               <Label Content="_View:" Target="{x:Reference ViewSelector}" Margin="0,0,1,0"
                      Foreground="{DynamicResource {x:Static ThemeKeys.MutedBrush}}" />
               <ComboBox x:Name="ViewSelector" MinWidth="14"
-                        ItemsSource="{i:EnumItemsSource EnumType={x:Type ListViewViewMode}}"
-                        SelectedItem="{Binding ViewMode, Mode=TwoWay, Converter={i:EnumItemConverter EnumType={x:Type ListViewViewMode}}}">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate DataType="{x:Type i:EnumItem}">
-                    <TextBlock Text="{Binding Name}" />
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
+                        ItemsSource="{Binding ViewModes}"
+                        SelectedItem="{Binding ViewMode, Mode=TwoWay}" />
               <TextBlock Margin="2,0,0,0" VerticalAlignment="Center"
                          Text="click a Details header to cycle its sort (▲/▼) · ctrl-click and shift-click multi-select"
                          Foreground="{DynamicResource {x:Static ThemeKeys.FaintBrush}}" />
@@ -970,8 +954,8 @@
                    twins but SORT on the raw value — ordering "12.4 KB" as text would file 9 B after it. -->
               <ListViewColumn Header="Name" Width="*" MinWidth="14" SortMemberPath="Name">
                 <ListViewColumn.CellTemplate>
-                  <DataTemplate>
-                    <DockPanel>
+                  <DataTemplate DataType="vm:ListViewPageViewModel+AssetRow">
+                    <DockPanel x:DataType="vm:ListViewPageViewModel+AssetRow">
                       <ContentPresenter DockPanel.Dock="Left" Content="{Binding Icon}" Margin="0,0,1,0" />
                       <ContentPresenter Content="{Binding Name}"
                                         TextBlock.TextWrapping="NoWrap"
@@ -997,7 +981,7 @@
            ItemActivated / the three edit-mode events / the two drop-down events and mutates nothing itself; the
            view-model answers them (wired by pages:GalleryBreadcrumbBar). -->
       <DataTemplate DataType="vm:BreadcrumbViewModel">
-        <DockPanel LastChildFill="True">
+        <DockPanel x:DataType="vm:BreadcrumbViewModel" LastChildFill="True">
           <Border DockPanel.Dock="Top" Background="{DynamicResource {x:Static ThemeKeys.ElevationHighest}}" Padding="1,0">
             <WrapPanel Orientation="Horizontal">
               <Button Margin="0,0,1,0" MinWidth="11" Content="Dee_per"    Command="{Binding DeeperCommand}" />
@@ -1015,8 +999,8 @@
                                         IsEditable="True"
                                         ItemsSource="{Binding Trail}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock Text="{Binding Label}" />
+                <DataTemplate DataType="vm:BreadcrumbViewModel+TrailNode">
+                  <TextBlock x:DataType="vm:BreadcrumbViewModel+TrailNode" Text="{Binding Label}" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </pages:GalleryBreadcrumbBar>
@@ -1084,8 +1068,8 @@
                  SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
                  TextSearch.TextPath="Title">
           <ListBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding Title}" />
+            <DataTemplate DataType="vm:PageViewModel">
+              <TextBlock x:DataType="vm:PageViewModel" Text="{Binding Title}" />
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>

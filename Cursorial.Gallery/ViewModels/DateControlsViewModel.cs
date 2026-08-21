@@ -1,12 +1,26 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
+using Cursorial.Gallery.Infrastructure;
 using Cursorial.UI.Controls;
 
 namespace Cursorial.Gallery.ViewModels;
 
 public class DateControlsViewModel : PageViewModel
 {
+    public DateControlsViewModel()
+    {
+        CalendarSelectionModes =
+        [
+            new Described<CalendarSelectionMode>(CalendarSelectionMode.SingleDate, "Single Date"),
+            new Described<CalendarSelectionMode>(CalendarSelectionMode.SingleRange, "Single Range"),
+            new Described<CalendarSelectionMode>(CalendarSelectionMode.MultipleRange, "Multiple Range"),
+            new Described<CalendarSelectionMode>(CalendarSelectionMode.None, "None")
+        ];
+
+        SelectedCalendarSelectionMode = CalendarSelectionModes[2]; // MultipleRange — the demo's pre-rework opening state
+    }
+
     public override string Title => "Date Controls";
     public override string Summary => "A standalone calendar and a DatePicker with a drop-down calendar.";
 
@@ -22,7 +36,12 @@ public class DateControlsViewModel : PageViewModel
             RebuildSelectedDateRanges();
         }
     } = new();
-    
+
+
+    public ObservableCollection<Described<CalendarSelectionMode>> CalendarSelectionModes { get; }
+
+    public Described<CalendarSelectionMode> SelectedCalendarSelectionMode { get; set => Set(ref field, value); }
+
     public ObservableCollection<DateRange> SelectedDateRanges { get; } = new();
 
     private void OnSelectedDatesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

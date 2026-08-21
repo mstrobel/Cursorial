@@ -386,6 +386,8 @@ internal sealed class DataGridFilterBuilder
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The column key type is a runtime type (RDC shaping engine); it feeds the DAM-annotated editor/format path — a trimmed key type degrades the editor, not a crash.")]
+
     private void RenderCondition(Condition condition, string indent)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };

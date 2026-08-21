@@ -66,7 +66,7 @@ public sealed class RibbonViewModel : PageViewModel
         protected set => Set(ref field, value);
     } = "Ready — invoke a command, switch tabs, or press Alt for access keys.";
 
-    public RibbonLayoutMode LayoutMode { get; private set => Set(ref field, value); } = RibbonLayoutMode.Classic;
+    public RibbonLayoutMode LayoutMode { get; set => Set(ref field, value); } = RibbonLayoutMode.Classic;
     public IReadOnlyList<RibbonLayoutMode> LayoutModes { get; } = [RibbonLayoutMode.Classic, RibbonLayoutMode.Simplified, RibbonLayoutMode.Compact];
 
     public ICommand Cut { get; }

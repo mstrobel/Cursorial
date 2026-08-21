@@ -22,6 +22,11 @@ internal sealed class DataGridFilterPopup
 {
     private readonly DataGrid _grid;
     private Popup? _popup;
+
+    /// <summary>Tears down the OFF-TREE popup subtree (created imperatively as new Popup, held only in
+    /// <c>_popup</c>, so the window teardown sweep never reaches it — the owning DataGrid drives this
+    /// from OnTearDown). Idempotent, so a still-open popup is fine.</summary>
+    internal void TearDown() => _popup?.TearDown();
     private DataGridColumn? _column;
     private readonly List<(object? Raw, string Display, CheckBox Check, UIElement Row)> _rows = [];
     private CheckBox? _selectAll;

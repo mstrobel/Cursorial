@@ -16,15 +16,16 @@ internal static class EnumDisplay
     /// <summary>The per-member display names for an enum type (index-aligned with
     /// <see cref="Enum.GetNames(Type)"/>), or null when NO member carries a <c>[Display(Name)]</c>
     /// (the fast path — cells/pickers use the raw member names).</summary>
-    private static string?[]? DisplayNamesOrNull(Type enumType)
-        => Cache.GetOrAdd(enumType, static type =>
+    private static string?[]? DisplayNamesOrNull(
+        [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)] Type enumType)
+        => Cache.GetOrAdd(enumType, _ => // capture enumType (DAM-annotated); the key param loses the annotation
         {
-            var members = Enum.GetNames(type);
+            var members = Enum.GetNames(enumType);
             var names = new string?[members.Length];
             bool any = false;
             for (int i = 0; i < members.Length; i++)
             {
-                var name = type.GetField(members[i])?.GetCustomAttribute<DisplayAttribute>()?.GetName();
+                var name = enumType.GetField(members[i])?.GetCustomAttribute<DisplayAttribute>()?.GetName();
                 names[i] = name;
                 any |= name is not null;
             }
@@ -32,10 +33,10 @@ internal static class EnumDisplay
         });
 
     /// <summary>Whether the enum type has any member-level <c>[Display(Name)]</c>.</summary>
-    public static bool HasDisplayNames(Type enumType) => enumType.IsEnum && DisplayNamesOrNull(enumType) is not null;
+    public static bool HasDisplayNames([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)] Type enumType) => enumType.IsEnum && DisplayNamesOrNull(enumType) is not null;
 
     /// <summary>The display text for one member name (the member's <c>[Display(Name)]</c>, else the member itself).</summary>
-    public static string NameOf(Type enumType, string member)
+    public static string NameOf([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)] Type enumType, string member)
     {
         if (DisplayNamesOrNull(enumType) is { } names)
         {
@@ -48,6 +49,6 @@ internal static class EnumDisplay
     }
 
     /// <summary>The display text for a boxed enum value (its member's display name, else the raw name).</summary>
-    public static string TextOf(Type enumType, object value)
+    public static string TextOf([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)] Type enumType, object value)
         => NameOf(enumType, value.ToString() ?? string.Empty);
 }

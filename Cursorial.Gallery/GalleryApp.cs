@@ -1,4 +1,5 @@
 using Cursorial.Gallery.ViewModels;
+using Cursorial.Gallery.Views;
 using Cursorial.Rendering;
 using Cursorial.Rendering.Text;
 using Cursorial.UI;
@@ -26,7 +27,8 @@ public static class GalleryApp
     {
         EnsureRegistered();
 
-        var root = (DockPanel)XamlLoader.Shared.Load(LoadEmbedded(ShellResource));
+        // var root = (DockPanel)XamlLoader.Shared.Load(LoadEmbedded(ShellResource));
+        var root = new Shell();
         var vm = new ShellViewModel(app);
 
         root.DataContext = vm;

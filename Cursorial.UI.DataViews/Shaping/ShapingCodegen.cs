@@ -35,6 +35,7 @@ internal static class ShapingCodegen
     /// a null reference-typed hop yields the key type's default instead of throwing (WPF binding parity —
     /// an unresolvable path is an absent value, not a crash).
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reflects members off an intermediate Expression.Type (a BCL Type that carries no DAM); the shaping engine compiles typed trees (RequiresDynamicCode) — the property type IS the runtime row member type.")]
     public static LambdaExpression BuildPropertyPathLambda(Type rowType, string propertyPath)
     {
         ArgumentException.ThrowIfNullOrEmpty(propertyPath);
@@ -77,7 +78,7 @@ internal static class ShapingCodegen
     /// reference keys order null first; strings honor <paramref name="stringComparison"/> (default
     /// CurrentCulture — the framework's formatting convention; Ordinal is the perf opt-in).
     /// </summary>
-    public static Comparison<TKey> CreateKeyComparison<TKey>(StringComparison stringComparison = StringComparison.CurrentCulture)
+    public static Comparison<TKey> CreateKeyComparison<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(StringComparison stringComparison = StringComparison.CurrentCulture)
     {
         if (typeof(TKey) == typeof(string))
         {
@@ -147,7 +148,7 @@ internal static class ShapingCodegen
     /// column's compiled <see cref="Comparison{T}"/> (<paramref name="comparisonConstant"/>) — one
     /// delegate hop, still no boxing.
     /// </summary>
-    internal static Expression BuildKeyCompare(Type keyType, Expression keyA, Expression keyB, Expression comparisonConstant)
+    internal static Expression BuildKeyCompare([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type keyType, Expression keyA, Expression keyB, Expression comparisonConstant)
     {
         if (keyType.IsValueType && Nullable.GetUnderlyingType(keyType) is null &&
             typeof(IComparable<>).MakeGenericType(keyType).IsAssignableFrom(keyType))
@@ -170,11 +171,11 @@ internal static class ShapingCodegen
     /// </summary>
     /// <param name="levels">The sort levels (columns + directions), outermost first.</param>
     /// <param name="sequenceOwner">
-    /// An object exposing a public/internal <c>long[] Sequences</c> field indexed by slot (the
-    /// <c>RowStore</c>); read through the field per call so growth re-allocation is observed.
+    /// The store whose <see cref="RowStore.Sequences"/> vector supplies the tiebreak, indexed by
+    /// slot; read through the field per call so growth re-allocation is observed.
     /// </param>
     public static Comparison<int> BuildSlotComparison(
-        IReadOnlyList<(ShapedColumn Column, bool Descending)> levels, object? sequenceOwner = null)
+        IReadOnlyList<(ShapedColumn Column, bool Descending)> levels, RowStore? sequenceOwner = null)
     {
         ArgumentNullException.ThrowIfNull(levels);
 
@@ -201,11 +202,10 @@ internal static class ShapingCodegen
         }
         else
         {
-            var field = sequenceOwner.GetType().GetField("Sequences",
-                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                        ?? throw new ArgumentException(
-                            $"'{sequenceOwner.GetType().Name}' has no 'Sequences' field.", nameof(sequenceOwner));
-            var sequences = Expression.Field(Expression.Constant(sequenceOwner), field);
+            // The field binds statically through the non-generic RowStore seam — the FieldInfo is
+            // extracted from a compiler-authored expression (ldtoken-rooted), so trimming can never
+            // remove it and no name probe runs (the Gallery AOT deficit).
+            var sequences = Expression.Field(Expression.Constant(sequenceOwner, typeof(RowStore)), SequencesField);
             tiebreak = Expression.Call(
                 Expression.ArrayIndex(sequences, a),
                 typeof(long).GetMethod(nameof(long.CompareTo), [typeof(long)])!,
@@ -216,6 +216,38 @@ internal static class ShapingCodegen
 
         var block = Expression.Block([c], body);
         return Expression.Lambda<Comparison<int>>(block, a, b).Compile();
+    }
+
+    private static readonly FieldInfo SequencesField =
+        (FieldInfo)((MemberExpression)((Expression<Func<RowStore, long[]>>)(static s => s.Sequences)).Body).Member;
+
+    /// <summary>
+    /// The AOT instantiation seed (never executes — the env guard is runtime-opaque so ILC compiles
+    /// the body): statically closes the engine's generic surface over (TRow, TKey) so runtime
+    /// MakeGenericType/expression construction finds native artifacts. See DataGridAotSupport.
+    /// </summary>
+    internal static void SeedAot<TRow, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>() where TRow : notnull
+    {
+        if (Environment.GetEnvironmentVariable("CURSORIAL_AOT_SEED_EXECUTE") is null)
+            return;
+
+        _ = typeof(System.Linq.Expressions.Expression<Func<TRow, TKey>>);
+        _ = typeof(Func<TRow, TKey>);
+        // The REAL construction, not just typeof: forces the Lambda<TDelegate> method instantiation
+        // and registers the constructed Expression<Func<TRow,TKey>> through the same path the
+        // engine's runtime MakeGenericType lookup resolves.
+        _ = System.Linq.Expressions.Expression.Lambda<Func<TRow, TKey>>(
+                System.Linq.Expressions.Expression.Default(typeof(TKey)),
+                System.Linq.Expressions.Expression.Parameter(typeof(TRow), "r"))
+            .Compile(); // through Compile: the interpreter's typed-delegate creation thunks ride along
+        _ = typeof(ShapedColumn<TRow, TKey>);
+        // The reflectively-closed core itself — one reference transitively seeds the typed column
+        // ctor, the compiled selector path, comparison, and formatter for this (TRow, TKey).
+        _ = CreateColumnCore<TRow, TKey>(new object(), null!, StringComparison.Ordinal, null, null);
+        Func<StringComparison, Comparison<TKey>> comparison = CreateKeyComparison<TKey>;
+        Func<string?, CultureInfo?, Func<TKey, string>> formatter = CreateFormatter<TKey>;
+        Func<string?, CultureInfo?, SpanFormat<TKey>> spanFormatter = CreateSpanFormatter<TKey>;
+        GC.KeepAlive((comparison, formatter, spanFormatter));
     }
 
     // ── Formatters ───────────────────────────────────────────────────────────────────────────────
@@ -230,7 +262,7 @@ internal static class ShapingCodegen
     /// valid (the format is unused). Reference <see cref="IFormattable"/> types can't be sampled here
     /// and are reported valid (the codegen null-guards them; a throw there is the caller's contract).
     /// </summary>
-    internal static bool IsFormatStringValid(Type type, string? format, CultureInfo? culture = null)
+    internal static bool IsFormatStringValid([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type type, string? format, CultureInfo? culture = null)
     {
         if (string.IsNullOrEmpty(format))
             return true;
@@ -257,7 +289,7 @@ internal static class ShapingCodegen
     /// <see cref="Nullable{T}"/>/reference nulls format as <c>""</c>. Default culture is
     /// <see cref="CultureInfo.CurrentCulture"/> (the framework convention).
     /// </summary>
-    public static Func<TKey, string> CreateFormatter<TKey>(string? format = null, CultureInfo? culture = null)
+    public static Func<TKey, string> CreateFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(string? format = null, CultureInfo? culture = null)
     {
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
@@ -344,7 +376,7 @@ internal static class ShapingCodegen
     /// <see cref="CreateFormatter{TKey}"/>-then-copy (documented cold — allocates per call).
     /// Nothing consumes this yet — the band cache wires it in (§3.2).
     /// </summary>
-    public static SpanFormat<TKey> CreateSpanFormatter<TKey>(string? format = null, CultureInfo? culture = null)
+    public static SpanFormat<TKey> CreateSpanFormatter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(string? format = null, CultureInfo? culture = null)
     {
         culture ??= CultureInfo.CurrentCulture;
         var type = typeof(TKey);
@@ -517,6 +549,7 @@ internal static class ShapingCodegen
     // ── Column factory ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>Builds the typed column for a row selector lambda (closed generics resolved at runtime).</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2076", Justification = "The key TKey is the selector's LambdaExpression.ReturnType (a BCL Type, no DAM); the engine is RequiresDynamicCode and CreateColumnCore<TRow,TKey> flows DAM to the reflection sites for the seeded instantiations.")]
     public static ShapedColumn CreateColumn<TRow>(
         object identity, LambdaExpression selector,
         StringComparison stringComparison = StringComparison.CurrentCulture,
@@ -525,13 +558,23 @@ internal static class ShapingCodegen
         ArgumentNullException.ThrowIfNull(selector);
         var keyType = selector.ReturnType;
 
-        return (ShapedColumn)typeof(ShapingCodegen)
-            .GetMethod(nameof(CreateColumnCore), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(typeof(TRow), keyType)
-            .Invoke(null, [identity, selector, stringComparison, format, culture])!;
+        try
+        {
+            return (ShapedColumn)typeof(ShapingCodegen)
+                .GetMethod(nameof(CreateColumnCore), BindingFlags.NonPublic | BindingFlags.Static)!
+                .MakeGenericMethod(typeof(TRow), keyType)
+                .Invoke(null, [identity, selector, stringComparison, format, culture])!;
+        }
+        catch (TargetInvocationException tie) when (tie.InnerException is not null)
+        {
+            // Unwrap: the reflective closing is plumbing — the INNER failure (an AOT artifact miss,
+            // a selector type mismatch) is the diagnosable error and must surface as itself.
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(tie.InnerException).Throw();
+            throw; // unreachable
+        }
     }
 
-    private static ShapedColumn CreateColumnCore<TRow, TKey>(
+    private static ShapedColumn CreateColumnCore<TRow, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(
         object identity, LambdaExpression selector, StringComparison stringComparison, string? format,
         CultureInfo? culture) where TRow : notnull
         => new ShapedColumn<TRow, TKey>(

@@ -115,6 +115,9 @@ public sealed class ListViewPageViewModel : PageViewModel
         set => Set(ref field, value);
     } = ListViewViewMode.Details;
 
+    /// <summary>The available presentation modes.</summary>
+    public IReadOnlyList<ListViewViewMode> ViewModes { get; } = Enum.GetValues<ListViewViewMode>();
+
     /// <summary>The live status line: the selection count, the sort in effect, and the last invocation.</summary>
     public override string Status => _invokedSummary is { Length: > 0 }
         ? $"{_selectionSummary} · sort: {_sortSummary} · {_invokedSummary}"

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -165,6 +166,11 @@ public class DataGrid : Control
     }
 
     private DataViewController? _controller;
+    // The row type is DISCOVERED from the (untyped) ItemsSource — its members can't be statically
+    // guaranteed (DiscoverRowType suppresses the discovery). This DAM claim satisfies the reflection
+    // uses (GetProperties/GetConstructor/Activator); a trimmed row type degrades to empty auto-columns
+    // (the zero-columns tripwire warns), never a crash. A fully-lowered app uses a typed ItemsSource.
+    [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.Interfaces)]
     private Type? _rowType;
     private bool _rowTypeHasParameterlessCtor;
     private bool _columnsFromAutoGeneration;
@@ -1368,19 +1374,19 @@ public class DataGrid : Control
         {
             _header.Owner = this;
             _header.SetBinding(DataGridHeaderPresenter.HorizontalOffsetProperty,
-                               new Binding(HorizontalOffsetProperty) { Source = this });
+                               CompiledBinding.For(HorizontalOffsetProperty, source: this));
         }
         if (AutoFilterRow is not null)
         {
             AutoFilterRow.Owner = this;
             AutoFilterRow.SetBinding(DataGridAutoFilterRow.HorizontalOffsetProperty,
-                                     new Binding(HorizontalOffsetProperty) { Source = this });
+                                     CompiledBinding.For(HorizontalOffsetProperty, source: this));
         }
         if (footer is not null)
         {
             footer.Owner = this;
             footer.SetBinding(DataGridSummaryPresenter.HorizontalOffsetProperty,
-                              new Binding(HorizontalOffsetProperty) { Source = this });
+                              CompiledBinding.For(HorizontalOffsetProperty, source: this));
             UpdateSummaryFooterVisibility();
         }
 
@@ -1439,6 +1445,8 @@ public class DataGrid : Control
     }
 
     // ── Source / controller lifecycle ────────────────────────────────────────────────────────────
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2074", Justification = "_rowType is assigned the untyped runtime-discovered row type; the DAM claim on the field is the degrade contract (empty columns if trimmed), not a static guarantee.")]
 
     private void RebuildController()
     {
@@ -1565,6 +1573,7 @@ public class DataGrid : Control
 
     /// <summary>Row type discovery: the source's <c>IEnumerable&lt;T&gt;</c> (first closed interface), else the first item's runtime type.
     /// Value-type rows are first-class (§9.6 — the engine guards the INPC lane itself).</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Row-type discovery walks the runtime ItemsSource's interfaces / first item type — inherently untyped; the result feeds the DAM-claimed _rowType and degrades to empty columns if trimmed.")]
     private static Type? DiscoverRowType(IEnumerable source)
     {
         foreach (var candidate in source.GetType().GetInterfaces())
@@ -1722,6 +1731,18 @@ public class DataGrid : Control
             }
 
             // [Display(Order)] first (stable), then declaration order for the un-ordered remainder.
+            // The silent-empty tripwire (Gallery AOT sweep): a row type whose properties the trimmer
+            // stripped auto-generates ZERO columns — rows render blank with no headers band, which is
+            // indistinguishable from bad data without this signal. Zero properties on the row type is
+            // legitimate only for property-less rows (primitives); the remedy for trimmed apps is
+            // [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] on the row type.
+            if (generated.Count == 0 && Type.GetTypeCode(_rowType) == TypeCode.Object &&
+                _rowType.GetProperties(BindingFlags.Public | BindingFlags.Instance).Length == 0)
+                Trace.TraceWarning(
+                    $"DataGrid auto-generation found no bindable public instance properties on row type '{_rowType}'. " +
+                    "If the type declares properties, they were likely removed by trimming — annotate the row type with " +
+                    "[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] or define explicit Columns.");
+
             foreach (var (_, _, column) in generated.OrderBy(g => g.Order).ThenBy(g => g.Sequence))
                 Columns.Add(column);
 
@@ -3637,8 +3658,12 @@ public class DataGrid : Control
 
     protected override void OnTearDown()
     {
-        _filterPopup?.Close(); // release the popup surface before the controller it reads goes away
-        _columnChooser?.Close();
+        // OFF-TREE popup owners (each roots its own surface / is field-held) — TEAR down, not just Close():
+        // Close() is a reversible surface dismiss; only TearDown() disposes their content's resource-refs +
+        // INPC/binding state. Idempotent, so a still-open popup (and _gridMenu's Popup.Child == itself) is safe.
+        _gridMenu?.TearDown();      // the grid's ContextMenu (its own OnTearDown sweeps its popup)
+        _filterPopup?.TearDown();   // helper owning a field-held new Popup
+        _columnChooser?.TearDown(); // helper owning a field-held new Popup
         _expressionEditor?.CloseWindow(); // the dialog windows read the grid/controller — close first
         _filterBuilder?.CloseWindow();
         _rulesManager?.CloseWindow();

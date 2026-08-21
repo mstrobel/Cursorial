@@ -33,7 +33,7 @@ public static class DataGridAotSupport
 
     /// <summary>Seeds one (row, key) pairing — needed explicitly for enum keys and any key type
     /// outside the common set.</summary>
-    public static void Seed<TRow, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors)] TKey>() where TRow : notnull
+    public static void Seed<TRow, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>() where TRow : notnull
     {
         ShapingCodegen.SeedAot<TRow, TKey>();
         ColumnAggregator.SeedAot<TRow, TKey>();

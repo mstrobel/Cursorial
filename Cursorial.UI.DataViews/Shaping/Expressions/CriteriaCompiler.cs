@@ -262,6 +262,7 @@ public static class CriteriaCompiler
         }
 
         /// <summary>The comparison lowering shared by =/&lt;&gt;/relational, In items, and Between bounds.</summary>
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Reflects a method off an Expression.Type (BCL Type, no DAM) while building the criteria comparison; the criteria compiler emits typed expression trees (RequiresDynamicCode).")]
         private Expression? Comparison(CriteriaBinaryOperator op, Expression left, Expression right, CriteriaNode at)
         {
             // Null tests: `= null` / `<> null` check null-ness directly (relational-vs-null is an error).

@@ -49,12 +49,13 @@ try
     void OnAnimationDiagnosticsTrackError(StoryboardTrackError e) => vm?.AddDiagnostic($"[Animation] {FormatElement(e.Scope)}: {e.Message} " + $"({e.Track.TargetProperty?.Name})");
     void OnUIDiagnosticsRejectedValue(UIObject t, UIProperty p, object? v) => vm?.AddDiagnostic($"[Rejected ] {FormatElement(t)}.{p.Name} = {v}");
 
-    StyleDebugDiagnostics.DiagnosticEmitted += OnStyleDebugDiagnosticsDiagnosticEmitted;
-    ControlDiagnostics.DiagnosticRaised += OnControlDiagnosticsDiagnosticRaised;
+    // TODO: RE-ENABLE THESE BEFORE COMMITTING!
+    // StyleDebugDiagnostics.DiagnosticEmitted += OnStyleDebugDiagnosticsDiagnosticEmitted;
+    // ControlDiagnostics.DiagnosticRaised += OnControlDiagnosticsDiagnosticRaised;
     BindingDiagnostics.TraceEmitted += OnBindingDiagnosticsTraceEmitted;
-    LayoutDiagnostics.DiagnosticRaised += OnLayoutDiagnosticsDiagnosticRaised;
-    AnimationDiagnostics.TrackError += OnAnimationDiagnosticsTrackError;
-    UIDiagnostics.RejectedValue += OnUIDiagnosticsRejectedValue;
+    // LayoutDiagnostics.DiagnosticRaised += OnLayoutDiagnosticsDiagnosticRaised;
+    // AnimationDiagnostics.TrackError += OnAnimationDiagnosticsTrackError;
+    // UIDiagnostics.RejectedValue += OnUIDiagnosticsRejectedValue;
 
     void OnBeginShutdown(object? o, EventArgs eventArgs)
     {

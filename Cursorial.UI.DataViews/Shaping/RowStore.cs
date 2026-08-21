@@ -10,7 +10,20 @@ namespace Cursorial.UI.DataViews.Shaping;
 /// The store also maintains the source-order sequence (the INCC index space) so collection events
 /// map positions → slots.
 /// </summary>
-internal sealed class RowStore<TRow>
+/// <summary>
+/// The non-generic seam of <see cref="RowStore{TRow}"/>: the insertion-sequence vector the fused
+/// sort comparer's tiebreak reads (<see cref="ShapingCodegen.BuildSlotComparison"/>). A base-class
+/// FIELD — not a name-probed reflection lookup — so the comparer binds it statically (the Gallery
+/// AOT sweep caught the old <c>GetType().GetField("Sequences")</c> probe dying under trimming) and
+/// still re-reads per call, observing growth re-allocation (the key-vector rule).
+/// </summary>
+internal abstract class RowStore
+{
+    /// <summary>Slot → insertion sequence (monotonic per occupancy).</summary>
+    internal long[] Sequences = [];
+}
+
+internal sealed class RowStore<TRow> : RowStore
 {
     private TRow[] _rows = [];
     private int[] _sourceOrder = [];       // source position → slot
@@ -20,11 +33,6 @@ internal sealed class RowStore<TRow>
     private readonly Stack<int> _freeSlots = new();
     private readonly List<int> _deferredFrees = [];
     private bool _deferReclamation;
-
-    /// <summary>Slot → insertion sequence (monotonic per occupancy). Read by the compiled comparer's
-    /// tiebreak via <see cref="ShapingCodegen.BuildSlotComparison"/> — through the field, so growth
-    /// re-allocation is observed (the key-vector rule).</summary>
-    internal long[] Sequences = [];
 
     /// <summary>Reference-typed rows map back to their slot for INPC dispatch (doc §2.6). Null for value-type rows.</summary>
 #pragma warning disable CS8714 // TRow is unconstrained since §9.6 (struct rows); the map exists ONLY for reference rows and stores no nulls

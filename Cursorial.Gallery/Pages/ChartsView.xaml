@@ -5,7 +5,8 @@
              xmlns:vm="clr-namespace:Cursorial.Gallery.ViewModels;assembly=Cursorial.Gallery"
              mc:Ignorable="d"
              x:Class="Cursorial.Gallery.Pages.ChartsView"
-             d:DataContext="vm:ChartsPageViewModel">
+             d:DataContext="vm:ChartsPageViewModel"
+             x:DataType="vm:ChartsPageViewModel">
 
     <Grid>
       <Grid.ColumnDefinitions>

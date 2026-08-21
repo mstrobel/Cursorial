@@ -126,6 +126,7 @@ internal sealed class DataGridSummaryEditor
     /// degraded downstream — the engine's format guard is the backstop for non-editor sources, not
     /// the editor's excuse to accept bad input (owner note, 2026-07-20).
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "ColumnKeyType is the column's runtime key type (Controller lookup / LambdaExpression.ReturnType, no DAM); format validation degrades to unvalidated, not a crash.")]
     private bool TryValidate()
     {
         if (CurrentFormat is { } format && ColumnKeyType is { } keyType &&

@@ -1,6 +1,6 @@
 namespace Cursorial.Gallery.Views;
 
-public class Shell_xaml
+public partial class Shell
 {
-    
+    public Shell() => InitializeComponent();
 }

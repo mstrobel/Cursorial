@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 
@@ -36,8 +37,18 @@ public class DataGridViewModel : PageViewModel
     private UITimer? _feed;
     private bool _feedRunning;
 
+    // DynamicDependency, not just the type-level DAM below: on this toolchain the type-level
+    // attribute engages only for REFLECTION-VISIBLE type references, and the grid discovers the row
+    // type through a dataflow-opaque Type variable — so ILC never triggered it and GetProperties()
+    // came back empty (the blank-grid deficit, round two). DynamicDependency preserves the members
+    // unconditionally as long as this ctor is kept.
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(OrderRow))]
     public DataGridViewModel()
     {
+        // AOT: statically close the shaping engine's generics over OrderRow (see DataGridAotSupport).
+        Cursorial.UI.DataViews.DataGridAotSupport.Seed<OrderRow>();
+        Cursorial.UI.DataViews.DataGridAotSupport.Seed<OrderRow, OrderStatus>();
+
         var rows = new List<OrderRow>(capacity: Capacity);
         for (int i = 0; i < Capacity; i++)
         {
@@ -113,6 +124,10 @@ public class DataGridViewModel : PageViewModel
     }
 
     /// <summary>One order (INPC — the live-update contract; Amount/Status are editable).</summary>
+    /// <remarks>The grid AUTO-GENERATES its columns by reflecting over this type — under trim/AOT
+    /// nothing else references these getters, so without the DAM root the trimmer strips them and
+    /// the grid renders header-less blank rows (the Gallery AOT sweep's empty-grid deficit).</remarks>
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
     public sealed class OrderRow : INotifyPropertyChanged
     {
         public required string Order { get; init => Set(ref field, value); }

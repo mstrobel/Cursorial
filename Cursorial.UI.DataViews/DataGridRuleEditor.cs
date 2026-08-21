@@ -475,6 +475,8 @@ internal sealed class DataGridRuleEditor
         host.Children.Add(add);
     }
 
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The column key type is a runtime type (RDC shaping engine); it feeds the DAM-annotated editor/format path — a trimmed key type degrades the editor, not a crash.")]
+
     private void BuildHighlightRow(StackPanel host, int index)
     {
         var entry = _highlightEntries[index];

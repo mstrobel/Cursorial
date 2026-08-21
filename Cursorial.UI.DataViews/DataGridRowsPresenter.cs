@@ -595,7 +595,7 @@ public sealed class DataGridRowsPresenter : UIElement, ILogicalScrollHost
                 if (owner.DetailTemplate is not {} template || owner.Controller is not {} controller)
                     continue;
 
-                element = template.Build(controller.GetRowObject(pane.RowId));
+                element = template.Build(controller.GetRowObject(pane.RowId), this);
                 _detailElements[pane.RowId] = element;
                 AdoptChild(element, index: -1);
             }

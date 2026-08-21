@@ -1,63 +1,75 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <!--
-        The standalone control gallery (#107): a real UIApplication over a TerminalSession, NOT a Cursorial.Demo
-        REPL command. It is XAML-first MVVM by design — a showcase of the declarative stack: the shell + every page
-        is authored in XAML (loaded at runtime via XamlLoader), each page is an MVVM view-model selected in a nav
-        list, and the page's view is materialized by an IMPLICIT DataTemplate keyed on the view-model's type. Live
-        bindings exercise the controls; the ScrollViewer page is first (scrolling is the framework's biggest bug
-        surface). The CursorialTheme.BuiltIn code-first theme is the chain backstop.
-    -->
+  <!--
+      The standalone control gallery (#107): a real UIApplication over a TerminalSession, NOT a Cursorial.Demo
+      REPL command. It is XAML-first MVVM by design — a showcase of the declarative stack: the shell + every page
+      is authored in XAML (loaded at runtime via XamlLoader), each page is an MVVM view-model selected in a nav
+      list, and the page's view is materialized by an IMPLICIT DataTemplate keyed on the view-model's type. Live
+      bindings exercise the controls; the ScrollViewer page is first (scrolling is the framework's biggest bug
+      surface). The CursorialTheme.BuiltIn code-first theme is the chain backstop.
+  -->
 
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <RootNamespace>Cursorial.Gallery</RootNamespace>
-        <AssemblyName>Cursorial.Gallery</AssemblyName>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Cursorial.Gallery</RootNamespace>
+    <AssemblyName>Cursorial.Gallery</AssemblyName>
+    <!--
         <CursorialXamlReflectionProvider>true</CursorialXamlReflectionProvider>
         <CursorialXamlLowering>none</CursorialXamlLowering>
-    </PropertyGroup>
+    -->
+    <PublishAot>true</PublishAot>
+    <CursorialXamlLowering>full</CursorialXamlLowering>
+    <CursorialXamlEmbedResources>false</CursorialXamlEmbedResources>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
 
-    <ItemGroup>
-        <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj" />
-        <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj" />
-        <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Dialogs\Cursorial.UI.Dialogs.csproj" />
-        <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.DataViews\Cursorial.UI.DataViews.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj" />
-        <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
-                          OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
-    </ItemGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
 
-    <!-- The shell + page views are <CursorialXaml> via the generator's default glob and are
-         loaded at runtime from embedded XAML (the runtime-loader path). -->
-    <ItemGroup>
-      <CursorialXaml Include="**/*.xaml" />
-    </ItemGroup>
-  
-    <ItemGroup>
-      <EmbeddedResource Include="../cursorial_banner.png" LogicalName="cursorial_banner.png" />
-      <EmbeddedResource Include="../cursorial_icon.png" LogicalName="cursorial_icon.png" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Cursorial.Core\Cursorial.Core.csproj"/>
+    <ProjectReference Include="..\Cursorial.Rendering\Cursorial.Rendering.csproj"/>
+    <ProjectReference Include="..\Cursorial.Drawing\Cursorial.Drawing.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.Dialogs\Cursorial.UI.Dialogs.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI\Cursorial.UI.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.Themes\Cursorial.UI.Themes.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.Bars\Cursorial.UI.Bars.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.DataViews\Cursorial.UI.DataViews.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.Xaml\Cursorial.UI.Xaml.csproj"/>
+    <ProjectReference Include="..\Cursorial.UI.Xaml.Generator\Cursorial.UI.Xaml.Generator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
+  </ItemGroup>
 
-    <ItemGroup>
-        <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->
-        <InternalsVisibleTo Include="Cursorial.UI.Tests" />
-    </ItemGroup>
+  <!-- The shell + page views are <CursorialXaml> via the generator's default glob and are
+       loaded at runtime from embedded XAML (the runtime-loader path). -->
+  <ItemGroup>
+    <CursorialXaml Include="**/*.xaml"/>
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
-    </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../cursorial_banner.png" LogicalName="cursorial_banner.png"/>
+    <EmbeddedResource Include="../cursorial_icon.png" LogicalName="cursorial_icon.png"/>
+  </ItemGroup>
 
-    <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
-    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props" />
+  <ItemGroup>
+    <!-- The headless smoke canary (no TTY) builds the shell + pages through UITestHost. -->
+    <InternalsVisibleTo Include="Cursorial.UI.Tests"/>
+  </ItemGroup>
 
-    <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->
-    <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets" />
+  <ItemGroup>
+    <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0"/>
+  </ItemGroup>
+
+  <!-- Generator consumer props (CompilerVisibleProperty/Item + the CursorialXamlStrictAot default). -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.props"/>
+
+  <!-- Generator consumer targets (CursorialXaml → AdditionalFiles + EmbeddedResource; the StrictAot switch). -->
+  <Import Project="..\Cursorial.UI.Xaml.Generator\build\Cursorial.UI.Xaml.Generator.targets"/>
 
 </Project>

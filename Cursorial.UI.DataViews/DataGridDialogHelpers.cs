@@ -366,7 +366,7 @@ internal sealed class ValueEditor
     /// <paramref name="onChanged"/> on every edit. Enum (incl. <see cref="Nullable{T}"/> of enum) and
     /// bool key types yield a name dropdown; everything else a text box.
     /// </summary>
-    internal static ValueEditor Create(Type? keyType, string seed, Action onChanged, int minWidth = 8)
+    internal static ValueEditor Create([System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)] Type? keyType, string seed, Action onChanged, int minWidth = 8)
     {
         var underlying = keyType is null ? null : Nullable.GetUnderlyingType(keyType) ?? keyType;
         if (underlying is { IsEnum: true })

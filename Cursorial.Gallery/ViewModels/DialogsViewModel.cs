@@ -82,7 +82,9 @@ public class DialogsViewModel : PageViewModel
     }
 
     public MessageBoxButton MessageBoxButtons { get; set => Set(ref field, value); } = MessageBoxButton.YesNo;
-    
+
+    public IReadOnlyList<TaskDialogSeverity> SeverityLevels { get; } = Enum.GetValues<TaskDialogSeverity>();
+
     public TaskDialogSeverity TaskDialogSeverity { get; set => Set(ref field, value); } = TaskDialogSeverity.None;
     public bool TaskDialogIncludeContent { get; set => Set(ref field, value); } = true;
     public bool TaskDialogIncludeCommandLinks { get; set => Set(ref field, value); } = true;

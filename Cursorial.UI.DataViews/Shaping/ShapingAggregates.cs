@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Cursorial.UI.DataViews.Shaping;
@@ -50,11 +51,28 @@ internal abstract class ColumnAggregator
         return false;
     }
 
+    internal static void SeedAot<TRow,
+                                 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | 
+                                                             DynamicallyAccessedMemberTypes.PublicConstructors)]
+                                 TKey>() where TRow : notnull
+    {
+        if (Environment.GetEnvironmentVariable("CURSORIAL_AOT_SEED_EXECUTE") is null)
+            return;
+
+        _ = new MinMaxAggregator<TRow, TKey>(null!, null) { Kind = AggregateKind.Min };
+        Func<ShapedColumn<TRow, TKey>, AggregateKind, string?, NumericAggregator<TRow, TKey>> numeric =
+            NumericAggregator<TRow, TKey>.Create;
+        GC.KeepAlive(numeric);
+    }
+
     /// <summary>
     /// Builds the aggregator for <paramref name="column"/>: numeric keys (incl. nullable — nulls are
     /// skipped, the DevExpress ignore-null default) get Sum/Average via widened accumulators;
     /// every comparable key gets Min/Max via the column comparison; Count is universal.
     /// </summary>
+    /// <summary>The aggregator half of the AOT seed (see ShapingCodegen.SeedAot).</summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2091", Justification = "CreateCore<TRow,TKey> is closed over the RUNTIME key type via MakeGenericMethod (this is the RequiresDynamicCode dispatch); AOT-reachable instantiations come from DataGridAotSupport.Seed, whose typed TKey flows the DAM.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "The column key type is a runtime type (RDC shaping engine); it feeds the DAM-annotated editor/format path — a trimmed key type degrades the editor, not a crash.")]
     public static ColumnAggregator Create(ShapedColumn column, AggregateKind kind, string? format = null)
     {
         ArgumentNullException.ThrowIfNull(column);
@@ -80,7 +98,7 @@ internal abstract class ColumnAggregator
            type == typeof(sbyte) || type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) ||
            type == typeof(double) || type == typeof(float) || type == typeof(decimal);
 
-    private static ColumnAggregator CreateCore<TRow, TKey>(ShapedColumn<TRow, TKey> column, AggregateKind kind,
+    private static ColumnAggregator CreateCore<TRow, [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(ShapedColumn<TRow, TKey> column, AggregateKind kind,
                                                            string? format) where TRow : notnull
         => kind switch
            {
@@ -96,7 +114,7 @@ internal abstract class ColumnAggregator
         public override int CompareValues(in AggregateValue a, in AggregateValue b) => a.AsDouble.CompareTo(b.AsDouble);
     }
 
-    private sealed class MinMaxAggregator<TRow, TKey>(ShapedColumn<TRow, TKey> column, string? format)
+    private sealed class MinMaxAggregator<TRow, [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey>(ShapedColumn<TRow, TKey> column, string? format)
         : ColumnAggregator where TRow : notnull
     {
         private readonly Func<TKey, string> _formatter =
@@ -135,7 +153,7 @@ internal abstract class ColumnAggregator
     /// Sum/Average over numeric keys via a compiled accumulator loop: decimal keys accumulate in
     /// decimal, everything else in double (the widened lanes; no per-row boxing).
     /// </summary>
-    private sealed class NumericAggregator<TRow, TKey> : ColumnAggregator where TRow : notnull
+    private sealed class NumericAggregator<TRow, [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey> : ColumnAggregator where TRow : notnull
     {
         private const double Epsilon = 0.000001;
 

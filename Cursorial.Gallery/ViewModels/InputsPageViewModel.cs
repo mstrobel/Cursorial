@@ -140,7 +140,7 @@ public sealed class InputsPageViewModel : PageViewModel
 
     public IGlyphFont? SelectedFont { get; private set => Set(ref field, value); }
 
-    public TextSizing? SelectedTextSize { get; private set => Set(ref field, value); }
+    public TextSizing SelectedTextSize { get; private set => Set(ref field, value); }
 
     public GlyphSource? SelectedGlyphSource
     {
@@ -149,7 +149,7 @@ public sealed class InputsPageViewModel : PageViewModel
         {
             if (!Set(ref field, value)) return;
             SelectedFont = value?.Font;
-            SelectedTextSize = value?.Sizing;
+            SelectedTextSize = value?.Sizing ?? TextSizing.Normal;
         }
     }
 

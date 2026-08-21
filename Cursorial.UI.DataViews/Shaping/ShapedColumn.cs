@@ -131,7 +131,7 @@ internal abstract class ShapedColumn<TRow> : ShapedColumn where TRow : notnull
 }
 
 /// <summary>The typed column (see <see cref="ShapedColumn"/>).</summary>
-internal sealed class ShapedColumn<TRow, TKey> : ShapedColumn<TRow> where TRow : notnull
+internal sealed class ShapedColumn<TRow, [System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicConstructors | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TKey> : ShapedColumn<TRow> where TRow : notnull
 {
     // Read via Expression.Field by compiled comparers so vector growth (re-allocation) is always
     // observed — never capture the array itself into a compiled tree.

@@ -1152,6 +1152,16 @@ internal sealed class XamlParser
         // UI xmlns and a prefixed project extension was CUR2002 at load/generate (Gallery's {i:EnumItemConverter}).
         StampResolvedNamespaces(node);
 
+        // A built-in primitive as a single-positional-argument markup extension: {x:Boolean True} / {x:Int32
+        // 4096}, the curly twin of the element form <x:Boolean>True</x:Boolean>. Build the SAME synthetic node
+        // the element form yields (a primitive-typed object with one content Text member) so the emitter and
+        // the loader need no new path — they already lower/instantiate the primitive object.
+        if (TryBuildPrimitiveObject(node, line, column, out valueIndex))
+        {
+            valueKind = XamlValueKind.Object;
+            return true;
+        }
+
         switch (kind)
         {
             case ExtensionKind.Null:
@@ -1244,6 +1254,47 @@ internal sealed class XamlParser
                 valueIndex = _builder.AddExtension(new ExtensionRecord(ExtensionKind.Custom, _builder.AddParsedExtension(node), lineInfo));
                 return true;
         }
+    }
+
+    /// <summary>The XAML2009 built-in primitive local names (mirrors the schema context / the emitter's
+    /// BuiltInPrimitiveLocalNames): usable as element-form types AND, now, single-positional-argument markup
+    /// extensions (<c>{x:Boolean True}</c>).</summary>
+    private static readonly HashSet<string> BuiltInPrimitiveNames = new(StringComparer.Ordinal)
+    {
+        "Object", "Boolean", "Byte", "SByte", "Char", "Decimal", "Single", "Double", "Int16", "Int32",
+        "Int64", "UInt16", "UInt32", "UInt64", "String", "TimeSpan", "Uri",
+    };
+
+    /// <summary>
+    /// Builds the synthetic primitive object for a curly <c>{x:Boolean True}</c> / <c>{x:Int32 4096}</c>: a
+    /// primitive-typed object carrying a single content <c>Text</c> member (memberId −1), byte-identical to the
+    /// <c>&lt;x:Boolean&gt;True&lt;/x:Boolean&gt;</c> element form's node — so downstream needs no new path.
+    /// Returns false when the node is not an intrinsic primitive extension (the caller falls to the normal switch).
+    /// </summary>
+    private bool TryBuildPrimitiveObject(MarkupExtensionNode node, int line, int column, out int objectIndex)
+    {
+        objectIndex = -1;
+        if (!XmlnsNamespaces.IsIntrinsics(node.ResolvedNamespace ?? string.Empty))
+            return false;
+
+        int colon = node.Name.IndexOf(':');
+        string local = colon >= 0 ? node.Name.Substring(colon + 1) : node.Name;
+        if (!BuiltInPrimitiveNames.Contains(local))
+            return false;
+
+        if (ResolveType(XmlnsNamespaces.Intrinsics, local, line, column) is not { IsResolved: true } resolution)
+            return false; // the element form resolves it; a miss here is already reported by ResolveType
+
+        // The value is the single positional argument (empty → an empty string, as <x:String></x:String>).
+        string text = node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : string.Empty;
+
+        int lineInfo = LineInfo.Pack(node.Line, node.Column);
+        objectIndex = _builder.ReserveObject();
+        int typeId = _builder.AddResolvedType(resolution.Type!);
+        int memberStart = _builder.MemberCount;
+        _builder.AddMember(new MemberRecord(-1, XamlValueKind.Text, _builder.InternString(text), 0, lineInfo));
+        _builder.SetObject(objectIndex, new ObjectRecord(typeId, memberStart, (ushort) 1, ObjectFlags.None, subtreeLength: 1, lineInfo));
+        return true;
     }
 
     /// <summary>

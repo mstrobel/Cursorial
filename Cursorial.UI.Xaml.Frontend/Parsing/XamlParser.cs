@@ -1112,12 +1112,14 @@ internal sealed class XamlParser
 
         // A folded intrinsic (x:Null/x:Type/x:Static) becomes a Folded member here; a live extension
         // returns its index for the caller to add as an Extension member (the historical contract).
-        if (!BuildExtensionValue(node, member, inDeferred, line, column, out bool folded, out int valueIndex))
+        if (!BuildExtensionValue(node, member, inDeferred, line, column, out XamlValueKind valueKind, out int valueIndex))
             return -1; // suppressed (a reported error, or a TemplateBinding outside a template body)
 
-        if (folded)
+        // A Folded intrinsic (x:Null/x:Type/x:Static) — or a synthetic Object (a built-in primitive) — is added
+        // as its own member here; a live Extension returns its index for the caller (the historical contract).
+        if (valueKind != XamlValueKind.Extension)
         {
-            members.Add(new MemberRecord(memberId, XamlValueKind.Folded, valueIndex, 0, lineInfo));
+            members.Add(new MemberRecord(memberId, valueKind, valueIndex, 0, lineInfo));
             return -1;
         }
 
@@ -1135,9 +1137,9 @@ internal sealed class XamlParser
     /// dictionary/collection-entry position.
     /// </summary>
     private bool BuildExtensionValue(MarkupExtensionNode node, XamlMember? member, bool inDeferred, int line, int column,
-                                     out bool folded, out int valueIndex)
+                                     out XamlValueKind valueKind, out int valueIndex)
     {
-        folded = false;
+        valueKind = XamlValueKind.Extension; // the default; a folded intrinsic / synthetic-object arm overrides
         valueIndex = -1;
         var kind = ClassifyExtension(node.Name);
         int lineInfo = LineInfo.Pack(node.Line, node.Column);
@@ -1154,7 +1156,7 @@ internal sealed class XamlParser
         {
             case ExtensionKind.Null:
                 valueIndex = _builder.AddConstant(null);
-                folded = true;
+                valueKind = XamlValueKind.Folded;
                 return true;
 
             case ExtensionKind.Type:
@@ -1163,7 +1165,7 @@ internal sealed class XamlParser
                 if (TryFoldIntrinsicExtension(kind, node, line, column, out object? f))
                 {
                     valueIndex = _builder.AddConstant(f);
-                    folded = true;
+                    valueKind = XamlValueKind.Folded;
                     return true;
                 }
 
@@ -1293,8 +1295,8 @@ internal sealed class XamlParser
 
         // The produced value slot (memberId −1): a Folded constant, or a live ExtensionRecord. A suppressed
         // build (a reported error) leaves a null so instantiation stays well-defined.
-        if (BuildExtensionValue(node, member: null, inDeferred, line, column, out bool folded, out int valueIndex))
-            members.Add(new MemberRecord(-1, folded ? XamlValueKind.Folded : XamlValueKind.Extension, valueIndex, 0, lineInfo));
+        if (BuildExtensionValue(node, member: null, inDeferred, line, column, out XamlValueKind valueKind, out int valueIndex))
+            members.Add(new MemberRecord(-1, valueKind, valueIndex, 0, lineInfo));
         else
             members.Add(new MemberRecord(-1, XamlValueKind.Folded, _builder.AddConstant(null), 0, lineInfo));
 

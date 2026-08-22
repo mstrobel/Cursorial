@@ -2110,7 +2110,12 @@ internal static class LoweringEmitter
                     if (target is null && objType is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" })
                         target = c.Control;
                     var isControlTemplate = objType is { Name: "ControlTemplate", ContainingNamespace.Name: "Controls" };
-                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target, stampRootScope: !isControlTemplate);
+                    // A DataTemplate's DataType flows to its body ROOT as the compiled-binding source type, so
+                    // bindings inside resolve without repeating x:DataType on the root. The root's own x:DataType
+                    // still wins (EmitObject: ForObject(...) ?? dataType) — "unless explicitly stated".
+                    // ControlTemplate/ItemsPanelTemplate carry no DataType (null → the body types via TemplateBinding).
+                    var bodyDataType = IsDataTemplateSymbol(objType) ? DataTemplateDataType(c, in obj) : null;
+                    var factory = EmitTemplateFactory(c, member.ValueIndex, hasScope, target, stampRootScope: !isControlTemplate, bodyDataType);
                     var content = $"new global::Cursorial.UI.Controls.FuncTemplateContent({factory})";
                     if (RegisteredOwner(xm) is { } owner)
                         c.Line($"{varExpr}.SetValue({Global(owner)}.{xm.Name}Property, {content});");
@@ -2254,7 +2259,7 @@ internal static class LoweringEmitter
     // FuncTemplateContent by the caller). The factory is accumulated and appended at the end of InitializeComponent
     // (a local function is hoisted, so the forward reference resolves). Nested templates flatten into sibling factories.
     private static string EmitTemplateFactory(Context c, int sliceHead, bool hasScope, INamedTypeSymbol? templatedParentType,
-                                              bool stampRootScope = false)
+                                              bool stampRootScope = false, INamedTypeSymbol? bodyDataType = null)
     {
         var factoryName = c.NextFactory();
         var rootVar = c.NextVar();
@@ -2287,7 +2292,9 @@ internal static class LoweringEmitter
         // only chained (enclosing-scope) lookups park until attach.
         if (stampRootScope)
             c.StampScopeForObject = sliceHead;
-        EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: null);
+        // bodyDataType = a DataTemplate's DataType, flowed to the body root as its binding source type (null
+        // for ControlTemplate). The root's own x:DataType still wins inside EmitObject (ForObject(...) ?? dataType).
+        EmitObject(c, sliceHead, rootVar, isRoot: false, hasScope, dataType: bodyDataType);
         c.StampScopeForObject = -1; // defensive: an exotic root (primitive/style) skips the ctor hook
 
         // {x:Reference} + scope-embedding Installs recorded in this factory body resolve against the
@@ -3942,7 +3949,8 @@ internal static class LoweringEmitter
                     {
                         converterInit, // non-null — a null (present-but-unlowerable) declined the lane above
                         StringInit("StringFormat", NamedText(node, "StringFormat")),
-                        StringInit("FallbackValue", NamedText(node, "FallbackValue"))
+                        StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+                        StringInit("TargetNullValue", NamedText(node, "TargetNullValue"))
                     };
 
         // A static-rooted chain anchors on the TARGET element (RelativeSource Self): the root argument is
@@ -4408,6 +4416,7 @@ internal static class LoweringEmitter
             sourceInit,
             StringInit("StringFormat", NamedText(node, "StringFormat")),
             StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+            StringInit("TargetNullValue", NamedText(node, "TargetNullValue")),
             PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
 
@@ -4519,6 +4528,7 @@ internal static class LoweringEmitter
             converterInit,
             StringInit("StringFormat", NamedText(node, "StringFormat")),
             StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+            StringInit("TargetNullValue", NamedText(node, "TargetNullValue")),
         };
         // The compiled lanes are CompiledBindings anchored on the templated parent — they carry Mode/RelativeSource
         // plus the shaping; the descriptor lane (TemplateBinding) is inherently OneWay/TemplatedParent, shaping only.

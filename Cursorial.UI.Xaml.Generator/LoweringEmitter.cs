@@ -1292,7 +1292,7 @@ internal static class LoweringEmitter
             {
                 // An inline object Setter.Value — e.g. <Setter Property="ItemsPanel"><ItemsPanelTemplate>…</…>.
                 // Build it into a local and use that var (the reflective loader builds it the same way; a
-                // {StaticResource}-keyed value takes the same-dict var path via SetterValueExpr instead). The Style's
+                // {StaticResource}-keyed value takes the same-dict var path via the value funnel instead). The Style's
                 // TargetType is the templated-parent type so a {TemplateBinding} inside an inline template resolves
                 // ({Binding RelativeSource=TemplatedParent} — what VirtualizingItemsPanelTemplate uses — resolves at
                 // runtime regardless).
@@ -1303,7 +1303,7 @@ internal static class LoweringEmitter
                 c.TemplatedParentType = savedTpt;
                 valueExpr = v;
             }
-            else if (SetterValueExpr(c, in value, propValueType) is { } v)
+            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject }, in value).Expr is { } v)
                 valueExpr = v;
             else
             {
@@ -1463,16 +1463,6 @@ internal static class LoweringEmitter
     {
         XamlValueKind.Text => bool.TryParse(c.Doc.Strings[member.ValueIndex], out var b) ? (b ? "true" : "false") : null,
         XamlValueKind.Folded when c.Doc.Constants[member.ValueIndex] is bool b => b ? "true" : "false",
-        _ => null,
-    };
-
-    // A Setter.Value expression: a Text value converted to the property's value type (see SetterTextValueExpr), a
-    // folded null/{x:Static}, or a *Resource extension. Null = unsupported.
-    private static string? SetterValueExpr(Context c, in MemberRecord member, ITypeSymbol? propValueType) => member.Kind switch
-    {
-        XamlValueKind.Text => SetterTextValueExpr(c, c.Doc.Strings[member.ValueIndex], propValueType),
-        XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
-        XamlValueKind.Extension => SetterExtensionValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
         _ => null,
     };
 

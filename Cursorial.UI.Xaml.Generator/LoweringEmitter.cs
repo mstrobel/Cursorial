@@ -1871,6 +1871,110 @@ internal static class LoweringEmitter
         return text.Substring(start, pos - start);
     }
 
+    // ── The consolidated value-emission funnel (docs/emitter-consolidation-design.md) ────────────────
+    // One EmitValue turns any XAML value into C#, dispatching on XamlValueKind. Each POSITION builds a
+    // ValueSlot and calls it; the two exception constraints (compiled-binding→UIProperty,
+    // DynamicResource→UIElement UIProperty) live inside the funnel, not per-position. Migrated in
+    // incrementally — this is the shim stage: each arm delegates to the existing bespoke emitter so the
+    // wiring is behavior-neutral; the element-form/curly convergence and reference-frame ownership land later.
+
+    /// <summary>Does the slot INSTALL a live producer (a member/collection/template slot) or want a value
+    /// EXPRESSION (setter, dict entry, DataCondition, converter arg, BasedOn)?</summary>
+    private enum Delivery { Assign, Value }
+
+    /// <summary>How a raw <c>Text</c> becomes the slot's typed value.</summary>
+    private enum TextPolicy { ConverterCast, ConverterObject, Verbatim, KeyForm }
+
+    private readonly struct ValueSlot
+    {
+        public Delivery Delivery { get; init; }
+        public string TargetVar { get; init; }               // "__e"/childVar for Assign; "" for a Value slot
+        public XamlMember? Member { get; init; }             // null for a standalone entry / item / nested arg
+        public ITypeSymbol? SlotType { get; init; }          // slot value type (Text cast, custom-ext Coerce)
+        public TextPolicy TextPolicy { get; init; }
+        public INamedTypeSymbol? DataType { get; init; }     // compiled-binding source type in scope
+        public bool ExtensionTargetIsSelf { get; init; }     // custom ProvideValue target: TargetVar vs null
+        public bool StaticResourceMustResolve { get; init; } // converter-arg RequireConverter contract
+    }
+
+    /// <summary>The funnel's outcome: an expression the caller places, an already-emitted install, or a fence.</summary>
+    private readonly struct Emitted
+    {
+        public string? Expr { get; init; }
+        public bool Installed { get; init; }
+        public bool Fenced { get; init; }
+        public static Emitted Done => new() { Installed = true };
+        public static Emitted Fence => new() { Fenced = true };
+        public static Emitted Value(string? e) => e is null ? Fence : new Emitted { Expr = e };
+    }
+
+    // The single value→C# funnel (shim stage — delegates to the existing bespoke emitters). Normal Object /
+    // Items / Deferred are consolidated in later steps and not yet routed here.
+    private static Emitted EmitValue(Context c, in ValueSlot slot, in MemberRecord value)
+    {
+        switch (value.Kind)
+        {
+            case XamlValueKind.Object:
+            {
+                ref readonly var extObj = ref c.Doc.Objects[value.ValueIndex];
+                if (extObj.HasFlag(ObjectFlags.IsMarkupExtension))
+                {
+                    if (slot.Delivery == Delivery.Assign)
+                    {
+                        EmitMarkupExtensionMember(c, slot.TargetVar, slot.Member!, in extObj, slot.DataType);
+                        return Emitted.Done;
+                    }
+                    return Emitted.Value(MarkupExtensionEntryExpr(c, in extObj, out _));
+                }
+                c.Todo("EmitValue shim: normal Object value not yet funneled");
+                return Emitted.Fence;
+            }
+
+            case XamlValueKind.Text:
+                if (slot.Delivery == Delivery.Assign)
+                {
+                    EmitScalarAssign(c, slot.TargetVar, slot.Member!, c.Doc.Strings[value.ValueIndex]);
+                    return Emitted.Done;
+                }
+                return Emitted.Value(TextValueExpr(c, in slot, c.Doc.Strings[value.ValueIndex]));
+
+            case XamlValueKind.Folded:
+                if (slot.Delivery == Delivery.Assign)
+                {
+                    EmitFoldedAssign(c, slot.TargetVar, slot.Member!, c.Doc.Constants[value.ValueIndex]);
+                    return Emitted.Done;
+                }
+                return Emitted.Value(FoldedValueExpr(c, c.Doc.Constants[value.ValueIndex]));
+
+            case XamlValueKind.Extension:
+                if (slot.Delivery == Delivery.Assign)
+                {
+                    EmitExtensionAssign(c, slot.TargetVar, slot.Member!, in c.Doc.Extensions[value.ValueIndex], slot.DataType);
+                    return Emitted.Done;
+                }
+                return Emitted.Value(SetterExtensionValueExpr(c, in c.Doc.Extensions[value.ValueIndex]));
+
+            default:
+                c.Todo($"EmitValue shim: value kind {value.Kind} not yet funneled");
+                return Emitted.Fence;
+        }
+    }
+
+    // TextPolicy-driven Text→expression (the Value-delivery side; Assign stays EmitScalarAssign for now).
+    private static string? TextValueExpr(Context c, in ValueSlot slot, string text) => slot.TextPolicy switch
+    {
+        TextPolicy.ConverterObject => SetterTextValueExpr(c, text, slot.SlotType),
+        TextPolicy.Verbatim => $"\"{Escape(text)}\"",
+        _ => slot.Member is { } m ? ScalarConvertExpr(c, m, text) : SetterTextValueExpr(c, text, slot.SlotType),
+    };
+
+    // A member-assign slot: the common Delivery.Assign shape (a live member set on varExpr).
+    private static ValueSlot AssignSlot(string varExpr, XamlMember xm, INamedTypeSymbol? dataType) => new()
+    {
+        Delivery = Delivery.Assign, TargetVar = varExpr, Member = xm, DataType = dataType,
+        TextPolicy = TextPolicy.ConverterCast, ExtensionTargetIsSelf = true,
+    };
+
     private static void EmitObject(Context c, int objectIndex, string varExpr, bool isRoot, bool hasScope, INamedTypeSymbol? dataType)
     {
         ref readonly var obj = ref c.Doc.Objects[objectIndex];
@@ -2034,7 +2138,7 @@ internal static class LoweringEmitter
             switch (member.Kind)
             {
                 case XamlValueKind.Text:
-                    EmitScalarAssign(c, varExpr, xm, c.Doc.Strings[member.ValueIndex]);
+                    EmitValue(c, AssignSlot(varExpr, xm, dataType), in member);
                     break;
 
                 case XamlValueKind.Object:
@@ -2055,7 +2159,7 @@ internal static class LoweringEmitter
                     ref readonly var childObj = ref c.Doc.Objects[member.ValueIndex];
                     if (childObj.HasFlag(ObjectFlags.IsMarkupExtension))
                     {
-                        EmitMarkupExtensionMember(c, varExpr, xm, in childObj, dataType);
+                        EmitValue(c, AssignSlot(varExpr, xm, dataType), in member);
                         break;
                     }
 
@@ -2093,7 +2197,7 @@ internal static class LoweringEmitter
                 }
 
                 case XamlValueKind.Extension:
-                    EmitExtensionAssign(c, varExpr, xm, in c.Doc.Extensions[member.ValueIndex], dataType);
+                    EmitValue(c, AssignSlot(varExpr, xm, dataType), in member);
                     break;
 
                 case XamlValueKind.Deferred:
@@ -2134,7 +2238,7 @@ internal static class LoweringEmitter
                 case XamlValueKind.Folded:
                     // Under FoldConstants=false the only Folded members are the intrinsic extensions:
                     // {x:Null} (a null constant) and {x:Static} (a XamlStaticReference carrying the member path).
-                    EmitFoldedAssign(c, varExpr, xm, c.Doc.Constants[member.ValueIndex]);
+                    EmitValue(c, AssignSlot(varExpr, xm, dataType), in member);
                     break;
 
                 default:

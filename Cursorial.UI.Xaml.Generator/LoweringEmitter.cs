@@ -1919,11 +1919,13 @@ internal static class LoweringEmitter
                 ref readonly var extObj = ref c.Doc.Objects[value.ValueIndex];
                 if (extObj.HasFlag(ObjectFlags.IsMarkupExtension))
                 {
+                    // Element-form ⇔ curly convergence (Assign side): unwrap the synthetic markup-extension
+                    // object to its inner Extension/Folded member and re-enter the funnel — the curly arms
+                    // then handle it identically. (Exactly what EmitMarkupExtensionMember did, folded into one
+                    // path.) The Value side keeps its position-specific entry expr for now (a later step folds
+                    // it in via the delivery-aware per-kind arms, where Binding-descriptor vs fence diverges).
                     if (slot.Delivery == Delivery.Assign)
-                    {
-                        EmitMarkupExtensionMember(c, slot.TargetVar, slot.Member!, in extObj, slot.DataType);
-                        return Emitted.Done;
-                    }
+                        return EmitValue(c, in slot, ExtensionValueMember(c, in extObj));
                     return Emitted.Value(MarkupExtensionEntryExpr(c, in extObj, out _));
                 }
                 c.Todo("EmitValue shim: normal Object value not yet funneled");
@@ -2878,15 +2880,6 @@ internal static class LoweringEmitter
     /// <paramref name="xm"/> — a folded intrinsic emits its constant; a live extension reuses the same
     /// per-kind lowering the curly attribute form does (so element and curly form lower identically).
     /// </summary>
-    private static void EmitMarkupExtensionMember(Context c, string varExpr, XamlMember xm, in ObjectRecord extObject, INamedTypeSymbol? dataType)
-    {
-        var value = ExtensionValueMember(c, in extObject);
-        if (value.Kind == XamlValueKind.Folded)
-            EmitFoldedAssign(c, varExpr, xm, c.Doc.Constants[value.ValueIndex]);
-        else
-            EmitExtensionAssign(c, varExpr, xm, in c.Doc.Extensions[value.ValueIndex], dataType);
-    }
-
     private static void EmitExtensionAssign(Context c, string varExpr, XamlMember xm, in ExtensionRecord ext, INamedTypeSymbol? dataType)
     {
         switch (ext.Kind)

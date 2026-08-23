@@ -38,19 +38,34 @@ public abstract class TriggerAction : UIObject, IAttachedObject
 
         ValidateHost(host);
         AssociatedObject = host;
-        // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
-        // inherits — a Command="{Binding …}" on this action anchors on the host's DataContext.
-        if (host is UIObject inheritanceParent)
-            SetInheritanceParent(inheritanceParent);
-        OnAttached();
+        try
+        {
+            // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
+            // inherits — a Command="{Binding …}" on this action anchors on the host's DataContext.
+            if (host is UIObject inheritanceParent)
+                SetInheritanceParent(inheritanceParent);
+            OnAttached();
+        }
+        catch
+        {
+            // ROLLBACK (audit): a throwing OnAttached must not leave a half-attached zombie. Loud + consistent.
+            AssociatedObject = null;
+            SetInheritanceParent(null);
+            throw;
+        }
     }
+
+    private bool _detaching;
 
     /// <inheritdoc/>
     public void Detach()
     {
-        if (AssociatedObject is null)
+        // The re-entrancy guard (audit): an OnDetaching that removes THIS item from its collection re-enters
+        // Detach through RemoveItem — unguarded that recursed unboundedly (stack overflow).
+        if (AssociatedObject is null || _detaching)
             return;
 
+        _detaching = true;
         try
         {
             OnDetaching();
@@ -59,6 +74,7 @@ public abstract class TriggerAction : UIObject, IAttachedObject
         {
             AssociatedObject = null;
             SetInheritanceParent(null);
+            _detaching = false;
         }
     }
 

@@ -41,7 +41,14 @@ public class InvokeCommandAction : TriggerAction
         if (Command is not { } command)
             return;
 
-        var argument = CommandParameter ?? parameter;
+        // The firing payload (the event args) is passed only when CommandParameter is genuinely UNAUTHORED
+        // (its value source is Default — no set, no binding). An authored-but-null parameter (an explicit
+        // null, or a binding delivering null — the empty-selection case) passes NULL: a `??` would silently
+        // hand a typed command RoutedEventArgs exactly when the selection is empty (audit finding).
+        var argument = GetValueSource(CommandParameterProperty).Kind == ValueSourceKind.Default
+            ? parameter
+            : CommandParameter;
+
         if (command.CanExecute(argument))
             command.Execute(argument);
     }

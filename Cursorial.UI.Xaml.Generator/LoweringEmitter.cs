@@ -844,6 +844,16 @@ internal static class LoweringEmitter
         return null;
     }
 
+    // True when the type is BindingBase or derives from it (the loader's typeof(BindingBase).IsAssignableFrom —
+    // the descriptor-slot gate: a Binding-typed CLR member takes the {Binding} OBJECT, not a live install).
+    private static bool IsBindingBaseAssignable(ITypeSymbol? type)
+    {
+        for (var t = type; t is not null; t = t.BaseType)
+            if (t is { Name: "BindingBase" or "Binding", ContainingNamespace: { Name: "Data", ContainingNamespace.Name: "UI" } })
+                return true;
+        return false;
+    }
+
     // True when the symbol is DataTemplate or derives from it (the loader's typeof(DataTemplate).IsAssignableFrom
     // — HierarchicalDataTemplate etc. also key by DataType).
     private static bool IsDataTemplateSymbol(INamedTypeSymbol? type)
@@ -2761,12 +2771,16 @@ internal static class LoweringEmitter
     // (SetValue for a UIProperty, else the CLR setter).
     private static void EmitChildAssign(Context c, string varExpr, XamlMember xm, string childVar, int childObjectIndex, bool single)
     {
-        // The collection ACCESS: an ATTACHED member (xm.Property carries the parse-resolved owner symbol) fills
-        // via the owner's static Get{Name}(host) accessor — the get-or-create idiom (Interaction.GetTriggers;
-        // the loader's ResolveCollection twin), since the host has no instance property to dot. A plain member
-        // dots the instance. An attached owner without the accessor fails the COMPILE loudly — never silently.
-        var collectionAccess = xm.Property is INamedTypeSymbol attachedOwner
-            ? $"{Global(attachedOwner)}.Get{xm.Name}({varExpr})"
+        // The collection ACCESS: an ATTACHED member (IsAttachable — NOT xm.Property, which carries the
+        // registered-field owner for EVERY UIProperty-backed member, instance wrappers included) fills via the
+        // owner's static Get{Name}(host) accessor — the get-or-create idiom (Interaction.GetTriggers; the
+        // loader's ResolveCollection twin), since the host has no instance property to dot. A plain member dots
+        // the instance. The `?? throw` guard: a get-only-null accessor (a Transition.GetTransitions-shaped
+        // owner) must fail LOUDLY at build-time-adjacent runtime with the member named — the loader errors
+        // CUR2105 on the identical document; a bare null deref would be an unpositioned NRE.
+        var collectionAccess = xm.IsAttachable && xm.Property is INamedTypeSymbol attachedOwner
+            ? $"({Global(attachedOwner)}.Get{xm.Name}({varExpr}) ?? throw new global::System.InvalidOperationException(" +
+              $"\"The attached collection '{xm.Name}' accessor returned null — Get{xm.Name} must be get-or-create for XAML collection fill.\"))"
             : $"{varExpr}.{xm.Name}";
 
         if (!single)
@@ -3577,6 +3591,21 @@ internal static class LoweringEmitter
         // A binding target must be a registered UIProperty — the runtime handler enforces the same (X119).
         if (RegisteredOwner(xm) is not { } owner)
         {
+            // …EXCEPT a Binding-typed CLR member (DataTrigger.Binding — the loader's AttachBinding descriptor
+            // branch: member.Property null + BindingBase-assignable type): the {Binding} yields the DESCRIPTOR
+            // object itself, assigned as the member value; its consumer arms it later. Compiled first (the
+            // DataCondition.Binding precedent), reflective fallback.
+            if (ValueTypeSymbol(xm.ValueType) is { } slotType && IsBindingBaseAssignable(slotType))
+            {
+                string? descriptor = TryBuildCompiledBindingExpr(c, node, dataType, selfAnchorType: null,
+                                                                 out var compiledDescriptor, out _, out _)
+                    ? compiledDescriptor
+                    : ReflectiveBindingExpr(c, node, $"for '{xm.Name}'");
+                if (descriptor is not null)
+                    c.Line($"{varExpr}.{xm.Name} = {descriptor};");
+                return; // a null descriptor already emitted its specific fence
+            }
+
             c.Todo($"binding target '{xm.Name}' is not a bindable UIProperty");
             return;
         }

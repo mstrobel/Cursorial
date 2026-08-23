@@ -22,6 +22,12 @@ public interface IResourceRootSink
 /// </summary>
 public sealed class ViewRegistration : Behavior<UIElement>, IValueObserver<object?>
 {
+    // The per-sink OWNER (last-wins, UI-thread only): when two views register with one sink, the later
+    // registration takes ownership; the earlier behavior's detach must NOT null the sink's root (the
+    // audit's clobber — detaching a stale view left a live view's VM rootless). Weak-keyed so a dead
+    // sink never pins its last owner.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, ViewRegistration> Owners = new();
+
     private IDisposable? _subscription;
     private IResourceRootSink? _registeredWith;
 
@@ -51,8 +57,24 @@ public sealed class ViewRegistration : Behavior<UIElement>, IValueObserver<objec
         if (ReferenceEquals(sink, _registeredWith))
             return;
 
-        _registeredWith?.SetResourceRoot(null);
-        _registeredWith = sink;
-        sink?.SetResourceRoot(AssociatedObject);
+        // Release the old sink only while THIS behavior still owns it — a later registration by another
+        // view took ownership, and nulling then would clobber the live view's root (audit finding).
+        if (_registeredWith is { } old)
+        {
+            if (Owners.TryGetValue(old, out var owner) && ReferenceEquals(owner, this))
+            {
+                Owners.Remove(old);
+                old.SetResourceRoot(null);
+            }
+
+            _registeredWith = null;
+        }
+
+        if (sink is not null)
+        {
+            Owners.AddOrUpdate(sink, this); // last-wins ownership transfer (the earlier view's detach now no-ops)
+            _registeredWith = sink;
+            sink.SetResourceRoot(AssociatedObject);
+        }
     }
 }

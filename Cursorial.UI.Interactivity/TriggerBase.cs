@@ -14,6 +14,10 @@ namespace Cursorial.UI.Interactivity;
 public abstract class TriggerBase : UIObject, IAttachedObject
 {
     private TriggerActionCollection? _actions;
+    private bool _detaching;
+
+    /// <summary>The actions collection if created (the teardown sweep's cascade seam).</summary>
+    internal TriggerActionCollection? ActionsOrNull => _actions;
 
     /// <summary>The actions this trigger runs when it fires (order preserved; lazily created).</summary>
     public TriggerActionCollection Actions
@@ -48,23 +52,38 @@ public abstract class TriggerBase : UIObject, IAttachedObject
 
         ValidateHost(host);
         AssociatedObject = host;
-        // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
-        // inherits — a {Binding …} on this trigger (or its actions) anchors on the host's DataContext.
-        if (host is UIObject inheritanceParent)
-            SetInheritanceParent(inheritanceParent);
-        // Actions ride the trigger's own lifecycle: same host, attach-with, detach-with (§2). The
-        // collection's tree-following is NOT engaged here — the trigger IS the lifecycle authority
-        // for its actions (its own collection already deferred to the host's tree attachment).
-        _actions?.AttachAllTo(host);
-        OnAttached();
+        try
+        {
+            // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
+            // inherits — a {Binding …} on this trigger (or its actions) anchors on the host's DataContext.
+            if (host is UIObject inheritanceParent)
+                SetInheritanceParent(inheritanceParent);
+            // Actions ride the trigger's own lifecycle: same host, attach-with, detach-with (§2). The
+            // collection's tree-following is NOT engaged here — the trigger IS the lifecycle authority
+            // for its actions (its own collection already deferred to the host's tree attachment).
+            _actions?.AttachAllTo(host);
+            OnAttached();
+        }
+        catch
+        {
+            // ROLLBACK (audit: a throwing OnAttached — an unresolvable EventName — left a half-attached
+            // zombie: AssociatedObject set, no hook). The throw stays loud; the state stays consistent.
+            _actions?.DetachAll();
+            AssociatedObject = null;
+            SetInheritanceParent(null);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
     public void Detach()
     {
-        if (AssociatedObject is null)
+        // The re-entrancy guard (audit): an OnDetaching that removes THIS item from its collection re-enters
+        // Detach through RemoveItem — unguarded that recursed unboundedly (stack overflow).
+        if (AssociatedObject is null || _detaching)
             return;
 
+        _detaching = true;
         try
         {
             OnDetaching();
@@ -74,6 +93,7 @@ public abstract class TriggerBase : UIObject, IAttachedObject
             _actions?.DetachAll();
             AssociatedObject = null;
             SetInheritanceParent(null);
+            _detaching = false;
         }
     }
 

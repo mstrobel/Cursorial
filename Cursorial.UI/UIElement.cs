@@ -634,7 +634,34 @@ public abstract partial class UIElement : UIObject
             for (var i = 0; i < inputBindings.Count; i++)
                 Data.BindingOperations.TearDown(inputBindings[i]);
         }
+
+        // Registered teardown participants — the InputBindings case generalized (ITearDownParticipant): other
+        // non-child UIObject graphs anchored on this element (attached behaviors/triggers/actions) release
+        // their external subscriptions and item bindings here. Snapshot: a participant may unregister
+        // during its own callback.
+        if (_tearDownParticipants is { Count: > 0 })
+        {
+            var participants = _tearDownParticipants.ToArray();
+            for (var i = 0; i < participants.Length; i++)
+                participants[i].OnTearDown(this);
+        }
     }
+
+    private List<ITearDownParticipant>? _tearDownParticipants;
+
+    /// <summary>Registers a <see cref="ITearDownParticipant"/> to run during this element's <see cref="TearDown"/>.
+    /// Idempotent per instance; unregister when the association ends.</summary>
+    public void RegisterTearDownParticipant(ITearDownParticipant participant)
+    {
+        ArgumentNullException.ThrowIfNull(participant);
+        _tearDownParticipants ??= new List<ITearDownParticipant>();
+        if (!_tearDownParticipants.Contains(participant))
+            _tearDownParticipants.Add(participant);
+    }
+
+    /// <summary>Removes a previously registered teardown participant (a miss is a no-op).</summary>
+    public void UnregisterTearDownParticipant(ITearDownParticipant participant)
+        => _tearDownParticipants?.Remove(participant);
 
     /// <summary>
     /// Releases subclass-owned resources during <see cref="TearDown"/> — raw external subscriptions a control holds

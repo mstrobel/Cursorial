@@ -109,4 +109,76 @@ public class InteractivityLoweringTests
 
         Assert.IsType<ClickEventArgs>(Assert.Single(vm.SaveCommand.Executions));
     }
+
+    [Fact] // audit REGRESSION: the attached-access gate keyed on xm.Property (set for EVERY registered member) —
+    // an INSTANCE-backed registered collection property emitted Owner.GetX(var) (CS0117). Now gated on IsAttachable.
+    public void Lowered_InstanceBackedRegisteredCollection_FillsViaInstance()
+    {
+        var host = @"
+using System.Collections.ObjectModel;
+namespace GenApp
+{
+    public sealed class HuntItem { }
+    public sealed class HuntItems : ObservableCollection<HuntItem> { }
+    public class HuntHost : Cursorial.UI.Controls.Panel
+    {
+        public static readonly Cursorial.UI.StyledProperty<HuntItems?> ItemsXProperty =
+            Cursorial.UI.UIProperty.Register<HuntHost, HuntItems?>(""ItemsX"");
+        public HuntItems? ItemsX { get => GetValue(ItemsXProperty); set => SetValue(ItemsXProperty, value); }
+        public HuntHost() => ItemsX = new HuntItems();
+    }
+}";
+        var xaml =
+            $"<StackPanel {Ns} xmlns:g=\"using:GenApp\" x:Class=\"GenApp.HuntView\">" +
+            "<g:HuntHost><g:HuntHost.ItemsX><g:HuntItem/><g:HuntItem/></g:HuntHost.ItemsX></g:HuntHost>" +
+            "</StackPanel>";
+        var view = "namespace GenApp { public partial class HuntView : Cursorial.UI.Controls.StackPanel { public HuntView() => InitializeComponent(); } }";
+
+        var compilation = GeneratorHarness.ReferencedCompilation("IxHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(host), CSharpSyntaxTree.ParseText(view));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("GetItemsX", lowered); // NOT the attached accessor — the instance property fills
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var root = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.HuntView")!)!;
+        dynamic huntHost = root.Children[0];
+        Assert.Equal(2, (int)huntHost.ItemsX.Count); // both items filled the ctor-created collection
+    }
+
+    [Fact] // audit: DataTrigger.Binding (a Binding-typed CLR member) was TODO-dropped — the generated app threw
+    // at attach while the loader assigned the descriptor. Now the descriptor lowers (loader parity).
+    public void Lowered_DataTriggerBinding_AssignsDescriptor()
+    {
+        var xaml =
+            $"<StackPanel {Ns} x:Class=\"GenApp.IxView3\">" +
+            "<Button x:Name=\"Go\">" +
+              "<i:Interaction.Triggers>" +
+                "<i:DataTrigger Binding=\"{Binding State}\" Value=\"go\">" +
+                  "<i:ChangePropertyAction PropertyName=\"Payload\" Value=\"fired\"/>" +
+                "</i:DataTrigger>" +
+              "</i:Interaction.Triggers>" +
+            "</Button>" +
+            "</StackPanel>";
+        var view = "namespace GenApp { public partial class IxView3 : Cursorial.UI.Controls.StackPanel { public IxView3() => InitializeComponent(); } }";
+
+        var compilation = WithInteractivity(GeneratorHarness.ReferencedCompilation("IxHost"))
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(view));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.DoesNotContain("ERROR X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var root = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.IxView3")!)!;
+        var button = (Button)root.Children[0];
+        var trigger = Assert.IsType<DataTrigger>(Assert.Single(Interaction.GetTriggers(button)));
+        Assert.NotNull(trigger.Binding); // the descriptor was assigned (the loader's AttachBinding branch twin)
+
+        // …and the trigger ARMS cleanly (the dropped descriptor previously threw "DataTrigger requires a Binding")
+        using var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(40, 10) });
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+    }
 }

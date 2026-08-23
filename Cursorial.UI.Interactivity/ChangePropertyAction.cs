@@ -63,10 +63,38 @@ public class ChangePropertyAction : TriggerAction
                 ?.GetValue(null) is UIProperty registered)
         {
             if (Mode == ChangePropertyMode.SetCurrentValue)
-                SetCurrentValueMethod.MakeGenericMethod(registered.PropertyType)
-                    .Invoke(null, [uiTarget, registered, Value]);
+            {
+                // Validate BEFORE the generic shim (audit: the bare casts surfaced null/wrong-type/direct
+                // mistakes as TargetInvocationException-wrapped NRE/InvalidCast with no context) — the
+                // contextual errors the SetValue lane gets from the property system, produced here.
+                if (registered.IsDirect)
+                    throw new InvalidOperationException(
+                        $"ChangePropertyAction Mode=SetCurrentValue requires a styled (non-direct) property; " +
+                        $"'{PropertyName}' on {target.GetType().Name} is a direct property.");
+
+                var propertyType = registered.PropertyType;
+                if (Value is null
+                        ? propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null
+                        : !propertyType.IsInstanceOfType(Value))
+                    throw new InvalidOperationException(
+                        $"ChangePropertyAction Value of type '{Value?.GetType().Name ?? "null"}' is not assignable " +
+                        $"to '{PropertyName}' of type {propertyType.Name} (no conversion — author the typed value).");
+
+                try
+                {
+                    SetCurrentValueMethod.MakeGenericMethod(propertyType)
+                        .Invoke(null, [uiTarget, registered, Value]);
+                }
+                catch (TargetInvocationException ex) when (ex.InnerException is { } inner)
+                {
+                    throw new InvalidOperationException(
+                        $"ChangePropertyAction SetCurrentValue for '{PropertyName}' failed: {inner.Message}", inner);
+                }
+            }
             else
+            {
                 uiTarget.SetValue(registered, Value);
+            }
             return;
         }
 

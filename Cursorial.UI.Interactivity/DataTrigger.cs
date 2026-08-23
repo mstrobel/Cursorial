@@ -52,11 +52,36 @@ public class DataTrigger : TriggerBase<UIElement>
         if (ReferenceEquals(delivered, UIProperty.UnsetValue))
             met = false;
         else
-            met = Equals(delivered, Value) ^ Negate;
+            met = Matches(delivered) ^ Negate;
 
         var fire = met && !_met;
         _met = met;
         if (fire)
             Fire(delivered);
+    }
+
+    private bool Matches(object? delivered)
+    {
+        if (Equals(delivered, Value))
+            return true;
+
+        // A XAML-authored STRING Value against a typed delivery (Value="True" vs a bound bool — the audit's
+        // silent never-fire, in the design doc's own example): convert the string to the delivered type and
+        // compare, the WPF DataTrigger behavior. A failed conversion is simply unmet (never a throw per
+        // delivery). Typed authoring ({x:Boolean True}) skips this entirely.
+        if (Value is string text && delivered is not (null or string))
+        {
+            try
+            {
+                return Equals(System.Convert.ChangeType(text, delivered.GetType(),
+                                  System.Globalization.CultureInfo.InvariantCulture), delivered);
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 }

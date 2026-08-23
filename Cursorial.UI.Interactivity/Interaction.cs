@@ -66,14 +66,18 @@ public sealed class Interaction
 
     private static void OnBehaviorsChanged(UIObject sender, BehaviorCollection? oldValue, BehaviorCollection? newValue)
     {
-        oldValue?.Unhost();
+        // Unhost the outgoing collection only when THIS element is its host (audit: an unconditional Unhost
+        // let clearing a stale slot kill the collection's live association on a DIFFERENT element).
+        if (oldValue is not null && ReferenceEquals(oldValue.Host, sender))
+            oldValue.Unhost();
         if (newValue is not null && sender is UIElement element)
-            newValue.HostTo(element);
+            newValue.HostTo(element); // throws when already hosted elsewhere (exactly-one-host, Blend parity)
     }
 
     private static void OnTriggersChanged(UIObject sender, TriggerCollection? oldValue, TriggerCollection? newValue)
     {
-        oldValue?.Unhost();
+        if (oldValue is not null && ReferenceEquals(oldValue.Host, sender))
+            oldValue.Unhost();
         if (newValue is not null && sender is UIElement element)
             newValue.HostTo(element);
     }

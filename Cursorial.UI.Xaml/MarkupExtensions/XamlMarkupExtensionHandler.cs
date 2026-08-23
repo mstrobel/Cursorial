@@ -237,6 +237,8 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             ?? throw builder.Fatal(XamlDiagnosticCodes.BindingTargetNotBindable,
                 "TemplateBinding requires a source property name.", line, column);
 
+        RejectNestedLiteralOnlyArgs(builder, node, line, column); // a nested extension in a literal-only slot was silently null
+
         var sourceProperty = builder.ResolveTemplateBindingSource(target, property, sourcePropName, line, column);
         // Value shaping, in lockstep with the generator's TemplateBinding lane (converterInit + ShapingInits) — the
         // divergence the sweep found: a {TemplateBinding …, Converter=…, StringFormat=…, FallbackValue=…} carries
@@ -273,6 +275,8 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
     private Binding BuildBinding(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column,
                                  object? namedElementSource = null, object? selfTarget = null)
     {
+        RejectNestedLiteralOnlyArgs(builder, node, line, column); // a nested extension in a literal-only slot was silently null
+
         // Path: the first positional, or the Path= named arg.
         string path = FirstPositional(node) ?? Named(node, "Path") ?? string.Empty;
         object? fallback = Named(node, "FallbackValue");
@@ -324,7 +328,8 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
         // object (see-through — x:Self is the object being bound, never the Binding). Only the install paths can
         // supply it; a DESCRIPTOR position (DataCondition.Binding, a Setter.Value binding — one descriptor armed
         // per matched element later) has no single target and is rejected, never silently null-sourced.
-        if (sourceArg.IsNested && StripPrefix(sourceArg.Nested!.Name) == "Self")
+        // Namespace-gated (IsSelfNode): a custom {g:Self} extension keeps its own meaning.
+        if (sourceArg.IsNested && IsSelfNode(sourceArg.Nested!))
             return selfTarget ?? throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
                 "{Binding Source={x:Self}} is not resolvable in a descriptor position (no single binding target).",
                 line, column);
@@ -423,8 +428,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
                     "argument. Use {StaticResource}, {x:Static}, or a custom MarkupExtension.", line, column),
             // {x:Self} in a generic nested-argument position: the target object is not threaded here (the
             // supported x:Self positions are member values and Binding Source, which resolve it earlier).
-            // Reject clearly rather than probing for a phantom 'SelfExtension' type.
-            "Self" =>
+            // Reject clearly rather than probing for a phantom 'SelfExtension' type. Namespace-gated: a custom
+            // {g:Self} extension in another namespace falls through to the custom arm and keeps its meaning.
+            "Self" when IsSelfNode(node) =>
                 throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
                     "{x:Self} is not supported in this nested-argument position (supported: a member value, " +
                     "or a Binding Source={x:Self}).", line, column),
@@ -479,6 +485,31 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
 
     private static string? FirstPositional(MarkupExtensionNode node)
         => node.PositionalArguments.Count > 0 && node.PositionalArguments[0].Text is { } t ? t : null;
+
+    /// <summary>
+    /// True when a NESTED node is the intrinsic <c>{x:Self}</c> — gated on the STAMPED intrinsics namespace +
+    /// the local name, exactly like the frontend's top-level fold (<c>TryBuildSelfReference</c>). A raw-name
+    /// match would hijack a legitimate custom <c>SelfExtension</c> in another namespace (adversarial-review
+    /// finding: <c>{g:Self}</c> silently anchored the binding on the target instead of invoking the extension).
+    /// </summary>
+    private static bool IsSelfNode(MarkupExtensionNode node)
+        => XmlnsNamespaces.IsIntrinsics(node.ResolvedNamespace ?? string.Empty) && StripPrefix(node.Name) == "Self";
+
+    // The literal-only binding shaping arguments (the generator's ShapingInits twin-set). A NESTED extension in
+    // one of these slots was silently read as null (Named() returns only .Text) — {Binding ConverterParameter=
+    // {x:Self}} bound with a null parameter and no diagnostic. Reject loudly instead; nested-extension VALUES
+    // for these slots are a documented follow-up.
+    private static readonly string[] LiteralOnlyBindingArgs =
+        ["ConverterParameter", "ConverterCulture", "StringFormat", "FallbackValue", "TargetNullValue", "UpdateSourceTrigger", "Trace", "Mode"];
+
+    private static void RejectNestedLiteralOnlyArgs(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    {
+        foreach (var name in LiteralOnlyBindingArgs)
+            if (node.FindNamed(name) is { IsNested: true })
+                throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
+                    $"A nested markup extension is not supported in the '{name}' binding argument (literal values only).",
+                    line, column);
+    }
 
     private static string? Named(MarkupExtensionNode node, string name)
         => node.FindNamed(name) is { Text: { } t } ? t : null;

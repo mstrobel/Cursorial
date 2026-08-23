@@ -96,6 +96,88 @@ namespace GenApp
         Assert.Contains("assignment target", lowered);
     }
 
+    [Fact] // review: ConverterParameter={x:Self} was SILENTLY omitted (literal-only shaping read) — now ERROR X5
+    public void Lowered_NestedShapingArg_IsError()
+    {
+        var (lowered, _) = Lower(
+            $"<StackPanel {Ns} x:Class=\"GenApp.Sv6\"><Border Height=\"{{Binding Width, ConverterParameter={{x:Self}}}}\"/></StackPanel>",
+            "namespace GenApp { public partial class Sv6 : Cursorial.UI.Controls.StackPanel { public Sv6() => InitializeComponent(); } }");
+
+        Assert.Contains("ERROR X5", lowered);
+        Assert.Contains("ConverterParameter", lowered);
+    }
+
+    [Fact] // review: {x:Self} on an INIT-ONLY member fails with an ACCURATE lane-limitation error (the loader
+    // resolves it via reflection; the old error claimed a "target-less position", which was factually wrong)
+    public void Lowered_InitOnlyMember_IsAccurateError()
+    {
+        var host = @"
+namespace GenApp
+{
+    public class FrozenHost : Cursorial.UI.Controls.Control { public object? Frozen { get; init; } }
+}";
+        var xaml = $"<StackPanel {Ns} x:Class=\"GenApp.Sv7\"><vm:FrozenHost Frozen=\"{{x:Self}}\"/></StackPanel>";
+        var view = "namespace GenApp { public partial class Sv7 : Cursorial.UI.Controls.StackPanel { public Sv7() => InitializeComponent(); } }";
+        var compilation = GeneratorHarness.ReferencedCompilation("SelfLowHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(host), CSharpSyntaxTree.ParseText(view));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.Contains("ERROR X5", lowered);
+        Assert.Contains("inside its own initializer", lowered);   // the accurate reason
+        Assert.DoesNotContain("this position has none", lowered); // NOT the wrong-position message
+    }
+
+    [Fact] // review: {z:Self} with an intrinsics-BOUND prefix is the intrinsic (ns-gated, not spelling-gated)
+    public void Lowered_IntrinsicsBoundPrefixAlias_ResolvesAsSelf()
+    {
+        var xaml =
+            "<StackPanel xmlns=\"https://cursorial.dev/ui\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            "xmlns:z=\"https://cursorial.dev/xaml\" x:Class=\"GenApp.Sv8\">" +
+            "<Border Height=\"{Binding Width, Source={z:Self}}\"/></StackPanel>";
+        var view = "namespace GenApp { public partial class Sv8 : Cursorial.UI.Controls.StackPanel { public Sv8() => InitializeComponent(); } }";
+        var compilation = GeneratorHarness.ReferencedCompilation("SelfLowHost").AddSyntaxTrees(CSharpSyntaxTree.ParseText(view));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("TODO X5", lowered);
+        Assert.DoesNotContain("ERROR X5", lowered);
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var root = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.Sv8")!)!;
+        var border = (Border)root.Children[0];
+        var binding = (Binding)BindingOperations.GetBindingExpression(border, UIElement.HeightProperty)!.ParentBinding!;
+        Assert.Same(border, binding.Source);
+    }
+
+    [Fact] // review: a LEGITIMATE custom extension named Self ({vm:Self}, non-intrinsics ns) activates as a
+    // custom extension — never intercepted by the intrinsic's ns-gated matching (the loader agrees, Section20)
+    public void Lowered_CustomSelfExtension_IsNotIntercepted()
+    {
+        var ext = @"
+namespace GenApp
+{
+    public sealed class SelfExtension : Cursorial.UI.Xaml.MarkupExtension
+    {
+        public static readonly object Sentinel = new();
+        public override object? ProvideValue(System.IServiceProvider sp) => Sentinel;
+    }
+}";
+        var xaml = $"<StackPanel {Ns} x:Class=\"GenApp.Sv9\"><Border Height=\"{{Binding Width, Source={{vm:Self}}}}\"/></StackPanel>";
+        var view = "namespace GenApp { public partial class Sv9 : Cursorial.UI.Controls.StackPanel { public Sv9() => InitializeComponent(); } }";
+        var compilation = GeneratorHarness.ReferencedCompilation("SelfLowHost")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(ext), CSharpSyntaxTree.ParseText(view));
+        var lowered = GeneratorHarness.LowerView(compilation, xaml);
+
+        Assert.DoesNotContain("ERROR X5", lowered);
+        Assert.Contains("SelfExtension", lowered); // the custom extension is activated, not the intrinsic anchor
+
+        var assembly = GeneratorHarness.EmitAndLoad(compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(lowered)));
+        var root = (StackPanel)System.Activator.CreateInstance(assembly.GetType("GenApp.Sv9")!)!;
+        var border = (Border)root.Children[0];
+        var binding = (Binding)BindingOperations.GetBindingExpression(border, UIElement.HeightProperty)!.ParentBinding!;
+        var sentinel = assembly.GetType("GenApp.SelfExtension")!.GetField("Sentinel")!.GetValue(null);
+        Assert.Same(sentinel, binding.Source); // the extension's value, NOT the Border
+    }
+
     [Fact] // a descriptor-position Source={x:Self} (DataCondition.Binding) FAILS the build — loader parity. The
     // specific ERROR is recorded on LoweringResult.Errors (a CURG3002 build failure); its inline marker line lives
     // in the When validation buffer, which is DISCARDED with the dropped style (the established When pattern), so

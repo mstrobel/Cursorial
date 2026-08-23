@@ -28,3 +28,14 @@ public sealed class PrefixConverterExtension : MarkupExtension
 {
     public override object ProvideValue(IServiceProvider serviceProvider) => new PrefixConverter();
 }
+
+/// <summary>A LEGITIMATE custom extension NAMED <c>Self</c> in a non-intrinsics namespace — the hijack canary
+/// for the intrinsic <c>{x:Self}</c>'s namespace-gated matching: <c>{p:Self}</c> must activate THIS extension
+/// (its <see cref="Sentinel"/>), never the intrinsic self-anchor (adversarial-review finding: a raw-name match
+/// silently anchored the binding on the target and never invoked the extension).</summary>
+public sealed class SelfExtension : MarkupExtension
+{
+    public static readonly object Sentinel = new();
+
+    public override object ProvideValue(IServiceProvider serviceProvider) => Sentinel;
+}

@@ -992,10 +992,15 @@ internal sealed class XamlObjectGraphBuilder
 
     private object? ResolveStaticReference(object? value, int line, int column)
     {
-        if (value is not XamlStaticReference staticRef)
-            return value;
+        if (value is XamlStaticReference staticRef)
+            return ResolveStaticMember(staticRef.MemberPath, line, column);
 
-        return ResolveStaticMember(staticRef.MemberPath, line, column);
+        // {x:Type} now carries a XamlTypeReference token (the frontend no longer folds it to a provider-
+        // dependent System.Type); resolve it to the real Type here, mirroring the x:Static fold-finalize.
+        if (value is XamlTypeReference typeRef)
+            return ResolveTypeToken(typeRef.TypeName, line, column);
+
+        return value;
     }
 
     /// <summary>
@@ -1469,9 +1474,9 @@ internal sealed class XamlObjectGraphBuilder
             }
             if (member.MemberId >= 0 && _doc.ResolvedMembers[member.MemberId]?.Name == "DataType")
             {
-                if (member.Kind == XamlValueKind.Folded && _doc.Constants[member.ValueIndex] is Type t)
+                if (member.Kind == XamlValueKind.Folded && _doc.Constants[member.ValueIndex] is XamlTypeReference tr)
                 {
-                    dataType = t;
+                    dataType = ResolveTypeToken(tr.TypeName, "DataTemplate DataType", line, column) as Type;
                     return true;
                 }
                 if (member.Kind == XamlValueKind.Text)
@@ -1589,7 +1594,9 @@ internal sealed class XamlObjectGraphBuilder
                 switch (member.Kind)
                 {
                     case XamlValueKind.Folded:
-                        value = _doc.Constants[member.ValueIndex];
+                        // Resolve a folded {x:Static}/{x:Type} token to its value (parity with the emitter's
+                        // DataConditionValueExpr → FoldedValueExpr, which resolves the token).
+                        value = ResolveStaticReference(_doc.Constants[member.ValueIndex], line, column);
                         break;
                     case XamlValueKind.Text:
                         value = _doc.Strings[member.ValueIndex];

@@ -809,8 +809,8 @@ internal static class LoweringEmitter
 
             if (member.MemberId >= 0 && c.Doc.ResolvedMembers[member.MemberId]?.Name == "DataType")
             {
-                if (member.Kind == XamlValueKind.Folded && c.Doc.Constants[member.ValueIndex] is System.Type)
-                    return null; // a folded System.Type constant isn't a Roslyn symbol here — fall through to fence
+                if (member.Kind == XamlValueKind.Folded && c.Doc.Constants[member.ValueIndex] is XamlTypeReference tr)
+                    return XamlDataTypeScope.ResolveToken(c.Doc, tr.TypeName, c.Resolver); // {x:Type Foo} now resolves (was a silent null drop)
                 if (member.Kind == XamlValueKind.Text)
                     return XamlDataTypeScope.ResolveToken(c.Doc, c.Doc.Strings[member.ValueIndex], c.Resolver);
             }
@@ -2812,6 +2812,9 @@ internal static class LoweringEmitter
     {
         null => "null",
         XamlStaticReference staticRef => ResolveStaticPath(c, staticRef.MemberPath),
+        XamlTypeReference typeRef => XamlDataTypeScope.ResolveToken(c.Doc, typeRef.TypeName, c.Resolver) is { } sym
+            ? $"typeof({Global(sym, false)})"
+            : null, // an unresolvable token — the caller fences (never a silent null)
         _ => null, // not expected under FoldConstants=false
     };
 

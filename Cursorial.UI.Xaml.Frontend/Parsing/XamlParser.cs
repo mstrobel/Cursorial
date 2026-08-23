@@ -1529,13 +1529,16 @@ internal sealed class XamlParser
 
         if (kind == ExtensionKind.Type)
         {
-            // {x:Type my:Button} → typeof(Button) — the argument may be prefix-qualified; bind the prefix from
-            // the live reader scope (an unprefixed name uses the in-scope default xmlns).
+            // {x:Type my:Button} — validate the token at parse (binding the prefix from the live reader scope),
+            // but carry the TOKEN, not a runtime Type: Type.ClrType.UnderlyingSystemType is provider-dependent
+            // (null under the symbol-only generator provider, which silently dropped the type). Each lane
+            // resolves the XamlTypeReference itself — the loader to a System.Type, the generator to typeof(...) —
+            // exactly as {x:Static} carries a XamlStaticReference.
             var resolution = ResolveQualifiedType(arg, appendExtensionSuffix: false, node.Line, node.Column, report: true);
 
             if (resolution.IsResolved)
             {
-                folded = resolution.Type!.ClrType.UnderlyingSystemType;
+                folded = new XamlTypeReference(arg);
                 return true;
             }
 

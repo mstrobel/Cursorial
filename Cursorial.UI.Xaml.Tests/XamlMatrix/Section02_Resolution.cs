@@ -118,25 +118,24 @@ public sealed class Section02_Resolution : XamlTestBase
         Assert.Equal("AccentBrush", value);
     }
 
-    [Fact] // X24
-    public void X024_XType_FoldsToType()
+    [Fact] // X24 — {x:Type} carries a token resolved PER-LANE (loader→a System.Type, generator→typeof), not a
+    // provider-dependent System.Type at parse (that was null under the symbol-only generator provider → silent drop).
+    public void X024_XType_FoldsToTypeReference()
     {
         var doc = Parse("<Button Width=\"{x:Type Button}\"/>");
         Assert.True(doc.TryFindMember(0, "Width", out var m));
         Assert.Equal(XamlValueKind.Folded, m.Kind);
-        Assert.Equal(typeof(UIControls.Button), doc.FoldedValue(m));
+        Assert.Equal(new XamlTypeReference("Button"), doc.FoldedValue(m));
     }
 
-    [Fact] // X24b — {x:Type prefix:Button} strips + resolves via the captured prefix (the arg previously kept its prefix)
-    public void X024b_XType_PrefixedArg_FoldsViaCapturedNamespace()
+    [Fact] // X24b — the prefixed arg is carried VERBATIM on the token; the prefix binds per-lane at resolution
+    // (via the document namespaces), proven end-to-end by the loader's DataType/TargetType/x:Key paths.
+    public void X024b_XType_PrefixedArg_CarriesTokenVerbatim()
     {
-        // c: is an explicit prefix bound to the default UI namespace; the x:Type argument carries it. Previously
-        // the whole arg ("c:Button") was resolved verbatim against the default ns and missed; now the prefix binds
-        // from the live reader scope. (A prefix to a NON-default CLR namespace is proven end-to-end by the loader.)
         var doc = Parse("<Button xmlns:c=\"https://cursorial.dev/ui\" Width=\"{x:Type c:Button}\"/>");
         Assert.True(doc.TryFindMember(0, "Width", out var m));
         Assert.Equal(XamlValueKind.Folded, m.Kind);
-        Assert.Equal(typeof(UIControls.Button), doc.FoldedValue(m));
+        Assert.Equal(new XamlTypeReference("c:Button"), doc.FoldedValue(m));
     }
 
     [Fact] // X25

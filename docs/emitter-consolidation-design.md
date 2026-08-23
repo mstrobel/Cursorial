@@ -254,3 +254,24 @@ The test matrix is thus a single `Theory(kind, position) → {Handled(canonical)
 ---
 
 **Files this design touches:** `LoweringEmitter.cs` (funnel + adapters, replacing the bespoke `Emit*Assign`/`*ValueExpr`/`MarkupExtensionEntryExpr` sites cited throughout §1–§4); `XamlParser.cs` (`ClassifyExtension` `1435`, `BuildExtensionValue` `1137`, `ClassifySetterValueExtension` `1946`, `TryFoldIntrinsicExtension` `1472` for the `XamlTypeReference` twin); `NodeEnums.cs` (`ExtensionKind.Primitive`); a new `Cursorial.UI.Xaml.Frontend/MarkupExtensions/XamlTypeReference.cs` alongside the existing `XamlStaticReference.cs`.
+
+---
+
+## 8. Progress log
+
+Baseline at fork (`feature/cursorial-cli` @ `dd3ded0f`): 257 generator + 524 runtime. Current: **263 generator + 530 runtime**, full solution builds clean (0 errors).
+
+**Landed (committed on `feature/emitter-consolidation`):**
+
+- **Step 1–2** (`9e7bbf09`) — `ValueSlot`/`Emitted`/`Delivery`/`TextPolicy`/`EmitValue` funnel; the **member-assign** loop routed through it (Assign delivery fully funneled, delegating to `Emit*Assign`).
+- **Step 4** (`fd20d8ca`) — element-form ⇔ curly convergence for Assign (the `IsMarkupExtension` unwrap at the top of `EmitValue`).
+- **Step 6 emitter** (`29591187`) — `EmitSetter` value routed through `EmitValue` (Value delivery), deleting `SetterValueExpr`.
+- **`8a80a31c`** — `BuildExtensionValue` out-contract `folded`→`valueKind` (frontend prep for primitives).
+- **Step 13 core** (`e4f74228`) — `{x:Boolean True}`/`{x:Int32 4096}` built-in primitives as single-positional-arg markup extensions (frontend `TryBuildPrimitiveObject` → the SAME synthetic Object the element form yields; zero new emitter path).
+- **Step 12** (`86e5eb5c`) — **`{x:Type}` un-drop**: frontend folds to a `XamlTypeReference` token (twin of `XamlStaticReference`), resolved per-lane (loader→`System.Type`, generator→`typeof`), fixing the symbol-only-provider silent null drop. X024/X024b assert the token shape; `XTypeTokenLoweringTests` locks the curly-form un-drop.
+- **Step 6 frontend** (`cc0fbf34`) — `ClassifySetterValueExtension` routed through `BuildExtensionValue`, retiring its fail-closed "not supported in v1" arm; curly `{x:Static}`/`{x:Type}`/`{x:Boolean}` now work in `Setter.Value`. Both consuming lanes were already general (loader `BuildSetter`, emitter `EmitSetter`), so parity held for free.
+- **Step 11 / GAP-B** (`f5d1ac5a`) — `EmitResourceDictionaryBuilder` now flushes `FlushDeferredScopeLines` at end-of-tree, fixing the silent drop of a compiled anchored binding (`RelativeSource FindAncestor`) on an inline standalone-RD entry. Provably `__scope`-safe (the only two `DeferredScopeLines.Add` sites are the compiled install — no scope ref — and the reflective `Source={x:Reference}` — fenced before recording in an RD).
+
+**Reference-lane finding (the "maddening" x:Reference/ElementName inconsistency):** the picture is narrow. Contexts that WORK (both lanes, consistent): document level (x:Class), inside templates (incl. templates nested in RDs), inline `<X.Resources>` → document names. The one real bug was GAP-B (fixed). The remaining "failures" are **by design**: `x:Name` inside any ResourceDictionary is the shared frontend error **CUR2304**, so an `{x:Reference}` to an RD-level name can't resolve in either lane (generator emits a visible CURG3001, loader throws — neither silent). GAP-A (the hypothesized `LE:679` wrong-scope) did NOT surface as a failing cell in the systematic context-map; treat as non-reachable/already-correct pending a concrete repro.
+
+**Remaining (the funnel is still a SHIM for Value delivery):** `EmitValue`'s Value-delivery arms delegate to the setter's helpers (`TextValueExpr`/`FoldedValueExpr`/`SetterExtensionValueExpr`/`MarkupExtensionEntryExpr`) and **fence on a normal Object** ("not yet funneled" — currently unreachable/dead, since no position routes an Object through Value delivery). Steps 3 (`ResolveIntrinsicExpr`), 5 (collection-add/init-only), 7 (datacondition-value), 8 (dict-entry-value), 9 (converter-arg/custom-arg nesting), 10 (StaticResource non-UIElement over-fence + DynamicResource exception) are unstarted. Each is behavior-changing toward loader-parity/uniformity (not a pure refactor): e.g. routing DataCondition through the funnel would unify its Extension handling with the setter's (unlocking Binding-descriptor + DynamicResource-carrier as `DataCondition.Value`), which needs per-cell loader-parity verification — several target increasingly exotic kind×position cells. The invariant-grid `[Theory]` (§7 item 6) is the closing test.

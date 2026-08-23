@@ -1162,6 +1162,14 @@ internal sealed class XamlParser
             return true;
         }
 
+        // A built-in x:Array as a markup extension: {x:Array Type=T, item, item, …} — the curly twin of the element
+        // form <x:Array Type="T">items</x:Array>. Builds the SAME IsArray node so the emitter/loader need no new path.
+        if (TryBuildArrayObject(node, inDeferred, line, column, out valueIndex))
+        {
+            valueKind = XamlValueKind.Object;
+            return true;
+        }
+
         switch (kind)
         {
             case ExtensionKind.Null:
@@ -1295,6 +1303,99 @@ internal sealed class XamlParser
         _builder.AddMember(new MemberRecord(-1, XamlValueKind.Text, _builder.InternString(text), 0, lineInfo));
         _builder.SetObject(objectIndex, new ObjectRecord(typeId, memberStart, (ushort) 1, ObjectFlags.None, subtreeLength: 1, lineInfo));
         return true;
+    }
+
+    // A built-in x:Array as a markup extension: {x:Array Type=T, item, item, …} — the curly twin of the element
+    // form <x:Array Type="T">items</x:Array>. Builds the SAME IsArray node (element type T as TypeId, one Items
+    // member over the item objects) so the emitter/loader need no new path. Type is a REQUIRED named arg (all
+    // positionals are items, matching the element form's Type requirement); each item is a curly primitive
+    // ({x:Int32 1}), a nested {x:Array}, or a bare value converted to T (as <T>value</T> would be).
+    private bool TryBuildArrayObject(MarkupExtensionNode node, bool inDeferred, int line, int column, out int objectIndex)
+    {
+        objectIndex = -1;
+        if (!XmlnsNamespaces.IsIntrinsics(node.ResolvedNamespace ?? string.Empty))
+            return false;
+
+        int colon = node.Name.IndexOf(':');
+        string local = colon >= 0 ? node.Name.Substring(colon + 1) : node.Name;
+        if (!string.Equals(local, "Array", StringComparison.Ordinal))
+            return false;
+
+        int lineInfo = LineInfo.Pack(node.Line, node.Column);
+
+        // Type: the REQUIRED named arg — a type token (bare `x:Int32`, or a nested {x:Type T}) resolved via the
+        // reader-scope xmlns exactly as the element form's Type attribute.
+        var typeArg = node.FindNamed("Type");
+        string? typeToken = typeArg?.Text
+                            ?? (typeArg?.Nested is { } tn && (tn.Name is "x:Type" or "Type") && tn.PositionalArguments.Count > 0
+                                    ? tn.PositionalArguments[0].Text
+                                    : null);
+
+        XamlType? elementType = null;
+        if (typeToken is { Length: > 0 })
+        {
+            var res = ResolveQualifiedType(typeToken, appendExtensionSuffix: false, line, column, report: true);
+            if (res.IsResolved)
+                elementType = res.Type;
+        }
+        else
+        {
+            _builder.Error(XamlDiagnosticCodes.ArrayMissingType,
+                           "{x:Array} requires a Type named argument (e.g. {x:Array Type=x:String, …}).", line, column);
+        }
+
+        int typeId = _builder.AddResolvedType(elementType);
+
+        // Reserve the array object FIRST so its item objects land contiguously after it (the SoA subtree invariant:
+        // subtreeLength = ObjectCount − objectIndex covers the array + every item it just built).
+        objectIndex = _builder.ReserveObject();
+
+        var children = new List<int>();
+        foreach (var arg in node.PositionalArguments)
+        {
+            if (arg.Nested is { } itemNode)
+            {
+                if (TryBuildPrimitiveObject(itemNode, line, column, out int primIndex))
+                    children.Add(primIndex);
+                else if (TryBuildArrayObject(itemNode, inDeferred, line, column, out int arrIndex))
+                    children.Add(arrIndex);
+                else
+                    _builder.Error(XamlDiagnosticCodes.ConversionFailed,
+                                   $"{{x:Array}} item '{itemNode.Name}' is not a built-in primitive or a nested {{x:Array}}; " +
+                                   "curly-array items are primitives ({x:Int32 …}), nested arrays, or bare values.", line, column);
+            }
+            else if (arg.Text is { } itemText)
+            {
+                children.Add(BuildTextItemObject(elementType, itemText, lineInfo));
+            }
+        }
+
+        var flags = ObjectFlags.IsArray;
+        if (inDeferred) flags |= ObjectFlags.InDeferredContent;
+
+        int memberStart = _builder.MemberCount;
+        ushort memberCount = 0;
+        if (children.Count > 0)
+        {
+            _builder.AddMember(new MemberRecord(-1, XamlValueKind.Items, children[0], children.Count, lineInfo));
+            memberCount = 1;
+        }
+
+        int subtreeLength = _builder.ObjectCount - objectIndex;
+        _builder.SetObject(objectIndex, new ObjectRecord(typeId, memberStart, memberCount, flags, subtreeLength, lineInfo));
+        return true;
+    }
+
+    // A bare array item value converted to the element type (the curly analog of <T>value</T>): a synthetic
+    // T-typed object with one content Text member — exactly the shape TryBuildPrimitiveObject builds for a primitive.
+    private int BuildTextItemObject(XamlType? elementType, string text, int lineInfo)
+    {
+        int childIndex = _builder.ReserveObject();
+        int typeId = _builder.AddResolvedType(elementType);
+        int memberStart = _builder.MemberCount;
+        _builder.AddMember(new MemberRecord(-1, XamlValueKind.Text, _builder.InternString(text), 0, lineInfo));
+        _builder.SetObject(childIndex, new ObjectRecord(typeId, memberStart, (ushort) 1, ObjectFlags.None, subtreeLength: 1, lineInfo));
+        return childIndex;
     }
 
     /// <summary>

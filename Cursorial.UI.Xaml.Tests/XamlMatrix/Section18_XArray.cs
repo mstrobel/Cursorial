@@ -55,6 +55,47 @@ public sealed class Section18_XArray : LoaderTestBase
         Assert.Equal([7, 42], array);
     }
 
+    // ── Curly {x:Array Type=T, item, …} — the extension twin, building the SAME IsArray node ──────
+
+    [Fact] // XA-C1 — curly {x:Array Type=x:Int32, {x:Int32 …}} builds the SAME int[] as the element form (XA3)
+    public void CurlyXArray_Int32PrimitiveItems_BuildsIntArray()
+    {
+        var button = Load<UIControls.Button>(
+            "<Button Content=\"{x:Array Type=x:Int32, {x:Int32 7}, {x:Int32 42}}\"/>");
+        Assert.Equal([7, 42], Assert.IsType<int[]>(button.Content));
+    }
+
+    [Fact] // XA-C2 — curly with {x:String …} items builds a string[] (XA2 twin)
+    public void CurlyXArray_StringPrimitiveItems_BuildsStringArray()
+    {
+        var button = Load<UIControls.Button>(
+            "<Button Content=\"{x:Array Type=x:String, {x:String Alice}, {x:String Bob}}\"/>");
+        Assert.Equal(["Alice", "Bob"], Assert.IsType<string[]>(button.Content));
+    }
+
+    [Fact] // XA-C3 — BARE value items are converted to T (the curly analog of <T>value</T>)
+    public void CurlyXArray_BareValueItems_ConvertToElementType()
+    {
+        var button = Load<UIControls.Button>(
+            "<Button Content=\"{x:Array Type=x:Int32, 7, 42}\"/>");
+        Assert.Equal([7, 42], Assert.IsType<int[]>(button.Content));
+    }
+
+    [Fact] // XA-C4 — an empty curly array builds a zero-length T[] (XA4 twin)
+    public void CurlyXArray_Empty_BuildsEmptyArray()
+    {
+        var button = Load<UIControls.Button>("<Button Content=\"{x:Array Type=x:String}\"/>");
+        Assert.Empty(Assert.IsType<string[]>(button.Content));
+    }
+
+    [Fact] // XA-C5 — a curly array with no Type is CUR1204 (XA5 twin)
+    public void CurlyXArray_MissingType_Throws()
+    {
+        var ex = Assert.Throws<XamlParseException>(() => Load<UIControls.Button>(
+            "<Button Content=\"{x:Array {x:Int32 1}}\"/>"));
+        Assert.Equal("CUR1204", ex.Code);
+    }
+
     [Fact] // XA4 — an empty <x:Array Type="x:String"/> builds a zero-length string[]
     public void XArray_Empty_BuildsEmptyArray()
     {

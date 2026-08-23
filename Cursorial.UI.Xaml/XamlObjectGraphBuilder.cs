@@ -644,11 +644,38 @@ internal sealed class XamlObjectGraphBuilder
             return;
         }
 
+        // {x:Self} — the construction-time self-reference resolves to the object the value is being assigned
+        // onto (Level 0: the immediate target). Resolved HERE, the one spot the target instance is in hand;
+        // the target-less positions (dictionary entries, Setter.Value, …) throw in ResolveStaticReference.
+        var wasSelf = value is XamlSelfReference;
+        if (wasSelf)
+        {
+            // A STYLE-MACHINERY object (Style / DataCondition — built through this generic path) is not a
+            // meaningful self target: its members apply per matched element later, and the lowered lane cannot
+            // express a self-reference into its bespoke construction — reject in BOTH lanes (adversarial-review
+            // parity finding: this previously resolved DataCondition.Value to the DataCondition itself, a
+            // silently unmatchable comparison operand).
+            if (instance is Style or DataCondition)
+                throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                    "{x:Self} is not resolvable on a style-machinery object (Style / DataCondition) — its members " +
+                    "apply per matched element, not to the descriptor itself.", line, column);
+
+            value = instance;
+        }
+
         // A single child of a read-only collection member (e.g. one <Style> under <Panel.Styles>):
         // the frontend can't classify it as Items (it has no runtime collection knowledge), so the
         // loader fills the existing collection rather than setting it.
         if (value is not null && IsReadOnlyCollectionMember(resolved, instance, value, out var collection))
         {
+            // {x:Self} routed at a read-only COLLECTION member would add the object into its own collection —
+            // always a containment cycle (visual-tree/items adoption throws later, unpositioned, or a
+            // dictionary-shaped member silently no-ops). Reject with a positioned error instead.
+            if (wasSelf)
+                throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                    $"{{x:Self}} cannot be a value of the read-only collection member '{resolved.Name}' — " +
+                    "an object cannot be contained in its own collection.", line, column);
+
             BindCollectionAdders(collection!, out var addItem, out _);
             addItem?.Invoke(collection!, value);
             return;
@@ -1031,6 +1058,15 @@ internal sealed class XamlObjectGraphBuilder
         if (value is XamlTypeReference typeRef)
             return ResolveTypeToken(typeRef.TypeName, line, column);
 
+        // {x:Self} resolves to the ASSIGNMENT TARGET, and this fold-finalize serves the target-LESS positions
+        // (a dictionary/collection entry, Setter.Value — one value for every matched element, DataCondition
+        // internals). There is no self to resolve — error, never a silently-null value. (The with-target path
+        // resolves it in ApplyValue, before reaching here.)
+        if (value is XamlSelfReference)
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                "{x:Self} requires an assignment target; this position has none " +
+                "(a dictionary/collection entry, or a Setter.Value that applies to every matched element).", line, column);
+
         return value;
     }
 
@@ -1304,6 +1340,13 @@ internal sealed class XamlObjectGraphBuilder
 
     private void SetResourceSource(ResourceDictionary dict, in MemberRecord member, int line, int column)
     {
+        // An intrinsic placeholder token ({x:Self} — a self-reference is never a URI) must not fall into the
+        // ToString() arm below, which would stringify it into a phantom resource URI ("cursorial://…/{x:Self}")
+        // and blame a missing resource. Reject at the member, positioned.
+        if (member.Kind == XamlValueKind.Folded && _doc.Constants[member.ValueIndex] is XamlSelfReference)
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                "{x:Self} is not a valid ResourceDictionary Source (a URI is required).", line, column);
+
         // A folded constant that is ALREADY a Uri is used as-is: its OriginalString still carries
         // the author's casing, which round-tripping through ToString() (canonical, lowercased
         // authority) would destroy — and the authority names an assembly, not a DNS host.

@@ -244,6 +244,11 @@ internal static class LoweringEmitter
                              && SplitStaticPath(c, sref.MemberPath, out var srcNs, out var srcPath)
                              && ClosedTypeSet.ResolveStaticConstString(c.Resolver, srcNs, srcPath) is { } srcLiteral)
                         EmitResourceSource(c, dictVar, srcLiteral);
+                    // {x:Self} is never a Source URI — the loader Fatals (it must not stringify into a phantom
+                    // "cursorial://…/{x:Self}" resource); fail the build, not the warning-level drop.
+                    else if (member.Kind == XamlValueKind.Folded
+                             && c.Doc.Constants[member.ValueIndex] is XamlSelfReference)
+                        c.Error("{x:Self} is not a valid ResourceDictionary Source (a URI is required)");
                     else
                         c.Todo("<ResourceDictionary.Source> with a non-literal (non-const-{x:Static}) value not yet lowered");
                     // The Source folds external keys into this dict's OWN entries (invisible to KeyExprToVar) — mark
@@ -643,6 +648,15 @@ internal static class LoweringEmitter
             // lowering has not implemented; an {x:Static}/{x:Type} key that did not RESOLVE is a broken
             // reference in the document — usually a renamed or deleted member — and saying "no x:Static key"
             // about a line that visibly has one sends the reader hunting for a malformed key that isn't there.
+            // x:Key="{x:Self}" — never a valid key (the loader Fatals CUR1203); fail the build with an accurate
+            // message rather than the misleading "renamed or missing member?" warning drop.
+            if (RawKey(c, childIndex) is { } rawKey &&
+                (rawKey.StartsWith("{x:Self", System.StringComparison.Ordinal) || rawKey.StartsWith("{Self", System.StringComparison.Ordinal)))
+            {
+                c.Error("x:Key=\"{x:Self}\" is not a valid resource key — a self-reference cannot key a dictionary entry");
+                return;
+            }
+
             c.Todo(RawKey(c, childIndex) is { } raw && raw.StartsWith("{", System.StringComparison.Ordinal)
                        ? $"resource entry whose x:Key {raw} could not be resolved (renamed or missing member?) not yet lowered"
                        : "resource entry with no plain/x:Static/x:Type x:Key not yet lowered");
@@ -1162,6 +1176,14 @@ internal static class LoweringEmitter
         if (constant is XamlStaticReference staticRef)
             return ResolveStaticPath(c, staticRef.MemberPath);
 
+        // {x:Self} is never a capabilities value — the loader Fatals on the style-machinery target (an accurate,
+        // build-failing error here; the Convert catch below would silently degrade it to the generic drop).
+        if (constant is XamlSelfReference)
+        {
+            c.Error("{x:Self} is not a valid RequiresCapabilities value");
+            return null;
+        }
+
         if (constant is null)
             return null;
 
@@ -1586,9 +1608,14 @@ internal static class LoweringEmitter
     private static string? CustomResourceKeyExpr(Context c, in ExtensionRecord ext)
         => ext.PayloadIsParsedExtension &&
            c.Doc.ParsedExtensions[ext.Payload] is { } node &&
-           !IsBuiltInNestedExtensionName(node.Name)
+           !IsBuiltInNestedExtensionName(node.Name) &&
+           !IsSelfNode(node) // the intrinsic {x:Self} never probes as a phantom 'SelfExtension' custom type
             ? CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null)
             : null;
+
+    // True when a *Resource extension's nested KEY node is the intrinsic {x:Self} (namespace-gated).
+    private static bool NestedKeyIsSelf(Context c, in ExtensionRecord ext)
+        => ext.PayloadIsParsedExtension && c.Doc.ParsedExtensions[ext.Payload] is { } node && IsSelfNode(node);
 
     // A Style's BasedOn: a direct nested <Style> (built + referenced), or a {StaticResource key} resolving to a
     // same-dictionary keyed Style built before this use (the entry's var — its load-time snapshot; the key may be a
@@ -1596,6 +1623,14 @@ internal static class LoweringEmitter
     // {StaticResource} BasedOn stays unlowered (defer — null).
     private static string? BasedOnExpr(Context c, in MemberRecord member)
     {
+        // BasedOn="{x:Self}" — a style based on itself is always a cycle (the loader's style-machinery guard
+        // Fatals); an accurate, build-failing error rather than the generic warning-level DropStyle alone.
+        if (member.Kind == XamlValueKind.Folded && c.Doc.Constants[member.ValueIndex] is XamlSelfReference)
+        {
+            c.Error("Style BasedOn=\"{x:Self}\" — a style cannot be based on itself");
+            return null;
+        }
+
         if (member.Kind == XamlValueKind.Object)
         {
             var v = c.NextVar();
@@ -2486,6 +2521,11 @@ internal static class LoweringEmitter
             var expr = member.Kind switch
             {
                 XamlValueKind.Text => ScalarTypedExpr(c, xm, c.Doc.Strings[member.ValueIndex]),
+                // {x:Self} cannot be expressed inside the construction initializer (C# has no way to reference
+                // the object being initialized) — skip WITHOUT probing FoldedValueExpr (whose SelfValueFence
+                // would fire a wrong-position "no assignment target" error as a probe side effect); the member
+                // loop's EmitFoldedAssign owns the accurate init-only diagnostic.
+                XamlValueKind.Folded when c.Doc.Constants[member.ValueIndex] is XamlSelfReference => null,
                 XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
                 XamlValueKind.Object => BuildInitOnlyObjectChild(c, member.ValueIndex, hasScope, dataType),
                 XamlValueKind.Extension => hasOwnResources ? null : InitOnlyExtensionExpr(c, in member, xm, scan, m),
@@ -2803,7 +2843,10 @@ internal static class LoweringEmitter
     // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitFoldedAssign(Context c, string varExpr, XamlMember xm, object? constant)
     {
-        if (FoldedValueExpr(c, constant) is not { } valueExpr)
+        // {x:Self} — the value IS the assignment target (Level 0): resolved here, the one spot the target's
+        // local is in hand (the loader's ApplyValue twin). Target-less Value positions error in FoldedValueExpr.
+        var valueExpr = constant is XamlSelfReference ? varExpr : FoldedValueExpr(c, constant);
+        if (valueExpr is null)
         {
             c.Todo($"folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
             return;
@@ -2817,7 +2860,16 @@ internal static class LoweringEmitter
 
         if (ClrSetBlocked(c, xm.Name))
         {
-            c.Todo($"CLR property '{xm.Name}' is init-only/read-only — can't be set post-construction");
+            // {x:Self} on an init-only/read-only member: the loader RESOLVES it (reflection invokes the init
+            // accessor post-construction) but the lowered lane genuinely cannot (C# has no way to reference the
+            // object inside its own initializer) — an ACCURATE, build-failing lane-limitation error, not the
+            // generic warning drop (which would silently diverge from the loader's resolved object graph).
+            if (constant is XamlSelfReference)
+                c.Error($"{{x:Self}} on the init-only/read-only CLR property '{xm.Name}' cannot be lowered — " +
+                        "C# cannot reference the object inside its own initializer (the reflective loader " +
+                        "resolves this; use a settable member for lowered documents)");
+            else
+                c.Todo($"CLR property '{xm.Name}' is init-only/read-only — can't be set post-construction");
             return;
         }
 
@@ -2832,8 +2884,34 @@ internal static class LoweringEmitter
         XamlTypeReference typeRef => XamlDataTypeScope.ResolveToken(c.Doc, typeRef.TypeName, c.Resolver) is { } sym
             ? $"typeof({Global(sym, false)})"
             : null, // an unresolvable token — the caller fences (never a silent null)
+        // {x:Self} reaching a VALUE position (a dict/collection entry, Setter.Value, DataCondition.Value) has no
+        // assignment target — the loader Fatals on the identical document, so the lowered build must FAIL too
+        // (CURG3002), never a silent drop. (The with-target Assign path resolves it in EmitFoldedAssign.)
+        XamlSelfReference => SelfValueFence(c),
         _ => null, // not expected under FoldConstants=false
     };
+
+    private static string? SelfValueFence(Context c)
+    {
+        c.Error("{x:Self} requires an assignment target; this position has none " +
+                "(a dictionary/collection entry, or a style-machinery member — Setter.Value / DataCondition.Value — " +
+                "that applies per matched element, not to the descriptor)");
+        return null;
+    }
+
+    /// <summary>
+    /// True when a NESTED node is the intrinsic <c>{x:Self}</c> — gated on the STAMPED intrinsics namespace +
+    /// the local name (the loader's IsSelfNode twin, matching the frontend's top-level fold). A literal-name
+    /// match diverged: <c>{z:Self}</c> with an intrinsics-bound prefix failed here while the loader resolved it,
+    /// and a bare custom <c>{Self}</c> could shadow. The stamped namespace is the one truth.
+    /// </summary>
+    private static bool IsSelfNode(MarkupExtensionNode node)
+    {
+        if (!XmlnsNamespaces.IsIntrinsics(node.ResolvedNamespace ?? string.Empty))
+            return false;
+        int colon = node.Name.IndexOf(':');
+        return string.Equals(colon >= 0 ? node.Name.Substring(colon + 1) : node.Name, "Self", System.StringComparison.Ordinal);
+    }
 
     // ── {Binding} (B3a — the compiled lane) ──────────────────────────────────────────────────────
 
@@ -3319,7 +3397,11 @@ internal static class LoweringEmitter
         // matching the loader's ResolveResourceKey → ResolveNestedExtension).
         if ((ResourceKeyArgExpr(c, in ext) ?? CustomResourceKeyExpr(c, in ext)) is not { } keyExpr)
         {
-            c.Todo($"{{DynamicResource}} with an unsupported markup-extension key for '{xm.Name}' not yet lowered");
+            // {DynamicResource {x:Self}} — never a key; the loader Fatals, the build must fail (see EmitStaticResource).
+            if (NestedKeyIsSelf(c, in ext))
+                c.Error($"{{x:Self}} is not a valid resource key (for '{xm.Name}') — a self-reference cannot key a resource");
+            else
+                c.Todo($"{{DynamicResource}} with an unsupported markup-extension key for '{xm.Name}' not yet lowered");
             return;
         }
 
@@ -3340,7 +3422,12 @@ internal static class LoweringEmitter
         // the same Build() scope).
         if (ResourceKeyArgExpr(c, in ext) is not { } keyExpr)
         {
-            c.Todo($"{{StaticResource}} key for '{xm.Name}' is an unsupported markup extension — not yet lowered");
+            // {StaticResource {x:Self}} — a self-reference is never a resource key; the loader Fatals, so the
+            // lowered build must FAIL (not the warning-level drop the generic unsupported-key fence gives).
+            if (NestedKeyIsSelf(c, in ext))
+                c.Error($"{{x:Self}} is not a valid resource key (for '{xm.Name}') — a self-reference cannot key a resource");
+            else
+                c.Todo($"{{StaticResource}} key for '{xm.Name}' is an unsupported markup extension — not yet lowered");
             return;
         }
         var keyId = ResourceKeyArgExpr(c, in ext, canonical: true) ?? keyExpr;
@@ -4147,6 +4234,15 @@ internal static class LoweringEmitter
                 return true;
             }
 
+            // Source={x:Self} (the construction-time self-anchor) lowers through the REFLECTIVE lane, which
+            // has the target's local in hand (EmitReflectiveBinding's sourceOverrideExpr) — decline here so it
+            // falls through cleanly; descriptor positions error there (no single target, loader parity).
+            if (source.IsNested && IsSelfNode(source.Nested!))
+            {
+                reason = "a Source={x:Self} anchor lowers through the reflective lane";
+                return false;
+            }
+
             // The reflective lane's own source shapes (a custom extension, a fenced form NestedSourceExpr
             // can express) anchor the binding without a static type.
             if (source.IsNested && NestedSourceExpr(c, source.Nested!) is { } sourceExpr)
@@ -4448,6 +4544,21 @@ internal static class LoweringEmitter
             return true;
         }
 
+        // {Binding …, Source={x:Self}} — the construction-time self-anchor: the Source is the binding's own
+        // TARGET object (see-through — x:Self is the object being bound, never the Binding). varExpr is fully
+        // known at this point in construction, so the Install stays INLINE — no deferral, matching the loader's
+        // BuildBinding(selfTarget: target). Descriptor positions (no target) error in ReflectiveBindingExpr.
+        if (node.FindNamed("Source") is { IsNested: true } selfSrc &&
+            IsSelfNode(selfSrc.Nested!))
+        {
+            if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'", sourceOverrideExpr: varExpr) is not { } selfAnchored)
+                return false;
+
+            c.Line(
+                $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {selfAnchored});");
+            return true;
+        }
+
         if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'") is not { } bindingExpr)
             return false; // a specific // TODO X5 was already emitted
 
@@ -4503,6 +4614,15 @@ internal static class LoweringEmitter
             sourceInit = $"Source = {sourceOverrideExpr}";
         else if (node.FindNamed("Source") is { IsNested: true } nestedSource)
         {
+            // Source={x:Self} reaching here (no override) is a DESCRIPTOR position — DataCondition.Binding, a
+            // Setter.Value binding — with no single binding target. The loader Fatals on the identical document
+            // (ParseSourceValue, selfTarget null), so the lowered build must FAIL too, never a warning-level drop.
+            if (IsSelfNode(nestedSource.Nested!))
+            {
+                c.Error($"{{Binding Source={{x:Self}}}} {diagName} is not resolvable in a descriptor position (no single binding target)");
+                return null;
+            }
+
             if (NestedSourceExpr(c, nestedSource.Nested!) is not { } sourceExpr)
             {
                 c.Todo($"{{Binding}} Source {diagName} is a nested {{{nestedSource.Nested!.Name}}} not lowerable in this position");
@@ -4542,6 +4662,11 @@ internal static class LoweringEmitter
 
         // A CUSTOM extension as the Source — eager target-less ProvideValue, the runtime's
         // ResolveNestedExtension default arm. Built-ins that fell through above stay declined.
+        // The intrinsic {x:Self} never probes as a custom extension (namespace-gated — a custom {g:Self}
+        // in another namespace falls through and keeps its meaning); the caller handles/fences the intrinsic.
+        if (IsSelfNode(nested))
+            return null;
+
         if (nested.Name is not ("x:Null" or "Null" or "x:Static" or "Static" or "x:Type" or "Type"
                 or "StaticResource" or "DynamicResource" or "Binding" or "TemplateBinding"
                 or "x:Reference" or "Reference") &&
@@ -4807,7 +4932,22 @@ internal static class LoweringEmitter
     // Named()/ParseEnum reads; a nested-extension FallbackValue/TargetNullValue/ConverterParameter is a documented
     // follow-up. The object? slots (FallbackValue/TargetNullValue/ConverterParameter) hold the raw string the
     // converter/coercion interprets. Empty strings are filtered by Initializers.
-    private static IEnumerable<string> ShapingInits(Context c, MarkupExtensionNode node) =>
+    private static readonly string[] LiteralOnlyShapingArgs =
+        ["ConverterParameter", "ConverterCulture", "StringFormat", "FallbackValue", "TargetNullValue", "UpdateSourceTrigger", "Trace", "Mode"];
+
+    private static IEnumerable<string> ShapingInits(Context c, MarkupExtensionNode node)
+    {
+        // A NESTED extension in a literal-only slot was silently read as null (NamedText returns only .Text) —
+        // {Binding ConverterParameter={x:Self}} bound with a null parameter, no diagnostic, in BOTH lanes. The
+        // loader now Fatals (RejectNestedLiteralOnlyArgs); fail the lowered build identically.
+        foreach (var name in LiteralOnlyShapingArgs)
+            if (node.FindNamed(name) is { IsNested: true })
+                c.Error($"a nested markup extension is not supported in the '{name}' binding argument (literal values only)");
+
+        return ShapingInitsCore(c, node);
+    }
+
+    private static IEnumerable<string> ShapingInitsCore(Context c, MarkupExtensionNode node) =>
     [
         StringInit("StringFormat", NamedText(node, "StringFormat")),
         StringInit("FallbackValue", NamedText(node, "FallbackValue")),

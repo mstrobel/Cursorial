@@ -106,7 +106,13 @@ public sealed class ResourceDictionary : IEnumerable<KeyValuePair<object, object
     {
         ArgumentNullException.ThrowIfNull(key);
 
-        if (_entries.TryGetValue(key, out var slot))
+        // A still-REALIZING entry is conceptually NOT in the dictionary yet — it isn't fully constructed. So a
+        // {StaticResource K} evaluated DURING K's own realization — BasedOn="{StaticResource {x:Type X}}" extending
+        // the theme's X style, or any self/transitive-self reference — SKIPS this slot and resolves against the
+        // OUTER scope, instead of the CD6 self-cycle throw. Universal (not BasedOn-specific): an entry declared on
+        // a dictionary entry can't self-resolve, because it doesn't exist until it's built. An outer reference that
+        // still doesn't resolve then surfaces as a normal runtime ResourceNotFound, not a cycle error.
+        if (_entries.TryGetValue(key, out var slot) && slot.State != DeferredState.Realizing)
         {
             value = Realize(key, slot);
             return true;

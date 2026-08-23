@@ -1355,14 +1355,17 @@ internal sealed class XamlParser
         {
             if (arg.Nested is { } itemNode)
             {
-                if (TryBuildPrimitiveObject(itemNode, line, column, out int primIndex))
+                // Each nested item builds its own object, at its OWN source position: a curly primitive
+                // ({x:Int32 1}), a nested {x:Array}, or ANY OTHER markup extension ({x:Null}/{x:Static}/
+                // {Binding}/{StaticResource}/custom) — the last wrapped in the SAME synthetic IsMarkupExtension
+                // object the element form's <x:Null/> etc. build, so every item the element form accepts works here
+                // (and an unsupported one is rejected by the loader identically). No item is silently dropped.
+                if (TryBuildPrimitiveObject(itemNode, itemNode.Line, itemNode.Column, out int primIndex))
                     children.Add(primIndex);
-                else if (TryBuildArrayObject(itemNode, inDeferred, line, column, out int arrIndex))
+                else if (TryBuildArrayObject(itemNode, inDeferred, itemNode.Line, itemNode.Column, out int arrIndex))
                     children.Add(arrIndex);
                 else
-                    _builder.Error(XamlDiagnosticCodes.ConversionFailed,
-                                   $"{{x:Array}} item '{itemNode.Name}' is not a built-in primitive or a nested {{x:Array}}; " +
-                                   "curly-array items are primitives ({x:Int32 …}), nested arrays, or bare values.", line, column);
+                    children.Add(BuildMarkupExtensionItemObject(itemNode, inDeferred));
             }
             else if (arg.Text is { } itemText)
             {
@@ -1395,6 +1398,31 @@ internal sealed class XamlParser
         int memberStart = _builder.MemberCount;
         _builder.AddMember(new MemberRecord(-1, XamlValueKind.Text, _builder.InternString(text), 0, lineInfo));
         _builder.SetObject(childIndex, new ObjectRecord(typeId, memberStart, (ushort) 1, ObjectFlags.None, subtreeLength: 1, lineInfo));
+        return childIndex;
+    }
+
+    // Wraps a curly-array item that is a markup extension ({x:Null}/{x:Static}/{Binding}/{StaticResource}/custom)
+    // in the SAME synthetic IsMarkupExtension object the element form's ParseExtensionElement builds — one value
+    // member (a Folded constant or a live Extension record), typeId −1 — so BuildArray/EmitArray instantiate it via
+    // the standalone-entry path (ProvideExtensionEntryValue), identical to <x:Null/> etc. as element children. A
+    // suppressed build leaves a null value (well-defined instantiation), and BuildExtensionValue reports at the
+    // ITEM's own position (itemNode.Line/Column), not the array's.
+    private int BuildMarkupExtensionItemObject(MarkupExtensionNode itemNode, bool inDeferred)
+    {
+        int itemLineInfo = LineInfo.Pack(itemNode.Line, itemNode.Column);
+        int childIndex = _builder.ReserveObject();
+
+        if (!BuildExtensionValue(itemNode, member: null, inDeferred, itemNode.Line, itemNode.Column, out var valueKind, out int valueIndex))
+        {
+            valueKind = XamlValueKind.Folded;
+            valueIndex = _builder.AddConstant(null);
+        }
+
+        int memberStart = _builder.MemberCount;
+        _builder.AddMember(new MemberRecord(-1, valueKind, valueIndex, 0, itemLineInfo));
+
+        int subtreeLength = _builder.ObjectCount - childIndex;
+        _builder.SetObject(childIndex, new ObjectRecord(typeId: -1, memberStart, (ushort) 1, ObjectFlags.IsMarkupExtension, subtreeLength, itemLineInfo));
         return childIndex;
     }
 

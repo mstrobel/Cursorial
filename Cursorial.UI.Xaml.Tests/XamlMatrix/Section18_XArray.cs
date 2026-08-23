@@ -96,6 +96,30 @@ public sealed class Section18_XArray : LoaderTestBase
         Assert.Equal("CUR1204", ex.Code);
     }
 
+    [Fact] // XA-C6 — an {x:Null} item is NOT dropped (review finding): {x:Array Type=Button, {x:Null}} builds a
+    // length-1 Button[]{ null }, exactly as the element form <x:Array Type="Button"><x:Null/></x:Array> does.
+    public void CurlyXArray_XNullItem_IsKept_ParityWithElementForm()
+    {
+        var curly = Load<UIControls.Button>("<Button Content=\"{x:Array Type=Button, {x:Null}}\"/>");
+        var curlyArr = Assert.IsType<UIControls.Button[]>(curly.Content);
+        Assert.Single(curlyArr);
+        Assert.Null(curlyArr[0]);
+
+        var element = (ResourceDictionary)LoadRaw(
+            $"<ResourceDictionary{Pre}><x:Array x:Key=\"a\" Type=\"Button\"><x:Null/></x:Array></ResourceDictionary>");
+        Assert.Equal(curlyArr.Length, Assert.IsType<UIControls.Button[]>(element["a"]).Length); // same length — no drop
+    }
+
+    [Fact] // XA-C7 — a mix of a primitive and an {x:Null} item keeps BOTH (length stays correct, no silent shortening)
+    public void CurlyXArray_MixedPrimitiveAndNull_KeepsAll()
+    {
+        var button = Load<UIControls.Button>("<Button Content=\"{x:Array Type=x:String, {x:String hi}, {x:Null}}\"/>");
+        var arr = Assert.IsType<string[]>(button.Content);
+        Assert.Equal(2, arr.Length);
+        Assert.Equal("hi", arr[0]);
+        Assert.Null(arr[1]);
+    }
+
     [Fact] // XA4 — an empty <x:Array Type="x:String"/> builds a zero-length string[]
     public void XArray_Empty_BuildsEmptyArray()
     {

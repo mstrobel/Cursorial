@@ -2887,7 +2887,7 @@ internal static class LoweringEmitter
     }
 
     /// <summary>
-    /// Lowers an element-form markup extension (<paramref name="extObject"/>) as the value of member
+    /// Lowers a markup extension (<paramref name="ext"/>) as the value of member
     /// <paramref name="xm"/> — a folded intrinsic emits its constant; a live extension reuses the same
     /// per-kind lowering the curly attribute form does (so element and curly form lower identically).
     /// </summary>

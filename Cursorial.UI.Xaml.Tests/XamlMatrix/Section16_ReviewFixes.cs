@@ -57,6 +57,16 @@ public sealed class Section16_ReviewFixes : LoaderTestBase
         Assert.Equal("head|tail", button.Content);
     }
 
+    [Fact] // Parity with the generator's SinglePositionalFallback: the reflective loader's ApplyPositionalArguments
+    // maps an UNANNOTATED single positional to the sole writable property (its declaration-order fallback). Confirms
+    // the loader has the same single-positional support the emitter lifted — in fact it is at least as lenient (the
+    // emitter fences 2+ unannotated candidates; the loader maps the first).
+    public void SinglePositionalUnannotated_MapsToSoleWritableProperty()
+    {
+        var button = Load<Button>("<Button Content=\"{Greet world}\"/>");
+        Assert.Equal("hello world", button.Content);
+    }
+
     // ── P1-4: unrecognized RelativeSource mode is a hard error, not a silent Self ─────────────────
 
     [Fact]
@@ -270,6 +280,16 @@ public sealed class ReversedExtension : MarkupExtension
     public string First { get; set; } = "";
 
     public override object ProvideValue(IServiceProvider serviceProvider) => $"{First}|{Second}";
+}
+
+/// <summary>A custom extension with ONE unannotated settable property — the reflective loader's declaration-order
+/// fallback (ApplyPositionalArguments) maps a single positional to it, matching the generator's
+/// SinglePositionalFallback (no <see cref="ConstructorArgumentAttribute"/> needed for the unambiguous case).</summary>
+public sealed class GreetExtension : MarkupExtension
+{
+    public string? Who { get; set; }
+
+    public override object? ProvideValue(IServiceProvider serviceProvider) => "hello " + Who;
 }
 
 /// <summary>A converter exposed as an {x:Static} singleton (P6 review P2-13).</summary>

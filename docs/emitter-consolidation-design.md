@@ -275,3 +275,27 @@ Baseline at fork (`feature/cursorial-cli` @ `dd3ded0f`): 257 generator + 524 run
 **Reference-lane finding (the "maddening" x:Reference/ElementName inconsistency):** the picture is narrow. Contexts that WORK (both lanes, consistent): document level (x:Class), inside templates (incl. templates nested in RDs), inline `<X.Resources>` → document names. The one real bug was GAP-B (fixed). The remaining "failures" are **by design**: `x:Name` inside any ResourceDictionary is the shared frontend error **CUR2304**, so an `{x:Reference}` to an RD-level name can't resolve in either lane (generator emits a visible CURG3001, loader throws — neither silent). GAP-A (the hypothesized `LE:679` wrong-scope) did NOT surface as a failing cell in the systematic context-map; treat as non-reachable/already-correct pending a concrete repro.
 
 **Remaining (the funnel is still a SHIM for Value delivery):** `EmitValue`'s Value-delivery arms delegate to the setter's helpers (`TextValueExpr`/`FoldedValueExpr`/`SetterExtensionValueExpr`/`MarkupExtensionEntryExpr`) and **fence on a normal Object** ("not yet funneled" — currently unreachable/dead, since no position routes an Object through Value delivery). Steps 3 (`ResolveIntrinsicExpr`), 5 (collection-add/init-only), 7 (datacondition-value), 8 (dict-entry-value), 9 (converter-arg/custom-arg nesting), 10 (StaticResource non-UIElement over-fence + DynamicResource exception) are unstarted. Each is behavior-changing toward loader-parity/uniformity (not a pure refactor): e.g. routing DataCondition through the funnel would unify its Extension handling with the setter's (unlocking Binding-descriptor + DynamicResource-carrier as `DataCondition.Value`), which needs per-cell loader-parity verification — several target increasingly exotic kind×position cells. The invariant-grid `[Theory]` (§7 item 6) is the closing test.
+
+### Progress log — round 2 (value-emission core unified)
+
+Current: **265 generator + 530 runtime**, full solution clean.
+
+- **Step 7** (`51f47ad7`) — `DataCondition.Value` routed through `EmitValue`; `DataConditionValueExpr` deleted. The funnel's Value-delivery core became real (normal-Object → `EmitObjectToLocal`; element-form ⇔ curly for both deliveries; delivery-aware Extension arm).
+- **Extension-value authority** (`f0477e3d`) — `ExtensionValueExpr` is now the SINGLE place a markup extension lowers in any Value slot, consumed by Setter.Value, DataCondition.Value, and (via `MarkupExtensionEntryExpr`) every standalone element-form entry. Leniency is two orthogonal `ValueSlot` axes, replacing the binary `ResourceLenient`.
+
+**The empirical leniency finding (revises the design's §3 assumption that "the carrier is always available"):** a Value slot has one of THREE loader-matched profiles, NOT a uniform "carrier fallback":
+
+| Slot | `{Binding}` | `{DynamicResource}` | verified against |
+|---|---|---|---|
+| **Setter.Value** (dedicated) | DESCRIPTOR | CARRIER | `BuildSetter` |
+| **standalone entry** (dict/merged/theme/Setters-item/When-item) | fence | CARRIER | `MarkupExtensionEntryExpr` / loader entry path |
+| **DataCondition.Value** (generic member) | fence (frontend CUR2210 at parse) | fence (loader CUR2210 at attach) | empirical probe |
+
+`{StaticResource}` + custom are valid in all three; `{x:Reference}`/`{TemplateBinding}` fence in all three. The two flags (`AllowBindingDescriptor`, `AllowResourceCarrier`) encode exactly these rows.
+
+**Remaining positions are NOT generic value slots — they are TYPED or STRUCTURAL, and don't fold into the generic funnel without per-position restriction:**
+
+- **Typed slots** — `BasedOn` (→`Style`: accepts only Object + StaticResource; a Verbatim-Text funnel arm would emit `(Style)"literal"` → CS error, and its init-only forward-reference fence is position-specific) and `converter-arg` (→`IValueConverter`, with `StaticResourceMustResolve`). These are legitimately bespoke — the "few specific exceptions" the author anticipated, now enumerated.
+- **Structural** — `EmitDictionaryEntry` (key resolution + deferred-realization closure + reference frame), `collection-add`, init-only initializers. The VALUE within is already routed (element-form entries go through `MarkupExtensionEntryExpr`→`ExtensionValueExpr`); the key/defer/structure is inherently position-specific.
+
+**Net:** the "many divergent value paths" the consolidation targeted are unified — every generic member value flows through `EmitValue`, and every Extension-in-a-Value-slot decision flows through `ExtensionValueExpr`. The residual bespoke code is the typed/structural tail, which is specialized by necessity (the loader's own semantics differ per slot type), not by accident. The invariant-grid `[Theory]` (§7 item 6) remains as a durable capstone for whichever cells are folded next.

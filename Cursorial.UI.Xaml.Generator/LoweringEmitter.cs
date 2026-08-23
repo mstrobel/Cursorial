@@ -1319,7 +1319,7 @@ internal static class LoweringEmitter
                 c.TemplatedParentType = savedTpt;
                 valueExpr = v;
             }
-            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject, AllowBindingDescriptor = true, AllowResourceCarrier = true }, in value).Expr is { } v)
+            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject, AllowBindingDescriptor = true, AllowResourceCarrier = true, SelfAnchorType = targetType }, in value).Expr is { } v)
                 valueExpr = v;
             else
             {
@@ -1474,9 +1474,21 @@ internal static class LoweringEmitter
     private static string? ExtensionValueExpr(Context c, in ValueSlot slot, in ExtensionRecord ext)
     {
         if (ext.Kind == ExtensionKind.Binding)
-            return slot.AllowBindingDescriptor && c.Doc.ParsedExtensions[ext.Payload] is { } node
-                       ? ReflectiveBindingExpr(c, node, "in a Setter.Value")
-                       : null; // a non-Setter.Value slot has no place for a {Binding} DESCRIPTOR (loader rejects)
+        {
+            if (!slot.AllowBindingDescriptor || c.Doc.ParsedExtensions[ext.Payload] is not { } node)
+                return null; // a non-Setter.Value slot has no place for a {Binding} DESCRIPTOR (loader rejects)
+
+            // Try the COMPILED descriptor lane first — the same lane DataCondition.Binding uses (WS-PP3). A
+            // Self-anchored `(Owner.Property)` or a RelativeSource=Self setter binding lowers to a typed
+            // CompiledBinding (the styling engine installs it per matched element from StyleRuleFrame.OnInstalled;
+            // a Self anchor resolves to that element). The Style's TargetType is the Self-anchor root, so
+            // RelativeSource=Self compiles against it. Anything DataContext-relative (no source type in scope)
+            // stays faithfully reflective. deferInstall is irrelevant — the descriptor is installed later, not here.
+            return TryBuildCompiledBindingExpr(c, node, dataType: null, selfAnchorType: slot.SelfAnchorType,
+                                               out var compiled, out _, out _)
+                       ? compiled
+                       : ReflectiveBindingExpr(c, node, "in a Setter.Value");
+        }
 
         if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } customNode)
             return CustomExtensionExpr(c, customNode, targetObjectExpr: null, targetPropertyExpr: null);
@@ -1889,6 +1901,7 @@ internal static class LoweringEmitter
         //   • DataCondition.Value (generic member) → neither (the loader throws CUR2210)
         public bool AllowBindingDescriptor { get; init; }    // a {Binding} lowers to a DESCRIPTOR (else fence)
         public bool AllowResourceCarrier { get; init; }      // a {DynamicResource} lowers to a ResourceReference CARRIER (else fence)
+        public INamedTypeSymbol? SelfAnchorType { get; init; } // the descriptor's RelativeSource=Self root (Setter.Value → the Style TargetType)
     }
 
     /// <summary>The funnel's outcome: an expression the caller places, an already-emitted install, or a fence.</summary>

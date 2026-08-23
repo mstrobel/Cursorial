@@ -644,6 +644,12 @@ internal sealed class XamlObjectGraphBuilder
             return;
         }
 
+        // {x:Self} — the construction-time self-reference resolves to the object the value is being assigned
+        // onto (Level 0: the immediate target). Resolved HERE, the one spot the target instance is in hand;
+        // the target-less positions (dictionary entries, Setter.Value, …) throw in ResolveStaticReference.
+        if (value is XamlSelfReference)
+            value = instance;
+
         // A single child of a read-only collection member (e.g. one <Style> under <Panel.Styles>):
         // the frontend can't classify it as Items (it has no runtime collection knowledge), so the
         // loader fills the existing collection rather than setting it.
@@ -999,6 +1005,15 @@ internal sealed class XamlObjectGraphBuilder
         // dependent System.Type); resolve it to the real Type here, mirroring the x:Static fold-finalize.
         if (value is XamlTypeReference typeRef)
             return ResolveTypeToken(typeRef.TypeName, line, column);
+
+        // {x:Self} resolves to the ASSIGNMENT TARGET, and this fold-finalize serves the target-LESS positions
+        // (a dictionary/collection entry, Setter.Value — one value for every matched element, DataCondition
+        // internals). There is no self to resolve — error, never a silently-null value. (The with-target path
+        // resolves it in ApplyValue, before reaching here.)
+        if (value is XamlSelfReference)
+            throw Fatal(XamlDiagnosticCodes.ConversionFailed,
+                "{x:Self} requires an assignment target; this position has none " +
+                "(a dictionary/collection entry, or a Setter.Value that applies to every matched element).", line, column);
 
         return value;
     }

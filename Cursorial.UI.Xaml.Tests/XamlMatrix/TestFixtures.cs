@@ -127,6 +127,19 @@ public sealed class TypeSetterHost : Cursorial.UI.Controls.Control
     public Type? Kind { get => GetValue(KindProperty); set => SetValue(KindProperty, value); }
 }
 
+/// <summary>A control with side-effect-free object-typed properties (one UIProperty-backed, one plain CLR) —
+/// the neutral target for <c>{x:Self}</c> tests (unlike <c>Content</c>, which parents its value and so rejects
+/// a self-reference as an inheritance cycle).</summary>
+public sealed class SelfHost : Cursorial.UI.Controls.Control
+{
+    public static readonly StyledProperty<object?> PayloadProperty = UIProperty.Register<SelfHost, object?>(nameof(Payload));
+
+    public object? Payload { get => GetValue(PayloadProperty); set => SetValue(PayloadProperty, value); }
+
+    /// <summary>A plain CLR property — exercises the non-UIProperty assign path.</summary>
+    public object? Bag { get; set; }
+}
+
 /// <summary>A control whose CONTENT is a collection-typed <c>UIProperty</c> (a concrete <see cref="List{T}"/> — a bare
 /// <c>IList&lt;T&gt;</c> interface type isn't classed as a collection), filled by child elements — the reflection
 /// loader must read the collection back and Add, as the generator does via the CLR wrapper.</summary>

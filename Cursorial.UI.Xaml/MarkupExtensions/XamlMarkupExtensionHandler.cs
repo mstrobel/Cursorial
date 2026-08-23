@@ -205,7 +205,9 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             return;
         }
 
-        BindingOperations.Install(target, property, BuildBinding(builder, node, line, column));
+        // selfTarget feeds a Source={x:Self} anchor (the construction-time self-reference — the binding's own
+        // target object); absent that argument the descriptor paths reject it in ParseSourceValue.
+        BindingOperations.Install(target, property, BuildBinding(builder, node, line, column, selfTarget: target));
     }
 
     // The name a binding anchors on, from ElementName=name OR Source={x:Reference name} (both resolve a named
@@ -265,7 +267,11 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
     // Builds a Binding from the markup node. <paramref name="namedElementSource"/>, when supplied, is the element a
     // resolved ElementName / Source={x:Reference} anchor points at — it becomes the binding's Source directly
     // (binding source/anchor properties are init-only, so the anchor must be resolved before construction).
-    private Binding BuildBinding(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column, object? namedElementSource = null)
+    // <paramref name="selfTarget"/> is the binding's TARGET object for a Source={x:Self} anchor (see-through:
+    // x:Self inside a Binding is the object being bound, never the Binding); null in a DESCRIPTOR position
+    // (DataCondition.Binding, a Setter.Value binding), where a self anchor is rejected.
+    private Binding BuildBinding(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column,
+                                 object? namedElementSource = null, object? selfTarget = null)
     {
         // Path: the first positional, or the Path= named arg.
         string path = FirstPositional(node) ?? Named(node, "Path") ?? string.Empty;
@@ -279,7 +285,7 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             // default. Type qualification is not assumed to be attached — it may be a regular property qualified
             // for disambiguation/clarity; only the OWNER TYPE resolves here, the member stays runtime-resolved.
             Path = new PropertyPath(path, builder.PathTypeResolver),
-            Source = namedElementSource ?? ParseSourceValue(builder, node, line, column),
+            Source = namedElementSource ?? ParseSourceValue(builder, node, selfTarget, line, column),
             TypeResolver = builder.PathTypeResolver,
             // An ElementName is resolved to a concrete Source in the install path (namedElementSource);
             // in the descriptor path (no resolved anchor) it rides the descriptor for runtime resolution.
@@ -309,10 +315,19 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
     // Resolves a Binding's non-anchor Source argument (the ElementName / Source={x:Reference} anchor forms are
     // resolved to a concrete element by AttachBinding and passed as namedElementSource). Source may be a plain
     // value, or a nested {StaticResource key} / {x:Static member} resolved eagerly to a source object.
-    private object? ParseSourceValue(XamlObjectGraphBuilder builder, MarkupExtensionNode node, int line, int column)
+    private object? ParseSourceValue(XamlObjectGraphBuilder builder, MarkupExtensionNode node, object? selfTarget, int line, int column)
     {
         if (node.FindNamed("Source") is not { } sourceArg)
             return null;
+
+        // {Binding …, Source={x:Self}} — the construction-time self-anchor: the Source is the binding's TARGET
+        // object (see-through — x:Self is the object being bound, never the Binding). Only the install paths can
+        // supply it; a DESCRIPTOR position (DataCondition.Binding, a Setter.Value binding — one descriptor armed
+        // per matched element later) has no single target and is rejected, never silently null-sourced.
+        if (sourceArg.IsNested && StripPrefix(sourceArg.Nested!.Name) == "Self")
+            return selfTarget ?? throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
+                "{Binding Source={x:Self}} is not resolvable in a descriptor position (no single binding target).",
+                line, column);
 
         return sourceArg.IsNested
             ? ResolveNestedExtension(builder, sourceArg.Nested!, line, column)
@@ -406,6 +421,13 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
                 throw builder.Fatal(XamlDiagnosticCodes.MemberNotFound,
                     $"{{{node.Name}}} produces a live/deferred value and cannot be used as a nested markup-extension " +
                     "argument. Use {StaticResource}, {x:Static}, or a custom MarkupExtension.", line, column),
+            // {x:Self} in a generic nested-argument position: the target object is not threaded here (the
+            // supported x:Self positions are member values and Binding Source, which resolve it earlier).
+            // Reject clearly rather than probing for a phantom 'SelfExtension' type.
+            "Self" =>
+                throw builder.Fatal(XamlDiagnosticCodes.ConversionFailed,
+                    "{x:Self} is not supported in this nested-argument position (supported: a member value, " +
+                    "or a Binding Source={x:Self}).", line, column),
             // Any other name is a CUSTOM MarkupExtension used as an argument value (e.g. Converter={local:MyConverter},
             // Source={local:ServiceLocator}): activate it and take its ProvideValue result. Nested arguments recurse
             // back through here, so custom extensions compose. Matches the generator's EmitCustomExtension lowering and

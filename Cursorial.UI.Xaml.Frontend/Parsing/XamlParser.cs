@@ -1170,6 +1170,15 @@ internal sealed class XamlParser
             return true;
         }
 
+        // {x:Self [Level=N]} — a construction-time self-reference, folded to a typed token each lane resolves to
+        // the object the value is being assigned onto (always the assignment TARGET, seeing through enclosing
+        // extensions). Level 0 only for now; Level > 0 (the construction-stack walk) is reserved.
+        if (TryBuildSelfReference(node, line, column, out valueIndex))
+        {
+            valueKind = XamlValueKind.Folded;
+            return true;
+        }
+
         switch (kind)
         {
             case ExtensionKind.Null:
@@ -1426,6 +1435,44 @@ internal sealed class XamlParser
         return childIndex;
     }
 
+    // {x:Self [Level=N]} → a Folded XamlSelfReference token. Level is the OPTIONAL named argument (default 0 —
+    // the immediate assignment target); Level > 0 (the construction-stack walk) is reserved and reported, never
+    // silently misresolved. Any other argument is malformed.
+    private bool TryBuildSelfReference(MarkupExtensionNode node, int line, int column, out int valueIndex)
+    {
+        valueIndex = -1;
+        if (!XmlnsNamespaces.IsIntrinsics(node.ResolvedNamespace ?? string.Empty))
+            return false;
+
+        int colon = node.Name.IndexOf(':');
+        string local = colon >= 0 ? node.Name.Substring(colon + 1) : node.Name;
+        if (!string.Equals(local, "Self", StringComparison.Ordinal))
+            return false;
+
+        int level = 0;
+        if (node.FindNamed("Level") is { } levelArg)
+        {
+            if (levelArg.Text is not { } levelText || !int.TryParse(levelText, out level) || level < 0)
+            {
+                _builder.Error(XamlDiagnosticCodes.MalformedExtensionArgument,
+                               "{x:Self} Level must be a non-negative integer.", node.Line, node.Column);
+                level = 0;
+            }
+            else if (level > 0)
+            {
+                _builder.Error(XamlDiagnosticCodes.UnsupportedIntrinsic,
+                               "{x:Self} Level > 0 (the construction-stack walk) is not yet supported.", node.Line, node.Column);
+            }
+        }
+
+        if (node.PositionalArguments.Count > 0)
+            _builder.Error(XamlDiagnosticCodes.MalformedExtensionArgument,
+                           "{x:Self} takes no positional arguments (use Level=N).", node.Line, node.Column);
+
+        valueIndex = _builder.AddConstant(new XamlSelfReference(level));
+        return true;
+    }
+
     /// <summary>
     /// The canonical extension name for an element in markup-extension ELEMENT form, or null when the element
     /// is not a built-in extension. The resource/binding extensions live in the UI xmlns; the intrinsic
@@ -1438,7 +1485,7 @@ internal sealed class XamlParser
         if (XmlnsNamespaces.IsIntrinsics(ns))
             return localName switch
             {
-                "Null" or "Static" or "Type" or "Reference" => "x:" + localName,
+                "Null" or "Static" or "Type" or "Reference" or "Self" => "x:" + localName,
                 _ => null,
             };
 

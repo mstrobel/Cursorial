@@ -2803,7 +2803,10 @@ internal static class LoweringEmitter
     // (Init-only CLR targets are set in the construction object initializer, NOT here — see EmitObject.)
     private static void EmitFoldedAssign(Context c, string varExpr, XamlMember xm, object? constant)
     {
-        if (FoldedValueExpr(c, constant) is not { } valueExpr)
+        // {x:Self} — the value IS the assignment target (Level 0): resolved here, the one spot the target's
+        // local is in hand (the loader's ApplyValue twin). Target-less Value positions error in FoldedValueExpr.
+        var valueExpr = constant is XamlSelfReference ? varExpr : FoldedValueExpr(c, constant);
+        if (valueExpr is null)
         {
             c.Todo($"folded value for {xm.Name} ({constant?.GetType().Name ?? "null"})");
             return;
@@ -2832,8 +2835,19 @@ internal static class LoweringEmitter
         XamlTypeReference typeRef => XamlDataTypeScope.ResolveToken(c.Doc, typeRef.TypeName, c.Resolver) is { } sym
             ? $"typeof({Global(sym, false)})"
             : null, // an unresolvable token — the caller fences (never a silent null)
+        // {x:Self} reaching a VALUE position (a dict/collection entry, Setter.Value, DataCondition.Value) has no
+        // assignment target — the loader Fatals on the identical document, so the lowered build must FAIL too
+        // (CURG3002), never a silent drop. (The with-target Assign path resolves it in EmitFoldedAssign.)
+        XamlSelfReference => SelfValueFence(c),
         _ => null, // not expected under FoldConstants=false
     };
+
+    private static string? SelfValueFence(Context c)
+    {
+        c.Error("{x:Self} requires an assignment target; this position has none " +
+                "(a dictionary/collection entry, or a Setter.Value that applies to every matched element)");
+        return null;
+    }
 
     // ── {Binding} (B3a — the compiled lane) ──────────────────────────────────────────────────────
 
@@ -4147,6 +4161,15 @@ internal static class LoweringEmitter
                 return true;
             }
 
+            // Source={x:Self} (the construction-time self-anchor) lowers through the REFLECTIVE lane, which
+            // has the target's local in hand (EmitReflectiveBinding's sourceOverrideExpr) — decline here so it
+            // falls through cleanly; descriptor positions error there (no single target, loader parity).
+            if (source.IsNested && source.Nested!.Name is "x:Self" or "Self")
+            {
+                reason = "a Source={x:Self} anchor lowers through the reflective lane";
+                return false;
+            }
+
             // The reflective lane's own source shapes (a custom extension, a fenced form NestedSourceExpr
             // can express) anchor the binding without a static type.
             if (source.IsNested && NestedSourceExpr(c, source.Nested!) is { } sourceExpr)
@@ -4448,6 +4471,21 @@ internal static class LoweringEmitter
             return true;
         }
 
+        // {Binding …, Source={x:Self}} — the construction-time self-anchor: the Source is the binding's own
+        // TARGET object (see-through — x:Self is the object being bound, never the Binding). varExpr is fully
+        // known at this point in construction, so the Install stays INLINE — no deferral, matching the loader's
+        // BuildBinding(selfTarget: target). Descriptor positions (no target) error in ReflectiveBindingExpr.
+        if (node.FindNamed("Source") is { IsNested: true } selfSrc &&
+            selfSrc.Nested!.Name is "x:Self" or "Self")
+        {
+            if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'", sourceOverrideExpr: varExpr) is not { } selfAnchored)
+                return false;
+
+            c.Line(
+                $"global::Cursorial.UI.Data.BindingOperations.Install({varExpr}, {Global(owner)}.{xm.Name}Property, {selfAnchored});");
+            return true;
+        }
+
         if (ReflectiveBindingExpr(c, node, $"for '{xm.Name}'") is not { } bindingExpr)
             return false; // a specific // TODO X5 was already emitted
 
@@ -4503,6 +4541,15 @@ internal static class LoweringEmitter
             sourceInit = $"Source = {sourceOverrideExpr}";
         else if (node.FindNamed("Source") is { IsNested: true } nestedSource)
         {
+            // Source={x:Self} reaching here (no override) is a DESCRIPTOR position — DataCondition.Binding, a
+            // Setter.Value binding — with no single binding target. The loader Fatals on the identical document
+            // (ParseSourceValue, selfTarget null), so the lowered build must FAIL too, never a warning-level drop.
+            if (nestedSource.Nested!.Name is "x:Self" or "Self")
+            {
+                c.Error($"{{Binding Source={{x:Self}}}} {diagName} is not resolvable in a descriptor position (no single binding target)");
+                return null;
+            }
+
             if (NestedSourceExpr(c, nestedSource.Nested!) is not { } sourceExpr)
             {
                 c.Todo($"{{Binding}} Source {diagName} is a nested {{{nestedSource.Nested!.Name}}} not lowerable in this position");
@@ -4544,7 +4591,7 @@ internal static class LoweringEmitter
         // ResolveNestedExtension default arm. Built-ins that fell through above stay declined.
         if (nested.Name is not ("x:Null" or "Null" or "x:Static" or "Static" or "x:Type" or "Type"
                 or "StaticResource" or "DynamicResource" or "Binding" or "TemplateBinding"
-                or "x:Reference" or "Reference") &&
+                or "x:Reference" or "Reference" or "x:Self" or "Self") &&
             CustomExtensionExpr(c, nested, targetObjectExpr: null, targetPropertyExpr: null) is { } customSource)
             return customSource;
 

@@ -1315,7 +1315,7 @@ internal static class LoweringEmitter
                 c.TemplatedParentType = savedTpt;
                 valueExpr = v;
             }
-            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject, ResourceLenient = true }, in value).Expr is { } v)
+            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject, AllowBindingDescriptor = true, AllowResourceCarrier = true }, in value).Expr is { } v)
                 valueExpr = v;
             else
             {
@@ -1463,27 +1463,22 @@ internal static class LoweringEmitter
     // happily and then DROP the setter through the CURG3001 gap: reflective styles, AOT silently doesn't.
     // Emitting the descriptor (never an install) is what keeps the lanes identical; the styling engine
     // installs it per element either way.
-    // A markup-extension value in a Value-delivery slot (Setter.Value / DataCondition.Value / dict entry). The
-    // loader-parity split is empirical (BuildSetter vs the generic member path — the loader throws CUR2210):
-    //   • a LENIENT slot (Setter.Value — a dedicated slot BuildSetter treats specially) admits a {Binding}
-    //     DESCRIPTOR and a {DynamicResource} ResourceReference CARRIER;
-    //   • a STRICT (generic-member) slot — DataCondition.Value, a standalone dict entry — enforces the ordinary
-    //     member rules, so {Binding}/{DynamicResource} on the object-typed Value member fence here (the caller
-    //     degrades) exactly as the loader rejects them.
-    // {StaticResource} (a load-time value) and a CUSTOM extension (eager target-less ProvideValue) are valid in
-    // BOTH; {x:Reference}/{TemplateBinding} fence in both (ResourceValueExpr returns null).
+    // The single authority for a markup-extension value in a Value-delivery slot — Setter.Value, DataCondition.Value,
+    // AND (via MarkupExtensionEntryExpr) every standalone element-form entry. The two leniency flags encode the three
+    // empirically loader-matched profiles (see ValueSlot). {StaticResource} (a load-time value) and a CUSTOM extension
+    // (eager target-less ProvideValue) are valid EVERYWHERE; {x:Reference}/{TemplateBinding} fence everywhere.
     private static string? ExtensionValueExpr(Context c, in ValueSlot slot, in ExtensionRecord ext)
     {
         if (ext.Kind == ExtensionKind.Binding)
-            return slot.ResourceLenient && c.Doc.ParsedExtensions[ext.Payload] is { } node
+            return slot.AllowBindingDescriptor && c.Doc.ParsedExtensions[ext.Payload] is { } node
                        ? ReflectiveBindingExpr(c, node, "in a Setter.Value")
-                       : null;
+                       : null; // a non-Setter.Value slot has no place for a {Binding} DESCRIPTOR (loader rejects)
 
         if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } customNode)
             return CustomExtensionExpr(c, customNode, targetObjectExpr: null, targetPropertyExpr: null);
 
-        // ResourceValueExpr resolves {StaticResource} (both slots) AND the {DynamicResource} carrier (lenient only).
-        if (ext.Kind == ExtensionKind.DynamicResource && !slot.ResourceLenient)
+        // ResourceValueExpr resolves {StaticResource} (all slots) AND the {DynamicResource} CARRIER (carrier slots).
+        if (ext.Kind == ExtensionKind.DynamicResource && !slot.AllowResourceCarrier)
             return null; // a generic-member Value slot rejects {DynamicResource} — parity with the loader's CUR2210
 
         return ResourceValueExpr(c, in ext);
@@ -1884,7 +1879,12 @@ internal static class LoweringEmitter
         public INamedTypeSymbol? DataType { get; init; }     // compiled-binding source type in scope
         public bool ExtensionTargetIsSelf { get; init; }     // custom ProvideValue target: TargetVar vs null
         public bool StaticResourceMustResolve { get; init; } // converter-arg RequireConverter contract
-        public bool ResourceLenient { get; init; }           // Setter.Value's DEDICATED slot admits a {Binding} DESCRIPTOR + a {DynamicResource} CARRIER (BuildSetter); a GENERIC-member Value slot (DataCondition.Value / dict entry) rejects them, as the loader throws CUR2210
+        // The two Extension-in-a-Value-slot leniency axes (empirically loader-matched — three profiles):
+        //   • Setter.Value (BuildSetter)      → AllowBindingDescriptor + AllowResourceCarrier   (both)
+        //   • standalone entry (dict/merged/…) → AllowResourceCarrier only (a {Binding} has no standalone value)
+        //   • DataCondition.Value (generic member) → neither (the loader throws CUR2210)
+        public bool AllowBindingDescriptor { get; init; }    // a {Binding} lowers to a DESCRIPTOR (else fence)
+        public bool AllowResourceCarrier { get; init; }      // a {DynamicResource} lowers to a ResourceReference CARRIER (else fence)
     }
 
     /// <summary>The funnel's outcome: an expression the caller places, an already-emitted install, or a fence.</summary>
@@ -2837,7 +2837,8 @@ internal static class LoweringEmitter
 
         // A custom extension standalone (a dictionary/collection entry) provides its value with a null target —
         // the loader's ProvideStandaloneCustomValue shape. On failure CustomExtensionExpr emits its own specific
-        // Todo/Error naming the actual problem — flag it so the caller doesn't double-report generically.
+        // Todo/Error naming the actual problem — flag it so the caller doesn't double-report generically. (Kept
+        // here, ahead of the shared authority, for the `reported` out-signal the callers depend on.)
         if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } node)
         {
             var custom = CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null);
@@ -2845,11 +2846,11 @@ internal static class LoweringEmitter
             return custom;
         }
 
-        // Reuse the same *Resource value lowering the curly Setter.Value form uses: a DynamicResource
-        // carrier (literal OR a nested {x:Static}/{x:Type}/custom key — the common theme-key alias), and a
-        // same-dictionary/external StaticResource. Binding/TemplateBinding/{x:Reference} and a forward-or-fenced
-        // resource key have no standalone value expression and return null (the caller degrades to CURG3001).
-        return ResourceValueExpr(c, in ext);
+        // Every other kind goes through the ONE Value-slot Extension authority with the STANDALONE-ENTRY profile:
+        // a {DynamicResource} CARRIER (literal OR a nested {x:Static}/{x:Type}/custom key — the theme-key alias) and
+        // a same-dictionary/external {StaticResource} are values; a {Binding}/{TemplateBinding}/{x:Reference} (and a
+        // forward/fenced resource key) has no standalone value and returns null (the caller degrades to CURG3001).
+        return ExtensionValueExpr(c, new ValueSlot { Delivery = Delivery.Value, AllowResourceCarrier = true }, in ext);
     }
 
     /// <summary>The value slot of an element-form markup-extension object (the single Extension/Folded member;

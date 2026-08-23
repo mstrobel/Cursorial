@@ -2761,9 +2761,17 @@ internal static class LoweringEmitter
     // (SetValue for a UIProperty, else the CLR setter).
     private static void EmitChildAssign(Context c, string varExpr, XamlMember xm, string childVar, int childObjectIndex, bool single)
     {
+        // The collection ACCESS: an ATTACHED member (xm.Property carries the parse-resolved owner symbol) fills
+        // via the owner's static Get{Name}(host) accessor — the get-or-create idiom (Interaction.GetTriggers;
+        // the loader's ResolveCollection twin), since the host has no instance property to dot. A plain member
+        // dots the instance. An attached owner without the accessor fails the COMPILE loudly — never silently.
+        var collectionAccess = xm.Property is INamedTypeSymbol attachedOwner
+            ? $"{Global(attachedOwner)}.Get{xm.Name}({varExpr})"
+            : $"{varExpr}.{xm.Name}";
+
         if (!single)
         {
-            c.Line($"{varExpr}.{xm.Name}.Add({childVar});");
+            c.Line($"{collectionAccess}.Add({childVar});");
             return;
         }
 
@@ -2780,7 +2788,7 @@ internal static class LoweringEmitter
             !(TypeSymbolOf(c.Doc, c.Doc.Objects[childObjectIndex].TypeId) is { } childType &&
               IsAssignableTo(childType, memberType)))
         {
-            c.Line($"{varExpr}.{xm.Name}.Add({childVar});");
+            c.Line($"{collectionAccess}.Add({childVar});");
             return;
         }
 

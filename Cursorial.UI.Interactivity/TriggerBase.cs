@@ -1,3 +1,4 @@
+using Cursorial.Markup;
 using Cursorial.UI;
 
 namespace Cursorial.UI.Interactivity;
@@ -6,7 +7,10 @@ namespace Cursorial.UI.Interactivity;
 /// A source of firings (design doc §2/§4): owns an <see cref="Actions"/> collection and runs it via
 /// <see cref="Fire"/> when the subclass's condition occurs (an event raise, a data condition becoming
 /// true). Attaching a trigger attaches its actions to the same host; detaching detaches them.
+/// <c>Actions</c> is the XAML content property, so <c>&lt;i:EventTrigger&gt;&lt;i:InvokeCommandAction/&gt;</c>
+/// fills it implicitly.
 /// </summary>
+[ContentProperty(nameof(Actions))]
 public abstract class TriggerBase : UIObject, IAttachedObject
 {
     private TriggerActionCollection? _actions;

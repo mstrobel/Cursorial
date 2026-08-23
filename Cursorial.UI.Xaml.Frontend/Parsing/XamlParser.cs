@@ -1995,9 +1995,11 @@ internal sealed class XamlParser
     }
 
     /// <summary>
-    /// Re-classifies a markup-extension <c>Setter.Value</c> as an <see cref="ExtensionRecord"/> member
-    /// (matrix X117). The rewritten member keeps the original <c>Value</c> <c>MemberId</c> so the loader
-    /// recognizes it as the setter value; <c>{x:Null}</c> folds to the null constant.
+    /// Re-classifies a markup-extension <c>Setter.Value</c> through the shared <see cref="BuildExtensionValue"/>
+    /// funnel (matrix X117) — an <see cref="ExtensionRecord"/> for a live extension, a Folded token for an
+    /// intrinsic (<c>{x:Null}</c>/<c>{x:Static}</c>/<c>{x:Type}</c>), or a synthetic Object for a built-in
+    /// primitive (<c>{x:Boolean True}</c>). The rewritten member keeps the original <c>Value</c> <c>MemberId</c>
+    /// so the loader's <c>BuildSetter</c> recognizes it as the setter value.
     /// </summary>
     private MemberRecord? ClassifySetterValueExtension(string value, int valueMemberId, int line, int column)
     {
@@ -2013,82 +2015,20 @@ internal sealed class XamlParser
             return null;
         }
 
-        // Stamp resolved namespaces NOW — end-of-object still has the reader's live xmlns scope, and
-        // the build-time resolvers (loader and generator alike) re-resolve prefixed extension names
-        // ({g:Custom}, a prefixed nested converter) off the stamp; without it a prefixed name falls
-        // back to the default UI xmlns and fails resolution. The eager attribute path stamps at
-        // classification; this deferred path must do the same.
-        StampResolvedNamespaces(node);
+        // The setter value rides the SAME classification as every other value position — one funnel, no
+        // bespoke switch. BuildExtensionValue produces: {StaticResource}/{DynamicResource} (with the nested-
+        // key split, X117/XD7a), {Binding}/custom (structured node ridden verbatim), {x:Null}/{x:Static}/
+        // {x:Type} (Folded token), and a built-in primitive ({x:Boolean True}) as a synthetic Object — each of
+        // which the loader's BuildSetter already resolves (Folded→ResolveStaticReference, Object→Instantiate).
+        // This retires the setter's fail-closed "not supported in v1" arm that dropped curly intrinsics and
+        // primitives. member:null — a setter's bindability is settled at seal against the resolved
+        // Setter.Property (BuildExtensionValue skips its bindability check when member is null), and its
+        // StampResolvedNamespaces runs internally, so the deferred-scope xmlns stamp is preserved.
+        if (!BuildExtensionValue(node, member: null, inDeferred: false, line, column, out var valueKind, out int valueIndex))
+            return null; // BuildExtensionValue reported the diagnostic (or {TemplateBinding} outside a template)
 
         // The rewritten member keeps the original Setter.Value MemberId (Name "Value").
-        var kind = ClassifyExtension(node.Name);
-
-        switch (kind)
-        {
-            case ExtensionKind.StaticResource:
-            case ExtensionKind.DynamicResource:
-            {
-                // Same nested-vs-literal key split as the direct-property site (XD7a): a nested key
-                // extension ({DynamicResource {x:Static ThemeKeys.X}}) stores the inner node for the
-                // loader to resolve at instantiate; a literal key interns as before (X117 unchanged).
-                // The key is the primary argument — positional OR the named ResourceKey= (WPF parity).
-                var primary = PrimaryArgument(node, kind);
-                if (primary is { Nested: {} keyNode })
-                {
-                    int parsedKey = _builder.AddParsedExtension(keyNode);
-
-                    int nestedExtIndex = _builder.AddExtension(
-                        new ExtensionRecord(kind,
-                                            parsedKey,
-                                            LineInfo.Pack(node.Line, node.Column),
-                                            payloadIsParsedExtension: true)
-                    );
-
-                    return new MemberRecord(valueMemberId, XamlValueKind.Extension, nestedExtIndex, 0, LineInfo.Pack(line, column));
-                }
-
-                string key = primary is { Text: {} t } ? t : string.Empty;
-                int payload = _builder.InternString(key);
-                int extIndex = _builder.AddExtension(new ExtensionRecord(kind, payload, LineInfo.Pack(node.Line, node.Column)));
-                return new MemberRecord(valueMemberId, XamlValueKind.Extension, extIndex, 0, LineInfo.Pack(line, column));
-            }
-
-            case ExtensionKind.Binding:
-            {
-                // A binding-valued setter (ledger B15). The structured node rides through verbatim — the
-                // loader turns it into a Binding DESCRIPTOR rather than a live install, exactly as it does
-                // for a Binding-typed member such as DataCondition.Binding, and the styling engine installs
-                // it per styled element. No bindability check here: the target is the Setter's Property,
-                // already resolved to a UIProperty, and whether it can host a binding is settled at seal.
-                int bindingExt = _builder.AddExtension(
-                    new ExtensionRecord(kind, _builder.AddParsedExtension(node), LineInfo.Pack(node.Line, node.Column)));
-
-                return new MemberRecord(valueMemberId, XamlValueKind.Extension, bindingExt, 0, LineInfo.Pack(line, column));
-            }
-
-            case ExtensionKind.Null:
-            {
-                int c = _builder.AddConstant(null);
-                return new MemberRecord(valueMemberId, XamlValueKind.Folded, c, 0, LineInfo.Pack(line, column));
-            }
-
-            case ExtensionKind.Custom:
-            {
-                // A CUSTOM extension setter value rides through structurally (the Binding precedent):
-                // both build lanes provide it eagerly and target-less — the loader's BuildSetter Custom
-                // arm and the lowered SetterExtensionValueExpr Custom arm. (Retires the v1 restriction.)
-                int customExt = _builder.AddExtension(
-                    new ExtensionRecord(kind, _builder.AddParsedExtension(node), LineInfo.Pack(node.Line, node.Column)));
-
-                return new MemberRecord(valueMemberId, XamlValueKind.Extension, customExt, 0, LineInfo.Pack(line, column));
-            }
-
-            default:
-                _builder.Error(XamlDiagnosticCodes.ConversionFailed,
-                               $"A Setter.Value markup extension of kind '{node.Name}' is not supported in v1.", node.Line, node.Column);
-
-                return null;
-        }
+        return new MemberRecord(valueMemberId, valueKind, valueIndex, 0, LineInfo.Pack(line, column));
     }
 
     // ── Duplicate-assignment detection (X5/CUR1101) ───────────────────────────────────────────────

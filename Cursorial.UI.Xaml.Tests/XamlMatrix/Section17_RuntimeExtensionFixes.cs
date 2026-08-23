@@ -65,6 +65,40 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.Equal(typeof(UIControls.Button), setter.Value); // "Button" resolved to the type, not left a raw string
     }
 
+    [Fact] // The CURLY {x:Type} Setter.Value now resolves to the System.Type — parity with the bare "Button" token.
+    // The curly form used to FAIL CLOSED ("a Setter.Value markup extension of kind 'x:Type' is not supported in
+    // v1") because the setter had its own narrow classifier; it now rides the shared BuildExtensionValue funnel.
+    public void CurlyXTypeSetterValue_ResolvesToType()
+    {
+        var style = (Style)LoadRaw(
+            $"<Style{Pre} TargetType=\"TypeSetterHost\"><Setter Property=\"Kind\" Value=\"{{x:Type Button}}\"/></Style>");
+
+        var setter = Assert.Single(style.Setters);
+        Assert.Equal(typeof(UIControls.Button), setter.Value); // the curly {x:Type} folded to a XamlTypeReference → typeof
+    }
+
+    [Fact] // A built-in primitive as a CURLY Setter.Value ({x:Boolean True}) instantiates to the bool — the curly
+    // twin of the element form <x:Boolean>True</x:Boolean>, also previously fail-closed in the setter classifier.
+    public void PrimitiveCurlySetterValue_InstantiatesBool()
+    {
+        var style = (Style)LoadRaw(
+            $"<Style{Pre} TargetType=\"Border\"><Setter Property=\"Occludes\" Value=\"{{x:Boolean True}}\"/></Style>");
+
+        var setter = Assert.Single(style.Setters);
+        Assert.Equal(true, setter.Value); // the synthetic primitive object instantiated to boxed true
+    }
+
+    [Fact] // …and the curly primitive Setter.Value ≡ the element form (same synthetic object, same instantiated value).
+    public void PrimitiveCurlySetterValue_EqualsElementForm()
+    {
+        var curly = (Style)LoadRaw(
+            $"<Style{Pre} TargetType=\"Border\"><Setter Property=\"Occludes\" Value=\"{{x:Boolean True}}\"/></Style>");
+        var element = (Style)LoadRaw(
+            $"<Style{Pre} TargetType=\"Border\"><Setter Property=\"Occludes\"><Setter.Value><x:Boolean>True</x:Boolean></Setter.Value></Setter></Style>");
+
+        Assert.Equal(Assert.Single(element.Setters).Value, Assert.Single(curly.Setters).Value);
+    }
+
     [Fact] // A collection-typed UIProperty content member is filled by child elements (the generator fills via the wrapper).
     public void UIPropertyCollectionContent_FilledByChildren()
     {

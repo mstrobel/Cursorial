@@ -145,6 +145,18 @@ internal static class LoweringEmitter
         ctx.Line("var __root = new global::Cursorial.UI.ResourceDictionary();");
         ctx.AmbientScopeStack.Add(new ResourceScope("__root", ctx.CurrentFactoryId)); // the root dictionary's own lexical scope (same-dict {StaticResource}/BasedOn vars)
         EmitResourceDictionaryBody(ctx, "__root", objectIndex: 0);
+
+        // Flush the end-of-tree deferred installs — the tail EmitCodeBehind runs via EmitDeferredReferences (LE:70),
+        // which the standalone-RD builder previously OMITTED, silently dropping a compiled anchored binding
+        // (RelativeSource FindAncestor — resolved at runtime against the ancestor chain, no name target needed)
+        // placed directly on an inline RD entry (GAP-B: recorded into DeferredScopeLines, never emitted). Only
+        // FlushDeferredScopeLines is needed, and it is __scope-safe here: a document-scope {x:Reference} member is
+        // fenced before being recorded (EmitReference — no HasDocumentScope in an RD), and the reflective
+        // Source={x:Reference} deferral that WOULD bake __scope is likewise fenced (EmitReflectiveBinding), so the
+        // only lines present are compiled installs whose expressions reference no name scope. Entry locals are at
+        // this method's scope, so the installs resolve. (Templates flush their own scope lines internally.)
+        FlushDeferredScopeLines(ctx, fromIndex: 0);
+
         foreach (var factory in ctx.Factories)
             ctx.Body.Append(factory);
 

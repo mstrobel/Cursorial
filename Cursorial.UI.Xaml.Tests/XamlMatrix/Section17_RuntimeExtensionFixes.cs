@@ -136,6 +136,22 @@ public sealed class Section17_RuntimeExtensionFixes : LoaderTestBase
         Assert.IsType<UIControls.ItemsPanelTemplate>(setter.Value); // not UIProperty.UnsetValue — the inline object stuck
     }
 
+    [Fact] // The loader installs a compiled-lane-shaped RelativeSource FindAncestor binding on an INLINE standalone-RD
+    // entry (resolved at runtime against the ancestor chain — no name target). This is the parity anchor for the
+    // generator's GAP-B fix (EmitResourceDictionaryBuilder now flushes the deferred install it previously dropped).
+    public void RelativeSourceBinding_OnStandaloneRdEntry_IsInstalled()
+    {
+        var dict = (ResourceDictionary)LoadRaw(
+            $"<ResourceDictionary{Pre}>" +
+            "<Button x:Key=\"Shared\" Width=\"{Binding Spacing, RelativeSource={RelativeSource FindAncestor, AncestorType=StackPanel}}\"/>" +
+            "</ResourceDictionary>");
+
+        var button = Assert.IsType<UIControls.Button>(dict["Shared"]);
+        var expr = BindingOperations.GetBindingExpression(button, UIElement.WidthProperty);
+        Assert.NotNull(expr); // the binding stuck on the RD entry — the generator now matches this
+        Assert.Equal(RelativeSourceMode.FindAncestor, ((Binding)expr!.ParentBinding!).RelativeSource!.Mode);
+    }
+
     [Fact] // {StaticResource {x:Type T}} — a nested {x:Type} resource key resolves the typeof(T)-keyed entry, AND
            // Style.BasedOn="{StaticResource …}" resolves a same-dictionary base style (both previously unsupported).
     public void StaticResourceBasedOn_WithXTypeKey_ResolvesTypeKeyedBaseStyle()

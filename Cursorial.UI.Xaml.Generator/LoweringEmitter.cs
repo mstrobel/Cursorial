@@ -1315,7 +1315,7 @@ internal static class LoweringEmitter
                 c.TemplatedParentType = savedTpt;
                 valueExpr = v;
             }
-            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject }, in value).Expr is { } v)
+            else if (EmitValue(c, new ValueSlot { Delivery = Delivery.Value, SlotType = propValueType, TextPolicy = TextPolicy.ConverterObject, ResourceLenient = true }, in value).Expr is { } v)
                 valueExpr = v;
             else
             {
@@ -1411,7 +1411,10 @@ internal static class LoweringEmitter
         string? valueExpr = null;
         if (valueMember >= 0)
         {
-            valueExpr = DataConditionValueExpr(c, in c.Doc.Members[valueMember]);
+            // DataCondition.Value is a generic-member (STRICT) Value slot: Verbatim text, and the funnel's
+            // Extension arm rejects {Binding}/{DynamicResource} exactly as the loader does (ResourceLenient:false).
+            // One funnel — the same core the Setter.Value slot uses (lenient) and every other value position.
+            valueExpr = EmitValue(c, new ValueSlot { Delivery = Delivery.Value, TextPolicy = TextPolicy.Verbatim }, in c.Doc.Members[valueMember]).Expr;
             if (valueExpr is null)
             {
                 c.Todo("DataCondition Value form not lowerable (literal / <x:Boolean>… / {x:Null} / {x:Static} / {StaticResource} / custom extension supported)");
@@ -1438,30 +1441,6 @@ internal static class LoweringEmitter
         return true;
     }
 
-    // A DataCondition.Value (an object-typed slot): a typed element (<x:Boolean>false</x:Boolean> → an emitted
-    // object local), a folded {x:Null} (→ null) / {x:Static}, a same-dictionary {StaticResource} resolved eagerly
-    // (matching the loader's AttachStaticResource onto the object slot), a CUSTOM extension's ProvideValue, or a
-    // literal string kept verbatim (object slot, no conversion). Null ⇒ the caller emits a // TODO (a
-    // {DynamicResource} — which the loader REJECTS on a non-styled slot — or any other unlowerable form).
-    private static string? DataConditionValueExpr(Context c, in MemberRecord member) => member.Kind switch
-    {
-        XamlValueKind.Object => EmitObjectToLocal(c, member.ValueIndex),
-        XamlValueKind.Folded => FoldedValueExpr(c, c.Doc.Constants[member.ValueIndex]),
-        XamlValueKind.Text => $"\"{Escape(c.Doc.Strings[member.ValueIndex])}\"",
-        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.StaticResource
-            => ResourceValueExpr(c, in c.Doc.Extensions[member.ValueIndex]),
-        // A CUSTOM extension: the runtime builds <DataCondition> through the GENERIC object path, so its Value
-        // goes through ApplyExtension → AttachCustom — well-defined provide-value semantics this reproduces.
-        // Value is init-only ({ get; init; }), so the lowering must provide it inside the construction
-        // initializer, BEFORE the DataCondition instance exists — the services carry a null TargetObject (the
-        // loader's reflective Pass-2 set passes the instance; the one divergence of the initializer route).
-        // The slot is object-typed, so no cast/Coerce.
-        XamlValueKind.Extension when c.Doc.Extensions[member.ValueIndex].Kind == ExtensionKind.Custom &&
-                                     c.Doc.ParsedExtensions[c.Doc.Extensions[member.ValueIndex].Payload] is { } node
-            => CustomExtensionExpr(c, node, targetObjectExpr: null, targetPropertyExpr: null),
-        _ => null,
-    };
-
     // Emits an object subtree into a fresh local and returns its var (for an inline <x:Boolean>/<x:Int32>/… Value).
     private static string EmitObjectToLocal(Context c, int objectIndex)
     {
@@ -1484,20 +1463,28 @@ internal static class LoweringEmitter
     // happily and then DROP the setter through the CURG3001 gap: reflective styles, AOT silently doesn't.
     // Emitting the descriptor (never an install) is what keeps the lanes identical; the styling engine
     // installs it per element either way.
-    private static string? SetterExtensionValueExpr(Context c, in ExtensionRecord ext)
+    // A markup-extension value in a Value-delivery slot (Setter.Value / DataCondition.Value / dict entry). The
+    // loader-parity split is empirical (BuildSetter vs the generic member path — the loader throws CUR2210):
+    //   • a LENIENT slot (Setter.Value — a dedicated slot BuildSetter treats specially) admits a {Binding}
+    //     DESCRIPTOR and a {DynamicResource} ResourceReference CARRIER;
+    //   • a STRICT (generic-member) slot — DataCondition.Value, a standalone dict entry — enforces the ordinary
+    //     member rules, so {Binding}/{DynamicResource} on the object-typed Value member fence here (the caller
+    //     degrades) exactly as the loader rejects them.
+    // {StaticResource} (a load-time value) and a CUSTOM extension (eager target-less ProvideValue) are valid in
+    // BOTH; {x:Reference}/{TemplateBinding} fence in both (ResourceValueExpr returns null).
+    private static string? ExtensionValueExpr(Context c, in ValueSlot slot, in ExtensionRecord ext)
     {
         if (ext.Kind == ExtensionKind.Binding)
-        {
-            return c.Doc.ParsedExtensions[ext.Payload] is { } node
-                       ? ReflectiveBindingExpr(c, node, "in a Setter")
+            return slot.ResourceLenient && c.Doc.ParsedExtensions[ext.Payload] is { } node
+                       ? ReflectiveBindingExpr(c, node, "in a Setter.Value")
                        : null;
-        }
 
-        // A CUSTOM extension: eager target-less ProvideValue, mirroring the loader's BuildSetter
-        // Custom arm (Setter.Value is object-typed — no cast/Coerce). A fenced custom returns null
-        // and the caller's fail-closed DropStyle keeps lane parity.
         if (ext.Kind == ExtensionKind.Custom && c.Doc.ParsedExtensions[ext.Payload] is { } customNode)
             return CustomExtensionExpr(c, customNode, targetObjectExpr: null, targetPropertyExpr: null);
+
+        // ResourceValueExpr resolves {StaticResource} (both slots) AND the {DynamicResource} carrier (lenient only).
+        if (ext.Kind == ExtensionKind.DynamicResource && !slot.ResourceLenient)
+            return null; // a generic-member Value slot rejects {DynamicResource} — parity with the loader's CUR2210
 
         return ResourceValueExpr(c, in ext);
     }
@@ -1897,6 +1884,7 @@ internal static class LoweringEmitter
         public INamedTypeSymbol? DataType { get; init; }     // compiled-binding source type in scope
         public bool ExtensionTargetIsSelf { get; init; }     // custom ProvideValue target: TargetVar vs null
         public bool StaticResourceMustResolve { get; init; } // converter-arg RequireConverter contract
+        public bool ResourceLenient { get; init; }           // Setter.Value's DEDICATED slot admits a {Binding} DESCRIPTOR + a {DynamicResource} CARRIER (BuildSetter); a GENERIC-member Value slot (DataCondition.Value / dict entry) rejects them, as the loader throws CUR2210
     }
 
     /// <summary>The funnel's outcome: an expression the caller places, an already-emitted install, or a fence.</summary>
@@ -1920,18 +1908,16 @@ internal static class LoweringEmitter
             {
                 ref readonly var extObj = ref c.Doc.Objects[value.ValueIndex];
                 if (extObj.HasFlag(ObjectFlags.IsMarkupExtension))
-                {
-                    // Element-form ⇔ curly convergence (Assign side): unwrap the synthetic markup-extension
-                    // object to its inner Extension/Folded member and re-enter the funnel — the curly arms
-                    // then handle it identically. (Exactly what EmitMarkupExtensionMember did, folded into one
-                    // path.) The Value side keeps its position-specific entry expr for now (a later step folds
-                    // it in via the delivery-aware per-kind arms, where Binding-descriptor vs fence diverges).
-                    if (slot.Delivery == Delivery.Assign)
-                        return EmitValue(c, in slot, ExtensionValueMember(c, in extObj));
-                    return Emitted.Value(MarkupExtensionEntryExpr(c, in extObj, out _));
-                }
-                c.Todo("EmitValue shim: normal Object value not yet funneled");
-                return Emitted.Fence;
+                    // Element-form ⇔ curly convergence (BOTH deliveries): unwrap the synthetic markup-extension
+                    // object to its inner Extension/Folded member and re-enter the funnel, so the slot-aware
+                    // per-kind arms handle it identically to the curly form — the lenient-vs-strict Extension
+                    // split (Setter.Value carrier/descriptor vs a generic-member fence) applies uniformly.
+                    return EmitValue(c, in slot, ExtensionValueMember(c, in extObj));
+
+                // A normal (non-extension) Object value in a Value slot: build it into a local and use that var
+                // (an inline <x:Boolean>/object). Assign delivery never reaches here — the member loop builds a
+                // normal child object itself and only routes an IsMarkupExtension object through the funnel.
+                return Emitted.Value(EmitObjectToLocal(c, value.ValueIndex));
             }
 
             case XamlValueKind.Text:
@@ -1956,7 +1942,7 @@ internal static class LoweringEmitter
                     EmitExtensionAssign(c, slot.TargetVar, slot.Member!, in c.Doc.Extensions[value.ValueIndex], slot.DataType);
                     return Emitted.Done;
                 }
-                return Emitted.Value(SetterExtensionValueExpr(c, in c.Doc.Extensions[value.ValueIndex]));
+                return Emitted.Value(ExtensionValueExpr(c, in slot, in c.Doc.Extensions[value.ValueIndex]));
 
             default:
                 c.Todo($"EmitValue shim: value kind {value.Kind} not yet funneled");

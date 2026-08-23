@@ -48,6 +48,10 @@ public abstract class TriggerBase : UIObject, IAttachedObject
 
         ValidateHost(host);
         AssociatedObject = host;
+        // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
+        // inherits — a {Binding …} on this trigger (or its actions) anchors on the host's DataContext.
+        if (host is UIObject inheritanceParent)
+            SetInheritanceParent(inheritanceParent);
         // Actions ride the trigger's own lifecycle: same host, attach-with, detach-with (§2). The
         // collection's tree-following is NOT engaged here — the trigger IS the lifecycle authority
         // for its actions (its own collection already deferred to the host's tree attachment).
@@ -69,6 +73,7 @@ public abstract class TriggerBase : UIObject, IAttachedObject
         {
             _actions?.DetachAll();
             AssociatedObject = null;
+            SetInheritanceParent(null);
         }
     }
 

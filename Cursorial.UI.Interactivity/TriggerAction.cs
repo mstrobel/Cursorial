@@ -38,6 +38,10 @@ public abstract class TriggerAction : UIObject, IAttachedObject
 
         ValidateHost(host);
         AssociatedObject = host;
+        // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
+        // inherits — a Command="{Binding …}" on this action anchors on the host's DataContext.
+        if (host is UIObject inheritanceParent)
+            SetInheritanceParent(inheritanceParent);
         OnAttached();
     }
 
@@ -54,6 +58,7 @@ public abstract class TriggerAction : UIObject, IAttachedObject
         finally
         {
             AssociatedObject = null;
+            SetInheritanceParent(null);
         }
     }
 

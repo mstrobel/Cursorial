@@ -30,6 +30,10 @@ public abstract class Behavior : UIObject, IAttachedObject
 
         ValidateHost(host);
         AssociatedObject = host;
+        // The BD13 InputBinding precedent: parent to the host so DataContext (and the resource chain)
+        // inherits — a {Binding …} on this object anchors on the host's DataContext.
+        if (host is UIObject inheritanceParent)
+            SetInheritanceParent(inheritanceParent);
         OnAttached();
     }
 
@@ -46,6 +50,7 @@ public abstract class Behavior : UIObject, IAttachedObject
         finally
         {
             AssociatedObject = null; // cleared even if OnDetaching throws — a half-detached zombie is worse
+            SetInheritanceParent(null);
         }
     }
 

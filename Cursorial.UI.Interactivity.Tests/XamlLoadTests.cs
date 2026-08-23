@@ -37,4 +37,49 @@ public sealed class XamlLoadTests
         Assert.Equal("Payload", action.PropertyName);
         Assert.Equal("fired", action.Value);
     }
+
+    private sealed class SaveVm
+    {
+        public readonly RecordingCommand Save = new();
+        public RecordingCommand SaveCommand => Save;
+    }
+
+    private sealed class RecordingCommand : System.Windows.Input.ICommand
+    {
+        public readonly List<object?> Executions = [];
+
+        public bool CanExecute(object? parameter) => true;
+
+        public void Execute(object? parameter) => Executions.Add(parameter);
+
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+    }
+
+    [Fact] // THE flagship §7 scenario end-to-end: Command="{Binding SaveCommand}" on a XAML-loaded action
+    // anchors on the host's DataContext (the BD13 inheritance hookup) and executes on a real Click raise
+    public void InvokeCommand_BindingCommand_ExecutesOnClick()
+    {
+        var button = (Cursorial.UI.Controls.Button)Loader.Load(
+            $"<Button {Ns}>" +
+            "<i:Interaction.Triggers>" +
+              "<i:EventTrigger EventName=\"Click\">" +
+                "<i:InvokeCommandAction Command=\"{Binding SaveCommand}\"/>" +
+              "</i:EventTrigger>" +
+            "</i:Interaction.Triggers>" +
+            "</Button>", Source);
+
+        var vm = new SaveVm();
+        button.DataContext = vm;
+
+        using var host = Cursorial.UI.Hosting.Headless.UIHeadlessHost.Create(
+            new Cursorial.UI.Hosting.Headless.UIHeadlessHostOptions { InitialSize = new Cursorial.Rendering.Size(40, 10) });
+        var root = new StackPanel();
+        root.Children.Add(button);
+        host.ShowRoot(root);
+        host.RunUntilIdle();
+
+        button.RaiseEvent(new ClickEventArgs(ButtonBase.ClickEvent, button));
+
+        Assert.IsType<ClickEventArgs>(Assert.Single(vm.Save.Executions)); // the bound command executed with the args
+    }
 }

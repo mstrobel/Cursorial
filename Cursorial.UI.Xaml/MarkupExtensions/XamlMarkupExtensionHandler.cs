@@ -236,7 +236,20 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
                 "TemplateBinding requires a source property name.", line, column);
 
         var sourceProperty = builder.ResolveTemplateBindingSource(target, property, sourcePropName, line, column);
-        var templateBinding = new TemplateBinding(sourceProperty);
+        // Value shaping, in lockstep with the generator's TemplateBinding lane (converterInit + ShapingInits) — the
+        // divergence the sweep found: a {TemplateBinding …, Converter=…, StringFormat=…, FallbackValue=…} carries
+        // the same shaping a {Binding} does, but the loader built a bare descriptor and silently dropped it all.
+        var templateBinding = new TemplateBinding(sourceProperty)
+        {
+            Converter = ResolveConverter(builder, node, line, column),
+            ConverterParameter = Named(node, "ConverterParameter"),
+            ConverterCulture = ParseCulture(node),
+            UpdateSourceTrigger = ParseEnum<UpdateSourceTrigger>(builder, node, "UpdateSourceTrigger", line, column) ?? UpdateSourceTrigger.Default,
+            StringFormat = Named(node, "StringFormat"),
+            FallbackValue = Named(node, "FallbackValue") ?? UIProperty.UnsetValue,
+            TargetNullValue = Named(node, "TargetNullValue") ?? UIProperty.UnsetValue,
+            Trace = ParseBool(node, "Trace"),
+        };
         BindingOperations.Install(target, property, templateBinding);
     }
 
@@ -273,11 +286,25 @@ internal sealed class XamlMarkupExtensionHandler : IXamlMarkupExtensionHandler
             ElementName = namedElementSource is null ? Named(node, "ElementName") : null,
             RelativeSource = ParseRelativeSource(builder, node, line, column),
             Mode = ParseEnum<BindingMode>(builder, node, "Mode", line, column) ?? BindingMode.Default,
+            UpdateSourceTrigger = ParseEnum<UpdateSourceTrigger>(builder, node, "UpdateSourceTrigger", line, column) ?? UpdateSourceTrigger.Default,
             Converter = ResolveConverter(builder, node, line, column),
+            ConverterParameter = Named(node, "ConverterParameter"),
+            ConverterCulture = ParseCulture(node),
             StringFormat = Named(node, "StringFormat"),
             FallbackValue = fallback ?? UIProperty.UnsetValue,
+            TargetNullValue = Named(node, "TargetNullValue") ?? UIProperty.UnsetValue,
+            Trace = ParseBool(node, "Trace"),
         };
     }
+
+    // Shared shaping-arg parsers, in lockstep with the generator's ShapingInits — a member set here that the
+    // generator omits (or vice-versa) is a silent per-lane drop. ConverterCulture: a named culture (GetCultureInfo
+    // throws on an unknown name, mirroring the generator's runtime GetCultureInfo). Trace: a bool flag, default false.
+    private static System.Globalization.CultureInfo? ParseCulture(MarkupExtensionNode node)
+        => Named(node, "ConverterCulture") is { } culture ? System.Globalization.CultureInfo.GetCultureInfo(culture) : null;
+
+    private static bool ParseBool(MarkupExtensionNode node, string name)
+        => Named(node, name) is { } t && bool.TryParse(t, out var b) && b;
 
     // Resolves a Binding's non-anchor Source argument (the ElementName / Source={x:Reference} anchor forms are
     // resolved to a concrete element by AttachBinding and passed as namedElementSource). Source may be a plain

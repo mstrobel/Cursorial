@@ -1212,13 +1212,17 @@ internal static class LoweringEmitter
                 return (names, bits);
         }
 
-        return (FallbackCapabilityNames, 0xFFF);
+        return (FallbackCapabilityNames, 0xFFFF); // bits 0..15 (Truecolor..FullScreen); None = 0 adds nothing
     }
 
+    // The literal fallback for a StyleCapabilities resolver miss — MUST mirror Cursorial.UI/Styling/
+    // StyleCapabilities.cs in order and completeness (the normal path enumerates the live enum symbol; this
+    // covers only a resolve miss). Stale entries silently drop a RequiresCapabilities name / fence a folded flag.
     private static readonly string[] FallbackCapabilityNames =
     [
         "None", "Truecolor", "Ansi256", "Ansi16", "NoColor", "Motion", "KittyKeyboard",
         "Images", "ImageClipping", "ImageOcclusion", "NerdFont", "Emoji", "Unicode",
+        "TextSizing", "Local", "Inline", "FullScreen",
     ];
 
     // A <Setter Property="P" Value="V"/> → styleVar.Setters.Add(new Setter(Owner.PProperty, value)). A Text value
@@ -4037,10 +4041,8 @@ internal static class LoweringEmitter
         var inits = new List<string>(ModeInit(modeName))
                     {
                         converterInit, // non-null — a null (present-but-unlowerable) declined the lane above
-                        StringInit("StringFormat", NamedText(node, "StringFormat")),
-                        StringInit("FallbackValue", NamedText(node, "FallbackValue")),
-                        StringInit("TargetNullValue", NamedText(node, "TargetNullValue"))
                     };
+        inits.AddRange(ShapingInits(c, node)); // StringFormat/FallbackValue/TargetNullValue/ConverterParameter/ConverterCulture/UpdateSourceTrigger/Trace
 
         // A static-rooted chain anchors on the TARGET element (RelativeSource Self): the root argument is
         // ignored by the getter, and the binding works with no DataContext at all. An anchored root
@@ -4503,11 +4505,9 @@ internal static class LoweringEmitter
             converterInit,
             StringInit("ElementName", NamedText(node, "ElementName")),
             sourceInit,
-            StringInit("StringFormat", NamedText(node, "StringFormat")),
-            StringInit("FallbackValue", NamedText(node, "FallbackValue")),
-            StringInit("TargetNullValue", NamedText(node, "TargetNullValue")),
             PathTypeResolverInit(prefixedOwners),                  // #153 — baked owners for prefixed type-qualified paths
         };
+        inits.AddRange(ShapingInits(c, node)); // StringFormat/FallbackValue/TargetNullValue/ConverterParameter/ConverterCulture/UpdateSourceTrigger/Trace
 
         return $"new global::Cursorial.UI.Data.Binding(\"{path}\"){Initializers(inits)}";
     }
@@ -4612,13 +4612,8 @@ internal static class LoweringEmitter
             return;
         }
 
-        var shaping = new[]
-        {
-            converterInit,
-            StringInit("StringFormat", NamedText(node, "StringFormat")),
-            StringInit("FallbackValue", NamedText(node, "FallbackValue")),
-            StringInit("TargetNullValue", NamedText(node, "TargetNullValue")),
-        };
+        var shaping = new List<string> { converterInit };
+        shaping.AddRange(ShapingInits(c, node)); // StringFormat/FallbackValue/TargetNullValue/ConverterParameter/ConverterCulture/UpdateSourceTrigger/Trace
         // The compiled lanes are CompiledBindings anchored on the templated parent — they carry Mode/RelativeSource
         // plus the shaping; the descriptor lane (TemplateBinding) is inherently OneWay/TemplatedParent, shaping only.
         var compiledInits = Initializers(new List<string>
@@ -4789,6 +4784,56 @@ internal static class LoweringEmitter
     // The `Mode = BindingMode.X` initializer fragment for a carried mode ("" when unspecified ⇒ no fragment).
     private static IEnumerable<string> ModeInit(string modeName)
         => modeName.Length == 0 ? [] : [$"Mode = global::Cursorial.UI.Data.BindingMode.{modeName}"];
+
+    // The binding SHAPING members shared by ALL three binding lanes (reflective / compiled / TemplateBinding) and
+    // by the loader's BuildBinding — kept in ONE place so a new shaping member lands in every lane AND stays in
+    // lockstep with the loader (the two are hand-listed parallel builders; a member present in one but not the
+    // other is a silent per-lane drop). Everything here is LITERAL-only (NamedText), symmetric with the loader's
+    // Named()/ParseEnum reads; a nested-extension FallbackValue/TargetNullValue/ConverterParameter is a documented
+    // follow-up. The object? slots (FallbackValue/TargetNullValue/ConverterParameter) hold the raw string the
+    // converter/coercion interprets. Empty strings are filtered by Initializers.
+    private static IEnumerable<string> ShapingInits(Context c, MarkupExtensionNode node) =>
+    [
+        StringInit("StringFormat", NamedText(node, "StringFormat")),
+        StringInit("FallbackValue", NamedText(node, "FallbackValue")),
+        StringInit("TargetNullValue", NamedText(node, "TargetNullValue")),
+        StringInit("ConverterParameter", NamedText(node, "ConverterParameter")),
+        ConverterCultureInit(node),
+        UpdateSourceTriggerInit(c, node),
+        TraceInit(node),
+    ];
+
+    private static string ConverterCultureInit(MarkupExtensionNode node)
+        => NamedText(node, "ConverterCulture") is { } culture
+               ? $"ConverterCulture = global::System.Globalization.CultureInfo.GetCultureInfo(\"{Escape(culture)}\")"
+               : string.Empty;
+
+    private static string TraceInit(MarkupExtensionNode node)
+        => NamedText(node, "Trace") is { } t && bool.TryParse(t, out var b) ? $"Trace = {(b ? "true" : "false")}" : string.Empty;
+
+    // UpdateSourceTrigger is a closed enum, matched case-insensitively (loader ParseEnum parity). An unrecognized
+    // value is a HARD error: the loader Fatals on it (ParseEnum → ConversionFailed), so the lowered build must fail
+    // too — never a silent drop that diverges from the reflective load.
+    private static string UpdateSourceTriggerInit(Context c, MarkupExtensionNode node)
+    {
+        if (NamedText(node, "UpdateSourceTrigger") is not { } text)
+            return string.Empty;
+
+        var canon = text.ToLowerInvariant() switch
+        {
+            "default" => "Default",
+            "propertychanged" => "PropertyChanged",
+            "lostfocus" => "LostFocus",
+            "explicit" => "Explicit",
+            _ => (string?)null,
+        };
+        if (canon is null)
+        {
+            c.Error($"'{text}' is not a member of UpdateSourceTrigger (Default / PropertyChanged / LostFocus / Explicit)");
+            return string.Empty;
+        }
+        return $"UpdateSourceTrigger = global::Cursorial.UI.Data.UpdateSourceTrigger.{canon}";
+    }
 
     private static string StringInit(string member, string? value)
         => value is null ? string.Empty : $"{member} = \"{Escape(value)}\"";

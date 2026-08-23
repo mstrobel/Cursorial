@@ -291,3 +291,37 @@ Each phase: a normative test matrix + an adversarial audit pass (the Bars/DataVi
   installs a `StyleTrigger` frame), recorded here so the question isn't re-opened by reflex.
 - **`InvokeCommandAction` async / `CanExecute` change tracking** — whether the trigger disables/greys when
   `CanExecute` flips (like a bar button) or only gates at fire time.
+
+---
+
+## §13 — Implementation status (2026-08-23)
+
+**P0–P3 complete** on `feature/interactivity` (`Cursorial.UI.Interactivity` + tests, registered in the
+solution): the §2 model on `UIObject`; the §3 lifecycle over `AttachedToTree`/`DetachedFromTree` with
+re-attach, snapshot walks, re-entrancy guards, attach rollback, and the exactly-one-host rule;
+`EventTrigger` (the `{Name}Event` convention + the typed `RoutedEvent` fast path) / `DataTrigger` (the
+`Watch` substrate, unmet→met edges, string-Value coercion to the delivered type — WPF parity) /
+`InvokeCommandAction` (payload only when `CommandParameter` is unauthored — value-source-gated) /
+`ChangePropertyAction` (§6 semantics, validated `SetCurrentValue`) / `CallMethodAction` /
+`BeginStoryboardAction`+`ControlStoryboardAction` / `SetFocusAction`; §9 `ViewRegistration`
+(+ per-sink ownership arbitration). The BD13 inheritance hookup makes `Command="{Binding …}"` work.
+
+**Both XAML lanes ship the §7 shape**: the loader gained the attached-collection get-or-create probe
+(the WPF `Get{Name}` idiom, general); the generator's `EmitChildAssign` fills attached collections via
+the static accessor (gated on `IsAttachable`); `DataTrigger.Binding` lowers as a descriptor (the
+loader's `AttachBinding` twin). Flagship parity is test-pinned in both lanes (a bound command fires on
+a real Click through loaded AND generated code).
+
+**Teardown**: the new `Cursorial.UI.ITearDownParticipant` seam (the `InputBindings` special case
+generalized); the hosted collection sweeps item bindings (cascading trigger actions) at the element's
+end of life.
+
+**Audited**: the house adversarial pass confirmed 13 findings (lifecycle steal/cross-kill, the teardown
+binding leak, snapshot/re-entrancy corruption, semantic silent-drops, two generator-lane divergences) —
+all fixed with per-finding regression tests (47 module tests total).
+
+**Remaining (§11 P4 / §12)**: the gallery demo page (the app is the author's surface); `x:Self`
+`Level > 0` + templates; the deferred trigger catalog (`KeyTrigger`, `PropertyChangedTrigger`); the
+`i:` compatibility alias; `InvokeCommandAction` `CanExecute` change-tracking. Known framework-level
+issue recorded out of scope: a throwing `AttachedToTree` subscriber corrupts the attach walk for any
+subscriber (the module rolls back its own state; the walk hardening belongs to `Cursorial.UI`).

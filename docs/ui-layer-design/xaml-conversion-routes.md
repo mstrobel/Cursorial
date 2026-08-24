@@ -145,6 +145,17 @@ frontend computes its `ConversionRoute` once from backend-answered capability qu
 - Sequenced as: routes + queries + `None` diagnostics first (additive), then the special-case
   re-expressions one at a time, each behind the full gate suite + drift tests, then the audit.
 
+**W2e status (2026-08-24):** the vocabulary, both backends' candidate queries, the shared `RouteProbe`
+(with the Style denial IN the probe — the audited rule: the recorded route and the executing bridge are
+one decision, pinned by the XC11 consistency assert), `XamlMember.Route` stamping in the reflection
+provider (None/Ambiguous routes deliberately un-memoized so a late `Register` heals them), and the
+CUR2402 parse diagnostics (direct attributes + Setter.Value, fold-first, extensions exempt) are
+IMPLEMENTED and audited (10 findings fixed). **Recorded deferrals:** the symbol-lane / emitted-provider
+route stamp (CUR2402 fires in the reflection lane only until the generator's converter knowledge becomes
+queryable metadata — the emitted provider could stamp cheaply once `MetadataProviderEmitter` learns the
+probe); the `[NoConversionBridge]` per-type opt-out generalizing the Style denial; `RouteMemberName` +
+`Route.IsContextFree` + CR11 folding; downgrading `ConversionBridge`'s own probe to a consistency assert.
+
 ## 2. Non-goals
 
 - No accept-path change to pending-edit semantics (binding-matrix §17's cancel-semantics note — separate

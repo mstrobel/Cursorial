@@ -75,6 +75,59 @@ public sealed class SystemXamlOracleTests
         Assert.Equal(cursorial, oracle);
     }
 
+    // ── W3 x:TypeArguments (XAML 2009 generics, doc `xaml-conversion-routes.md` §1 W3): the
+    // closed-element resolution rules are pinned against real System.Xaml — the PLAIN element name
+    // resolves the `n-arity CLR definition, intrinsic arguments close (x:Double), and the
+    // parenthesized form nests. Both engines must construct the IDENTICAL closed CLR type. ──────────
+
+    [WindowsFact] // XT-O1 — plain name + x:TypeArguments="x:Double" closes OracleGenericNode<double>
+    public void TypeArguments_IntrinsicClosing_MatchesSystemXaml()
+    {
+        var cursorial = CursorialClosedRoot("x:Double");
+        Assert.IsType<OracleGenericNode<double>>(cursorial);
+
+        var oracle = ParseWithSystemXaml(
+            $"<OracleGenericNode xmlns=\"{OracleClr}\" xmlns:x=\"{SystemXaml2009}\" " +
+            "x:TypeArguments=\"x:Double\" Content=\"c\"/>");
+        Assert.IsType<OracleGenericNode<double>>(oracle);
+        Assert.Equal(cursorial.GetType(), oracle.GetType());
+    }
+
+    [WindowsFact] // XT-O2 — the parenthesized nested form closes T = OracleGenericNode<double>
+    public void TypeArguments_ParenthesizedNesting_MatchesSystemXaml()
+    {
+        var cursorial = CursorialClosedRoot("a:OracleGenericNode(x:Double)");
+        Assert.IsType<OracleGenericNode<OracleGenericNode<double>>>(cursorial);
+
+        var oracle = ParseWithSystemXaml(
+            $"<OracleGenericNode xmlns=\"{OracleClr}\" xmlns:a=\"{OracleClr}\" xmlns:x=\"{SystemXaml2009}\" " +
+            "x:TypeArguments=\"a:OracleGenericNode(x:Double)\" Content=\"c\"/>");
+        Assert.IsType<OracleGenericNode<OracleGenericNode<double>>>(oracle);
+        Assert.Equal(cursorial.GetType(), oracle.GetType());
+    }
+
+    [Fact] // the Cursorial HALF of XT-O1/XT-O2 runs on every platform, so the Windows leg can only
+    // diverge on the ORACLE side (a red there is a genuine parity break, not a broken fixture)
+    public void CursorialClosedRoot_ResolvesRegisteredAssemblyGeneric_OnEveryPlatform()
+    {
+        Assert.IsType<OracleGenericNode<double>>(CursorialClosedRoot("x:Double"));
+        Assert.IsType<OracleGenericNode<OracleGenericNode<double>>>(
+            CursorialClosedRoot("a:OracleGenericNode(x:Double)"));
+    }
+
+    private const string SystemXaml2009 = "http://schemas.microsoft.com/winfx/2009/xaml";
+    private const string OracleUsing = "using:Cursorial.Tests.UI.Xaml.Integration";
+
+    /// <summary>Loads the equivalent Cursorial document (the loader lane) closed with
+    /// <paramref name="typeArguments"/>, returning the activated root.</summary>
+    private static object CursorialClosedRoot(string typeArguments)
+    {
+        XamlSchemaContext.Default.RegisterAssembly(typeof(SystemXamlOracleTests).Assembly);
+        return new XamlLoader().Load(
+            $"<a:OracleGenericNode xmlns:a=\"{OracleUsing}\" xmlns:x=\"https://cursorial.dev/xaml\" " +
+            $"x:TypeArguments=\"{typeArguments}\" Content=\"c\"/>");
+    }
+
     // ───────────────────────────── Cursorial parse helpers ─────────────────────────────
 
     private static string CursorialElementText(string body, bool preserveSpace = false)
@@ -164,6 +217,15 @@ public sealed class SystemXamlOracleTests
             return null;
         }
     }
+}
+
+/// <summary>The W3 generics oracle fixture: System.Xaml closes it from the PLAIN element name (the
+/// backtick-arity resolution rule) + <c>x:TypeArguments</c>; Cursorial closes the same document shape.
+/// No converter — the member-assignment path only.</summary>
+public sealed class OracleGenericNode<T>
+{
+    /// <summary>Attribute-assigned content (member set by name in both engines).</summary>
+    public string? Content { get; set; }
 }
 
 /// <summary>

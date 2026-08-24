@@ -5,7 +5,7 @@ CR5 generalized token resolution — the parser resolves every `UIProperty`-type
 `XamlMember.ResolvedPropertyMember`, the loader assigns the identity, the emitter bakes the static
 registration field; CR6/CR10 transitions reshape; CR8 single-child assignability incl. the self-list
 `IsCollection` stamping + emitter self-fill both providers missed. Rows: XamlMatrix Section23 XB1–XB9,
-TransitionsLoweringTests GB1–GB3, AnimationMatrix N160). W2c/W2d/W2e/W3 pending. Motivated by the animation
+TransitionsLoweringTests GB1–GB3, AnimationMatrix N160). **W2c/W2d/W2e/W3 IMPLEMENTED** (per-wave status blocks in §1a). Motivated by the animation
 XAML-friendliness sweep (2026-08-24; findings recorded in `animation-matrix.md` §17 and the W1 commit) and
 the design conversation pinned alongside it. W1 (converter wiring, content properties, fill accessors,
 lane-parity fences) shipped separately; this document governs W2 (routes, `UIProperty` tokens, generic
@@ -155,6 +155,20 @@ route stamp (CUR2402 fires in the reflection lane only until the generator's con
 queryable metadata — the emitted provider could stamp cheaply once `MetadataProviderEmitter` learns the
 probe); the `[NoConversionBridge]` per-type opt-out generalizing the Style denial; `RouteMemberName` +
 `Route.IsContextFree` + CR11 folding; downgrading `ConversionBridge`'s own probe to a consistency assert.
+
+**W3 status (2026-08-24):** `x:TypeArguments` is IMPLEMENTED in both lanes and audited (14 findings
+fixed, commit b0148891): the `XamlTypeName` grammar (2009 core + the Cursorial `?`/`[]` suffixes), the
+`ParseElement` pre-scan (the element resolves CLOSED before attributes parse), `QualifiedTypeName` +
+`IXamlGenericTypeProvider` with reflection (`MakeGenericType`, RUC lane) and Roslyn (`Construct()` with
+pre-validated constraints — `SatisfiesConstraints`) backends, member SUBSTITUTION feeding the W2 route
+machinery, and the closed `new T<args>()` emission in full lowering. Keyframe markup
+(`<Keyframe x:TypeArguments="x:Double">`) is the flagship consumer (XT11). Rows: Section26 XT1–XT15,
+TypeArgumentsLoweringTests GT1–GT6; matrix X28 superseded. **Recorded deferrals:** the emitted-provider
+generics leg — `ClosedTypeSet` does not collect closed-generic element types and `MetadataProviderEmitter`
+does not implement `IXamlGenericTypeProvider`, so a DEFAULT-lane x:Class document with a closed generic
+element is fenced with a build-failing CURG3002 (GT6) rather than dying at runtime; lifting the fence
+means teaching the emitter to enumerate closed constructions and emit their activators. The System.Xaml
+oracle leg (Windows CI) pins the 2009 parenthesized/backtick resolution rules against real System.Xaml.
 
 ## 2. Non-goals
 

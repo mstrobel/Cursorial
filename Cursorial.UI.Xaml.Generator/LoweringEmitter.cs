@@ -114,11 +114,15 @@ internal static class LoweringEmitter
 
         if (ctx.UsesConverter)
         {
-            // The (hand-written, AOT-clean) converter ladder for typed literals. No reflection except the
-            // named-color/TypeDescriptor edges in the ladder itself (tracked for later AOT-hardening).
+            // The (hand-written, AOT-clean) converter ladder for typed literals, chained with the CR7
+            // bridge rung (W2d) so the lowered lane resolves the SAME last-fallback routes the loader
+            // does — parity by construction (the bridge probe is reflective, but over typeof-rooted
+            // types; the typed-emission optimization joins the W2e route probe). No other reflection
+            // except the named-color/TypeDescriptor edges in the ladder itself.
             sb.AppendLine();
             sb.AppendLine($"{ci}    private static object? __ConvertXamlValue(global::System.Type targetType, string text)");
-            sb.AppendLine($"{ci}        => global::Cursorial.UI.Xaml.XamlConverters.For(targetType) is {{ }} __c");
+            sb.AppendLine($"{ci}        => (global::Cursorial.UI.Xaml.XamlConverters.For(targetType)");
+            sb.AppendLine($"{ci}            ?? global::Cursorial.UI.Xaml.XamlConverters.BridgeConverterForType(targetType)) is {{ }} __c");
             sb.AppendLine($"{ci}            ? __c.ConvertFromString(text, new global::Cursorial.UI.Xaml.XamlValueContext(");
             sb.AppendLine($"{ci}                global::System.Globalization.CultureInfo.InvariantCulture, null, targetType, null, 0, 0))");
             sb.AppendLine($"{ci}            : text;");

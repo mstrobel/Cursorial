@@ -1,0 +1,122 @@
+using Cursorial.UI.Controls;
+using Cursorial.UI.Xaml;
+
+// ReSharper disable InconsistentNaming
+
+namespace Cursorial.Tests.UI.Xaml.XamlMatrix;
+
+/// <summary>
+/// The CR7 conversion-bridge rung (W2d, design doc <c>xaml-conversion-routes.md</c>): a member type with
+/// NO converter converts through a single-parameter route declared on it — implicit operator &gt;
+/// explicit operator &gt; constructor &gt; static <c>Parse(string)</c> — from a ladder-convertible source.
+/// Within a kind exactly one viable candidate is required (XC5 pins the loud ambiguity rule); registered
+/// converters keep precedence (XC6). The rung is the LAST fallback — no existing conversion changes.
+/// </summary>
+// ── Fixture wrapper types (one per route kind; namespace-scope so they resolve as elements) ──────
+
+public sealed class ImplicitWrapped
+    {
+    public double Value { get; private init; }
+    public static implicit operator ImplicitWrapped(double value) => new() { Value = value };
+    }
+
+public sealed class ExplicitWrapped
+    {
+        public int Value { get; private init; }
+        public static explicit operator ExplicitWrapped(int value) => new() { Value = value };
+    }
+
+public sealed class CtorWrapped(double value)
+    {
+        public double Value { get; } = value;
+    }
+
+public sealed class ParseWrapped
+    {
+        public string? Raw { get; private init; }
+        public static ParseWrapped Parse(string text) => new() { Raw = "parsed:" + text };
+    }
+
+public sealed class AmbiguousWrapped
+    {
+        public static implicit operator AmbiguousWrapped(double value) => new();
+        public static implicit operator AmbiguousWrapped(int value) => new();
+    }
+
+public sealed class BridgeHost : Control
+    {
+        public ImplicitWrapped? Implicit { get; set; }
+        public ExplicitWrapped? Explicit { get; set; }
+        public CtorWrapped? Ctor { get; set; }
+        public ParseWrapped? Parsed { get; set; }
+        public AmbiguousWrapped? Ambiguous { get; set; }
+    }
+
+public sealed class Section24_ConversionBridge : LoaderTestBase
+{
+    [Fact] // XC1: an implicit operator from a ladder-convertible source bridges
+    public void XC1_ImplicitOperator_Bridges()
+    {
+        var host = Load<BridgeHost>("<BridgeHost Implicit=\"0.5\"/>");
+        Assert.Equal(0.5, host.Implicit!.Value);
+    }
+
+    [Fact] // XC2: an explicit operator bridges (implicit beats it only when both exist)
+    public void XC2_ExplicitOperator_Bridges()
+    {
+        var host = Load<BridgeHost>("<BridgeHost Explicit=\"7\"/>");
+        Assert.Equal(7, host.Explicit!.Value);
+    }
+
+    [Fact] // XC3: a single-parameter constructor bridges
+    public void XC3_Constructor_Bridges()
+    {
+        var host = Load<BridgeHost>("<BridgeHost Ctor=\"2.5\"/>");
+        Assert.Equal(2.5, host.Ctor!.Value);
+    }
+
+    [Fact] // XC4: static T Parse(string) bridges (the Avalonia sibling convention)
+    public void XC4_ParseMethod_Bridges()
+    {
+        var host = Load<BridgeHost>("<BridgeHost Parsed=\"hello\"/>");
+        Assert.Equal("parsed:hello", host.Parsed!.Raw);
+    }
+
+    [Fact] // XC5: two viable routes of ONE kind is a loud positioned error — never a silent pick
+    public void XC5_AmbiguousRoutes_IsPositionedError()
+    {
+        var ex = ThrowsLoad("CUR2401", () => Load(
+            "<BridgeHost Ambiguous=\"1\"/>"));
+
+        Assert.Contains("Ambiguous conversion routes", ex.Message);
+        Assert.Contains("add a converter", ex.Message);
+    }
+
+    [Fact] // XC6: a registered converter keeps precedence — the bridge is the LAST rung
+    public void XC6_RegisteredConverter_BeatsBridge()
+    {
+        XamlConverters.Register(typeof(CtorWrapped), new FixedCtorConverter());
+        try
+        {
+            var host = Load<BridgeHost>("<BridgeHost Ctor=\"2.5\"/>");
+            Assert.Equal(99.0, host.Ctor!.Value); // the registered converter's value, not the bridged ctor's
+        }
+        finally
+        {
+            XamlConverters.Register(typeof(CtorWrapped), new BridgePassthrough()); // restore bridge-like behavior
+        }
+    }
+
+    private sealed class FixedCtorConverter : ITypeConverter
+    {
+        public bool IsContextFree => true;
+        public object ConvertFromString(string text, in XamlValueContext context) => new CtorWrapped(99.0);
+    }
+
+    private sealed class BridgePassthrough : ITypeConverter
+    {
+        public bool IsContextFree => true;
+        public object ConvertFromString(string text, in XamlValueContext context)
+            => new CtorWrapped(double.Parse(text, System.Globalization.CultureInfo.InvariantCulture));
+    }
+}

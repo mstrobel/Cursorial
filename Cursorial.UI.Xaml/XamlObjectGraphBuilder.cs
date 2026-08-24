@@ -1051,7 +1051,10 @@ internal sealed class XamlObjectGraphBuilder
         // so our curated converters keep precedence) — gives XAML compatibility with any [TypeConverter]-bearing
         // type (and BCL defaults: enums, Guid, …). Resolved here at load (not on a baked path), uniform for both
         // providers (a non-ladder type's baked converter is null → this fallback runs identically).
-        var converter = member.Converter ?? XamlConverters.For(memberType) ?? XamlConverters.BclConverterForType(memberType);
+        var converter = member.Converter
+                        ?? XamlConverters.For(memberType)
+                        ?? XamlConverters.BclConverterForType(memberType)
+                        ?? XamlConverters.BridgeConverterForType(memberType); // W2d CR7 — the LAST rung
         if (converter is null)
             return text; // no converter — pass the raw string (CLR setter may accept it)
 

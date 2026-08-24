@@ -93,7 +93,10 @@ converters, the bridge rung, the transitions API reshape) and sketches W3 (`x:Ty
   Cursorial.UI cannot reference the converter assembly), the ladder closes it reflectively in the RUC
   lane, the emitter bakes the closed form, and the reflective OptionalConverter + its DAM scaffolding
   are retired from Optional<T>.
-- **W2d** — the bridge rung (CR7), loader-first.
+- **W2d** — the bridge rung (CR7): DONE — ConversionBridge as the loader's LAST fallback (implicit >
+  explicit > ctor > Parse; exactly-one-viable-per-kind else the loud ambiguity error; registered
+  converters keep precedence); the emitted __ConvertXamlValue helper CHAINS the same probe at runtime —
+  parity by construction (typed emission + folding join W2e). Rows XC1-XC6 + GC1.
 - **W2e** — the route probe itself (CR1/CR2/CR3/CR11): `ConversionRoute` on `XamlMember`, the existing
   special cases (Setter.Property, Selector, the ladder's own dispatch) re-expressed as routes, parse-time
   convertibility diagnostics in both lanes.

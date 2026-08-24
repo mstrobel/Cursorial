@@ -44,6 +44,11 @@ public static class XamlConverters
         return Cache.GetOrAdd(targetType, Build);
     }
 
+    /// <summary>The CR7 bridge rung (W2d) — the loader's LAST conversion fallback, after the ladder and
+    /// the BCL rung: a single-parameter route into the type (implicit/explicit operator, ctor, static
+    /// <c>Parse(string)</c>) from a ladder-convertible source. See <see cref="ConversionBridge"/>.</summary>
+    public static ITypeConverter? BridgeConverterForType(Type targetType) => ConversionBridge.For(targetType);
+
     /// <summary>
     /// Registers (or overrides) the converter for <paramref name="targetType"/> — the C-15 seam S2 and
     /// S7 consume for target-type fallback / DynamicResource conversion. Subsequent <see cref="For"/>
@@ -847,5 +852,131 @@ public sealed class OptionalConverter<T> : ITypeConverter
                     ?? throw XamlConverters.Fail($"No converter for Optional inner type '{typeof(T).Name}'.", context);
 
         return new Cursorial.UI.Optional<T>((T)inner.ConvertFromString(text, context)!);
+    }
+}
+
+/// <summary>
+/// The CR7 conversion-bridge rung (W2d, design doc <c>xaml-conversion-routes.md</c>): when NO converter
+/// exists for a member type <c>T</c>, probe a single-parameter route INTO <c>T</c> declared ON <c>T</c> —
+/// implicit operator &gt; explicit operator &gt; constructor &gt; <c>static T Parse(string)</c> (the
+/// Avalonia sibling convention) — from a source type <c>S</c> the pure ladder can convert. Between KINDS
+/// the precedence is fixed; WITHIN a kind exactly one viable candidate is required — two is a loud
+/// ambiguity error, never a silent pick. Registered/attributed/ladder/BCL converters all keep precedence
+/// (this rung is LAST). Reflective by design (the RUC loader lane); the emitter mirrors the probe over
+/// Roslyn symbols and emits the typed form directly, with a drift test pinning agreement until the W2e
+/// route probe makes the decision once for both lanes.
+/// </summary>
+internal static class ConversionBridge
+{
+    private static readonly ConcurrentDictionary<Type, ITypeConverter?> Cache = new();
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The bridge probe reflects over the member type's public surface — the RUC " +
+                        "reflective lane only; the lowered lane emits the typed route statically.")]
+    public static ITypeConverter? For(Type targetType)
+        => Cache.GetOrAdd(targetType, static t =>
+        {
+            if (t.IsAbstract || t.IsInterface || t == typeof(string) || t == typeof(object))
+                return null;
+
+            // Kind 1/2: conversion operators DECLARED ON T producing T. op_Implicit beats op_Explicit;
+            // within a kind, more than one ladder-convertible source parameter is ambiguous.
+            var implicitRoute = FindOperatorRoute(t, "op_Implicit", out var implicitAmbiguous);
+            if (implicitAmbiguous)
+                return new AmbiguousBridge(t, "implicit operators");
+            if (implicitRoute is not null)
+                return implicitRoute;
+
+            var explicitRoute = FindOperatorRoute(t, "op_Explicit", out var explicitAmbiguous);
+            if (explicitAmbiguous)
+                return new AmbiguousBridge(t, "explicit operators");
+            if (explicitRoute is not null)
+                return explicitRoute;
+
+            // Kind 3: a public single-parameter constructor from a ladder-convertible S.
+            System.Reflection.ConstructorInfo? ctorRoute = null;
+            ITypeConverter? ctorSource = null;
+            foreach (var ctor in t.GetConstructors())
+            {
+                if (ctor.GetParameters() is not [{ ParameterType: { } s }] || s == t || s == typeof(object))
+                    continue;
+                if (XamlConverters.For(s) is not { } sourceConverter)
+                    continue;
+                if (ctorRoute is not null)
+                    return new AmbiguousBridge(t, "single-parameter constructors");
+                ctorRoute = ctor;
+                ctorSource = sourceConverter;
+            }
+            if (ctorRoute is not null)
+            {
+                var boundCtor = ctorRoute;
+                return new BridgeConverter(ctorSource!, value => boundCtor.Invoke([value]));
+            }
+
+            // Kind 4: static T Parse(string) (the culture-free single-arg form only).
+            if (t.GetMethod("Parse", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                            [typeof(string)]) is { } parse && parse.ReturnType == t && !parse.IsGenericMethod)
+                return new BridgeConverter(RawText.Instance, value => parse.Invoke(null, [value])!);
+
+            return null;
+        });
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "Operator probing over the member type's public statics — the RUC lane.")]
+    private static ITypeConverter? FindOperatorRoute(Type t, string opName, out bool ambiguous)
+    {
+        ambiguous = false;
+        System.Reflection.MethodInfo? route = null;
+        ITypeConverter? source = null;
+
+        foreach (var method in t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+        {
+            if (!string.Equals(method.Name, opName, StringComparison.Ordinal) || method.ReturnType != t || method.IsGenericMethod)
+                continue;
+            if (method.GetParameters() is not [{ ParameterType: { } s }] || s == t || s == typeof(object))
+                continue;
+            if (XamlConverters.For(s) is not { } sourceConverter)
+                continue;
+            if (route is not null)
+            {
+                ambiguous = true;
+                return null;
+            }
+            route = method;
+            source = sourceConverter;
+        }
+
+        if (route is null)
+            return null;
+
+        var boundRoute = route;
+        return new BridgeConverter(source!, value => boundRoute.Invoke(null, [value])!);
+    }
+
+    /// <summary>A resolved bridge: parse the text as S through the ladder, take the route into T.</summary>
+    private sealed class BridgeConverter(ITypeConverter source, Func<object?, object> route) : ITypeConverter
+    {
+        public bool IsContextFree => source.IsContextFree;
+
+        public object ConvertFromString(string text, in XamlValueContext context)
+            => route(source.ConvertFromString(text, context));
+    }
+
+    /// <summary>The CR3 ambiguity rule: two viable routes of one kind error LOUDLY at conversion, never a silent pick.</summary>
+    private sealed class AmbiguousBridge(Type t, string kind) : ITypeConverter
+    {
+        public bool IsContextFree => false; // never folded — the error must surface with the document position
+
+        public object ConvertFromString(string text, in XamlValueContext context)
+            => throw XamlConverters.Fail(
+                $"Ambiguous conversion routes into '{t.Name}' ({kind}) — add a converter for the type.", context);
+    }
+
+    /// <summary>The Parse-route source: the raw text (S == string, trivially ladder-convertible).</summary>
+    private sealed class RawText : ITypeConverter
+    {
+        public static readonly RawText Instance = new();
+        public bool IsContextFree => true;
+        public object ConvertFromString(string text, in XamlValueContext context) => text;
     }
 }
